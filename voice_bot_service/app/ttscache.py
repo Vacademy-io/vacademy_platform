@@ -708,12 +708,29 @@ class CallCandidates:
               health: str) -> int:
         """Apply G4 then G3, then ladder the survivors. Blocking; call at call end.
 
-        G4 — the call must have been healthy. A call where synthesis wedged, a
-        reply never played, or we went deaf is not evidence about anything, and
-        the whole batch is dropped rather than picked over. Cheap to be strict:
-        the sentence will come round again on a call that worked.
+        G4 — the call has to have been healthy enough for what this sentence
+        actually claims. TWO STANDARDS, because the two kinds of candidate make
+        different claims:
 
-        G3 — the sentence must appear in the PLAYED transcript, which
+        A FIXED line claims only "this authored string is worth rendering". Its
+        audio comes from an off-call one-shot synthesis of a string an admin
+        wrote; nothing about how the conversation went bears on it. So only the
+        faults that implicate AUDIO can veto it — synthesis wedged, the bot went
+        silent, a reply never played, the pipeline crashed.
+
+        An LLM SENTENCE claims "the model said this, and will plausibly say it
+        again". That claim does lean on the conversation having worked, so it
+        keeps the strict bar: any blocking fault, or a RED verdict, drops it.
+
+        This started as one strict rule for both, and on live agent shreya-v3 it
+        was a stall rather than caution: 15 of 22 calls RED, so the opening line
+        could only be learned from roughly one call in three. And the faults
+        doing the blocking were DEAD_AIR, SLOW_LLM, ANSWER_DELETED — none of
+        which say anything about whether the opening was rendered correctly. It
+        demonstrably was; it is the first line of the transcript. Letting overall
+        call health veto a per-sentence question was the error.
+
+        G3 — an LLM sentence must appear in the PLAYED transcript, which
         PlayedTranscriptRecorder builds from TTSTextFrames released by the
         transport at playout position, i.e. text the caller actually HEARD.
         This is the same test NoRepeatGate runs to un-record never-played
@@ -724,12 +741,8 @@ class CallCandidates:
             return 0
         try:
             faults = set(verdict_faults or ())
-            blocking = faults & _CACHE_BLOCKING_FAULTS
-            if blocking or (health or "").upper() == "RED":
-                logger.info("tts-cache: dropping %d candidate(s) — call health %s %s",
-                            len(self._items), health, sorted(blocking))
-                self._items = []
-                return 0
+            audio_bad = faults & _AUDIO_BLOCKING_FAULTS
+            convo_bad = (faults & _CACHE_BLOCKING_FAULTS) or (health or "").upper() == "RED"
 
             # normalize_spoken is NoRepeatGate's own comparator: whitespace
             # collapsed and case-folded. Used for the CONFIRMATION only — the
@@ -739,13 +752,23 @@ class CallCandidates:
             from .turntake import normalize_spoken
             played = normalize_spoken(played_text or "")
 
-            heard, unheard = [], 0
+            heard, unheard, dropped = [], 0, 0
             for c in self._items:
-                if c.fixed or (played and normalize_spoken(c.text) in played):
+                if c.fixed:
+                    if audio_bad:
+                        dropped += 1
+                    else:
+                        heard.append(c)
+                elif convo_bad:
+                    dropped += 1
+                elif played and normalize_spoken(c.text) in played:
                     heard.append(c)
                 else:
                     unheard += 1
             self._items = []
+            if dropped:
+                logger.info("tts-cache: dropped %d candidate(s) — health=%s audio_faults=%s",
+                            dropped, health, sorted(audio_bad) or "none")
             if unheard:
                 logger.info("tts-cache: %d candidate(s) never reached the caller — not laddered",
                             unheard)
@@ -756,10 +779,19 @@ class CallCandidates:
             return 0
 
 
-# A call carrying any of these did not deliver audio reliably, so nothing it saw
-# is trustworthy evidence. Names match diagnostics.py's fault codes.
-_CACHE_BLOCKING_FAULTS = frozenset({
-    "CRASH", "BOT_SILENT", "TTS_WEDGE", "REPLY_UNPLAYED", "STT_DEAF", "REPLY_LOOP",
+# Faults that implicate the AUDIO itself: synthesis stalled, the bot produced
+# nothing, a reply never reached the caller, the pipeline died. These are the only
+# ones that can say anything about whether a rendered string is trustworthy, so
+# they are the only ones that veto a FIXED line. Names match diagnostics.py.
+_AUDIO_BLOCKING_FAULTS = frozenset({
+    "CRASH", "BOT_SILENT", "TTS_WEDGE", "REPLY_UNPLAYED",
+})
+
+# The stricter bar, for an LLM sentence — whose claim ("the model will plausibly
+# say this again") does lean on the conversation having worked. Adds the faults
+# about hearing and looping, and a RED verdict blocks on top.
+_CACHE_BLOCKING_FAULTS = _AUDIO_BLOCKING_FAULTS | frozenset({
+    "STT_DEAF", "REPLY_LOOP",
 })
 
 

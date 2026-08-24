@@ -1351,6 +1351,12 @@ export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white
 export const WHITE_LABEL_STATUS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
 
+// App Registry Status (read-only) — mobile/desktop app registration status for this institute,
+// sourced from the health-check dashboard's App Registration module. Registration itself stays
+// ops-only in that dashboard; this is a status view only.
+export const APP_REGISTRY_STATUS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/institute/app-registry/v1/status?instituteId=${instituteId}`;
+
 // Institute Payment Gateway Admin CRUD
 export const INSTITUTE_PAYMENT_GATEWAYS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/institute/payment-gateways?instituteId=${instituteId}`;

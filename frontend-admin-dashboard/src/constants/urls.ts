@@ -1001,6 +1001,11 @@ export const GET_INSITITUTE_SETTINGS = `${BASE_URL}/admin-core-service/institute
 export const SAVE_INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
 
+// LLM-analytics — per-attempt AI insight reports (activity_log.processed_json).
+// Query by userId + slideId for content slides (quiz / question / assignment);
+// the assessment variant keys off sourceId instead.
+export const GET_AI_PROCESSED_LOGS = `${BASE_URL}/admin-core-service/llm-analytics/processed-logs`;
+
 // Short links — settings toggles + institute link management (proxied to media-service)
 export const SHORT_LINK_ADMIN_BASE = `${BASE_URL}/admin-core-service/v1/short-link`;
 export const SHORT_LINK_EFFECTIVE_SETTINGS = `${SHORT_LINK_ADMIN_BASE}/settings`;

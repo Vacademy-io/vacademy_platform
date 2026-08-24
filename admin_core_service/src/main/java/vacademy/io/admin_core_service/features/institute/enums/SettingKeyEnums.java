@@ -37,5 +37,14 @@ public enum SettingKeyEnums {
     // zeroes out every per-node offline permission regardless of course/rule
     // settings (OfflineAccessResolver). Read/write via OfflineSettingService,
     // which layers on GenericSettingStrategy like any other key.
-    OFFLINE_ACCESS_SETTING
+    OFFLINE_ACCESS_SETTING,
+    // Whether STAFF see the LLM-analytics insight reports (activity_log.processed_json)
+    // that the pipeline already produces per attempt ({"adminActivityInsightsEnabled":
+    // false}). Read/write via GenericSettingStrategy like any other key; absence of the
+    // key means off. Deliberately opt-in: an institute should choose to expose AI-written
+    // commentary about a learner rather than find it already exposed.
+    // NOTE: learner-side visibility is NOT here. It rides on the existing
+    // canViewReports permission in STUDENT_DISPLAY_SETTING, which already gates the
+    // My Reports section the insights tab lives inside.
+    AI_INSIGHTS_SETTING
 }

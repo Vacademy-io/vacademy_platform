@@ -54,11 +54,19 @@ interface AIReportData {
 
 interface AIReportDetailsPageProps {
   report: AIReportData;
-  assessmentId: string;
+  /**
+   * Present for assessment reports only. The PDF export is an assessment-service
+   * endpoint keyed on it, so the download button is hidden without one — quiz,
+   * question and assignment insights have no equivalent export.
+   */
+  assessmentId?: string;
+  /** Heading for the report. For activity insights this is the slide title. */
   assessmentName: string;
   attemptId?: string;
   instituteId?: string;
   comparisonData?: any; // StudentComparisonDto from /comparison API
+  /** Optional line under the heading, e.g. "Quiz · 12 Aug 2026". */
+  subtitle?: string;
 }
 
 const MASTERY_VARIANT: Record<string, string> = {
@@ -80,7 +88,7 @@ const BLOOM_BG: Record<string, string> = {
 
 // ─── Main Component ───
 export default function AIReportDetailsPage({
-  report, assessmentId, assessmentName, attemptId, instituteId, comparisonData,
+  report, assessmentId, assessmentName, attemptId, instituteId, comparisonData, subtitle,
 }: AIReportDetailsPageProps) {
   const [flashIdx, setFlashIdx] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -136,13 +144,17 @@ export default function AIReportDetailsPage({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-xl font-bold">{assessmentName}</h1>
-          <p className="text-sm text-muted-foreground">Personalized Performance Analysis</p>
+          <p className="text-sm text-muted-foreground">
+            {subtitle ?? "Personalized Performance Analysis"}
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleDownload} disabled={downloading}
-          className={`gap-1.5 ${dlError ? "border-destructive text-destructive" : ""}`}>
-          {downloading ? <SpinnerGap className="h-4 w-4 animate-spin" /> : <DownloadSimple className="h-4 w-4" />}
-          {downloading ? "Generating..." : dlError ? "Failed" : "Download PDF"}
-        </Button>
+        {assessmentId && (
+          <Button variant="outline" size="sm" onClick={handleDownload} disabled={downloading}
+            className={`gap-1.5 ${dlError ? "border-destructive text-destructive" : ""}`}>
+            {downloading ? <SpinnerGap className="h-4 w-4 animate-spin" /> : <DownloadSimple className="h-4 w-4" />}
+            {downloading ? "Generating..." : dlError ? "Failed" : "Download PDF"}
+          </Button>
+        )}
       </div>
 
       <div className="space-y-4">

@@ -20,8 +20,12 @@ import {
 } from "@/components/ui/card";
 import { MyButton } from "@/components/design-system/button";
 import { useReportStore } from "@/stores/report-store";
-import { X } from "@phosphor-icons/react";
+import { X, Sparkle } from "@phosphor-icons/react";
 import { useEffect } from "react";
+import {
+  fetchActivityInsights,
+  insightTypeLabel,
+} from "@/services/activity-insights";
 
 function safeFormatDate(iso: string | undefined | null): string {
   if (!iso) return "—";
@@ -46,12 +50,59 @@ function reportLabel(report: ReportListItem): string {
   return `${start} — ${end}`;
 }
 
+
+function EmptyState({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="flex items-center justify-center min-h-reg-400 px-6">
+      <div className="text-center">
+        <h2 className="text-xl font-semibold text-neutral-700 mb-2">{title}</h2>
+        <p className="text-neutral-500">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+        active
+          ? "border-primary-500 text-primary-700"
+          : "border-transparent text-gray-500 hover:text-gray-700"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+type ReportsTab = "term" | "activity";
+
 export default function MyReportsPage() {
   const navigate = useNavigate();
   const { permissions, isLoading: permissionsLoading } =
     useStudentPermissions();
   const { setSelectedReport } = useReportStore();
   const [currentPage, setCurrentPage] = useState(0);
+  const [activeTab, setActiveTab] = useState<ReportsTab>("term");
+  const [insightsPage, setInsightsPage] = useState(0);
+
+  // No separate switch for insights: reaching My Reports at all already requires
+  // the canViewReports permission, and that is the decision an institute makes.
+  const { data: insightsData, isLoading: insightsLoading } = useQuery({
+    queryKey: ["activityInsights", insightsPage],
+    queryFn: () => fetchActivityInsights(insightsPage),
+  });
 
   // Redirect if user doesn't have permission to view reports
   useEffect(() => {
@@ -106,35 +157,150 @@ export default function MyReportsPage() {
     return null; // Will redirect
   }
 
-  if (isLoading) {
-    return <DashboardLoader />;
-  }
+  const termReports = reportsData?.reports ?? [];
+  const insights = insightsData?.insights ?? [];
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-reg-400">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-neutral-700 mb-2">
-            Error Loading Reports
-          </h2>
-          <p className="text-neutral-500">Please try again later.</p>
-        </div>
-      </div>
-    );
-  }
+  // Both tabs are always present so the navigation is predictable; an learner with
+  // no analysed attempts yet gets an explanatory empty state rather than a missing
+  // tab they cannot account for.
+  const showTabs = true;
 
-  if (!reportsData || reportsData.reports.length === 0) {
+  const renderTermReports = () => {
+    if (isLoading) return <DashboardLoader />;
+    if (error) {
+      return (
+        <EmptyState
+          title="Error Loading Reports"
+          message="Please try again later."
+        />
+      );
+    }
+    if (termReports.length === 0) {
+      return (
+        <EmptyState
+          title="No Reports Found"
+          message="You don't have any reports yet."
+        />
+      );
+    }
     return (
-      <div className="flex items-center justify-center min-h-reg-400">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-neutral-700 mb-2">
-            No Reports Found
-          </h2>
-          <p className="text-neutral-500">You don't have any reports yet.</p>
+      <>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 w-full py-6 md:py-8 px-4">
+          {termReports.map((report) => (
+            <Card
+              key={report.process_id}
+              className="hover:shadow-lg transition-shadow"
+            >
+              <CardHeader>
+                <CardTitle className="text-lg">{reportLabel(report)}</CardTitle>
+                <CardDescription>
+                  {report.created_at
+                    ? `Created: ${safeFormatDate(report.created_at)}`
+                    : ""}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        report.status === "COMPLETED"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-yellow-100 text-yellow-800"
+                      }`}
+                    >
+                      {report.status}
+                    </span>
+                    {report.report_version === "v2" && (
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary-50 text-primary-600 border border-primary-200">
+                        Comprehensive
+                      </span>
+                    )}
+                  </div>
+                  <MyButton
+                    onClick={() => handleViewDetails(report)}
+                    size="sm"
+                    buttonType="secondary"
+                  >
+                    View Details
+                  </MyButton>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </div>
+
+        {(reportsData?.total_pages ?? 0) > 1 && (
+          <div className="mt-8 flex justify-center">
+            <MyPagination
+              currentPage={currentPage + 1}
+              totalPages={reportsData?.total_pages ?? 1}
+              onPageChange={handlePageChange}
+            />
+          </div>
+        )}
+      </>
     );
-  }
+  };
+
+  const renderActivityInsights = () => {
+    if (insightsLoading) return <DashboardLoader />;
+    if (insights.length === 0) {
+      return (
+        <EmptyState
+          title="No Activity Insights Yet"
+          message="Insights appear here after you complete a quiz, question or assignment. They're prepared shortly after you submit."
+        />
+      );
+    }
+    return (
+      <>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 w-full py-6 md:py-8 px-4">
+          {insights.map((insight) => (
+            <Card
+              key={insight.id}
+              className="hover:shadow-lg transition-shadow"
+            >
+              <CardHeader>
+                <CardTitle className="text-lg line-clamp-2">
+                  {insight.title || insightTypeLabel(insight.source_type)}
+                </CardTitle>
+                <CardDescription>
+                  {insight.created_at ? safeFormatDate(insight.created_at) : ""}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center">
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary-50 text-primary-600 border border-primary-200">
+                    {insightTypeLabel(insight.source_type)}
+                  </span>
+                  <MyButton
+                    onClick={() =>
+                      navigate({ to: `/my-reports/activity/${insight.id}` })
+                    }
+                    size="sm"
+                    buttonType="secondary"
+                  >
+                    View Insights
+                  </MyButton>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {(insightsData?.total_pages ?? 0) > 1 && (
+          <div className="mt-8 flex justify-center">
+            <MyPagination
+              currentPage={insightsPage + 1}
+              totalPages={insightsData?.total_pages ?? 1}
+              onPageChange={(page) => setInsightsPage(page - 1)}
+            />
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-50/50 pb-24 md:pb-8">
@@ -164,63 +330,28 @@ export default function MyReportsPage() {
               </MyButton>
             </div>
           </div>
+
+          {showTabs && (
+            <div className="mt-4 flex gap-1 border-b border-gray-200">
+              <TabButton
+                active={activeTab === "term"}
+                onClick={() => setActiveTab("term")}
+              >
+                Progress Reports
+              </TabButton>
+              <TabButton
+                active={activeTab === "activity"}
+                onClick={() => setActiveTab("activity")}
+              >
+                <Sparkle size={14} weight="fill" className="text-primary-500" />
+                Activity Insights
+              </TabButton>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 w-full py-6 md:py-8 px-4">
-        {reportsData.reports.map((report) => (
-          <Card
-            key={report.process_id}
-            className="hover:shadow-lg transition-shadow"
-          >
-            <CardHeader>
-              <CardTitle className="text-lg">{reportLabel(report)}</CardTitle>
-              <CardDescription>
-                {report.created_at
-                  ? `Created: ${safeFormatDate(report.created_at)}`
-                  : ""}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      report.status === "COMPLETED"
-                        ? "bg-green-100 text-green-800"
-                        : "bg-yellow-100 text-yellow-800"
-                    }`}
-                  >
-                    {report.status}
-                  </span>
-                  {report.report_version === "v2" && (
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary-50 text-primary-600 border border-primary-200">
-                      Comprehensive
-                    </span>
-                  )}
-                </div>
-                <MyButton
-                  onClick={() => handleViewDetails(report)}
-                  size="sm"
-                  buttonType="secondary"
-                >
-                  View Details
-                </MyButton>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {reportsData.total_pages > 1 && (
-        <div className="mt-8 flex justify-center">
-          <MyPagination
-            currentPage={currentPage + 1}
-            totalPages={reportsData.total_pages}
-            onPageChange={handlePageChange}
-          />
-        </div>
-      )}
+      {activeTab === "activity" ? renderActivityInsights() : renderTermReports()}
     </div>
   );
 }

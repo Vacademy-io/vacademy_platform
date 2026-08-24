@@ -151,6 +151,12 @@ public class AssignmentSlideActivityLogService {
         tracked.setFeedback(gradeDTO.getFeedback());
         tracked.setCheckedFileId(gradeDTO.getCheckedFileId());
         assignmentSlideTrackedRepository.save(tracked);
+
+        // Grading is the first point at which an assignment has anything to analyse -
+        // the submission itself is a set of uploaded files the model cannot read. Rebuild
+        // the LLM payload from the marked-up picture and let the scheduler regenerate the
+        // report. Async and self-contained: analytics must never fail a grade save.
+        learnerTrackingAsyncService.refreshLLMAssignmentDataAfterGradingAsync(tracked.getId());
     }
 
     public Page<ActivityLogDTO> getAssignmentSlideActivityLogs(String userId, String slideId, Pageable pageable,

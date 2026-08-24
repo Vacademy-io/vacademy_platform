@@ -121,6 +121,7 @@ interface ActivityLogResponse {
 import { useAIModelsList } from '@/hooks/useAiModels';
 import KnowledgeBase from './KnowledgeBase';
 import { StudentAiSettingsSection } from './StudentAiSettingsSection';
+import { AiInsightsSettingsSection } from './AiInsightsSettingsSection';
 
 const AI_SETTINGS_SECTIONS: SettingsSectionGroup[] = [
     {
@@ -128,6 +129,7 @@ const AI_SETTINGS_SECTIONS: SettingsSectionGroup[] = [
             { id: 'grp-providers', label: 'Providers & Models', icon: Sparkle },
             { id: 'grp-course-ai', label: 'Course AI', icon: BookOpen },
             { id: 'grp-student-ai', label: 'Student AI', icon: Student },
+            { id: 'grp-learner-insights', label: 'Learner Insights', icon: ChartLineUp },
             { id: 'grp-knowledge', label: 'Knowledge Base', icon: Books },
             { id: 'grp-prompt', label: 'Course Prompt', icon: Article },
             { id: 'grp-video', label: 'Video', icon: FilmStrip },
@@ -1081,6 +1083,11 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             <section id="grp-student-ai" className="space-y-6">
             {/* Student AI Configuration Card */}
             <StudentAiSettingsSection />
+            </section>
+
+            <section id="grp-learner-insights" className="space-y-6">
+            {/* Who can see the per-attempt AI insight reports */}
+            <AiInsightsSettingsSection />
             </section>
 
             <section id="grp-knowledge" className="space-y-6">

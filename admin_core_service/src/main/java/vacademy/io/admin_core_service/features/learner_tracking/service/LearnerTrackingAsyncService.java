@@ -50,6 +50,8 @@ public class LearnerTrackingAsyncService {
         @Autowired
         private LLMActivityAnalyticsService llmActivityAnalyticsService;
         @Autowired
+        private vacademy.io.admin_core_service.features.learner_tracking.repository.AssignmentSlideTrackedRepository assignmentSlideTrackedRepository;
+        @Autowired
         private vacademy.io.admin_core_service.features.slide.repository.AudioSlideRepository audioSlideRepository;
 
         // ==== Document Slide Tracking ====
@@ -141,6 +143,22 @@ public class LearnerTrackingAsyncService {
                 } catch (Exception e) {
                         log.error("Error saving LLM question data for activityLogId: {}, slideId: {}", activityLogId,
                                         slideId, e);
+                }
+        }
+
+        /**
+         * Async wrapper to refresh assignment raw data once it has been graded, so the
+         * report is regenerated from marks and feedback rather than from a bare
+         * submission. See LLMActivityAnalyticsService#refreshAssignmentRawDataAfterGrading.
+         */
+        @Async
+        @Transactional
+        public void refreshLLMAssignmentDataAfterGradingAsync(String trackedId) {
+                try {
+                        assignmentSlideTrackedRepository.findById(trackedId)
+                                        .ifPresent(llmActivityAnalyticsService::refreshAssignmentRawDataAfterGrading);
+                } catch (Exception e) {
+                        log.error("Error refreshing LLM assignment data for trackedId: {}", trackedId, e);
                 }
         }
 

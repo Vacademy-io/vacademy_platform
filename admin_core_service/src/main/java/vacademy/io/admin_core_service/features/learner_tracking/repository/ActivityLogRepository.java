@@ -2269,6 +2269,44 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("sourceId") String sourceId);
 
     /**
+     * A learner's own AI insight reports, newest first, for the "Activity Insights" list
+     * in My Reports.
+     *
+     * <p>Scoped to the slide-based report types. Assessment reports
+     * ({@code llm_assessment}) are deliberately excluded: they key off an assessment id
+     * rather than a slide, so their title cannot be resolved by this join, and learners
+     * already reach them from the assessment report screen.
+     *
+     * <p>Only 'processed' rows appear — a 'failed' row holds an error marker, not a
+     * report, and a 'raw' one has not been analysed yet.
+     */
+    @Query(value = """
+            SELECT a.id AS id,
+                   a.source_type AS sourceType,
+                   a.slide_id AS slideId,
+                   a.source_id AS sourceId,
+                   s.title AS title,
+                   a.created_at AS createdAt
+            FROM activity_log a
+            LEFT JOIN slide s ON s.id = a.slide_id
+            WHERE a.user_id = :userId
+              AND a.status = 'processed'
+              AND a.source_type IN ('llm_quiz', 'llm_question', 'llm_assignment')
+            ORDER BY a.created_at DESC
+            """,
+            countQuery = """
+            SELECT COUNT(*)
+            FROM activity_log a
+            WHERE a.user_id = :userId
+              AND a.status = 'processed'
+              AND a.source_type IN ('llm_quiz', 'llm_question', 'llm_assignment')
+            """,
+            nativeQuery = true)
+    Page<LearnerInsightSummaryProjection> findInsightSummariesForLearner(
+            @Param("userId") String userId,
+            Pageable pageable);
+
+    /**
      * Find all activity logs for a user + source (any status), newest first.
      * Used by on-demand AI report processing to locate the raw/failed row to
      * process immediately when a learner opens the report before the hourly cron.

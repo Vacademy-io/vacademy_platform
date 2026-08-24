@@ -94,6 +94,7 @@ import { Route as StudyLibraryLiveClassUsernameIndexRouteImport } from './routes
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from './routes/study-library/courses/course-details/index'
 import { Route as PayInvoiceInvoiceIdIndexRouteImport } from './routes/pay/invoice/$invoiceId/index'
 import { Route as ParentChildChildIdIndexRouteImport } from './routes/parent/child/$childId/index'
+import { Route as MyReportsActivityLogIdIndexRouteImport } from './routes/my-reports/activity/$logId/index'
 import { Route as MMediaIdPhoneNumberIndexRouteImport } from './routes/m/$mediaId/$phoneNumber/index'
 import { Route as LeaderboardInstituteInstituteIdIndexRouteImport } from './routes/leaderboard/institute/$instituteId/index'
 import { Route as AssessmentReportsStudentReportIndexRouteImport } from './routes/assessment/reports/student-report/index'
@@ -564,6 +565,12 @@ const ParentChildChildIdIndexRoute = ParentChildChildIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ParentChildChildIdRoute,
 } as any)
+const MyReportsActivityLogIdIndexRoute =
+  MyReportsActivityLogIdIndexRouteImport.update({
+    id: '/my-reports/activity/$logId/',
+    path: '/my-reports/activity/$logId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const MMediaIdPhoneNumberIndexRoute =
   MMediaIdPhoneNumberIndexRouteImport.update({
     id: '/m/$mediaId/$phoneNumber/',
@@ -782,6 +789,7 @@ export interface FileRoutesByFullPath {
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/my-reports/activity/$logId': typeof MyReportsActivityLogIdIndexRoute
   '/parent/child/$childId/': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -888,6 +896,7 @@ export interface FileRoutesByTo {
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/my-reports/activity/$logId': typeof MyReportsActivityLogIdIndexRoute
   '/parent/child/$childId': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -997,6 +1006,7 @@ export interface FileRoutesById {
   '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId/': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber/': typeof MMediaIdPhoneNumberIndexRoute
+  '/my-reports/activity/$logId/': typeof MyReportsActivityLogIdIndexRoute
   '/parent/child/$childId/': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId/': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details/': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -1107,6 +1117,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report'
     | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
+    | '/my-reports/activity/$logId'
     | '/parent/child/$childId/'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
@@ -1213,6 +1224,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report'
     | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
+    | '/my-reports/activity/$logId'
     | '/parent/child/$childId'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
@@ -1321,6 +1333,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report/'
     | '/leaderboard/institute/$instituteId/'
     | '/m/$mediaId/$phoneNumber/'
+    | '/my-reports/activity/$logId/'
     | '/parent/child/$childId/'
     | '/pay/invoice/$invoiceId/'
     | '/study-library/courses/course-details/'
@@ -1429,6 +1442,7 @@ export interface RootRouteChildren {
   AssessmentReportsStudentReportIndexRoute: typeof AssessmentReportsStudentReportIndexRoute
   LeaderboardInstituteInstituteIdIndexRoute: typeof LeaderboardInstituteInstituteIdIndexRoute
   MMediaIdPhoneNumberIndexRoute: typeof MMediaIdPhoneNumberIndexRoute
+  MyReportsActivityLogIdIndexRoute: typeof MyReportsActivityLogIdIndexRoute
   PayInvoiceInvoiceIdIndexRoute: typeof PayInvoiceInvoiceIdIndexRoute
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
   StudyLibraryLiveClassUsernameIndexRoute: typeof StudyLibraryLiveClassUsernameIndexRoute
@@ -2040,6 +2054,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ParentChildChildIdIndexRouteImport
       parentRoute: typeof ParentChildChildIdRoute
     }
+    '/my-reports/activity/$logId/': {
+      id: '/my-reports/activity/$logId/'
+      path: '/my-reports/activity/$logId'
+      fullPath: '/my-reports/activity/$logId'
+      preLoaderRoute: typeof MyReportsActivityLogIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/m/$mediaId/$phoneNumber/': {
       id: '/m/$mediaId/$phoneNumber/'
       path: '/m/$mediaId/$phoneNumber'
@@ -2322,6 +2343,7 @@ const rootRouteChildren: RootRouteChildren = {
   LeaderboardInstituteInstituteIdIndexRoute:
     LeaderboardInstituteInstituteIdIndexRoute,
   MMediaIdPhoneNumberIndexRoute: MMediaIdPhoneNumberIndexRoute,
+  MyReportsActivityLogIdIndexRoute: MyReportsActivityLogIdIndexRoute,
   PayInvoiceInvoiceIdIndexRoute: PayInvoiceInvoiceIdIndexRoute,
   StudyLibraryCoursesCourseDetailsIndexRoute:
     StudyLibraryCoursesCourseDetailsIndexRoute,

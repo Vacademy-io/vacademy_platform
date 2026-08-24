@@ -39,5 +39,13 @@ public class AiAgentDTO {
      *  the stored engine, so an old client that does not send the field cannot
      *  silently reprice an agent. */
     private String ttsModel;
+
+    /** OFF | FIXED | FULL — TTS speech cache tier (V466). Null/absent = OFF. */
+    private String speechCacheMode;
     private String bookingPageId;
+    /**
+     * Post-call and mid-call action rules. Absent on update = keep what is stored, so an
+     * older client that does not know about rules cannot wipe them.
+     */
+    private List<AiCallActionRule> sendRules;
 }

@@ -20,8 +20,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Question, UploadSimple, FileText } from "@phosphor-icons/react";
+import {
+  Question,
+  UploadSimple,
+  FileText,
+  Clock,
+  CloudCheck,
+  ArrowsClockwise,
+  WarningCircle,
+  Calculator as CalculatorIcon,
+  PencilSimple,
+} from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
+import { cn } from "@/lib/utils";
+import { useLiveTestUi } from "./live-test-ui-context";
 import { TimesUpModal } from "@/components/modals/times-up-modal";
 import { ASSESSMENT_SUBMIT, ASSESSMENT_SUBMIT_MANUAL } from "@/constants/urls";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
@@ -47,6 +59,41 @@ import type {
 import { PdfViewerComponent } from "../study-library/level-material/subject-material/module-material/chapter-material/slide-material/pdf-viewer-component";
 import { getServerStartEndTime } from "./page";
 
+/** Save-state pill shown beside the assessment name. */
+function AutoSaveStatus({
+  status,
+  compact,
+}: {
+  status: "idle" | "saving" | "success" | "failed";
+  compact?: boolean;
+}) {
+  const map = {
+    idle: { Icon: CloudCheck, label: "Saved", tone: "text-neutral-500" },
+    success: { Icon: CloudCheck, label: "Saved", tone: "text-neutral-500" },
+    saving: { Icon: ArrowsClockwise, label: "Saving…", tone: "text-neutral-500" },
+    failed: {
+      Icon: WarningCircle,
+      label: "Not saved",
+      tone: "text-danger-600",
+    },
+  } as const;
+  const { Icon, label, tone } = map[status];
+  return (
+    <span
+      className={cn("flex items-center gap-1.5 text-2xs font-medium", tone)}
+      role="status"
+      aria-live="polite"
+    >
+      <Icon
+        size={compact ? 13 : 14}
+        weight="duotone"
+        className={cn("flex-none", status === "saving" && "animate-spin")}
+      />
+      {label}
+    </span>
+  );
+}
+
 export function Navbar({
   playMode,
   evaluationType,
@@ -54,6 +101,13 @@ export function Navbar({
   playMode: string;
   evaluationType: string;
 }) {
+  const {
+    settings,
+    isCompact,
+    activeTool,
+    toggleTool,
+    submitRequestId,
+  } = useLiveTestUi();
   const {
     assessment,
     isSubmitted,
@@ -68,8 +122,10 @@ export function Navbar({
     pdfFile,
     currentQuestion,
   } = useAssessmentStore();
+  const remoteSaveStatus = useAssessmentStore((s) => s.remoteSaveStatus);
 
   const navigate = useNavigate();
+  const [assessmentName, setAssessmentName] = useState("");
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showTimesUpModal, setShowTimesUpModal] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
@@ -214,10 +270,27 @@ export function Navbar({
         ? JSON.parse(userResult.value)
         : null;
       setUserId(userDetails?.user_id || null);
+
+      // Paper title for the header. Lives in the same storage blob the start
+      // flow writes; the live-test store only carries the question payload.
+      const stored = await Preferences.get({ key: "InstructionID_and_AboutID" });
+      if (stored.value) {
+        try {
+          setAssessmentName(JSON.parse(stored.value)?.name ?? "");
+        } catch {
+          setAssessmentName("");
+        }
+      }
     };
 
     fetchInstituteAndUserId();
   }, []);
+
+  // The question palette's "Submit paper" button routes here rather than
+  // re-implementing submission — this component owns the modal and retry loop.
+  useEffect(() => {
+    if (submitRequestId > 0) setShowSubmitModal(true);
+  }, [submitRequestId]);
 
   interface HelpType {
     type: "instructions" | "alerts" | "reattempt" | "time" | null;
@@ -614,17 +687,98 @@ export function Navbar({
   //   }
   // }, []);
 
+  const showTimer =
+    playMode !== "PRACTICE" && playMode !== "SURVEY" && entireTestTimer > 0;
+  const totalSeconds = (assessment.duration || 0) * 60;
+  const remainingFraction = totalSeconds ? entireTestTimer / totalSeconds : 1;
+  const timerTone =
+    remainingFraction <= 0.05
+      ? "border-danger-200 bg-danger-50 text-danger-600"
+      : remainingFraction <= 0.15
+        ? "border-warning-200 bg-warning-50 text-warning-700"
+        : "border-neutral-200 bg-neutral-100 text-neutral-800";
+
+  const isManualUpload =
+    evaluationType === "MANUAL" && currentQuestion?.question_type !== "CODING";
+  // Tools live in the header on desktop and in the footer's tool menu on a
+  // phone, where header width is reserved for the timer and Submit.
+  const showHeaderTools = !isCompact;
+
   return (
     <>
-      <div className="sticky top-0 z-50 flex bg-primary-50 h-16 items-center justify-between border-b px-4">
-        <div className="flex items-center gap-4">
+      <header className="flex h-14 flex-none items-center gap-2 border-b border-neutral-200 bg-white px-3 md:h-16 md:gap-4 md:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="min-w-0">
+            {assessmentName && (
+              <p className="truncate text-caption font-semibold text-neutral-900 md:text-body">
+                {assessmentName}
+              </p>
+            )}
+            <AutoSaveStatus status={remoteSaveStatus} compact={isCompact} />
+          </div>
+        </div>
+
+        {showTimer && (
+          <div
+            title="Time remaining"
+            className={cn(
+              "flex flex-none items-center gap-1.5 rounded-lg border px-2 py-1.5 md:px-3",
+              timerTone,
+            )}
+          >
+            <Clock size={15} weight="duotone" className="flex-none" />
+            <span className="font-mono text-caption font-semibold tabular-nums md:text-body">
+              {formatTime(entireTestTimer)}
+            </span>
+          </div>
+        )}
+
+        <div className="flex flex-none items-center gap-1.5 md:gap-2">
+          {showHeaderTools && settings.calculator.enabled && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Calculator"
+              aria-pressed={activeTool === "calculator"}
+              onClick={() => toggleTool("calculator")}
+              className={cn(
+                "size-9 border-neutral-200",
+                activeTool === "calculator" &&
+                  "border-neutral-900 bg-neutral-900 text-white hover:bg-neutral-800 hover:text-white",
+              )}
+            >
+              <CalculatorIcon size={17} />
+            </Button>
+          )}
+          {showHeaderTools && settings.scratchpad.enabled && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Scratchpad"
+              aria-pressed={activeTool === "scratchpad"}
+              onClick={() => toggleTool("scratchpad")}
+              className={cn(
+                "size-9 border-neutral-200",
+                activeTool === "scratchpad" &&
+                  "border-neutral-900 bg-neutral-900 text-white hover:bg-neutral-800 hover:text-white",
+              )}
+            >
+              <PencilSimple size={17} />
+            </Button>
+          )}
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon">
-                <Question className="h-5 w-5" />
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Help and requests"
+                className="size-9 border-neutral-200"
+              >
+                <Question size={17} />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
+            <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setHelpType("instructions")}>
                 Instructions
               </DropdownMenuItem>
@@ -639,44 +793,8 @@ export function Navbar({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-        <div className="">
-          {entireTestTimer && (
-            <div className="flex items-center gap-2 text-lg  justify-center">
-              <div className="flex items-center space-x-4">
-                {playMode !== "PRACTICE" &&
-                  playMode !== "SURVEY" &&
-                  entireTestTimer && (
-                    <div className="flex items-center gap-2 text-lg justify-center">
-                      <div className="flex items-center space-x-4">
-                        {formatTime(entireTestTimer)
-                          .split(":")
-                          .map((time, index, array) => (
-                            <div
-                              key={index}
-                              className="relative flex items-center"
-                            >
-                              <span className="border border-gray-400 px-2 py-1 rounded">
-                                {time}
-                              </span>
-                              {index < array.length - 1 && (
-                                <span className="absolute -end-2.5 text-lg">
-                                  :
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-              </div>
-            </div>
-          )}
-        </div>
 
-        <div className="flex items-center gap-4">
-          {evaluationType === "MANUAL" &&
-          currentQuestion?.question_type !== "CODING" ? (
+          {isManualUpload ? (
             <>
               <input
                 type="file"
@@ -687,46 +805,45 @@ export function Navbar({
               />
 
               {pdfFile ? (
-                <div className="flex items-center gap-2">
-                  <MyButton
-                    scale="medium"
-                    buttonType="secondary"
-                    layoutVariant="default"
-                    onClick={handlePreviewPdf}
-                    className="flex items-center gap-2"
-                  >
-                    <FileText className="h-4 w-4" />
-                    Preview PDF
-                  </MyButton>
-                </div>
+                <MyButton
+                  scale="small"
+                  buttonType="secondary"
+                  layoutVariant="default"
+                  onClick={handlePreviewPdf}
+                  className="flex h-9 items-center gap-2 px-3"
+                >
+                  <FileText className="size-4" />
+                  <span className="hidden md:inline">Preview PDF</span>
+                </MyButton>
               ) : (
                 <MyButton
+                  scale="small"
+                  buttonType="primary"
+                  layoutVariant="default"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2"
+                  className="flex h-9 items-center gap-2 px-3"
                   disabled={isUploading}
                 >
                   {isUploading ? (
-                    <span className="loader h-4 w-4"></span>
+                    <span className="loader size-4"></span>
                   ) : (
-                    <UploadSimple className="h-4 w-4" />
+                    <UploadSimple className="size-4" />
                   )}
-                  {isUploading ? "Uploading..." : "Upload PDF"}
+                  {isUploading ? "Uploading..." : "Upload"}
                 </MyButton>
               )}
             </>
           ) : (
-            <MyButton
-              type="submit"
-              scale="medium"
-              buttonType="primary"
-              layoutVariant="default"
+            <button
+              type="button"
               onClick={() => setShowSubmitModal(true)}
+              className="h-9 rounded-lg bg-neutral-900 px-4 text-caption font-semibold text-white transition-colors hover:bg-neutral-800 md:text-body"
             >
               Submit
-            </MyButton>
+            </button>
           )}
         </div>
-      </div>
+      </header>
 
       {showPdfPreview && pdfFile ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">

@@ -56,6 +56,13 @@ def _llm_target(s):
     return s.sarvam_llm_base_url, s.sarvam_api_key, s.sarvam_llm_model
 
 
+# Every degraded or skipped analysis path returns these three keys explicitly rather
+# than omitting them. admin_core reads promisedSends to decide what to actually send,
+# and a MISSING key must not be distinguishable from an EMPTY one downstream — else a
+# failed analysis reads as "the model considered it and found nothing promised".
+_NO_SENDS: Dict[str, Any] = {"promisedSends": [], "declinedSends": [], "conditionsMet": [], "whatsappNumber": None, "email": None}
+
+
 async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     s = get_settings()
     agent = outcome.context.get("agent") or {}
@@ -68,7 +75,8 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         return {"disposition": "Incomplete", "summary": "No conversation captured.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
                 "callbackTimeText": None, "meetingRequested": False,
-                "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None}
+                "meetingDatetimeIso": None, "meetingDatetimeText": None,
+                "meetingType": None, **_NO_SENDS}
 
     # Current date/time so the analyser can resolve relative dates spoken on the call
     # ("tomorrow 3pm", "day after") into a concrete ISO instant. Same tz convention as
@@ -81,6 +89,39 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     now_stamp = now.strftime("%A, %-d %B %Y, %-I:%M %p")
     now_offset = now.strftime("%z")
     now_offset = f"{now_offset[:3]}:{now_offset[3:]}" if now_offset else "+05:30"
+
+    # Send rules turn a promise made ON the call into a real WhatsApp/email/meeting
+    # (docs/crm/AI_CALL_ACTIONS.md). The artefact vocabulary is CLOSED and comes from
+    # the agent's own rules, exactly like `dispositions` — the model may not invent a
+    # key admin_core has no rule for, and admin_core drops one that slips through.
+    #
+    # An agent with no rules gets NO extra prompt text and NO extra keys. This prompt is
+    # already large and every agent alive today sends nothing, so the additive path must
+    # cost them zero tokens and zero behaviour change.
+    artefacts = [str(a).strip() for a in (agent.get("sendArtefacts") or []) if str(a).strip()]
+    artefact_spec = (
+        f"promisedSends (array, a subset of {artefacts}: ONLY artefacts the assistant "
+        "explicitly OFFERED and the caller ACCEPTED on this call — a mention in passing "
+        "is NOT a promise, and an artefact the caller declined is NOT a promise. Empty "
+        "array if none), "
+        "whatsappNumber (the number the caller confirmed for the send, digits with "
+        "country code, or null if they accepted but named no number), "
+        "email (only if the caller actually spoke an email address; null otherwise), "
+        f"declinedSends (array, a subset of {artefacts}: ONLY artefacts the assistant "
+        "explicitly OFFERED and the caller REFUSED — 'nahi', 'not now', 'don't send'. An "
+        "artefact never offered is NOT declined, and one they simply did not respond to is "
+        "NOT declined. Empty array if none).\n"
+    ) if artefacts else ""
+
+    # The admin's own trigger conditions, in their words. Closed vocabulary again: the
+    # model may only echo back conditions we asked about, so a rule can never fire on a
+    # sentence the model invented. Costs nothing when no rule uses one.
+    conditions = [str(c).strip() for c in (agent.get("sendConditions") or []) if str(c).strip()]
+    condition_spec = (
+        f"conditionsMet (array, a subset of {conditions}: return ONLY those statements that "
+        "the transcript CLEARLY supports. If a statement is not clearly true, leave it out. "
+        "Never invent a statement that is not in that list).\n"
+    ) if conditions else ""
 
     prompt = (
         "You analyse a phone call transcript between an assistant and a caller.\n"
@@ -96,8 +137,9 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "meetingDatetimeIso (ISO 8601 with offset for the agreed meeting time resolved from RIGHT "
         f"NOW, e.g. '2026-07-23T15:00:00{now_offset}', or null if none agreed), "
         "meetingDatetimeText (the caller's own words for the time, e.g. 'tomorrow 3 pm', or null), "
-        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null).\n\n"
-        f"Transcript:\n{transcript}\n\nJSON:"
+        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null).\n"
+        + artefact_spec + condition_spec +
+        f"\nTranscript:\n{transcript}\n\nJSON:"
     )
     base_url, api_key, model = _llm_target(s)
     payload = {
@@ -133,7 +175,180 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         return {"disposition": "Incomplete",
                 "summary": "Automatic analysis unavailable; see transcript.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
-                "callbackTimeText": None}
+                "callbackTimeText": None, **_NO_SENDS}
+
+
+# Disposition labels that assert a MEETING WAS SECURED. Substring match on a
+# normalized label, because the vocabulary is per-agent and we cannot enumerate
+# it: "Demo_Booked", "Counselling_Scheduled", "Session_Booked", "Meeting_Fixed".
+_BOOKING_LABEL_HINTS = ("book", "schedul", "demo", "meeting", "appointment", "slot")
+
+
+def _drop_unevidenced_booking(analysis: Dict[str, Any], corr: str) -> None:
+    """Refuse a "we booked it" disposition the analyser's OWN evidence contradicts.
+
+    The analysis prompt specifies meetingRequested tightly — "true ONLY if the
+    caller AGREED to a scheduled meeting, demo, visit or callback at a specific
+    day/time — not vague 'maybe later'" — and asks for a concrete
+    meetingDatetimeIso alongside it. The disposition field gets no such
+    treatment: the model is handed a bare list of labels with no definitions and
+    no requirement to show evidence, and the only validation afterwards is a
+    membership check (is the label spelled right), never an evidence check.
+
+    So the same model, in the same JSON response, can return a disposition of
+    "Demo_Booked" while reporting meetingRequested=false and no datetime.
+    Observed on prod call 775ac5ac (2026-08-14): 23 seconds, the caller asked
+    "Where from?", got a pitch instead of an answer, hung up — and the lead was
+    stamped Demo_Booked. That row's own ai_summary described no demo at all.
+
+    This is the expensive direction of error. A wrongly-retried lead is
+    recoverable; a lead falsely marked as booked is not — nobody follows up,
+    and if the agent carries a booking_page_id admin_core's auto-book will
+    create a real calendar entry off it.
+
+    Only fires on a DIRECT self-contradiction: a booking-shaped label with
+    meetingRequested false AND no resolved datetime. An agent whose vocabulary
+    has a softer label ("Demo_Requested") is untouched as long as the model
+    supplied evidence for it. Degrades to Incomplete, which routes the lead to
+    retry rather than closing it — the same fallback _analyze already uses when
+    it cannot judge a call at all.
+    """
+    try:
+        label = str(analysis.get("disposition") or "")
+        norm = "".join(ch for ch in label.casefold() if ch.isalnum())
+        if not norm or not any(h in norm for h in _BOOKING_LABEL_HINTS):
+            return
+        if analysis.get("meetingRequested"):
+            return
+        if str(analysis.get("meetingDatetimeIso") or "").strip():
+            return
+        logger.warning(
+            "report: disposition %r claims a booking but the analyser reported "
+            "meetingRequested=%s and no meeting time — degrading to Incomplete "
+            "corr=%s", label, analysis.get("meetingRequested"), corr)
+        analysis["disposition"] = "Incomplete"
+        analysis["dispositionDowngradedFrom"] = label
+    except Exception:
+        # Never cost the report: an unexpected shape here must leave the
+        # analysis exactly as the model returned it.
+        logger.exception("report: booking-evidence check failed corr=%s", corr)
+
+
+# Spoken acceptance, in both scripts saaras actually emits. Deliberately NOT a
+# per-artefact word map: artefact keys are per-institute ("scholarship_quiz") and the
+# calls are Hinglish, so a key-to-spoken-words map would be right for the one institute
+# it was written for and wrong for every other. What IS checkable without guessing is
+# whether the caller ever agreed to anything at all.
+# Spoken acceptance, in both scripts saaras actually emits. Deliberately NOT a
+# per-artefact word map: artefact keys are per-institute ("scholarship_quiz") and the
+# calls are Hinglish, so a key-to-spoken-words map would be right for the one institute
+# it was written for and wrong for every other. What IS checkable without guessing is
+# whether the caller ever agreed to anything at all.
+#
+# WHOLE WORDS, not substrings. The first cut of this matched substrings and the token
+# "ha" fired on "kaun bol raha hai" — a caller asking who we were read as consent to a
+# WhatsApp send. "ji" inside "jinke" and "ok" inside "book" are the same trap. Hindi
+# verb stems that legitimately need a prefix match get their own tuple below.
+_AFFIRMATIVE_WORDS = frozenset({
+    "haan", "han", "ha", "hn", "ji", "jee", "achha", "accha", "acha", "theek", "thik",
+    "sahi", "bilkul", "ok", "okay", "yes", "yeah", "yep", "sure", "please", "pakka",
+    "हाँ", "हां", "हा", "जी", "अच्छा", "ठीक", "सही", "बिल्कुल", "पक्का",
+})
+
+# Prefix-matched: these are verb stems whose inflections all mean the same consent
+# ("bhej do", "bhejiye", "bhejna", "भेजिए", "भेजना").
+_AFFIRMATIVE_PREFIXES = ("bhej", "send", "share", "भेज")
+
+# Punctuation stripped before matching, including the Devanagari danda Sarvam appends
+# to almost every final ("हाँ।").
+_WORD_STRIP = "।॥.,!?…\"'`~()[]{}:;-–—"
+
+
+def _sanitize_sends(analysis: Dict[str, Any], outcome: CallOutcome,
+                    agent: Dict[str, Any], corr: str) -> None:
+    """Keep only the promises we can stand behind. Sibling of _drop_unevidenced_booking.
+
+    The error directions are NOT symmetric, which is why this is stricter than the
+    booking guard. A dropped send costs a follow-up message. A send the caller never
+    agreed to is an unsolicited WhatsApp on a channel where that is a Meta violation,
+    not merely rude — and the number came from a transcript, so it may not even be
+    the person we called.
+
+    Four passes: closed vocabulary (the model may not invent an artefact admin_core
+    has no rule for), de-duplication, acceptance evidence, and contact sanity.
+    """
+    try:
+        allowed = {str(a).strip() for a in (agent.get("sendArtefacts") or []) if str(a).strip()}
+        raw = analysis.get("promisedSends")
+        promised = [str(x).strip() for x in raw if str(x).strip()] if isinstance(raw, list) else []
+
+        unknown = [k for k in promised if k not in allowed]
+        if unknown:
+            logger.warning("report: dropping promised artefact(s) %s with no rule on this "
+                           "agent corr=%s", unknown, corr)
+        promised = [k for k in promised if k in allowed]
+
+        seen: set = set()
+        promised = [k for k in promised if not (k in seen or seen.add(k))]
+
+        # Declines: same closed vocabulary and de-duplication. The evidence bar is
+        # deliberately LOWER than for a promise, because the error directions invert -
+        # a missed decline means we send something unwanted, so a decline we are unsure
+        # about should still count. A refusal also needs no contact details.
+        raw_declined = analysis.get("declinedSends")
+        declined = ([str(x).strip() for x in raw_declined if str(x).strip()]
+                    if isinstance(raw_declined, list) else [])
+        declined = [k for k in declined if k in allowed]
+        seen_d: set = set()
+        declined = [k for k in declined if not (k in seen_d or seen_d.add(k))]
+        # An artefact cannot be both accepted and refused on one call. Trust the refusal:
+        # sending something the caller may have declined is the expensive mistake.
+        both = [k for k in declined if k in promised]
+        if both:
+            logger.warning("report: %s reported as BOTH promised and declined - treating as "
+                           "declined corr=%s", both, corr)
+            promised = [k for k in promised if k not in declined]
+        analysis["declinedSends"] = declined
+
+        # Custom conditions: closed vocabulary only. The model may echo back a statement
+        # the admin wrote, never one it composed, so a rule cannot fire on invented text.
+        wanted = {str(c).strip() for c in (agent.get("sendConditions") or []) if str(c).strip()}
+        raw_cond = analysis.get("conditionsMet")
+        met = ([str(x).strip() for x in raw_cond if str(x).strip()]
+               if isinstance(raw_cond, list) else [])
+        invented = [c for c in met if c not in wanted]
+        if invented:
+            logger.warning("report: dropping %d invented condition(s) corr=%s", len(invented), corr)
+        analysis["conditionsMet"] = [c for c in met if c in wanted]
+
+        # Evidence. REPORT_REQUIRE_CONVERSATION already guarantees a caller turn exists
+        # by the time we get here; this asks the narrower question of whether any of
+        # those turns was an agreement.
+        if promised:
+            words = [w.strip(_WORD_STRIP) for w in
+                     " ".join(_caller_turns(outcome)).casefold().split()]
+            agreed = any(w in _AFFIRMATIVE_WORDS for w in words) or any(
+                w.startswith(_AFFIRMATIVE_PREFIXES) for w in words)
+            if not agreed:
+                logger.warning("report: analyser claims %s promised but no caller turn "
+                               "contains an acceptance — dropping all corr=%s",
+                               promised, corr)
+                promised = []
+        analysis["promisedSends"] = promised
+
+        digits = "".join(ch for ch in str(analysis.get("whatsappNumber") or "") if ch.isdigit())
+        analysis["whatsappNumber"] = digits if 10 <= len(digits) <= 15 else None
+        email = str(analysis.get("email") or "").strip()
+        analysis["email"] = email if (email.count("@") == 1 and " " not in email
+                                      and "." in email.split("@")[-1]) else None
+    except Exception:
+        # Fail CLOSED, unlike the booking guard which leaves the model's answer alone.
+        # There, leaving it costs a wrong label; here it would cost a message we cannot
+        # prove anyone asked for.
+        logger.exception("report: send-evidence check failed — sending nothing corr=%s", corr)
+        analysis["promisedSends"] = []
+        analysis["whatsappNumber"] = None
+        analysis["email"] = None
 
 
 def _diagnostics_blob(outcome: CallOutcome) -> Optional[Dict[str, Any]]:
@@ -346,6 +561,57 @@ async def report_spool_sweeper() -> None:
             logger.exception("spool sweep failed")
 
 
+async def _ladder_tts_cache(outcome: CallOutcome, diag_blob) -> None:
+    """Hand this call's cache candidates to the ledger, off the event loop.
+
+    Total by construction. A cache that learns nothing saves no money, which is a
+    very different order of problem from a report that never lands — so nothing
+    here may raise, and nothing here may delay the post.
+    """
+    try:
+        cands = getattr(outcome, "tts_candidates", None)
+        if cands is None:
+            return
+        # The PLAYED transcript: assistant entries recorded by
+        # PlayedTranscriptRecorder, which sits after transport.output() and so
+        # holds only text the transport released at playout position.
+        played = " ".join(t.get("text") or "" for t in outcome.transcript
+                          if t.get("role") == "assistant")
+        blob = diag_blob or {}
+
+        # ONE line per call with the whole story. This is what you grep during a
+        # rollout: the diagnostics blob has the same numbers, but reaching it means
+        # opening a call in the UI, and the first question is always "is it hitting
+        # at all". Only emitted when the cache actually ran — a line of zeroes for
+        # every OFF agent would bury the calls that matter.
+        tts = blob.get("tts") or {}
+        if tts.get("cacheHits") is not None:
+            hits, misses = tts.get("cacheHits") or 0, tts.get("cacheMisses") or 0
+            total = hits + misses
+            logger.info(
+                "tts-cache: call summary corr=%s agent=%s hits=%d misses=%d rate=%s "
+                "chars_saved=%s secs_saved=%s",
+                outcome.corr,
+                (outcome.context.get("agent") or {}).get("name") or "?",
+                hits, misses,
+                f"{(hits / total * 100):.0f}%" if total else "n/a",
+                tts.get("cacheCharsSaved"), tts.get("cacheSecsSaved"))
+
+        n = await asyncio.to_thread(
+            cands.flush, played_text=played,
+            verdict_faults=blob.get("faults") or [],
+            health=blob.get("health") or "")
+        if n:
+            logger.info("tts-cache: laddered %d sentence(s) corr=%s", n, outcome.corr)
+            # Render now rather than on the next tick: the sentence this call just
+            # qualified should be available to the NEXT call, not five minutes of
+            # calls later. The sweeper still defers if the box is carrying load.
+            from . import ttswarm
+            ttswarm.request_sweep()
+    except Exception:
+        logger.exception("tts-cache: laddering failed corr=%s", outcome.corr)
+
+
 async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) -> bool:
     ctx = outcome.context
     # Never let the classifier judge a call the caller never took part in — see
@@ -361,10 +627,13 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
             "leadRating": None, "extractedQa": {}, "callbackRequested": False,
             "callbackTimeText": None, "meetingRequested": False,
             "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None,
+            **_NO_SENDS,
         }
     else:
         analysis = await _analyze(outcome)
+        _drop_unevidenced_booking(analysis, outcome.corr)
     agent = ctx.get("agent") or {}
+    _sanitize_sends(analysis, outcome, agent, outcome.corr)
 
     payload: Dict[str, Any] = {
         "call_uuid": call_uuid or f"vai-{outcome.corr}",
@@ -388,6 +657,13 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         "meetingDatetimeIso": analysis.get("meetingDatetimeIso"),
         "meetingDatetimeText": analysis.get("meetingDatetimeText"),
         "meetingType": analysis.get("meetingType"),
+        # Artefacts the caller ACCEPTED on the call. admin_core resolves each against
+        # the agent's send rules and creates the real WhatsApp/email/meeting action.
+        "promisedSends": analysis.get("promisedSends") or [],
+        "declinedSends": analysis.get("declinedSends") or [],
+        "conditionsMet": analysis.get("conditionsMet") or [],
+        "whatsappNumber": analysis.get("whatsappNumber"),
+        "email": analysis.get("email"),
         "transferAttempted": outcome.transfer_requested,
         "transferStatus": "registered" if outcome.transfer_registered
                           else ("failed" if outcome.transfer_requested else None),
@@ -426,4 +702,12 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         spool_report(ctx.get("instituteId"), ctx.get("webhookToken"), payload)
     logger.info("report posted corr=%s ok=%s disposition=%s status=%s",
                 outcome.corr, ok, payload["disposition"], payload["status"])
+
+    # AFTER the post, deliberately. The speech cache learns only from calls that
+    # worked, and _diagnostics_blob above already froze the verdict this needs —
+    # but laddering writes to SQLite, which can block on the sweeper's lock for
+    # up to the connect timeout. A report that lands late strands a paused
+    # CALL_AI workflow; a sentence learned late costs one vendor render. Those
+    # are not the same order of problem, so the report goes first.
+    await _ladder_tts_cache(outcome, payload.get("diagnostics"))
     return ok

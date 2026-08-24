@@ -59,6 +59,8 @@ export interface CampaignItem {
     end_date_local: string;
     status: string;
     json_web_metadata?: string;
+    /** Per-campaign settings blob. Holds `postSubmitConfiguration`. */
+    setting_json?: string;
     created_by_user_id?: string;
     to_notify?: string;
     send_respondent_email?: boolean;

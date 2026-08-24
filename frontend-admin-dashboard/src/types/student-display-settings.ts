@@ -158,8 +158,52 @@ export type OutlineMode = 'expanded' | 'collapsed';
  * - "breadcrumb": Sidebar shows only the current chapter's slide list; learners
  *   jump across modules/subjects via breadcrumb popovers (legacy layout).
  * - "ancestors": Sidebar shows the full Subject → Module → Chapter → Slide tree.
+ * - "lessons": Sidebar shows the whole course as a flat, thumbnail-led lesson
+ *   list — chapters are headings rather than toggles and nothing collapses.
+ * - "hidden": No sidebar; the learner moves with Previous / Next alone.
  */
-export type SlidesSidebarNavigation = 'breadcrumb' | 'ancestors';
+export type SlidesSidebarNavigation = 'breadcrumb' | 'ancestors' | 'lessons' | 'hidden';
+
+/**
+ * Layout of the course-details page once the learner is ENROLLED in the course.
+ *
+ * - "full" (default): today's page — banner, description/tags, course
+ *   highlights, the enrollment/configuration block and the right-hand overview
+ *   card, with every visible tab.
+ * - "contentOnly": a focused page for institutes that treat course-details as
+ *   a table of contents rather than a sales page. Everything marketing-shaped
+ *   is dropped (description, tags, media, highlights, author, right-hand card)
+ *   and the page renders the Content Structure card alone, which drills
+ *   Subject → Module → Chapter → Slides as cards.
+ *
+ * Scope: the learner's own course page under /study-library — the surface they
+ * land on after enrolling. The shopper-facing pages (/courses/course-details
+ * and the public catalogue) are separate components and are never affected, so
+ * a buyer still gets the description, price and author they need to decide.
+ */
+export type EnrolledCourseLayout = 'full' | 'contentOnly';
+
+/**
+ * How a Content Structure card fits its thumbnail.
+ *
+ * - `cover`   fills the 16:9 frame and crops whatever overflows (today's
+ *             behaviour, and what the admin dashboard does)
+ * - `contain` shows the whole image, letterboxed inside the frame
+ *
+ * Worth a setting because it depends entirely on the artwork: a photo wants
+ * `cover`, a designed thumbnail with a title baked into it gets its wording
+ * sliced off and wants `contain`.
+ */
+export type ContentCardImageFit = 'cover' | 'contain';
+
+/**
+ * How far the learner must get before the "Give Feedback" slide is offered.
+ * "CHAPTER" (default) is today's behaviour — after every chapter. MODULE /
+ * SUBJECT / COURSE ask once per section instead, which is what a long course
+ * wants; NEVER disables the auto-open while leaving the sidebar's Feedback
+ * button working.
+ */
+export type FeedbackTrigger = 'CHAPTER' | 'MODULE' | 'SUBJECT' | 'COURSE' | 'NEVER';
 
 export interface StudentCourseDetailsSettings {
     tabs: StudentCourseDetailsTabConfig[];
@@ -180,7 +224,51 @@ export interface StudentCourseDetailsSettings {
         canAskDoubt: boolean;
         /** Optional for backwards compat. Missing means default ("breadcrumb"). */
         sidebarNavigation?: SlidesSidebarNavigation;
+        /**
+         * Collapse the app's own left nav rail while the slide viewer is open,
+         * the way focus mode does. Unset means "follow the sidebar mode": the
+         * sidebar-less viewer collapses the rail, every other mode leaves it
+         * alone. An explicit true/false always wins.
+         */
+        collapseSidebarOnOpen?: boolean;
+        /**
+         * Show an explicit "Mark as complete" control in the slide viewer — the
+         * checkbox Udemy, Coursera and LinkedIn Learning put beside a lesson.
+         * Automatic tracking is unchanged; this is the manual override for what
+         * dwell-time and watch-percentage cannot see. Writes the same progress
+         * record as the automatic path and is reversible.
+         *
+         * Tri-state, like collapseSidebarOnOpen: unset follows the sidebar mode
+         * (the sidebar-less viewer shows it, since it has no tick list or
+         * progress readout of its own), explicit true/false wins.
+         */
+        manualCompletion?: boolean;
+        /**
+         * "Chapter complete — next up" hand-off bar. Tri-state: unset follows
+         * the sidebar mode (shown only in the sidebar-less viewer, the one that
+         * dead-ends without it), explicit true/false wins.
+         */
+        chapterCompleteCta?: boolean;
+        /**
+         * Whether the "Give Feedback" slide sits in the Prev/Next sequence.
+         * Tri-state: unset follows the sidebar mode. Independent of
+         * feedbackVisible, which is the master switch.
+         */
+        feedbackInSlideNav?: boolean;
+        /** See {@link FeedbackTrigger}. Missing means 'CHAPTER' (today). */
+        feedbackTrigger?: FeedbackTrigger;
     };
+    /** See {@link EnrolledCourseLayout}. Optional for backwards compat; missing
+     *  means "full" so saved settings keep rendering today's page. */
+    enrolledLayout?: EnrolledCourseLayout;
+    /**
+     * Tapping a chapter card opens its first available slide straight in the
+     * viewer instead of listing the chapter's slides first. Tri-state: unset
+     * follows enrolledLayout (content-only skips the list), explicit wins.
+     */
+    chapterOpensFirstSlide?: boolean;
+  /** See {@link ContentCardImageFit}. Missing means "cover" (today). */
+  contentCardImageFit?: ContentCardImageFit;
 }
 
 // Course Settings

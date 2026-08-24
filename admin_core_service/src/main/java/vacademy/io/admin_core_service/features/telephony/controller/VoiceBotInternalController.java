@@ -57,6 +57,9 @@ public class VoiceBotInternalController {
     @Autowired @org.springframework.context.annotation.Lazy
     private vacademy.io.admin_core_service.features.audience.service.AudienceService audienceService;
 
+    @Autowired private vacademy.io.admin_core_service.features.telephony.core.AiCallActionService
+            aiCallActionService;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     @GetMapping("/call-context")
@@ -147,6 +150,54 @@ public class VoiceBotInternalController {
         return ResponseEntity.ok(out);
     }
 
+    /**
+     * Mid-call action: the agent offered something, the caller took it, and the bot fired
+     * a SEND sentinel while still talking.
+     *
+     * <p>Deliberately thin and deliberately forgiving. The bot calls this fire-and-forget
+     * from inside a live conversation, so it must never be slow and the bot must never have
+     * to care about the answer. An artefact the agent has no MID_CALL rule for returns 200
+     * with created=0, not an error: a mis-generated sentinel is a no-op, never a 500 in the
+     * bot log during a call.
+     *
+     * <p>Idempotent on (call, rule) via the ledger unique index, so a marker the model
+     * repeats within one call cannot double-send.
+     */
+    @PostMapping("/action")
+    public ResponseEntity<Map<String, Object>> action(@RequestBody Map<String, Object> body) {
+        String corr = asString(body.get("corr"));
+        String artefact = asString(body.get("artefact"));
+        if (corr == null || corr.isBlank()) throw new VacademyException("corr is required");
+        if (artefact == null || artefact.isBlank()) {
+            throw new VacademyException("artefact is required");
+        }
+        TelephonyCallLog row = callLogRepo.findById(corr)
+                .orElseThrow(() -> new VacademyException("Unknown call " + corr));
+
+        // The bot supplies the agent id: telephony_call_log carries no agent column, and
+        // the bot already holds it (the /answer URL carries it and call-context echoed it
+        // back), so passing it is free and avoids a lookup that has no source of truth.
+        String agentId = asString(body.get("agentId"));
+        vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgent agent =
+                (agentId == null || agentId.isBlank()) ? null
+                        : aiAgentService.find(agentId, row.getInstituteId()).orElse(null);
+        if (agent == null) {
+            log.info("vacademy-ai: mid-call action {} for corr={} has no registry agent — ignored",
+                    artefact, corr);
+            return ResponseEntity.ok(Map.of("ok", true, "created", 0));
+        }
+
+        String leadName = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
+                : userMobileResolver.findDisplayName(row.getUserId()).orElse(null);
+        String leadPhone = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId())) ? null
+                : userMobileResolver.findMobile(row.getUserId()).orElse(null);
+        int created = aiCallActionService.applyMidCall(agent, row.getInstituteId(), row.getId(),
+                row.getUserId(), row.getResponseId(), artefact, leadName, leadPhone, null);
+        log.info("vacademy-ai: mid-call action corr={} artefact={} created={}",
+                corr, artefact, created);
+        return ResponseEntity.ok(Map.of("ok", true, "created", created));
+    }
+
     @PostMapping("/handoff")
     public ResponseEntity<Map<String, Object>> handoff(@RequestBody Map<String, Object> body) {
         String corr = asString(body.get("corr"));
@@ -203,6 +254,26 @@ public class VoiceBotInternalController {
         // Voice tuning (V379): consumed by the bot's build_tts. Absent = the bot's
         // global TTS_PACE / Sarvam model default.
         if (a.getPace() != null) base.put("pace", a.getPace());
+        // The CLOSED artefact vocabulary for this agent's send rules. The post-call
+        // analyser may only fill promisedSends from sendArtefacts, and a mid-call
+        // <<SEND:key>> is only honoured for a key in sendArtefactsMidCall — so a model
+        // that invents an artefact sends nothing. Both are omitted when the agent has no
+        // rules, which keeps the analysis prompt byte-identical for every agent alive today.
+        List<String> artefacts = aiCallActionService.artefactKeys(a, null);
+        if (!artefacts.isEmpty()) {
+            base.put("sendArtefacts", artefacts);
+            List<String> midCall = aiCallActionService.artefactKeys(a,
+                    vacademy.io.admin_core_service.features.telephony.core
+                            .AiCallActionService.TIMING_MID_CALL);
+            if (!midCall.isEmpty()) base.put("sendArtefactsMidCall", midCall);
+            // The offers themselves, so a rule is self-contained: the admin writes the
+            // question once, on the rule, instead of hand-syncing it into the prompt.
+            List<Map<String, String>> offers = aiCallActionService.offers(a);
+            if (!offers.isEmpty()) base.put("sendOffers", offers);
+            // The admin's own trigger sentences, for the post-call analyser to judge.
+            List<String> conditions = aiCallActionService.conditions(a);
+            if (!conditions.isEmpty()) base.put("sendConditions", conditions);
+        }
         if (a.getTemperature() != null) base.put("temperature", a.getTemperature());
         // V421 — snake_case ON PURPOSE: the bot reads agent.get("tts_model"). The
         // neighbours here are camelCase, so this looks like a typo and is not.
@@ -211,6 +282,13 @@ public class VoiceBotInternalController {
         // key we dropped would be served Sarvam while billed for Rumik.
         base.put("tts_model", a.getTtsModel() != null && !a.getTtsModel().isBlank()
                 ? a.getTtsModel() : TtsVoiceCatalog.MODEL_SARVAM);
+        // V466 — snake_case for the same reason as tts_model above: the bot reads
+        // agent.get("speech_cache_mode"). Always emitted, never conditional: a
+        // dropped key would fall back to the bot's default, and the ONLY safe
+        // default for "may this agent replay stored audio" is OFF.
+        base.put("speech_cache_mode",
+                a.getSpeechCacheMode() != null && !a.getSpeechCacheMode().isBlank()
+                        ? a.getSpeechCacheMode().trim().toUpperCase() : "OFF");
         return base;
     }
 
@@ -236,6 +314,9 @@ public class VoiceBotInternalController {
         // billing resolves an unresolvable agent to 'sarvam' too, and the two must
         // agree or the fallback persona would be served one engine and billed another.
         agent.put("tts_model", TtsVoiceCatalog.MODEL_SARVAM);
+        // The built-in persona predates any admin decision about caching, so it
+        // gets the same answer an unconfigured agent gets.
+        agent.put("speech_cache_mode", "OFF");
         agent.put("openingLine",
                 "Namaste! Main " + instituteName + " se baat kar rahi hoon. Kya aapke paas do minute hain?");
         agent.put("systemPrompt",

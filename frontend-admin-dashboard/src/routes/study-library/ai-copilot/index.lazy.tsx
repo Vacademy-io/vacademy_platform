@@ -77,6 +77,7 @@ import { Loader2 } from 'lucide-react';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getAiProductName } from '@/config/branding';
+import { noAutofillProps } from '@/lib/no-autofill';
 
 export const Route = createLazyFileRoute('/study-library/ai-copilot/')({
     component: RouteComponent,
@@ -227,9 +228,38 @@ function RouteComponent() {
     const { kb: kbFromLink } = Route.useSearch();
     // Arriving from a knowledge base page: start already grounded in it, so
     // the teacher does not have to find the same material again.
-    const [kbGrounding, setKbGrounding] = useState<KbGroundingValue | null>(
-        kbFromLink ? { knowledge_base_id: kbFromLink, node_ids: [], mode: 'STRICT' } : null
-    );
+    // The KB pick must survive wizard remounts (reload, back-navigation): it
+    // used to be memory-only state, and losing it silently produced a course
+    // with NO source material — the outline LLM invented a generic syllabus.
+    // Persisted per selection (write-or-remove below) and always VISIBLE in
+    // the KbGroundingCard + the confirm dialog, so a restored pick is never
+    // a surprise and a missing source is never silent.
+    const [kbGrounding, setKbGrounding] = useState<KbGroundingValue | null>(() => {
+        if (kbFromLink) {
+            return { knowledge_base_id: kbFromLink, node_ids: [], mode: 'STRICT' };
+        }
+        try {
+            const raw = localStorage.getItem('aiCourseKbGrounding');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed?.knowledge_base_id) return parsed as KbGroundingValue;
+            }
+        } catch {
+            /* ignore */
+        }
+        return null;
+    });
+    useEffect(() => {
+        try {
+            if (kbGrounding?.knowledge_base_id) {
+                localStorage.setItem('aiCourseKbGrounding', JSON.stringify(kbGrounding));
+            } else {
+                localStorage.removeItem('aiCourseKbGrounding');
+            }
+        } catch {
+            /* ignore */
+        }
+    }, [kbGrounding]);
     // Chapter/slide counts start at '5', so "still empty?" can never detect an
     // untouched control. Track the teacher's own choice explicitly instead.
     const structureChosenByUser = useRef(false);
@@ -239,6 +269,35 @@ function RouteComponent() {
     const [selectedModel, setSelectedModel] = useState('auto');
     const [aiVideoSettings, setAiVideoSettings] =
         useState<AiVideoSettings>(DEFAULT_AI_VIDEO_SETTINGS);
+    // Course-wide enrichments woven into every generated HTML document slide.
+    const [documentContentTypes, setDocumentContentTypes] = useState<string[]>(['notes']);
+    // Course structure: where quizzes live, chapter deliverables, figure sourcing.
+    const [quizPlacement, setQuizPlacement] = useState<
+        'PER_TOPIC' | 'CHAPTER' | 'BOTH' | 'NONE'
+    >('PER_TOPIC');
+    // null = let the AI decide from the prompt (legacy keyword detection)
+    const [includeChapterAssignment, setIncludeChapterAssignment] = useState<boolean | null>(null);
+    const [includeChapterVideo, setIncludeChapterVideo] = useState(false);
+    const [figuresPolicy, setFiguresPolicy] = useState<'PREFER' | 'REQUIRE' | 'GENERATED_ONLY'>(
+        'PREFER'
+    );
+    // Second-pass repetition cleanup: after all slides generate, slides that
+    // restate material a chapter-mate already covers are regenerated once.
+    const [dedupeRepetition, setDedupeRepetition] = useState(false);
+    // The client-requested standard per-topic teaching flow, in order.
+    const STANDARD_FLOW = [
+        'why_it_matters',
+        'notes',
+        'high_yield',
+        'visual_process',
+        'application',
+        'flashcards',
+        'quiz',
+        'summary',
+    ];
+    const usingStandardFlow =
+        documentContentTypes.length === STANDARD_FLOW.length &&
+        documentContentTypes.every((t, i) => t === STANDARD_FLOW[i]);
     const { uploadFile } = useFileUpload();
     const [isUploadingReferences, setIsUploadingReferences] = useState(false);
     const [openaiKey, setOpenaiKey] = useState('');
@@ -764,6 +823,14 @@ function RouteComponent() {
             language: language || 'English',
             model: selectedModel,
             aiVideoSettings: aiVideoSettings,
+            documentContentTypes: documentContentTypes,
+            courseStructure: {
+                quizPlacement,
+                includeChapterAssignment,
+                includeChapterVideo,
+                figuresPolicy,
+                dedupeRepetition,
+            },
             referenceDocumentFileIds,
             kbGrounding,
             userId: userId,
@@ -1235,6 +1302,210 @@ function RouteComponent() {
                                 value={aiVideoSettings}
                                 onChange={setAiVideoSettings}
                             />
+
+                            {/* Document content — enrichments woven into every
+                                generated HTML document slide. */}
+                            <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                                <div className="mb-1 text-subtitle font-semibold text-neutral-600">
+                                    Document content
+                                </div>
+                                <p className="mb-2 text-caption text-neutral-400">
+                                    Woven into every generated document slide.
+                                </p>
+                                {/* Flow template: one click applies the standard
+                                    per-topic teaching flow, in order. */}
+                                <div className="mb-2 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDocumentContentTypes(['notes'])}
+                                        className={cn(
+                                            'rounded-full border px-3 py-1 text-caption transition-colors',
+                                            !usingStandardFlow
+                                                ? 'border-primary-500 bg-primary-50 text-primary-500'
+                                                : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                        )}
+                                    >
+                                        Custom
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDocumentContentTypes(STANDARD_FLOW)}
+                                        className={cn(
+                                            'rounded-full border px-3 py-1 text-caption transition-colors',
+                                            usingStandardFlow
+                                                ? 'border-primary-500 bg-primary-50 text-primary-500'
+                                                : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                        )}
+                                        title="Why it matters → Short notes → High-yield point → Visual/process → Application → Flashcards → Mini quiz → Summary"
+                                    >
+                                        Standard learning flow
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {[
+                                        { key: 'why_it_matters', label: 'Why it matters' },
+                                        { key: 'notes', label: 'Short notes' },
+                                        { key: 'high_yield', label: 'High-yield point' },
+                                        { key: 'visual_process', label: 'Visual / process' },
+                                        { key: 'application', label: 'Application' },
+                                        { key: 'flashcards', label: 'Flashcards' },
+                                        { key: 'quiz', label: 'Quiz' },
+                                        { key: 'summary', label: 'Summary' },
+                                        { key: 'practical_examples', label: 'Practical examples' },
+                                        { key: 'interactive_games', label: 'Interactive games' },
+                                    ].map((ct) => {
+                                        const on = documentContentTypes.includes(ct.key);
+                                        return (
+                                            <button
+                                                key={ct.key}
+                                                type="button"
+                                                onClick={() =>
+                                                    setDocumentContentTypes((prev) =>
+                                                        prev.includes(ct.key)
+                                                            ? prev.filter((k) => k !== ct.key)
+                                                            : [...prev, ct.key]
+                                                    )
+                                                }
+                                                className={cn(
+                                                    'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                    on
+                                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                                        : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                                )}
+                                            >
+                                                {ct.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Course structure — quizzes, chapter deliverables,
+                                and how figures are sourced. */}
+                            <div className="mt-3 rounded-lg border border-neutral-200 bg-white p-3">
+                                <div className="mb-1 text-subtitle font-semibold text-neutral-600">
+                                    Course structure
+                                </div>
+                                <div className="mb-2">
+                                    <p className="mb-1 text-caption text-neutral-400">Quizzes</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(
+                                            [
+                                                { key: 'PER_TOPIC', label: 'Mini quiz per topic' },
+                                                { key: 'CHAPTER', label: 'One chapter quiz' },
+                                                { key: 'BOTH', label: 'Both' },
+                                                { key: 'NONE', label: 'No quizzes' },
+                                            ] as const
+                                        ).map((opt) => (
+                                            <button
+                                                key={opt.key}
+                                                type="button"
+                                                onClick={() => setQuizPlacement(opt.key)}
+                                                className={cn(
+                                                    'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                    quizPlacement === opt.key
+                                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                                        : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                                )}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="mb-2">
+                                    <p className="mb-1 text-caption text-neutral-400">
+                                        Chapter deliverables
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(
+                                            [
+                                                { key: null, label: 'Assignment: auto' },
+                                                { key: true, label: 'Assignment + solution' },
+                                                { key: false, label: 'No assignment' },
+                                            ] as const
+                                        ).map((opt) => (
+                                            <button
+                                                key={String(opt.key)}
+                                                type="button"
+                                                onClick={() =>
+                                                    setIncludeChapterAssignment(opt.key)
+                                                }
+                                                className={cn(
+                                                    'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                    includeChapterAssignment === opt.key
+                                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                                        : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                                )}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={() => setIncludeChapterVideo((v) => !v)}
+                                            className={cn(
+                                                'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                includeChapterVideo
+                                                    ? 'border-primary-500 bg-primary-500 text-white'
+                                                    : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                            )}
+                                        >
+                                            Chapter video
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDedupeRepetition((v) => !v)}
+                                            title="After all slides generate, slides that repeat material another slide in the chapter already covers are rewritten once."
+                                            className={cn(
+                                                'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                dedupeRepetition
+                                                    ? 'border-primary-500 bg-primary-500 text-white'
+                                                    : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                            )}
+                                        >
+                                            Reduce repetition (2nd pass)
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="mb-1 text-caption text-neutral-400">
+                                        Diagrams &amp; figures
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(
+                                            [
+                                                {
+                                                    key: 'PREFER',
+                                                    label: 'Prefer source figures',
+                                                },
+                                                {
+                                                    key: 'REQUIRE',
+                                                    label: 'Source figures required',
+                                                },
+                                                {
+                                                    key: 'GENERATED_ONLY',
+                                                    label: 'Generated only',
+                                                },
+                                            ] as const
+                                        ).map((opt) => (
+                                            <button
+                                                key={opt.key}
+                                                type="button"
+                                                onClick={() => setFiguresPolicy(opt.key)}
+                                                className={cn(
+                                                    'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                    figuresPolicy === opt.key
+                                                        ? 'border-primary-500 bg-primary-500 text-white'
+                                                        : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                                )}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Generate Button */}
@@ -1667,7 +1938,7 @@ function RouteComponent() {
                                     placeholder="sk-..."
                                     className="flex-1"
                                     disabled={userKeysStatus.hasOpenAI}
-                                    autoComplete="new-password"
+                                    {...noAutofillProps('password')}
                                 />
                                 {!userKeysStatus.hasOpenAI ? (
                                     <Button
@@ -1710,7 +1981,7 @@ function RouteComponent() {
                                     placeholder="AIza..."
                                     className="flex-1"
                                     disabled={userKeysStatus.hasGemini}
-                                    autoComplete="new-password"
+                                    {...noAutofillProps('password')}
                                 />
                                 {!userKeysStatus.hasGemini ? (
                                     <Button
@@ -1793,6 +2064,34 @@ function RouteComponent() {
                                 <p className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600">
                                     {courseGoal || 'Not provided'}
                                 </p>
+                            </div>
+
+                            {/* Source material — a silently missing source has
+                                shipped an entirely AI-invented course, so this
+                                is always stated, loudly when absent. */}
+                            <div>
+                                <h4 className="mb-2 text-sm font-semibold text-neutral-900">
+                                    Source Material
+                                </h4>
+                                {kbGrounding?.knowledge_base_id ? (
+                                    <p className="rounded-md border border-success-200 bg-success-50 p-3 text-sm text-success-700">
+                                        Built from your selected knowledge base — the outline
+                                        mirrors its sections and every page is written from its
+                                        content.
+                                    </p>
+                                ) : referenceFiles.length > 0 ? (
+                                    <p className="rounded-md border border-success-200 bg-success-50 p-3 text-sm text-success-700">
+                                        Grounded in {referenceFiles.length} uploaded reference
+                                        document(s).
+                                    </p>
+                                ) : (
+                                    <p className="rounded-md border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700">
+                                        No source material selected — the AI will write this
+                                        course from its own general knowledge. To build it from
+                                        your own material, go back and pick a knowledge base or
+                                        upload a reference document.
+                                    </p>
+                                )}
                             </div>
 
                             {learningOutcome && (

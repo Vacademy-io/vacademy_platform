@@ -19,14 +19,25 @@ import type {
 // text boxes and the serializer emits a raw data URI as visible text.
 import { resolveCertificateCodePlaceholder } from '../../-utils/certificate-code-placeholders';
 import {
+    fieldContentHeightPx,
+    fieldContentWidthPx,
+    fieldTextMaxHeightPx,
+    TEXT_LINE_HEIGHT,
+} from '../../-utils/serialize-image-template-to-html';
+import { textFitWarning } from '../../-utils/certificate-text-fit';
+import {
     AUTO_BADGE,
+    codeAspectRatio,
     codeDisplayName,
     codeFieldName,
     codePlaceholder,
+    codeScanWarning,
     codeSizePx,
+    isCodeFieldName,
     planFromFieldNames,
     PX_PER_MM,
     type BadgeCodeType,
+    type BarcodeContent,
 } from '../../-utils/certificate-auto-badge';
 
 const SYSTEM_IMAGE_FIELDS = new Set([
@@ -65,14 +76,51 @@ interface Props {
      * of the badge, so switching QR ↔ Barcode changes what admins see it print.
      */
     badgeCodeType?: BadgeCodeType;
+    /**
+     * What a placed Barcode field encodes. Drives its aspect and the width below
+     * which it stops scanning — a verifying barcode carries about twice the
+     * payload of a bare number and needs about twice the width.
+     */
+    barcodeContent?: BarcodeContent;
+    /**
+     * Printed width of the certificate. The canvas is in pixels, but whether a
+     * code scans is a question about millimetres on paper, so the warning needs
+     * the page size to convert. Defaults to A4 landscape.
+     */
+    pageWidthMm?: number;
     /** Sample number shown inside the ghost badge. */
     sampleCertificateId?: string;
+    /**
+     * Whether the platform is allowed to stamp the code / the number on designs
+     * that do not place them. Default on, as the badge always was.
+     */
+    autoStampCode?: boolean;
+    autoStampNumber?: boolean;
+    /**
+     * Turn the automatic stamp off for one part of the badge.
+     *
+     * <p>Called both from the ghost badge's own dismiss control and from
+     * removing a placed QR / barcode / Certificate ID field — because removing
+     * the field is what an admin does when they do not want the thing, and
+     * without this the platform simply stamped it back bottom-right. "I deleted
+     * the QR and it came back" was exactly that loop.
+     */
+    onAutoStampChange?: (part: 'code' | 'number', enabled: boolean) => void;
 }
 
 type DragMode =
     | { kind: 'idle' }
     | { kind: 'move'; id: string; offsetX: number; offsetY: number }
-    | { kind: 'resize'; id: string; startX: number; startY: number; w: number; h: number };
+    | {
+          kind: 'resize';
+          id: string;
+          startX: number;
+          startY: number;
+          w: number;
+          h: number;
+          /** Set for code fields, which must keep their shape to stay scannable. */
+          aspect?: number;
+      };
 
 const SCALE_PADDING_PX = 32;
 
@@ -84,7 +132,12 @@ export const CertificateVisualEditor = ({
     customImages,
     onCustomImagesChange,
     badgeCodeType = 'QR',
+    barcodeContent = 'NUMBER',
+    pageWidthMm = 297,
     sampleCertificateId = 'VA-0123-2026',
+    autoStampCode = true,
+    autoStampNumber = true,
+    onAutoStampChange,
 }: Props) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const customImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -148,8 +201,20 @@ export const CertificateVisualEditor = ({
     };
 
     const removeField = (id: string) => {
+        const removed = fieldMappings.find((f) => f.id === id);
         onFieldMappingsChange(fieldMappings.filter((f) => f.id !== id));
         if (selectedId === id) setSelectedId(null);
+
+        // Removing the field is only half the job: the platform stamps a code
+        // and a number onto any design that does not place them, so deleting
+        // one used to bring the stamped version straight back. Take the removal
+        // at face value and stop stamping that part.
+        if (removed && isCodeFieldName(removed.fieldName)) {
+            onAutoStampChange?.('code', false);
+        }
+        if (removed?.fieldName === 'certificate_id') {
+            onAutoStampChange?.('number', false);
+        }
     };
 
     const startMove = (e: React.PointerEvent, f: FieldMapping) => {
@@ -174,6 +239,9 @@ export const CertificateVisualEditor = ({
             startY: e.clientY,
             w: f.position.width,
             h: f.position.height,
+            aspect: isCodeFieldName(f.fieldName)
+                ? codeAspectRatio(f.fieldName, barcodeContent)
+                : undefined,
         });
     };
 
@@ -190,10 +258,26 @@ export const CertificateVisualEditor = ({
             } else if (drag.kind === 'resize') {
                 const dx = (e.clientX - drag.startX) / scale;
                 const dy = (e.clientY - drag.startY) / scale;
-                updateFieldPos(drag.id, {
-                    width: Math.max(20, drag.w + dx),
-                    height: Math.max(16, drag.h + dy),
-                });
+                if (drag.aspect) {
+                    // Codes resize proportionally. A QR is square by
+                    // construction and a stretched one is rejected by scanners;
+                    // a squashed barcode stops scanning too. Driving both
+                    // dimensions off whichever the pointer moved further keeps
+                    // the drag feeling direct while the shape stays valid.
+                    const width = Math.max(
+                        20,
+                        Math.abs(dx) >= Math.abs(dy) ? drag.w + dx : (drag.h + dy) * drag.aspect
+                    );
+                    updateFieldPos(drag.id, {
+                        width,
+                        height: Math.max(16, width / drag.aspect),
+                    });
+                } else {
+                    updateFieldPos(drag.id, {
+                        width: Math.max(20, drag.w + dx),
+                        height: Math.max(16, drag.h + dy),
+                    });
+                }
             }
         };
         const onUp = () => setDrag({ kind: 'idle' });
@@ -276,8 +360,12 @@ export const CertificateVisualEditor = ({
 
     // What the backend will still stamp bottom-right, given what is placed.
     const badgePlan = useMemo(
-        () => planFromFieldNames(fieldMappings.map((f) => f.fieldName)),
-        [fieldMappings]
+        () =>
+            planFromFieldNames(
+                fieldMappings.map((f) => f.fieldName),
+                { code: autoStampCode, number: autoStampNumber }
+            ),
+        [fieldMappings, autoStampCode, autoStampNumber]
     );
 
     // The ghost is laid out by the browser (it shrink-wraps its contents just
@@ -397,6 +485,25 @@ export const CertificateVisualEditor = ({
                     <FloatingPropertiesPanel
                         field={selectedField}
                         isImage={isImageField(selectedField)}
+                        fitWarning={
+                            isImageField(selectedField)
+                                ? null
+                                : textFitWarning({
+                                      fieldName: selectedField.fieldName,
+                                      widthPx: fieldContentWidthPx(selectedField),
+                                      heightPx: fieldContentHeightPx(selectedField),
+                                      fontSizePx: selectedField.style.fontSize,
+                                      bold: selectedField.style.fontWeight === 'bold',
+                                  })
+                        }
+                        scanWarning={codeScanWarning({
+                            fieldName: selectedField.fieldName,
+                            widthPx: selectedField.position.width,
+                            heightPx: selectedField.position.height,
+                            canvasWidthPx: imageTemplate.width,
+                            canvasWidthMm: pageWidthMm,
+                            barcodeContent,
+                        })}
                         onChangeStyle={(p) => updateFieldStyle(selectedField.id, p)}
                         onChangePos={(p) => updateFieldPos(selectedField.id, p)}
                         onChangeField={(p) => updateField(selectedField.id, p)}
@@ -468,10 +575,6 @@ export const CertificateVisualEditor = ({
                                         <div
                                             className="flex size-full items-center"
                                             style={{
-                                                color: f.style.fontColor,
-                                                fontFamily: f.style.fontFamily,
-                                                fontSize: f.style.fontSize,
-                                                fontWeight: f.style.fontWeight,
                                                 justifyContent:
                                                     f.style.alignment === 'center'
                                                         ? 'center'
@@ -481,7 +584,32 @@ export const CertificateVisualEditor = ({
                                                 padding: f.style.padding,
                                             }}
                                         >
-                                            {f.displayName}
+                                            {/* Wraps and clamps exactly as the
+                                                issued certificate does, so a box
+                                                too small for a real value shows
+                                                it here rather than on the
+                                                learner's PDF. */}
+                                            <div
+                                                style={{
+                                                    width: '100%',
+                                                    color: f.style.fontColor,
+                                                    fontFamily: f.style.fontFamily,
+                                                    fontSize: f.style.fontSize,
+                                                    fontWeight: f.style.fontWeight,
+                                                    textAlign: f.style.alignment,
+                                                    lineHeight: TEXT_LINE_HEIGHT,
+                                                    // The drawn box is the clamp,
+                                                    // exactly as the serializer
+                                                    // emits it — so a field that
+                                                    // will be cut on the PDF is
+                                                    // cut here too.
+                                                    maxHeight: fieldTextMaxHeightPx(f),
+                                                    overflow: 'hidden',
+                                                    overflowWrap: 'break-word',
+                                                }}
+                                            >
+                                                {f.displayName}
+                                            </div>
                                         </div>
                                     )}
 
@@ -518,7 +646,7 @@ export const CertificateVisualEditor = ({
                                 onPointerDown={adoptAutoBadge}
                                 onClick={(e) => e.stopPropagation()}
                                 title="Stamped automatically on every certificate — drag to position it yourself"
-                                className="absolute cursor-grab outline-dashed outline-2 outline-offset-2 outline-purple-400/70"
+                                className="group absolute cursor-grab outline-dashed outline-2 outline-offset-2 outline-purple-400/70"
                                 style={{
                                     // Mirrors appendCertificateIdBadge in
                                     // InstituteSettingService — see
@@ -560,6 +688,22 @@ export const CertificateVisualEditor = ({
                                         {sampleCertificateId}
                                     </span>
                                 )}
+                                {onAutoStampChange && (
+                                    <button
+                                        type="button"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (badgePlan.code) onAutoStampChange('code', false);
+                                            if (badgePlan.id) onAutoStampChange('number', false);
+                                        }}
+                                        title="Don't print this automatically"
+                                        aria-label="Turn off the automatic stamp"
+                                        className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-red-500 text-white shadow"
+                                    >
+                                        <Trash2 className="size-3" />
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -573,11 +717,10 @@ export const CertificateVisualEditor = ({
                             .filter(Boolean)
                             .join(' + ')}{' '}
                         is stamped bottom-right on every certificate. Drag the dashed box to
-                        position it yourself.
+                        position it yourself, or remove it to stop printing it at all.
                     </p>
                 )}
             </div>
-
         </div>
     );
 };
@@ -588,6 +731,8 @@ export const CertificateVisualEditor = ({
 // font/weight dropdowns, hex text-color input, individual alignment buttons,
 // background-color with Clear, Position, and Field Size groups.
 const FloatingPropertiesPanel = ({
+    scanWarning,
+    fitWarning,
     field,
     isImage,
     onChangeStyle,
@@ -597,6 +742,19 @@ const FloatingPropertiesPanel = ({
 }: {
     field: FieldMapping;
     isImage: boolean;
+    /**
+     * Why this code would not scan off the printed page, or null. Shown rather
+     * than enforced: the admin owns the design, and silently resizing a box
+     * they are dragging is worse than telling them what is wrong.
+     */
+    scanWarning: string | null;
+    /**
+     * What a realistically long value does in this box, or null. Text fields are
+     * sized against a short sample and filled with real data much later, so
+     * without this the admin only discovers the box is too tight when a learner
+     * with a long name receives a shrunken or cut-off certificate.
+     */
+    fitWarning: string | null;
     onChangeStyle: (p: Partial<FieldMapping['style']>) => void;
     onChangePos: (p: Partial<FieldMapping['position']>) => void;
     onChangeField: (p: Partial<FieldMapping>) => void;
@@ -631,13 +789,20 @@ const FloatingPropertiesPanel = ({
 
     return (
         <div
-            className="fixed z-50 w-80 rounded-lg border border-neutral-200 bg-white shadow-lg"
-            style={{ left: pos.x, top: pos.y }}
+            className="fixed z-50 flex w-80 flex-col rounded-lg border border-neutral-200 bg-white shadow-lg"
+            // Capped to what is left of the viewport below the panel's own top
+            // edge. Without this the panel is as tall as its content, so on a
+            // laptop screen the Position and Field Size groups — the X/Y boxes
+            // an admin actually came here to type into — sat below the fold
+            // with nothing to scroll: the page itself does not scroll a
+            // position:fixed element.
+            style={{ left: pos.x, top: pos.y, maxHeight: `calc(100vh - ${pos.y}px - 16px)` }}
             onClick={(e) => e.stopPropagation()}
         >
-            {/* Draggable Header */}
+            {/* Draggable Header — shrink-0 so it stays put while the body
+                scrolls under it. */}
             <div
-                className="flex cursor-move items-center justify-between rounded-t-lg border-b border-neutral-200 bg-gradient-to-r from-purple-50 to-blue-50 p-3"
+                className="flex shrink-0 cursor-move items-center justify-between rounded-t-lg border-b border-neutral-200 bg-gradient-to-r from-purple-50 to-blue-50 p-3"
                 onMouseDown={onHeaderDown}
             >
                 <div className="flex items-center gap-2">
@@ -669,9 +834,19 @@ const FloatingPropertiesPanel = ({
                 </div>
             </div>
 
-            {/* Panel Content */}
-            <div className="p-4">
+            {/* Panel Content — the scrolling half. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
                 <div className="space-y-4">
+                    {scanWarning && (
+                        <div className="rounded-md border border-warning-300 bg-warning-50 p-2 text-xs text-warning-700">
+                            {scanWarning}
+                        </div>
+                    )}
+                    {fitWarning && (
+                        <div className="rounded-md border border-warning-300 bg-warning-50 p-2 text-xs text-warning-700">
+                            {fitWarning}
+                        </div>
+                    )}
                     {!isImage && (
                         <>
                             {/* Font Size — max scales with the field box so

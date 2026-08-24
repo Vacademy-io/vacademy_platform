@@ -78,8 +78,16 @@ export const useContentGeneration = (
         // Knowledge base this course is grounded in, persisted at outline time.
         // Without it the content pass falls back to model knowledge and the
         // slides quietly stop matching the institute's material.
+        // fidelity/coverage ride along too (how closely the course must mirror
+        // the source, and whether every section must be covered).
         let kbGrounding:
-            | { knowledge_base_id: string; node_ids: string[]; mode: string }
+            | {
+                  knowledge_base_id: string;
+                  node_ids: string[];
+                  mode: string;
+                  fidelity?: string;
+                  coverage?: string;
+              }
             | undefined;
         try {
             const stored = sessionStorage.getItem('courseKbGrounding');
@@ -89,6 +97,47 @@ export const useContentGeneration = (
             }
         } catch (e) {
             console.warn('Failed to parse courseKbGrounding:', e);
+        }
+
+        // Course-wide document content-type enrichments (notes/flashcards/quiz/…)
+        // chosen in the wizard, persisted at outline time. Applied to every
+        // generated DOCUMENT (HTML) slide.
+        let documentContentTypes: string[] | undefined;
+        try {
+            const stored = sessionStorage.getItem('courseDocumentContentTypes');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) documentContentTypes = parsed;
+            }
+        } catch (e) {
+            console.warn('Failed to parse courseDocumentContentTypes:', e);
+        }
+
+        // The model chosen in course creation — applied to DOCUMENT slides too
+        // (persisted at outline time; 'auto' is stored as absent → server default).
+        let documentModel: string | undefined;
+        try {
+            const m = sessionStorage.getItem('courseSelectedModel');
+            if (m) documentModel = m;
+        } catch (e) {
+            console.warn('Failed to read courseSelectedModel:', e);
+        }
+
+        // Source-figure policy chosen in the wizard (REQUIRE/PREFER/GENERATED_ONLY).
+        let figuresPolicy: string | undefined;
+        try {
+            const fp = sessionStorage.getItem('courseFiguresPolicy');
+            if (fp) figuresPolicy = fp;
+        } catch (e) {
+            console.warn('Failed to read courseFiguresPolicy:', e);
+        }
+
+        // Repetition-dedupe second pass (server-side, opt-in from the wizard).
+        let dedupeRepetition = false;
+        try {
+            dedupeRepetition = sessionStorage.getItem('courseDedupeRepetition') === '1';
+        } catch (e) {
+            console.warn('Failed to read courseDedupeRepetition:', e);
         }
 
         setIsGeneratingContent(true);
@@ -368,6 +417,84 @@ export const useContentGeneration = (
                         hasContentData: !!update.contentData,
                         contentDataKeys: update.contentData ? Object.keys(update.contentData) : [],
                     });
+
+                    // Server-side repetition-dedupe pass. By the time it starts,
+                    // every slide has completed and the UI reads "done" — flip
+                    // the paths being rewritten back to 'generating' so the
+                    // course can't be persisted with pre-rewrite content. Each
+                    // rewrite (or the original re-emit on failure) completes
+                    // them again through the normal SLIDE_CONTENT_UPDATE path.
+                    if (update.type === 'CONTENT_POSTPASS') {
+                        if (update.status === 'STARTED' && Array.isArray(update.paths)) {
+                            const regenIds = new Set(
+                                update.paths
+                                    .map((p) => persistentPathMap.get(p)?.id)
+                                    .filter(Boolean)
+                            );
+                            if (regenIds.size > 0) {
+                                setIsGeneratingContent(true);
+                                setIsContentGenerated(false);
+                                localStorage.setItem('isGeneratingContent', 'true');
+                                setContentGenerationProgress(
+                                    `Reducing repetition — rewriting ${regenIds.size} slide(s)...`
+                                );
+                                try {
+                                    const stored = localStorage.getItem('generatedSlides');
+                                    if (stored) {
+                                        const parsed = JSON.parse(stored);
+                                        for (const s of parsed) {
+                                            if (regenIds.has(s.id)) {
+                                                s.status = 'generating';
+                                                s.progress = 50;
+                                            }
+                                        }
+                                        localStorage.setItem(
+                                            'generatedSlides',
+                                            JSON.stringify(parsed)
+                                        );
+                                    }
+                                } catch (e) {
+                                    console.error('Failed to mark postpass slides:', e);
+                                }
+                                setSlides((prev) =>
+                                    prev.map((s) =>
+                                        regenIds.has(s.id)
+                                            ? { ...s, status: 'generating' as const, progress: 50 }
+                                            : s
+                                    )
+                                );
+                            }
+                        } else if (update.status === 'DONE') {
+                            // Safety net: each rewrite re-completed its slide
+                            // already; force-close anything still marked.
+                            try {
+                                const stored = localStorage.getItem('generatedSlides');
+                                if (stored) {
+                                    const parsed = JSON.parse(stored);
+                                    for (const s of parsed) {
+                                        if (s.status === 'generating' && s.slideType === 'doc') {
+                                            s.status = 'completed';
+                                            s.progress = 100;
+                                        }
+                                    }
+                                    localStorage.setItem('generatedSlides', JSON.stringify(parsed));
+                                }
+                            } catch (e) {
+                                console.error('Failed to close postpass slides:', e);
+                            }
+                            setSlides((prev) =>
+                                prev.map((s) =>
+                                    s.slideType === 'doc' && s.status === 'generating'
+                                        ? { ...s, status: 'completed' as const, progress: 100 }
+                                        : s
+                                )
+                            );
+                            setIsGeneratingContent(false);
+                            setIsContentGenerated(true);
+                            localStorage.setItem('isGeneratingContent', 'false');
+                        }
+                        return;
+                    }
 
                     if (update.type === 'SLIDE_CONTENT_UPDATE') {
                         console.log('🔵 Processing content update for path:', update.path);
@@ -1081,7 +1208,11 @@ export const useContentGeneration = (
                 undefined, // generationRunId — minted inside generateContent
                 videoSettings,
                 referenceDocumentFileIds,
-                kbGrounding
+                kbGrounding,
+                documentContentTypes,
+                documentModel,
+                figuresPolicy,
+                dedupeRepetition
             );
 
             // Mark content generation as complete (fallback)

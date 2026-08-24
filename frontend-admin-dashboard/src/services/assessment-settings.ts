@@ -7,6 +7,7 @@ import {
     AssessmentSettingsResponse,
     DEFAULT_ASSESSMENT_SETTINGS,
     DEFAULT_REPORT_BRANDING,
+    mergeExamExperience,
 } from '@/types/assessment-settings';
 
 const SETTINGS_KEY = 'ASSESSMENT_SETTING';
@@ -38,6 +39,7 @@ const mergeWithDefaults = (settings: Partial<AssessmentSettingsData>): Assessmen
             version: settings?.resultNotifications?.version ?? 1,
             roles: settings?.resultNotifications?.roles ?? {},
         },
+        examExperience: mergeExamExperience(settings?.examExperience),
     };
 };
 
@@ -119,9 +121,7 @@ export const getAssessmentSettingsFromCache = (): AssessmentSettingsData => {
     return getCachedSettings() || DEFAULT_ASSESSMENT_SETTINGS;
 };
 
-export const saveAssessmentSettings = async (
-    settings: AssessmentSettingsData
-): Promise<void> => {
+export const saveAssessmentSettings = async (settings: AssessmentSettingsData): Promise<void> => {
     const instituteId = getInstituteId();
     if (!instituteId) throw new Error('Institute ID not found');
 

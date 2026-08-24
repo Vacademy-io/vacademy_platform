@@ -3,7 +3,6 @@ import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import type { PaymentLog, PaymentLogEntry, PaymentLogsResponse } from '@/types/payment-logs';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,10 +15,93 @@ import {
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { formatDistanceToNow } from 'date-fns';
-import { PencilSimple, FloppyDisk, X } from '@phosphor-icons/react';
+import { PencilSimple, FloppyDisk, X, Eye } from '@phosphor-icons/react';
 import { updatePaymentLogTracking } from '@/services/payment-logs';
+import type { PaymentLogInvoiceDTO } from '@/services/invoice-service';
+import { Skeleton } from '@/components/ui/skeleton';
+import { orderColumnIds } from '@/components/shared/leads/use-lead-column-prefs';
 import { useToast } from '@/hooks/use-toast';
 import { formatMoney, resolveEntryCurrency } from '@/utils/payment-currency';
+import { cn } from '@/lib/utils';
+import { GatewayBadge } from './GatewayBadge';
+import { derivePaymentTypeLabel } from '../-utils/exportPaymentLogsCsv';
+
+// ─── Redesign cell primitives ──────────────────────────────────────────────────
+
+/** Token-based avatar tints, picked deterministically from the name so a user keeps one colour. */
+const AVATAR_TINTS = [
+    'bg-primary-100 text-primary-600',
+    'bg-info-100 text-info-600',
+    'bg-success-100 text-success-600',
+    'bg-warning-100 text-warning-600',
+    'bg-danger-100 text-danger-600',
+];
+
+const avatarTint = (name: string): string =>
+    AVATAR_TINTS[(name.charCodeAt(0) || 0) % AVATAR_TINTS.length]!;
+
+const initialsOf = (name: string): string =>
+    (name || '?')
+        .split(' ')
+        .map((w) => w[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('')
+        .toUpperCase() || '?';
+
+function UserAvatar({ name }: { name: string }) {
+    return (
+        <span
+            className={cn(
+                'flex size-8 shrink-0 items-center justify-center rounded-full text-2xs font-bold',
+                avatarTint(name)
+            )}
+        >
+            {initialsOf(name)}
+        </span>
+    );
+}
+
+const PAYMENT_STATUS_PILL: Record<string, { label: string; cls: string; dot: string }> = {
+    PAID: { label: 'Paid', cls: 'bg-success-100 text-success-700', dot: 'bg-success-600' },
+    FAILED: { label: 'Failed', cls: 'bg-danger-100 text-danger-700', dot: 'bg-danger-600' },
+    PAYMENT_PENDING: {
+        label: 'Pending',
+        cls: 'bg-warning-100 text-warning-700',
+        dot: 'bg-warning-600',
+    },
+    NOT_INITIATED: {
+        label: 'Not initiated',
+        cls: 'bg-neutral-100 text-neutral-600',
+        dot: 'bg-neutral-400',
+    },
+    // A voided invoice. Visible for audit, excluded from every total.
+    CANCELLED: {
+        label: 'Cancelled',
+        cls: 'bg-neutral-100 text-neutral-500',
+        dot: 'bg-neutral-300',
+    },
+};
+
+function PaymentStatusPill({ status }: { status?: string }) {
+    const key = (status || '').toUpperCase();
+    const meta = PAYMENT_STATUS_PILL[key] ?? {
+        label: status ? status.replace(/_/g, ' ') : '—',
+        cls: 'bg-neutral-100 text-neutral-600',
+        dot: 'bg-neutral-400',
+    };
+    return (
+        <span
+            className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-bold',
+                meta.cls
+            )}
+        >
+            <span className={cn('size-1.5 rounded-full', meta.dot)} />
+            {meta.label}
+        </span>
+    );
+}
 
 // ─── Order Status Constants ───────────────────────────────────────────────────
 
@@ -54,8 +136,41 @@ interface PaymentLogsTableProps {
     packageSessions?: Record<string, string>;
     hasOrgAssociatedBatches: boolean;
     hideUserColumn?: boolean;
+    /** Column ids the user has switched off (see PAYMENT_COLUMN_TOGGLES). */
+    hiddenColumns?: Set<string>;
+    /** The user's saved left-to-right column order; empty/absent means the natural order. */
+    columnOrder?: string[];
+    /** Fired when a header is dragged to a new position, with the full new id order. */
+    onColumnOrderChange?: (orderedIds: string[]) => void;
+    /** Invoice issued for each payment log, keyed by payment log id. */
+    invoicesByPaymentLog?: Record<string, PaymentLogInvoiceDTO>;
+    /** True while the invoice lookup for the current page is in flight. */
+    isLoadingInvoices?: boolean;
+    /** Open the invoice PDF preview for a row's invoice. */
+    onPreviewInvoice?: (invoice: PaymentLogInvoiceDTO) => void;
     onRefresh?: () => void;
+    /** Open the read-only detail slide-over for a row (fires on any non-editable cell). */
+    onViewDetails?: (entry: PaymentLogEntry) => void;
 }
+
+/**
+ * Columns whose cells host inline editing / actions — clicking them must NOT open the detail
+ * slide-over, so the tracking editor and the row-click detail view don't fight over the same click.
+ */
+const NON_DETAIL_COLUMN_IDS = new Set([
+    'tracking_id',
+    'tracking_source',
+    'order_status',
+    'tracking_actions',
+    // The invoice cell owns its own click (preview the PDF).
+    'invoice',
+]);
+
+/**
+ * Columns that carry the row's identity and are never hidden — a payment row without a date
+ * or an amount isn't a payment row. They can still be dragged to a different position.
+ */
+const LOCKED_COLUMN_IDS = new Set(['payment_date', 'amount']);
 
 interface EditingState {
     rowId: string;
@@ -99,9 +214,7 @@ function TrackingIdCell({ entry }: { entry: PaymentLogEntry }) {
         return (
             <Input
                 value={editing.trackingId}
-                onChange={(e) =>
-                    setEditing({ ...editing, trackingId: e.target.value })
-                }
+                onChange={(e) => setEditing({ ...editing, trackingId: e.target.value })}
                 placeholder="Enter tracking ID"
                 className="h-8 text-xs"
                 disabled={editing.isSaving}
@@ -124,9 +237,7 @@ function TrackingSourceCell({ entry }: { entry: PaymentLogEntry }) {
         return (
             <Input
                 value={editing.trackingSource}
-                onChange={(e) =>
-                    setEditing({ ...editing, trackingSource: e.target.value })
-                }
+                onChange={(e) => setEditing({ ...editing, trackingSource: e.target.value })}
                 placeholder="Enter source"
                 className="h-8 text-xs"
                 disabled={editing.isSaving}
@@ -135,9 +246,7 @@ function TrackingSourceCell({ entry }: { entry: PaymentLogEntry }) {
     }
 
     return (
-        <div className="text-xs text-neutral-600">
-            {entry.payment_log.tracking_source || '—'}
-        </div>
+        <div className="text-xs text-neutral-600">{entry.payment_log.tracking_source || '—'}</div>
     );
 }
 
@@ -149,9 +258,7 @@ function OrderStatusCell({ entry }: { entry: PaymentLogEntry }) {
         return (
             <Select
                 value={editing.orderStatus}
-                onValueChange={(val) =>
-                    setEditing({ ...editing, orderStatus: val })
-                }
+                onValueChange={(val) => setEditing({ ...editing, orderStatus: val })}
                 disabled={editing.isSaving}
             >
                 <SelectTrigger className="h-8 text-xs">
@@ -201,7 +308,7 @@ function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
+                    className="size-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700"
                     onClick={() => onSave(entry)}
                     disabled={editing.isSaving}
                     title="Save"
@@ -211,7 +318,7 @@ function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 text-neutral-500 hover:bg-gray-100 hover:text-neutral-600"
+                    className="size-7 p-0 text-neutral-500 hover:bg-gray-100 hover:text-neutral-600"
                     onClick={onCancel}
                     disabled={editing.isSaving}
                     title="Cancel"
@@ -226,7 +333,7 @@ function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
         <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 text-neutral-500 hover:bg-gray-100 hover:text-neutral-600"
+            className="size-7 p-0 text-neutral-500 hover:bg-gray-100 hover:text-neutral-600"
             onClick={() => onStartEdit(entry)}
             title="Edit tracking info"
         >
@@ -235,24 +342,81 @@ function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
     );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Invoice Cell ─────────────────────────────────────────────────────────────
+// Same context trick as the editing cells above: the invoice lookup resolves after the
+// rows render, and routing it through context keeps the column definitions stable.
 
-const getStatusBadgeVariant = (
-    status: string
-): 'default' | 'secondary' | 'destructive' | 'outline' => {
-    switch (status) {
-        case 'PAID':
-            return 'default';
-        case 'FAILED':
-            return 'destructive';
-        case 'PAYMENT_PENDING':
-            return 'secondary';
-        case 'NOT_INITIATED':
-            return 'outline';
-        default:
-            return 'secondary';
-    }
+interface InvoiceContextType {
+    /** Invoice per payment log id. A payment log with no invoice is simply absent. */
+    invoices: Record<string, PaymentLogInvoiceDTO>;
+    isLoading: boolean;
+    onPreview?: (invoice: PaymentLogInvoiceDTO) => void;
+}
+
+const InvoiceContext = createContext<InvoiceContextType>({
+    invoices: {},
+    isLoading: false,
+});
+
+/** Invoice date in the same short form the rest of the table uses. */
+const formatInvoiceDate = (value?: string | null) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+function InvoiceCell({ entry }: { entry: PaymentLogEntry }) {
+    const { invoices, isLoading, onPreview } = useContext(InvoiceContext);
+    const paymentLogId = entry?.payment_log?.id;
+    // Rows that ARE an invoice carry it inline — no lookup needed, and none was made.
+    const invoice = entry?.invoice ?? (paymentLogId ? invoices[paymentLogId] : undefined);
+
+    if (!invoice) {
+        // Still resolving: a placeholder rather than a dash, so a row that DOES have an
+        // invoice doesn't flash "no invoice" before the lookup lands.
+        if (isLoading) return <Skeleton className="h-4 w-24 bg-neutral-100" />;
+        return <span className="text-xs text-neutral-400">—</span>;
+    }
+
+    const isVoided = invoice.status?.toUpperCase() === 'REJECTED';
+    const subLabel = [formatInvoiceDate(invoice.invoice_date), isVoided ? 'Voided' : null]
+        .filter(Boolean)
+        .join(' · ');
+
+    return (
+        <div className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+                <div
+                    className={cn(
+                        'truncate font-mono text-xs font-medium text-neutral-700',
+                        isVoided && 'text-neutral-400 line-through'
+                    )}
+                    title={invoice.invoice_number}
+                >
+                    {invoice.invoice_number}
+                </div>
+                {subLabel && <div className="truncate text-2xs text-neutral-500">{subLabel}</div>}
+            </div>
+            {onPreview && (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="size-7 shrink-0 p-0 text-neutral-500 hover:bg-primary-50 hover:text-primary-600"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onPreview(invoice);
+                    }}
+                    title={`Preview invoice ${invoice.invoice_number}`}
+                >
+                    <Eye size={16} />
+                </Button>
+            )}
+        </div>
+    );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const formatCurrency = (amount: number, currency: string) =>
     formatMoney(amount, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -314,6 +478,16 @@ const orderStatusColumn: ColumnDef<PaymentLogEntry> = {
     size: 160,
 };
 
+const invoiceColumn: ColumnDef<PaymentLogEntry> = {
+    id: 'invoice',
+    header: 'Invoice',
+    // The invoice number isn't on the row — it arrives from a separate lookup the cell reads
+    // out of context — so the accessor keys on the payment log the invoice belongs to.
+    accessorFn: (row) => row?.payment_log?.id || '',
+    cell: ({ row }) => <InvoiceCell entry={row.original} />,
+    size: 190,
+};
+
 const actionsColumn: ColumnDef<PaymentLogEntry> = {
     id: 'tracking_actions',
     header: 'Actions',
@@ -331,7 +505,14 @@ export function PaymentLogsTable({
     onPageChange,
     hasOrgAssociatedBatches,
     hideUserColumn = false,
+    hiddenColumns,
+    columnOrder,
+    onColumnOrderChange,
+    invoicesByPaymentLog,
+    isLoadingInvoices = false,
+    onPreviewInvoice,
     onRefresh,
+    onViewDetails,
 }: PaymentLogsTableProps) {
     const { toast } = useToast();
     const [editing, setEditing] = useState<EditingState | null>(null);
@@ -398,17 +579,13 @@ export function PaymentLogsTable({
                         onRefresh?.();
                     } catch (err: unknown) {
                         const message =
-                            err instanceof Error
-                                ? err.message
-                                : 'Failed to update tracking info.';
+                            err instanceof Error ? err.message : 'Failed to update tracking info.';
                         toast({
                             title: 'Error',
                             description: message,
                             variant: 'destructive',
                         });
-                        setEditing((prev) =>
-                            prev ? { ...prev, isSaving: false } : null
-                        );
+                        setEditing((prev) => (prev ? { ...prev, isSaving: false } : null));
                     }
                 };
 
@@ -425,6 +602,15 @@ export function PaymentLogsTable({
     const editingContextValue = useMemo<EditingContextType>(
         () => ({ editing, setEditing, onSave, onStartEdit, onCancel }),
         [editing, onSave, onStartEdit, onCancel]
+    );
+
+    const invoiceContextValue = useMemo<InvoiceContextType>(
+        () => ({
+            invoices: invoicesByPaymentLog ?? {},
+            isLoading: isLoadingInvoices,
+            onPreview: onPreviewInvoice,
+        }),
+        [invoicesByPaymentLog, isLoadingInvoices, onPreviewInvoice]
     );
 
     // Transform API response to TableData format
@@ -472,16 +658,22 @@ export function PaymentLogsTable({
                               row?.user?.full_name || row?.user?.email || '',
                           cell: ({ row }: { row: { original: PaymentLogEntry } }) => {
                               const user = row.original?.user;
+                              const name = user?.full_name || user?.email || '-';
                               return (
-                                  <div className="space-y-1">
-                                      <div className="font-medium text-neutral-700">
-                                          {user?.full_name || '-'}
+                                  <div className="flex items-center gap-2.5">
+                                      <UserAvatar name={name} />
+                                      <div className="min-w-0">
+                                          <div className="truncate font-medium text-neutral-700">
+                                              {user?.full_name || '-'}
+                                          </div>
+                                          <div className="truncate text-xs text-neutral-500">
+                                              {user?.email || '-'}
+                                          </div>
                                       </div>
-                                      <div className="text-xs text-neutral-500">{user?.email || '-'}</div>
                                   </div>
                               );
                           },
-                          size: 200,
+                          size: 220,
                       } as ColumnDef<PaymentLogEntry>,
                   ]
                 : []),
@@ -513,9 +705,7 @@ export function PaymentLogsTable({
                                       );
                                   }
                               }
-                              return (
-                                  <div className="text-xs text-neutral-500 italic">N/A</div>
-                              );
+                              return <div className="text-xs italic text-neutral-500">N/A</div>;
                           },
                           size: 200,
                       } as ColumnDef<PaymentLogEntry>,
@@ -529,26 +719,26 @@ export function PaymentLogsTable({
                     const amount = row.original?.payment_log?.payment_amount || 0;
                     const currency = resolveEntryCurrency(row.original);
                     return (
-                        <div className="font-semibold text-neutral-700">
-                            {formatCurrency(amount, currency)}
+                        <div>
+                            <div className="font-bold tabular-nums text-neutral-800">
+                                {formatCurrency(amount, currency)}
+                            </div>
+                            <div className="text-xs text-neutral-500">
+                                {derivePaymentTypeLabel(row.original)}
+                            </div>
                         </div>
                     );
                 },
-                size: 130,
+                size: 150,
             },
             {
                 id: 'current_payment_status',
-                header: 'Payment Status',
+                header: 'Payment',
                 accessorFn: (row) => row?.current_payment_status || '',
-                cell: ({ row }) => {
-                    const status = row.original?.current_payment_status;
-                    return (
-                        <Badge variant={getStatusBadgeVariant(status)} className="font-medium">
-                            {status?.replace(/_/g, ' ') || '-'}
-                        </Badge>
-                    );
-                },
-                size: 140,
+                cell: ({ row }) => (
+                    <PaymentStatusPill status={row.original?.current_payment_status} />
+                ),
+                size: 130,
             },
             {
                 id: 'vendor',
@@ -556,13 +746,9 @@ export function PaymentLogsTable({
                 accessorFn: (row) => row?.payment_log?.vendor || '',
                 cell: ({ row }) => {
                     const vendor = row.original?.payment_log?.vendor;
-                    return (
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-neutral-600">{vendor || '-'}</span>
-                        </div>
-                    );
+                    return <GatewayBadge vendor={vendor} showLabel size="sm" />;
                 },
-                size: 140,
+                size: 160,
             },
             {
                 id: 'user_plan_status',
@@ -570,10 +756,11 @@ export function PaymentLogsTable({
                 accessorFn: (row) => row?.user_plan?.status || '',
                 cell: ({ row }) => {
                     const status = row.original?.user_plan?.status;
+                    if (!status) return <span className="text-xs text-neutral-400">—</span>;
                     return (
-                        <Badge variant="outline" className="font-normal">
-                            {status?.replace(/_/g, ' ') || '-'}
-                        </Badge>
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-2xs font-semibold text-neutral-600">
+                            {status.replace(/_/g, ' ')}
+                        </span>
                     );
                 },
                 size: 130,
@@ -597,6 +784,7 @@ export function PaymentLogsTable({
                 },
                 size: 200,
             },
+            invoiceColumn,
             {
                 id: 'transaction_id',
                 header: 'Transaction ID',
@@ -626,7 +814,9 @@ export function PaymentLogsTable({
                     const paymentPlan = row.original?.user_plan?.payment_plan_dto;
                     return (
                         <div className="space-y-1">
-                            <div className="text-sm text-neutral-700">{paymentPlan?.name || '-'}</div>
+                            <div className="text-sm text-neutral-700">
+                                {paymentPlan?.name || '-'}
+                            </div>
                             <div className="text-xs text-neutral-500">
                                 {paymentPlan?.validity_in_days
                                     ? `${paymentPlan.validity_in_days} days`
@@ -640,6 +830,25 @@ export function PaymentLogsTable({
         ],
         [hasOrgAssociatedBatches, hideUserColumn]
     );
+
+    // The user's layout choice: which columns are on, and in what order. Date & Time and
+    // Amount are never hidden — a payment row without them isn't a payment row — but they can
+    // still be dragged, so the order is applied to every column.
+    const visibleColumns = useMemo(() => {
+        const shown =
+            hiddenColumns && hiddenColumns.size > 0
+                ? columns.filter(
+                      (c) => !c.id || LOCKED_COLUMN_IDS.has(c.id) || !hiddenColumns.has(c.id)
+                  )
+                : columns;
+
+        if (!columnOrder || columnOrder.length === 0) return shown;
+
+        const byId = new Map(shown.map((c) => [c.id as string, c]));
+        return orderColumnIds([...byId.keys()], columnOrder)
+            .map((id) => byId.get(id))
+            .filter((c): c is ColumnDef<PaymentLogEntry> => !!c);
+    }, [columns, hiddenColumns, columnOrder]);
 
     if (error) {
         return (
@@ -656,37 +865,50 @@ export function PaymentLogsTable({
 
     return (
         <EditingContext.Provider value={editingContextValue}>
-            <div className="space-y-4">
-                {isEmpty ? (
-                    <div className="rounded-lg border border-border bg-card p-12 text-center">
-                        <p className="text-title font-medium text-neutral-700">
-                            No payment records found
-                        </p>
-                        <p className="mt-2 text-body text-neutral-500">
-                            Try adjusting your filters to see more results
-                        </p>
-                    </div>
-                ) : (
-                    <MyTable
-                        data={tableData}
-                        columns={columns}
-                        isLoading={isLoading}
-                        error={null}
-                        currentPage={currentPage}
-                        scrollable={true}
-                        enableColumnResizing={true}
-                        enableColumnPinning={false}
-                    />
-                )}
+            <InvoiceContext.Provider value={invoiceContextValue}>
+                <div className="space-y-4">
+                    {isEmpty ? (
+                        <div className="rounded-lg border border-border bg-card p-12 text-center">
+                            <p className="text-title font-medium text-neutral-700">
+                                No payment records found
+                            </p>
+                            <p className="mt-2 text-body text-neutral-500">
+                                Try adjusting your filters to see more results
+                            </p>
+                        </div>
+                    ) : (
+                        <MyTable
+                            data={tableData}
+                            columns={visibleColumns}
+                            isLoading={isLoading}
+                            error={null}
+                            currentPage={currentPage}
+                            scrollable={true}
+                            enableColumnResizing={true}
+                            enableColumnPinning={false}
+                            enableColumnReorder={!!onColumnOrderChange}
+                            onColumnOrderChange={onColumnOrderChange}
+                            onCellClick={
+                                onViewDetails
+                                    ? (row, column) => {
+                                          if (column.id && NON_DETAIL_COLUMN_IDS.has(column.id))
+                                              return;
+                                          onViewDetails(row);
+                                      }
+                                    : undefined
+                            }
+                        />
+                    )}
 
-                {tableData && tableData.total_pages > 1 && (
-                    <MyPagination
-                        currentPage={currentPage}
-                        totalPages={tableData.total_pages}
-                        onPageChange={onPageChange}
-                    />
-                )}
-            </div>
+                    {tableData && tableData.total_pages > 1 && (
+                        <MyPagination
+                            currentPage={currentPage}
+                            totalPages={tableData.total_pages}
+                            onPageChange={onPageChange}
+                        />
+                    )}
+                </div>
+            </InvoiceContext.Provider>
         </EditingContext.Provider>
     );
 }

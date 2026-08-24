@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.live_session.provider.service;
 
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -56,6 +57,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Slf4j
 public class LiveSessionProviderService {
 
+    private final EntityManager entityManager;
     private final ObjectMapper objectMapper;
     private final LiveSessionProviderFactory providerFactory;
     private final LiveSessionProviderConfigRepository configRepository;
@@ -68,6 +70,35 @@ public class LiveSessionProviderService {
     private final vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomRecordingS3Service zoomRecordingS3Service;
 
     private static final List<String> ACTIVE = List.of("ACTIVE");
+
+    /** How long a caller will queue behind an in-flight BBB /create before giving up. */
+    private static final String SCHEDULE_LOCK_TIMEOUT = "10s";
+
+    /**
+     * Bound how long the SELECT ... FOR UPDATE below may wait for the row lock.
+     *
+     * The @QueryHints jakarta.persistence.lock.timeout on
+     * SessionScheduleRepository#findByIdForUpdate does NOT do this on PostgreSQL:
+     * Postgres only understands NOWAIT / SKIP LOCKED on FOR UPDATE, it has no
+     * per-statement lock wait, so Hibernate silently drops the hint and the server
+     * default (lock_timeout = 0, i.e. wait forever) applies. That is why joins
+     * queued 14-15s -- and once 227s -- behind a slow BBB /create on 2026-08-22,
+     * each one pinning a pooled connection for the whole wait.
+     *
+     * SET LOCAL, not SET: it is scoped to this transaction and reverts on
+     * commit/rollback. pgbouncer runs in transaction pooling, so a plain SET would
+     * stay on the server connection and silently apply to whatever service picked
+     * it up next.
+     *
+     * On expiry Postgres raises SQLSTATE 55P03, which Hibernate maps to
+     * PessimisticLockException and Spring to PessimisticLockingFailureException --
+     * the exception LiveSessionProviderController#joinBbbMeeting already catches to
+     * return 503 "Meeting is being created, please retry".
+     */
+    private void boundScheduleLockWait() {
+        entityManager.createNativeQuery("SET LOCAL lock_timeout = '" + SCHEDULE_LOCK_TIMEOUT + "'")
+                .executeUpdate();
+    }
 
     // -----------------------------------------------------------------------
     // OAuth connect
@@ -150,6 +181,7 @@ public class LiveSessionProviderService {
             Supplier<ProviderMeetingCreateRequestDTO> requestSupplier,
             boolean recreate, String role) {
 
+        boundScheduleLockWait();
         SessionSchedule schedule = scheduleRepository.findByIdForUpdate(scheduleId)
                 .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
 
@@ -241,6 +273,7 @@ public class LiveSessionProviderService {
         // i.e. racy). The lock is held until commit, so a racing caller blocks then observes
         // the persisted id and returns it without hitting the provider again.
         if (request.getScheduleId() != null) {
+            boundScheduleLockWait();
             SessionSchedule existing = scheduleRepository.findByIdForUpdate(request.getScheduleId())
                     .orElse(null);
             if (existing != null && existing.getProviderMeetingId() != null

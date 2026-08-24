@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { isIOSNative } from "@/utils/ios-iap-compliance";
+import { isIOSNative, shouldHideThirdPartyLogin } from "@/utils/ios-iap-compliance";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -92,6 +92,13 @@ export function LoginForm({
   const [isSSOLoading, setIsSSOLoading] = useState(false);
   const isPublic = urlParams.get("isPublicAssessment");
   const redirect = urlParams.get("redirect");
+  // Admin-sent "reset your password" links arrive as
+  // /login?username=<their username>&redirect=%2Fchange-password. Pre-filling the username is
+  // the whole point of carrying it: the learner being asked to set a new password is exactly the
+  // learner least likely to remember what they sign in as. It is a convenience only — they still
+  // authenticate normally (password, or the email-OTP tab) before reaching the change-password
+  // screen — which is why the link stays predictable enough for an outside system to generate.
+  const prefilledUsername = urlParams.get("username") || undefined;
   const fromPaymentSuccess = urlParams.get("fromPaymentSuccess") === "1";
   const [postPaymentCreds, setPostPaymentCreds] = useState<{
     username: string;
@@ -178,9 +185,15 @@ export function LoginForm({
     })();
   }, [setPrimaryColor]);
   // Providers from stored flags
+  // Apple 4.8: the Mac App Store build offers no third-party login at all (the
+  // Sign in with Apple plugin is iOS-only, so it cannot be paired with them
+  // there). Forced off at the source so the buttons, the "or continue with"
+  // divider and the Apple gate below all follow — including on a fresh install,
+  // where allowGoogleAuth/allowGithubAuth default to TRUE.
+  const hideThirdPartyLogin = shouldHideThirdPartyLogin();
   const authProviders = {
-    google: providerFlags.allowGoogleAuth,
-    github: providerFlags.allowGithubAuth,
+    google: !hideThirdPartyLogin && providerFlags.allowGoogleAuth,
+    github: !hideThirdPartyLogin && providerFlags.allowGithubAuth,
   };
 
   useEffect(() => {
@@ -1176,7 +1189,11 @@ export function LoginForm({
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
-                              initialUsername={demoCreds?.username ?? postPaymentCreds?.username}
+                              initialUsername={
+                                demoCreds?.username ??
+                                postPaymentCreds?.username ??
+                                prefilledUsername
+                              }
                               initialPassword={demoCreds?.password ?? postPaymentCreds?.password}
                               autoSubmit={!!demoCreds}
                             />

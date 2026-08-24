@@ -120,6 +120,27 @@ export interface LiveSessionSettings {
      */
     recordingTranscriptionEnabled: boolean;
     /**
+     * "Minimum attendance" — a learner counts as present only if they were
+     * actually in the class for at least `minDurationPercent` of its scheduled
+     * length, rather than merely having clicked Join. Off means today's
+     * behaviour. A learner who never appears in the provider's roster counts as
+     * zero minutes, so click-and-never-arrive is caught by the same rule.
+     *
+     * Works for Vacademy Meet and Zoom, which both report who was in the room.
+     * Google Meet cannot be supported — its API returns participants with no
+     * email, so they can't be tied back to a learner; a Meet class carries the
+     * setting but is never evaluated.
+     *
+     * This is a scheduling-time default, not a live switch: the backend copies
+     * it onto each class as it is created. Turning it on affects classes
+     * scheduled from then on, and turning it off returns later classes to
+     * today's behaviour without re-deciding any class already held.
+     */
+    defaultAttendanceCriteria: {
+        enabled: boolean;
+        minDurationPercent: number;
+    };
+    /**
      * "LMS Connection" — bridges live classes into course content (the LMS).
      * `recordingAddToCourseEnabled` shows/hides the per-recording "Add to
      * course" action on the session view page; `classMaterialsEnabled`
@@ -174,6 +195,14 @@ export interface LiveSessionSettings {
     defaultBbbWebcamsOnlyForModerator: boolean;
     /** Default guest admission policy. */
     defaultBbbGuestPolicy: LiveSessionGuestPolicy;
+    /**
+     * Default "participants join in listen-only mode" toggle. Pins viewers to the
+     * shared listen-only audio path so no participant can take an individual mic
+     * channel — the setting to use for broadcast-style classes.
+     */
+    defaultBbbDisableMic: boolean;
+    /** Default "participants can't turn on their camera" toggle. */
+    defaultBbbDisableCam: boolean;
     /** Default "disable private chat for students" toggle (host is unaffected). */
     defaultBbbDisablePrivateChat: boolean;
     /** Default "disable public chat for students" toggle (host is unaffected). */
@@ -286,6 +315,10 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultDailyAttendanceCounting: false,
     descriptionEnabled: true,
     recordingTranscriptionEnabled: false,
+    defaultAttendanceCriteria: {
+        enabled: false,
+        minDurationPercent: 60,
+    },
     lmsConnection: {
         recordingAddToCourseEnabled: false,
         classMaterialsEnabled: false,
@@ -298,6 +331,8 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultBbbMuteOnStart: true,
     defaultBbbWebcamsOnlyForModerator: false,
     defaultBbbGuestPolicy: 'ALWAYS_ACCEPT',
+    defaultBbbDisableMic: false,
+    defaultBbbDisableCam: false,
     defaultBbbDisablePrivateChat: false,
     defaultBbbDisablePublicChat: false,
     defaultBbbDisableSharedNotes: false,
@@ -361,6 +396,10 @@ export const getLiveSessionSettings = async (): Promise<LiveSessionSettings> => 
             lmsConnection: {
                 ...DEFAULT_LIVE_SESSION_SETTINGS.lmsConnection,
                 ...(partial.lmsConnection ?? {}),
+            },
+            defaultAttendanceCriteria: {
+                ...DEFAULT_LIVE_SESSION_SETTINGS.defaultAttendanceCriteria,
+                ...(partial.defaultAttendanceCriteria ?? {}),
             },
         };
     } catch (err) {

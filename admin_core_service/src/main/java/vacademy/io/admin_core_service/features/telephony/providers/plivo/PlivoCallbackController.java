@@ -151,8 +151,11 @@ public class PlivoCallbackController {
                 return xml(ivrRenderer.render(root, corr, instituteId, record, token));
             }
         }
-        // No IVR authored — route straight to a counsellor / voicemail leg.
-        Object body = inboundResponseRenderer.render(routed.getDecision(), to);
+        // No IVR authored — route straight to a counsellor / voicemail leg. Pass the
+        // status base so this leg records too: institutes with a Plivo DID and no IVR
+        // menu take THIS path for every inbound call, not the IvrRenderer one.
+        Object body = inboundResponseRenderer.render(routed.getDecision(), to,
+                buildStatusUrl(ProviderType.PLIVO, token, corr));
         return xml(body == null ? HANGUP_XML : body.toString());
     }
 
@@ -429,18 +432,22 @@ public class PlivoCallbackController {
         return (i < 0 ? s : s.substring(0, i)).trim();
     }
 
+    /**
+     * Counsellor-answered bridge XML: optionally start recording, then dial the lead.
+     *
+     * <p>The {@code <Record>} is a SIBLING placed BEFORE {@code <Dial>} — it is not a
+     * {@code <Dial>} attribute. See {@link PlivoRecordXml} for why (and for what the
+     * old {@code record="true"} attribute silently cost us).
+     */
     private String buildDialXml(String callerId, String leadNumber, String statusBase, boolean record) {
-        String recordAttrs = record
-                ? " record=\"true\" recordCallbackUrl=\"" + esc(statusBase + "&plivoEvent=record")
-                  + "\" recordCallbackMethod=\"POST\""
-                : "";
         // Plivo/carrier rejects '+'-prefixed numbers ("Internal Error From Carrier").
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                 + "<Response>"
+                + (record ? PlivoRecordXml.bridgeRecord(statusBase) : "")
                 + "<Dial callerId=\"" + esc(stripPlus(callerId)) + "\""
                 + " callbackUrl=\"" + esc(statusBase + "&plivoEvent=dial_callback") + "\" callbackMethod=\"POST\""
                 + " action=\"" + esc(statusBase + "&plivoEvent=dial_action") + "\" method=\"POST\""
-                + recordAttrs + ">"
+                + ">"
                 + "<Number>" + esc(stripPlus(leadNumber)) + "</Number>"
                 + "</Dial>"
                 + "</Response>";

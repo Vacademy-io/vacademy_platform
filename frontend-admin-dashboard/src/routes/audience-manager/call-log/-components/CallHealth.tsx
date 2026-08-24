@@ -45,7 +45,9 @@ import {
 } from '@/components/ui/sheet';
 import {
     CALL_FAULT_CODES,
+    callActionsKey,
     callDetailKey,
+    fetchCallActions,
     fetchCallDetail,
     rowCallFaults,
     rowCallHealth,
@@ -623,6 +625,19 @@ function RawJsonBlock({ diagnostics }: { diagnostics: CallDiagnostics }) {
  *   2. summary only — verdict + fault list, numbers withheld for this role;
  *   3. nothing — no technical report for this call.
  */
+/**
+ * The engagement ledger's own vocabulary, said the way someone reading a call log
+ * would say it. OPEN means the dispatch job has not reached it yet - which reads as
+ * "queued", not as "open", to anyone who has not seen engagement_action.
+ */
+const ACTION_STATUS: Record<string, { label: string; tone: string }> = {
+    OPEN: { label: 'Queued', tone: 'text-neutral-500' },
+    DISPATCHING: { label: 'Sending', tone: 'text-neutral-500' },
+    SENT: { label: 'Sent', tone: 'text-success-600' },
+    FAILED: { label: 'Failed', tone: 'text-danger-600' },
+    EXPIRED: { label: 'Expired unsent', tone: 'text-warning-600' },
+};
+
 export function CallHealthSheet({
     instituteId,
     call,
@@ -639,6 +654,18 @@ export function CallHealthSheet({
         staleTime: 60_000,
         retry: false,
     });
+
+    // Separate from the detail call on purpose: this endpoint needs only institute
+    // access, while /detail is gated on VIEW_CALL_NUMBERS because it carries verbatim
+    // caller speech. Folding them together would hide the sends from most viewers.
+    const actionsQuery = useQuery({
+        queryKey: callActionsKey(instituteId, call?.id ?? ''),
+        queryFn: () => fetchCallActions(instituteId, call!.id),
+        enabled: !!call,
+        staleTime: 30_000,
+        retry: false,
+    });
+    const actions = actionsQuery.data ?? [];
 
     const detail = detailQuery.data ?? null;
     const d = detail?.diagnostics ?? null;
@@ -681,6 +708,45 @@ export function CallHealthSheet({
                         lead-facing.
                     </SheetDescription>
                 </SheetHeader>
+
+                {/* What the call promised. First question anyone asks after a call
+                    that offered to send something, and previously answerable only by
+                    reading engagement_action by hand. */}
+                {actions.length > 0 && (
+                    <section className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-4">
+                        <p className="text-sm font-medium">What this call promised</p>
+                        {actions.map((a) => {
+                            const st = ACTION_STATUS[(a.status || '').toUpperCase()] ?? {
+                                label: a.status || 'Unknown',
+                                tone: 'text-neutral-500',
+                            };
+                            return (
+                                <div key={a.id} className="flex flex-col gap-1 border-t border-neutral-100 pt-2 first:border-0 first:pt-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs">
+                                            {a.action_type === 'BOOK_MEETING'
+                                                ? 'Book a meeting'
+                                                : (a.channel === 'EMAIL' ? 'Email' : 'WhatsApp') +
+                                                  (a.template_name ? ' · ' + a.template_name : '')}
+                                        </span>
+                                        <span className={'text-xs font-medium ' + st.tone}>
+                                            {st.label}
+                                        </span>
+                                    </div>
+                                    {a.error_message && (
+                                        <p className="break-words text-xs text-danger-600">
+                                            {a.error_message}
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        <p className="text-xs text-neutral-500">
+                            Queued sends go out within a couple of minutes. A failure here is
+                            the vendor&apos;s own reason, verbatim.
+                        </p>
+                    </section>
+                )}
 
                 {/* Verdict — the 10-second answer. */}
                 <section className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-4">
@@ -812,6 +878,46 @@ export function CallHealthSheet({
                             </div>
                         </section>
 
+                        {/* Speech cache. Its own section rather than a Signals row:
+                            "did this call cost us TTS money" is a different
+                            question from "did this call go well", and burying the
+                            hit rate among the fault counters loses it.
+
+                            Shown only when the backend says the cache actually ran
+                            on this call (tts_cache_active). Every agent is OFF by
+                            default, and a grid of "not measured" would advertise a
+                            feature the institute has not enabled while pushing the
+                            rows that matter off the screen. */}
+                        {detail?.tts_cache_active ? (
+                        <section className="flex flex-col gap-2">
+                            <SectionTitle>Speech cache</SectionTitle>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                {/* The section only renders when the cache RAN, so
+                                    a 0 here is a genuine reading — it served
+                                    nothing on this call — not "we never looked".
+                                    "Saved on this call" can still be blank: edge is
+                                    free and smallest has no confirmed invoice rate,
+                                    so there a hit buys latency, not rupees. */}
+                                <Stat label="Served from cache" value={fmtCount(tts.cacheHits)} />
+                                <Stat label="Synthesized" value={fmtCount(tts.cacheMisses)} />
+                                <Stat label="Hit rate" value={pct(tts.cacheHitRate)} />
+                                <Stat
+                                    label="Characters saved"
+                                    value={fmtCount(tts.cacheCharsSaved)}
+                                />
+                                <Stat label="Audio replayed" value={secs(tts.cacheSecsSaved)} />
+                                <Stat
+                                    label="Saved on this call"
+                                    value={inr(call?.ttsCacheSavedInr)}
+                                    // Blank on edge (free) and smallest (no
+                                    // confirmed invoice rate) — there a hit buys
+                                    // latency, not rupees.
+                                    empty="not priced"
+                                />
+                            </div>
+                        </section>
+                        ) : null}
+
                         {/* Raw counters, for the questions the faults didn't answer. */}
                         <section className="flex flex-col gap-2">
                             <SectionTitle>Signals</SectionTitle>
@@ -856,6 +962,17 @@ export function CallHealthSheet({
 }
 
 /** Counters are measured or absent — 0 is a real answer, undefined is not. */
+function pct(v: number | null | undefined): string | null {
+    // null, not 0%: a rate over zero attempts is no reading at all.
+    if (v === null || v === undefined) return null;
+    return `${Math.round(v * 100)}%`;
+}
+
+function inr(v: number | null | undefined): string | null {
+    if (v === null || v === undefined) return null;
+    return `₹${v.toFixed(2)}`;
+}
+
 function fmtCount(n: number | null | undefined): string | null {
     return n == null ? null : String(n);
 }

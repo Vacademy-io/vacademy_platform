@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -37,9 +38,27 @@ public class AirtelCcrImportScheduler {
     @Value("${telephony.airtel.import.max-per-run:500}")
     private int maxPerRun;
 
+    // Without the lock this fired on all 4 replicas every tick, so four pods listed
+    // the same S3 prefixes and raced to insert the same rows: three lost each time
+    // on uk_aci_s3_key. Measured in production over 6h: 20 duplicate-key failures
+    // across just 3 distinct recordings, and the s3-key existence probe alone ran at
+    // ~155 queries/sec (about a quarter of all admin-core query volume).
+    //
+    // lockAtMostFor must cover a WHOLE sweep, and max-per-run does not bound one:
+    // AirtelCcrImportService.importObject returns false for an already-imported key
+    // (it short-circuits on existsByS3Key), so `imported` stays put and the loop
+    // still probes every key in the lookback window on every tick -- measured at
+    // ~4,600 probes per pod per tick. Run time therefore scales with accumulated
+    // call volume over the lookback, not with max-per-run.
+    //
+    // Hence 15m rather than something near the 2m interval. The asymmetry is the
+    // point: over-leasing costs a delayed CDR import if a pod dies mid-sweep, while
+    // under-leasing lets the lease expire mid-run, admits a second pod, and reopens
+    // the duplicate-insert race this annotation exists to close.
     @Scheduled(
             fixedDelayString = "${telephony.airtel.import.poll-ms:120000}",
             initialDelayString = "${telephony.airtel.import.initial-delay-ms:60000}")
+    @SchedulerLock(name = "AirtelCcrImportScheduler_poll", lockAtMostFor = "PT15M", lockAtLeastFor = "PT30S")
     public void poll() {
         try {
             int imported = 0;

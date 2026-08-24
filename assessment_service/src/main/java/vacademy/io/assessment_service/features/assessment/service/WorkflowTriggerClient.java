@@ -8,6 +8,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.common.core.internal_api_wrapper.HmacUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,6 +26,12 @@ public class WorkflowTriggerClient {
 
     private RestTemplate restTemplate;
 
+    private final HmacUtils hmacUtils;
+
+    public WorkflowTriggerClient(HmacUtils hmacUtils) {
+        this.hmacUtils = hmacUtils;
+    }
+
     // admin.core.service.baseurl is the property every deployed profile actually
     // defines (stage/dev map it to ADMIN_CORE_SERVICE_BASE_URL). The previous key
     // admin.core.service.url was never set anywhere, so every trigger fell back to
@@ -37,6 +44,14 @@ public class WorkflowTriggerClient {
 
     @Value("${workflow.trigger.read-timeout-ms:5000}")
     private int readTimeoutMs;
+
+    // The trigger route contains "internal", so admin_core_service's
+    // InternalAuthFilter demands clientName + Signature headers on it. This
+    // client sent neither and every event came back 401 — silently, because the
+    // catch below only warns. Same identity the rest of the service's internal
+    // calls use (see AdminCoreServiceClient).
+    @Value("${spring.application.name:assessment_service}")
+    private String clientName;
 
     @PostConstruct
     void init() {
@@ -66,8 +81,16 @@ public class WorkflowTriggerClient {
             body.put("instituteId", instituteId);
             body.put("contextData", contextData != null ? contextData : new HashMap<>());
 
+            String secretKey = hmacUtils.retrieveSecretKeyFromDatabase(clientName);
+            if (secretKey == null) {
+                log.warn("No client secret for {} — dropping workflow event {}", clientName, eventName);
+                return;
+            }
+
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("clientName", clientName);
+            headers.set("Signature", secretKey);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
             restTemplate.postForEntity(url, request, Map.class);

@@ -17,6 +17,8 @@ import { currencyOptions } from '../../-constants/payments';
 import { PaymentPlan, PaymentPlans } from '@/types/payment';
 import { getCurrencySymbol } from './utils/utils';
 import { DAYS_IN_MONTH } from '@/routes/settings/-constants/terms';
+import { UpfrontPlanConfiguration } from './PaymentPlanCreator/UpfrontPlanConfiguration';
+import { FreePlanConfiguration } from './PaymentPlanCreator/FreePlanConfiguration';
 
 interface CustomInterval {
     value: number | string;
@@ -89,6 +91,10 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 },
                 upfront: {
                     fullPrice: editingPlan.config?.upfront?.fullPrice || '',
+                    // transformApiPlanToLocalFormat derives these from validity_in_days,
+                    // so an existing plan re-opens on the option it was saved with.
+                    accessType: editingPlan.config?.upfront?.accessType || 'lifetime',
+                    validityDays: editingPlan.config?.upfront?.validityDays,
                 },
                 donation: {
                     suggestedAmounts: editingPlan.config?.donation?.suggestedAmounts || '',
@@ -96,7 +102,11 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                     minimumAmount: editingPlan.config?.donation?.minimumAmount || '0',
                 },
                 free: {
-                    validityDays: editingPlan.config?.free?.validityDays || DAYS_IN_MONTH,
+                    // transformApiPlanToLocalFormat derives these from validity_in_days, so an
+                    // existing plan re-opens on the option it was saved with. Forcing 30 here
+                    // would silently re-stamp a window the admin never chose.
+                    accessType: editingPlan.config?.free?.accessType || 'unlimited',
+                    validityDays: editingPlan.config?.free?.validityDays,
                 },
                 planDiscounts: editingPlan.config?.planDiscounts || {},
             },
@@ -193,6 +203,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
         }
         if (
             planData.type === PaymentPlans.FREE &&
+            planData.config?.free?.accessType === 'limited' &&
             (!planData.config?.free?.validityDays || planData.config.free.validityDays <= 0)
         ) {
             return;
@@ -226,6 +237,24 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                     config: updatedConfig,
                 };
             }
+        } else if (planData.type === PaymentPlans.FREE) {
+            updatedPlanData = {
+                ...updatedPlanData,
+                validityDays:
+                    planData.config?.free?.accessType === 'limited'
+                        ? planData.config?.free?.validityDays
+                        : undefined,
+            };
+        } else if (planData.type === PaymentPlans.UPFRONT) {
+            // undefined for lifetime access — stored as a null validity_in_days, which
+            // the backend reads as "never expires".
+            updatedPlanData = {
+                ...updatedPlanData,
+                validityDays:
+                    planData.config?.upfront?.accessType === 'limited'
+                        ? planData.config?.upfront?.validityDays
+                        : undefined,
+            };
         }
 
         onSave(updatedPlanData);
@@ -250,7 +279,9 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
     };
 
     const getTotalSteps = () => {
-        if (planData.type === PaymentPlans.FREE) return 1;
+        // 2, not 1: free plans now have an access-duration step. Mirrors DONATION, which
+        // already returns 2 and drives the same "Update Plan" button on step 2.
+        if (planData.type === PaymentPlans.FREE) return 2;
         if (planData.type === PaymentPlans.DONATION) return 2;
         return 3;
     };
@@ -311,6 +342,21 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
             {/* Step 2: Plan Configuration */}
             {currentStep === 2 && (
                 <div className="space-y-6">
+                    {planData.type === PaymentPlans.FREE && (
+                        <FreePlanConfiguration
+                            accessType={planData.config?.free?.accessType || 'unlimited'}
+                            onAccessTypeChange={(accessType) =>
+                                updateConfig({ free: { ...planData.config?.free, accessType } })
+                            }
+                            validityDays={planData.config?.free?.validityDays}
+                            onValidityDaysChange={(days) =>
+                                updateConfig({
+                                    free: { ...planData.config?.free, validityDays: days },
+                                })
+                            }
+                        />
+                    )}
+
                     {planData.type === PaymentPlans.SUBSCRIPTION && (
                         <Card>
                             <CardHeader>
@@ -604,31 +650,27 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                     )}
 
                     {planData.type === PaymentPlans.UPFRONT && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>One-Time Payment Configuration</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div>
-                                    <Label>
-                                        Full Price ({getCurrencySymbol(planData.currency)}) *
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        value={planData.config?.upfront?.fullPrice || ''}
-                                        onChange={(e) =>
-                                            updateConfig({
-                                                upfront: {
-                                                    ...planData.config?.upfront,
-                                                    fullPrice: e.target.value,
-                                                },
-                                            })
-                                        }
-                                        className="mt-1"
-                                    />
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <UpfrontPlanConfiguration
+                            currency={planData.currency || 'INR'}
+                            fullPrice={planData.config?.upfront?.fullPrice || ''}
+                            onFullPriceChange={(price) =>
+                                updateConfig({
+                                    upfront: { ...planData.config?.upfront, fullPrice: price },
+                                })
+                            }
+                            accessType={planData.config?.upfront?.accessType || 'lifetime'}
+                            onAccessTypeChange={(accessType) =>
+                                updateConfig({
+                                    upfront: { ...planData.config?.upfront, accessType },
+                                })
+                            }
+                            validityDays={planData.config?.upfront?.validityDays}
+                            onValidityDaysChange={(days) =>
+                                updateConfig({
+                                    upfront: { ...planData.config?.upfront, validityDays: days },
+                                })
+                            }
+                        />
                     )}
 
                     {planData.type === PaymentPlans.DONATION && (
@@ -1147,6 +1189,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                 (currentStep === 1 && (!planData.name || !planData.type)) ||
                                 (currentStep === 2 &&
                                     planData.type === PaymentPlans.FREE &&
+                                    planData.config?.free?.accessType === 'limited' &&
                                     (!planData.config?.free?.validityDays ||
                                         planData.config.free.validityDays <= 0)) ||
                                 isSaving

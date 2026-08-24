@@ -112,6 +112,29 @@ public class InvoiceController {
         return ResponseEntity.ok(invoices);
     }
 
+    /**
+     * Bulk "which invoice covers each of these payments?" lookup, for the Invoice column on
+     * the Manage Payments table.
+     *
+     * <p>Deliberately not folded into the payment-logs listing: the column is optional (an
+     * admin can hide it), so this keeps the cost off every payments request and lets the
+     * frontend ask only for the page it is showing.
+     *
+     * <p>Payment logs with no invoice are omitted rather than returned as nulls.
+     *
+     * <p>{@code POST /v1/invoices/by-payment-logs?instituteId=xxx}
+     * with {@code {"payment_log_ids": ["...", "..."]}}
+     */
+    @PostMapping("/by-payment-logs")
+    public ResponseEntity<List<vacademy.io.admin_core_service.features.invoice.dto.PaymentLogInvoiceDTO>> getInvoicesForPaymentLogs(
+            @RequestParam String instituteId,
+            @RequestBody vacademy.io.admin_core_service.features.invoice.dto.PaymentLogInvoiceLookupRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        return ResponseEntity.ok(invoiceService.getInvoicesForPaymentLogs(
+                instituteId, request != null ? request.getPaymentLogIds() : null));
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Admin invoice endpoints
     // ─────────────────────────────────────────────────────────────────────────

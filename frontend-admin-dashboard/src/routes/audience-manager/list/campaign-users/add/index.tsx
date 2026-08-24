@@ -9,7 +9,7 @@ import { ArrowLeft, PaperPlaneTilt, Spinner, UsersThree } from '@phosphor-icons/
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { submitAudienceLead, SubmitLeadRequest } from '../../-services/submit-audience-lead';
+import { submitAudienceLeadAsAdmin, SubmitLeadRequest } from '../../-services/submit-audience-lead';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -78,7 +78,7 @@ export function AddResponsePage() {
 
     const parseFields = (raw: any[]): CustomFieldConfig[] => {
         return raw
-            .map((field: any) => {
+            .map((field: any, index: number) => {
                 const customField = field.custom_field || field;
                 const configStr = customField.config || field.config || '';
 
@@ -147,14 +147,25 @@ export function AddResponsePage() {
                     isMandatory: customField.isMandatory ?? field.isMandatory ?? true,
                     defaultValue:
                         customField.defaultValue || field.defaultValue || defaultFromConfig || '',
-                    formOrder: customField.formOrder || field.formOrder || 0,
+                    // The per-form mapping order is what the admin arranged and what the
+                    // public form renders; the master formOrder is the shared catalog
+                    // position every other form inherits. Sorting by the master made this
+                    // page show the fields in a different sequence to the respondent's.
+                    // `??` not `||`: a seeded field's master order is NULL, and `|| 0`
+                    // floated all of those to the top.
+                    formOrder:
+                        field.individual_order ??
+                        customField.individualOrder ??
+                        customField.formOrder ??
+                        field.formOrder ??
+                        index,
                     config: configStr,
                     options,
                     fileConfig,
                 };
             })
             .filter((f: CustomFieldConfig) => f.id && f.fieldName)
-            .sort((a, b) => (a.formOrder || 0) - (b.formOrder || 0));
+            .sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0));
     };
 
     // Parse custom fields from URL params OR from API fetch
@@ -307,7 +318,12 @@ export function AddResponsePage() {
                 },
             };
 
-            await submitAudienceLead(payload);
+            // Authenticated twin of the open submit endpoint: the token tells the
+            // backend who added this lead, which the "only leads assigned to
+            // <ROLE>" audience-access option needs in order to stamp the creator
+            // as its counsellor. Without it the creator saves a lead and it
+            // immediately drops out of their own list.
+            await submitAudienceLeadAsAdmin(payload);
 
             toast.success('Response submitted successfully!');
 

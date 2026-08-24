@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.Limit;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -30,9 +31,18 @@ public class AirtelImportPromoterScheduler {
     @Value("${telephony.airtel.promote.max-per-run:200}")
     private int maxPerRun;
 
+    // Same reason as AirtelCcrImportScheduler: unlocked, all 4 replicas drained the
+    // same RECEIVED rows each tick, so four pods promoted the same import
+    // concurrently. Locking also keeps the "runs slightly after the import poll"
+    // ordering meaningful -- it is only true if one pod owns each stage.
     @Scheduled(
             fixedDelayString = "${telephony.airtel.promote.poll-ms:120000}",
             initialDelayString = "${telephony.airtel.promote.initial-delay-ms:90000}")
+    // 15m for the same reason as the importer. This batch IS bounded (Limit.of
+    // max-per-run rows), but each row is promoted in its own transaction and a
+    // recording promotion can reach media_service, so 200 rows is not reliably a
+    // sub-2-minute unit of work.
+    @SchedulerLock(name = "AirtelImportPromoterScheduler_poll", lockAtMostFor = "PT15M", lockAtLeastFor = "PT30S")
     public void poll() {
         List<AirtelCallImport> batch;
         try {

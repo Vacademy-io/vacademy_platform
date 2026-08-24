@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @NoArgsConstructor
@@ -28,5 +28,5 @@ public class ChatMessageResponse {
     private Boolean isEdited;
     private Boolean isDeleted;
     private Boolean isFlagged;
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }

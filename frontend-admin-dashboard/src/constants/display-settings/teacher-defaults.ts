@@ -144,6 +144,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         showAddModule: true,
         showAddChapter: true,
         showAddSlide: true,
+        showLearnerProgressReport: true,
     },
     courseList: {
         tabs: [

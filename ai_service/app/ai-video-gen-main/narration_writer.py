@@ -486,6 +486,76 @@ def check_narration_quality(
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ---------------------------------------------------------------------------
+# Author-supplied VO
+# ---------------------------------------------------------------------------
+# Briefs for factual subjects often ship the narration already written —
+# "VO: ..." under each shot, plus rules like "keep every named test exactly as
+# named". Paraphrasing that is not a style choice, it is a correctness bug: a
+# clinical brief came back with a renamed test (head thrust -> head impulse),
+# invented specifics (Ishihara plates, pinprick) and diagnostic qualifiers the
+# author had explicitly ruled out, while required terms (PEARL, pterygoids)
+# were dropped. When the author wrote the lines, speak the author's lines.
+
+# A quoted VO block runs to its closing quote and is routinely hard-wrapped
+# across several physical lines; matching a single line silently truncates it
+# mid-sentence (which dropped "Record it as PEARL" from a brief that required
+# the term). Prefer the quoted form, and fall back to one-line-per-VO only when
+# the brief does not quote at all.
+_VO_QUOTED_RE = re.compile(
+    r"\bVO[ \t]*:[ \t]*[\"\u201c](.+?)[\"\u201d]", re.IGNORECASE | re.DOTALL
+)
+_VO_LINE_RE = re.compile(r"^[ \t]*VO[ \t]*:[ \t]*(.+?)[ \t]*$", re.IGNORECASE | re.MULTILINE)
+_VO_MIN_CHARS = 20
+_VO_MIN_LINES = 3
+
+
+def extract_authored_vo(source_request: Optional[str]) -> List[str]:
+    """Return the VO lines a brief supplies, in order. Empty when it supplies none."""
+    if not source_request:
+        return []
+
+    def _clean(raw: str) -> str:
+        return " ".join(raw.split())
+
+    quoted = [
+        _clean(m.group(1)) for m in _VO_QUOTED_RE.finditer(source_request)
+    ]
+    quoted = [q for q in quoted if len(q) >= _VO_MIN_CHARS]
+    if len(quoted) >= _VO_MIN_LINES:
+        return quoted
+
+    out: List[str] = []
+    for m in _VO_LINE_RE.finditer(source_request):
+        line = _clean(m.group(1)).strip('"\u201c\u201d\u2018\u2019')
+        if len(line) >= _VO_MIN_CHARS:
+            out.append(line)
+    return out if len(out) >= _VO_MIN_LINES else []
+
+
+def apply_authored_vo(shots: List[Dict[str, Any]], authored: List[str]) -> bool:
+    """Assign authored VO to the narrating shots, in order.
+
+    Only fires on an exact 1:1 match against the shots that actually speak —
+    a mismatch means the plan diverged from the brief's shot list, and
+    assigning lines to the wrong shots is worse than paraphrasing them.
+    """
+    if not authored:
+        return False
+    narrating = [
+        s for s in shots
+        if str((s or {}).get("audio_policy") or "").strip().lower() != "intrinsic_only"
+    ]
+    if len(narrating) != len(authored):
+        return False
+    for shot, text in zip(narrating, authored):
+        shot["narration_text"] = text
+    for shot in shots:
+        if shot not in narrating:
+            shot["narration_text"] = ""
+    return True
+
+
 def write_narration(
     *,
     shot_plan: Dict[str, Any],
@@ -528,6 +598,23 @@ def write_narration(
     Raises:
       NarrationWriteError when the response can't be parsed or covers no shots.
     """
+    # An author who supplied the lines gets the lines. This runs before the
+    # writer so the LLM is not asked to rewrite prose it must not touch — it
+    # also saves the call entirely.
+    _authored = extract_authored_vo(source_request)
+    if _authored:
+        _shots_in = shot_plan.get("shots") or []
+        if apply_authored_vo(_shots_in, _authored):
+            print(
+                f"   \U0001f3a4 Narration: using {len(_authored)} author-supplied VO "
+                "line(s) verbatim — writer skipped"
+            )
+            return {"shots": _shots_in, "usage": {}, "raw": "", "authored_vo": True}
+        print(
+            f"   \u26a0\ufe0f Narration: brief supplies {len(_authored)} VO line(s) but the plan "
+            "has a different number of speaking shots — writing narration normally"
+        )
+
     shots = shot_plan.get("shots") if isinstance(shot_plan.get("shots"), list) else None
     if not shots:
         raise NarrationWriteError("write_narration requires a shot_plan with non-empty shots[]")

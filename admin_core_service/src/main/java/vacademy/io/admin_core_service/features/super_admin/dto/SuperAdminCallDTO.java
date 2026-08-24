@@ -64,4 +64,15 @@ public class SuperAdminCallDTO {
     /** Per-component rupee breakdown: plivo / stt / tts / llm. */
     private java.util.Map<String, Double> costBreakdown;
     private Boolean costIsModelled;
+
+    /** Sentences served from the TTS speech cache instead of the vendor, and the
+     *  characters they represent. NULL (never 0) when the bot did not measure —
+     *  the cache was off, or the row predates it. */
+    private Integer ttsCacheHits;
+    private Integer ttsCacheMisses;
+    private Integer ttsCacheCharsSaved;
+    /** Rupees the cache kept off this call's TTS bill. Null on the free engines
+     *  (edge) and on smallest, whose invoice rate is still unconfirmed — there a
+     *  cache hit is a latency win, not a rupee one. */
+    private Double ttsCacheSavedInr;
 }

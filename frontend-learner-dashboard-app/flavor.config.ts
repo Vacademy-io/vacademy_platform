@@ -53,8 +53,8 @@ export const flavorConfig: FlavorConfigs = {
   // iThinkers by Fivesep Android app
   "com.fivesep.app": {
     appName: "iThinkers by Fivesep",
-    domain: "vacademy.io",
-    subdomain: "fivesep",
+    domain: "ithinkersolympiad.com",
+    subdomain: "practice",
   },
 
   // Shiksha Nation iOS app (Shreyash Jain account, team 35NLZB49QN)
@@ -207,5 +207,19 @@ export const flavorConfig: FlavorConfigs = {
     appName: "The Learning Bridge",
     domain: "thelearningbridge.uk",
     subdomain: "student",
+  },
+
+  // Brahm Varchas Shiksha iOS app
+  "io.brahmvarchas.app": {
+    appName: "Brahm Varchas Shiksha",
+    domain: "brahmvarchas.org",
+    subdomain: "learning",
+  },
+
+  // Brahm Varchas Shiksha Android app
+  "com.brahmvarchas.app": {
+    appName: "Brahm Varchas Shiksha",
+    domain: "brahmvarchas.org",
+    subdomain: "learning",
   },
 };

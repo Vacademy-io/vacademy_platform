@@ -2845,6 +2845,112 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("assignmentQuestionStatusList") List<String> assignmentQuestionStatusList,
             @Param("quizQuestionStatusList") List<String> quizQuestionStatusList);
 
+    /**
+     * Batched form of {@link #calculateTotalReadTimeInMinutes}: one row per
+     * (package, session, level) triple instead of one query per triple.
+     *
+     * <p>The aggregate expression, joins and status predicates are character-for-character
+     * the single-key query; only the WHERE moves from three equality checks to three IN
+     * lists and a GROUP BY is added. A caller passing the three id sets therefore gets the
+     * same number for a given triple as it would have got from the single-key call.
+     *
+     * <p>Two differences the caller must handle. The IN lists form a cross product, so this
+     * returns rows for triples that exist in package_session but were never asked about --
+     * callers must keep only the triples they care about. And GROUP BY emits nothing for a
+     * triple with no matching slides, where the single-key query returned 0.0 from its
+     * COALESCE over an empty aggregate -- callers must default missing triples to 0.0.
+     */
+    @Query(value = """
+            -- CTE to count active questions for each assignment slide
+            WITH assignment_question_counts AS (
+                SELECT
+                    asq.assignment_slide_id,
+                    COUNT(asq.id) AS question_count
+                FROM
+                    assignment_slide_question asq
+                WHERE
+                    asq.status IN (:assignmentQuestionStatusList)
+                GROUP BY
+                    asq.assignment_slide_id
+            ),
+            -- CTE to count active questions for each quiz slide
+            quiz_question_counts AS (
+                SELECT
+                    qsq.quiz_slide_id,
+                    COUNT(qsq.id) AS question_count
+                FROM
+                    quiz_slide_question qsq
+                WHERE
+                    qsq.status IN (:quizQuestionStatusList)
+                GROUP BY
+                    qsq.quiz_slide_id
+            )
+            SELECT
+                ps.package_id AS "packageId",
+                ps.session_id AS "sessionId",
+                ps.level_id   AS "levelId",
+                COALESCE(SUM(
+                    CASE
+                        WHEN s.source_type = 'VIDEO' THEN
+                            ROUND(COALESCE(vs.published_video_length, vs.video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'HTML_VIDEO' THEN
+                            ROUND(COALESCE(hvs.video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'SCORM' THEN
+                            15.0
+                        WHEN s.source_type = 'DOCUMENT' THEN
+                            CASE
+                                WHEN ds.type = 'PDF' THEN
+                                    LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages, 0) * 3, 120)
+                                WHEN ds.type = 'PRESENTATION' THEN
+                                    LEAST(COALESCE(ds.published_document_total_pages, ds.total_pages, 0) * 2, 60)
+                                ELSE
+                                    10
+                            END
+                        WHEN s.source_type = 'QUESTION' THEN
+                            5
+                        WHEN s.source_type = 'ASSIGNMENT' THEN
+                            COALESCE(aqc.question_count, 0) * 3
+                        WHEN s.source_type = 'QUIZ' THEN
+                            COALESCE(qqc.question_count, 0) * 2
+                        ELSE 0
+                    END
+                ), 0) AS "readTimeInMinutes"
+            FROM
+                package_session ps
+            JOIN
+                chapter_package_session_mapping cpsm ON cpsm.package_session_id = ps.id
+            JOIN
+                chapter_to_slides cts ON cts.chapter_id = cpsm.chapter_id
+            JOIN
+                slide s ON s.id = cts.slide_id
+            LEFT JOIN
+                video vs ON s.source_id = vs.id AND s.source_type = 'VIDEO'
+            LEFT JOIN
+                document_slide ds ON s.source_id = ds.id AND s.source_type = 'DOCUMENT'
+            LEFT JOIN
+                assignment_question_counts aqc ON s.source_id = aqc.assignment_slide_id AND s.source_type = 'ASSIGNMENT'
+            LEFT JOIN
+                quiz_question_counts qqc ON s.source_id = qqc.quiz_slide_id AND s.source_type = 'QUIZ'
+            LEFT JOIN
+                html_video_slide hvs ON s.source_id = hvs.id AND s.source_type = 'HTML_VIDEO'
+            WHERE
+                ps.package_id IN (:packageIds)
+                AND ps.session_id IN (:sessionIds)
+                AND ps.level_id IN (:levelIds)
+                AND s.status IN (:slideStatusList)
+                AND cts.status IN (:slideStatusList)
+            GROUP BY
+                ps.package_id, ps.session_id, ps.level_id
+            """, nativeQuery = true)
+    List<vacademy.io.admin_core_service.features.slide.dto.LevelReadTimeProjection> calculateTotalReadTimeInMinutesBatch(
+            @Param("packageIds") List<String> packageIds,
+            @Param("sessionIds") List<String> sessionIds,
+            @Param("levelIds") List<String> levelIds,
+            @Param("slideStatusList") List<String> slideStatusList,
+            @Param("assignmentQuestionStatusList") List<String> assignmentQuestionStatusList,
+            @Param("quizQuestionStatusList") List<String> quizQuestionStatusList);
+
+
     @Query(value = """
             -- CTE to count active questions for each assignment slide
             WITH assignment_question_counts AS (

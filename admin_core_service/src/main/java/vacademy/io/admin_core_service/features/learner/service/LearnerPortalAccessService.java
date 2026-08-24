@@ -22,6 +22,8 @@ import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -67,6 +69,57 @@ public class LearnerPortalAccessService {
         return LearnerPortalAccessResponse.builder()
                 .redirectUrl(redirectUrl)
                 .build();
+    }
+
+    /**
+     * The page a learner lands on to choose a new password: the learner portal's normal login,
+     * pre-filled with their username, which hands off to the existing update-profile /
+     * change-password screen once they are in.
+     *
+     * <p>Deliberately NOT a one-time token URL. The link is required to stay predictable so an
+     * admin can hand its shape to a third-party system that will substitute its own usernames
+     * (see {@link #buildPasswordResetLinkTemplate}); a per-user secret could not be templated
+     * that way. Nothing sensitive is exposed by it either — a username alone gets nobody in;
+     * the login screen it opens still demands a password or an OTP.
+     */
+    private static final String RESET_PATH = "/login?username=%s&redirect=%%2Fchange-password";
+
+    /** Placeholder a third-party integrator replaces with their own username. */
+    private static final String USERNAME_PLACEHOLDER = "{username}";
+
+    /**
+     * Portal base URL for this learner: their sub-org's branded portal when it has one,
+     * otherwise the parent institute's, otherwise the platform default. Same precedence the
+     * SSO redirect uses, so a reset link and a portal link never point at different hosts.
+     */
+    public String resolvePortalBaseUrl(String instituteId, String userId) {
+        String subOrgBaseUrl = resolveSubOrgPortalBaseUrl(instituteId, userId);
+        if (StringUtils.hasText(subOrgBaseUrl)) {
+            return withScheme(subOrgBaseUrl);
+        }
+        String institutePortal = instituteRepository.findById(instituteId)
+                .map(Institute::getLearnerPortalBaseUrl)
+                .orElse(null);
+        if (StringUtils.hasText(institutePortal)) {
+            return withScheme(institutePortal);
+        }
+        return defaultLearnerPortalUrl;
+    }
+
+    /** The ready-to-send link for one specific learner. */
+    public String buildPasswordResetLink(String instituteId, String userId, String username) {
+        return resolvePortalBaseUrl(instituteId, userId)
+                + String.format(RESET_PATH, URLEncoder.encode(
+                        StringUtils.hasText(username) ? username : "", StandardCharsets.UTF_8));
+    }
+
+    /**
+     * The same link with a literal {@code {username}} left in it — what an admin copies out of
+     * the UI when a third-party system will be generating these links itself.
+     */
+    public String buildPasswordResetLinkTemplate(String instituteId, String userId) {
+        return resolvePortalBaseUrl(instituteId, userId)
+                + String.format(RESET_PATH, USERNAME_PLACEHOLDER);
     }
 
     private String determineActiveLms(Institute institute) {

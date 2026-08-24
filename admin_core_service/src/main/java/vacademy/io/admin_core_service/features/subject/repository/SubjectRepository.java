@@ -39,6 +39,47 @@ public interface SubjectRepository extends JpaRepository<Subject, String> {
             @Param("sessionId") String sessionId
     );
 
+    /** One (level, package, session) -> subject edge from {@link #findDistinctSubjectIdsPackageSessions}. */
+    interface PackageSessionSubjectProjection {
+        String getLevelId();
+
+        String getPackageId();
+
+        String getSessionId();
+
+        String getSubjectId();
+    }
+
+    /**
+     * Batched form of {@link #findDistinctSubjectsPackageSession}: same joins and status filter,
+     * three equality checks widened to IN lists, and the triple carried back for regrouping.
+     *
+     * <p>subject_order ASC NULLS LAST stays the final sort key, so the sequence within any one
+     * triple is identical to what the single-key query returned. Sorting by the triple first
+     * only groups the rows, it does not reorder them inside a group.
+     */
+    @Query(value = """
+            SELECT DISTINCT
+                ps.level_id   AS "levelId",
+                ps.package_id AS "packageId",
+                ps.session_id AS "sessionId",
+                s.id          AS "subjectId",
+                ss.subject_order
+            FROM subject s
+            INNER JOIN subject_session ss ON s.id = ss.subject_id
+            INNER JOIN package_session ps ON ss.session_id = ps.id
+            WHERE ps.level_id IN (:levelIds)
+              AND ps.package_id IN (:packageIds)
+              AND ps.session_id IN (:sessionIds)
+              AND s.status = 'ACTIVE'
+            ORDER BY ps.level_id, ps.package_id, ps.session_id, ss.subject_order ASC NULLS LAST
+            """, nativeQuery = true)
+    List<PackageSessionSubjectProjection> findDistinctSubjectIdsPackageSessions(
+            @Param("levelIds") List<String> levelIds,
+            @Param("packageIds") List<String> packageIds,
+            @Param("sessionIds") List<String> sessionIds
+    );
+
     @Query(value = "SELECT DISTINCT s.* " +
             "FROM subject s " +
             "INNER JOIN subject_session ss ON s.id = ss.subject_id " +

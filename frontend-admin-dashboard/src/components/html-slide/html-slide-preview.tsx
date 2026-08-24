@@ -113,7 +113,7 @@ export function HtmlSlidePreview({
             ref={iframeRef}
             title="HTML document preview"
             // no allow-same-origin: opaque origin keeps the document isolated
-            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+            sandbox="allow-scripts allow-popups"
             srcDoc={srcDoc}
             className={cn('w-full border-0 bg-white', autoResize ? '' : 'h-full', className)}
             // Height is driven by the document's reported content height (dynamic).

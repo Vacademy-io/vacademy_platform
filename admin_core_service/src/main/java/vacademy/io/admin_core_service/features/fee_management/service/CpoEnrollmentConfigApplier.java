@@ -52,10 +52,24 @@ public class CpoEnrollmentConfigApplier {
             sfpByAftId.putIfAbsent(sfp.getIId(), sfp.getId());
         }
 
+        // A one-off fee type (has_installment = false) has no AftInstallment, so its SFP
+        // row carries i_id = null and can never appear in the map above. The enrollment UI
+        // still needs to target it — it synthesises a virtual installment row keyed on the
+        // AssignedFeeValue id — so accept that id as an alias. Only rows with a null i_id
+        // are indexed here, keeping real installment ids authoritative on the map above.
+        Map<String, String> sfpByAsvIdForLumpSum = new HashMap<>();
+        for (StudentFeePayment sfp : sfps) {
+            if (sfp.getIId() != null || sfp.getAsvId() == null) continue;
+            sfpByAsvIdForLumpSum.putIfAbsent(sfp.getAsvId(), sfp.getId());
+        }
+
         if (config.getInstallmentOverrides() != null) {
             for (InstallmentOverrideDTO ov : config.getInstallmentOverrides()) {
                 if (ov == null || ov.getAftInstallmentId() == null) continue;
                 String sfpId = sfpByAftId.get(ov.getAftInstallmentId());
+                if (sfpId == null) {
+                    sfpId = sfpByAsvIdForLumpSum.get(ov.getAftInstallmentId());
+                }
                 if (sfpId == null) {
                     log.warn("Override for aft_installment={} ignored — no matching SFP on userPlan={}",
                             ov.getAftInstallmentId(), userPlanId);

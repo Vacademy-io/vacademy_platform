@@ -93,3 +93,35 @@ async def post_report(institute_id: str, webhook_token: Optional[str], payload: 
                 # (report.py) — this inline path must not hold a capacity slot.
                 await asyncio.sleep(2.0)
     return False
+
+
+async def post_action(corr: str, artefact: str, agent_id: Optional[str]) -> bool:
+    """Fire a MID-CALL action: the agent just offered something and the caller took it.
+
+    FIRE AND FORGET BY CONTRACT — the caller must never await this on the voice path.
+    A promised brochure is not worth a beat of dead air, and this crosses the ocean
+    (the bot is in Mumbai, admin_core in Singapore).
+
+    admin_core resolves ``artefact`` against the agent's MID_CALL rules and creates the
+    send. An artefact the agent never published is a no-op there, so a hallucinated
+    sentinel sends nothing. Idempotent on (call, rule), so a repeated marker in one call
+    cannot double-send.
+    """
+    s = get_settings()
+    url = f"{s.admin_core_base}/admin-core-service/internal/voice-bot/action"
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                url,
+                json={"corr": corr, "artefact": artefact, "agentId": agent_id},
+                headers=_internal_headers(),
+            )
+            resp.raise_for_status()
+            logger.info("mid-call action accepted corr=%s artefact=%s", corr, artefact)
+            return True
+    except Exception:
+        # Logged, never raised: the post-call rules are the safety net — an artefact the
+        # caller accepted is usually ALSO in promisedSends, so a lost mid-call fire
+        # degrades to a send a minute later rather than to nothing.
+        logger.exception("mid-call action failed corr=%s artefact=%s", corr, artefact)
+        return False

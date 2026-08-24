@@ -21,6 +21,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Link } from '@tanstack/react-router';
 import { fetchAiVoiceCarrier } from '@/routes/settings/telephony/-services/ai-voice-carrier';
 import { AiAgentsCard } from './AiAgentsCard';
+import { noAutofillProps } from '@/lib/no-autofill';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // Stored under the institute's AI_CALLING_SETTING JSON. The backend EVALUATE
@@ -707,6 +708,7 @@ export default function AiCallingSettings() {
                         <Input
                             id="ai-token"
                             type="password"
+                            {...noAutofillProps('password')}
                             value={apiToken}
                             placeholder={
                                 cfg?.hasToken
@@ -721,6 +723,7 @@ export default function AiCallingSettings() {
                         <Input
                             id="ai-webhook-secret"
                             type="password"
+                            {...noAutofillProps('password')}
                             value={webhookSecret}
                             placeholder={
                                 cfg?.hasWebhookSecret

@@ -387,6 +387,25 @@ class Settings:
     # Raise ONLY if a future agent genuinely needs reasoning, and re-measure.
     # Suppress a sentence the bot has already said in this call. Off = the old
     # behaviour, in case a deployment ever needs it back in a hurry.
+    # Give an AUTHORED prompt the built-in safety rules too (`non_negotiable`).
+    #
+    # build_system_prompt branches at 600 characters: shorter prompts get the
+    # seven rules, longer ones get none of them. 600 characters is about four
+    # sentences, so every real agent takes the second branch — production prompts
+    # measured 2026-08-14 were 2956, 3359, 3489, 5152 and 10078 characters. The
+    # rules therefore reach only the built-in placeholder persona and never an
+    # agent running real calls, even though each was added after a specific
+    # live-call failure (frustration -> drop the script; conversation stops making
+    # sense -> assume you mis-heard; a repeated question means your answer failed).
+    #
+    # OFF BY DEFAULT so this deploys as a no-op: every existing agent's prompt is
+    # byte-identical until someone turns it on. Enable per deployment, watch
+    # HANDBACK_LOOP and REPLY_LOOP, and be aware the prompt grows ~1.5k characters
+    # — saturation is a known risk here (NoRepeatGate: four prompt-level fixes
+    # failed at ~16k). A per-agent switch belongs in the agent editor later; this
+    # is the env-level precursor.
+    safety_rules_for_authored: bool = field(
+        default_factory=lambda: _env("SAFETY_RULES_FOR_AUTHORED", "false").lower() == "true")
     no_repeat_enabled: bool = field(
         default_factory=lambda: _env("NO_REPEAT_ENABLED", "true").lower() == "true")
     # Drop the leading clause when a reply only parrots the caller's own answer
@@ -516,6 +535,73 @@ class Settings:
         default_factory=lambda: int(_env("TTS_CACHE_MAX_FILES", "4000")))
     tts_cache_max_bytes: int = field(
         default_factory=lambda: int(_env("TTS_CACHE_MAX_BYTES", str(500 * 1024 * 1024))))
+
+    # ── TTS speech cache (§ docs/crm/TTS_SPEECH_CACHE.md) ───────────────────
+    # Replays previously-synthesized audio for a byte-identical sentence in the
+    # same voice, so a scripted line is paid for once instead of once per call.
+    # Matching is EXACT on a sha256 of (salt, engine, model, voice, pace,
+    # temperature, rate, term-map, text): one differing character is a miss and
+    # goes to the vendor. Quality is never traded for cost.
+    #
+    # KILL switches, not the on switch. What actually enables the cache for an
+    # agent is ai_agent.speech_cache_mode (OFF | FIXED | FULL, V466), set in
+    # per agent via the agent API or SQL (no UI control yet), reviewable and
+    # needing no restart. These
+    # default TRUE so a normal rollout never needs an ssh, and exist so ops can
+    # stop the feature fleet-wide in one restart without editing anybody's
+    # configuration. Two of them because the two paths carry different risk: the
+    # fixed lines are standalone utterances, the LLM path has to reason about
+    # mid-turn audio ordering and render parity.
+    #
+    # Nothing happens with these alone: every agent's mode defaults to OFF.
+    tts_cache_speech_enabled: bool = field(
+        default_factory=lambda: _env("TTS_CACHE_SPEECH_ENABLED", "true").lower() == "true")
+    tts_cache_llm_enabled: bool = field(
+        default_factory=lambda: _env("TTS_CACHE_LLM_ENABLED", "true").lower() == "true")
+
+    # OPTIONAL extra ops restriction on top of the per-agent mode. Normally left
+    # empty: rollout is done by setting an agent's speech_cache_mode in the UI.
+    # This exists for the case where ops needs to pin the feature to named agents
+    # regardless of what the DB says — e.g. debugging one agent on one box.
+    # Empty = no restriction. Accepts ai_agent ids or names, case-insensitive.
+    tts_cache_agents: tuple = field(default_factory=lambda: tuple(
+        a.strip().lower() for a in _env("TTS_CACHE_AGENTS", "").split(",") if a.strip()))
+
+    # Per-sentence MISS lines. OFF by default: an enabled agent produces one per
+    # sentence, ~40 a call, and the bot's log retention is 20MB x 5 files — noise
+    # here evicts the evidence for everything else. Turn it on for the rollout
+    # window, when "why did THAT sentence not hit" is the whole question.
+    tts_cache_debug: bool = field(
+        default_factory=lambda: _env("TTS_CACHE_DEBUG", "false").lower() == "true")
+
+    # Bump to invalidate EVERY entry at once (one restart, no deploy). The escape
+    # hatch for a poisoned blob: a bad entry would otherwise be served to every
+    # future call that matched it, forever.
+    tts_cache_salt: str = field(default_factory=lambda: _env("TTS_CACHE_SALT", "v1"))
+
+    # How many times a sentence must be seen — COMPLETE, uninterrupted, confirmed
+    # played to the caller, on a call with a healthy verdict — before we spend one
+    # off-call render on it. Break-even is 3 uses. 2 catches recurring names and
+    # script lines early; raise it if the ledger shows a fat twice-only tail.
+    tts_cache_min_seen: int = field(
+        default_factory=lambda: int(_env("TTS_CACHE_MIN_SEEN", "2")))
+
+    # Own budget, because _evict_tts_cache only sweeps *.mp3 — this namespace
+    # would otherwise grow until the volume is full. 8 kHz s16 = 16 KB/s, so
+    # 2 GB is roughly 32k sentences. df the box before raising it.
+    tts_speech_cache_max_bytes: int = field(
+        default_factory=lambda: int(_env("TTS_SPEECH_CACHE_MAX_BYTES", str(2 * 1024 * 1024 * 1024))))
+
+    # A blob shorter than this cannot be a real sentence — it is a silent stub or
+    # a truncated render, and must never reach a caller (G5).
+    tts_cache_min_blob_ms: int = field(
+        default_factory=lambda: int(_env("TTS_CACHE_MIN_BLOB_MS", "200")))
+
+    # Where the speech cache lives. Under the tts-cache dir on purpose: that is
+    # the one mounted volume, so entries survive container restarts and CI rolls.
+    @property
+    def speech_cache_dir(self) -> str:
+        return os.path.join(self.tts_cache_dir, "speech")
 
     # Failed end-of-call reports spool here and a background sweeper retries them.
     # Lives UNDER the tts-cache dir on purpose: that's the one mounted volume, so

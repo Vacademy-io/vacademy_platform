@@ -714,9 +714,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 AND al.created_at BETWEEN :startDate AND :endDate
             )
             SELECT
-                slide_id,
                 COALESCE(total_minutes_spent, 0) / NULLIF((DATE(:endDate) - DATE(:startDate) + 1), 0) AS avg_daily_minutes_spent
-            FROM total_time_spent;
+            FROM total_time_spent
             """, nativeQuery = true)
     Double findAverageDailyTimeSpentByBatch(
             @Param("startDate") Date startDate,

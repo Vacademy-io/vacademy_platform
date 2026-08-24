@@ -60,7 +60,7 @@ public class CertificateNumberService {
         if (!StringUtils.hasText(instituteId)) {
             throw new IllegalArgumentException("Cannot allocate a certificate number without an institute id");
         }
-        long sequence = sequenceDao.allocateNext(instituteId, year);
+        long sequence = sequenceDao.allocateNext(instituteId, bucketFor(numbering, year), startFrom(numbering));
         return format(numbering, resolvePrefix(institute, numbering), courseCode, sequence, year);
     }
 
@@ -71,6 +71,49 @@ public class CertificateNumberService {
     public String preview(Institute institute, CertificateNumberingDto numbering, String courseCode, long sequence) {
         int year = Calendar.getInstance().get(Calendar.YEAR);
         return format(numbering, resolvePrefix(institute, numbering), courseCode, sequence, year);
+    }
+
+    /**
+     * The position the next certificate would take, reserving nothing.
+     *
+     * <p>The settings screen previews on every keystroke, so this must not
+     * consume the series — and it must go through the same floor and bucket
+     * rules as {@link #generate}, or the samples an admin approves are not the
+     * numbers they get.
+     */
+    public long peekNextSequence(String instituteId, CertificateNumberingDto numbering) {
+        int year = Calendar.getInstance().get(Calendar.YEAR);
+        return sequenceDao.peekNext(instituteId, bucketFor(numbering, year), startFrom(numbering));
+    }
+
+    /**
+     * Highest position already handed out under the numbering config's bucket,
+     * ignoring the floor — {@code 0} when nothing has been issued yet.
+     *
+     * <p>Lets the settings screen say "you have already issued up to 1200, so a
+     * start of 900 is ignored" instead of silently dropping the value.
+     */
+    public long highestIssuedSequence(String instituteId, CertificateNumberingDto numbering) {
+        int year = Calendar.getInstance().get(Calendar.YEAR);
+        return sequenceDao.highestAllocated(instituteId, bucketFor(numbering, year));
+    }
+
+    /**
+     * Which counter this institute draws from: the issuance year, or one
+     * unbroken series when the admin has turned the annual reset off.
+     */
+    public static int bucketFor(CertificateNumberingDto numbering, int year) {
+        boolean resetAnnually = numbering == null || numbering.getResetAnnually() == null
+                || numbering.getResetAnnually();
+        return resetAnnually ? year : CertificateNumberSequenceDao.CONTINUOUS_BUCKET;
+    }
+
+    /** The configured start-at floor, normalised — 0 means "no floor". */
+    public static long startFrom(CertificateNumberingDto numbering) {
+        if (numbering == null || numbering.getStartFrom() == null) {
+            return 0L;
+        }
+        return Math.max(0L, numbering.getStartFrom());
     }
 
     String format(CertificateNumberingDto numbering, String prefix, String courseCode, long sequence, int year) {
@@ -88,11 +131,29 @@ public class CertificateNumberService {
         // {SEQ} / {SEQ:n} first — it is the only token carrying an argument.
         StringBuilder sb = new StringBuilder();
         Matcher m = SEQ_TOKEN.matcher(pattern);
+        boolean hasSequence = false;
         while (m.find()) {
+            hasSequence = true;
             int padding = m.group(1) != null ? Integer.parseInt(m.group(1)) : defaultPadding;
             m.appendReplacement(sb, Matcher.quoteReplacement(zeroPad(sequence, padding)));
         }
         m.appendTail(sb);
+
+        // A pattern with no sequence token formats to the same string for every
+        // learner — and the number is the certificate's primary key, so the
+        // second one issued collides. It is an easy pattern to write by
+        // accident: typing the digits of a number you like ("{PREFIX}000111")
+        // reads as a starting point rather than as a constant.
+        //
+        // Appending the sequence rather than rejecting the pattern keeps the
+        // admin's format and its intent, and keeps issuance working. The
+        // settings page warns about it up front; this is the backstop for
+        // patterns saved before it did.
+        if (!hasSequence) {
+            log.warn("Certificate pattern '{}' contains no {SEQ} token; appending the sequence to keep numbers unique",
+                    pattern);
+            sb.append(zeroPad(sequence, defaultPadding));
+        }
 
         String out = sb.toString()
                 .replace("{PREFIX}", prefix == null ? "" : prefix)

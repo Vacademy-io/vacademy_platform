@@ -15,6 +15,7 @@ import {
     BellRinging,
     MonitorPlay,
     PlugsConnected,
+    UserCheck,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -709,6 +710,20 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                         onChange={(v) => togglePrimitive('defaultBbbWebcamsOnlyForModerator', v)}
                     />
                     <Separator />
+                    <SettingRow
+                        title="Participants join in listen-only mode"
+                        description="Participants can hear the class but can't turn their microphone on. Recommended for large lectures and webinars, where open mics are the main source of avoidable server load."
+                        checked={settings.defaultBbbDisableMic}
+                        onChange={(v) => togglePrimitive('defaultBbbDisableMic', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="Participants can't turn on their camera"
+                        description="Only the host's camera can be on. Recommended alongside listen-only mode for lecture-style classes."
+                        checked={settings.defaultBbbDisableCam}
+                        onChange={(v) => togglePrimitive('defaultBbbDisableCam', v)}
+                    />
+                    <Separator />
                     <div className="flex items-start justify-between gap-4 py-3">
                         <div className="flex-1">
                             <div className="text-sm font-medium text-neutral-800">
@@ -1113,6 +1128,84 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                         checked={settings.recordingTranscriptionEnabled}
                         onChange={(v) => togglePrimitive('recordingTranscriptionEnabled', v)}
                     />
+                </CardContent>
+            </Card>
+
+            {/* Minimum Attendance — present only if actually in the class long enough */}
+            <Card className="border-neutral-200 shadow-none">
+                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <UserCheck size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <CardTitle className="text-base">Minimum Attendance</CardTitle>
+                        <CardDescription>
+                            By default a learner is marked present the moment they click Join, even
+                            if they never actually reach the class or leave after a minute. Turn
+                            this on to require that they were genuinely in the class for a share of
+                            its scheduled length. Works for Vacademy Meet and Zoom; Google Meet
+                            doesn&apos;t report who was in the room, so those classes are
+                            unaffected. A teacher&apos;s manual mark always wins, and teachers are
+                            never marked absent.
+                        </CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-4 border-t border-neutral-100 p-5">
+                    <SettingRow
+                        title="Require a minimum attendance"
+                        description="Applies to classes scheduled from now on. Turning it off later returns new classes to the current behaviour and never re-decides a class that already happened."
+                        checked={settings.defaultAttendanceCriteria.enabled}
+                        onChange={(v) =>
+                            setSettings((prev) => ({
+                                ...prev,
+                                defaultAttendanceCriteria: {
+                                    ...prev.defaultAttendanceCriteria,
+                                    enabled: v,
+                                },
+                            }))
+                        }
+                    />
+
+                    {settings.defaultAttendanceCriteria.enabled && (
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                            <div className="flex-1">
+                                <div className="text-sm font-medium text-neutral-800">
+                                    Minimum share of the class
+                                </div>
+                                <div className="mt-0.5 text-xs text-neutral-500">
+                                    Measured against the scheduled class length. A learner below
+                                    this is marked absent — including anyone who clicked Join but
+                                    never entered. Note a class that finishes early still measures
+                                    everyone against the full scheduled slot.
+                                </div>
+                            </div>
+                            <Select
+                                value={String(
+                                    settings.defaultAttendanceCriteria.minDurationPercent || 60
+                                )}
+                                onValueChange={(v) =>
+                                    setSettings((prev) => ({
+                                        ...prev,
+                                        defaultAttendanceCriteria: {
+                                            ...prev.defaultAttendanceCriteria,
+                                            minDurationPercent: Number(v),
+                                        },
+                                    }))
+                                }
+                            >
+                                <SelectTrigger className="h-9 w-full sm:w-52">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[25, 40, 50, 60, 70, 75, 80, 90].map((pct) => (
+                                        <SelectItem key={pct} value={String(pct)}>
+                                            {pct}% of the class
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

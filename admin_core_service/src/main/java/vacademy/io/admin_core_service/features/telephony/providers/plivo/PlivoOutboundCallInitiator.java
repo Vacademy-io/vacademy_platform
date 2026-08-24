@@ -25,9 +25,11 @@ import java.util.Map;
  *   <li><b>ring_url</b> → the status webhook (COUNSELLOR_RINGING);</li>
  *   <li><b>hangup_url</b> → the status webhook (terminal + duration).</li>
  * </ul>
- * The {@code <Dial>}'s own callback/record URLs (added by the answer endpoint)
- * carry the lead-leg IN_PROGRESS event and the recording. All callbacks echo our
- * {@code ?corr=} (CorrelationStrategy.ECHO_FIELD) so they bind to the call-log row.
+ * The answer endpoint's {@code <Dial>} callback URLs carry the lead-leg IN_PROGRESS
+ * event, and a {@code <Record>} emitted just before that {@code <Dial>} carries the
+ * recording (Plivo has no record attribute on {@code <Dial>} and no record argument
+ * on call-create — see {@link PlivoRecordXml}). All callbacks echo our {@code ?corr=}
+ * (CorrelationStrategy.ECHO_FIELD) so they bind to the call-log row.
  */
 @Component
 public class PlivoOutboundCallInitiator implements OutboundCallInitiator {
@@ -59,8 +61,12 @@ public class PlivoOutboundCallInitiator implements OutboundCallInitiator {
         String ringUrl = appendEvent(statusBase, "ring");
         String hangupUrl = appendEvent(statusBase, "hangup");
 
+        // NB: no record flag — Plivo's call-create API has none. The answer endpoint
+        // emits a <Record> before its <Dial> when the institute has recording on
+        // (BridgeCallRequest.isRecord() and record_calls agree; the answer endpoint
+        // re-reads the config, so this leg needs to pass nothing).
         Map<String, Object> resp = httpClient.createCall(creds, plivoNumber, counsellor,
-                answerUrl, hangupUrl, ringUrl, req.isRecord(), "45");
+                answerUrl, hangupUrl, ringUrl, "45");
 
         // Plivo's create-call response is {message, request_uuid, api_id}. The stable
         // call_uuid only arrives on the callbacks (we correlate by ?corr=), so we keep

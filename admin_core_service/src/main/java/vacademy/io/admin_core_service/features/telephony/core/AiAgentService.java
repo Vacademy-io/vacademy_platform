@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiAgentDTO;
+import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallActionRule;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgent;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiAgentRepository;
@@ -44,6 +45,7 @@ public class AiAgentService {
     private final AiAgentRepository repo;
     private final InstituteRepository instituteRepository;
     private final InstituteSettingService instituteSettingService;
+    private final AiAgentSpeechWarmer speechWarmer;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -86,11 +88,31 @@ public class AiAgentService {
         // an out-of-range value to the TTS (pace 0.5–2.0, temperature 0.01–2.0).
         agent.setPace(clamp(dto.getPace(), 0.5, 2.0));
         agent.setTemperature(clamp(dto.getTemperature(), 0.01, 2.0));
+        agent.setSpeechCacheMode(normalizeSpeechCacheMode(dto.getSpeechCacheMode(),
+                agent.getSpeechCacheMode()));
         agent.setBookingPageId(blankToNull(dto.getBookingPageId()));
+        // Rules are OMITTED, not empty, by an older client that predates them. Writing null
+        // on omission would silently wipe an institute's whole send configuration on the next
+        // save from any such client — the same trap ttsModel documents above. An explicit
+        // empty list still clears them, because that is a deliberate act.
+        if (dto.getSendRules() != null) {
+            agent.setSendRules(writeRules(dto.getSendRules()));
+        }
         AiAgent saved = repo.save(agent);
 
         bridgeIntoSettings(saved, /* remove= */ !Boolean.TRUE.equals(saved.getEnabled()));
-        return toDto(saved);
+        AiAgentDTO out = toDto(saved);
+        // Pre-render this agent's fixed lines into the voice bot's speech cache so
+        // they are served from cache on call #1 instead of being learned slowly.
+        // Fire-and-forget by contract: a warm that fails just means the first calls
+        // pay the vendor, which is exactly today's behaviour.
+        try {
+            speechWarmer.warm(out);
+        } catch (Exception e) {
+            log.warn("ai agent speech warm dispatch failed agent={}: {}",
+                    saved.getId(), e.getMessage());
+        }
+        return out;
     }
 
     @Transactional
@@ -234,6 +256,26 @@ public class AiAgentService {
                                               : TtsVoiceCatalog.defaultVoice(engine));
     }
 
+    /**
+     * TTS speech-cache tier, validated against the closed vocabulary (V466).
+     *
+     * <p>OMITTED means "leave it alone", not "turn it off". An older client that
+     * predates this field would otherwise silently disable the cache on any agent
+     * it saved — the same trap {@code ttsModel} and {@code sendRules} both
+     * document above. An unrecognised value falls back to the stored one rather
+     * than to OFF for the same reason: a typo should not quietly change what a
+     * caller hears, and the DB CHECK constraint would reject it anyway.
+     */
+    private String normalizeSpeechCacheMode(String incoming, String stored) {
+        if (incoming == null || incoming.isBlank()) {
+            return stored == null ? "OFF" : stored;
+        }
+        String v = incoming.trim().toUpperCase();
+        if (v.equals("OFF") || v.equals("FIXED") || v.equals("FULL")) return v;
+        log.warn("ai agent: unknown speechCacheMode {} — keeping {}", incoming, stored);
+        return stored == null ? "OFF" : stored;
+    }
+
     private AiAgentDTO toDto(AiAgent a) {
         return AiAgentDTO.builder()
                 .id(a.getId())
@@ -252,8 +294,113 @@ public class AiAgentService {
                 .pace(a.getPace())
                 .temperature(a.getTemperature())
                 .ttsModel(a.getTtsModel())
+                .speechCacheMode(a.getSpeechCacheMode() == null
+                        ? "OFF" : a.getSpeechCacheMode())
                 .bookingPageId(a.getBookingPageId())
+                .sendRules(readRules(a.getSendRules()))
                 .build();
+    }
+
+    /**
+     * Serialise the rules, stamping an id on any that arrives without one.
+     *
+     * <p>The id is HALF THE IDEMPOTENCY KEY (callLogId:ruleId), so it must be stable across
+     * edits — a UI that regenerated it on every save would make an edited rule re-fire for
+     * every lead whose call was later reprocessed. Minted here rather than trusted from the
+     * client so a rule can never reach the ledger without one.
+     */
+    /** A human label for error messages: the admin's name for the rule, else its key. */
+    private static String ruleName(AiCallActionRule r) {
+        if (r.getLabel() != null && !r.getLabel().isBlank()) return r.getLabel().trim();
+        if (r.getArtefact() != null && !r.getArtefact().isBlank()) return r.getArtefact().trim();
+        return "untitled";
+    }
+
+    /**
+     * Why this rule could never run, phrased for the admin, or null when it is fine.
+     *
+     * <p>Deliberately mirrors AiCallActionService.isUsable plus the per-channel needs that
+     * service checks at execution time. Both layers keep their checks: this one exists so a
+     * person is told, that one because a rule can also be broken by an edit made elsewhere.
+     */
+    private static String ruleProblem(AiCallActionRule r) {
+        if (r.getActionType() == null || r.getActionType().isBlank()) {
+            return "choose what to do (send a message or book a meeting).";
+        }
+        boolean booking = "BOOK_MEETING".equalsIgnoreCase(r.getActionType());
+        AiCallActionRule.When w = r.getWhen();
+        boolean promised = w != null && w.getPromised() != null && !w.getPromised().isBlank();
+        boolean hasPredicate = w != null && (promised
+                || (w.getDisposition() != null && !w.getDisposition().isBlank())
+                || (w.getDeclined() != null && !w.getDeclined().isBlank())
+                || (w.getCustom() != null && !w.getCustom().isBlank())
+                || Boolean.TRUE.equals(w.getMeetingRequested())
+                || (w.getExtracted() != null && !w.getExtracted().isEmpty()));
+        if (!hasPredicate) {
+            return "give it a name, so the AI has a key to refer to it by, and choose when it runs.";
+        }
+        if (promised && (r.getAskLine() == null || r.getAskLine().isBlank())) {
+            return "write what the agent asks on the call - this rule fires when the caller "
+                    + "agrees to that question, so without one it can never run.";
+        }
+        if (booking) {
+            if (r.getBookingPageId() == null || r.getBookingPageId().isBlank()) {
+                return "choose a booking page.";
+            }
+            return null;
+        }
+        String channel = r.getChannel() == null ? "" : r.getChannel().trim().toUpperCase();
+        if ("WHATSAPP".equals(channel)) {
+            if (r.getTemplate() == null || r.getTemplate().isBlank()) {
+                return "choose an approved WhatsApp template - proactive WhatsApp cannot be free text.";
+            }
+        } else if ("EMAIL".equals(channel)) {
+            if (r.getMessageBody() == null || r.getMessageBody().isBlank()) {
+                return "write the email message - it is sent exactly as written.";
+            }
+        } else {
+            return "choose a channel (WhatsApp or email).";
+        }
+        return null;
+    }
+
+    private String writeRules(List<AiCallActionRule> rules) {
+        List<AiCallActionRule> cleaned = new java.util.ArrayList<>();
+        for (AiCallActionRule r : rules) {
+            if (r == null) continue;
+            if (r.getId() == null || r.getId().isBlank()) {
+                r.setId(java.util.UUID.randomUUID().toString());
+            }
+            if (r.getArtefact() != null) r.setArtefact(r.getArtefact().trim());
+            String problem = ruleProblem(r);
+            if (problem != null) {
+                // Reject rather than store. A rule the engine can never execute used to be
+                // accepted here and then dropped silently by AiCallActionService.rulesOf, so
+                // the admin saw a saved rule, the agent offered the thing on a live call, and
+                // nothing was ever sent. Failing the save is the only point where a person is
+                // still looking at the screen.
+                throw new VacademyException("Action rule \"" + ruleName(r) + "\": " + problem);
+            }
+            cleaned.add(r);
+        }
+        if (cleaned.isEmpty()) return null;
+        try {
+            return mapper.writeValueAsString(cleaned);
+        } catch (Exception e) {
+            throw new VacademyException("Could not save the action rules: " + e.getMessage());
+        }
+    }
+
+    /** Total: a corrupt blob reads as no rules rather than failing the whole agent list. */
+    private List<AiCallActionRule> readRules(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return mapper.readValue(json,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<AiCallActionRule>>() {});
+        } catch (Exception e) {
+            log.warn("ai-agent: unreadable send_rules — returning none: {}", e.getMessage());
+            return null;
+        }
     }
 
     private String writeJson(List<String> list) {

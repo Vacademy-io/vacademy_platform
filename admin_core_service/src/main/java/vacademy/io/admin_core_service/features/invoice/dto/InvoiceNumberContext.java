@@ -50,6 +50,22 @@ public class InvoiceNumberContext {
     /** {@code invoice.source} — USER_PLAN / ADMIN_INVOICE / LIVE_SESSION / fee receipt. */
     private String docType;
 
+    /**
+     * Optional counter namespace. When set, the allocation reads and writes
+     * {@code "<namespace>:<scopeKey>"} instead of the bare scope key, giving this kind of
+     * document its own independent sequence.
+     *
+     * <p>Used by proforma invoices: a proforma is not a tax document, so it must never
+     * consume a number out of the institute's real invoice series — a proforma that is
+     * cancelled or never paid would otherwise leave a permanent hole in a numbered tax
+     * series, which is exactly what tax authorities do not allow. It gets its own tidy
+     * {@code PRO:*} counter instead, and only draws a real number when it is paid and
+     * becomes an actual invoice.
+     *
+     * <p>Null (the default) means the document numbers out of the institute's main series.
+     */
+    private String seqNamespace;
+
     // ── Lazy: only invoked when the format needs them ───────────────────────
     private Supplier<String> enrollmentNumberSupplier;
     private Supplier<InvoicePackageContextProjection> packageContextSupplier;

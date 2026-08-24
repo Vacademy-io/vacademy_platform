@@ -71,7 +71,8 @@ public class WhatsAppSettingService {
      * Switches the active WhatsApp provider.
      */
     @Transactional
-    @org.springframework.cache.annotation.CacheEvict(value = "openInstituteDetails", key = "#instituteId")
+    @org.springframework.cache.annotation.CacheEvict(value = { "openInstituteDetails",
+            "openInstituteDetailsNonBatches" }, key = "#instituteId")
     public void switchProvider(String instituteId, SwitchWhatsAppProviderRequest request) {
         String newProvider = request.getNewProvider().toUpperCase();
 
@@ -104,7 +105,8 @@ public class WhatsAppSettingService {
      * Updates or Adds credentials for a given WhatsApp provider.
      */
     @Transactional
-    @org.springframework.cache.annotation.CacheEvict(value = "openInstituteDetails", key = "#instituteId")
+    @org.springframework.cache.annotation.CacheEvict(value = { "openInstituteDetails",
+            "openInstituteDetailsNonBatches" }, key = "#instituteId")
     public void updateCredentials(String instituteId, WhatsAppProviderCredentialsRequest request) {
         String providerName = request.getProviderName().toLowerCase();
 
@@ -140,7 +142,8 @@ public class WhatsAppSettingService {
      * available one.
      */
     @Transactional
-    @org.springframework.cache.annotation.CacheEvict(value = "openInstituteDetails", key = "#instituteId")
+    @org.springframework.cache.annotation.CacheEvict(value = { "openInstituteDetails",
+            "openInstituteDetailsNonBatches" }, key = "#instituteId")
     public void removeCredentials(String instituteId, String providerName) {
         providerName = providerName.toLowerCase();
 

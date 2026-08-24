@@ -730,6 +730,12 @@ export function LoginForm() {
                                                                         autoCapitalize="none"
                                                                         autoCorrect="off"
                                                                         spellCheck={false}
+                                                                        // This is the real login,
+                                                                        // so opt back in to the
+                                                                        // saved-credential fill
+                                                                        // MyInput suppresses by
+                                                                        // default everywhere else.
+                                                                        autoComplete="username"
                                                                         {...field}
                                                                         className="w-full sm:w-full"
                                                                     />
@@ -758,6 +764,7 @@ export function LoginForm() {
                                                                             required={true}
                                                                             size="large"
                                                                             label="Password"
+                                                                            autoComplete="current-password"
                                                                             {...field}
                                                                             className="w-full sm:w-full"
                                                                         />

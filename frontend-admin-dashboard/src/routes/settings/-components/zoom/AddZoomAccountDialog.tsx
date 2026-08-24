@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { noAutofillProps } from '@/lib/no-autofill';
 import {
     createZoomAccount,
     updateZoomAccount,
@@ -374,6 +375,7 @@ const SecretField = forwardRef<HTMLInputElement, SecretFieldProps>(function Secr
                     id={id}
                     ref={ref}
                     type={visible ? 'text' : 'password'}
+                    {...noAutofillProps('password')}
                     {...rest}
                     className="h-9 pr-9"
                 />

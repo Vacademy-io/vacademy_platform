@@ -39,9 +39,18 @@ public class OpenInstituteController {
     }
 
 
+    // MUST NOT share a cache with getInstituteDetails above. Spring keys a cache
+    // entry on (cacheName, key) only -- the method itself is not part of the key --
+    // so when both methods used value="openInstituteDetails" key="#instituteId"
+    // they collided on one slot: whichever ran first for a given institute won, and
+    // the other endpoint then served that payload. It corrupted BOTH directions
+    // (/details returning the batch-less body and vice versa), it flipped per
+    // replica because the cache is per-pod Caffeine, and because the response also
+    // carries Cache-Control public max-age=600 the wrong body was then held by
+    // browsers and shared caches for 10 minutes.
     @GetMapping("/details-non-batches/{instituteId}")
     @ClientCacheable(maxAgeSeconds = 600, scope = CacheScope.PUBLIC)
-    @Cacheable(value = "openInstituteDetails", key = "#instituteId")
+    @Cacheable(value = "openInstituteDetailsNonBatches", key = "#instituteId")
     public ResponseEntity<InstituteInfoDTO> getInstituteDetailsNonBatches(@PathVariable String instituteId) {
 
         InstituteInfoDTO instituteInfoDTO = instituteInitManager.getPublicInstituteDetails(instituteId, false);

@@ -123,6 +123,16 @@ public class InvoiceService {
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
 
+    // Installment line items name themselves after their fee type ("Registration Fee",
+    // "GP Rating Course Installments") rather than the course. student_fee_payment.fee_type_id
+    // is never populated by the generator, so the name is resolved the long way round:
+    // sfp.asv_id → assigned_fee_value.fee_type_id → fee_type.name.
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.repository.AssignedFeeValueRepository assignedFeeValueRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository feeTypeRepository;
+
     // Used by buildSfpInvoiceDTOs() to walk SFP → PaymentLog → Invoice so the synthetic
     // installment rows can carry the real Invoice's pdf_file_id / pdf_url. Avoids the
     // "No PDF" state on PAID/PARTIAL rows that actually have a persisted invoice.
@@ -239,6 +249,29 @@ public class InvoiceService {
     private static final String DOC_TYPE_ADMIN = "ADM";
     private static final String DOC_TYPE_LIVE_SESSION = "LS";
 
+    /**
+     * Doc type and counter namespace for proforma invoices. The namespace is what keeps a
+     * proforma out of the institute's real invoice series — see
+     * {@code InvoiceNumberContext.seqNamespace}.
+     */
+    private static final String DOC_TYPE_PROFORMA = "PRO";
+
+    /** {@code invoice_data_json} keys carrying proforma state. See {@link #finalizeProformaOnPayment}. */
+    private static final String JSON_KEY_PROFORMA = "proforma";
+    private static final String JSON_KEY_PROFORMA_DOC_TYPE = "proformaDocType";
+    private static final String JSON_KEY_PROFORMA_NUMBER = "proformaNumber";
+    private static final String JSON_KEY_FINALIZED_AT = "finalizedAt";
+
+    private static final String DOCUMENT_TITLE_INVOICE = "INVOICE";
+    private static final String DOCUMENT_TITLE_PROFORMA = "PROFORMA INVOICE";
+
+    private static final String DOCUMENT_NUMBER_LABEL_INVOICE = "Invoice Number";
+    private static final String DOCUMENT_NUMBER_LABEL_PROFORMA = "Proforma Number";
+
+    /** Learner-facing noun for the document, for emails and alerts. */
+    private static final String DOCUMENT_NOUN_INVOICE = "invoice";
+    private static final String DOCUMENT_NOUN_PROFORMA = "proforma invoice";
+
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     // ── Editable-placeholder support (admin invoice preview / overrides) ──────────────
@@ -296,6 +329,12 @@ public class InvoiceService {
         PLACEHOLDER_META.put("tax_registration_number", new PlaceholderMeta("Tax Registration No.", "TAX", true, "text"));
         PLACEHOLDER_META.put("hsn_code", new PlaceholderMeta("HSN/SAC Code", "TAX", true, "text"));
         PLACEHOLDER_META.put("subtotal", new PlaceholderMeta("Subtotal", "AMOUNTS", false, "text"));
+        // The gross (pre-discount) price and the discount taken off it. Templates need both to
+        // show "original → less discount → total"; without them a discounted invoice can only
+        // print the net and leaves the reader no way to see a discount was applied.
+        PLACEHOLDER_META.put("plan_price", new PlaceholderMeta("Original Price", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("discount_amount", new PlaceholderMeta("Discount", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("discount_row", new PlaceholderMeta("Discount Line (hidden when none)", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("tax_amount", new PlaceholderMeta("Tax Amount", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("total_amount", new PlaceholderMeta("Total", "AMOUNTS", false, "text"));
         PLACEHOLDER_META.put("currency", new PlaceholderMeta("Currency", "AMOUNTS", false, "text"));
@@ -785,8 +824,13 @@ public class InvoiceService {
                 }
             }
 
-            // Calculate discount for line items display
+            // Calculate discount for line items display. Coupon/referral discounts arrive as
+            // payment_log_line_item rows; a CPO discount lives on the fee schedule instead, so
+            // fall back to that when the line items carry none.
             BigDecimal discountAmount = calculateDiscountAmount(paymentLogLineItems, planPrice);
+            if (discountAmount.compareTo(BigDecimal.ZERO) <= 0 && paymentLog.getUserPlan() != null) {
+                discountAmount = feeScheduleDiscount(paymentLog.getUserPlan().getId(), paymentAmount);
+            }
 
             totalPlanPrice = totalPlanPrice.add(planPrice);
             totalDiscountAmount = totalDiscountAmount.add(discountAmount);
@@ -885,19 +929,19 @@ public class InvoiceService {
         // installment(s) actually settled by THIS payment instead of a single course/plan line —
         // the package name was misleading on an installment invoice. Regular SUBSCRIPTION/ONE_TIME
         // payments create no ledger rows, so they fall through to the plan line item unchanged.
-        List<InvoiceLineItemData> installmentItems = buildInstallmentLineItems(paymentLogId);
+        // Resolved up-front because the installment lines want it too: an installment reads far
+        // better as "<Course> installment 2" than a bare "Installment #2".
+        String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
+        if (description == null || description.trim().isEmpty()) {
+            description = paymentPlan != null && paymentPlan.getName() != null ? paymentPlan.getName()
+                    : "Package Enrollment";
+            log.warn("Using fallback description for payment log: {}", paymentLogId);
+        }
+
+        List<InvoiceLineItemData> installmentItems = buildInstallmentLineItems(paymentLogId, description);
         if (!installmentItems.isEmpty()) {
             lineItems.addAll(installmentItems);
         } else {
-            // For multi-package enrollments, try to get package session details
-            String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
-
-            // Ensure description is never null or empty
-            if (description == null || description.trim().isEmpty()) {
-                description = paymentPlan != null && paymentPlan.getName() != null ? paymentPlan.getName()
-                        : "Package Enrollment";
-                log.warn("Using fallback description for payment log: {}", paymentLogId);
-            }
 
             // Main plan item — show GROSS plan price (actualPrice) here so the
             // discount line items can subtract from it visually. Using the net
@@ -964,7 +1008,65 @@ public class InvoiceService {
      * @param paymentLogId the payment log whose allocations should be itemized
      * @return per-installment line items (possibly empty)
      */
-    private List<InvoiceLineItemData> buildInstallmentLineItems(String paymentLogId) {
+    /**
+     * The fee type's display name for a bill, via sfp.asv_id → assigned_fee_value.fee_type_id →
+     * fee_type.name. Null when the chain can't be resolved, so callers fall back to the course.
+     * (student_fee_payment.fee_type_id exists but the generator never populates it, so it can't
+     * be used as a shortcut here.)
+     */
+    private String feeTypeName(String asvId) {
+        if (!StringUtils.hasText(asvId)) {
+            return null;
+        }
+        try {
+            return assignedFeeValueRepository.findById(asvId)
+                    .map(afv -> afv.getFeeTypeId())
+                    .filter(StringUtils::hasText)
+                    .flatMap(ftId -> feeTypeRepository.findById(ftId))
+                    .map(ft -> ft.getName())
+                    .filter(StringUtils::hasText)
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Could not resolve fee type name for assignedFeeValue {}: {}", asvId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * The list-price equivalent of what this payment allocated to a bill, i.e. the allocation
+     * scaled back up by the bill's own discount ratio (original_amount / amount_expected).
+     *
+     * <p>Line items show gross so the invoice reads "gross, less discount, total". Taking
+     * original_amount directly would overstate a part payment — a ₹3,000 payment against a
+     * ₹10,000 installment would print ₹10,000 — so it is scaled by the share actually paid.
+     * Falls back to the allocated amount whenever the ratio can't be computed, which keeps
+     * undiscounted bills (original == expected) exactly as they were.
+     */
+    private BigDecimal grossForAllocation(StudentFeePayment sfp, BigDecimal allocated) {
+        if (sfp == null || allocated == null || allocated.compareTo(BigDecimal.ZERO) <= 0) {
+            return allocated != null ? allocated : BigDecimal.ZERO;
+        }
+        BigDecimal expected = sfp.getAmountExpected();
+        BigDecimal original = sfp.getOriginalAmount();
+        if (expected == null || original == null
+                || expected.compareTo(BigDecimal.ZERO) <= 0
+                || original.compareTo(expected) <= 0) {
+            return allocated;
+        }
+        return allocated.multiply(original).divide(expected, 2, RoundingMode.HALF_UP);
+    }
+
+    /** Due date ascending, nulls last — the order the fee receipt and the side-view both use. */
+    private static int compareByDueDate(StudentFeePayment a, StudentFeePayment b) {
+        java.util.Date da = a.getDueDate();
+        java.util.Date db = b.getDueDate();
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return da.compareTo(db);
+    }
+
+    private List<InvoiceLineItemData> buildInstallmentLineItems(String paymentLogId, String courseLabel) {
         List<InvoiceLineItemData> items = new ArrayList<>();
         if (paymentLogId == null) {
             return items;
@@ -992,29 +1094,76 @@ public class InvoiceService {
 
             List<StudentFeePayment> sfps = studentFeePaymentRepository.findAllById(allocatedBySfp.keySet());
             // Stable, human-friendly order: by due date ascending (mirrors the fee receipt).
-            sfps.sort((a, b) -> {
-                java.util.Date da = a.getDueDate();
-                java.util.Date db = b.getDueDate();
-                if (da == null && db == null) return 0;
-                if (da == null) return 1;
-                if (db == null) return -1;
-                return da.compareTo(db);
-            });
+            sfps.sort(InvoiceService::compareByDueDate);
 
+            // Installment numbers must be the bill's position in the WHOLE plan, not its position
+            // among the bills this payment happened to settle. Numbering per payment made the
+            // second payment's line read "Installment 1" again, so two invoices for the same
+            // learner both claimed to be for the first installment.
+            Map<String, Integer> ordinalBySfp = new java.util.HashMap<>();
+            // How many bills each fee type has on this plan. A fee type billed only once — a
+            // one-off registration fee — reads better as "Registration Fee" than
+            // "Registration Fee installment 1", so the number is only appended when there is
+            // actually a sequence to distinguish.
+            Map<String, Integer> billsPerFeeType = new java.util.HashMap<>();
+            Map<String, String> feeTypeKeyBySfp = new java.util.HashMap<>();
+            String userPlanId = sfps.stream()
+                    .map(StudentFeePayment::getUserPlanId)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst().orElse(null);
+            if (userPlanId != null) {
+                List<StudentFeePayment> planBills = studentFeePaymentRepository.findByUserPlanId(userPlanId);
+                if (planBills != null && !planBills.isEmpty()) {
+                    planBills.sort(InvoiceService::compareByDueDate);
+                    // Numbering runs within a fee type, not across the plan: with a registration
+                    // fee plus three course installments, the course instalments should read 1..3
+                    // rather than 2..4 because an unrelated fee happened to be billed first.
+                    Map<String, Integer> positionPerFeeType = new java.util.HashMap<>();
+                    for (StudentFeePayment bill : planBills) {
+                        String key = bill.getAsvId() != null ? bill.getAsvId() : "";
+                        feeTypeKeyBySfp.put(bill.getId(), key);
+                        billsPerFeeType.merge(key, 1, Integer::sum);
+                        int next = positionPerFeeType.merge(key, 1, Integer::sum);
+                        ordinalBySfp.put(bill.getId(), next);
+                    }
+                }
+            }
+
+            String courseName = StringUtils.hasText(courseLabel) ? courseLabel.trim() : null;
             java.text.SimpleDateFormat dueFmt = new java.text.SimpleDateFormat("dd MMM yyyy");
-            int index = 1;
+            int fallbackIndex = 1;
             for (StudentFeePayment sfp : sfps) {
-                BigDecimal amt = allocatedBySfp.getOrDefault(sfp.getId(), BigDecimal.ZERO);
+                BigDecimal allocated = allocatedBySfp.getOrDefault(sfp.getId(), BigDecimal.ZERO);
                 String due = sfp.getDueDate() != null ? dueFmt.format(sfp.getDueDate()) : "N/A";
+                int number = ordinalBySfp.getOrDefault(sfp.getId(), fallbackIndex);
+
+                // The fee type's own name when the admin gave it one ("Registration Fee"),
+                // otherwise the course. A learner's invoice should say what the money was for.
+                String label = feeTypeName(sfp.getAsvId());
+                if (!StringUtils.hasText(label)) {
+                    label = courseName;
+                }
+                boolean numbered = billsPerFeeType.getOrDefault(
+                        feeTypeKeyBySfp.getOrDefault(sfp.getId(), ""), 1) > 1;
+                String description = (StringUtils.hasText(label)
+                        ? label + (numbered ? " installment " + number : "")
+                        : "Installment #" + number)
+                        + " (Due: " + due + ")";
+
+                // Line carries the GROSS, with the discount subtracted once in the totals block —
+                // the usual invoice convention, and it reconciles: gross - discount = amount paid.
+                // Grossed up from what this payment actually allocated rather than taken straight
+                // from original_amount, so a part payment shows its own share of the list price
+                // instead of the whole installment.
                 items.add(InvoiceLineItemData.builder()
                         .itemType("FEE_INSTALLMENT")
-                        .description("Installment #" + index + " (Due: " + due + ")")
+                        .description(description)
                         .quantity(1)
-                        .unitPrice(amt)
-                        .amount(amt)
+                        .unitPrice(grossForAllocation(sfp, allocated))
+                        .amount(grossForAllocation(sfp, allocated))
                         .sourceId(sfp.getId())
                         .build());
-                index++;
+                fallbackIndex++;
             }
         } catch (Exception e) {
             log.warn("Failed to build CPO installment line items for paymentLog {}: {}. "
@@ -1246,6 +1395,59 @@ public class InvoiceService {
     /**
      * Calculate total discount amount from payment log line items
      */
+    /**
+     * Discount for a payment against a CPO fee schedule.
+     *
+     * <p>A CPO discount never reaches {@code payment_log_line_item} — it is written straight onto
+     * {@code student_fee_payment.amount_expected} by CpoDiscountService, leaving
+     * {@code original_amount} as the pre-discount figure. So the line-item scan below finds nothing
+     * and the invoice reported a zero discount while the plan price still showed the gross: a
+     * ₹70,000 plan discounted to ₹62,000 printed "₹70,000" with no explanation of the ₹8,000 gap.
+     *
+     * <p>Apportioned by how much of the plan this payment covers, so a part payment carries its
+     * share of the discount rather than the whole of it. Returns zero for plans with no fee
+     * schedule (the non-CPO tracks), leaving their existing behaviour untouched.
+     */
+    private BigDecimal feeScheduleDiscount(String userPlanId, BigDecimal paymentAmount) {
+        if (!StringUtils.hasText(userPlanId) || paymentAmount == null
+                || paymentAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            List<StudentFeePayment> bills = studentFeePaymentRepository.findByUserPlanId(userPlanId);
+            if (bills == null || bills.isEmpty()) {
+                return BigDecimal.ZERO;
+            }
+            BigDecimal gross = BigDecimal.ZERO;
+            BigDecimal net = BigDecimal.ZERO;
+            for (StudentFeePayment bill : bills) {
+                BigDecimal expected = bill.getAmountExpected() != null
+                        ? bill.getAmountExpected()
+                        : BigDecimal.ZERO;
+                // original_amount is backfilled/@PrePersist-set, but fall back to the net so a
+                // missing value reads as "no discount" rather than as a discount of the whole bill.
+                BigDecimal original = bill.getOriginalAmount() != null
+                        ? bill.getOriginalAmount()
+                        : expected;
+                gross = gross.add(original);
+                net = net.add(expected);
+            }
+            BigDecimal totalDiscount = gross.subtract(net);
+            if (totalDiscount.compareTo(BigDecimal.ZERO) <= 0 || net.compareTo(BigDecimal.ZERO) <= 0) {
+                return BigDecimal.ZERO;
+            }
+            // Share of the discount proportional to the slice of the plan being paid for, capped
+            // so a payment larger than the outstanding net can't over-report the discount.
+            BigDecimal share = totalDiscount
+                    .multiply(paymentAmount.min(net))
+                    .divide(net, 2, RoundingMode.HALF_UP);
+            return share.min(totalDiscount);
+        } catch (Exception e) {
+            log.warn("Could not derive fee-schedule discount for userPlan {}: {}", userPlanId, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
+
     private BigDecimal calculateDiscountAmount(List<PaymentLogLineItem> lineItems, BigDecimal planPrice) {
         BigDecimal totalDiscount = BigDecimal.ZERO;
 
@@ -1503,6 +1705,253 @@ public class InvoiceService {
                 buildInvoiceNumberContext(instituteId, institute, config, invoiceData, docType));
     }
 
+    // ── Proforma ─────────────────────────────────────────────────────────────
+
+    /**
+     * Whether this institute issues unpaid invoices as proformas
+     * ({@code INVOICE_SETTING.proformaEnabled}). Defaults to false, so nothing changes for
+     * an institute that has not opted in.
+     */
+    public boolean isProformaEnabled(String instituteId) {
+        try {
+            Institute institute = instituteRepository.findById(instituteId).orElse(null);
+            if (institute == null) {
+                return false;
+            }
+            return isProformaEnabled(institute);
+        } catch (Exception e) {
+            log.warn("Could not resolve proformaEnabled for institute {} — treating as off", instituteId, e);
+            return false;
+        }
+    }
+
+    private boolean isProformaEnabled(Institute institute) {
+        Object raw = getInvoiceSettings(institute).get("proformaEnabled");
+        return raw instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(raw));
+    }
+
+    /**
+     * Allocate a PROFORMA number: its own series, never the institute's invoice series.
+     *
+     * <p>A proforma is a request for payment, not a tax document. Numbering it out of the
+     * real series would mean every cancelled or never-paid proforma leaves a permanent gap
+     * in a sequence that is supposed to be gapless — so it counts in its own {@code PRO:*}
+     * namespace and only draws a real number when it is paid (see
+     * {@link #finalizeProformaOnPayment}).
+     *
+     * <p>The institute's configured format is kept and simply prefixed, so
+     * {@code ACME/2026-27/0007} proformas read {@code PRO-ACME/2026-27/0007}. Formats that
+     * already carry {@code {{doc_type}}} render {@code PRO} through that token instead and
+     * are left alone.
+     *
+     * <p><b>Scope of the guarantee:</b> a proforma number is unique among OUTSTANDING
+     * proformas, not across all time. A row carries one {@code (seq_no, seq_scope_key)}
+     * pair, and finalization re-points that pair at the real series — so the proforma
+     * counter only ever sees proformas that have not yet been paid, and a number can be
+     * handed out again once its previous holder became an invoice. That is deliberate and
+     * harmless: nothing in tax law requires a proforma series to be gapless or permanent
+     * (which is the entire reason for this feature), the unique constraint still prevents
+     * two live documents sharing a number, and the number a paid invoice used to carry is
+     * preserved on it as {@code proformaNumber}. Strict lifetime-monotonic proforma numbers
+     * would need a dedicated column, since one row cannot record its position in two series.
+     */
+    private InvoiceNumberAllocation allocateProformaNumber(String instituteId, InvoiceData invoiceData) {
+        Institute institute = resolveInstituteForNumbering(instituteId, invoiceData);
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
+        if (!config.usesDocType()) {
+            config = config.withFormat(DOC_TYPE_PROFORMA + "-" + config.getFormat());
+        }
+        InvoiceNumberContext context = buildInvoiceNumberContext(
+                instituteId, institute, config, invoiceData, DOC_TYPE_PROFORMA);
+        context.setSeqNamespace(DOC_TYPE_PROFORMA);
+        InvoiceNumberAllocation allocation = invoiceNumberService.generate(config, context);
+        applyAllocation(invoiceData, allocation);
+        log.info("Allocated proforma number {} (seq {} in {}) for institute {}",
+                allocation.number(), allocation.seqNo(), allocation.scopeKey(), instituteId);
+        return allocation;
+    }
+
+    /**
+     * The proforma number this invoice was issued as before it was paid, or null if it was
+     * never a proforma (or still is one — a live proforma shows its number as its own, not as
+     * a back-reference to itself).
+     */
+    private String finalizedFromProformaNumber(Invoice invoice) {
+        if (isProforma(invoice)) {
+            return null;
+        }
+        return readInvoiceDataJsonField(invoice.getInvoiceDataJson(), JSON_KEY_PROFORMA_NUMBER);
+    }
+
+    /** Learner-facing noun for this document: "proforma invoice" while unpaid, else "invoice". */
+    private String documentNoun(Invoice invoice) {
+        return isProforma(invoice) ? DOCUMENT_NOUN_PROFORMA : DOCUMENT_NOUN_INVOICE;
+    }
+
+    /** Title-case form of {@link #documentNoun} for subjects and headings. */
+    private String documentNounTitleCase(Invoice invoice) {
+        return isProforma(invoice) ? "Proforma Invoice" : "Invoice";
+    }
+
+    /**
+     * The proforma number the institute WOULD issue next, without consuming it. Mirrors
+     * {@link #allocateProformaNumber} exactly — same prefixing rule, same {@code PRO:}
+     * counter — so the create-invoice dialog previews the number the document will really
+     * get. Previewing through the invoice series instead would show the admin a number from
+     * a series the proforma is never going to touch.
+     */
+    private String previewProformaNumber(String instituteId, InvoiceData invoiceData) {
+        Institute institute = resolveInstituteForNumbering(instituteId, invoiceData);
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
+        if (!config.usesDocType()) {
+            config = config.withFormat(DOC_TYPE_PROFORMA + "-" + config.getFormat());
+        }
+        InvoiceNumberContext context = buildInvoiceNumberContext(
+                instituteId, institute, config, invoiceData, DOC_TYPE_PROFORMA);
+        context.setSeqNamespace(DOC_TYPE_PROFORMA);
+        return invoiceNumberService.preview(config, context);
+    }
+
+    /**
+     * True when this invoice is still an unpaid proforma.
+     *
+     * <p>Substring-rejects before parsing: this runs per row in {@code mapToDTO}, and an
+     * invoice from an institute that never enabled proformas has no marker in its JSON at
+     * all, so the parse would be pure waste on by far the common case.
+     */
+    private boolean isProforma(Invoice invoice) {
+        String json = invoice.getInvoiceDataJson();
+        if (!StringUtils.hasText(json) || !json.contains(JSON_KEY_PROFORMA)) {
+            return false;
+        }
+        return Boolean.parseBoolean(
+                String.valueOf(readInvoiceDataJsonField(json, JSON_KEY_PROFORMA)));
+    }
+
+    /**
+     * Turn a paid proforma into a real invoice: allocate the actual invoice number NOW,
+     * re-render the PDF under it, and record what it used to be.
+     *
+     * <p>This is the moment the tax document comes into existence, which is the whole point
+     * of the feature — the institute's invoice series only ever advances for money that was
+     * actually received, so it stays gapless no matter how many proformas were raised and
+     * abandoned.
+     *
+     * <p>Called from both settlement paths ({@link #markInvoicePaidManually} and
+     * {@link #markAdminInvoicePaidByPaymentLog}) BEFORE the status flips to PAID. Idempotent:
+     * an invoice that is not a proforma — including one already finalized by an earlier
+     * delivery of the same webhook — returns untouched.
+     *
+     * <p>Best-effort on the PDF only. If re-rendering fails the invoice still gets its real
+     * number and the old proforma PDF is left in place rather than losing the number
+     * allocation; {@code resolveOrRegeneratePdfUrl} re-renders it on the next download.
+     */
+    private Invoice finalizeProformaOnPayment(Invoice invoice) {
+        if (!isProforma(invoice)) {
+            return invoice;
+        }
+        String proformaNumber = invoice.getInvoiceNumber();
+        String docType = readInvoiceDataJsonField(invoice.getInvoiceDataJson(), JSON_KEY_PROFORMA_DOC_TYPE);
+        if (!StringUtils.hasText(docType)) {
+            docType = DOC_TYPE_ADMIN;
+        }
+
+        UserDTO user = authService.getUsersFromAuthServiceByUserIds(List.of(invoice.getUserId()))
+                .stream().findFirst().orElse(UserDTO.builder().build());
+        Institute institute = instituteRepository.findById(invoice.getInstituteId()).orElse(null);
+        InvoiceData numberingData = numberingDataForAdminInvoice(
+                institute, user, invoice.getInvoiceDate(), invoice.getCurrency());
+        InvoiceNumberConfig config = InvoiceNumberConfig.fromInvoiceSettings(
+                institute != null ? getInvoiceSettings(institute) : null);
+
+        InvoiceNumberAllocation allocation =
+                allocateInvoiceNumber(invoice.getInstituteId(), numberingData, docType);
+
+        int maxAttempts = 4;
+        Invoice finalized;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                finalized = self.saveFinalizedProformaNumber(
+                        invoice.getId(), allocation, proformaNumber);
+                break;
+            } catch (DataIntegrityViolationException e) {
+                if (attempt >= maxAttempts - 1) {
+                    throw e;
+                }
+                InvoiceNumberAllocation retry = invoiceNumberService.nextAfterCollision(config,
+                        buildInvoiceNumberContext(invoice.getInstituteId(), institute, config,
+                                numberingData, docType),
+                        attempt + 1);
+                log.warn("Invoice number {} collided while finalizing proforma {} for institute {} "
+                                + "— retrying as {} (attempt {}).",
+                        allocation.number(), proformaNumber, invoice.getInstituteId(),
+                        retry.number(), attempt + 1);
+                allocation = retry;
+            }
+        }
+
+        // The number was written by a DIFFERENT persistence context, so the instance the caller
+        // is holding still carries the proforma number. Copy the authoritative fields across —
+        // the caller saves this instance again to flip the status, and without this that save
+        // would write the stale number straight back over the one just allocated.
+        invoice.setInvoiceNumber(finalized.getInvoiceNumber());
+        invoice.setSeqNo(finalized.getSeqNo());
+        invoice.setSeqScopeKey(finalized.getSeqScopeKey());
+        invoice.setInvoiceDataJson(finalized.getInvoiceDataJson());
+
+        // Re-render under the real number. buildInvoiceDataFromPersistedInvoice reads the
+        // number off the row we just saved, so the new PDF (and its S3 object name) carry it.
+        try {
+            String pdfFileId = regenerateInvoicePdf(invoice);
+            if (StringUtils.hasText(pdfFileId)) {
+                invoice.setPdfFileId(pdfFileId);
+            }
+        } catch (Exception e) {
+            log.error("Proforma {} finalized as {} but PDF re-render failed — the stored PDF still "
+                            + "shows the proforma. It regenerates on next download.",
+                    proformaNumber, invoice.getInvoiceNumber(), e);
+        }
+
+        log.info("[ProformaFinalized] invoiceId={} proforma={} issuedAs={} seq={}",
+                invoice.getId(), proformaNumber, invoice.getInvoiceNumber(), invoice.getSeqNo());
+        return invoice;
+    }
+
+    /**
+     * Writes the real invoice number onto a proforma, in its own transaction.
+     *
+     * <p>MUST be invoked through {@code self} (the injected proxy), not directly: the whole
+     * point is the {@code REQUIRES_NEW} boundary. A duplicate-number write aborts the
+     * transaction it occurs in, so running this inline would leave the caller with a dead
+     * transaction and nothing to retry into.
+     *
+     * <p>Committing separately from the PAID flip is safe in both directions. If the caller
+     * rolls back afterwards, the invoice keeps its real number but stays PENDING_PAYMENT with
+     * {@code proforma=false} — and the retried webhook (or a repeated manual mark-paid,
+     * which still sees PENDING_PAYMENT) skips finalization as a no-op and just flips the
+     * status. No number is ever allocated twice.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Invoice saveFinalizedProformaNumber(String invoiceId, InvoiceNumberAllocation allocation,
+                                               String proformaNumber) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
+        invoice.setInvoiceNumber(allocation.number());
+        invoice.setSeqNo(allocation.seqNo());
+        invoice.setSeqScopeKey(allocation.scopeKey());
+
+        Map<String, Object> audit = new HashMap<>();
+        audit.put(JSON_KEY_PROFORMA, false);
+        audit.put(JSON_KEY_PROFORMA_NUMBER, proformaNumber);
+        audit.put(JSON_KEY_FINALIZED_AT, LocalDateTime.now().toString());
+        invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), audit));
+        // saveAndFlush so a duplicate number surfaces HERE, inside this transaction, where the
+        // caller can catch it — a deferred flush would blow up in the caller instead.
+        return invoiceRepository.saveAndFlush(invoice);
+    }
+
     private Institute resolveInstituteForNumbering(String instituteId, InvoiceData invoiceData) {
         if (invoiceData != null && invoiceData.getInstitute() != null) {
             return invoiceData.getInstitute();
@@ -1676,6 +2125,15 @@ public class InvoiceService {
      */
     private String replaceTemplatePlaceholders(String template, InvoiceData invoiceData) {
         String filled = template;
+        // Institutes can supply their own INVOICE template, and those predate the proforma
+        // tokens. Note what this template supports so the proforma marking can be injected
+        // below rather than silently not happening. Checked against the RAW template, before
+        // any substitution has consumed the tokens.
+        boolean templateNamesDocument = template != null
+                && (template.contains("{{document_title}}")
+                        || template.contains("{{document_number_label}}"));
+        boolean templateShowsProformaRef = template != null
+                && template.contains("{{proforma_reference}}");
 
         // Log whether template contains any placeholders
         boolean hasPlaceholders = filled.contains("{{");
@@ -1699,6 +2157,29 @@ public class InvoiceService {
         // Basic invoice info
         filled = filled.replace("{{invoice_number}}",
                 ov.apply("invoice_number", invoiceData.getInvoiceNumber()));
+        // "PROFORMA INVOICE" while unpaid, "INVOICE" once it is a real one. Templates that
+        // predate this token keep their hardcoded heading — the PRO- number prefix still
+        // marks the document — so no institute's custom template breaks by not having it.
+        filled = filled.replace("{{document_title}}",
+                ov.apply("document_title", StringUtils.hasText(invoiceData.getDocumentTitle())
+                        ? invoiceData.getDocumentTitle() : DOCUMENT_TITLE_INVOICE));
+        // A proforma number is provisional — it is replaced by a real invoice number when the
+        // document is paid. Labelling it "Invoice Number" would present a number that is going
+        // to change as if it were the final one, which is exactly the confusion this avoids.
+        filled = filled.replace("{{document_number_label}}",
+                ov.apply("document_number_label", StringUtils.hasText(invoiceData.getDocumentNumberLabel())
+                        ? invoiceData.getDocumentNumberLabel() : DOCUMENT_NUMBER_LABEL_INVOICE));
+        // On the finalized invoice, point back at the proforma the customer already has, so the
+        // two documents can be reconciled despite carrying different numbers. Empty everywhere
+        // else, and a template without the token simply renders no back-reference.
+        filled = filled.replace("{{proforma_reference}}",
+                StringUtils.hasText(invoiceData.getProformaNumber())
+                        ? "<div class=\"invoice-details-row\">"
+                                + "<div class=\"invoice-details-label\">Ref. Proforma:</div>"
+                                + "<div class=\"invoice-details-value\">"
+                                + escapeHtml(invoiceData.getProformaNumber()) + "</div>"
+                                + "</div>"
+                        : "");
         filled = filled.replace("{{invoice_date}}",
                 ov.apply("invoice_date", invoiceData.getInvoiceDate() != null
                         ? invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER) : ""));
@@ -1759,6 +2240,25 @@ public class InvoiceService {
         filled = filled.replace("{{subtotal}}",
                 invoiceData.getSubtotal() != null ? currencySymbol + invoiceData.getSubtotal().toString()
                         : currencySymbol + "0.00");
+
+        // Original price + discount. {{discount_amount}} was being rendered literally on live
+        // invoices because nothing ever substituted it — it was neither in this block nor in
+        // PLACEHOLDER_META, so a template author could type it and get "{{discount_amount}}" in
+        // the PDF. Both resolve to an empty string when nothing was discounted, and
+        // {{discount_row}} emits the whole labelled line (or nothing), so a template can show the
+        // discount only when there is one — the same shape {{tax_components}} already uses.
+        BigDecimal invoiceDiscount = invoiceData.getDiscountAmount();
+        boolean hasDiscount = invoiceDiscount != null && invoiceDiscount.compareTo(BigDecimal.ZERO) > 0;
+        filled = filled.replace("{{plan_price}}",
+                invoiceData.getPlanPrice() != null ? currencySymbol + invoiceData.getPlanPrice().toString()
+                        : "");
+        filled = filled.replace("{{discount_amount}}",
+                hasDiscount ? currencySymbol + invoiceDiscount.toString() : "");
+        filled = filled.replace("{{discount_row}}",
+                hasDiscount
+                        ? "<div class=\"invoice-discount-row\">Discount: -" + currencySymbol
+                                + invoiceDiscount.toString() + "</div>"
+                        : "");
         filled = filled.replace("{{tax_amount}}",
                 invoiceData.getTaxAmount() != null ? currencySymbol + invoiceData.getTaxAmount().toString()
                         : currencySymbol + "0.00");
@@ -1839,7 +2339,76 @@ public class InvoiceService {
             filled = filled.replace("{{terms_and_conditions}}", termsHtml);
         }
 
+        return applyProformaFallbackMarkup(filled, invoiceData,
+                templateNamesDocument, templateShowsProformaRef);
+    }
+
+    /**
+     * Marks a proforma on templates that have no proforma tokens.
+     *
+     * <p>A custom institute template renders whatever heading its author hardcoded, so
+     * without this a proforma comes out looking exactly like a tax invoice, with a number
+     * that is going to be replaced. Rather than trying to rewrite someone else's heading
+     * (there is no reliable way to find it), this prepends a self-contained banner: it
+     * cannot disturb the existing layout, and it states the two things the reader needs -
+     * that this is not a tax invoice, and that the number is provisional.
+     *
+     * <p>The mirror case is a finalized invoice whose template has no
+     * {@code {{proforma_reference}}}: it gets a single quiet line carrying the proforma
+     * number, so the customer can still reconcile it against the document they were sent.
+     *
+     * <p>All styling is inline. The template's own stylesheet is unknown to us, and a
+     * class-based banner would inherit rules we cannot see.
+     */
+    private String applyProformaFallbackMarkup(String filled, InvoiceData invoiceData,
+                                               boolean templateNamesDocument,
+                                               boolean templateShowsProformaRef) {
+        boolean isProformaDoc = DOCUMENT_TITLE_PROFORMA.equals(invoiceData.getDocumentTitle());
+        String proformaNumber = invoiceData.getProformaNumber();
+
+        if (isProformaDoc && !templateNamesDocument) {
+            String number = StringUtils.hasText(invoiceData.getInvoiceNumber())
+                    ? escapeHtml(invoiceData.getInvoiceNumber()) : "";
+            String banner = "<div style=\"border:2px solid #b45309;background:#fffbeb;color:#7c2d12;"
+                    + "padding:10px 14px;margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;"
+                    + "font-size:12px;line-height:1.5;\">"
+                    + "<div style=\"font-size:16px;font-weight:bold;letter-spacing:1px;\">"
+                    + "PROFORMA INVOICE</div>"
+                    + "<div>This is a request for payment, not a tax invoice."
+                    + (StringUtils.hasText(number)
+                            ? " Reference <strong>" + number + "</strong> is provisional -"
+                                    + " your final invoice number is issued once payment is received."
+                            : " The final invoice number is issued once payment is received.")
+                    + "</div></div>";
+            return injectAfterBodyOpen(filled, banner);
+        }
+
+        if (!isProformaDoc && StringUtils.hasText(proformaNumber) && !templateShowsProformaRef) {
+            String line = "<div style=\"margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;"
+                    + "font-size:11px;color:#4b5563;\">Ref. Proforma: <strong>"
+                    + escapeHtml(proformaNumber) + "</strong></div>";
+            return injectAfterBodyOpen(filled, line);
+        }
+
         return filled;
+    }
+
+    /**
+     * Insert {@code snippet} immediately inside the document body, or at the very start when
+     * the template has no {@code <body>} (some institute templates are fragments rather than
+     * whole documents). Case-insensitive, and tolerant of attributes on the tag.
+     */
+    private String injectAfterBodyOpen(String html, String snippet) {
+        if (!StringUtils.hasText(html)) {
+            return snippet;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<body[^>]*>", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(html);
+        if (m.find()) {
+            return html.substring(0, m.end()) + snippet + html.substring(m.end());
+        }
+        return snippet + html;
     }
 
     /**
@@ -2672,6 +3241,82 @@ public class InvoiceService {
      * <p>MUST be invoked through {@code self} (the injected proxy), not directly: a private/
      * internal call bypasses the Spring proxy and the propagation would silently not apply.
      */
+    /**
+     * Generate an invoice for a payment once the caller's transaction has COMMITTED.
+     *
+     * <p>Callers that create the PaymentLog themselves — the CPO side-view offline payment, the
+     * bulk-assign enrolment payment — must use this rather than calling
+     * {@link #generateInvoice} inline, for two reasons:
+     *
+     * <ol>
+     *   <li>{@link #saveInvoiceWithMultiplePaymentLogs} runs REQUIRES_NEW on the assumption its
+     *       payment log is "already committed by the webhook". For an inline caller that is false:
+     *       the log is still pending in the caller's uncommitted transaction, so the new
+     *       transaction cannot see it and the insert dies on
+     *       {@code invoice_payment_log_mapping_payment_log_id_fkey}.</li>
+     *   <li>That failure then destroys the payment. Catching the exception does NOT clear the
+     *       transaction's rollbackOnly flag, so the caller returns normally and the commit fails
+     *       with "Transaction silently rolled back because it has been marked as rollback-only" —
+     *       taking the PaymentLog, the ledger credit and the FIFO allocation with it.</li>
+     * </ol>
+     *
+     * <p>Running after commit makes the REQUIRES_NEW assumption true and puts invoice failures
+     * strictly downstream of the money: the worst case becomes a recorded payment with no invoice,
+     * which can be regenerated, instead of a lost payment.
+     *
+     * <p>Falls through to running inline when no transaction is active, so a non-transactional
+     * caller still gets its invoice.
+     */
+    public void generateInvoiceAfterCommit(String paymentLogId, String instituteId) {
+        if (!StringUtils.hasText(paymentLogId)) {
+            return;
+        }
+        Runnable task = () -> {
+            try {
+                self.generateInvoiceForCommittedPayment(paymentLogId, instituteId);
+            } catch (Exception e) {
+                // Deliberately swallowed: the payment is already committed and must stand even if
+                // the invoice cannot be produced.
+                log.error("Invoice generation failed for paymentLog {} — the payment itself is "
+                        + "committed and unaffected: {}", paymentLogId, e.getMessage(), e);
+            }
+        };
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            task.run();
+                        }
+                    });
+        } else {
+            task.run();
+        }
+    }
+
+    /**
+     * Reloads the committed payment log and its plan in one fresh transaction, so nothing is
+     * touched while detached, then generates the invoice.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void generateInvoiceForCommittedPayment(String paymentLogId, String instituteId) {
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElse(null);
+        if (paymentLog == null) {
+            log.warn("Skipping post-commit invoice: payment log {} not found", paymentLogId);
+            return;
+        }
+        UserPlan userPlan = paymentLog.getUserPlan();
+        if (userPlan == null) {
+            log.warn("Skipping post-commit invoice: payment log {} has no user plan", paymentLogId);
+            return;
+        }
+        if (!StringUtils.hasText(instituteId)) {
+            log.warn("Skipping post-commit invoice for payment log {}: institute id not resolvable", paymentLogId);
+            return;
+        }
+        generateInvoice(userPlan, paymentLog, instituteId);
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Invoice saveInvoiceWithMultiplePaymentLogs(InvoiceData invoiceData, String invoiceNumber, String pdfFileId,
             List<PaymentLog> paymentLogs, String instituteId) {
@@ -2865,7 +3510,10 @@ public class InvoiceService {
                 return;
             }
 
-            String subject = "Your Invoice " + invoice.getInvoiceNumber();
+            // Say what the document actually is. A proforma emailed as "Your Invoice" reads as a
+            // tax invoice, and its number is replaced the moment it is paid.
+            String documentType = documentNounTitleCase(invoice);
+            String subject = "Your " + documentType + " " + invoice.getInvoiceNumber();
             String body;
             boolean attachPdf = pdfBytes != null && pdfBytes.length > 0;
 
@@ -2901,10 +3549,12 @@ public class InvoiceService {
                     .replace("{{user_name}}", learnerName)
                     .replace("{{learner_name}}", learnerName)
                     .replace("{{total_amount}}", totalAmount)
+                    .replace("{{document_type}}", documentType)
                     .replace("{{invoice_pdf_link}}", pdfLinkOrAttachText);
             subject = subject.replace("{{invoice_number}}", invoiceNumber)
                     .replace("{{user_name}}", learnerName)
-                    .replace("{{learner_name}}", learnerName);
+                    .replace("{{learner_name}}", learnerName)
+                    .replace("{{document_type}}", documentType);
 
             // Institute placeholders (name/address/contact) — the email template can use
             // {{institute_name}} etc., which the body-replace above did not cover.
@@ -2926,7 +3576,9 @@ public class InvoiceService {
             }
 
             if (attachPdf) {
-                String attachmentName = "invoice_" + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : invoice.getId()) + ".pdf";
+                String attachmentName = (isProforma(invoice) ? "proforma_" : "invoice_")
+                        + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : invoice.getId())
+                        + ".pdf";
                 AttachmentUsersDTO.AttachmentDTO attachmentDTO = new AttachmentUsersDTO.AttachmentDTO();
                 attachmentDTO.setAttachmentName(attachmentName);
                 attachmentDTO.setAttachment(Base64.getEncoder().encodeToString(pdfBytes));
@@ -2990,17 +3642,28 @@ public class InvoiceService {
     }
 
     private String buildDefaultInvoiceEmailBody(Invoice invoice, UserDTO user, String instituteId, boolean pdfAttached) {
+        String noun = documentNoun(invoice);
+        String number = invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "";
+        // A proforma is a request for payment, not a receipt — and its number is provisional.
+        // Say both, so nobody files it as a tax invoice or quotes a number that will change.
+        String proformaNote = isProforma(invoice)
+                ? "<p>This is a proforma invoice — a request for payment, not a tax invoice. "
+                        + "Once payment is received we will issue your invoice with its final "
+                        + "invoice number.</p>"
+                : "";
         if (pdfAttached) {
             return "<p>Dear " + (user.getFullName() != null ? user.getFullName() : user.getEmail()) + ",</p>"
-                    + "<p>Please find your invoice " + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "") + " attached to this email.</p>"
+                    + "<p>Please find your " + noun + " " + number + " attached to this email.</p>"
+                    + proformaNote
                     + "<p>Thank you.</p>";
         }
         String pdfUrl = StringUtils.hasText(invoice.getPdfFileId())
                 ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId())
                 : "";
         return "<p>Dear " + (user.getFullName() != null ? user.getFullName() : user.getEmail()) + ",</p>"
-                + "<p>Please find your invoice " + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "") + ".</p>"
-                + (StringUtils.hasText(pdfUrl) ? "<p>Download your invoice: <a href=\"" + pdfUrl + "\">" + pdfUrl + "</a></p>" : "")
+                + "<p>Please find your " + noun + " " + number + ".</p>"
+                + (StringUtils.hasText(pdfUrl) ? "<p>Download your " + noun + ": <a href=\"" + pdfUrl + "\">" + pdfUrl + "</a></p>" : "")
+                + proformaNote
                 + "<p>Thank you.</p>";
     }
 
@@ -3240,6 +3903,85 @@ public class InvoiceService {
         Page<Invoice> invoicePage = invoiceRepository.findByInstituteIdWithFilters(
                 instituteId, userId, status, startDate, endDate, pageable);
         return invoicePage.map(this::mapToDTO);
+    }
+
+    /**
+     * Largest number of payment log ids one lookup will resolve. The Manage Payments table
+     * asks for a page at a time (20-ish), so this is a guard against a pathological caller
+     * rather than a limit anyone should hit.
+     */
+    private static final int MAX_PAYMENT_LOG_INVOICE_LOOKUP = 500;
+
+    /** Chunk size for the IN clause, so a big request can't blow the driver's parameter limit. */
+    private static final int PAYMENT_LOG_INVOICE_LOOKUP_CHUNK = 200;
+
+    /**
+     * Resolve which invoice covers each of the given payment logs, for the Invoice column on
+     * the Manage Payments table.
+     *
+     * <p>Answered from {@code invoice_payment_log_mapping} — the same link the invoice itself
+     * is built from — so the number shown against a payment is the number the learner was
+     * actually issued, not one inferred from amounts or timestamps.
+     *
+     * <p>A payment log with no invoice is simply absent from the result (the caller renders a
+     * dash). A payment log covered by several invoices resolves to the one worth showing: a
+     * live invoice beats a voided (REJECTED) one, and the most recently issued wins after that
+     * — a correction supersedes what it replaced.
+     */
+    public List<PaymentLogInvoiceDTO> getInvoicesForPaymentLogs(String instituteId, List<String> paymentLogIds) {
+        if (!StringUtils.hasText(instituteId) || paymentLogIds == null || paymentLogIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> ids = paymentLogIds.stream()
+                .filter(StringUtils::hasText)
+                .distinct()
+                .limit(MAX_PAYMENT_LOG_INVOICE_LOOKUP)
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, PaymentLogInvoiceProjection> best = new LinkedHashMap<>();
+        for (int from = 0; from < ids.size(); from += PAYMENT_LOG_INVOICE_LOOKUP_CHUNK) {
+            List<String> chunk = ids.subList(from, Math.min(from + PAYMENT_LOG_INVOICE_LOOKUP_CHUNK, ids.size()));
+            for (PaymentLogInvoiceProjection row : invoicePaymentLogMappingRepository
+                    .findInvoiceSummariesByPaymentLogIds(instituteId, chunk)) {
+                best.merge(row.getPaymentLogId(), row,
+                        (existing, candidate) -> preferredInvoiceRow(existing, candidate));
+            }
+        }
+
+        return best.values().stream()
+                .map(row -> PaymentLogInvoiceDTO.builder()
+                        .paymentLogId(row.getPaymentLogId())
+                        .invoiceId(row.getInvoiceId())
+                        .invoiceNumber(row.getInvoiceNumber())
+                        .invoiceDate(row.getInvoiceDate())
+                        .status(row.getStatus())
+                        .totalAmount(row.getTotalAmount())
+                        .currency(row.getCurrency())
+                        .hasPdf(StringUtils.hasText(row.getPdfFileId()))
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    /** Which of two invoices on the same payment log the table should show. See the caller. */
+    private PaymentLogInvoiceProjection preferredInvoiceRow(PaymentLogInvoiceProjection existing,
+                                                            PaymentLogInvoiceProjection candidate) {
+        boolean existingVoided = "REJECTED".equalsIgnoreCase(existing.getStatus());
+        boolean candidateVoided = "REJECTED".equalsIgnoreCase(candidate.getStatus());
+        if (existingVoided != candidateVoided) {
+            return existingVoided ? candidate : existing;
+        }
+        return invoiceRecency(candidate).isAfter(invoiceRecency(existing)) ? candidate : existing;
+    }
+
+    /** Issue time to rank by; falls back to creation time, then to the epoch for legacy rows. */
+    private LocalDateTime invoiceRecency(PaymentLogInvoiceProjection row) {
+        if (row.getInvoiceDate() != null) return row.getInvoiceDate();
+        if (row.getCreatedAt() != null) return row.getCreatedAt();
+        return LocalDateTime.MIN;
     }
 
     /**
@@ -3490,6 +4232,8 @@ public class InvoiceService {
 
         // Read institute invoice settings once for all users in this bulk request
         Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+        // Proforma institutes raise these unpaid; the real invoice number is drawn on payment.
+        boolean proformaMode = isProformaEnabled(institute);
 
         // Subtotal = sum of (unitPrice * quantity) from line items
         BigDecimal subtotal = request.getLineItems().stream()
@@ -3566,9 +4310,13 @@ public class InvoiceService {
                     log.warn("Overridden invoice number '{}' already exists — generating a fresh number instead",
                             overrideNumber);
                 }
-                allocation = allocateInvoiceNumber(request.getInstituteId(),
-                        numberingDataForAdminInvoice(institute, user, invoiceDate, request.getCurrency()),
-                        DOC_TYPE_ADMIN);
+                InvoiceData numberingData =
+                        numberingDataForAdminInvoice(institute, user, invoiceDate, request.getCurrency());
+                // Proforma institutes raise unpaid invoices out of a separate PRO series; the
+                // real invoice number is only drawn when the money arrives.
+                allocation = proformaMode
+                        ? allocateProformaNumber(request.getInstituteId(), numberingData)
+                        : allocateInvoiceNumber(request.getInstituteId(), numberingData, DOC_TYPE_ADMIN);
             }
             String invoiceNumber = allocation.number();
 
@@ -3596,6 +4344,12 @@ public class InvoiceService {
                 Map<String, Object> dataJson = new HashMap<>();
                 if (StringUtils.hasText(effectiveNotes)) dataJson.put("notes", effectiveNotes);
                 if (!renderOverrides.isEmpty()) dataJson.put("overrides", renderOverrides);
+                if (proformaMode) {
+                    // Read back by finalizeProformaOnPayment: the flag says "still a proforma",
+                    // the doc type says which real series to draw from once it is paid.
+                    dataJson.put(JSON_KEY_PROFORMA, true);
+                    dataJson.put(JSON_KEY_PROFORMA_DOC_TYPE, DOC_TYPE_ADMIN);
+                }
                 if (!dataJson.isEmpty()) {
                     invoice.setInvoiceDataJson(INVOICE_JSON_MAPPER.writeValueAsString(dataJson));
                 }
@@ -3660,8 +4414,9 @@ public class InvoiceService {
             // Notify the learner via in-app system alert
             try {
                 String amountStr = request.getCurrency() + " " + totalAmount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
-                String alertTitle = "New Invoice: " + amountStr;
-                String alertBody = "You have a new invoice (" + invoiceNumber + ") of " + amountStr
+                String alertNoun = proformaMode ? "Proforma Invoice" : "Invoice";
+                String alertTitle = "New " + alertNoun + ": " + amountStr;
+                String alertBody = "You have a new " + alertNoun.toLowerCase() + " (" + invoiceNumber + ") of " + amountStr
                         + " due by " + (request.getDueDate() != null ? request.getDueDate().toLocalDate().toString() : "N/A")
                         + ". Tap to pay: " + paymentLink;
                 notificationService.createSystemAlertAnnouncement(
@@ -3893,7 +4648,12 @@ public class InvoiceService {
             throw new VacademyException("Failed to promote payment log to SUCCESS: " + e.getMessage());
         }
 
-        // 3. Link PaymentLog → Invoice + flip status to PAID
+        // 3. A proforma becomes a real invoice at the moment it is paid — this is where the
+        // institute's actual invoice number gets drawn. Runs before the PAID flip so the
+        // number and the status land in the same transaction.
+        invoice = finalizeProformaOnPayment(invoice);
+
+        // Link PaymentLog → Invoice + flip status to PAID
         PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
                 .orElseThrow(() -> new VacademyException(
                         "Payment log not found after creation: " + paymentLogId));
@@ -3980,8 +4740,9 @@ public class InvoiceService {
             notificationService.createSystemAlertAnnouncement(
                     invoice.getInstituteId(),
                     List.of(invoice.getUserId()),
-                    "Reminder: Invoice " + invoice.getInvoiceNumber() + " · " + amountStr,
-                    "Your invoice (" + invoice.getInvoiceNumber() + ") of " + amountStr
+                    "Reminder: " + documentNounTitleCase(invoice) + " " + invoice.getInvoiceNumber()
+                            + " · " + amountStr,
+                    "Your " + documentNoun(invoice) + " (" + invoice.getInvoiceNumber() + ") of " + amountStr
                             + " is still pending. Due " + dueStr + ". Tap to pay: " + paymentLink,
                     "system",
                     institute.getInstituteName() != null
@@ -4307,9 +5068,14 @@ public class InvoiceService {
         BigDecimal subtotal = price.setScale(2, RoundingMode.HALF_UP);
         EffectiveTax tax = computeEffectiveTax(invoiceSettings, subtotal, null, null);
 
-        InvoiceNumberAllocation allocation = allocateInvoiceNumber(instituteId,
-                numberingDataForAdminInvoice(institute, user, LocalDateTime.now(), currency),
-                DOC_TYPE_LIVE_SESSION);
+        // Raised unpaid, so it follows the institute's proforma policy like an admin invoice:
+        // the real number is only drawn once the registration is actually paid for.
+        boolean proformaMode = isProformaEnabled(institute);
+        InvoiceData numberingData =
+                numberingDataForAdminInvoice(institute, user, LocalDateTime.now(), currency);
+        InvoiceNumberAllocation allocation = proformaMode
+                ? allocateProformaNumber(instituteId, numberingData)
+                : allocateInvoiceNumber(instituteId, numberingData, DOC_TYPE_LIVE_SESSION);
 
         Invoice invoice = new Invoice();
         invoice.setInvoiceNumber(allocation.number());
@@ -4329,6 +5095,13 @@ public class InvoiceService {
         invoice.setTaxIncluded(tax.taxIncluded());
         invoice.setSource(INVOICE_SOURCE_LIVE_SESSION);
         invoice.setSourceId(registrationId);
+        if (proformaMode) {
+            Map<String, Object> proformaState = new HashMap<>();
+            proformaState.put(JSON_KEY_PROFORMA, true);
+            proformaState.put(JSON_KEY_PROFORMA_DOC_TYPE, DOC_TYPE_LIVE_SESSION);
+            invoice.setInvoiceDataJson(
+                    mergeInvoiceDataJson(invoice.getInvoiceDataJson(), proformaState));
+        }
         invoice = invoiceRepository.save(invoice);
 
         AdminInvoiceLineItemRequestDTO lineReq = new AdminInvoiceLineItemRequestDTO();
@@ -4428,6 +5201,10 @@ public class InvoiceService {
             return;
         }
 
+        // A proforma becomes a real invoice at the moment it is paid — draw the institute's
+        // actual invoice number before flipping the status.
+        invoice = finalizeProformaOnPayment(invoice);
+
         invoice.setStatus(INVOICE_STATUS_PAID);
         invoiceRepository.saveAndFlush(invoice);
         log.info("Admin invoice {} marked as PAID via paymentLogId={}", invoice.getInvoiceNumber(), paymentLogId);
@@ -4512,6 +5289,12 @@ public class InvoiceService {
                 .user(user)
                 .institute(institute)
                 .invoiceNumber(invoice.getInvoiceNumber())
+                // Taken from the row rather than a parameter so the heading can never
+                // disagree with what the invoice actually is.
+                .documentTitle(isProforma(invoice) ? DOCUMENT_TITLE_PROFORMA : DOCUMENT_TITLE_INVOICE)
+                .documentNumberLabel(isProforma(invoice)
+                        ? DOCUMENT_NUMBER_LABEL_PROFORMA : DOCUMENT_NUMBER_LABEL_INVOICE)
+                .proformaNumber(finalizedFromProformaNumber(invoice))
                 .invoiceDate(invoice.getInvoiceDate())
                 .dueDate(invoice.getDueDate())
                 .subtotal(subtotal)
@@ -4794,18 +5577,27 @@ public class InvoiceService {
                         .findByInstituteIdAndInvoiceNumber(request.getInstituteId(), overrideNumber.trim())
                         .map(existing -> existing.getId().equals(request.getEditingInvoiceId()))
                         .orElse(true);
+        // Proforma institutes raise this unpaid, so preview the PROFORMA series — otherwise
+        // the dialog promises an invoice number the created document will not carry, and the
+        // number appears to change out from under the admin.
+        boolean proformaMode = isProformaEnabled(institute);
+        InvoiceData previewNumberingData = numberingDataForAdminInvoice(institute, user,
+                request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now(),
+                request.getCurrency());
         String invoiceNumber = numberAvailable
                 ? overrideNumber.trim()
-                : previewInvoiceNumber(request.getInstituteId(),
-                        numberingDataForAdminInvoice(institute, user,
-                                request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now(),
-                                request.getCurrency()),
-                        DOC_TYPE_ADMIN);
+                : (proformaMode
+                        ? previewProformaNumber(request.getInstituteId(), previewNumberingData)
+                        : previewInvoiceNumber(request.getInstituteId(), previewNumberingData,
+                                DOC_TYPE_ADMIN));
 
         InvoiceData invoiceData = InvoiceData.builder()
                 .user(user)
                 .institute(institute)
                 .invoiceNumber(invoiceNumber)
+                .documentTitle(proformaMode ? DOCUMENT_TITLE_PROFORMA : DOCUMENT_TITLE_INVOICE)
+                .documentNumberLabel(proformaMode
+                        ? DOCUMENT_NUMBER_LABEL_PROFORMA : DOCUMENT_NUMBER_LABEL_INVOICE)
                 .invoiceDate(request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now())
                 .dueDate(request.getDueDate())
                 .subtotal(subtotal)
@@ -4935,6 +5727,15 @@ public class InvoiceService {
 
         String sym = getCurrencySymbol(invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR");
         d.put("subtotal", sym + (invoiceData.getSubtotal() != null ? invoiceData.getSubtotal().toString() : "0.00"));
+        // Mirrors the placeholder block in fillTemplate: empty rather than "0.00" when nothing was
+        // discounted, so a template that prints them unconditionally shows a blank, not a false zero.
+        BigDecimal disc = invoiceData.getDiscountAmount();
+        boolean discApplies = disc != null && disc.compareTo(BigDecimal.ZERO) > 0;
+        d.put("plan_price", invoiceData.getPlanPrice() != null ? sym + invoiceData.getPlanPrice().toString() : "");
+        d.put("discount_amount", discApplies ? sym + disc.toString() : "");
+        d.put("discount_row", discApplies
+                ? "<div class=\"invoice-discount-row\">Discount: -" + sym + disc.toString() + "</div>"
+                : "");
         d.put("tax_amount", sym + (invoiceData.getTaxAmount() != null ? invoiceData.getTaxAmount().toString() : "0.00"));
         d.put("total_amount", sym + (invoiceData.getTotalAmount() != null ? invoiceData.getTotalAmount().toString() : "0.00"));
         d.put("currency", nz(invoiceData.getCurrency()));
@@ -5005,6 +5806,10 @@ public class InvoiceService {
                 .user(user)
                 .institute(institute)
                 .invoiceNumber(invoice.getInvoiceNumber())
+                .documentTitle(isProforma(invoice) ? DOCUMENT_TITLE_PROFORMA : DOCUMENT_TITLE_INVOICE)
+                .documentNumberLabel(isProforma(invoice)
+                        ? DOCUMENT_NUMBER_LABEL_PROFORMA : DOCUMENT_NUMBER_LABEL_INVOICE)
+                .proformaNumber(finalizedFromProformaNumber(invoice))
                 .invoiceDate(invoice.getInvoiceDate())
                 .dueDate(invoice.getDueDate())
                 .subtotal(invoice.getSubtotal())
@@ -5143,6 +5948,7 @@ public class InvoiceService {
         return InvoiceDTO.builder()
                 .id(invoice.getId())
                 .invoiceNumber(invoice.getInvoiceNumber())
+                .proforma(isProforma(invoice))
                 .userPlanId(userPlanId) // Retrieved from payment log via mapping
                 .paymentLogId(primaryPaymentLogId) // Primary payment log ID (for backward compatibility)
                 .paymentLogIds(paymentLogIds) // All payment log IDs

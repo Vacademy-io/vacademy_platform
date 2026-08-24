@@ -1,6 +1,11 @@
 package vacademy.io.admin_core_service.features.institute.enums;
 
 public enum SettingKeyEnums {
+    // Scheduled push reporting. One blob holds many schedules (frequency,
+    // sections, scope, recipients); the tick reads it hourly and resolves each
+    // schedule against the institute's own timezone. Read/write via
+    // GenericSettingStrategy like any other key — no bespoke config table.
+    REPORT_SETTING,
     NAMING_SETTING,
     COURSE_SETTING,
     CERTIFICATE_SETTING,

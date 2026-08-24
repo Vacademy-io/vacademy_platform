@@ -8,7 +8,14 @@
  * plus the rules for combining an engine with a voice.
  */
 
-export type TtsModelId = 'google' | 'edge' | 'smallest' | 'rumik' | 'sarvam';
+export type TtsModelId =
+    | 'google'
+    | 'edge'
+    | 'smallest'
+    | 'smallest_pro'
+    | 'deepgram'
+    | 'rumik'
+    | 'sarvam';
 
 export interface VoiceOption {
     id: string;
@@ -61,6 +68,27 @@ export const TTS_MODELS: TtsModelMeta[] = [
         defaultVoice: 'devansh',
     },
     {
+        id: 'smallest_pro',
+        label: 'Smallest.ai Lightning v3.1 Pro',
+        // A SEPARATE engine, not a variant: the v3.1 and v3.1_pro voice lists are
+        // disjoint and the API hard-rejects a cross-model name ("Voice 'devansh' is
+        // not available on the lightning_v3.1_pro model") — a silent call. Costs
+        // $0.195/10K chars (~Rs 1.34/call-min) vs standard's $0.175 (~Rs 1.20);
+        // both are under Google's Rs 2.06, so neither carries a surcharge.
+        note: 'Higher-quality Indian voices. Different voice list from v3.1.',
+        defaultVoice: 'mandar',
+    },
+    {
+        id: 'deepgram',
+        label: 'Deepgram Aura-2 (English only)',
+        // Verified against Deepgram's live /v1/models catalog: 102 TTS models across
+        // en/es/de/fr/nl/it/ja and NO Hindi at any tier. It does NOT refuse other
+        // scripts — Devanagari returns HTTP 200 and fluent nonsense — so the backend
+        // refuses the pairing at save time. $30/1M chars, same as Chirp3-HD.
+        note: 'English only — no Hindi voice exists. Not for a Hinglish agent.',
+        defaultVoice: 'aura-2-asteria-en',
+    },
+    {
         id: 'rumik',
         label: 'Rumik Silk Mulberry 1.5',
         note: 'Cheapest, but mispronounces some Hindi words over the phone.',
@@ -97,6 +125,23 @@ const GOOGLE_FEMALE = [
 const SMALLEST_MALE = ['devansh', 'kaustubh', 'virat', 'karan', 'yash', 'debashis'];
 const SMALLEST_FEMALE = ['imogen', 'nirupma', 'niharika'];
 
+// Smallest.ai Lightning v3.1 PRO. A disjoint palette from standard v3.1 above —
+// the API rejects a cross-model name outright, so these must never be merged.
+const SMALLEST_PRO_MALE = ['mandar', 'mathan', 'barath'];
+const SMALLEST_PRO_FEMALE = ['manasi', 'mrunal', 'ketaki', 'meher'];
+
+// Deepgram Aura-2, American English ONLY — Deepgram publishes no Hindi voice at
+// any tier. Genders are Deepgram's own metadata tags, not inferred from the
+// mythological names: Janus and Juno are both FEMALE there.
+const DEEPGRAM_MALE = [
+    'aura-2-apollo-en', 'aura-2-arcas-en', 'aura-2-atlas-en',
+    'aura-2-hermes-en', 'aura-2-mars-en', 'aura-2-odysseus-en',
+];
+const DEEPGRAM_FEMALE = [
+    'aura-2-asteria-en', 'aura-2-athena-en', 'aura-2-helena-en', 'aura-2-hera-en',
+    'aura-2-luna-en', 'aura-2-cordelia-en', 'aura-2-harmonia-en', 'aura-2-electra-en',
+];
+
 const RUMIK_FEMALE = ['ira', 'emma', 'mia', 'sophia', 'ava', 'siya', 'aisha', 'zoya'];
 const RUMIK_MALE = ['adam', 'lucas', 'noah', 'theo'];
 
@@ -127,6 +172,10 @@ export const FALLBACK_VOICES: VoiceOption[] = [
     ...tag(EDGE_MALE, 'male', 'edge'),
     ...tag(SMALLEST_MALE, 'male', 'smallest'),
     ...tag(SMALLEST_FEMALE, 'female', 'smallest'),
+    ...tag(SMALLEST_PRO_MALE, 'male', 'smallest_pro'),
+    ...tag(SMALLEST_PRO_FEMALE, 'female', 'smallest_pro'),
+    ...tag(DEEPGRAM_MALE, 'male', 'deepgram'),
+    ...tag(DEEPGRAM_FEMALE, 'female', 'deepgram'),
     ...tag(RUMIK_FEMALE, 'female', 'rumik'),
     ...tag(RUMIK_MALE, 'male', 'rumik'),
     ...tag(SARVAM_FEMALE, 'female', 'sarvam'),
@@ -144,6 +193,12 @@ export function normalizeTtsModel(raw?: string | null): TtsModelId | null {
     if (m === 'sarvam' || m.startsWith('sarvam') || m.startsWith('bulbul')) return 'sarvam';
     if (m === 'google' || m.startsWith('google') || m.startsWith('chirp')) return 'google';
     if (m === 'edge' || m.startsWith('edge') || m.startsWith('microsoft')) return 'edge';
+    if (m === 'deepgram' || m.startsWith('deepgram') || m.startsWith('aura')) return 'deepgram';
+    // Pro FIRST — 'smallest_pro' also startsWith('smallest'), so the generic test
+    // below would swallow it and offer standard voices for the pro model, which the
+    // vendor rejects outright. Mirrors TtsVoiceCatalog.normalizeModel on the server.
+    if ((m.startsWith('smallest') || m.startsWith('lightning')) && m.includes('pro'))
+        return 'smallest_pro';
     if (m === 'smallest' || m.startsWith('smallest') || m.startsWith('lightning'))
         return 'smallest';
     return null;

@@ -126,6 +126,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         showAddModule: true,
         showAddChapter: true,
         showAddSlide: true,
+        showLearnerProgressReport: true,
     },
     courseList: {
         tabs: [

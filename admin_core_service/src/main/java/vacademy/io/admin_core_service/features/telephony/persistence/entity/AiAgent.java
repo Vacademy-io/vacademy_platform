@@ -66,6 +66,15 @@ public class AiAgent {
     @Column(name = "tts_model", length = 32)
     private String ttsModel;
 
+    /**
+     * TTS speech-cache tier for this agent: {@code OFF} | {@code FIXED} | {@code FULL}
+     * (V466). Per-agent rather than per-box because the voice bot's env switches are
+     * process-wide, and rolling out to one agent, watching a batch, then widening is
+     * the shape this needs. See docs/crm/TTS_SPEECH_CACHE.md.
+     */
+    @Column(name = "speech_cache_mode", length = 16)
+    private String speechCacheMode;
+
     @Column(name = "opening_line", columnDefinition = "TEXT")
     private String openingLine;
 
@@ -99,6 +108,14 @@ public class AiAgent {
     // request (see AiCallOutcomeProcessor). Null = agent never books.
     @Column(name = "booking_page_id", length = 36)
     private String bookingPageId;
+
+    /**
+     * JSON array of AiCallActionRule: what to send (WhatsApp/email) or book when a call
+     * ends in a given state. NULL/blank = this agent sends nothing, which is every agent
+     * that existed before V462. See AiCallActionService and docs/crm/AI_CALL_ACTIONS.md.
+     */
+    @Column(name = "send_rules", columnDefinition = "TEXT")
+    private String sendRules;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;

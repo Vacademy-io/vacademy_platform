@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
-import { CalendarBlank, VideoCamera } from '@phosphor-icons/react';
+import { useMemo, useState } from 'react';
+import { CalendarBlank, CalendarX, Clock, VideoCamera } from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
 import { useMySchedule } from '../-hooks/use-mentorship';
-import type { BookingInstance } from '../-types/mentorship-types';
+import { SessionActionDialog } from './SessionActionDialog';
+import type { BookingInstance, MentorSessionDTO } from '../-types/mentorship-types';
 
 const ymd = (d: Date): string => {
     const y = d.getFullYear();
@@ -40,6 +42,30 @@ const isToday = (v?: string | number | null): boolean => {
     );
 };
 
+/**
+ * The schedule card reads the booking module's calendar feed, but cancel/reschedule
+ * speak the mentorship session shape. This carries across only the fields the action
+ * dialog actually uses; nothing here is persisted, so the rest can stay empty.
+ */
+const asSession = (b: BookingInstance): MentorSessionDTO => {
+    const start = b.scheduled_start_utc == null ? null : new Date(b.scheduled_start_utc).getTime();
+    const end = b.scheduled_end_utc == null ? null : new Date(b.scheduled_end_utc).getTime();
+    return {
+        booking_instance_id: b.id,
+        title: b.booking_page_title,
+        scheduled_start_utc: start != null && !Number.isNaN(start) ? start : null,
+        scheduled_end_utc: end != null && !Number.isNaN(end) ? end : null,
+        duration_minutes:
+            start != null && end != null && !Number.isNaN(start) && !Number.isNaN(end)
+                ? Math.round((end - start) / 60000)
+                : null,
+        booking_status: b.status,
+        meet_link: b.meet_link,
+        student_name: b.invitee_name,
+        lifecycle: 'UPCOMING',
+    };
+};
+
 interface MyScheduleCardProps {
     instituteId: string | undefined;
 }
@@ -53,6 +79,10 @@ export function MyScheduleCard({ instituteId }: MyScheduleCardProps) {
     }, []);
 
     const { data, isLoading } = useMySchedule(instituteId, startDate, endDate);
+    const [acting, setActing] = useState<{
+        session: MentorSessionDTO;
+        action: 'cancel' | 'reschedule';
+    } | null>(null);
 
     const sessions = useMemo(
         () =>
@@ -93,20 +123,70 @@ export function MyScheduleCard({ instituteId }: MyScheduleCardProps) {
                                     {s.status && s.status !== 'CONFIRMED' ? ` · ${s.status}` : ''}
                                 </span>
                             </div>
-                            {s.meet_link ? (
-                                <a
-                                    href={s.meet_link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex shrink-0 items-center gap-1 text-caption font-medium text-primary-500 hover:text-primary-600"
+                            <div className="flex shrink-0 items-center gap-1">
+                                {s.meet_link ? (
+                                    <a
+                                        href={s.meet_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1 px-2 text-caption font-medium text-primary-500 hover:text-primary-600"
+                                    >
+                                        <VideoCamera size={16} /> Join
+                                    </a>
+                                ) : (
+                                    // Meet links are minted after the booking commits, so a
+                                    // brand-new session can legitimately have none yet — and a
+                                    // row with no control at all reads as broken.
+                                    <span
+                                        className="px-2 text-caption text-neutral-400"
+                                        title="The meeting link is still being created. If it doesn't appear, ask your admin to check the Google connection."
+                                    >
+                                        Link pending
+                                    </span>
+                                )}
+                                <MyButton
+                                    type="button"
+                                    buttonType="text"
+                                    scale="small"
+                                    layoutVariant="icon"
+                                    onClick={() =>
+                                        setActing({ session: asSession(s), action: 'reschedule' })
+                                    }
+                                    aria-label={`Reschedule the session with ${s.invitee_name || 'this learner'}`}
+                                    title="Move this session to another slot"
                                 >
-                                    <VideoCamera size={16} /> Join
-                                </a>
-                            ) : null}
+                                    <Clock size={16} />
+                                </MyButton>
+                                <MyButton
+                                    type="button"
+                                    buttonType="text"
+                                    scale="small"
+                                    layoutVariant="icon"
+                                    onClick={() =>
+                                        setActing({ session: asSession(s), action: 'cancel' })
+                                    }
+                                    aria-label={`Cancel the session with ${s.invitee_name || 'this learner'}`}
+                                    title="Cancel this session"
+                                >
+                                    <CalendarX size={16} className="text-danger-500" />
+                                </MyButton>
+                            </div>
                         </div>
                     ))}
                 </div>
             )}
+
+            <SessionActionDialog
+                session={acting?.session ?? null}
+                action={acting?.action ?? null}
+                instituteId={instituteId}
+                // A mentor acting on their own session: the server refuses anything
+                // they don't host, whatever this says.
+                asAdmin={false}
+                onOpenChange={(o) => {
+                    if (!o) setActing(null);
+                }}
+            />
         </div>
     );
 }

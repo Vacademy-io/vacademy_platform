@@ -38,6 +38,7 @@ import { timeLimit } from '@/constants/dummy-data';
 import { AddingParticipantsTab } from '../AddingParticipantsTab';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import { getAssessmentJoinUrl } from '@/lib/learner-portal-url';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { getAssessmentDetails, handlePostStep3Data } from '../../-services/assessment-services';
@@ -161,7 +162,10 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
             },
             join_link:
                 storeDataStep3?.join_link ||
-                `${instituteDetails?.learner_portal_base_url}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}`,
+                getAssessmentJoinUrl(
+                    assessmentDetails[0]?.saved_data.assessment_url,
+                    instituteDetails?.learner_portal_base_url
+                ),
             show_leaderboard: storeDataStep3?.show_leaderboard || true,
             notify_student: storeDataStep3?.notify_student || {
                 when_assessment_created: true,
@@ -410,9 +414,10 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                     checked: false,
                     student_details: checkedStudentList,
                 },
-                join_link:
-                    `${instituteDetails?.learner_portal_base_url}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}` ||
-                    '',
+                join_link: getAssessmentJoinUrl(
+                    assessmentDetails[0]?.saved_data.assessment_url,
+                    instituteDetails?.learner_portal_base_url
+                ),
                 show_leaderboard:
                     assessmentDetails[currentStep]?.saved_data?.notifications
                         ?.participant_show_leaderboard || false,

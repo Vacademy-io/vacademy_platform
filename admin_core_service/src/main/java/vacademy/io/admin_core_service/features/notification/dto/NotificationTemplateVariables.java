@@ -74,6 +74,14 @@ public class NotificationTemplateVariables {
         private String portalUrl; // Portal login URL
         private String trackingId; // Application tracking ID
 
+        // Password-reset notification. The link already carries the learner's username as a
+        // query parameter, so a template only needs {{reset_password_link}} to produce a
+        // working "set a new password" button. resetPasswordLinkTemplate is the same URL with
+        // a literal {username} left in place — it is what an admin copies when handing the
+        // flow to a third-party system that will substitute its own usernames.
+        private String resetPasswordLink;
+        private String resetPasswordLinkTemplate;
+
         // Guardian account-created notification
         private String guardianName;
         private String guardianUsername;

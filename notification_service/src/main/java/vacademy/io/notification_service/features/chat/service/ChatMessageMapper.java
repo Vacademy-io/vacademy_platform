@@ -6,6 +6,7 @@ import vacademy.io.notification_service.features.announcements.entity.RichTextDa
 import vacademy.io.notification_service.features.announcements.repository.RichTextDataRepository;
 import vacademy.io.notification_service.features.chat.dto.ChatMessageResponse;
 import vacademy.io.notification_service.features.chat.entity.ChatMessage;
+import vacademy.io.notification_service.features.chat.util.ChatTimeUtil;
 
 @Component
 @RequiredArgsConstructor
@@ -36,7 +37,7 @@ public class ChatMessageMapper {
                 .isEdited(msg.getIsEdited())
                 .isDeleted(msg.getIsDeleted())
                 .isFlagged(msg.getIsFlagged())
-                .createdAt(msg.getCreatedAt())
+                .createdAt(ChatTimeUtil.toInstant(msg.getCreatedAt()))
                 .build();
     }
 

@@ -29,8 +29,14 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
      * Pessimistic-write fetch (SELECT ... FOR UPDATE). Used by the BBB
      * meeting/join flow to serialize concurrent first-join requests for the same
      * scheduleId so that exactly one BBB meeting is ever created per session.
-     * The 10s lock timeout is well above p99 BBB /create latency and prevents
-     * indefinite waits if the holder is stuck on a slow upstream call.
+     *
+     * The lock.timeout hint below is INERT on PostgreSQL -- Postgres supports only
+     * NOWAIT / SKIP LOCKED on FOR UPDATE, so Hibernate drops the hint and callers
+     * wait forever (server default lock_timeout = 0). It is kept only because it is
+     * honoured on dialects that do support a lock wait. The wait is actually bounded
+     * by LiveSessionProviderService#boundScheduleLockWait, which issues
+     * SET LOCAL lock_timeout before every call into this method -- if you add a new
+     * caller, bound it there too or it will queue indefinitely.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints({@QueryHint(name = "jakarta.persistence.lock.timeout", value = "10000")})

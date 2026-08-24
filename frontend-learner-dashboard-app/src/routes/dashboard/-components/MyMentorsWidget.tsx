@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarPlus, ChatCircle, UsersThree, VideoCamera } from "@phosphor-icons/react";
+import { CalendarPlus, ChatCircle, UserPlus, UsersThree, VideoCamera } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MyButton } from "@/components/design-system/button";
 import { getInstituteId } from "@/constants/helper";
 import { getCurrentUserId } from "@/lib/auth/sessionUtility";
-import { openDirectConversation } from "@/services/chat/chatApi";
+import { describeDirectChatError, openDirectConversation } from "@/services/chat/chatApi";
+import { useChatEnabled } from "@/hooks/use-chat-enabled";
 import {
+    handleGetMentorDirectory,
     handleGetMyBookings,
     handleGetMyMentors,
     type MyBooking,
@@ -32,14 +34,18 @@ function fmtWhen(v?: string | number | null): string {
 
 /**
  * Learner dashboard widget: the student's assigned mentors + their next upcoming
- * mentor session, with quick Book / Message. Self-hides when the student has no
- * mentors, so it only appears where mentorship is active.
+ * mentor session, with quick Book / Message. A student with no mentor yet gets a
+ * prompt into the directory instead — but only when their institute actually lists
+ * mentors, so the widget still self-hides where mentorship isn't in use.
  */
 export function MyMentorsWidget() {
     const navigate = useNavigate();
     const [instituteId, setInstituteId] = useState<string | undefined>();
     const [userId, setUserId] = useState<string | undefined>();
     const [messagingId, setMessagingId] = useState<string | null>(null);
+    // Chat is off by default institute-wide; without this the learner gets a
+    // Message button whose only outcome is "Couldn't open the chat".
+    const chat = useChatEnabled();
 
     useEffect(() => {
         getInstituteId().then((id) => setInstituteId(id ?? undefined));
@@ -48,6 +54,12 @@ export function MyMentorsWidget() {
 
     const mentorsQuery = useQuery(handleGetMyMentors(instituteId));
     const bookingsQuery = useQuery(handleGetMyBookings(instituteId, userId));
+    // Only asked for when there's nothing to show yet — a student who already has
+    // a mentor never needs the directory to decide what this widget renders.
+    const directoryQuery = useQuery({
+        ...handleGetMentorDirectory(instituteId),
+        enabled: !!instituteId && mentorsQuery.isSuccess && (mentorsQuery.data?.length ?? 0) === 0,
+    });
 
     const mentors = (mentorsQuery.data ?? []) as MyMentor[];
 
@@ -86,7 +98,33 @@ export function MyMentorsWidget() {
         );
     }
 
-    if (mentors.length === 0) return null;
+    if (mentors.length === 0) {
+        if ((directoryQuery.data?.length ?? 0) === 0) return null;
+        return (
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <UsersThree size={18} weight="duotone" className="text-primary-500" />
+                        Mentorship
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col items-start gap-3">
+                    <p className="text-caption text-neutral-500">
+                        Get one-to-one guidance — browse your institute&apos;s mentors and request
+                        the one that fits what you&apos;re working on.
+                    </p>
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="small"
+                        onClick={() => navigate({ to: "/my-mentors" })}
+                    >
+                        <UserPlus size={16} /> Find a mentor
+                    </MyButton>
+                </CardContent>
+            </Card>
+        );
+    }
 
     const book = (m: MyMentor) => {
         if (!m.booking_page_slug || !instituteId) return;
@@ -105,8 +143,15 @@ export function MyMentorsWidget() {
                 targetUserRole: "TEACHER",
             });
             navigate({ to: "/chat", search: { conversationId: conv.id } });
-        } catch {
-            toast.error("Couldn't open the chat. Please try again.");
+        } catch (error) {
+            // A 403 here is permanent (chat off, or a role pair the institute
+            // forbids) — "try again" would be a lie.
+            toast.error(
+                describeDirectChatError(
+                    error,
+                    "Couldn't open the chat. Please try again.",
+                ),
+            );
         } finally {
             setMessagingId(null);
         }
@@ -140,7 +185,7 @@ export function MyMentorsWidget() {
                             <span className="text-xs text-neutral-500">
                                 {fmtWhen(nextSession.scheduled_start_utc)}
                             </span>
-                            {nextSession.meet_link && (
+                            {nextSession.meet_link ? (
                                 <a
                                     href={nextSession.meet_link}
                                     target="_blank"
@@ -149,6 +194,16 @@ export function MyMentorsWidget() {
                                 >
                                     <VideoCamera size={14} /> Join
                                 </a>
+                            ) : (
+                                // The link is minted after the booking commits, so a fresh
+                                // booking can have none yet. Saying so beats a row that
+                                // silently offers no way in.
+                                <span
+                                    className="text-xs text-neutral-400"
+                                    title="Your mentor's meeting link is still being created. Check back shortly."
+                                >
+                                    Link coming soon
+                                </span>
                             )}
                         </div>
                     </div>
@@ -182,16 +237,18 @@ export function MyMentorsWidget() {
                             >
                                 <CalendarPlus size={16} />
                             </MyButton>
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                scale="medium"
-                                layoutVariant="icon"
-                                onClick={() => message(m)}
-                                disable={messagingId === m.user_id}
-                            >
-                                <ChatCircle size={16} />
-                            </MyButton>
+                            {chat.enabled && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    layoutVariant="icon"
+                                    onClick={() => message(m)}
+                                    disable={messagingId === m.user_id}
+                                >
+                                    <ChatCircle size={16} />
+                                </MyButton>
+                            )}
                         </div>
                     </div>
                 ))}

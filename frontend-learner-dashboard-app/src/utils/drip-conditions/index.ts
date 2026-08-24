@@ -34,4 +34,15 @@ export type {
   DripConditionLevel,
   DripConditionBehavior,
   DripConditionTarget,
+  DripAnchor,
+  RelativeDateParams,
 } from "./types";
+
+export {
+  resolveDripCondition,
+  parseCourseSettingsDripConditions,
+} from "./resolveDripCondition";
+export type {
+  ResolvedDripConditions,
+  StoredDripCondition,
+} from "./resolveDripCondition";

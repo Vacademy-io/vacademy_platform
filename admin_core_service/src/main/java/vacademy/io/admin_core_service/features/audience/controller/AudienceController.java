@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.*;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
+import vacademy.io.admin_core_service.features.audience.service.LeadCreatorAttributionService;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
@@ -35,6 +36,9 @@ public class AudienceController {
 
     @Autowired
     private LeadAssignmentNotifier leadAssignmentNotifier;
+
+    @Autowired
+    private LeadCreatorAttributionService leadCreatorAttributionService;
 
     /**
      * Returns the candidate counsellors a caller is allowed to assign a lead
@@ -122,6 +126,43 @@ public class AudienceController {
 
         audienceService.deleteCampaign(audienceId, instituteId);
         return ResponseEntity.ok("Campaign deleted successfully");
+    }
+
+    /**
+     * Add a lead by hand from the admin panel.
+     *
+     * <p>Same payload and same intake pipeline as the public
+     * {@code /open/v1/audience/lead/submit} endpoint, with one difference: this
+     * one knows who is adding the lead. That lets
+     * {@link LeadCreatorAttributionService} stamp the creator as the lead's
+     * counsellor when the institute's audience-access setting asks for it — the
+     * public endpoint carries no token, so it never could.
+     *
+     * <p>Existing website/webhook integrations stay on the open endpoint and are
+     * unaffected.
+     */
+    @PostMapping("/lead/submit")
+    public ResponseEntity<String> submitLead(
+            @RequestBody SubmitLeadRequestDTO requestDTO,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        leadCreatorAttributionService.applyCreatorAsCounsellor(requestDTO, user);
+        return ResponseEntity.ok(audienceService.submitLead(requestDTO));
+    }
+
+    /**
+     * CSV / bulk import of leads from the admin panel. Authenticated twin of
+     * {@code /open/v1/audience/lead/bulk-submit}, for the same reason as
+     * {@link #submitLead}: rows that carry no owner column fall to the person
+     * running the import when the audience-access setting asks for it.
+     */
+    @PostMapping("/lead/bulk-submit")
+    public ResponseEntity<BulkSubmitLeadResponseDTO> bulkSubmitLead(
+            @RequestBody BulkSubmitLeadRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        leadCreatorAttributionService.applyCreatorAsCounsellor(request, user);
+        return ResponseEntity.ok(audienceService.bulkSubmitLead(request));
     }
 
     @PostMapping("/leads")

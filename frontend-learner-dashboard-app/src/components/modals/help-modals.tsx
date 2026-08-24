@@ -23,6 +23,13 @@ import { fetchDataByIds } from "@/services/GetDataById";
 import { RichText, Assessment as AssessmentType } from "@/types/assessment";
 import { useEffect } from "react";
 import { Preferences } from "@capacitor/preferences";
+import { useLiveTestUi } from "../common/questionLiveTest/live-test-ui-context";
+import { InlineErrorBoundary } from "@/components/core/inline-error-boundary";
+import {
+  createReattemptRequest,
+  getMyReattemptRequests,
+  type ReattemptRequest,
+} from "@/services/reattempt-request";
 
 interface HelpModalProps {
   open: boolean;
@@ -40,6 +47,80 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
   // const { assessment, currentSection } = useAssessmentStore();
   // const { alerts, requests, addRequest } = useAlertsStore();
   const { alerts } = useAlertsStore();
+  // The live test has already resolved these; `useLiveTestUi` falls back to the
+  // documented defaults when this modal is rendered outside the provider.
+  const { settings: examExperience } = useLiveTestUi();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<ReattemptRequest | null>(
+    null
+  );
+
+  const isRequestType = type === "reattempt" || type === "time";
+  const requestType = type === "reattempt" ? "REATTEMPT" : "TIME_INCREASE";
+
+  /** The assessment id lives in the same Preferences blob the exam shell reads. */
+  const getAssessmentId = async (): Promise<string | null> => {
+    const stored = await Preferences.get({ key: "InstructionID_and_AboutID" });
+    const parsed = stored.value ? JSON.parse(stored.value) : null;
+    return parsed?.assessment_id ?? null;
+  };
+
+  // Show a request that is already in flight rather than inviting a duplicate —
+  // a learner watching a timer run down will reopen this dialog repeatedly.
+  useEffect(() => {
+    if (!open || !isRequestType) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const assessmentId = await getAssessmentId();
+        if (!assessmentId) return;
+        const mine = await getMyReattemptRequests(assessmentId);
+        if (cancelled) return;
+        setPendingRequest(
+          mine.find(
+            (r) => r.request_type === requestType && r.status === "PENDING"
+          ) ?? null
+        );
+      } catch (error) {
+        // Non-fatal: worst case the learner sees a blank form and the backend
+        // de-duplicates on submit anyway.
+        console.error("Could not load existing requests:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isRequestType, requestType]);
+
+  const handleSubmitRequest = async () => {
+    setSubmitError(null);
+    setIsSubmitting(true);
+    try {
+      const assessmentId = await getAssessmentId();
+      if (!assessmentId) {
+        throw new Error("Could not identify this assessment.");
+      }
+      const created = await createReattemptRequest({
+        assessmentId,
+        requestType,
+        reason: reason.trim(),
+        attemptId: assessment?.attempt_id ?? null,
+      });
+      setPendingRequest(created);
+      setReason("");
+      setShowSuccessDialog(true);
+    } catch (error: unknown) {
+      const message =
+        (error as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ??
+        (error as Error)?.message ??
+        "We could not send your request. Please try again.";
+      setSubmitError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   const fetchInstructions = async () => {
     try {
       const AssessmentData = await Preferences.get({
@@ -99,6 +180,7 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
                   preview={assessmentInfo.preview_time > 0 ? true : false}
                   canSwitchSections={assessmentInfo.can_switch_section}
                   assessmentInfo={assessmentInfo}
+                  examExperience={examExperience}
                 />
               )}
               {/* <p>Current Section Instructions:</p>
@@ -161,22 +243,42 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
                 Assessment to submit to the admin.
               </p>
             </div>
-            <Textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Type your reason here"
-              className="min-h-reg-100"
-            />
-            <Button
-              className="w-full bg-primary-500"
-              onClick={() => {
-                // addRequest(type, reason);
-                setReason("");
-                setShowSuccessDialog(true);
-              }}
-            >
-              Submit
-            </Button>
+            {pendingRequest ? (
+              <div className="rounded-lg border border-warning-200 bg-warning-50 p-3">
+                <p className="text-body font-semibold text-neutral-800">
+                  Request already sent
+                </p>
+                <p className="mt-1 text-caption text-neutral-600">
+                  Your institute has it and is reviewing it. You&apos;ll be
+                  notified as soon as they respond.
+                </p>
+                {pendingRequest.reason && (
+                  <p className="mt-2 text-caption italic text-neutral-500">
+                    &ldquo;{pendingRequest.reason}&rdquo;
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <Textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Type your reason here"
+                  className="min-h-reg-100"
+                  disabled={isSubmitting}
+                />
+                {submitError && (
+                  <p className="text-caption text-danger-600">{submitError}</p>
+                )}
+                <Button
+                  className="w-full bg-primary-500"
+                  disabled={reason.trim() === "" || isSubmitting}
+                  onClick={handleSubmitRequest}
+                >
+                  {isSubmitting ? "Sending..." : "Submit"}
+                </Button>
+              </>
+            )}
           </div>
         );
     }
@@ -189,14 +291,15 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle>{getTitle()}</DialogTitle>
           </DialogHeader>
-          {getContent()}
+          <InlineErrorBoundary>{getContent()}</InlineErrorBoundary>
         </DialogContent>
       </Dialog>
 
       <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
         <AlertDialogContent>
           <AlertDialogDescription>
-            Your request has been successfully submitted to the admin.
+            Your request has been sent to your institute. They have been
+            notified and you&apos;ll hear back as soon as they review it.
           </AlertDialogDescription>
           <AlertDialogAction
             onClick={() => {

@@ -116,6 +116,13 @@ public class AiCallOutcomeProcessor {
     @Lazy
     private vacademy.io.admin_core_service.features.audience.service.AudienceService audienceService;
 
+    // @Lazy, matching every other field here. Creates the WhatsApp/email/meeting actions the
+    // agent promised on the call; see AiCallActionService and docs/crm/AI_CALL_ACTIONS.md.
+    // Runs POST-COMMIT alongside the auto-book, never inline (see the note there).
+    @Autowired
+    @Lazy
+    private AiCallActionService aiCallActionService;
+
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
     @Transactional
@@ -358,13 +365,39 @@ public class AiCallOutcomeProcessor {
                     .map(a -> aiAgentService.parseList(a.getDispositions()))
                     .orElse(List.of());
         }
+        // A call OUR OWN diagnostics scored as broken must not close the lead.
+        //
+        // The bot ships a health verdict on the same report that carries the
+        // disposition, and it lands on this very row (diag_health / diag_faults).
+        // The classifier's signature predates diagnostics and has no health
+        // input, so a call where the agent never spoke, looped, or had nothing to
+        // say still produced a terminal disposition: measured 2026-08-14, 113 of
+        // 161 RED calls over 30 days wrote one — 41 Not_Interested and one
+        // Do_Not_Call. Those leads are closed permanently on OUR failure, and
+        // Do_Not_Call is not recoverable at all.
+        //
+        // Degrading to Incomplete puts the lead on the retry path instead, which
+        // is what the analyser itself does when it cannot judge a call
+        // (report.py: an unparseable analysis degrades to Incomplete rather than
+        // dropping the report). Scoped to faults that mean WE broke the call —
+        // not to DEAD_AIR, ANSWER_DELETED or LIKELY_MACHINE, which can be RED on
+        // a call the caller still answered perfectly well.
+        boolean untrusted = isUntrustworthyCall(r);
+        String effectiveDisposition = r.getDisposition();
+        if (untrusted) {
+            log.warn("ai-call outcome: result={} health={} faults=[{}] — call was broken on OUR side; "
+                    + "degrading disposition '{}' to Incomplete so the lead is not closed",
+                    r.getId(), r.getDiagHealth(), r.getDiagFaults(), r.getDisposition());
+            effectiveDisposition = "Incomplete";
+        }
+
         AiCallDecision decision = classifier.classify(
-                r.getStatus(), r.getDurationSeconds(), r.getDisposition(), priorAttempts, settings,
+                r.getStatus(), r.getDurationSeconds(), effectiveDisposition, priorAttempts, settings,
                 agentDispositions);
         boolean connected = isConnected(r, settings);
 
         log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",
-                r.getId(), lead.userId(), r.getDisposition(), r.getStatus(), decision.action(), decision.reason());
+                r.getId(), lead.userId(), effectiveDisposition, r.getStatus(), decision.action(), decision.reason());
 
         applyDecision(decision, lead, r, connected);
 
@@ -374,7 +407,12 @@ public class AiCallOutcomeProcessor {
         // Only fires when a matching status exists, so it never forces a status the
         // institute hasn't defined; otherwise the lead is left as-is. Runs after
         // applyDecision so it's the authoritative status write for this outcome.
-        stampStatusFromDisposition(lead, r.getDisposition());
+        //
+        // Passed null for an untrusted call: this is the SECOND write that would
+        // stamp the bad verdict (applyDecision is the first), and degrading the
+        // classifier input alone would leave it free to write Not-Interested here
+        // anyway. stampStatusFromDisposition returns early on a null disposition.
+        stampStatusFromDisposition(lead, untrusted ? null : r.getDisposition());
 
         // Inbound: the lead dialed our AI line. Once the call log + status are settled,
         // fire LEAD_CALLED_BACK so any workflow wired to "lead called back" can react.
@@ -414,7 +452,17 @@ public class AiCallOutcomeProcessor {
             try {
                 maybeAutoBookMeeting(rRef, leadRef, instRef);
             } catch (Exception ex) {
-                log.warn("ai-call: auto-book failed for result {} (non-fatal): {}", rRef.getId(), ex.getMessage());
+                log.warn("ai-call: auto-book failed for result {} (non-fatal): {}",
+                        rRef.getId(), ex.getMessage());
+            }
+            // Separate try: a booking failure must not cost the caller the brochure they
+            // were promised, and vice versa. Two independent promises, two independent
+            // failure domains.
+            try {
+                maybeRunSendRules(rRef, leadRef, instRef);
+            } catch (Exception ex) {
+                log.warn("ai-call: send rules failed for result {} (non-fatal): {}",
+                        rRef.getId(), ex.getMessage());
             }
         };
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -736,6 +784,37 @@ public class AiCallOutcomeProcessor {
     }
 
     /**
+     * Faults that mean the call failed on OUR side, so its disposition is not
+     * evidence about the lead.
+     *
+     * <p>Deliberately NOT the whole RED set. {@code DEAD_AIR}, {@code ANSWER_DELETED}
+     * and {@code LIKELY_MACHINE} are frequently RED on calls the caller answered
+     * perfectly well — on the 2026-08-14 sample they were 46%, 60% and 30% of calls
+     * respectively, so treating them as untrustworthy would push most outcomes onto
+     * the retry path and re-dial leads who had a real conversation. These four mean
+     * the agent could not hold up its end at all.
+     */
+    private static final List<String> UNTRUSTWORTHY_FAULTS =
+            List.of("BOT_SILENT", "TTS_WEDGE", "HANDBACK_LOOP", "REPLY_LOOP");
+
+    /**
+     * True when the voice bot's own verdict says this call was broken by us:
+     * health RED <b>and</b> at least one {@link #UNTRUSTWORTHY_FAULTS} code.
+     *
+     * <p>Both conditions are required. RED alone is too broad (see above), and a
+     * fault code alone can be AMBER, which is a degraded-but-usable call.
+     * Absent diagnostics (older bot builds, non-VACADEMY_AI providers) read as
+     * trustworthy, preserving the prior behaviour exactly.
+     */
+    private boolean isUntrustworthyCall(AiCallResult r) {
+        if (r == null || !"RED".equalsIgnoreCase(r.getDiagHealth())) return false;
+        String faults = r.getDiagFaults();
+        if (faults == null || faults.isBlank()) return false;
+        String upper = faults.toUpperCase();
+        return UNTRUSTWORTHY_FAULTS.stream().anyMatch(upper::contains);
+    }
+
+    /**
      * True if the call really connected: status "completed" AND past the institute's connect
      * threshold (absent duration ⇒ trust "completed"). Same rule as {@link AiCallOutcomeClassifier}
      * — kept consistent so the {@code callConnected} we hand the workflow matches the decision.
@@ -832,6 +911,24 @@ public class AiCallOutcomeProcessor {
             return;
         }
 
+        // A BOOK_MEETING rule can route this call to a different page than the agent's
+        // default (different meeting types, different hosts). Rules never CREATE the
+        // booking — this method already validates the resolved time and runs post-commit,
+        // and a second copy of that would drift. They only choose the page.
+        try {
+            var ruleAgent = aiAgentService.find(r.getCampaignId(), instituteId).orElse(null);
+            if (ruleAgent != null) {
+                var reportRoot = objectMapper.readTree(
+                        r.getRawPayload() == null ? "{}" : r.getRawPayload());
+                String override = aiCallActionService.bookingPageOverride(
+                        ruleAgent, reportRoot, r.getDisposition());
+                if (override != null && !override.isBlank()) bookingPageId = override;
+            }
+        } catch (Exception ex) {
+            log.warn("ai-call: booking-page rule lookup failed for result {} — using the "
+                    + "agent default: {}", r.getId(), ex.getMessage());
+        }
+
         // Validate the page belongs to this institute + resolve its host for the principal.
         var page = bookingPageService.getOrThrow(bookingPageId);
         if (page == null || !instituteId.equals(page.getInstituteId())) {
@@ -856,6 +953,35 @@ public class AiCallOutcomeProcessor {
         var created = meetingBookingService.createBooking(req, principal);
         log.info("ai-call: auto-booked meeting {} on page {} for lead {} at {}",
                 created != null ? created.getId() : "?", bookingPageId, lead.responseId(), rawIso);
+    }
+
+    /**
+     * Create the WhatsApp / email actions this agent's rules call for.
+     *
+     * <p>Post-commit and fully isolated, for the same reason the auto-book is: the
+     * disposition, the counsellor assignment and the lead status are what matter, and a
+     * brochure must never be able to roll them back. Every failure inside is swallowed and
+     * logged; the method cannot throw.
+     */
+    private void maybeRunSendRules(AiCallResult r, Lead lead, String instituteId) {
+        var agent = aiAgentService.find(r.getCampaignId(), instituteId).orElse(null);
+        if (agent == null) return;
+        com.fasterxml.jackson.databind.JsonNode root;
+        try {
+            root = objectMapper.readTree(r.getRawPayload() == null ? "{}" : r.getRawPayload());
+        } catch (Exception ex) {
+            log.warn("ai-call: unreadable report payload for send rules (result {}): {}",
+                    r.getId(), ex.getMessage());
+            return;
+        }
+        // callLogId is half the idempotency key. It is the same value as correlationId for
+        // an outbound VACADEMY_AI call (telephony_call_log.id == corr); the fallback covers
+        // a report that could not be bound to a log row.
+        String callKey = (r.getCallLogId() != null && !r.getCallLogId().isBlank())
+                ? r.getCallLogId() : r.getCorrelationId();
+        aiCallActionService.applyPostCall(agent, instituteId, callKey,
+                lead.userId(), lead.responseId(), root, r.getDisposition(), r.getCustomerName(),
+                r.getPhoneNumber(), r.getCustomerEmail());
     }
 
     private vacademy.io.common.auth.dto.UserServiceDTO buildHostPrincipal(String hostUserId) {

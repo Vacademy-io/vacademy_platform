@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   CalendarCheck,
   CheckCircle,
+  CircleNotch,
   Clock,
   HourglassMedium,
   MapPin,
@@ -37,6 +38,7 @@ import {
   buildCustomFieldValues,
   convertBookingCustomFields,
 } from "../-utils/booking-custom-field-utils";
+import { buildBookPayload, shouldSkipDetails } from "../-utils/booking-flow";
 import {
   BookingPageResponse,
   BookingView,
@@ -48,20 +50,22 @@ import {
 // Fixed invitee fields + the page's campaign custom fields (validated by the
 // same getDynamicSchema the audience-response/register forms use, nested
 // under the `custom` group).
+//
+// `authed` drops the identity rules entirely: a signed-in learner never sees those
+// three inputs, and the authenticated book endpoint fills name/email/phone in from
+// their account. Keeping the rules would fail validation on fields nobody can fill.
 const buildDetailsSchema = (
-  formFields: AssessmentCustomFieldOpenRegistration[]
-) =>
-  z
-    .object({
-      name: z.string().trim().min(1, "Please enter your name"),
-      email: z
-        .string()
-        .trim()
-        .email("Please enter a valid email")
-        .or(z.literal("")),
-      phone: z.string().trim(),
-      custom: getDynamicSchema(formFields),
-    })
+  formFields: AssessmentCustomFieldOpenRegistration[],
+  authed: boolean
+) => {
+  const base = z.object({
+    name: authed ? z.string().trim() : z.string().trim().min(1, "Please enter your name"),
+    email: z.string().trim().email("Please enter a valid email").or(z.literal("")),
+    phone: z.string().trim(),
+    custom: getDynamicSchema(formFields),
+  });
+  if (authed) return base;
+  return base
     .refine((v) => v.email !== "" || v.phone !== "", {
       message: "Please provide an email or a phone number",
       path: ["email"],
@@ -70,6 +74,7 @@ const buildDetailsSchema = (
       message: "Please enter a valid phone number",
       path: ["phone"],
     });
+};
 
 interface DetailsFormValues {
   name: string;
@@ -215,8 +220,8 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
     [pageData.custom_fields]
   );
   const detailsSchema = useMemo(
-    () => buildDetailsSchema(formFields),
-    [formFields]
+    () => buildDetailsSchema(formFields, !!authed),
+    [formFields, authed]
   );
 
   const form = useForm<DetailsFormValues>({
@@ -230,14 +235,37 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
     mode: "onChange",
   });
 
+  /**
+   * A signed-in learner with nothing left to answer goes straight from the slot to a
+   * confirmed booking. Asking them to retype the name, email and phone their account
+   * already holds was the whole of the "details" step for a mentor booking — pure
+   * friction, and a typo there meant the confirmation went to nobody.
+   */
+  const bookDirectly = shouldSkipDetails(!!authed, formFields.length);
+
   const handleSlotSelected = (slotIso: string, tz: string) => {
+    // On the direct path a tap IS the booking, so a second tap while the first is
+    // still in flight would create two meetings. There is no submit button to disable.
+    if (submitting) return;
     setSelectedSlot(slotIso);
     setSelectedTz(tz);
+    if (bookDirectly) {
+      void confirmBooking(slotIso, tz, {});
+      return;
+    }
     setStep("details");
   };
 
-  const onSubmit = async (values: DetailsFormValues) => {
-    if (!selectedSlot || !selectedTz) return;
+  /**
+   * The one place a booking is created, whether it came from the details form or
+   * straight off a slot tap. `authed` bookings send no identity: the authenticated
+   * endpoint fills it from the caller's own account.
+   */
+  const confirmBooking = async (
+    slotIso: string,
+    tz: string,
+    values: Partial<DetailsFormValues>
+  ) => {
     setSubmitting(true);
     try {
       const customFieldValues = buildCustomFieldValues(
@@ -248,17 +276,17 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
         instituteId,
         slug,
         authenticated: authed,
-        payload: {
-          name: values.name,
-          ...(values.email ? { email: values.email } : {}),
-          ...(values.phone ? { phone: values.phone } : {}),
-          start_time: selectedSlot,
-          invitee_timezone: selectedTz,
-          ...(Object.keys(customFieldValues).length
-            ? { custom_field_values: customFieldValues }
-            : {}),
-          ...(selectedDuration ? { duration_minutes: selectedDuration } : {}),
-        },
+        payload: buildBookPayload({
+          identity: {
+            name: values.name,
+            email: values.email,
+            phone: values.phone,
+          },
+          startTime: slotIso,
+          inviteeTimezone: tz,
+          customFieldValues,
+          durationMinutes: selectedDuration,
+        }),
       });
       setBooking(result);
       setStep("confirmed");
@@ -277,6 +305,11 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const onSubmit = async (values: DetailsFormValues) => {
+    if (!selectedSlot || !selectedTz) return;
+    await confirmBooking(selectedSlot, selectedTz, values);
   };
 
   return (
@@ -345,7 +378,22 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
 
           {/* Step content */}
           <ModernCard variant="glass" padding="lg" rounded="lg">
-            {step === "pick" && (
+            {step === "pick" && submitting && bookDirectly && (
+              // The direct path has no form to sit on while the POST runs, so the
+              // picker is replaced rather than left tappable — a second tap would
+              // race the first booking.
+              <div className="flex flex-col items-center gap-3 py-10 text-center">
+                <CircleNotch
+                  size={28}
+                  className="animate-spin text-primary-500"
+                />
+                <p className="text-body text-neutral-600">
+                  Booking your session…
+                </p>
+              </div>
+            )}
+
+            {step === "pick" && !(submitting && bookDirectly) && (
               <>
                 {sessionTypes.length > 0 && (
                   <div className="mb-5">
@@ -423,7 +471,7 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
                     <ArrowLeft size={16} />
                   </MyButton>
                   <ModernCardTitle size="md" className="text-neutral-700">
-                    Your details
+                    {authed ? "A few questions" : "Your details"}
                   </ModernCardTitle>
                 </div>
                 <div className="mb-4 flex items-center gap-2 rounded-lg border border-primary-100 bg-primary-50 p-3 text-body text-neutral-700">
@@ -440,71 +488,81 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
                     onSubmit={form.handleSubmit(onSubmit)}
                     className="flex flex-col gap-4"
                   >
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <MyInput
-                              inputType="text"
-                              label="Name"
-                              required
-                              inputPlaceholder="Your full name"
-                              input={field.value}
-                              onChangeFunction={field.onChange}
-                              error={form.formState.errors.name?.message}
-                              size="large"
-                              className="w-full"
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <MyInput
-                              inputType="email"
-                              label="Email"
-                              inputPlaceholder="you@example.com"
-                              input={field.value}
-                              onChangeFunction={field.onChange}
-                              error={form.formState.errors.email?.message}
-                              size="large"
-                              className="w-full"
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <MyInput
-                              inputType="tel"
-                              label="Phone"
-                              inputPlaceholder="Your phone number"
-                              input={field.value}
-                              onChangeFunction={field.onChange}
-                              error={form.formState.errors.phone?.message}
-                              size="large"
-                              className="w-full"
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                    <p className="text-caption text-neutral-500">
-                      Provide at least an email or a phone number so we can
-                      share your booking details.
-                    </p>
+                    {!authed && (
+                      <>
+                        <FormField
+                          control={form.control}
+                          name="name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <MyInput
+                                  inputType="text"
+                                  label="Name"
+                                  required
+                                  inputPlaceholder="Your full name"
+                                  input={field.value}
+                                  onChangeFunction={field.onChange}
+                                  error={form.formState.errors.name?.message}
+                                  size="large"
+                                  className="w-full"
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <MyInput
+                                  inputType="email"
+                                  label="Email"
+                                  inputPlaceholder="you@example.com"
+                                  input={field.value}
+                                  onChangeFunction={field.onChange}
+                                  error={form.formState.errors.email?.message}
+                                  size="large"
+                                  className="w-full"
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="phone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl>
+                                <MyInput
+                                  inputType="tel"
+                                  label="Phone"
+                                  inputPlaceholder="Your phone number"
+                                  input={field.value}
+                                  onChangeFunction={field.onChange}
+                                  error={form.formState.errors.phone?.message}
+                                  size="large"
+                                  className="w-full"
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        <p className="text-caption text-neutral-500">
+                          Provide at least an email or a phone number so we can
+                          share your booking details.
+                        </p>
+                      </>
+                    )}
+                    {authed && (
+                      <p className="text-caption text-neutral-500">
+                        We&apos;ll use the name and contact details on your
+                        account — just answer the questions below.
+                      </p>
+                    )}
                     {formFields.length > 0 && (
                       <BookingCustomFields
                         formFields={formFields}

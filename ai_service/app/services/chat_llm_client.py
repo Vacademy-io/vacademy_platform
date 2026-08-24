@@ -21,8 +21,28 @@ class ChatLLMClient:
     agentic behavior.
     """
     
-    def __init__(self, api_key_resolver: ApiKeyResolver):
+    def __init__(
+        self,
+        api_key_resolver: ApiKeyResolver,
+        disable_reasoning: bool = False,
+    ):
+        """
+        disable_reasoning: send `reasoning: {"enabled": false}` so the provider
+            does not spend hidden reasoning tokens before answering.
+
+            OFF BY DEFAULT AND DELIBERATELY SO. This client is shared by
+            assessment generation, coding-question generation, the page builder,
+            the admin assistant and copy-check grading — reasoning is worth
+            paying for there, and copy-check in particular grades real student
+            answer sheets, where suppressing it could cost accuracy on marks.
+
+            Only the learner text chatbot opts in (see
+            AiChatAgentService._make_llm_client): its median message is 23
+            characters and most turns are greetings, "yes"/"idk" and quiz
+            acknowledgements, so reasoning is pure latency and cost there.
+        """
         self.api_key_resolver = api_key_resolver
+        self.disable_reasoning = disable_reasoning
         self.http_client = httpx.AsyncClient(timeout=120.0)
     
     async def chat_completion(
@@ -134,6 +154,12 @@ class ChatLLMClient:
             "max_tokens": max_tokens,
         }
 
+        # Per-client opt-in only — see __init__. Never global: this client also
+        # serves copy-check grading and assessment generation, where reasoning earns
+        # its cost. Accepted by every model we serve and does not affect tool calls.
+        if self.disable_reasoning:
+            payload["reasoning"] = {"enabled": False}
+
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
@@ -232,6 +258,12 @@ class ChatLLMClient:
             "max_tokens": max_tokens,
             "stream": True,
         }
+
+        # Per-client opt-in only — see __init__. Never global: this client also
+        # serves copy-check grading and assessment generation, where reasoning earns
+        # its cost. Accepted by every model we serve and does not affect tool calls.
+        if self.disable_reasoning:
+            payload["reasoning"] = {"enabled": False}
 
         if tools:
             payload["tools"] = tools

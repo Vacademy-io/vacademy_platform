@@ -150,6 +150,57 @@ from sqlalchemy import text
 from ..models.ai_token_usage import ApiProvider, RequestType
 
 
+# ── NLTK corpora bootstrap ────────────────────────────────────────────────
+# The video pipeline needs these for phoneme/POS work. They must NEVER be
+# fetched on a request path: nltk.download() is blocking network I/O, this
+# service is constructed per request, and NLTK's servers rate-limit (429/503),
+# which stalled content generation past the client timeout and blocked the
+# event loop for everything else. Bake them into the image (see Dockerfile) and
+# this becomes a no-op; otherwise it runs at most once, in the background.
+_NLTK_PACKAGES = (
+    ("averaged_perceptron_tagger", "taggers/averaged_perceptron_tagger"),
+    ("cmudict", "corpora/cmudict"),
+)
+_nltk_bootstrap_started = False
+_nltk_log = __import__("logging").getLogger(__name__)
+
+
+def _ensure_nltk_data_async() -> None:
+    """Fetch missing NLTK corpora once per process, off the event loop."""
+    global _nltk_bootstrap_started
+    # Set BEFORE doing anything: a failing fetch must not retry per request.
+    if _nltk_bootstrap_started or os.getenv("SKIP_NLTK_DOWNLOAD"):
+        return
+    _nltk_bootstrap_started = True
+
+    def _work() -> None:
+        try:
+            import nltk
+
+            missing = []
+            for pkg, path in _NLTK_PACKAGES:
+                try:
+                    nltk.data.find(path)
+                except LookupError:
+                    missing.append(pkg)
+            if not missing:
+                return  # already baked into the image — the good case
+            for pkg in missing:
+                try:
+                    nltk.download(pkg, quiet=True)
+                except Exception as exc:  # noqa: BLE001
+                    _nltk_log.warning("[VideoGenService] NLTK download failed for %s: %s", pkg, exc)
+        except Exception as exc:  # noqa: BLE001
+            _nltk_log.warning("[VideoGenService] NLTK bootstrap skipped: %s", exc)
+
+    try:
+        import threading
+
+        threading.Thread(target=_work, name="nltk-bootstrap", daemon=True).start()
+    except Exception as exc:  # noqa: BLE001
+        _nltk_log.warning("[VideoGenService] Could not start NLTK bootstrap thread: %s", exc)
+
+
 # TTS unit cost — currently a single rate across providers; if you add per-provider
 # TTS billing, move this to the DB the way LLM/image rates already live there.
 _TTS_COST_PER_1K_CHARS_USD: float = 0.30  # ElevenLabs standard rate
@@ -287,23 +338,13 @@ class VideoGenerationService:
                 "Please ensure ai-video-gen-main directory is present."
             )
         
-        # Pre-download NLTK data if needed (prevents blocking during video generation)
-        try:
-            import nltk
-            import ssl
-            # Disable SSL verification for NLTK downloads (common issue on Windows)
-            try:
-                _create_unverified_https_context = ssl._create_unverified_context
-            except AttributeError:
-                pass
-            else:
-                ssl._create_default_https_context = _create_unverified_https_context
-            
-            # Download required NLTK data silently
-            nltk.download('averaged_perceptron_tagger', quiet=True)
-            nltk.download('cmudict', quiet=True)
-        except Exception as e:
-            logger.warning(f"[VideoGenService] Failed to pre-download NLTK data: {e}. Will download on first use.")
+        # NLTK corpora are fetched ONCE per process, in the background — never
+        # inline here. This service is constructed per REQUEST, and
+        # nltk.download() is a blocking network call: when NLTK's servers rate-
+        # limit (429/503, which they do) it stalled every content-generation
+        # request past the client's timeout — and, being sync I/O on the event
+        # loop, stalled unrelated requests with it.
+        _ensure_nltk_data_async()
 
     # ── Assist mode (conversational decision gates) ──────────────────
     # Phase 0 handles the SCRIPT-boundary gates (shot_plan, narration,
@@ -381,6 +422,12 @@ class VideoGenerationService:
         _conditional = {
             dg.GateType.ASSET_REQUEST.value: "asset_requests",
             dg.GateType.STYLEFRAME.value: "design_identity",
+            # SHOT_PLAN is conditional too: when v3 ShotPlanning fails the run
+            # falls back to v2, where shots are planned by the Director at the
+            # HTML stage — so at the script boundary there is NO plan yet and
+            # the gate rendered as an unanswerable "0-shot plan" card (prod
+            # vid_1787133865366). Skip it instead; the v2 Director still runs.
+            dg.GateType.SHOT_PLAN.value: "shots",
         }
         plan_key = _conditional.get(gate_type)
         if plan_key is None:
@@ -3492,6 +3539,16 @@ class VideoGenerationService:
                 _NO_AUDIO_CONTENT_TYPES = {"SLIDES"}
                 if stage_pipeline_name == "tts" and content_type in _NO_AUDIO_CONTENT_TYPES:
                     _expected = [k for k in _expected if k != "audio_path"]
+                # Same shape for the avatar stage. The pipeline only produces
+                # avatar_video_path when an avatar was actually requested; with
+                # no avatar host it returns
+                # {"skipped": True, "reason": "host not avatar-enabled"} and
+                # leaves the key None. That documented skip was then read as a
+                # silent failure, so a till-render run WITHOUT an avatar — the
+                # common case — died here after HTML had already succeeded and
+                # the whole video was lost. A skip is not a missing output.
+                if stage_pipeline_name == "avatar" and not generate_avatar:
+                    _expected = [k for k in _expected if k != "avatar_video_path"]
                 _missing = [k for k in _expected if not outputs or not outputs.get(k)]
                 if _missing and not pipeline_error:
                     pipeline_error = (

@@ -300,6 +300,17 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                   })();
                   const _gtlPreStashKey = '__sd_gtl_pre_' + e.id;
                   window[_gtlPreStashKey] = _gtlPreSet;
+                  // Where the global clock actually stood when this shot mounted.
+                  // gsap.timeline() attaches at gtl.totalTime(), and under a
+                  // PARALLEL chunk render that is the chunk's start — not the
+                  // shot's inTime. A worker rendering 60-120s mounts shot 1
+                  // (inTime 11.9) at t=60, so its reveals land during a later
+                  // shot and the shot renders as its initial state: 22 seconds
+                  // of black background in a real video.
+                  const _gtlPreTimeKey = '__sd_gtl_pre_t_' + e.id;
+                  try {
+                      window[_gtlPreTimeKey] = window.gsap.globalTimeline.totalTime();
+                  } catch (_e) { window[_gtlPreTimeKey] = 0; }
                   const scripts = wrapper.querySelectorAll('script');
                   scripts.forEach(oldScript => {
                       // ── External script (src=...) — DO NOT activate ──
@@ -1163,6 +1174,457 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 } catch (_fserr) { /* never break the shot */ }
                             };
 
+                            // MID-WORD BREAK GUARD.
+                            // The foundation CSS sets overflow-wrap:break-word so
+                            // long strings cannot escape their box. The cost is
+                            // that a single word wider than its column is split
+                            // across lines — 'HUMAN PARTICIPAT/ION'. The existing
+                            // fit-text sweep cannot see this: the text WRAPS, so
+                            // scrollWidth never exceeds clientWidth. Measure the
+                            // widest word directly and shrink the type until it
+                            // fits, which is what a designer would do.
+                            var __wordCtx = null;
+                            // Measure what the browser will actually LAY OUT, not the
+                            // source text. A headline written 'Standardized Environment'
+                            // renders as 'STANDARDIZED ENVIRONMENT' under
+                            // text-transform:uppercase — capitals are wider — and
+                            // letter-spacing adds a gap per character that measureText
+                            // knows nothing about. Measuring the raw string said the word
+                            // fit in 735px while the browser broke it across lines.
+                            var __applyTransform = function (word, transform) {
+                                if (transform === 'uppercase') return word.toUpperCase();
+                                if (transform === 'lowercase') return word.toLowerCase();
+                                if (transform === 'capitalize') {
+                                    return word.charAt(0).toUpperCase() + word.slice(1);
+                                }
+                                return word;
+                            };
+                            var __widestWord = function (text, font, transform, spacing) {
+                                if (!__wordCtx) {
+                                    __wordCtx = document.createElement('canvas').getContext('2d');
+                                }
+                                __wordCtx.font = font;
+                                var extra = parseFloat(spacing);
+                                if (!isFinite(extra)) extra = 0;
+                                // JS \s INCLUDES \u00a0. The preamble mandates a
+                                // non-breaking space before every
+                                // accent span, so splitting on \s treated the one
+                                // position the browser CANNOT break at as a break
+                                // opportunity — and every nbsp-joined pair measured
+                                // as fitting when it did not.
+                                var words = String(text || '').split(/[^\S\u00a0]+/);
+                                var max = 0;
+                                for (var i = 0; i < words.length; i++) {
+                                    if (!words[i]) continue;
+                                    var shown = __applyTransform(words[i], transform);
+                                    var w = __wordCtx.measureText(shown).width + extra * shown.length;
+                                    if (w > max) max = w;
+                                }
+                                return max;
+                            };
+                            // Widest UNBREAKABLE RUN inside a text block.
+                            //
+                            // A run is text with no break opportunity in it, and it
+                            // can span element boundaries: V + nbsp + <span>TRIGEMINAL
+                            // </span> is ONE run of 520px even though neither part
+                            // exceeds the 513px column. Measuring per-element own-text
+                            // could never see that, so the guard passed and the browser
+                            // did the only thing left to it — broke inside the word.
+                            //
+                            // Each text node is measured in ITS OWN font: the display
+                            // "V" at 115px and the label at 60px contribute different
+                            // widths to the same run.
+                            var __widestRun = function (el) {
+                                if (!__wordCtx) {
+                                    __wordCtx = document.createElement('canvas').getContext('2d');
+                                }
+                                var max = 0, cur = 0;
+                                var flush = function () { if (cur > max) max = cur; cur = 0; };
+                                var walk = function (node) {
+                                    if (node.nodeType === 3) {
+                                        var host = node.parentElement;
+                                        if (!host) return;
+                                        var cs = getComputedStyle(host);
+                                        __wordCtx.font = cs.fontStyle + ' ' + cs.fontWeight +
+                                            ' ' + cs.fontSize + ' ' + cs.fontFamily;
+                                        var extra = parseFloat(cs.letterSpacing);
+                                        if (!isFinite(extra)) extra = 0;
+                                        var parts = String(node.nodeValue || '')
+                                            .split(/[^\S\u00a0]+/);
+                                        for (var i = 0; i < parts.length; i++) {
+                                            if (i > 0) flush();
+                                            if (!parts[i]) continue;
+                                            var shown = __applyTransform(parts[i], cs.textTransform);
+                                            cur += __wordCtx.measureText(shown).width +
+                                                   extra * shown.length;
+                                        }
+                                        return;
+                                    }
+                                    if (node.nodeType !== 1) return;
+                                    // BR is a FORCED break and WBR is an explicit
+                                    // break opportunity. Walking through them joined
+                                    // the text either side into one phantom run
+                                    // ("Pressure falls" + "as speed rises" measured as
+                                    // one 1000px token) and over-shrank the headline
+                                    // to 60% for an overflow that did not exist.
+                                    var tag = node.nodeName;
+                                    if (tag === 'BR' || tag === 'WBR') { flush(); return; }
+                                    var d = getComputedStyle(node).display;
+                                    var inline = d.indexOf('inline') === 0;
+                                    if (!inline) flush();
+                                    for (var c = 0; c < node.childNodes.length; c++) {
+                                        walk(node.childNodes[c]);
+                                    }
+                                    if (!inline) flush();
+                                };
+                                walk(el);
+                                flush();
+                                return max;
+                            };
+
+                            // Is this the paragraph-level unit — a block that holds text
+                            // and has no block descendant that also holds text? Only
+                            // those get measured, so a wrapper never shrinks type that
+                            // already fits inside its own narrower child.
+                            var __isTextBlock = function (el) {
+                                var d = getComputedStyle(el).display;
+                                if (d.indexOf('inline') === 0 || d === 'none') return false;
+                                if (!(el.textContent || '').trim()) return false;
+                                var kids = el.querySelectorAll('*');
+                                for (var i = 0; i < kids.length; i++) {
+                                    var k = kids[i];
+                                    if (!(k.textContent || '').trim()) continue;
+                                    var kd = getComputedStyle(k).display;
+                                    if (kd !== 'none' && kd.indexOf('inline') !== 0) return false;
+                                }
+                                return true;
+                            };
+
+                            var __fitWordsSweep = function () {
+                                try {
+                                    var root = scope.querySelector('#shot-root');
+                                    if (!root) return;
+                                    var nodes = root.querySelectorAll('*');
+                                    for (var i = 0; i < nodes.length; i++) {
+                                        var el = nodes[i];
+                                        if (!__isTextBlock(el)) continue;
+                                        var cs = getComputedStyle(el);
+                                        var fsPx = parseFloat(cs.fontSize);
+                                        if (!fsPx || fsPx < 28) continue;
+                                        if (cs.whiteSpace === 'nowrap' || cs.whiteSpace === 'pre') continue;
+                                        var avail = el.clientWidth -
+                                            (parseFloat(cs.paddingLeft) || 0) -
+                                            (parseFloat(cs.paddingRight) || 0);
+                                        // INLINE elements report clientWidth 0 —
+                                        // always, by spec. So every accent word
+                                        // the preamble tells the model to wrap in
+                                        // a span ('STARTS&nbsp;<span>HERE</span>')
+                                        // was skipped here and never measured,
+                                        // which is why mid-word breaks survived
+                                        // this guard. Measure an inline against
+                                        // the nearest ancestor that has a real
+                                        // content box.
+                                        if (avail <= 20 &&
+                                            cs.display.indexOf('inline') === 0) {
+                                            var host = el.parentElement;
+                                            while (host && host !== root) {
+                                                var hcs = getComputedStyle(host);
+                                                var hw = host.clientWidth -
+                                                    (parseFloat(hcs.paddingLeft) || 0) -
+                                                    (parseFloat(hcs.paddingRight) || 0);
+                                                if (hw > 20) { avail = hw; break; }
+                                                host = host.parentElement;
+                                            }
+                                        }
+                                        if (avail <= 20) continue;
+                                        var longest = __widestRun(el);
+                                        // Leave real headroom: matching the width exactly
+                                        // still wrapped, because layout rounding and the
+                                        // trailing letter-space push it over.
+                                        if (longest <= avail - 4) continue;
+                                        var scale = Math.max(0.55, (avail - 4) / longest);
+                                        el.style.fontSize = (fsPx * scale) + 'px';
+                                        try {
+                                            console.log('[FIT-WORD shot=${e.id}] "' +
+                                                (el.textContent || '').trim().slice(0, 22) + '" ' +
+                                                Math.round(fsPx) + 'px -> ' +
+                                                Math.round(fsPx * scale) + 'px');
+                                        } catch (_wl) {}
+                                    }
+                                } catch (_werr) { /* never break the shot */ }
+                            };
+
+                            // FRAME-FIT GUARD.
+                            // Nothing may render outside the 1920x1080 frame.
+                            // The shot pack's type scale is sized for a full
+                            // frame, so when the model spends it on a narrow
+                            // column (an h2 label inside a 420px card) the
+                            // column grows taller than the canvas and the last
+                            // line is simply cut off — 'HUMAN PARTICIPAT/ION'.
+                            // scrollWidth/scrollHeight are LAYOUT metrics: they
+                            // count content that overflows even under
+                            // overflow:hidden, and they ignore transforms, so an
+                            // element parked off-frame by its entrance
+                            // animation does not read as overflow here.
+                            //
+                            // The repair is a zoom-out, not a crop: the content
+                            // gets a LARGER canvas (frame / k) and is scaled
+                            // back down by k. Full-bleed layers still cover the
+                            // frame exactly, so there are no white gaps at the
+                            // edges, and the design keeps its proportions
+                            // instead of losing its last line.
+                            var __fitFrameSweep = function () {
+                                try {
+                                    var root = scope.querySelector('#shot-root');
+                                    if (!root) return;
+                                    if (root.firstElementChild &&
+                                        root.firstElementChild.getAttribute &&
+                                        root.firstElementChild.getAttribute('data-vx-fitframe')) return;
+                                    var cw = root.clientWidth, ch = root.clientHeight;
+                                    if (cw < 10 || ch < 10) return;
+                                    // VERTICAL overflow only. Horizontal bleed is
+                                    // almost always deliberate — a decorative ring
+                                    // parked at right:-5% inflates scrollWidth by
+                                    // exactly its bleed, and shrinking the whole
+                                    // shot to accommodate an ornament is worse than
+                                    // the ornament. Text that overruns its column
+                                    // horizontally is already handled by the
+                                    // fit-text sweep above.
+                                    var sh = root.scrollHeight;
+                                    if (sh - ch <= 8) return;
+                                    var k = ch / sh;
+                                    if (k >= 0.995) return;
+                                    // The wrapper becomes the children's new
+                                    // parent, so it must reproduce whatever layout
+                                    // role the root was playing. Skipping this
+                                    // silently drops the root's flex centering and
+                                    // padding: the content re-flows to the top-left
+                                    // and grows TALLER, which is worse than the
+                                    // overflow being repaired.
+                                    var rcs = getComputedStyle(root);
+                                    var wrap = document.createElement('div');
+                                    wrap.setAttribute('data-vx-fitframe', '1');
+                                    wrap.style.cssText =
+                                        'position:absolute;left:0;top:0;transform-origin:0 0;' +
+                                        'box-sizing:border-box;';
+                                    ['display', 'flexDirection', 'flexWrap', 'justifyContent',
+                                     'alignItems', 'alignContent', 'gap', 'rowGap', 'columnGap',
+                                     'gridTemplateColumns', 'gridTemplateRows', 'gridAutoFlow',
+                                     'padding', 'textAlign', 'perspective'].forEach(function (prop) {
+                                        try {
+                                            var v = rcs[prop];
+                                            if (v) wrap.style[prop] = v;
+                                        } catch (_cp) {}
+                                    });
+                                    // The root keeps painting its own background and
+                                    // border; the wrapper owns the padding now, so
+                                    // clear it on the root to avoid applying it twice.
+                                    root.style.padding = '0';
+                                    while (root.firstChild) wrap.appendChild(root.firstChild);
+                                    root.appendChild(wrap);
+                                    // Converge: a taller canvas does not shrink
+                                    // fixed-px cards, so one pass undershoots.
+                                    // Each pass re-measures in the canvas the
+                                    // previous one produced.
+                                    var applied = 1;
+                                    for (var pass = 0; pass < 4; pass++) {
+                                        // Never shrink past readability: below this
+                                        // a clipped frame is the lesser evil, and
+                                        // the overflow is a design bug worth seeing.
+                                        k = Math.max(0.62, k);
+                                        wrap.style.width = (cw / k) + 'px';
+                                        wrap.style.height = (ch / k) + 'px';
+                                        wrap.style.transform = 'scale(' + k + ')';
+                                        applied = k;
+                                        var innerH = wrap.clientHeight, innerScroll = wrap.scrollHeight;
+                                        if (innerScroll - innerH <= 8 || k <= 0.62) break;
+                                        k = k * (innerH / innerScroll);
+                                    }
+                                    try {
+                                        console.log('[FIT-FRAME shot=${e.id}] content height ' + sh +
+                                                    ' exceeded ' + ch + ' -> scale ' + applied.toFixed(3));
+                                    } catch (_fl) {}
+                                } catch (_ferr) { /* never break the shot */ }
+                            };
+
+                            // CONTRAST AUTO-FIX.
+                            // The brand palette is injected as CSS vars tuned for
+                            // the run's page background (a light palette means
+                            // --brand-text is near-black). A shot that goes
+                            // full-bleed dark — stock video + black gradient
+                            // overlay — still resolves var(--brand-text) to
+                            // near-black, so its headline renders black-on-black
+                            // and is simply invisible. The model even writes
+                            // var(--brand-text, #ffffff) believing the white
+                            // fallback applies; it never does, because the var IS
+                            // defined. No amount of prompt wording fixes this
+                            // reliably, so measure the rendered result instead:
+                            // walk text elements, resolve the effective backdrop,
+                            // and flip any pair below WCAG 3:1 to whichever of
+                            // white / near-black actually reads.
+                            var __srgb = function (c) {
+                                c = c / 255;
+                                return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+                            };
+                            var __lum = function (rgb) {
+                                return 0.2126 * __srgb(rgb[0]) + 0.7152 * __srgb(rgb[1]) + 0.0722 * __srgb(rgb[2]);
+                            };
+                            var __contrast = function (a, b) {
+                                var la = __lum(a), lb = __lum(b);
+                                return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+                            };
+                            var __parseRGB = function (str) {
+                                if (!str) return null;
+                                var m = str.match(/rgba?\(\s*([0-9.]+)[,\s]+([0-9.]+)[,\s]+([0-9.]+)(?:[,\s/]+([0-9.]+))?/i);
+                                if (!m) return null;
+                                return [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3]),
+                                        m[4] === undefined ? 1 : parseFloat(m[4])];
+                            };
+                            // Does this element paint a full-bleed photo/video bed?
+                            var __hasMediaBed = function (rootEl) {
+                                try {
+                                    var rr = rootEl.getBoundingClientRect();
+                                    var area = Math.max(1, rr.width * rr.height);
+                                    var media = rootEl.querySelectorAll('video, img');
+                                    for (var i = 0; i < media.length; i++) {
+                                        var mr = media[i].getBoundingClientRect();
+                                        if ((mr.width * mr.height) / area >= 0.6) return media[i];
+                                        // A hero video that has not loaded yet measures 0x0,
+                                        // but it WILL cover the frame by the time the shot is
+                                        // captured. Trust the CSS intent, not the current box.
+                                        var ms = getComputedStyle(media[i]);
+                                        if ((ms.width === '100%' || ms.height === '100%' ||
+                                             ms.objectFit === 'cover') &&
+                                            (ms.position === 'absolute' || ms.position === 'fixed' ||
+                                             __coversFrame(media[i].parentElement, rootEl))) {
+                                            return media[i];
+                                        }
+                                    }
+                                } catch (_mb) {}
+                                return null;
+                            };
+                            var __coversFrame = function (el, rootEl) {
+                                if (!el || el === rootEl) return false;
+                                try {
+                                    var cs = getComputedStyle(el);
+                                    if (cs.position !== 'absolute' && cs.position !== 'fixed') return false;
+                                    return (cs.inset === '0px' || (cs.top === '0px' && cs.left === '0px' &&
+                                            cs.right === '0px' && cs.bottom === '0px'));
+                                } catch (_cf) { return false; }
+                            };
+                            // Best-effort luminance of a media bed: a black-ish
+                            // gradient overlay or a brightness()<0.8 filter means
+                            // the bed is graded dark (the standard hero recipe).
+                            var __mediaIsDark = function (rootEl, mediaEl) {
+                                try {
+                                    var cs = getComputedStyle(mediaEl);
+                                    var fm = (cs.filter || '').match(/brightness\(\s*([0-9.]+)\s*\)/);
+                                    if (fm && parseFloat(fm[1]) < 0.8) return true;
+                                    var all = rootEl.querySelectorAll('*');
+                                    for (var i = 0; i < all.length; i++) {
+                                        var s2 = getComputedStyle(all[i]);
+                                        var bg = (s2.backgroundImage || '') + ' ' + (s2.backgroundColor || '');
+                                        if (/rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*(0\.[3-9]|1)/.test(bg)) {
+                                            var r2 = all[i].getBoundingClientRect();
+                                            var rr2 = rootEl.getBoundingClientRect();
+                                            if (r2.width * r2.height >= 0.5 * rr2.width * rr2.height) return true;
+                                        }
+                                    }
+                                } catch (_md) {}
+                                return false;
+                            };
+                            var __fixContrastSweep = function () {
+                                try {
+                                    var rootEl = scope.getElementById
+                                        ? (scope.getElementById('shot-root') || scope.querySelector('#shot-root'))
+                                        : scope.querySelector('#shot-root');
+                                    if (!rootEl) rootEl = scope.querySelector('div');
+                                    if (!rootEl) return;
+                                    var mediaEl = __hasMediaBed(rootEl);
+                                    var mediaDark = mediaEl ? __mediaIsDark(rootEl, mediaEl) : false;
+                                    var pageBG = __parseRGB(getComputedStyle(rootEl).backgroundColor);
+                                    if (!pageBG || pageBG[3] < 0.5) pageBG = [255, 255, 255, 1];
+                                    var nodes = rootEl.querySelectorAll('*');
+                                    for (var i = 0; i < nodes.length; i++) {
+                                        var el = nodes[i];
+                                        if (el.getAttribute && el.getAttribute('data-vx-contrast') === '1') continue;
+                                        // Only elements that own visible text.
+                                        var hasText = false;
+                                        for (var c = 0; c < el.childNodes.length; c++) {
+                                            var n = el.childNodes[c];
+                                            if (n.nodeType === 3 && n.nodeValue && n.nodeValue.trim().length) { hasText = true; break; }
+                                        }
+                                        if (!hasText) continue;
+                                        var r = el.getBoundingClientRect();
+                                        if (r.width < 4 || r.height < 4) continue;
+                                        var cs = getComputedStyle(el);
+                                        var fg = __parseRGB(cs.color);
+                                        if (!fg) continue;
+                                        // Walk ancestors for the first opaque-ish backdrop.
+                                        // A background painted by an ANCESTOR OF THE MEDIA
+                                        // BED sits BEHIND that bed and is not what the text
+                                        // reads against: #shot-root carries
+                                        // background:var(--brand-bg) (white) while a
+                                        // full-bleed dark video covers it, so trusting it
+                                        // inverts a correct white headline to near-black.
+                                        // Skip those; only paint in front of the bed counts.
+                                        var bg = null, p = el;
+                                        while (p && p !== rootEl.parentNode) {
+                                            if (mediaEl && p.contains && p.contains(mediaEl)) { p = p.parentElement; continue; }
+                                            var pb = __parseRGB(getComputedStyle(p).backgroundColor);
+                                            if (pb && pb[3] >= 0.5) { bg = pb; break; }
+                                            p = p.parentElement;
+                                        }
+                                        if (!bg) {
+                                            // Nothing painted in front of the bed. If the
+                                            // shot has a media bed we can only proceed when
+                                            // we measured it as dark — otherwise we have no
+                                            // idea what the text reads against.
+                                            //
+                                            // The root's own background is NOT evidence: it
+                                            // is the thing beds, gradients and full-bleed
+                                            // panels cover. Trusting it once flipped a
+                                            // correct white headline to near-black on a dark
+                                            // hero. When in doubt, leave the text alone —
+                                            // a missed fix is recoverable, an inverted one
+                                            // ships an invisible headline.
+                                            if (mediaEl) {
+                                                if (!mediaDark) continue;
+                                                bg = [0, 0, 0, 1];
+                                            } else {
+                                                bg = pageBG;
+                                            }
+                                        }
+                                        if (__contrast(fg, bg) >= 3.0) continue;
+                                        var light = [255, 255, 255], dark = [15, 23, 42];
+                                        var pick = __contrast(light, bg) >= __contrast(dark, bg) ? '#ffffff' : '#0f172a';
+                                        el.style.setProperty('color', pick, 'important');
+                                        if (el.namespaceURI === 'http://www.w3.org/2000/svg') {
+                                            el.style.setProperty('fill', 'currentColor', 'important');
+                                        }
+                                        // Text on a photo needs a scrim even at 3:1.
+                                        if (mediaEl && !bgWasPainted(el, rootEl, mediaEl)) {
+                                            el.style.setProperty('text-shadow', '0 2px 12px rgba(0,0,0,0.55)');
+                                        }
+                                        if (el.setAttribute) el.setAttribute('data-vx-contrast', '1');
+                                        try {
+                                            console.log('[CONTRAST-FIX shot=${e.id}] flipped "' +
+                                                (el.textContent || '').trim().slice(0, 28) + '" -> ' + pick);
+                                        } catch (_cl) {}
+                                    }
+                                } catch (_cerr) { /* never break the shot */ }
+                            };
+                            function bgWasPainted(el, rootEl, mediaEl) {
+                                var p = el;
+                                while (p && p !== rootEl.parentNode) {
+                                    if (mediaEl && p.contains && p.contains(mediaEl)) { p = p.parentElement; continue; }
+                                    var pb = __parseRGB(getComputedStyle(p).backgroundColor);
+                                    if (pb && pb[3] >= 0.5) return true;
+                                    p = p.parentElement;
+                                }
+                                return false;
+                            }
+
                             // Run the fit-text sweep when fonts are ready — running
                             // before fonts load gives stale measurements based on
                             // fallback fonts.
@@ -1173,10 +1635,20 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                             // Defer one rAF so the shot script's
                                             // initial gsap.set / transforms have
                                             // applied before we measure.
-                                            requestAnimationFrame(__fitTextSweep);
+                                            requestAnimationFrame(function () {
+                                                __fitTextSweep();
+                                                __fitWordsSweep();
+                                                __fixContrastSweep();
+                                                __fitFrameSweep();
+                                            });
                                         });
                                     } else {
-                                        requestAnimationFrame(__fitTextSweep);
+                                        requestAnimationFrame(function () {
+                                            __fitTextSweep();
+                                            __fitWordsSweep();
+                                            __fixContrastSweep();
+                                            __fitFrameSweep();
+                                        });
                                     }
                                 } catch (_se) {
                                     try { __fitTextSweep(); } catch (_se2) {}
@@ -1201,6 +1673,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
                                 // Hard sweep: script crashed, repair every hide state.
                                 __vxRecover(true);
+                                try { __fixContrastSweep(); } catch (_cf) {}
                             }
                         })(document.getElementById('${e.id}').shadowRoot);
                       `;
@@ -1246,6 +1719,35 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                   if (_tl && _gk === _tl) continue;
                                   if (_preSet.has(_gk)) continue;
                                   _newKids.push(_gk);
+                              }
+                              // Re-anchor: shift every child this shot created by
+                              // the gap between where it mounted and where the shot
+                              // belongs. Shifting (rather than pinning to inTime)
+                              // preserves each tween's own delay and the timeline's
+                              // internal positions — only the whole group moves.
+                              try {
+                                  var _mountT = window[_gtlPreTimeKey] || 0;
+                                  var _wantT = e.inTime || 0;
+                                  var _shift = _wantT - _mountT;
+                                  if (Math.abs(_shift) > 0.01) {
+                                      var _moved = 0;
+                                      for (var _s = 0; _s < _newKids.length; _s++) {
+                                          var _kid = _newKids[_s];
+                                          if (!_kid || typeof _kid.startTime !== 'function') continue;
+                                          try { _kid.startTime(_kid.startTime() + _shift); _moved++; }
+                                          catch (_e2) {}
+                                      }
+                                      if (_moved) {
+                                          console.log('[per-shot-timeline-anchor] ' + e.id
+                                              + ' shifted ' + _moved + ' child(ren) by '
+                                              + _shift.toFixed(2) + 's (mounted at '
+                                              + _mountT.toFixed(2) + ', shot starts at '
+                                              + _wantT.toFixed(2) + ')');
+                                      }
+                                  }
+                              } catch (_anchorErr) {
+                                  console.warn('[per-shot-timeline-anchor] failed:',
+                                      _anchorErr && _anchorErr.message);
                               }
                               console.log('[per-shot-timeline-postscript-gtl] ' + e.id
                                   + ' new_gtl_children=' + _newKids.length
@@ -1296,6 +1798,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                   // run — keeps a strong ref to dead tweens until they're GSAP-killed
                   // at the next segment boundary.
                   try { delete window[_gtlPreStashKey]; } catch (_e) {}
+                  try { delete window[_gtlPreTimeKey]; } catch (_e) {}
 
                   // Force-show all registered Rough Notation annotations after layout settles
                   // Use double-rAF to ensure layout is computed before annotations measure positions

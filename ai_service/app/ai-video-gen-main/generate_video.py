@@ -1701,10 +1701,15 @@ def render_video_from_json(
                     print(f"[FONT-DIAG] {diag}")
                 except Exception as _e:
                     print(f"[FONT-DIAG] error: {_e}")
-                # Wait for all images in shadow DOMs to finish loading
+                # Wait for all images in shadow DOMs to finish loading.
+                # MUST include [id^="shot-"]: Director-mode entries host under
+                # shot-{idx}, and support-visual photos live there — without
+                # this the frame loop races the S3 fetch and images pop in
+                # mid-shot in the final MP4 (the video-buffer wait below
+                # already included shot-; the image wait had been missed).
                 page.evaluate("""() => {
                     const promises = [];
-                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"]').forEach(host => {
+                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]').forEach(host => {
                         const root = host.shadowRoot;
                         if (!root) return;
                         root.querySelectorAll('img').forEach(img => {

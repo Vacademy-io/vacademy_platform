@@ -75,6 +75,10 @@ target 'The Learning Bridge' do
   capacitor_pods
 end
 
+target 'Brahm Varchas Shiksha' do
+  capacitor_pods
+end
+
 post_install do |installer|
   assertDeploymentTarget(installer)
 end

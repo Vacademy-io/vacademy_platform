@@ -1,5 +1,5 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, useBlocker } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSidebar } from '@/components/ui/sidebar';
@@ -46,6 +46,7 @@ import {
     AddSessionDialog,
     GenerateCourseAssetsDialog,
     BackToLibraryDialog,
+    LeaveDuringGenerationDialog,
 } from './dialogs/CourseGenerationDialogs';
 import {
     ArrowLeft,
@@ -774,6 +775,74 @@ export function RouteComponent() {
                     );
                 } else {
                     sessionStorage.removeItem('courseVideoSettings');
+                }
+
+                // Course-structure options (quiz placement, chapter deliverables,
+                // figures policy) chosen in the wizard.
+                const courseStructure = courseConfig.courseStructure || {};
+                if (courseStructure.quizPlacement) {
+                    payload.generation_options.quiz_placement = courseStructure.quizPlacement;
+                }
+                if (typeof courseStructure.includeChapterAssignment === 'boolean') {
+                    payload.generation_options.include_assignment =
+                        courseStructure.includeChapterAssignment;
+                }
+                if (courseStructure.includeChapterVideo) {
+                    payload.generation_options.include_chapter_video = true;
+                }
+                // Figures policy must survive to the content step.
+                if (courseStructure.figuresPolicy) {
+                    sessionStorage.setItem('courseFiguresPolicy', courseStructure.figuresPolicy);
+                } else {
+                    sessionStorage.removeItem('courseFiguresPolicy');
+                }
+                // Repetition-dedupe second pass (content step) — write-or-remove.
+                if (courseStructure.dedupeRepetition) {
+                    sessionStorage.setItem('courseDedupeRepetition', '1');
+                } else {
+                    sessionStorage.removeItem('courseDedupeRepetition');
+                }
+
+                // Course-wide document content-type enrichments — must survive
+                // to the content step (same write-or-remove discipline).
+                // When quizzes are consolidated per chapter (or disabled), strip
+                // the per-slide 'quiz' enrichment so it can't double up.
+                let effectiveContentTypes: string[] = Array.isArray(
+                    courseConfig.documentContentTypes
+                )
+                    ? courseConfig.documentContentTypes
+                    : [];
+                if (
+                    courseStructure.quizPlacement === 'CHAPTER' ||
+                    courseStructure.quizPlacement === 'NONE'
+                ) {
+                    effectiveContentTypes = effectiveContentTypes.filter((t) => t !== 'quiz');
+                } else if (
+                    courseStructure.quizPlacement === 'BOTH' &&
+                    !effectiveContentTypes.includes('quiz')
+                ) {
+                    // BOTH explicitly asks for per-topic quizzes too — make sure
+                    // the per-slide quiz enrichment is actually on. (PER_TOPIC is
+                    // the default placement; there the 'quiz' chip stays
+                    // authoritative so untouched wizards keep legacy behaviour.)
+                    effectiveContentTypes = [...effectiveContentTypes, 'quiz'];
+                }
+                if (effectiveContentTypes.length > 0) {
+                    sessionStorage.setItem(
+                        'courseDocumentContentTypes',
+                        JSON.stringify(effectiveContentTypes)
+                    );
+                } else {
+                    sessionStorage.removeItem('courseDocumentContentTypes');
+                }
+
+                // The model chosen in course creation must reach DOCUMENT content
+                // generation too (not just the outline). 'auto' → absent → the
+                // server picks the strong HTML default (claude-sonnet-5).
+                if (courseConfig.model && courseConfig.model !== 'auto') {
+                    sessionStorage.setItem('courseSelectedModel', courseConfig.model);
+                } else {
+                    sessionStorage.removeItem('courseSelectedModel');
                 }
 
                 // Reference-PDF fileIds must survive to the content step too
@@ -1649,7 +1718,59 @@ export function RouteComponent() {
 
     const getSlideIcon = (type: SlideType) => SLIDE_ICON_MAP[type] ?? null;
 
+    // ---- Leave-during-generation guard -------------------------------------
+    // Generation is driven entirely from this page (the outline call and the
+    // per-page content stream both live in this component), so any navigation
+    // away kills it and the pages produced so far are unrecoverable. Guard
+    // every exit route: the in-page Back button, in-app navigation, browser
+    // back/forward, and refresh/tab-close.
+    const isBusyGenerating = (isGenerating && slides.length === 0) || isGeneratingContent;
+
+    // Set just before an intentional leave so the blocker lets that one
+    // navigation through instead of re-prompting.
+    const bypassLeaveGuardRef = useRef(false);
+    const [leaveWarningOpen, setLeaveWarningOpen] = useState(false);
+
+    const leaveBlocker = useBlocker({
+        withResolver: true,
+        disabled: !isBusyGenerating,
+        shouldBlockFn: ({ current, next }) =>
+            !bypassLeaveGuardRef.current && current.pathname !== next.pathname,
+        enableBeforeUnload: isBusyGenerating,
+    });
+
+    const leaveGuardOpen = leaveBlocker.status === 'blocked' || leaveWarningOpen;
+
+    const handleStayOnPage = () => {
+        setLeaveWarningOpen(false);
+        leaveBlocker.reset?.();
+    };
+
+    const handleLeaveWhileGenerating = () => {
+        bypassLeaveGuardRef.current = true;
+        abortController?.abort();
+        setAbortController(null);
+        setIsGeneratingContent(false);
+        setLeaveWarningOpen(false);
+        if (leaveBlocker.status === 'blocked') {
+            leaveBlocker.proceed?.();
+        } else {
+            navigate({ to: '/study-library/ai-copilot' });
+        }
+    };
+
+    const generationProgressLabel = useMemo(() => {
+        if (!isGeneratingContent) return undefined;
+        const real = slides.filter((s: SlideGeneration) => s.slideTitle !== '_placeholder_');
+        if (real.length === 0) return undefined;
+        return `${real.filter((s: SlideGeneration) => s.status === 'completed').length} of ${real.length}`;
+    }, [isGeneratingContent, slides]);
+
     const handleBack = () => {
+        if (isBusyGenerating) {
+            setLeaveWarningOpen(true);
+            return;
+        }
         setBackToLibraryDialogOpen(true);
     };
 
@@ -1707,6 +1828,12 @@ export function RouteComponent() {
                     <title>{`Generating ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Outline...`}</title>
                 </Helmet>
                 <OutlineGeneratingLoader estimatedTimeRemaining={estimatedTimeRemaining} />
+                <LeaveDuringGenerationDialog
+                    open={leaveGuardOpen}
+                    onOpenChange={(open) => !open && handleStayOnPage()}
+                    onStay={handleStayOnPage}
+                    onLeave={handleLeaveWhileGenerating}
+                />
             </LayoutContainer>
         );
     }
@@ -1762,6 +1889,13 @@ export function RouteComponent() {
                     onOpenChange={setBackToLibraryDialogOpen}
                     onDiscard={handleDiscardCourse}
                     onSaveToDrafts={handleSaveToDrafts}
+                />
+                <LeaveDuringGenerationDialog
+                    open={leaveGuardOpen}
+                    onOpenChange={(open) => !open && handleStayOnPage()}
+                    onStay={handleStayOnPage}
+                    onLeave={handleLeaveWhileGenerating}
+                    progressLabel={generationProgressLabel}
                 />
             </LayoutContainer>
         );
@@ -3492,6 +3626,14 @@ export function RouteComponent() {
                         onOpenChange={setBackToLibraryDialogOpen}
                         onDiscard={handleDiscardCourse}
                         onSaveToDrafts={handleSaveToDrafts}
+                    />
+
+                    <LeaveDuringGenerationDialog
+                        open={leaveGuardOpen}
+                        onOpenChange={(open) => !open && handleStayOnPage()}
+                        onStay={handleStayOnPage}
+                        onLeave={handleLeaveWhileGenerating}
+                        progressLabel={generationProgressLabel}
                     />
                 </div>
             </div>

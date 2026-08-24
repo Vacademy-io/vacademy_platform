@@ -5,15 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
-import vacademy.io.admin_core_service.features.institute.entity.Template;
-import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 import vacademy.io.admin_core_service.features.learner_credentials.dto.LearnerCredentialSendResult;
-import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
+import vacademy.io.admin_core_service.features.learner_credentials.enums.CredentialDeliveryMode;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
-import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
-import vacademy.io.admin_core_service.features.notification.repository.NotificationEventConfigRepository;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
+import vacademy.io.admin_core_service.features.notification.service.NotificationTemplateBindingService;
 import vacademy.io.admin_core_service.features.parent_link.dto.CredentialTemplateConfigDTO;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -45,9 +42,15 @@ import java.util.List;
  *       new enum constant and a new binding, not a new mail template in Java.</li>
  * </ul>
  *
- * <p>An institute with no binding sends <b>nothing</b> and the caller is told
- * which channel was skipped. Silently substituting a generic template would put
- * unapproved wording in front of that institute's learners.
+ * <p>An institute with no binding sends <b>nothing</b> on the template path, and the caller is
+ * told which channel was skipped. Silently substituting a generic template would put unapproved
+ * wording in front of that institute's learners.
+ *
+ * <p>The auth_service body has not gone away — it is reachable as
+ * {@link CredentialDeliveryMode#DEFAULT}, chosen per send. An institute drafting a template still
+ * needs a working mail in the meantime, and an admin helping one confused learner may
+ * deliberately want the plain platform message. What changed is that it is no longer the only
+ * option.
  */
 @Slf4j
 @Service
@@ -56,22 +59,49 @@ public class LearnerCredentialShareService {
 
     private final AuthService authService;
     private final DynamicNotificationService dynamicNotificationService;
-    private final NotificationEventConfigRepository notificationEventConfigRepository;
-    private final TemplateRepository templateRepository;
+    private final NotificationTemplateBindingService templateBindingService;
 
     /**
-     * Shares the learner's CURRENT credentials on each requested channel.
+     * Shares the learner's CURRENT credentials on each requested channel, using the platform's
+     * built-in mail or the institute's own template.
      *
      * <p>The password is read back from auth_service rather than passed in from
      * the browser: it is the authoritative copy, it keeps the plaintext out of
      * this request body, and it means a re-share works long after the change
      * that prompted it.
+     *
+     * @param mode       DEFAULT sends the platform's built-in credentials mail (auth_service,
+     *                   email only); TEMPLATE renders the institute's template per channel
+     * @param templateId optional one-off template for this send; TEMPLATE mode otherwise uses the
+     *                   institute's standing binding for each channel
      */
     public LearnerCredentialSendResult share(String instituteId, String userId,
-                                             List<NotificationTemplateType> channels) {
+                                             List<NotificationTemplateType> channels,
+                                             CredentialDeliveryMode mode, String templateId) {
         if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(userId)) {
             throw new VacademyException("instituteId and userId are required");
         }
+        CredentialDeliveryMode resolvedMode = mode != null ? mode : CredentialDeliveryMode.TEMPLATE;
+
+        if (resolvedMode == CredentialDeliveryMode.DEFAULT) {
+            // The platform-wide credentials mail lives in auth_service and is email-only. Asking
+            // for WhatsApp alongside it is a contradiction rather than a partial success, so the
+            // extra channels are reported as skipped instead of silently dropped.
+            authService.sendCredToUsers(List.of(userId));
+            List<String> skipped = (channels == null ? List.<NotificationTemplateType>of() : channels).stream()
+                    .filter(c -> c != NotificationTemplateType.EMAIL)
+                    .map(NotificationTemplateType::name)
+                    .toList();
+            return LearnerCredentialSendResult.builder()
+                    .sentChannels(List.of(NotificationTemplateType.EMAIL.name()))
+                    .skippedChannels(skipped)
+                    .message(skipped.isEmpty()
+                            ? "Credentials sent using the system default email."
+                            : "Credentials sent using the system default email. Skipped "
+                              + String.join(", ", skipped) + " (the system default is email only).")
+                    .build();
+        }
+
         if (channels == null || channels.isEmpty()) {
             throw new VacademyException("At least one channel is required");
         }
@@ -89,7 +119,8 @@ public class LearnerCredentialShareService {
 
         for (NotificationTemplateType channel : channels) {
             boolean dispatched = dynamicNotificationService.sendLearnerCredentialsNotification(
-                    instituteId, channel, learner, credentials.getUsername(), credentials.getPassword());
+                    instituteId, channel, learner, credentials.getUsername(), credentials.getPassword(),
+                    templateId);
             if (dispatched) {
                 sent.add(channel.name());
             } else {
@@ -119,72 +150,16 @@ public class LearnerCredentialShareService {
 
     /** The template currently bound for this institute + channel, if any. */
     public CredentialTemplateConfigDTO getTemplateConfig(String instituteId, NotificationTemplateType channel) {
-        if (!StringUtils.hasText(instituteId)) {
-            throw new VacademyException("instituteId is required");
-        }
-        NotificationEventConfig config = notificationEventConfigRepository
-                .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
-                        NotificationEventType.LEARNER_CREDENTIALS_SHARED,
-                        NotificationSourceType.INSTITUTE,
-                        instituteId,
-                        channel)
-                .orElse(null);
-        if (config == null || !StringUtils.hasText(config.getTemplateId())) {
-            return CredentialTemplateConfigDTO.builder().build();
-        }
-        Template template = templateRepository.findById(config.getTemplateId()).orElse(null);
-        return CredentialTemplateConfigDTO.builder()
-                .templateId(config.getTemplateId())
-                .templateName(template != null ? template.getName() : null)
-                .templateSubject(template != null ? template.getSubject() : null)
-                .build();
+        return templateBindingService.get(NotificationEventType.LEARNER_CREDENTIALS_SHARED, instituteId, channel);
     }
 
-    /**
-     * Upserts the (institute, channel) binding. One row per pair — repoints and
-     * reactivates the existing row rather than inserting a new one each time the
-     * admin changes their selection, so the "latest wins" lookup can never end
-     * up racing several active rows.
-     */
+    /** Points this institute + channel at a template. */
     public void setTemplate(String instituteId, NotificationTemplateType channel, String templateId) {
-        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(templateId)) {
-            throw new VacademyException("instituteId and templateId are required");
-        }
-        Template template = templateRepository.findById(templateId)
-                .orElseThrow(() -> new VacademyException("Template not found: " + templateId));
-
-        NotificationEventConfig config = notificationEventConfigRepository
-                .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeOrderByUpdatedAtDesc(
-                        NotificationEventType.LEARNER_CREDENTIALS_SHARED,
-                        NotificationSourceType.INSTITUTE,
-                        instituteId,
-                        channel)
-                .orElseGet(() -> new NotificationEventConfig(
-                        NotificationEventType.LEARNER_CREDENTIALS_SHARED,
-                        NotificationSourceType.INSTITUTE,
-                        instituteId,
-                        channel,
-                        null));
-        config.setTemplateId(templateId);
-        // WhatsApp dispatches by the provider-approved template NAME, so carry it
-        // on the config; email resolves its subject/body from the Template row and
-        // does not need it.
-        config.setTemplateName(channel == NotificationTemplateType.WHATSAPP ? template.getName() : null);
-        config.setIsActive(true);
-        notificationEventConfigRepository.save(config);
+        templateBindingService.set(NotificationEventType.LEARNER_CREDENTIALS_SHARED, instituteId, channel, templateId);
     }
 
     /** Clears a binding so the channel stops sending. */
     public void clearTemplate(String instituteId, NotificationTemplateType channel) {
-        notificationEventConfigRepository
-                .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeOrderByUpdatedAtDesc(
-                        NotificationEventType.LEARNER_CREDENTIALS_SHARED,
-                        NotificationSourceType.INSTITUTE,
-                        instituteId,
-                        channel)
-                .ifPresent(config -> {
-                    config.setIsActive(false);
-                    notificationEventConfigRepository.save(config);
-                });
+        templateBindingService.clear(NotificationEventType.LEARNER_CREDENTIALS_SHARED, instituteId, channel);
     }
 }

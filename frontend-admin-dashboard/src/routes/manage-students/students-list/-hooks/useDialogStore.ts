@@ -6,6 +6,7 @@ import { BulkActionInfo } from '../-types/bulk-actions-types';
 interface DialogStore {
     isChangeBatchOpen: boolean;
     isExtendSessionOpen: boolean;
+    isBulkExtendAccessOpen: boolean;
     isReRegisterOpen: boolean;
     isTerminateRegistrationOpen: boolean;
     isDeleteOpen: boolean;
@@ -30,6 +31,7 @@ interface DialogStore {
     // Bulk actions
     openBulkChangeBatchDialog: (info: BulkActionInfo) => void;
     openBulkExtendSessionDialog: (info: BulkActionInfo) => void;
+    openBulkExtendAccessDialog: (info: BulkActionInfo) => void;
     openBulkReRegisterDialog: (info: BulkActionInfo) => void;
     openBulkTerminateRegistrationDialog: (info: BulkActionInfo) => void;
     openBulkDeleteDialog: (info: BulkActionInfo) => void;
@@ -43,6 +45,7 @@ interface DialogStore {
 export const useDialogStore = create<DialogStore>((set) => ({
     isChangeBatchOpen: false,
     isExtendSessionOpen: false,
+    isBulkExtendAccessOpen: false,
     isReRegisterOpen: false,
     isTerminateRegistrationOpen: false,
     isDeleteOpen: false,
@@ -111,6 +114,12 @@ export const useDialogStore = create<DialogStore>((set) => ({
             bulkActionInfo: info,
             isBulkAction: true,
         }),
+    openBulkExtendAccessDialog: (info) =>
+        set({
+            isBulkExtendAccessOpen: true,
+            bulkActionInfo: info,
+            isBulkAction: true,
+        }),
     openBulkExtendSessionDialog: (info) =>
         set({
             isExtendSessionOpen: true,
@@ -158,6 +167,7 @@ export const useDialogStore = create<DialogStore>((set) => ({
         set({
             isChangeBatchOpen: false,
             isExtendSessionOpen: false,
+            isBulkExtendAccessOpen: false,
             isReRegisterOpen: false,
             isTerminateRegistrationOpen: false,
             isDeleteOpen: false,

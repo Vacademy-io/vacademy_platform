@@ -9,6 +9,7 @@ import { Warning, EnvelopeSimple, WhatsappLogo } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { MyDialog } from '@/components/design-system/dialog';
+import { AutofillDecoy } from '@/components/design-system/autofill-decoy';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import {
     updateStudentCredentials,
@@ -164,6 +165,8 @@ export const EditCredentialsDialog = ({
                 {/* No padding here: MyDialog already wraps children in p-6, and
                     adding our own stacked a second inset on every side. */}
                 <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
+                    {/* Sets the LEARNER's credentials — never fill the admin's own. */}
+                    <AutofillDecoy />
                     <div className="flex items-center gap-2 rounded-md bg-warning-50 px-3 py-2">
                         <Warning className="size-4 shrink-0 text-warning-600" />
                         <p className="text-caption text-neutral-600">

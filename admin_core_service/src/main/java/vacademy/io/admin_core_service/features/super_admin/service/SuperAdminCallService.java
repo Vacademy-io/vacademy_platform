@@ -163,6 +163,64 @@ public class SuperAdminCallService {
         return b;
     }
 
+    /**
+     * Characters of TTS per call-minute. This is not a guess: it is the measured
+     * figure the rate card is itself built on — {@code tts_google} 2.06 and
+     * {@code tts_sarvam} 2.34 are both "779 chars/call-min measured" times the
+     * vendor's per-character price (see V428). Keeping the divisor here, in one
+     * named place next to the lookup, means the savings figure stays consistent
+     * with the cost figure instead of drifting from it.
+     */
+    private static final double CHARS_PER_CALL_MINUTE = 779.0;
+
+    /**
+     * Rupees NOT spent because the speech cache served a sentence instead of the
+     * vendor.
+     *
+     * <p>Derived from characters, not from duration: characters are what the
+     * vendor actually meters, and they are the one TTS quantity the bot measures
+     * exactly ({@code diagnostics.tts.cacheCharsSaved}). Converted at the rate
+     * card's own per-minute price over the same measured character rate it was
+     * built from, so this number and the {@code tts} cost line cannot disagree.
+     *
+     * <p>Returns null when the bot did not measure — the cache was off, or this
+     * row predates it. Zero would be a claim that we looked and saved nothing.
+     */
+    private Double ttsCacheSavingInr(Map<String, Double> card, String ttsModel,
+                                     Integer charsSaved) {
+        if (charsSaved == null || charsSaved <= 0) return null;
+        String engine = (ttsModel == null || ttsModel.isBlank())
+                ? "sarvam" : ttsModel.trim().toLowerCase();
+        Double perMinute = card.get("tts_" + engine);
+        // edge is free and smallest has no confirmed invoice rate, so both sit at
+        // 0.00 on the card. Saving characters there is a latency win, not a rupee
+        // one, and reporting a rupee figure for it would be inventing revenue.
+        if (perMinute == null || perMinute <= 0) return null;
+        return round(charsSaved / CHARS_PER_CALL_MINUTE * perMinute);
+    }
+
+    /**
+     * One integer out of the diagnostics {@code tts} block.
+     *
+     * <p>Total by construction: the blob is written by a different service on a
+     * different box, and a shape change there must cost this row a number, never
+     * the whole listing. Absent or unparseable reads as "not measured" (null),
+     * which is the same distinction the bot itself is careful to preserve.
+     */
+    private Integer diagInt(String diagnosticsJson, String field) {
+        if (diagnosticsJson == null || diagnosticsJson.isBlank()) return null;
+        try {
+            com.fasterxml.jackson.databind.JsonNode tts =
+                    DIAG_MAPPER.readTree(diagnosticsJson).path("tts").path(field);
+            return tts.isNumber() ? tts.asInt() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper DIAG_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
     private static double round(double v) {
         return BigDecimal.valueOf(v).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
     }
@@ -215,6 +273,9 @@ public class SuperAdminCallService {
                     (String) r[10], (String) r[19], secs));
             double margin = round(billed - cost);
             String recording = (String) r[15];
+            String diagJson = (String) r[18];
+            Integer cacheHits = diagInt(diagJson, "cacheHits");
+            Integer cacheChars = diagInt(diagJson, "cacheCharsSaved");
             content.add(SuperAdminCallDTO.builder()
                     .id((String) r[0]).correlationId((String) r[1])
                     .instituteId((String) r[2]).instituteName((String) r[3])
@@ -231,6 +292,10 @@ public class SuperAdminCallService {
                     .costInr(cost).billedInr(billed).marginInr(margin)
                     .marginPct(billed > 0 ? round(margin / billed * 100) : null)
                     .costBreakdown(b).costIsModelled(true)
+                    .ttsCacheHits(cacheHits)
+                    .ttsCacheMisses(diagInt(diagJson, "cacheMisses"))
+                    .ttsCacheCharsSaved(cacheHits == null ? null : cacheChars)
+                    .ttsCacheSavedInr(ttsCacheSavingInr(card, tts, cacheChars))
                     .providerCallId((String) r[20])
                     .build());
         }
@@ -295,12 +360,25 @@ public class SuperAdminCallService {
                                          THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0),
                        COALESCE(sum(CASE WHEN COALESCE(r.direction,'') ILIKE 'INBOUND'
                                           AND r.duration_seconds > 0
-                                         THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0)
+                                         THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'
+                                         THEN (r.diagnostics->'tts'->>'cacheHits')::bigint END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheMisses' ~ '^[0-9]+$'
+                                         THEN (r.diagnostics->'tts'->>'cacheMisses')::bigint END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheCharsSaved' ~ '^[0-9]+$'
+                                         THEN (r.diagnostics->'tts'->>'cacheCharsSaved')::bigint END), 0),
+                       count(*) FILTER (WHERE r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$')
                 """ + BASE_FROM + " GROUP BY 1");
         bind(q, instituteId, from, to, health, disposition, agentId);
 
         long calls = 0, red = 0, amber = 0, green = 0, rec = 0;
         double minutes = 0, cost = 0, billedTotal = 0;
+        // Speech-cache totals. Read from the diagnostics jsonb rather than a
+        // column: the bot already ships these per call, and a rollup table would
+        // be a second source of truth to keep in step with it.
+        long cacheHits = 0, cacheMisses = 0, cacheChars = 0;
+        double cacheSaved = 0d;
+        boolean cacheMeasured = false;
         Map<String, Double> agg = new LinkedHashMap<>(
                 Map.of("plivo", 0d, "stt", 0d, "tts", 0d, "llm", 0d));
         Map<String, Long> byEngine = new LinkedHashMap<>();
@@ -327,6 +405,18 @@ public class SuperAdminCallService {
             b.forEach((k, v) -> agg.merge(k, v, Double::sum));
             cost += b.values().stream().mapToDouble(Double::doubleValue).sum();
 
+            // Speech cache, priced per ENGINE because the rate differs sixfold
+            // across them and this query is already grouped that way.
+            long gHits = ((Number) r[10]).longValue();
+            long gMiss = ((Number) r[11]).longValue();
+            long gChars = ((Number) r[12]).longValue();
+            if (((Number) r[13]).longValue() > 0) cacheMeasured = true;
+            cacheHits += gHits;
+            cacheMisses += gMiss;
+            cacheChars += gChars;
+            Double gSaved = ttsCacheSavingInr(card, engine, (int) Math.min(gChars, Integer.MAX_VALUE));
+            if (gSaved != null) cacheSaved += gSaved;
+
             // Revenue, per engine and per meter, on CEIL-minutes as billing does.
             double credits = 0d;
             double[] vOut = pricing.get("voice_call_out"), vIn = pricing.get("voice_call_in");
@@ -352,6 +442,17 @@ public class SuperAdminCallService {
                 .marginPct(billed > 0 ? round(margin / billed * 100) : null)
                 .red(red).amber(amber).green(green).withRecording(rec)
                 .costBreakdown(agg).byTtsModel(byEngine).costIsModelled(true)
+                // Null, not zero, when NOTHING in the range measured the cache:
+                // "it ran and saved nothing" and "it was never on" are different
+                // answers, and a fleet chart that conflates them will report a
+                // broken rollout as a working one.
+                .ttsCacheHits(cacheMeasured ? cacheHits : null)
+                .ttsCacheMisses(cacheMeasured ? cacheMisses : null)
+                .ttsCacheHitRate(cacheMeasured && (cacheHits + cacheMisses) > 0
+                        ? round((double) cacheHits / (cacheHits + cacheMisses) * 100)
+                        : null)
+                .ttsCacheCharsSaved(cacheMeasured ? cacheChars : null)
+                .ttsCacheSavedInr(cacheMeasured ? round(cacheSaved) : null)
                 .build();
     }
 }

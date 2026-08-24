@@ -373,7 +373,18 @@ _FAMILY_PATTERNS: List[Tuple[str, "re.Pattern[str]"]] = [
 # keyword (windowed lookbehind is faked by slicing 24 chars before the match
 # and running this pattern on the slice).
 _NEGATION_PATTERN = re.compile(
-    r"\b(?:no|not|less|without|skip|avoid|fewer|minim(?:al|ize|um))\s*$",
+    # Direct negations, plus the COMPARATIVE forms that name the disfavoured
+    # side. "Prefer annotated diagrams over stock footage" is a rejection of
+    # stock, but only the word immediately before the family term is examined,
+    # so "over" has to count as a negation or the sentence reads as a request
+    # FOR stock footage — which is how a brief that banned b-roll resolved to
+    # stock_video: high.
+    # Not anchored to the word immediately before the term: a negation is
+    # routinely separated from it by an adjective ("no smiling-doctor stock",
+    # "no generic hospital b-roll"), and anchoring made those read as requests
+    # FOR the thing being banned.
+    r"\b(?:no|not|less|without|skip|avoid|fewer|minim(?:al|ize|um)"
+    r"|over|instead\s+of|rather\s+than|in\s+place\s+of|as\s+opposed\s+to)\b",
     re.IGNORECASE,
 )
 

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { AssignCourseDialog } from './assign-course-dialog';
 import { DeassignCourseDialog } from './deassign-course-dialog';
+import { ManageAccessDialog } from './manage-access-dialog';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_LEVELS_BY_INSTITUTE } from '@/constants/urls';
@@ -53,6 +54,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
     const [assignOpen, setAssignOpen] = useState(false);
     const [deassignOpen, setDeassignOpen] = useState(false);
+    const [manageAccessOpen, setManageAccessOpen] = useState(false);
     const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
     const [levelMenuOpen, setLevelMenuOpen] = useState(false);
     const [progressPage, setProgressPage] = useState(0);
@@ -131,6 +133,23 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         ...(progressCourses?.content || []),
         ...(completedCourses?.content || []),
     ];
+
+    // Access management also covers PAST enrollments — an expired learner is exactly the
+    // one an admin needs to extend, and they only appear in that bucket. De-assignment
+    // deliberately does not, since there is nothing left to remove there.
+    // De-duplicated by package session: a course can surface in more than one bucket, and
+    // listing it twice would let the admin tick the same enrollment as two separate rows.
+    const accessManageableCourses: PackageDetailDTO[] = Array.from(
+        new Map(
+            [
+                ...(progressCourses?.content || []),
+                ...(completedCourses?.content || []),
+                ...(pastCourses?.content || []),
+            ]
+                .filter((course) => !!course.package_session_id)
+                .map((course) => [course.package_session_id as string, course])
+        ).values()
+    );
 
     // Package sessions this learner is enrolled into — used to surface the
     // enrollment workflow run(s) (tick/cross per step) attached to them.
@@ -280,6 +299,14 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                 >
                     Remove from {courseTermSingular}
                 </MyButton>
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    onClick={() => setManageAccessOpen(true)}
+                    disable={accessManageableCourses.length === 0}
+                >
+                    Manage access
+                </MyButton>
                 {availableLevels.length > 0 && (
                     // Collapsed by default into a Filter button; the level list
                     // opens in a dropdown so a long list of levels no longer eats
@@ -419,7 +446,52 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                 onOpenChange={setDeassignOpen}
                 onSuccess={handleRefresh}
             />
+            <ManageAccessDialog
+                userId={userId}
+                userName={selectedStudent?.full_name || 'Student'}
+                courses={accessManageableCourses}
+                open={manageAccessOpen}
+                onOpenChange={setManageAccessOpen}
+                onSuccess={handleRefresh}
+            />
         </div>
+    );
+};
+
+/**
+ * How much course access is left, from ssigm.expiry_date. Absent expiry means the plan
+ * granted unlimited access, which is a real state worth naming — a blank row would read
+ * as "not loaded yet".
+ */
+const AccessWindowLabel = ({ expiryDate }: { expiryDate?: string | null }) => {
+    if (!expiryDate) {
+        return <span className="text-xs text-neutral-500">Access: unlimited</span>;
+    }
+
+    const expiry = new Date(expiryDate);
+    if (Number.isNaN(expiry.getTime())) return null;
+
+    const daysLeft = Math.ceil((expiry.getTime() - Date.now()) / 86_400_000);
+    const expired = daysLeft <= 0;
+    // Two weeks is roughly the window in which an admin can still act on a renewal
+    // before the learner is locked out, so that is where the row starts warning.
+    const expiringSoon = !expired && daysLeft <= 14;
+
+    return (
+        <span
+            className={cn(
+                'text-xs',
+                expired
+                    ? 'font-medium text-danger-600'
+                    : expiringSoon
+                      ? 'font-medium text-warning-600'
+                      : 'text-neutral-500'
+            )}
+        >
+            {expired
+                ? `Access expired ${expiry.toLocaleDateString()}`
+                : `Access till ${expiry.toLocaleDateString()} · ${daysLeft} day(s) left`}
+        </span>
     );
 };
 
@@ -483,6 +555,7 @@ const InProgressSection = ({
                                         {sessionTermSingular}: {sessionName}
                                     </span>
                                 )}
+                                <AccessWindowLabel expiryDate={course.expiry_date} />
                                 {/* Progress mini-bar */}
                                 <ProfileMiniBar value={pct} />
                             </button>

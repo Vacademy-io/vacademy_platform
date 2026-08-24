@@ -134,6 +134,7 @@ export const enum SettingsTabs {
     Certificates = 'certificates',
     Templates = 'templates',
     AiSettings = 'aiSettings',
+    ScheduledReports = 'scheduledReports',
     SchoolSettings = 'schoolSettings',
     WhiteLabel = 'whiteLabel',
     WhatsApp = 'whatsapp',

@@ -84,7 +84,9 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
 from . import diagnostics as diag_mod
-from .providers import build_llm, build_stt, build_tts
+from .providers import (build_llm, build_stt, build_tts, engine_of,
+                        normalize_for_rumik, rumik_term_map_version)
+from . import ttscache
 from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
                        caller_asked_to_repeat, normalize_spoken, question_topic,
@@ -94,6 +96,22 @@ logger = logging.getLogger(__name__)
 
 END_MARKER = "<<END_CALL>>"
 TRANSFER_MARKER = "<<TRANSFER>>"
+
+# Mid-call sends. UNLIKE the two above, this marker carries a PAYLOAD, so both places
+# that know about markers need the variable-length form: the strip in SentinelGate and
+# the hold-back in _split_safe. Miss either and the caller HEARS it — that is not
+# hypothetical, it is what happened with [STOP] on 2026-08-18, when parents heard the
+# word "stop" read out mid-sentence.
+SEND_MARKER_OPEN = "<<SEND:"
+SEND_MARKER_CLOSE = ">>"
+# Artefact keys are authored in the agent UI, so validate rather than trust: anything
+# outside this set is a mis-generation and must never reach admin_core.
+_SEND_KEY_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+
+
+def _valid_send_key(key: str) -> bool:
+    return bool(key) and len(key) <= 64 and all(c in _SEND_KEY_CHARS for c in key)
 
 # If a graceful stop (stop_when_done) hasn't ended the runner within this many
 # seconds, hard-cancel — a chatty caller can otherwise starve the drain forever.
@@ -121,6 +139,10 @@ class CallOutcome:
     # Per-call technical diagnostics (app/diagnostics.CallDiagnostics). Owned by
     # run_bot; None when the pipeline died before setup.
     diagnostics: Any = None
+    # TTS speech-cache candidates this call proposed (ttscache.CallCandidates).
+    # Declared rather than attached ad hoc so report.py can find it, and so the
+    # end-of-call admission (was it heard, was the call healthy) has one owner.
+    tts_candidates: Any = None
 
     def duration_seconds(self) -> int:
         end = self.ended_at or time.time()
@@ -1096,6 +1118,13 @@ class RunGuard(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+# Spoken when a requested human transfer could not be registered. A module
+# constant rather than an inline default so the TTS cache can pre-warm it: it is
+# a fixed, bot-authored line like the farewells and the handbacks.
+TRANSFER_FAIL_CLOSING = ("Mujhe abhi connect karne mein dikkat aa rahi hai — hamare "
+                         "counsellor aapko jald call karenge. Dhanyavaad!")
+
+
 class SentinelGate(FrameProcessor):
     """Between LLM and TTS: strips the steering markers from the token stream so
     they are never spoken, accumulates the assistant transcript one utterance at
@@ -1103,17 +1132,21 @@ class SentinelGate(FrameProcessor):
     pipeline after the final utterance finished playing."""
 
     def __init__(self, outcome: CallOutcome, on_activity, set_bot_speaking,
-                 on_reply_start=None,
+                 on_reply_start=None, on_send=None,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
                  end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
-                 transfer_fail_closing: str = ("Mujhe abhi connect karne mein dikkat aa "
-                                               "rahi hai — hamare counsellor aapko jald "
-                                               "call karenge. Dhanyavaad!")):
+                 transfer_fail_closing: str = TRANSFER_FAIL_CLOSING):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._set_bot_speaking = set_bot_speaking
         self._on_reply_start = on_reply_start or (lambda: None)
+        # Mid-call send hook. Default no-op so every existing construction site and
+        # every test keeps working untouched.
+        self._on_send = on_send or (lambda _key: None)
+        # One send per artefact per call. The model re-states its offer when the caller
+        # says 'haan' twice, and the caller must not get the brochure twice for it.
+        self._sends_fired: set = set()
         self._transfer_closing = transfer_closing
         self._end_closing = end_closing
         self._transfer_fail_closing = transfer_fail_closing
@@ -1242,6 +1275,8 @@ class SentinelGate(FrameProcessor):
                 # later, unrelated response close the call.
                 self._end_this_response = True
                 self._buffer = self._buffer.replace(END_MARKER, "")
+            if SEND_MARKER_OPEN in self._buffer:
+                self._buffer = self._extract_sends(self._buffer)
             emit, self._buffer = self._split_safe(self._buffer)
             if emit:
                 self._utterance += emit
@@ -1365,10 +1400,52 @@ class SentinelGate(FrameProcessor):
             registered = None
         self._outcome.transfer_registered = registered is not None
 
+    def _extract_sends(self, buffer: str) -> str:
+        """Strip every COMPLETE send marker and fire it; leave a partial one in place.
+
+        A partial marker stays in the buffer and _split_safe holds it back from the TTS,
+        so a marker split across two token chunks is never spoken and never lost.
+        """
+        out = []
+        pos = 0
+        while True:
+            start = buffer.find(SEND_MARKER_OPEN, pos)
+            if start == -1:
+                out.append(buffer[pos:])
+                break
+            end = buffer.find(SEND_MARKER_CLOSE, start + len(SEND_MARKER_OPEN))
+            if end == -1:
+                out.append(buffer[pos:])      # incomplete — wait for the next chunk
+                break
+            key = buffer[start + len(SEND_MARKER_OPEN):end].strip()
+            out.append(buffer[pos:start])
+            pos = end + len(SEND_MARKER_CLOSE)
+            if not _valid_send_key(key):
+                logger.info("sentinel: ignoring malformed send marker %r corr=%s",
+                            key, self._outcome.corr)
+            elif key in self._sends_fired:
+                logger.info("sentinel: send %s already fired this call corr=%s",
+                            key, self._outcome.corr)
+            else:
+                self._sends_fired.add(key)
+                logger.info("sentinel: mid-call send %s corr=%s", key, self._outcome.corr)
+                try:
+                    self._on_send(key)
+                except Exception:
+                    # The voice path outranks the send, always.
+                    logger.exception("sentinel: send hook failed for %s corr=%s",
+                                     key, self._outcome.corr)
+        return "".join(out)
+
     @staticmethod
     def _split_safe(buffer: str) -> tuple[str, str]:
         """Emit everything except a trailing prefix that might grow into a marker."""
-        for marker in (END_MARKER, TRANSFER_MARKER):
+        # A send marker has a VARIABLE payload, so the fixed-prefix scan below cannot
+        # see a half-written one. Hold back from an unterminated open marker to the end.
+        idx = buffer.rfind(SEND_MARKER_OPEN)
+        if idx != -1 and SEND_MARKER_CLOSE not in buffer[idx:]:
+            return buffer[:idx], buffer[idx:]
+        for marker in (END_MARKER, TRANSFER_MARKER, SEND_MARKER_OPEN):
             for i in range(min(len(marker) - 1, len(buffer)), 0, -1):
                 if buffer.endswith(marker[:i]):
                     return buffer[:-i], buffer[-i:]
@@ -1438,8 +1515,10 @@ _SMALLEST_V31_MALE = {"devansh", "kaustubh", "virat", "karan", "yash", "debashis
 _SMALLEST_V31_FEMALE = {"imogen", "nirupma", "niharika"}
 _SMALLEST_PRO_MALE = {"mandar", "mathan", "barath"}
 _SMALLEST_PRO_FEMALE = {"manasi", "mrunal", "ketaki", "meher"}
-SMALLEST_VOICES = (_SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
-                   | _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE)
+SMALLEST_VOICES = _SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
+SMALLEST_PRO_VOICES = _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE
+# Kept for any caller that wants "is this a Smallest name at all" regardless of model.
+SMALLEST_ANY_VOICES = SMALLEST_VOICES | SMALLEST_PRO_VOICES
 
 # ── Deepgram Aura-2 ─────────────────────────────────────────────────────────
 # ENGLISH ONLY — the live /v1/models catalog has no Hindi voice at any tier, so
@@ -1472,6 +1551,8 @@ def _engine_of(model: str) -> str:
         return "rumik"
     if m.startswith(("google", "chirp")):
         return "google"
+    if m.startswith(("smallest", "lightning")) and "pro" in m:
+        return "smallest_pro"
     if m.startswith(("smallest", "lightning")):
         return "smallest"
     if m.startswith(("deepgram", "aura")):
@@ -1487,6 +1568,7 @@ _ENGINE_DEFAULT_VOICE = {
     # Founder chose Chirp3-HD by ear; Achird is its male voice (agent Ameet).
     "google": "hi-IN-Chirp3-HD-Achird",
     "smallest": "devansh",
+    "smallest_pro": "mandar",
     # English-only engine; Asteria is its clear/confident female voice.
     "deepgram": "aura-2-asteria-en",
 }
@@ -1495,6 +1577,7 @@ _ENGINE_DEFAULT_VOICE = {
 def _engine_palette(engine: str):
     return {"rumik": RUMIK_VOICES, "google": GOOGLE_VOICES,
             "smallest": SMALLEST_VOICES,
+            "smallest_pro": SMALLEST_PRO_VOICES,
             "deepgram": DEEPGRAM_VOICES}.get(engine)
 
 
@@ -1549,7 +1632,7 @@ def _agent_voice(agent):
         return voice if low in palette else None
     # Sarvam has no enumerated palette here (dozens of speakers across bulbul
     # versions), so instead reject anything that clearly belongs elsewhere.
-    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_VOICES, DEEPGRAM_VOICES):
+    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_ANY_VOICES, DEEPGRAM_VOICES):
         if low in other:
             return None
     return voice
@@ -2141,6 +2224,39 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         else f"- If the caller asks for a human, say a counsellor will call them right back, "
              f"then append {END_MARKER}."
     )
+    # Offers the admin attached to this agent's send rules. Built here so a rule is
+    # self-contained: the admin writes the question once, on the rule, and never has to
+    # keep a duplicate copy of it inside the system prompt.
+    #
+    # MID_CALL offers carry the marker instruction; POST_CALL ones do NOT, because the
+    # post-call analyser reads the acceptance straight from the transcript. Telling the
+    # model to emit a marker for those would fire a send twice.
+    #
+    # Empty for every agent without rules, so this adds nothing to their prompt.
+    _offers = [o for o in (agent.get("sendOffers") or [])
+               if isinstance(o, dict) and o.get("ask") and o.get("key")]
+    sends_line = ""
+    if _offers:
+        _mid = [o for o in _offers if str(o.get("timing", "")).upper() == "MID_CALL"]
+        _post = [o for o in _offers if o not in _mid]
+        _parts = [
+            "THINGS YOU CAN SEND. You may offer these, in your own words, at the moment "
+            "they naturally fit — never all at once, and never one the caller already "
+            "declined. Offer at most one per turn."
+        ]
+        for o in _post:
+            _parts.append(f"- Offer: {o['ask']}")
+        for o in _mid:
+            _parts.append(
+                f"- Offer: {o['ask']} If the caller AGREES, finish that reply with the "
+                f"exact token {SEND_MARKER_OPEN}{o['key']}{SEND_MARKER_CLOSE}")
+        if _mid:
+            _parts.append(
+                "The tokens are silent instructions to our system. NEVER say a token out "
+                "loud, never spell it, never mention that you are sending a code, and "
+                "never write one unless the caller clearly agreed in that very turn.")
+        sends_line = chr(10).join(_parts)
+
     disposition_line = (("At the end you must be able to judge the caller's interest as one of: "
                          + ", ".join(dispositions)) if dispositions else "")
 
@@ -2196,6 +2312,28 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
     # greeting on live calls. So defer: add ONLY the bot-only knowledge above, plus one
     # line telling the model its own instructions own the opening.
     if len(prompt.strip()) >= 600:
+        # THE 600-CHARACTER CUT-OFF DECIDES WHO GETS THE SAFETY RULES, AND IT IS
+        # THE WRONG SIDE OF THE LINE. 600 characters is roughly four sentences, so
+        # every authored agent lands here and receives NONE of `non_negotiable` —
+        # production prompts measured 2026-08-14 were 2956, 3359, 3489, 5152 and
+        # 10078 characters. The rules reach only the built-in placeholder persona,
+        # never an agent taking real calls, although each was added after a
+        # specific live failure: a repeated question means your answer FAILED;
+        # answer direct questions first and never dodge; frustration means drop
+        # the script; if the conversation stops making sense assume you MIS-HEARD.
+        #
+        # Those four are RECOVERY rules — what to do when a call goes wrong — so
+        # they cannot contradict a script that only describes the happy path,
+        # which is what the deferral below was written to protect against.
+        #
+        # Gated OFF by default: this ships as a no-op and every existing prompt is
+        # byte-identical until SAFETY_RULES_FOR_AUTHORED=true. Placed AFTER the
+        # authoritative line so the author's script still leads and the rules read
+        # as the override they announce themselves to be.
+        #
+        # NOTE this does not resolve the already_said_rule / listen_rule conflict
+        # (never name your company again vs. name it when asked) — that needs its
+        # own carve-out, and prod call 775ac5ac is the evidence.
         lines = [
             prompt,
             "Your instructions above are AUTHORITATIVE for the opening, identity, language, "
@@ -2203,6 +2341,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
             "caller speaks first at the very START of the call, your FIRST reply IS your "
             "scripted opening — but ONLY at the start; mid-call that rule does not apply.",
+            non_negotiable if get_settings().safety_rules_for_authored else "",
             already_said_rule,
             now_line,
             greeting_rule,
@@ -2227,6 +2366,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
             fields_line,
             end_line,
             human_line,
+            sends_line,
             disposition_line,
         ]
         return "\n".join(l for l in lines if l)
@@ -2280,6 +2420,7 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
         "zero zero'), 'pandrah tarikh'. Exception: a 10-digit phone number is read digit by digit.",
         end_line,
         human_line,
+        sends_line,
         disposition_line,
         f"IDENTITY LOCK (most important): your name is EXACTLY \"{name}\" — say it identically "
         f"every single time, and NEVER introduce yourself with any other name, spelling or "
@@ -2356,8 +2497,35 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             _last = max(flags["bot_stopped_t"], flags["user_stopped_t"])
             if _last:
                 _gap = max(0.0, time.time() - _last)
-                diag.sample("dead_air", _gap)
                 _why = _silence_cause(_gap)
+                # THE CALLER'S OWN RESPONSE TIME IS NOT OUR DEAD AIR.
+                #
+                # This branch runs when the caller STARTS speaking, and measures
+                # backwards to whoever last stopped. When the BOT spoke last,
+                # that span is the caller thinking before they answer — a normal
+                # part of a phone conversation, not a defect.
+                #
+                # _silence_cause tags that span "both_quiet" (not ducked, no reply
+                # in flight, and bot_stopped_t >= user_stopped_t). Measured over
+                # 365 dead-air events in the 7 days to 2026-08-14, "both_quiet" at
+                # a user onset was 169 of them (46.3%) with a MEDIAN of 3.9s — i.e.
+                # squarely over the 3.5s AMBER bar — and produced 45 of the gaps
+                # past the 6s RED bar. DEAD_AIR was firing on 41% of calls, roughly
+                # half of it for callers simply taking a moment to reply.
+                #
+                # Renamed rather than dropped: the span is still recorded in
+                # `silences` (it is genuine, useful signal about how long callers
+                # take to answer this agent), it just no longer feeds the
+                # dead_air reservoir that verdict() scores.
+                #
+                # SCOPED TO THIS CALLBACK ON PURPOSE. set_bot_speaking computes the
+                # mirror gap — "the caller stopped, how long until WE spoke" — and
+                # "both_quiet" there means two bot utterances with a hole between
+                # them, which IS ours. That path is deliberately untouched.
+                if _why == "both_quiet":
+                    _why = "caller_thinking"
+                if _why != "caller_thinking":
+                    diag.sample("dead_air", _gap)
                 if _why:
                     diag.note_silence(round(_gap, 1), _why)
                     logger.info("dead air %.1fs — bot was %s corr=%s", _gap, _why, corr)
@@ -2416,6 +2584,61 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             if flags["tts_gen_t"] == 0.0 and not flags["bot_speaking"]:
                 flags["tts_gen_t"] = time.time()
         tts.set_generate_callback(_stamp_generate)
+
+    # ── TTS speech cache ────────────────────────────────────────────────────
+    # Replay audio we already paid to synthesize, on an EXACT sha256 match of
+    # (engine, model, voice, pace, temperature, rate, term-map, sentence). One
+    # differing character is a miss and goes to the vendor.
+    #
+    # engine_of(tts), not _agent_tts_model(agent): build_tts silently falls back
+    # to Sarvam on a missing key, and filing that audio under the configured
+    # engine's key would serve the wrong voice to every future match.
+    _cache_engine, _cache_model = engine_of(tts)
+    # The bot's OWN lines. They never pass through the LLM, an admin authored
+    # them, and each arrives as a standalone TTSSpeakFrame — so they are the one
+    # class that can be pre-warmed and is exempt from the "was it heard" gate.
+    # Resolved exactly as _greet_when_ready will resolve it, so the key matches
+    # what actually gets spoken. Deterministic: same agent + same context in,
+    # same string out.
+    # Guarded: _greet_when_ready calls this same pair inside a background task,
+    # where a raise costs the opening line. Here it would be on the call setup
+    # path, where a raise costs the whole call — and _fill_placeholders reaches
+    # strftime with glibc-only directives. A warm target is not worth that.
+    try:
+        _opening_for_cache = _clean_opening(_fill_placeholders(
+            (agent.get("openingLine") or "").strip(), context))
+    except Exception:
+        logger.exception("tts-cache: could not resolve the opening line for warming")
+        _opening_for_cache = ""
+    _fixed_lines = {
+        _opening_for_cache, nudge_text, cap_farewell, transfer_closing,
+        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING,
+    }
+    _fixed_lines.update(eng_fillers if eng else settings.filler_phrases)
+    _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
+    _fixed_lines.discard("")
+    tts_candidates = ttscache.CallCandidates(ttscache.get_cache())
+    tts_watcher = ttscache.install_tts_cache(
+        tts,
+        engine=_cache_engine, model=_cache_model,
+        voice=_agent_voice(agent) or "",
+        pace=_as_float(agent.get("pace")),
+        temperature=_as_float(agent.get("temperature")),
+        term_map_version=(rumik_term_map_version() if _cache_engine == "rumik" else ""),
+        fixed_lines=_fixed_lines,
+        # Per-agent rollout gate — one agent first, then widen (TTS_CACHE_AGENTS).
+        agent_id=str(agent.get("id") or ""), agent_name=str(agent.get("name") or ""),
+        # snake_case, like tts_model: admin_core emits it that way ON PURPOSE and
+        # always emits it, because the safe default for a MISSING key is OFF.
+        cache_mode=str(agent.get("speech_cache_mode") or ttscache.MODE_OFF),
+        # Rumik rewrites Devanagari-spelt English terms at the synthesis
+        # boundary, so the cache must key on the text the VENDOR sees.
+        normalize=(normalize_for_rumik if _cache_engine == "rumik" else None),
+        diag=diag, candidates=tts_candidates)
+    # Only hand the candidate list to the report when the cache is actually
+    # installed. Left attached for an OFF agent it would be empty forever, and
+    # report.py would still spawn a thread per call to flush nothing.
+    outcome.tts_candidates = tts_candidates if tts_watcher is not None else None
 
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context, sink=diag.note_unfilled)}]
@@ -2574,9 +2797,24 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             t.get("text") or "" for t in outcome.transcript[-6:]
             if t.get("role") == "assistant"),
         diag=diag)
+
+    def _fire_mid_call_send(key: str) -> None:
+        """Hand a mid-call send to admin_core WITHOUT blocking the voice path.
+
+        create_task, never await: this is a cross-ocean HTTP call (bot in Mumbai,
+        admin_core in Singapore) and the agent is mid-sentence. A lost fire is
+        recoverable — the post-call rules see the same acceptance in promisedSends.
+        """
+        try:
+            asyncio.create_task(
+                admin_core.post_action(corr, key, agent.get("id")))
+        except Exception:
+            logger.exception("sentinel: could not schedule send %s corr=%s", key, corr)
+
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             on_reply_start=_on_reply_start,
-                            transfer_closing=transfer_closing, end_closing=end_closing)
+                            transfer_closing=transfer_closing, end_closing=end_closing,
+                            on_send=_fire_mid_call_send)
 
     run_guard = RunGuard(llm_context,
                          enabled=lambda: settings.run_guard_enabled,
@@ -2592,6 +2830,17 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         sentinel,
         no_repeat,
         tts,
+        # Feeds the cache's ordering guard: on an engine whose audio arrives
+        # out-of-band, a cached utterance may only be served when the vendor
+        # owes us nothing, or it would be heard BEFORE audio requested earlier.
+        #
+        # ABSENT ENTIRELY when the cache is not installed for this agent — which
+        # is every agent until one is switched on. A pass-through processor is
+        # cheap but it is not free, and "the chain is byte-identical to today"
+        # is a much stronger thing to be able to say than "the extra link does
+        # nothing".
+        *([ttscache.make_turn_watcher_processor(tts_watcher)]
+          if tts_watcher is not None else []),
         duck,
         transport.output(),
         played_transcript,
@@ -2751,6 +3000,84 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                "greet again and do not repeat that word.]"}],
                     run_llm=True))
             await task.queue_frames(_frames)
+
+            # THE PRE-APPEND ABOVE CLAIMS THE WHOLE OPENING REACHED THE CALLER.
+            # It often does not: the caller talks over the first second, the
+            # utterance is cancelled, and the model still reads its own context as
+            # "I delivered the full introduction". already_said_rule then tells it
+            # "It has been said... Resume from the point AFTER the introduction",
+            # so it skips ahead to the next scripted step and the caller — who
+            # heard a fragment — has no idea what is being asked. That is the
+            # HANDBACK_LOOP shape: on call 3148ccd4 the caller spent the last
+            # forty-five seconds asking "मैं क्या बताऊँ?" and hung up.
+            #
+            # NoRepeatGate got this exact fix on 2026-08-13 (it holds sentences
+            # pending and rolls back the ones that never played). The opening
+            # bypasses NoRepeatGate entirely — it is injected straight into the
+            # context here — so it never received it. This is that fix, for the
+            # one utterance most likely to be interrupted.
+            #
+            # PURELY ADDITIVE, DELIBERATELY. The full opening STAYS in context: it
+            # is what stops the "no record at all" failure that cost us both a
+            # re-delivered intro and a language flip (see the note above). We only
+            # ADD a correction telling the model what the caller actually heard.
+            # Every failure mode therefore degrades to today's behaviour:
+            #   correction races the caller's turn -> model has the full opening
+            #   opening completed                  -> nothing added
+            #   nothing reached the caller         -> nothing added
+            #   watch loop times out               -> nothing added
+            # It can do nothing; it cannot do harm.
+            #
+            # Substantive openings only. The bare-greeting path above hands
+            # straight to the LLM with run_llm=True, so its played text is the
+            # greeting PLUS the model's own introduction — not the opening alone,
+            # and the length test would be meaningless.
+            if _opening_is_substantive(opening):
+                _t0 = time.time()
+                while time.time() - _t0 < 12.0:
+                    # bot_spoke_once flips in set_bot_speaking(False), so this is
+                    # exactly "the opening started and has now stopped" — whether
+                    # it finished or was cut off.
+                    if flags["bot_spoke_once"] and not flags["bot_speaking"]:
+                        break
+                    await asyncio.sleep(0.05)
+                _played = ""
+                for _e in reversed(outcome.transcript):
+                    if _e.get("role") == "assistant":
+                        _played = _e.get("text") or ""
+                        break
+                # 0.8: TTS re-chunks and normalises, so played text never matches
+                # the source exactly. Only correct on a REAL shortfall.
+                if _played and len(_played) < len(opening) * 0.8:
+                    diag.bump("opening_truncated")
+                    # A caller who TALKED OVER the opening is a barge-in, not a
+                    # playback failure: they are already speaking and the normal
+                    # turn will answer them. Correcting here made the model
+                    # re-say the clause it was cut inside — call ddc67ffc opened
+                    # "मैं श्रेया बात कर रही हूँ शिक्षा नेशन" twice, which the
+                    # caller hears as a repeated introduction. "Finish the point
+                    # you were making" cannot be delivered mid-sentence, so the
+                    # model restarts the sentence to finish it.
+                    #
+                    # Only correct when the caller was SILENT — i.e. the audio
+                    # genuinely never reached them (network, TTS, carrier cut),
+                    # which is the case this was written for. Strictly narrower
+                    # than before: every path that fired previously either still
+                    # fires or reverts to pre-fix behaviour. It cannot do more.
+                    _caller_spoke = any(_e.get("role") == "user"
+                                        for _e in outcome.transcript)
+                    logger.info("greet: opening cut short — caller heard %d of %d chars "
+                                "caller_spoke=%s corr=%s",
+                                len(_played), len(opening), _caller_spoke, corr)
+                    if not _caller_spoke:
+                        # No run_llm: the caller is mid-sentence. Forcing a generation
+                        # here would talk straight over them.
+                        await task.queue_frames([LLMMessagesAppendFrame(messages=[{
+                            "role": "user", "content":
+                            f"[You were cut off after saying only: \"{_played}\" — the caller "
+                            "did NOT hear the rest of your opening. Do not start over and do "
+                            "not re-introduce yourself, but do finish the point you were "
+                            "making before you move on.]"}])])
         else:
             diag.greet_path = "llm"
             logger.info("greet: LLM-generated opening (corr=%s)", corr)

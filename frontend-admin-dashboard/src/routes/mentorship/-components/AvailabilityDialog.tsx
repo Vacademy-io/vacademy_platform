@@ -20,6 +20,7 @@ import type {
     SessionType,
     WeeklyWindow,
 } from '../-types/mentorship-types';
+import { reportApiError } from '@/lib/report-api-error';
 
 const genId = (): string =>
     typeof crypto !== 'undefined' && crypto.randomUUID
@@ -202,8 +203,12 @@ export function AvailabilityDialog({ instituteId, open, onOpenChange }: Availabi
             await update.mutateAsync({ instituteId, data: payload });
             toast.success('Availability saved');
             onOpenChange(false);
-        } catch {
-            toast.error('Failed to save availability');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'save-availability' },
+                fallbackMessage: 'Failed to save availability',
+            });
         }
     };
 

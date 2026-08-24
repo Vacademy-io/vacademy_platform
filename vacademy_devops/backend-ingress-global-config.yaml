@@ -8,6 +8,14 @@ metadata:
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/part-of: ingress-nginx
 data:
+  # WARNING: this file has drifted from the live ConfigMap. As of 2026-08-23 the
+  # cluster carries allow-snippet-annotations: "false" (kept below) and does NOT
+  # carry enable-underscores-in-headers, proxy-body-size or the timeouts. Applying
+  # this file wholesale would therefore CHANGE live behaviour, not just re-assert
+  # it. Prefer `kubectl patch --type merge` for a single key until someone
+  # reconciles the two deliberately.
+  allow-snippet-annotations: "false"
+
   enable-underscores-in-headers: "true"
   proxy-body-size: "0"
 
@@ -15,3 +23,17 @@ data:
   proxy-connect-timeout: "1800" # 30 minutes connection timeout
   proxy-send-timeout: "1800" # 30 minutes send timeout
   proxy-read-timeout: "1800" # 30 minutes read timeout
+
+  # Responses were served uncompressed: ingress-nginx defaults use-gzip to false
+  # and no service sets server.compression, so a 210KB JSON body went out as
+  # 210KB. Measured on /public/institute/v1/details-non-batches after enabling:
+  # 210,371 -> 26,704 bytes (7.9x). application/json is already in the default
+  # gzip-types list, so use-gzip alone is enough.
+  #
+  # min-length 1024 keeps small bodies (health checks, tiny 200s) uncompressed
+  # where the CPU and the ~20-byte gzip envelope would not pay for themselves.
+  # level 5 rather than the default 1: measurably smaller for JSON at negligible
+  # CPU on the controller, which idles around 7m.
+  use-gzip: "true"
+  gzip-min-length: "1024"
+  gzip-level: "5"

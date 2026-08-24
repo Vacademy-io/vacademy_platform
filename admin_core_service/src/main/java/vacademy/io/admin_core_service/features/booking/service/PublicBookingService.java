@@ -186,6 +186,25 @@ public class PublicBookingService {
     public PublicBookingDTOs.PublicBookingViewDTO book(String instituteId, String slug,
                                                        PublicBookingDTOs.PublicBookRequestDTO request,
                                                        String inviteeUserId) {
+        return book(instituteId, slug, request, inviteeUserId, false);
+    }
+
+    /**
+     * Same booking flow again, with the public-endpoint abuse caps optionally lifted.
+     *
+     * <p>Those caps exist to bound what an anonymous stranger can do with a public link.
+     * A staff-initiated booking — an admin or the mentor themselves scheduling a 1:1 for
+     * a named learner — has already passed institute-membership and role checks, so the
+     * per-email cap would only ever stop legitimate work (five sessions with the same
+     * learner in one day is unusual, but it is not abuse).
+     *
+     * @param trusted true only for callers the request has already authenticated and
+     *                authorized; never set from an unauthenticated entry point.
+     */
+    public PublicBookingDTOs.PublicBookingViewDTO book(String instituteId, String slug,
+                                                       PublicBookingDTOs.PublicBookRequestDTO request,
+                                                       String inviteeUserId,
+                                                       boolean trusted) {
         BookingPage page = activePage(instituteId, slug);
         if (request.getName() == null || request.getName().isBlank()) {
             throw new VacademyException("name is required");
@@ -199,7 +218,7 @@ public class PublicBookingService {
         if (!bookingSlotService.isSlotAvailable(page, slotStart, request.getDurationMinutes())) {
             throw new VacademyException("This slot is no longer available. Please pick another time.");
         }
-        enforceAbuseCaps(page, hasEmail ? request.getEmail() : null);
+        if (!trusted) enforceAbuseCaps(page, hasEmail ? request.getEmail() : null);
 
         // CRM linkage: a public booking on a list-attached page is a lead.
         // Best effort — a broken audience config must not block the meeting.
@@ -255,9 +274,24 @@ public class PublicBookingService {
     @Transactional
     public PublicBookingDTOs.PublicBookingViewDTO cancel(String manageToken,
                                                          PublicBookingDTOs.PublicCancelRequestDTO request) {
-        BookingInstance instance = instanceByToken(manageToken);
+        return cancelInstance(instanceByToken(manageToken), request != null ? request.getReason() : null);
+    }
+
+    /**
+     * Cancel a booking that the caller has ALREADY been authorized to touch.
+     *
+     * <p>Split out of {@link #cancel(String, PublicBookingDTOs.PublicCancelRequestDTO)} so an
+     * authenticated actor (an admin, or the mentor hosting the session) goes through exactly
+     * this code — the same mutability guard, the same live-session and reminder teardown, the
+     * same Google Calendar cleanup, the same notification. The only difference between the two
+     * entry points is how the caller proved they may act; there is no second cancel path.
+     *
+     * <p>Callers are responsible for authorization: this method performs none.
+     */
+    @Transactional
+    public PublicBookingDTOs.PublicBookingViewDTO cancelInstance(BookingInstance instance, String reason) {
         assertMutable(instance);
-        cancelUnderlying(instance, request != null ? request.getReason() : null);
+        cancelUnderlying(instance, reason);
         notifyMentorshipCancellation(instance);
         return toView(instance, pageOf(instance));
     }
@@ -309,6 +343,24 @@ public class PublicBookingService {
     public PublicBookingDTOs.PublicBookingViewDTO reschedule(String manageToken,
                                                              PublicBookingDTOs.PublicRescheduleRequestDTO request) {
         BookingInstance old = instanceByToken(manageToken);
+        BookingInstance replacement = rescheduleInstance(old, request);
+        return toView(replacement, pageOf(replacement));
+    }
+
+    /**
+     * Move a booking the caller has ALREADY been authorized to touch, to a new start time.
+     *
+     * <p>Shares every safeguard with the invitee-facing path: the slot must still be free, the
+     * old row is claimed first under its optimistic {@code @Version} (so two concurrent
+     * reschedules can't both create a replacement), a failure to create the replacement
+     * restores the previous status, and the replacement records {@code rescheduleOfInstanceId}
+     * so history stays linked rather than duplicated.
+     *
+     * <p>Callers are responsible for authorization: this method performs none.
+     */
+    @Transactional
+    public BookingInstance rescheduleInstance(
+            BookingInstance old, PublicBookingDTOs.PublicRescheduleRequestDTO request) {
         assertMutable(old);
         BookingPage page = pageOf(old);
         if (page == null || !"ACTIVE".equals(page.getStatus())) {
@@ -359,8 +411,7 @@ public class PublicBookingService {
         BookingInstance replacement = bookingInstanceRepository.findById(created.getId())
                 .orElseThrow(() -> new VacademyException("Booking not found after reschedule"));
         replacement.setRescheduleOfInstanceId(old.getId());
-        replacement = bookingInstanceRepository.save(replacement);
-        return toView(replacement, page);
+        return bookingInstanceRepository.save(replacement);
     }
 
     // ---------- helpers ----------

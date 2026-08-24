@@ -274,23 +274,46 @@ public class LearnerAssessmentAttemptStartManager {
         }
     }
 
+    /**
+     * PREVIEW -> LIVE is a one-shot transition, but the client can fire it more
+     * than once: the learner double-taps Start, or the preview screen remounts
+     * and its "preview time is up" effect starts the attempt again. The two
+     * requests land milliseconds apart on different worker threads, and the
+     * loser used to 510 with "Assessment already live or in preview" even though
+     * the attempt it was looking at is perfectly healthy and already running.
+     *
+     * So the call is idempotent for an attempt this same flow just started: the
+     * loser replays the winner's answer instead of failing. It deliberately
+     * returns the ALREADY-STORED startTime rather than a fresh one, so a repeat
+     * call can never re-stamp the clock and hand the learner extra time (the two
+     * racing writers could otherwise overwrite each other's startTime). Any
+     * other status (ENDED, and so on) still fails loudly.
+     */
     public ResponseEntity<LearnerAssessmentStartAssessmentResponse> startAssessment(CustomUserDetails user, StartAssessmentRequest startAssessmentRequest) {
-        Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(startAssessmentRequest.getAttemptId());
-        if (studentAttempt.isEmpty()) throw new VacademyException("Student attempt not found");
+        Optional<StudentAttempt> maybeAttempt = studentAttemptRepository.findById(startAssessmentRequest.getAttemptId());
+        if (maybeAttempt.isEmpty()) throw new VacademyException("Student attempt not found");
+        StudentAttempt studentAttempt = maybeAttempt.get();
 
-        if (!AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
+        if (AssessmentAttemptEnum.LIVE.name().equals(studentAttempt.getStatus()) && studentAttempt.getStartTime() != null)
+            return ResponseEntity.ok(buildStartAssessmentResponse(studentAttempt, studentAttempt.getStartTime()));
+
+        if (!AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.getStatus()))
             throw new VacademyException("Assessment already live or in preview");
 
         Date startTime = DateUtil.getCurrentUtcTime();
-        studentAttempt.get().setStartTime(startTime);
-        Date endTime = DateUtil.addMinutes(startTime, studentAttempt.get().getMaxTime());
-        studentAttempt.get().setStatus(AssessmentAttemptEnum.LIVE.name());
+        studentAttempt.setStartTime(startTime);
+        studentAttempt.setStatus(AssessmentAttemptEnum.LIVE.name());
         // i18n: stamp which content locale this attempt is being served in
         // (?lang > Accept-Language > JWT claim > "en"). Purely additive.
-        studentAttempt.get().setContentLocale(translationService.resolveRequestLocale());
+        studentAttempt.setContentLocale(translationService.resolveRequestLocale());
 
-        studentAttemptRepository.save(studentAttempt.get());
+        studentAttemptRepository.save(studentAttempt);
 
-        return ResponseEntity.ok(new LearnerAssessmentStartAssessmentResponse(startTime, endTime, studentAttempt.get().getId(), studentAttempt.get().getRegistration().getId()));
+        return ResponseEntity.ok(buildStartAssessmentResponse(studentAttempt, startTime));
+    }
+
+    private LearnerAssessmentStartAssessmentResponse buildStartAssessmentResponse(StudentAttempt studentAttempt, Date startTime) {
+        Date endTime = DateUtil.addMinutes(startTime, studentAttempt.getMaxTime());
+        return new LearnerAssessmentStartAssessmentResponse(startTime, endTime, studentAttempt.getId(), studentAttempt.getRegistration().getId());
     }
 }

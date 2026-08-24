@@ -248,6 +248,45 @@ def build_llm():
     )
 
 
+def _tag_engine(svc, slug: str, model: str):
+    """Stamp the engine ACTUALLY constructed onto the service.
+
+    build_tts falls through to Sarvam on any construction failure (missing key,
+    signature drift), so ai_agent.tts_model is NOT a reliable statement of what
+    will speak. The TTS cache keys on this stamp: filing Sarvam audio under a
+    google key would serve the wrong voice to every future call that matched it.
+    Also what diagnostics should report as the vendor.
+    """
+    try:
+        svc._vacademy_engine = (slug, model or "")
+    except Exception:
+        pass
+    return svc
+
+
+def engine_of(svc) -> tuple:
+    """(slug, model) for a service built by build_tts. ("sarvam", "") if unstamped —
+    matching build_tts's own terminal fallback, and CallBillingService's."""
+    got = getattr(svc, "_vacademy_engine", None)
+    if isinstance(got, tuple) and len(got) == 2:
+        return got
+    return ("sarvam", "")
+
+
+def rumik_term_map_version() -> str:
+    """Short digest of RUMIK_TERM_MAP. It rewrites text at the synthesis
+    boundary, so changing it changes the audio for an unchanged sentence — it
+    has to be part of the cache key or a re-tuned map would serve stale audio."""
+    import hashlib
+    # It is a tuple of (from, to) pairs, not a string — repr is stable because
+    # config sorts it at load.
+    tm = get_settings().rumik_term_map
+    if not tm:
+        return ""
+    return hashlib.sha1(repr(tm).encode("utf-8")).hexdigest()[:8]
+
+
+
 def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=None,
               tts_model: str | None = None,
               pace: float | None = None, temperature: float | None = None):
@@ -280,7 +319,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
             voice_id = (voice or s.google_tts_voice).strip() or s.google_tts_voice
             # Chirp3-HD ignores speaking_rate on some tiers but never errors on
             # it; Neural2/WaveNet honour it. Pass it either way (probe-verified).
-            return GoogleTTSService(
+            return _tag_engine(GoogleTTSService(
                 credentials=creds,
                 credentials_path=(s.vertex_credentials_path.strip() or None) if not creds else None,
                 voice_id=voice_id,
@@ -291,7 +330,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                         eff_pace if pace is not None else s.google_tts_speaking_rate,
                         0.25, 4.0),
                 ),
-            )
+            ), "google", "chirp3-hd")
         except Exception:
             logger.exception("tts: google TTS unavailable (creds?) — "
                              "falling back to Sarvam bulbul")
@@ -302,11 +341,11 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         # misconfigured vendor must degrade to a working call in a different
         # voice, never to the mute call the 1.4 signature drift already cost us.
         try:
-            return EdgeTTSService(
+            return _tag_engine(EdgeTTSService(
                 voice_id=(voice or s.edge_tts_voice).strip() or s.edge_tts_voice,
                 sample_rate=24000,
                 pace=eff_pace,
-            )
+            ), "edge", "read-aloud")
         except Exception:
             logger.exception("tts: edge unavailable — falling back to Sarvam bulbul")
 
@@ -326,8 +365,10 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                     sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
             sm_voice = (voice or s.smallest_voice).strip() or s.smallest_voice
             try:
-                return _build_smallest(SmallestTTSService, s, sm_model, sm_voice,
-                                       _clamp(eff_pace, 0.5, 2.0))
+                return _tag_engine(
+                    _build_smallest(SmallestTTSService, s, sm_model, sm_voice,
+                                    _clamp(eff_pace, 0.5, 2.0)),
+                    "smallest", sm_model)
             except Exception:
                 logger.exception("tts: smallest unavailable — falling back to Sarvam")
     if model.startswith("deepgram") or model.startswith("aura"):
@@ -343,19 +384,19 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         else:
             dg_voice = (voice or s.deepgram_tts_voice).strip() or s.deepgram_tts_voice
             try:
-                return DeepgramTTSService(
+                return _tag_engine(DeepgramTTSService(
                     api_key=s.deepgram_api_key,
                     sample_rate=s.deepgram_tts_sample_rate,
                     encoding="linear16",
                     settings=DeepgramTTSService.Settings(voice=dg_voice, model=dg_voice),
-                )
+                ), "deepgram", dg_voice)
             except Exception:
                 logger.exception("tts: deepgram unavailable — falling back to Sarvam")
     if model.startswith("rumik") or model.startswith("silk"):
         if not s.rumik_api_key:
             logger.error("tts: RUMIK_API_KEY unset — falling back to Sarvam bulbul")
         else:
-            return RumikTTSService(
+            return _tag_engine(RumikTTSService(
                 api_key=s.rumik_api_key,
                 # Rumik emits 24 kHz ONLY; the output transport resamples to the
                 # 8 kHz Plivo leg.
@@ -363,7 +404,7 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                 voice=(voice or s.rumik_voice).strip() or "ira",
                 model="mulberry",
                 description=rumik_pace_description(eff_pace),
-            )
+            ), "rumik", "mulberry")
     kwargs = {"pace": eff_pace, "enable_preprocessing": True}
     if temperature is not None:
         kwargs["temperature"] = _clamp(temperature, 0.01, 2.0)
@@ -371,13 +412,13 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
         # Sarvam's WS validation floor is 30 (20 = rejected config = silent call,
         # 2026-07-20 outage).
         kwargs["min_buffer_size"] = max(30, s.sarvam_tts_min_buffer)
-    return SarvamTTSService(
+    return _tag_engine(SarvamTTSService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_tts_model,
         voice_id=voice or s.sarvam_tts_voice,
         sample_rate=sample_rate,
         params=SarvamTTSService.InputParams(**kwargs),
-    )
+    ), "sarvam", s.sarvam_tts_model)
 
 
 def _build_smallest(cls, s, model: str, voice: str, speed: float):

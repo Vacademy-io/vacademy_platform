@@ -561,6 +561,57 @@ async def report_spool_sweeper() -> None:
             logger.exception("spool sweep failed")
 
 
+async def _ladder_tts_cache(outcome: CallOutcome, diag_blob) -> None:
+    """Hand this call's cache candidates to the ledger, off the event loop.
+
+    Total by construction. A cache that learns nothing saves no money, which is a
+    very different order of problem from a report that never lands — so nothing
+    here may raise, and nothing here may delay the post.
+    """
+    try:
+        cands = getattr(outcome, "tts_candidates", None)
+        if cands is None:
+            return
+        # The PLAYED transcript: assistant entries recorded by
+        # PlayedTranscriptRecorder, which sits after transport.output() and so
+        # holds only text the transport released at playout position.
+        played = " ".join(t.get("text") or "" for t in outcome.transcript
+                          if t.get("role") == "assistant")
+        blob = diag_blob or {}
+
+        # ONE line per call with the whole story. This is what you grep during a
+        # rollout: the diagnostics blob has the same numbers, but reaching it means
+        # opening a call in the UI, and the first question is always "is it hitting
+        # at all". Only emitted when the cache actually ran — a line of zeroes for
+        # every OFF agent would bury the calls that matter.
+        tts = blob.get("tts") or {}
+        if tts.get("cacheHits") is not None:
+            hits, misses = tts.get("cacheHits") or 0, tts.get("cacheMisses") or 0
+            total = hits + misses
+            logger.info(
+                "tts-cache: call summary corr=%s agent=%s hits=%d misses=%d rate=%s "
+                "chars_saved=%s secs_saved=%s",
+                outcome.corr,
+                (outcome.context.get("agent") or {}).get("name") or "?",
+                hits, misses,
+                f"{(hits / total * 100):.0f}%" if total else "n/a",
+                tts.get("cacheCharsSaved"), tts.get("cacheSecsSaved"))
+
+        n = await asyncio.to_thread(
+            cands.flush, played_text=played,
+            verdict_faults=blob.get("faults") or [],
+            health=blob.get("health") or "")
+        if n:
+            logger.info("tts-cache: laddered %d sentence(s) corr=%s", n, outcome.corr)
+            # Render now rather than on the next tick: the sentence this call just
+            # qualified should be available to the NEXT call, not five minutes of
+            # calls later. The sweeper still defers if the box is carrying load.
+            from . import ttswarm
+            ttswarm.request_sweep()
+    except Exception:
+        logger.exception("tts-cache: laddering failed corr=%s", outcome.corr)
+
+
 async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) -> bool:
     ctx = outcome.context
     # Never let the classifier judge a call the caller never took part in — see
@@ -646,6 +697,12 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
             ).isoformat().replace("+00:00", "Z"),
         },
     }
+    # The speech cache learns ONLY from calls that worked. _diagnostics_blob above
+    # froze the verdict, so this is the first point where G4 (healthy call) can be
+    # applied; G3 (the sentence actually reached the caller) reads the very same
+    # played transcript this report ships.
+    await _ladder_tts_cache(outcome, payload.get("diagnostics"))
+
     ok = await admin_core.post_report(ctx.get("instituteId"), ctx.get("webhookToken"), payload)
     if not ok:
         spool_report(ctx.get("instituteId"), ctx.get("webhookToken"), payload)

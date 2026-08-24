@@ -27,10 +27,11 @@ from xml.sax.saxutils import escape
 
 import aiohttp
 from fastapi import APIRouter, FastAPI, Query, Request, Response, WebSocket
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from . import admin_core
 from .bot import CallOutcome, run_bot
+from . import ttscache, ttswarm
 from .config import get_settings
 from .providers import rumik_pace_description
 from .report import build_and_post_report, report_spool_sweeper
@@ -81,10 +82,23 @@ async def lifespan(app: FastAPI):
     # startup (the probe window) or block /answer for live traffic.
     app.state.warm_task = asyncio.create_task(_warm())
     app.state.spool_task = asyncio.create_task(report_spool_sweeper())
+
+    async def _open_speech_cache():
+        # Rebuilds the RAM index from ONE SQL query. Off the startup path on
+        # purpose: a cold or corrupt cache must never delay the readiness probe,
+        # and a cache that will not open is a cache that is off, not an outage.
+        try:
+            await asyncio.to_thread(ttscache.get_cache().open)
+        except Exception:
+            logger.exception("lifespan: speech cache open failed (non-fatal)")
+
+    app.state.speech_cache_task = asyncio.create_task(_open_speech_cache())
+    app.state.tts_sweeper_task = asyncio.create_task(ttswarm.sweeper())
     try:
         yield
     finally:
-        for t in (app.state.warm_task, app.state.spool_task):
+        for t in (app.state.warm_task, app.state.spool_task,
+                  app.state.speech_cache_task, app.state.tts_sweeper_task):
             t.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await t
@@ -272,6 +286,74 @@ async def tts(
     if not path:
         return Response(status_code=502)
     return _serve_mp3(path)
+
+
+def _internal_ok(request: Request) -> bool:
+    """Shared-secret gate for the internal TTS-cache routes.
+
+    Not public: these SPEND MONEY (each warm is a vendor synthesis), so an open
+    endpoint is a way for a stranger to run up our Sarvam bill. Same secret the
+    /ws token is minted from, which admin_core already holds.
+    """
+    secret = get_settings().internal_client_secret
+    if not secret:
+        return False
+    got = request.headers.get("x-voice-bot-token") or ""
+    return hmac.compare_digest(got, secret)
+
+
+@router.post("/internal/tts-cache/warm")
+async def tts_cache_warm(request: Request):
+    """Pre-render an agent's fixed lines so they hit from call #1.
+
+    Called fire-and-forget by admin_core when an AI agent is saved (see
+    AiAgentSpeechWarmer). A failure here must never be visible to the admin who
+    just pressed Save — the call simply pays the vendor as it does today.
+    """
+    if not _internal_ok(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "bad json"}, status_code=400)
+    texts = [t for t in (body.get("texts") or []) if isinstance(t, str)][:64]
+    if not texts:
+        return {"warmed": 0, "skipped": 0, "failed": 0}
+    try:
+        result = await ttswarm.warm(
+            engine=(body.get("engine") or "sarvam").strip().lower(),
+            model=(body.get("model") or "").strip(),
+            voice=(body.get("voice") or "").strip(),
+            pace=body.get("pace"), temperature=body.get("temperature"),
+            texts=texts)
+    except Exception:
+        logger.exception("tts-cache warm failed")
+        return JSONResponse({"error": "warm failed"}, status_code=502)
+    return result
+
+
+@router.get("/internal/tts-cache/stats")
+async def tts_cache_stats(request: Request):
+    """What actually repeats, and how big the store is.
+
+    This is the readout that decides whether the LLM-sentence half of the cache
+    earns its complexity: if `repeated` stays a small fraction of `distinct`,
+    the lever is a more deterministic script, not more cache engineering.
+    """
+    if not _internal_ok(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    cache = ttscache.get_cache()
+    rows = await asyncio.to_thread(cache.repeat_report, 40)
+    head = rows[0] if rows else {}
+    return {
+        "ready": cache.ready,
+        "blobs": cache.size,
+        "distinctSentences": head.get("distinct"),
+        "totalSightings": head.get("sightings"),
+        "repeatedSentences": head.get("repeated"),
+        "top": [{"engine": r["engine"], "voice": r["voice"], "count": r["count"],
+                 "chars": r["chars"], "text": r["text"][:120]} for r in rows],
+    }
 
 
 def _cache_write(path: str, data: bytes) -> bool:

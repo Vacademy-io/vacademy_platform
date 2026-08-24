@@ -84,7 +84,9 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
 from . import diagnostics as diag_mod
-from .providers import build_llm, build_stt, build_tts
+from .providers import (build_llm, build_stt, build_tts, engine_of,
+                        normalize_for_rumik, rumik_term_map_version)
+from . import ttscache
 from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
                        caller_asked_to_repeat, normalize_spoken, question_topic,
@@ -137,6 +139,10 @@ class CallOutcome:
     # Per-call technical diagnostics (app/diagnostics.CallDiagnostics). Owned by
     # run_bot; None when the pipeline died before setup.
     diagnostics: Any = None
+    # TTS speech-cache candidates this call proposed (ttscache.CallCandidates).
+    # Declared rather than attached ad hoc so report.py can find it, and so the
+    # end-of-call admission (was it heard, was the call healthy) has one owner.
+    tts_candidates: Any = None
 
     def duration_seconds(self) -> int:
         end = self.ended_at or time.time()
@@ -1112,6 +1118,13 @@ class RunGuard(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+# Spoken when a requested human transfer could not be registered. A module
+# constant rather than an inline default so the TTS cache can pre-warm it: it is
+# a fixed, bot-authored line like the farewells and the handbacks.
+TRANSFER_FAIL_CLOSING = ("Mujhe abhi connect karne mein dikkat aa rahi hai — hamare "
+                         "counsellor aapko jald call karenge. Dhanyavaad!")
+
+
 class SentinelGate(FrameProcessor):
     """Between LLM and TTS: strips the steering markers from the token stream so
     they are never spoken, accumulates the assistant transcript one utterance at
@@ -1122,9 +1135,7 @@ class SentinelGate(FrameProcessor):
                  on_reply_start=None, on_send=None,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
                  end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
-                 transfer_fail_closing: str = ("Mujhe abhi connect karne mein dikkat aa "
-                                               "rahi hai — hamare counsellor aapko jald "
-                                               "call karenge. Dhanyavaad!")):
+                 transfer_fail_closing: str = TRANSFER_FAIL_CLOSING):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
@@ -2568,6 +2579,50 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 flags["tts_gen_t"] = time.time()
         tts.set_generate_callback(_stamp_generate)
 
+    # ── TTS speech cache ────────────────────────────────────────────────────
+    # Replay audio we already paid to synthesize, on an EXACT sha256 match of
+    # (engine, model, voice, pace, temperature, rate, term-map, sentence). One
+    # differing character is a miss and goes to the vendor.
+    #
+    # engine_of(tts), not _agent_tts_model(agent): build_tts silently falls back
+    # to Sarvam on a missing key, and filing that audio under the configured
+    # engine's key would serve the wrong voice to every future match.
+    _cache_engine, _cache_model = engine_of(tts)
+    # The bot's OWN lines. They never pass through the LLM, an admin authored
+    # them, and each arrives as a standalone TTSSpeakFrame — so they are the one
+    # class that can be pre-warmed and is exempt from the "was it heard" gate.
+    # Resolved exactly as _greet_when_ready will resolve it, so the key matches
+    # what actually gets spoken. Deterministic: same agent + same context in,
+    # same string out.
+    _opening_for_cache = _clean_opening(_fill_placeholders(
+        (agent.get("openingLine") or "").strip(), context))
+    _fixed_lines = {
+        _opening_for_cache, nudge_text, cap_farewell, transfer_closing,
+        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING,
+    }
+    _fixed_lines.update(eng_fillers if eng else settings.filler_phrases)
+    _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
+    _fixed_lines.discard("")
+    tts_candidates = ttscache.CallCandidates(ttscache.get_cache())
+    outcome.tts_candidates = tts_candidates
+    tts_watcher = ttscache.install_tts_cache(
+        tts,
+        engine=_cache_engine, model=_cache_model,
+        voice=_agent_voice(agent) or "",
+        pace=_as_float(agent.get("pace")),
+        temperature=_as_float(agent.get("temperature")),
+        term_map_version=(rumik_term_map_version() if _cache_engine == "rumik" else ""),
+        fixed_lines=_fixed_lines,
+        # Per-agent rollout gate — one agent first, then widen (TTS_CACHE_AGENTS).
+        agent_id=str(agent.get("id") or ""), agent_name=str(agent.get("name") or ""),
+        # snake_case, like tts_model: admin_core emits it that way ON PURPOSE and
+        # always emits it, because the safe default for a MISSING key is OFF.
+        cache_mode=str(agent.get("speech_cache_mode") or ttscache.MODE_OFF),
+        # Rumik rewrites Devanagari-spelt English terms at the synthesis
+        # boundary, so the cache must key on the text the VENDOR sees.
+        normalize=(normalize_for_rumik if _cache_engine == "rumik" else None),
+        diag=diag, candidates=tts_candidates)
+
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context, sink=diag.note_unfilled)}]
     )
@@ -2758,6 +2813,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         sentinel,
         no_repeat,
         tts,
+        # Feeds the cache's ordering guard: on an engine whose audio arrives
+        # out-of-band, a cached utterance may only be served when the vendor
+        # owes us nothing, or it would be heard BEFORE audio requested earlier.
+        ttscache.make_turn_watcher_processor(tts_watcher),
         duck,
         transport.output(),
         played_transcript,

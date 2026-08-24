@@ -45,6 +45,7 @@ public class AiAgentService {
     private final AiAgentRepository repo;
     private final InstituteRepository instituteRepository;
     private final InstituteSettingService instituteSettingService;
+    private final AiAgentSpeechWarmer speechWarmer;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -87,6 +88,8 @@ public class AiAgentService {
         // an out-of-range value to the TTS (pace 0.5–2.0, temperature 0.01–2.0).
         agent.setPace(clamp(dto.getPace(), 0.5, 2.0));
         agent.setTemperature(clamp(dto.getTemperature(), 0.01, 2.0));
+        agent.setSpeechCacheMode(normalizeSpeechCacheMode(dto.getSpeechCacheMode(),
+                agent.getSpeechCacheMode()));
         agent.setBookingPageId(blankToNull(dto.getBookingPageId()));
         // Rules are OMITTED, not empty, by an older client that predates them. Writing null
         // on omission would silently wipe an institute's whole send configuration on the next
@@ -98,7 +101,18 @@ public class AiAgentService {
         AiAgent saved = repo.save(agent);
 
         bridgeIntoSettings(saved, /* remove= */ !Boolean.TRUE.equals(saved.getEnabled()));
-        return toDto(saved);
+        AiAgentDTO out = toDto(saved);
+        // Pre-render this agent's fixed lines into the voice bot's speech cache so
+        // they are served from cache on call #1 instead of being learned slowly.
+        // Fire-and-forget by contract: a warm that fails just means the first calls
+        // pay the vendor, which is exactly today's behaviour.
+        try {
+            speechWarmer.warm(out);
+        } catch (Exception e) {
+            log.warn("ai agent speech warm dispatch failed agent={}: {}",
+                    saved.getId(), e.getMessage());
+        }
+        return out;
     }
 
     @Transactional
@@ -242,6 +256,26 @@ public class AiAgentService {
                                               : TtsVoiceCatalog.defaultVoice(engine));
     }
 
+    /**
+     * TTS speech-cache tier, validated against the closed vocabulary (V466).
+     *
+     * <p>OMITTED means "leave it alone", not "turn it off". An older client that
+     * predates this field would otherwise silently disable the cache on any agent
+     * it saved — the same trap {@code ttsModel} and {@code sendRules} both
+     * document above. An unrecognised value falls back to the stored one rather
+     * than to OFF for the same reason: a typo should not quietly change what a
+     * caller hears, and the DB CHECK constraint would reject it anyway.
+     */
+    private String normalizeSpeechCacheMode(String incoming, String stored) {
+        if (incoming == null || incoming.isBlank()) {
+            return stored == null ? "OFF" : stored;
+        }
+        String v = incoming.trim().toUpperCase();
+        if (v.equals("OFF") || v.equals("FIXED") || v.equals("FULL")) return v;
+        log.warn("ai agent: unknown speechCacheMode {} — keeping {}", incoming, stored);
+        return stored == null ? "OFF" : stored;
+    }
+
     private AiAgentDTO toDto(AiAgent a) {
         return AiAgentDTO.builder()
                 .id(a.getId())
@@ -260,6 +294,8 @@ public class AiAgentService {
                 .pace(a.getPace())
                 .temperature(a.getTemperature())
                 .ttsModel(a.getTtsModel())
+                .speechCacheMode(a.getSpeechCacheMode() == null
+                        ? "OFF" : a.getSpeechCacheMode())
                 .bookingPageId(a.getBookingPageId())
                 .sendRules(readRules(a.getSendRules()))
                 .build();

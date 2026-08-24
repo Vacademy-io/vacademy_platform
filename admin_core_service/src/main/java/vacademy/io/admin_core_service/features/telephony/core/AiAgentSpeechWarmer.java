@@ -38,9 +38,13 @@ import java.util.Set;
  * {@link vacademy.io.admin_core_service.features.telephony.ivr.IvrPromptWarmer}:
  * a warm that fails simply means the first calls pay the vendor, as they do today.
  *
- * <p>The handbacks and fillers are deliberately NOT sent from here. They are
- * chosen inside the bot from the agent's language, so the bot warms them itself
- * on first use rather than having two places agree on the same literals.
+ * <p>ONLY THE OPENING LINE, and only when it carries no {{placeholder}}. The
+ * handbacks, farewells, fillers and nudge are chosen inside the bot from the
+ * agent's language, and nothing pre-warms them — they reach the cache the same
+ * way an LLM sentence does, by being spoken on enough calls. So the first call
+ * for a newly-enabled agent can serve the opening from cache and nothing else,
+ * and an opening containing {{leadName}} means it serves nothing at all on that
+ * call. That is expected, not a failure.
  */
 @Component
 public class AiAgentSpeechWarmer {

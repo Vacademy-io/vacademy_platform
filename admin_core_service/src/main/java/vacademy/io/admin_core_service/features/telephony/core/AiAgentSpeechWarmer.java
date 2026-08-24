@@ -58,10 +58,26 @@ public class AiAgentSpeechWarmer {
     @Value("${telephony.vacademy-ai.bot-base-url:}")
     private String botBaseUrl;
 
-    /** Same secret the bot mints its single-use /ws tokens from, so no new
-     *  credential is introduced for this path. */
-    @Value("${telephony.vacademy-ai.client-secret:${VOICE_BOT_CLIENT_SECRET:}}")
-    private String clientSecret;
+    /**
+     * Same secret the bot mints its single-use /ws tokens from, so no new
+     * credential is introduced for this path.
+     *
+     * <p>A plain placeholder with a plain default, resolved against the env in
+     * code rather than a nested {@code ${a:${b:}}} placeholder. The nested form
+     * works, but an unresolvable placeholder fails CONTEXT STARTUP — the whole
+     * service refuses to boot — and that is a wildly disproportionate blast
+     * radius for a fire-and-forget cache warm.
+     */
+    @Value("${telephony.vacademy-ai.client-secret:}")
+    private String clientSecretProperty;
+
+    private String clientSecret() {
+        if (clientSecretProperty != null && !clientSecretProperty.isBlank()) {
+            return clientSecretProperty;
+        }
+        String env = System.getenv("VOICE_BOT_CLIENT_SECRET");
+        return env == null ? "" : env;
+    }
 
     @Async
     public void warm(AiAgentDTO agent) {
@@ -74,8 +90,8 @@ public class AiAgentSpeechWarmer {
         String mode = agent.getSpeechCacheMode() == null
                 ? "OFF" : agent.getSpeechCacheMode().trim().toUpperCase();
         if (mode.equals("OFF")) return;
-        if (botBaseUrl == null || botBaseUrl.isBlank()
-                || clientSecret == null || clientSecret.isBlank()) {
+        String secret = clientSecret();
+        if (botBaseUrl == null || botBaseUrl.isBlank() || secret.isBlank()) {
             return;                                   // not wired on this deployment
         }
         List<String> texts = fixedLines(agent);
@@ -94,7 +110,7 @@ public class AiAgentSpeechWarmer {
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(90))  // N vendor renders, serially
                     .header("Content-Type", "application/json")
-                    .header("X-Voice-Bot-Token", clientSecret)
+                    .header("X-Voice-Bot-Token", secret)
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
                     .build();
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());

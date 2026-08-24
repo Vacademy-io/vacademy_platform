@@ -252,12 +252,16 @@ def cache(tmp_path, monkeypatch):
 
 
 class _Settings:
-    def __init__(self, root):
+    def __init__(self, root, speech=True, llm=True, agents=()):
         self.speech_cache_dir = os.path.join(root, "speech")
         self.tts_cache_salt = "test"
         self.tts_cache_min_seen = 2
         self.tts_speech_cache_max_bytes = 10_000_000
         self.tts_cache_min_blob_ms = 200
+        self.tts_cache_speech_enabled = speech
+        self.tts_cache_llm_enabled = llm
+        self.tts_cache_agents = agents
+        self.tts_cache_debug = False
 
 
 def _pcm(ms):
@@ -449,3 +453,72 @@ def test_eviction_drops_the_unused_before_the_frequently_hit(cache, monkeypatch)
     assert cache.evict() == 1
     assert cache.lookup(hot.key, hot.text) is not None
     assert cache.lookup(cold.key, cold.text) is None
+
+
+# ── the ship-safety invariant, end to end ───────────────────────────────────
+
+async def _sentinel_run_tts(text, context_id=None):
+    """Stand-in for a real engine's run_tts. Identity is what the test asserts."""
+    yield None
+
+
+class _FakeTTS:
+    _push_start_frame = True
+    _push_stop_frames = True
+
+    def __init__(self):
+        self.run_tts = _sentinel_run_tts
+
+
+def _install(monkeypatch, tmp_path, *, mode, speech=True, llm=True, agents=()):
+    pytest.importorskip("pipecat.frames.frames")
+    monkeypatch.setattr(
+        ttscache, "get_settings",
+        lambda: _Settings(str(tmp_path), speech=speech, llm=llm, agents=agents))
+    tts = _FakeTTS()
+    watcher = ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={"Theek hai."}, cache_mode=mode,
+        cache=SpeechCache(root=str(tmp_path / "speech")))
+    return tts, watcher
+
+
+def test_a_disabled_agent_gets_no_wrapper_at_all(monkeypatch, tmp_path):
+    """THE ship-safety invariant.
+
+    For an agent nobody has enabled, run_tts must be the ENGINE'S OWN function —
+    untouched, not a wrapper of ours that decides to decline. "My code never ran"
+    is a far stronger claim than "my code chose to do nothing", and with every
+    agent defaulting to OFF it is the claim that actually matters.
+
+    install_tts_cache returning None is also what keeps the TtsTurnWatcher
+    processor out of the pipeline, so the whole frame chain stays byte-identical.
+    """
+    for mode in (ttscache.MODE_OFF, "", None, "nonsense"):
+        tts, watcher = _install(monkeypatch, tmp_path, mode=mode)
+        assert tts.run_tts is _sentinel_run_tts, mode
+        assert watcher is None, mode
+
+
+def test_the_kill_switches_also_prevent_installation(monkeypatch, tmp_path):
+    """Both ops kill switches off is the same as OFF: nothing installed."""
+    tts, watcher = _install(monkeypatch, tmp_path, mode=ttscache.MODE_FULL,
+                            speech=False, llm=False)
+    assert tts.run_tts is _sentinel_run_tts
+    assert watcher is None
+
+
+def test_an_agent_outside_the_ops_allowlist_gets_no_wrapper(monkeypatch, tmp_path):
+    tts, watcher = _install(monkeypatch, tmp_path, mode=ttscache.MODE_FULL,
+                            agents=("some-other-agent",))
+    assert tts.run_tts is _sentinel_run_tts
+    assert watcher is None
+
+
+def test_an_enabled_agent_does_get_the_wrapper(monkeypatch, tmp_path):
+    """The other half: if this ever stopped installing, the feature would be
+    silently dead and every test above would still pass."""
+    for mode in (ttscache.MODE_FIXED, ttscache.MODE_FULL):
+        tts, watcher = _install(monkeypatch, tmp_path, mode=mode)
+        assert tts.run_tts is not _sentinel_run_tts, mode
+        assert watcher is not None, mode

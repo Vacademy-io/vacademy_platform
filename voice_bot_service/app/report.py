@@ -697,15 +697,17 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
             ).isoformat().replace("+00:00", "Z"),
         },
     }
-    # The speech cache learns ONLY from calls that worked. _diagnostics_blob above
-    # froze the verdict, so this is the first point where G4 (healthy call) can be
-    # applied; G3 (the sentence actually reached the caller) reads the very same
-    # played transcript this report ships.
-    await _ladder_tts_cache(outcome, payload.get("diagnostics"))
-
     ok = await admin_core.post_report(ctx.get("instituteId"), ctx.get("webhookToken"), payload)
     if not ok:
         spool_report(ctx.get("instituteId"), ctx.get("webhookToken"), payload)
     logger.info("report posted corr=%s ok=%s disposition=%s status=%s",
                 outcome.corr, ok, payload["disposition"], payload["status"])
+
+    # AFTER the post, deliberately. The speech cache learns only from calls that
+    # worked, and _diagnostics_blob above already froze the verdict this needs —
+    # but laddering writes to SQLite, which can block on the sweeper's lock for
+    # up to the connect timeout. A report that lands late strands a paused
+    # CALL_AI workflow; a sentence learned late costs one vendor render. Those
+    # are not the same order of problem, so the report goes first.
+    await _ladder_tts_cache(outcome, payload.get("diagnostics"))
     return ok

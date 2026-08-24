@@ -2594,8 +2594,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # Resolved exactly as _greet_when_ready will resolve it, so the key matches
     # what actually gets spoken. Deterministic: same agent + same context in,
     # same string out.
-    _opening_for_cache = _clean_opening(_fill_placeholders(
-        (agent.get("openingLine") or "").strip(), context))
+    # Guarded: _greet_when_ready calls this same pair inside a background task,
+    # where a raise costs the opening line. Here it would be on the call setup
+    # path, where a raise costs the whole call — and _fill_placeholders reaches
+    # strftime with glibc-only directives. A warm target is not worth that.
+    try:
+        _opening_for_cache = _clean_opening(_fill_placeholders(
+            (agent.get("openingLine") or "").strip(), context))
+    except Exception:
+        logger.exception("tts-cache: could not resolve the opening line for warming")
+        _opening_for_cache = ""
     _fixed_lines = {
         _opening_for_cache, nudge_text, cap_farewell, transfer_closing,
         idle_farewell, end_closing, TRANSFER_FAIL_CLOSING,
@@ -2604,7 +2612,6 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
     _fixed_lines.discard("")
     tts_candidates = ttscache.CallCandidates(ttscache.get_cache())
-    outcome.tts_candidates = tts_candidates
     tts_watcher = ttscache.install_tts_cache(
         tts,
         engine=_cache_engine, model=_cache_model,
@@ -2622,6 +2629,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # boundary, so the cache must key on the text the VENDOR sees.
         normalize=(normalize_for_rumik if _cache_engine == "rumik" else None),
         diag=diag, candidates=tts_candidates)
+    # Only hand the candidate list to the report when the cache is actually
+    # installed. Left attached for an OFF agent it would be empty forever, and
+    # report.py would still spawn a thread per call to flush nothing.
+    outcome.tts_candidates = tts_candidates if tts_watcher is not None else None
 
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context, sink=diag.note_unfilled)}]
@@ -2816,7 +2827,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         # Feeds the cache's ordering guard: on an engine whose audio arrives
         # out-of-band, a cached utterance may only be served when the vendor
         # owes us nothing, or it would be heard BEFORE audio requested earlier.
-        ttscache.make_turn_watcher_processor(tts_watcher),
+        #
+        # ABSENT ENTIRELY when the cache is not installed for this agent — which
+        # is every agent until one is switched on. A pass-through processor is
+        # cheap but it is not free, and "the chain is byte-identical to today"
+        # is a much stronger thing to be able to say than "the extra link does
+        # nothing".
+        *([ttscache.make_turn_watcher_processor(tts_watcher)]
+          if tts_watcher is not None else []),
         duck,
         transport.output(),
         played_transcript,

@@ -350,14 +350,26 @@ DB), normally left empty.
 
 ### Nothing changes until an agent is switched on
 
-Guaranteed at four points, not one:
+The strong form of this claim is not "my code decides to do nothing" — it is **"my code never
+runs"**. For an agent nobody has enabled:
 
 1. V466 stamps `OFF` on **every existing row**, and the column defaults `OFF`.
 2. The call context **always** emits `speech_cache_mode`, never conditionally — a dropped key
    would otherwise fall back to a bot default, and the only safe default here is `OFF`.
-3. The bot's fallback for a missing key is `OFF` (`ttscache.mode_allows`).
-4. `AiAgentSpeechWarmer` returns immediately for an `OFF` agent, so saving an agent does not
-   spend a vendor render either.
+3. **`install_tts_cache` returns `None` without touching `tts.run_tts`.** The engine's own
+   method stays bound, so there is no wrapper, no extra async-generator layer and no
+   normalise call on the hot path.
+4. **The `TtsTurnWatcher` processor is absent from the pipeline**, so the frame chain is
+   byte-identical to today.
+5. **`outcome.tts_candidates` is left `None`**, so `report.py` returns immediately instead of
+   spawning a thread per call to flush an empty list.
+6. `AiAgentSpeechWarmer` returns before any I/O for an `OFF` agent, so saving an agent does
+   not spend a vendor render either.
+
+Points 3, 4 and 5 are asserted by `test_a_disabled_agent_gets_no_wrapper_at_all`, which checks
+`tts.run_tts is` the engine's original function — identity, not behaviour. Its counterpart
+`test_an_enabled_agent_does_get_the_wrapper` exists because otherwise the feature could go
+silently dead and every other test would still pass.
 
 An `OFF` agent also writes nothing to the ledger — so switching an agent to `FULL` starts its
 learning from zero, by design: we do not pay to render audio for agents that may never use it.

@@ -792,6 +792,23 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
     # mid-call, and re-deciding it 40 times a call would only invite a race.
     in_rollout = agent_allowed(s.tts_cache_agents, agent_id, agent_name)
 
+    # NOT INSTALLED AT ALL when this agent cannot use the cache. Returning None
+    # here rather than installing a wrapper that would decline per sentence is
+    # the difference between "my code decided to do nothing" and "my code never
+    # ran" — and for a feature that is OFF for every agent by default, only the
+    # second is worth asserting. It also keeps the pipeline chain and the
+    # engine's own run_tts byte-identical to today, so there is no extra
+    # generator layer, no normalise call, and nothing of mine on the hot path.
+    can_serve_anything = ((mode_allows(cache_mode, True) and s.tts_cache_speech_enabled)
+                          or (mode_allows(cache_mode, False) and s.tts_cache_llm_enabled))
+    if not (can_serve_anything and in_rollout):
+        logger.info("tts-cache: NOT installed engine=%s agent=%s mode=%s rollout=%s "
+                    "kill_speech=%s kill_llm=%s — call is untouched",
+                    engine_l, agent_id or agent_name or "?",
+                    (cache_mode or MODE_OFF).upper(), "in" if in_rollout else "OUT",
+                    s.tts_cache_speech_enabled, s.tts_cache_llm_enabled)
+        return None
+
     def _bump(name: str, *args) -> None:
         if diag is None:
             return

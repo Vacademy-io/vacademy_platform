@@ -241,5 +241,52 @@ public interface EngagementActionRepository extends JpaRepository<EngagementActi
             """, nativeQuery = true)
     List<Object[]> dismissalStats(@Param("engineId") String engineId, @Param("since") Instant since);
 
+    /**
+     * What one AI call triggered - for the Call Log's health sheet.
+     *
+     * <p>source_ref is '<call_log_id>:<rule_id>', so a prefix LIKE finds every rule that
+     * fired on that call. Uses ux_ea_source_ref (source, source_ref): the leading column is
+     * an equality and the second a left-anchored prefix, which btree serves as a range scan
+     * rather than a scan of the table.
+     *
+     * <p>Scoped by institute as well as by call id: the call id alone is a UUID, but a
+     * cross-institute read must be impossible by construction and not merely unlikely.
+     */
+    @Query(value = """
+            SELECT * FROM engagement_action
+             WHERE source = 'AI_CALL'
+               AND institute_id = :instituteId
+               AND source_ref LIKE :refPrefix
+             ORDER BY created_at DESC
+            """, nativeQuery = true)
+    List<EngagementAction> findByCallRefPrefix(@Param("instituteId") String instituteId,
+                                               @Param("refPrefix") String refPrefix);
+
+    /**
+     * The AI-call send backlog for one institute, newest first.
+     *
+     * <p>Answers "what has the agent promised that has not gone out?" across every call,
+     * which the per-call panel cannot: a person chasing a missed WhatsApp does not know
+     * which call to open.
+     */
+    @Query(value = """
+            SELECT * FROM engagement_action
+             WHERE source = 'AI_CALL' AND institute_id = :instituteId
+               AND status IN (:statuses)
+             ORDER BY created_at DESC
+             LIMIT :limit
+            """, nativeQuery = true)
+    List<EngagementAction> findAiCallActions(@Param("instituteId") String instituteId,
+                                             @Param("statuses") List<String> statuses,
+                                             @Param("limit") int limit);
+
+    /** Counts per status for the same set — the number on the banner. */
+    @Query(value = """
+            SELECT status, count(*) FROM engagement_action
+             WHERE source = 'AI_CALL' AND institute_id = :instituteId
+             GROUP BY status
+            """, nativeQuery = true)
+    List<Object[]> countAiCallActionsByStatus(@Param("instituteId") String instituteId);
+
     List<EngagementAction> findTop20ByMemberIdOrderByCreatedAtDesc(String memberId);
 }

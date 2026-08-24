@@ -38,6 +38,33 @@ public interface LeadScoreRepository extends JpaRepository<LeadScore, String> {
     void recalculatePercentilesForAudience(@Param("audienceId") String audienceId);
 
     /**
+     * Every audience's percentile ranks in one statement, for the scheduled batch job.
+     *
+     * <p>{@link #recalculatePercentilesForAudience} already partitions by audience_id, so its
+     * WHERE clause narrowed the input without changing any row's computed rank -- running the
+     * same window function unfiltered therefore produces exactly the value each audience would
+     * have received from its own call, in a single round trip rather than one per audience.
+     *
+     * <p>audience_id IS NOT NULL is deliberate. The per-audience form was driven by
+     * findDistinctAudienceIds(), and a NULL id there could never match its own
+     * {@code audience_id = :audienceId} predicate, so NULL-audience rows were never updated.
+     * Without this filter PERCENT_RANK would treat them as one more partition and start
+     * writing ranks that the old loop never wrote.
+     */
+    @Modifying
+    @Query(value = """
+        UPDATE lead_score ls SET percentile_rank = sub.pct, updated_at = NOW()
+        FROM (
+            SELECT id,
+                   PERCENT_RANK() OVER (PARTITION BY audience_id ORDER BY raw_score) * 100 as pct
+            FROM lead_score
+            WHERE audience_id IS NOT NULL
+        ) sub
+        WHERE ls.id = sub.id
+        """, nativeQuery = true)
+    int recalculatePercentilesForAllAudiences();
+
+    /**
      * Batch recalculate percentile ranks for ALL leads in an institute (across all campaigns).
      */
     @Modifying

@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.telephony.core.CallDispositionSer
 import vacademy.io.admin_core_service.features.telephony.core.CallExportAiEnricher;
 import vacademy.io.admin_core_service.features.telephony.core.CallExportService;
 import vacademy.io.admin_core_service.features.telephony.core.CallSearchService;
+import vacademy.io.admin_core_service.features.telephony.core.dto.CallActionDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallDetailDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallDispositionCatalogDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallDispositionRequestDTO;
@@ -56,6 +57,8 @@ public class CallDashboardController {
     private final CallDetailService callDetailService;
     private final CallExportAiEnricher callExportAiEnricher;
     private final InstituteAccessValidator instituteAccessValidator;
+    private final vacademy.io.admin_core_service.features.engagement.repository
+            .EngagementActionRepository actionRepository;
 
     @PostMapping("/search")
     public ResponseEntity<Page<CallRowDTO>> search(
@@ -75,7 +78,61 @@ public class CallDashboardController {
      * provider's own hangup/cause/error fields (mined from the stored webhook body),
      * plus price and full timing that the paginated list omits.
      */
-    @GetMapping("/{callLogId}/detail")
+    /**
+      * What this call promised, and whether it actually went out.
+      *
+      * <p>Until now a send was visible only when it FAILED (the engagement inbox surfaces
+      * kind=SEND only in that state, by design - a healthy auto-send is the dispatch job's
+      * business, not a task). So an OPEN or SENT one appeared nowhere, and nothing tied
+      * either back to the call that produced it. That is exactly the question people ask
+      * after a call: "it said it would WhatsApp the link - did it?"
+      *
+      * <p>Guarded like /search rather than like /detail: this carries no caller phone
+      * numbers or verbatim speech, so it needs institute access, not VIEW_CALL_NUMBERS.
+      */
+     @GetMapping("/{callLogId}/actions")
+     public ResponseEntity<List<CallActionDTO>> actions(
+             @PathVariable String callLogId,
+             @RequestParam String instituteId,
+             @RequestAttribute("user") CustomUserDetails user) {
+         instituteAccessValidator.validateUserAccess(user, instituteId);
+         return ResponseEntity.ok(
+                 actionRepository.findByCallRefPrefix(instituteId, callLogId + ":%")
+                         .stream().map(CallActionDTO::from).toList());
+     }
+
+     /**
+      * The whole institute's AI-call send backlog, with counts.
+      *
+      * <p>The per-call panel answers "did THIS call's promise go out?". This answers the
+      * question someone actually has when a parent says they never got the link: "what is
+      * stuck, anywhere?". Without it the only way to find a failed send was to guess which
+      * call it belonged to and open that one.
+      *
+      * <p>Default statuses are the ones that need a human: queued (the dispatch job has not
+      * reached it), mid-dispatch, failed, and expired-unsent. SENT is excluded unless asked
+      * for, because a delivered message is not a task.
+      */
+     @GetMapping("/actions/queue")
+     public ResponseEntity<Map<String, Object>> actionQueue(
+             @RequestParam String instituteId,
+             @RequestParam(defaultValue = "OPEN,DISPATCHING,FAILED,EXPIRED") String statuses,
+             @RequestParam(defaultValue = "50") int limit,
+             @RequestAttribute("user") CustomUserDetails user) {
+         instituteAccessValidator.validateUserAccess(user, instituteId);
+         List<String> wanted = java.util.Arrays.stream(statuses.split(","))
+                 .map(String::trim).filter(x -> !x.isEmpty()).toList();
+         List<CallActionDTO> items = actionRepository
+                 .findAiCallActions(instituteId, wanted, Math.min(limit, 200))
+                 .stream().map(CallActionDTO::from).toList();
+         Map<String, Long> counts = new java.util.LinkedHashMap<>();
+         for (Object[] row : actionRepository.countAiCallActionsByStatus(instituteId)) {
+             counts.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
+         }
+         return ResponseEntity.ok(Map.of("counts", counts, "items", items));
+     }
+
+     @GetMapping("/{callLogId}/detail")
     public ResponseEntity<CallDetailDTO> detail(
             @PathVariable String callLogId,
             @RequestParam("instituteId") String instituteId,

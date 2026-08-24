@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchCallHistory, fetchCallRecordingUrl, type CallLogItem } from './services/call-history';
 import { CallIntelligencePanel } from './call-intelligence-panel';
+import { CallPromisedSends } from './call-promised-sends';
 import { ManualCallUploadDialog } from './manual-call-upload-dialog';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import type { CallActivity } from '@/components/shared/lead-calls/call-activity';
@@ -308,6 +309,11 @@ function CallHistoryRow({ item, instituteId }: { item: CallLogItem; instituteId:
                 summary, the two ratings, action items, objections and coaching
                 tips when the recording has been transcribed + analyzed. */}
             <div className="mt-2">
+                <CallPromisedSends
+                    instituteId={instituteId}
+                    callLogId={item.id}
+                    className="mb-2"
+                />
                 <CallIntelligencePanel callLogId={item.id} />
             </div>
             {/* Add-note affordance — opens AddLeadNoteDialog pre-filled with

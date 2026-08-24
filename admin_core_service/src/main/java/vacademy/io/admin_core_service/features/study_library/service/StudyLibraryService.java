@@ -196,13 +196,37 @@ public class StudyLibraryService {
         }
 
         // Step 4: Bulk fetch subjects for ONLY valid combinations
+        // The id sets that cover every valid combination. The batched queries below take
+        // these as IN lists, so they return a superset -- combinations that exist in
+        // package_session but were never in validCombinations. Every lookup downstream is by
+        // exact composite key, so those extra entries are simply never read.
+        List<String> comboLevelIds = validCombinations.stream()
+                .map(key -> key.levelId).distinct().collect(Collectors.toList());
+        List<String> comboSessionIds = validCombinations.stream()
+                .map(key -> key.sessionId).distinct().collect(Collectors.toList());
+        List<String> comboPackageIds = validCombinations.stream()
+                .map(key -> key.packageId).distinct().collect(Collectors.toList());
+
         Map<String, List<Subject>> levelSessionPackageToSubjectsMap = new HashMap<>();
-        for (LevelSessionPackageKey key : validCombinations) {
-            List<Subject> subjects = subjectRepository.findDistinctSubjectsPackageSession(
-                    key.levelId, key.packageId, key.sessionId);
-            if (!subjects.isEmpty()) {
-                levelSessionPackageToSubjectsMap.put(key.getKey(), subjects);
-            }
+        List<SubjectRepository.PackageSessionSubjectProjection> subjectRows = subjectRepository
+                .findDistinctSubjectIdsPackageSessions(comboLevelIds, comboPackageIds, comboSessionIds);
+        if (!subjectRows.isEmpty()) {
+            Map<String, Subject> subjectById = new HashMap<>();
+            subjectRepository.findAllById(subjectRows.stream()
+                    .map(SubjectRepository.PackageSessionSubjectProjection::getSubjectId)
+                    .collect(Collectors.toSet()))
+                    .forEach(subject -> subjectById.put(subject.getId(), subject));
+
+            // Rows arrive ordered by subject_order within each triple, and appending in row
+            // order preserves that ordering per group exactly as the per-key query produced it.
+            subjectRows.forEach(row -> {
+                Subject subject = subjectById.get(row.getSubjectId());
+                if (subject != null) {
+                    String key = new LevelSessionPackageKey(
+                            row.getLevelId(), row.getSessionId(), row.getPackageId()).getKey();
+                    levelSessionPackageToSubjectsMap.computeIfAbsent(key, k -> new ArrayList<>()).add(subject);
+                }
+            });
         }
 
         // Step 5: Bulk fetch faculty user IDs for ONLY valid combinations
@@ -237,16 +261,23 @@ public class StudyLibraryService {
         List<String> slideStatuses = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
         List<String> activeStatuses = List.of(StatusEnum.ACTIVE.name());
 
+        Map<String, Double> readTimeByCombination = new HashMap<>();
+        slideRepository.calculateTotalReadTimeInMinutesBatch(
+                        comboPackageIds, comboSessionIds, comboLevelIds,
+                        slideStatuses, activeStatuses, activeStatuses)
+                .forEach(row -> readTimeByCombination.put(
+                        new LevelSessionPackageKey(row.getLevelId(), row.getSessionId(), row.getPackageId())
+                                .getKey(),
+                        row.getReadTimeInMinutes()));
+
+        // Populate strictly the valid combinations, defaulting to 0.0. Two behaviours to hold:
+        // the per-key query returned 0.0 (not null) for a combination with no slides, because
+        // its COALESCE ran over an empty aggregate -- but GROUP BY emits no row at all there.
+        // And package sessions outside validCombinations must stay absent from this map, since
+        // the assembly below reads it with getOrDefault(key, null) and expects null for them.
         Map<String, Double> levelReadTimesMap = new HashMap<>();
         for (LevelSessionPackageKey key : validCombinations) {
-            try {
-                Double readTime = slideRepository.calculateTotalReadTimeInMinutes(
-                        key.packageId, key.sessionId, key.levelId,
-                        slideStatuses, activeStatuses, activeStatuses);
-                levelReadTimesMap.put(key.getKey(), readTime);
-            } catch (Exception e) {
-                // If read time calculation fails, continue with null value
-            }
+            levelReadTimesMap.put(key.getKey(), readTimeByCombination.getOrDefault(key.getKey(), 0.0d));
         }
 
         // Step 8: Bulk fetch all package sessions for packages

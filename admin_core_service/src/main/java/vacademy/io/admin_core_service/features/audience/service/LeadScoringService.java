@@ -297,19 +297,18 @@ public class LeadScoringService {
     @Transactional
     public void batchRecalculatePercentiles() {
         logger.info("Starting batch percentile recalculation...");
-        List<String> audienceIds = leadScoreRepository.findDistinctAudienceIds();
 
-        int total = 0;
-        for (String audienceId : audienceIds) {
-            try {
-                leadScoreRepository.recalculatePercentilesForAudience(audienceId);
-                total++;
-            } catch (Exception e) {
-                logger.error("Failed to recalculate percentiles for audience: {}", audienceId, e);
-            }
-        }
+        // One set-based UPDATE instead of one per audience. PERCENT_RANK already partitions by
+        // audience_id, so each row receives the same rank the per-audience loop computed -- the
+        // loop was issuing N round trips to narrow a window function that did not need narrowing.
+        //
+        // The old loop caught per-audience failures and carried on. A single statement is
+        // all-or-nothing inside this transaction: a failure now rolls the whole recalculation
+        // back rather than leaving some audiences updated and others stale. That is the safer
+        // outcome for a job that runs to completion on a schedule.
+        int updated = leadScoreRepository.recalculatePercentilesForAllAudiences();
 
-        logger.info("Batch percentile recalculation complete. Processed {} audiences.", total);
+        logger.info("Batch percentile recalculation complete. Updated {} lead scores.", updated);
     }
 
     // ─────────────────────────────────────────────────────────

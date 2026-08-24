@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminCallDTO;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminCallSummaryDTO;
+import vacademy.io.admin_core_service.features.super_admin.dto.TtsCacheSummaryDTO;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminPageResponse;
 import vacademy.io.admin_core_service.features.super_admin.service.SuperAdminCallService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -56,6 +57,25 @@ public class SuperAdminCallController {
             @RequestParam(required = false) String agentId) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
         return ResponseEntity.ok(service.summary(instituteId, from, to, health, disposition, agentId));
+    }
+
+    /**
+     * TTS speech-cache monitoring: fleet totals plus a per-day series.
+     *
+     * <p>Lives here rather than proxying the voice bot's own ledger, because the
+     * ledger is a snapshot on one box's disk with no history — it can say what is
+     * cached right now but never what the hit rate was last Tuesday. Every call's
+     * counters land in ai_call_result.diagnostics, so Postgres has the series.
+     */
+    @GetMapping("/tts-cache/summary")
+    public ResponseEntity<TtsCacheSummaryDTO> ttsCacheSummary(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(required = false) String instituteId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String agentId) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(service.ttsCacheSummary(instituteId, from, to, agentId));
     }
 
     /** The rate card the costs above were computed from — so the UI can show its work. */

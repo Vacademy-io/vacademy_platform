@@ -155,9 +155,11 @@ export function recordApiSample(sample: {
 }) {
     try {
         const serverMs = parseServerTiming(sample.serverTimingHeader);
-        // Absence means "the response was already committed and could not be
-        // annotated" (large body, SSE) — never "the server was fast". Counting it
-        // separately keeps it out of the median instead of biasing it downward.
+        // Absence means "the response could not be annotated" — never "the server
+        // was fast". This should now be rare (the backend stamps the header at
+        // commit time, covering large bodies and SSE too), but counting these
+        // separately keeps them out of the median rather than biasing it downward
+        // toward zero, which would make us look faster than we are.
         if (serverMs === null) unannotatedCount++;
 
         apiSamples.push({

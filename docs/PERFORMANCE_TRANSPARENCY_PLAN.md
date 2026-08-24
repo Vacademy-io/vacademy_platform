@@ -1,7 +1,7 @@
 # Performance Transparency Plan — "Is it us or is it your internet?"
 
-**Status:** Phase 0 SHIPPED (`a1b9bfb05`). **Phase 1 BUILT + probe-verified 2026-08-24.**
-Phases 2–3 not started.
+**Status:** Phase 0 SHIPPED (`a1b9bfb05`, **corrected** — see §6.5), Phase 1 SHIPPED
+(`e5f9f2cb2`). Phases 2–3 not started.
 **Surfaces:** admin portal (`frontend-admin-dashboard`), health / super-admin portal (`vacademy-health-check`)
 
 ---
@@ -177,17 +177,15 @@ Probed directly against the compiled classes (not asserted from reading code):
 |---|---|---|
 | small JSON response | `app;dur=11` ✅ | `app;dur=1` ✅ |
 | ~150ms response | `app;dur=124` ✅ (real, not zero) | `app;dur=155` ✅ |
-| large / committed response | **absent** — known gap (§6.2) | n/a |
-| SSE / streaming | **absent** | `app;dur=0` ✅ **and body streams intact** |
+| large / committed response | **absent** — later fixed, see §6.5 | n/a |
+| SSE / streaming | **absent** — later fixed, see §6.5 | `app;dur=0` ✅ **and body streams intact** |
 | handler threw | still emitted (`finally`) ✅ | — |
 | feature flag off / master off | absent ✅ | — |
 | CORS preflight | — | unaffected, 200 ✅ |
 | resolved `exposedHeaders` | `[Server-Timing]` on all six ✅ | `Access-Control-Expose-Headers: Server-Timing` ✅ |
 
-**ai_service covers streaming and the Java services do not.** That asymmetry is a
-consequence of the implementation, not a decision: the ASGI hook stamps headers at
-`http.response.start`, which happens before the body streams, whereas the servlet
-filter only regains control after the body is already committed.
+**Superseded by §6.5** — the asymmetry described here (ai_service covering streaming
+while the Java services did not) no longer exists.
 
 **Verified, and worth knowing before touching CORS again:** Spring Security here
 does *not* read the `WebMvcConfigurer`. Each service injects a
@@ -202,6 +200,56 @@ resolved `CorsConfiguration` back out of the registry, not by assuming it.
 cross-origin. Files changed: `common_service/.../tracing/{RequestTracingFilter,
 TracingProperties}.java`, six `CorsConfig.java`, `ai_service/app/app_factory.py`,
 new `ai_service/app/core/server_timing.py`.
+
+### 6.5 Correction: the `finally` block was a silent no-op, and the wrapper was necessary
+
+**What was wrong.** §6.2 documented the coverage gap as "responses larger than
+Tomcat's 8KB buffer". That understated it badly. Measured against a real embedded
+Tomcat, **every** normal Spring MVC response was already committed by the time the
+outermost filter regained control — including a **2-byte `text/plain` body**. Spring's
+message converter flushes its output, and that flush commits the response, headers
+and all. The Java half of Phase 0 as first shipped emitted the header essentially
+never.
+
+**Why the first round of verification missed it.** The probe used
+`MockHttpServletResponse`, which does not flush like Tomcat, so an uncommitted
+response looked like the normal case. The mock said "works on small responses"; the
+real container said "works on nothing". A green probe against the wrong substrate is
+not evidence.
+
+It surfaced only because the deployed header was checked against prod, found
+missing, and traced with `logging.level.vacademy.io.common.tracing=DEBUG`, which
+printed the skip counter's own message: `Server-Timing skipped (response already
+committed) for /text`.
+
+**The fix.** `ServerTimingResponseWrapper extends OnCommittedResponseWrapper`
+(Spring Security, already a direct `common_service` dependency) stamps the header in
+`onResponseCommitted()` — the last moment headers can still be set. This was
+deliberately deferred earlier as "materially larger risk than setting a header",
+which was the right instinct but weighed against a benefit that turned out to be
+zero. Verified against real Tomcat across every response shape:
+
+| endpoint | status | `Server-Timing` | body |
+|---|---|---|---|
+| `/json` (Jackson) | 200 | `app;dur=29` | intact |
+| `/text` (2 bytes) | 200 | `app;dur=1` | intact |
+| `/big` (60KB, past the buffer) | 200 | `app;dur=0` | **60000B intact** |
+| `/slow` (150ms sleep) | 200 | `app;dur=153` | intact |
+| `/sse` (SseEmitter) | 200 | `app;dur=3` | **3 chunks intact** |
+| `/stream` (StreamingResponseBody) | 200 | `app;dur=1` | intact |
+| `/boom` (handler throws) | 500 | `app;dur=0` | error body |
+| `/senderror` | 418 | `app;dur=0` | error body |
+| `/redirect` | 302 | `app;dur=0` | — |
+
+`Timing-Allow-Origin` present on all nine. Feature flag and master toggle still
+suppress it; a thrown handler still propagates.
+
+**Coverage is now better than the original plan promised:** large responses and SSE
+are annotated on the Java services too, so gotcha §10.5 no longer applies. For a
+streamed response the figure is time-to-first-byte, which is the right number —
+the remainder is transfer, not server work.
+
+---
 
 ---
 
@@ -335,12 +383,10 @@ invented before that will be wrong.
    red. Memory: startup `initialDelay` is 300s→30s, deploys run 6–10 min.
 4. **`navigator.connection` is Chrome/Android only** — no Safari, no Firefox. Use
    it as a hint, never as the basis for a verdict.
-5. **SSE / streaming carries the header on ai_service but not on the Java
-   services.** On ASGI the header is stamped at `http.response.start`, before the
-   body streams. In a servlet filter the response is already committed by the time
-   the filter regains control, so `/v1/agent/stream/**` and file downloads are
-   skipped by the `isCommitted()` guard. Absence of the header therefore means
-   "could not annotate", never "the server was fast".
+5. **Streaming is covered on both stacks** (since §6.5), and the figure is
+   time-to-first-byte rather than total duration — correct, since the remainder is
+   transfer. Absence of the header still means "could not annotate", never "the
+   server was fast", and the filter counts those skips.
 6. **Cold-start pods will look "slow"** on their first requests. Either warm them
    or exclude the first N seconds after a pod becomes ready.
 7. **Route templating is mandatory** before any metric leaves the browser — raw

@@ -41,6 +41,20 @@ public class AppRegistryService {
         return out;
     }
 
+    /**
+     * Read path for the institute-admin-facing status view. Unlike {@link #listAll()} this never
+     * returns archived apps — an institute admin should not see a decommissioned registration and
+     * wonder why "their app" looks broken.
+     */
+    @Transactional(readOnly = true)
+    public List<JsonNode> listByInstitute(String instituteId) {
+        List<JsonNode> out = new ArrayList<>();
+        for (AppRegistration row : repository.findAllByInstituteIdAndArchivedFalseOrderByNameAsc(instituteId)) {
+            out.add(parse(row.getPayload(), row.getId()));
+        }
+        return out;
+    }
+
     @Transactional(readOnly = true)
     public JsonNode get(String id) {
         AppRegistration row = repository.findById(id)
@@ -101,6 +115,7 @@ public class AppRegistryService {
         row.setName(textAt(basics, "name", ""));
         row.setClientName(textAt(basics, "client", ""));
         row.setPackageName(textAt(basics, "packageName", ""));
+        row.setInstituteId(textAt(basics, "instituteId", null));
         row.setArchived(node.path("archived").asBoolean(false));
         row.setPayload(write(node));
         return repository.save(row);

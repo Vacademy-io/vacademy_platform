@@ -719,16 +719,20 @@ class CallCandidates:
         silent, a reply never played, the pipeline crashed.
 
         An LLM SENTENCE claims "the model said this, and will plausibly say it
-        again". That claim does lean on the conversation having worked, so it
-        keeps the strict bar: any blocking fault, or a RED verdict, drops it.
+        again". That leans on the conversation having worked, so it keeps a
+        stricter bar — but a NAMED one: STT_DEAF (we could not hear, so the reply
+        may be answering nothing) and REPLY_LOOP (the model was repeating itself)
+        on top of the audio faults. The RED VERDICT ITSELF DOES NOT VETO.
 
-        This started as one strict rule for both, and on live agent shreya-v3 it
-        was a stall rather than caution: 15 of 22 calls RED, so the opening line
-        could only be learned from roughly one call in three. And the faults
-        doing the blocking were DEAD_AIR, SLOW_LLM, ANSWER_DELETED — none of
-        which say anything about whether the opening was rendered correctly. It
-        demonstrably was; it is the first line of the transcript. Letting overall
-        call health veto a per-sentence question was the error.
+        Letting overall call health veto a per-sentence question was the original
+        error here, and it took two rounds to get out of. Live agent shreya-v3
+        showed both: with one strict rule its opening line could only be learned
+        from one call in three, and once that was narrowed, FULL still cached
+        nothing at all -- 62 and 46 LLM sentences discarded on two consecutive
+        calls whose only fault was DEAD_AIR. Long silences say nothing about
+        whether "exact fees teen cheezon par depend karti hai" is worth keeping;
+        it is near-verbatim on every call. The agent is RED on essentially every
+        call, so the blanket veto meant FULL could never learn anything, ever.
 
         G3 — an LLM sentence must appear in the PLAYED transcript, which
         PlayedTranscriptRecorder builds from TTSTextFrames released by the
@@ -742,7 +746,11 @@ class CallCandidates:
         try:
             faults = set(verdict_faults or ())
             audio_bad = faults & _AUDIO_BLOCKING_FAULTS
-            convo_bad = (faults & _CACHE_BLOCKING_FAULTS) or (health or "").upper() == "RED"
+            # NAMED faults only — the RED verdict itself does not veto.
+            # See the docstring: RED is a summary of how the CALL went, and a call
+            # can be RED purely for long silences while every sentence in it was
+            # spoken correctly and is worth caching.
+            convo_bad = faults & _CACHE_BLOCKING_FAULTS
 
             # normalize_spoken is NoRepeatGate's own comparator: whitespace
             # collapsed and case-folded. Used for the CONFIRMATION only — the
@@ -788,8 +796,9 @@ _AUDIO_BLOCKING_FAULTS = frozenset({
 })
 
 # The stricter bar, for an LLM sentence — whose claim ("the model will plausibly
-# say this again") does lean on the conversation having worked. Adds the faults
-# about hearing and looping, and a RED verdict blocks on top.
+# say this again") does lean on the conversation having worked. Adds the two
+# faults that genuinely undermine it: we could not HEAR the caller, or the model
+# was repeating ITSELF. Deliberately NOT the RED verdict — see flush().
 _CACHE_BLOCKING_FAULTS = _AUDIO_BLOCKING_FAULTS | frozenset({
     "STT_DEAF", "REPLY_LOOP",
 })

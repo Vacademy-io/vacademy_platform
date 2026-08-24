@@ -73,7 +73,7 @@ TTS_CACHE_SALT | engine | model | voice | pace | temperature
 | **G1** complete | before hashing **and again at `CallCandidates.add`** | the text ends in terminal punctuation (`.` `!` `?` `।` `…`), or is a registered fixed line. Re-checked at the counter on purpose: the count means "this WHOLE sentence was delivered N times", and that meaning must not depend on a caller remembering to filter |
 | **G2** uninterrupted | during dispatch | no interruption between dispatch and completion of that sentence |
 | **G3** actually heard | at call end | the sentence appears in the **played** transcript |
-| **G4** healthy enough | at call end | **Two standards.** A *fixed line* is vetoed only by faults that implicate the AUDIO — `CRASH`, `BOT_SILENT`, `TTS_WEDGE`, `REPLY_UNPLAYED`. An *LLM sentence* keeps the strict bar: those plus `STT_DEAF`, `REPLY_LOOP`, or a RED verdict |
+| **G4** healthy enough | at call end | **Two standards, both NAMED faults.** A *fixed line* is vetoed only by faults implicating the AUDIO — `CRASH`, `BOT_SILENT`, `TTS_WEDGE`, `REPLY_UNPLAYED`. An *LLM sentence* adds `STT_DEAF` and `REPLY_LOOP`. **The RED verdict itself never vetoes either.** |
 | **G5** sound render | at render | whole number of samples, ≥ 200 ms, written `tmp` + `os.replace` |
 | **G6** verified | at serve | the stored text equals the key's text, else it is a **miss** |
 
@@ -119,7 +119,16 @@ The two candidates make different claims, so they answer to different bars:
   from an off-call one-shot synthesis of a string an admin wrote, so nothing about how the
   conversation went bears on it. Only audio faults can veto it.
 - An **LLM sentence** claims *"the model said this and will plausibly say it again"*. That does
-  lean on the conversation having worked, so it keeps the strict bar.
+  lean on the conversation having worked — but on **named** faults, not a verdict: `STT_DEAF`
+  (the reply may be answering something we never heard) and `REPLY_LOOP` (the model was
+  repeating itself).
+
+**The RED verdict does not veto anything.** That took two rounds to get right. Narrowing it for
+fixed lines was not enough: on `shreya-v3` at `FULL`, **62 and 46 LLM sentences were discarded on
+two consecutive calls whose only fault was `DEAD_AIR`**. Long silences say nothing about whether
+*"exact fees तीन चीज़ों पर depend करती है"* is worth keeping — it is near-verbatim on every call.
+That agent is RED on essentially every call, so the blanket veto meant `FULL` could never learn
+anything at all, and would have sat at a ~2% hit rate forever.
 
 The narrowing is not a free pass: `CRASH`, `BOT_SILENT`, `TTS_WEDGE` and `REPLY_UNPLAYED` still
 veto a fixed line, because each of those genuinely implicates the audio.

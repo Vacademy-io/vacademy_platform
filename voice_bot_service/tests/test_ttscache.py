@@ -455,34 +455,59 @@ def test_a_fixed_line_is_still_dropped_when_the_AUDIO_is_suspect(cache, fault):
     assert cc.flush(played_text="", verdict_faults=[fault], health="AMBER") == 0
 
 
-def test_an_llm_sentence_still_needs_a_healthy_call(cache):
-    """The strict bar stays where the claim actually leans on the conversation
-    having worked."""
+@pytest.mark.parametrize("fault", ["STT_DEAF", "REPLY_LOOP", "CRASH", "BOT_SILENT",
+                                   "TTS_WEDGE", "REPLY_UNPLAYED"])
+def test_an_llm_sentence_is_blocked_by_NAMED_faults(cache, fault):
+    """The stricter bar for LLM sentences is a NAMED list, not a verdict.
+
+    STT_DEAF means the reply may be answering nothing; REPLY_LOOP means the model
+    was repeating itself. Both genuinely undermine "it will say this again". The
+    four audio faults undermine the render. These still block.
+    """
     cc = CallCandidates(cache)
     llm = _cand("Aur uski fees kya hai?")
     cc.add(llm)
-    assert cc.flush(played_text=llm.text, verdict_faults=["DEAD_AIR"], health="RED") == 0
+    assert cc.flush(played_text=llm.text, verdict_faults=[fault], health="AMBER") == 0
 
+
+def test_a_red_verdict_alone_no_longer_blocks_an_llm_sentence(cache):
+    """Regression for the live case that made FULL useless.
+
+    shreya-v3 is RED on essentially every call, and on two consecutive FULL calls
+    62 and 46 LLM sentences were discarded whose only fault was DEAD_AIR. Long
+    silences say nothing about whether a near-verbatim pitch line is worth
+    keeping, so the blanket RED veto meant FULL could never learn anything.
+    """
+    cc = CallCandidates(cache)
+    llm = _cand("exact fees teen cheezon par depend karti hai.")
     cc.add(llm)
-    assert cc.flush(played_text=llm.text, verdict_faults=["REPLY_LOOP"], health="AMBER") == 0
+    assert cc.flush(played_text=llm.text,
+                    verdict_faults=["ANSWER_DELETED", "DEAD_AIR", "HANDBACK_LOOP"],
+                    health="RED") == 1
 
 
-def test_one_red_call_can_teach_the_fixed_line_and_not_the_llm_one(cache):
-    """Both kinds arrive from the same call and are judged separately."""
+def test_the_two_kinds_are_still_judged_separately(cache):
+    """Both arrive from one call and answer to different bars. On STT_DEAF the
+    fixed line survives (its audio is fine) and the LLM one does not (the reply
+    may be answering something we never heard)."""
     cc = CallCandidates(cache)
     fixed = _cand("Theek hai, dhanyavaad.", fixed=True)
     llm = _cand("Aur uski fees kya hai?")
     cc.add(fixed); cc.add(llm)
     assert cc.flush(played_text=llm.text + " " + fixed.text,
-                    verdict_faults=["DEAD_AIR"], health="RED") == 1
+                    verdict_faults=["STT_DEAF"], health="RED") == 1
     assert [d.key for d in cache.due()] == [fixed.key]
 
 
-def test_g4_red_health_alone_blocks_laddering(cache):
+def test_a_red_call_with_no_named_fault_teaches_everything(cache):
+    """RED is a summary of how the CALL went. A call can be RED purely for long
+    silences while every sentence in it was spoken correctly."""
     cc = CallCandidates(cache)
-    c = _cand("Yeh humara flagship programme hai.")
-    cc.add(c)
-    assert cc.flush(played_text=c.text, verdict_faults=["DEAD_AIR"], health="RED") == 0
+    fixed = _cand("Theek hai, dhanyavaad.", fixed=True)
+    llm = _cand("Aur uski fees kya hai?")
+    cc.add(fixed); cc.add(llm)
+    assert cc.flush(played_text=llm.text + " " + fixed.text,
+                    verdict_faults=["DEAD_AIR"], health="RED") == 2
 
 
 def test_a_healthy_amber_call_still_teaches(cache):

@@ -100,6 +100,15 @@ async def warm(*, engine: str, model: str, voice: str, pace, temperature,
     cache = get_cache()
     if not cache.ready:
         await asyncio.to_thread(cache.open)
+
+    # Resolve the model the SAME way the live call will, or the key we file this
+    # audio under is not the key the call looks it up by. admin_core sends the
+    # engine and leaves the model to us precisely because only this process knows
+    # what its env resolves to.
+    from .providers import default_engine_model
+    if not (model or "").strip():
+        model = default_engine_model(engine, voice)
+
     done = skipped = failed = 0
     for text in texts:
         t = (text or "").strip()

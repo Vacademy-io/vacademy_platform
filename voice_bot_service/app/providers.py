@@ -264,6 +264,33 @@ def _tag_engine(svc, slug: str, model: str):
     return svc
 
 
+def default_engine_model(engine: str, voice: str = "") -> str:
+    """The model string _tag_engine stamps for an engine, resolved from settings.
+
+    ONE definition, because the cache key contains the model and two paths derive
+    it: the live call takes it from engine_of(tts), and warm-on-save has only the
+    engine name. They were allowed to disagree once — admin_core sent model="" and
+    the warm key came out as (…, "", …) while the live key was (…, "bulbul:v3", …),
+    so every pre-warmed blob was filed under a key no call could ever produce. The
+    warm path looked like it worked and the cache simply never hit.
+    """
+    s = get_settings()
+    e = (engine or "").strip().lower()
+    if e == "sarvam":
+        return s.sarvam_tts_model
+    if e == "smallest":
+        return s.smallest_model
+    if e == "google":
+        return "chirp3-hd"
+    if e == "edge":
+        return "read-aloud"
+    if e == "rumik":
+        return "mulberry"
+    if e == "deepgram":
+        return voice or s.deepgram_tts_voice
+    return ""
+
+
 def engine_of(svc) -> tuple:
     """(slug, model) for a service built by build_tts. ("sarvam", "") if unstamped —
     matching build_tts's own terminal fallback, and CallBillingService's."""

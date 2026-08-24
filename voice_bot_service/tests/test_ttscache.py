@@ -340,6 +340,38 @@ def test_render_is_due_only_after_min_seen_sightings(cache):
     assert [d.key for d in due] == [c.key]      # twice is
 
 
+def test_a_fixed_line_is_due_after_ONE_sighting(cache):
+    """MIN_SEEN exists because an LLM sentence might be a one-off — a name that
+    never recurs — so a second sighting is how we learn it was worth rendering.
+
+    A fixed line has no such doubt: it is authored, and it is spoken on every
+    call by construction. Making it wait would delay the only lines guaranteed to
+    pay off, which is the opposite of what the threshold is for.
+    """
+    fixed = _cand("Namaste ji, main Shreya bol rahi hoon.", fixed=True)
+    cache.ladder([fixed])
+    assert [d.key for d in cache.due()] == [fixed.key]
+
+
+def test_an_llm_sentence_still_waits_for_the_second(cache):
+    """The other half — dropping the threshold for everything would spend a
+    render on every one-off personalised sentence."""
+    llm = _cand("Rohan abhi kaun si class mein hai?")
+    cache.ladder([llm])
+    assert cache.due() == []
+    cache.ladder([llm])
+    assert [d.key for d in cache.due()] == [llm.key]
+
+
+def test_fixed_lines_are_rendered_before_speculative_ones(cache):
+    """A capped pass must spend its budget on the certain wins first."""
+    fixed = _cand("Theek hai, dhanyavaad.", fixed=True)
+    llm = _cand("Aur uski fees kya hai?")
+    cache.ladder([llm]); cache.ladder([llm])
+    cache.ladder([fixed])
+    assert cache.due(limit=1)[0].key == fixed.key
+
+
 def test_an_already_rendered_key_is_not_due_again(cache):
     c = _cand("Yeh humara flagship programme hai.")
     cache.ladder([c])
@@ -522,3 +554,30 @@ def test_an_enabled_agent_does_get_the_wrapper(monkeypatch, tmp_path):
         tts, watcher = _install(monkeypatch, tmp_path, mode=mode)
         assert tts.run_tts is not _sentinel_run_tts, mode
         assert watcher is not None, mode
+
+
+def test_warm_and_live_must_derive_the_same_key():
+    """The warm path and the live path must agree on the model, or a pre-warmed
+    blob is filed under a key no call can produce.
+
+    This shipped broken: admin_core sent model="" and left resolution to the bot,
+    but warm() passed that empty string straight into cache_key while the live
+    path used engine_of(tts)[1] — the resolved "bulbul:v3" / "lightning_v3.1".
+    Same sentence, same voice, two different digests, cache never hits and
+    nothing looks wrong anywhere.
+    """
+    live = _key("Namaste ji.", engine="smallest", model="lightning_v3.1")
+    warm_broken = _key("Namaste ji.", engine="smallest", model="")
+    assert live != warm_broken, "the bug this test exists for"
+
+    providers = pytest.importorskip("app.providers")
+    resolved = providers.default_engine_model("smallest")
+    assert resolved, "smallest must resolve to a concrete model, never blank"
+    assert _key("Namaste ji.", engine="smallest", model=resolved) ==            _key("Namaste ji.", engine="smallest", model=resolved)
+
+
+@pytest.mark.parametrize("engine", ["sarvam", "smallest", "google", "edge", "rumik"])
+def test_every_live_engine_resolves_to_a_concrete_model(engine):
+    """A blank here silently recreates the mismatch above for that engine."""
+    providers = pytest.importorskip("app.providers")
+    assert providers.default_engine_model(engine).strip(), engine

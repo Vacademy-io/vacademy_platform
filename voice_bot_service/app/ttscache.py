@@ -259,6 +259,7 @@ CREATE TABLE IF NOT EXISTS seen(
   pace        REAL, temperature REAL,
   text        TEXT, chars INTEGER,
   count       INTEGER NOT NULL DEFAULT 0,
+  fixed       INTEGER NOT NULL DEFAULT 0,
   first_seen  REAL, last_seen REAL
 );
 CREATE TABLE IF NOT EXISTS blob(
@@ -307,6 +308,12 @@ class SpeechCache:
             os.makedirs(self.root, exist_ok=True)
             with self._connect() as db:
                 db.executescript(_DDL)
+                # SQLite has no ADD COLUMN IF NOT EXISTS, and a ledger created
+                # before this column existed is already on the box.
+                try:
+                    db.execute("ALTER TABLE seen ADD COLUMN fixed INTEGER NOT NULL DEFAULT 0")
+                except sqlite3.OperationalError:
+                    pass
                 rows = db.execute(
                     "SELECT key, nbytes, duration_ms, text FROM blob").fetchall()
             idx: dict[str, Entry] = {}
@@ -508,18 +515,32 @@ class SpeechCache:
                 for c in rows:
                     db.execute(
                         "INSERT INTO seen(key, engine, model, voice, pace, temperature,"
-                        " text, chars, count, first_seen, last_seen)"
-                        " VALUES(?,?,?,?,?,?,?,?,1,?,?)"
-                        " ON CONFLICT(key) DO UPDATE SET count = count + 1, last_seen = ?",
+                        " text, chars, count, fixed, first_seen, last_seen)"
+                        " VALUES(?,?,?,?,?,?,?,?,1,?,?,?)"
+                        " ON CONFLICT(key) DO UPDATE SET count = count + 1,"
+                        " fixed = MAX(seen.fixed, excluded.fixed), last_seen = ?",
                         (c.key, c.engine, c.model, c.voice, c.pace, c.temperature,
-                         c.text, c.chars, now, now, now))
+                         c.text, c.chars, 1 if c.fixed else 0, now, now, now))
             return len(rows)
         except Exception:
             logger.exception("tts-cache: ladder failed")
             return 0
 
     def due(self, limit: int = 25) -> list[Candidate]:
-        """Keys seen enough times to be worth one render, and not yet rendered."""
+        """What is worth one render, and not yet rendered.
+
+        TTS_CACHE_MIN_SEEN exists for ONE reason: an LLM sentence might be a
+        one-off — "Namaste Rohan ji" for a name that never recurs — and rendering
+        it would buy nothing. Waiting for a second sighting is how we find out.
+
+        That reasoning is simply false for a fixed line. The opening, the
+        farewells, the handbacks and the fillers are authored, and every one of
+        them is spoken on every call by construction; there is no "might not
+        recur" to hedge against. Making them wait for a second sighting delays
+        the only lines guaranteed to pay off, which is the opposite of what the
+        threshold is for. So fixed lines qualify on the FIRST sighting, and
+        ORDER BY puts them ahead of the speculative ones when a pass is capped.
+        """
         try:
             min_seen = get_settings().tts_cache_min_seen
             with self._connect() as db:
@@ -527,8 +548,8 @@ class SpeechCache:
                     "SELECT s.key, s.text, s.chars, s.engine, s.model, s.voice,"
                     " s.pace, s.temperature FROM seen s"
                     " LEFT JOIN blob b ON b.key = s.key"
-                    " WHERE b.key IS NULL AND s.count >= ?"
-                    " ORDER BY s.count DESC, s.last_seen DESC LIMIT ?",
+                    " WHERE b.key IS NULL AND (s.fixed = 1 OR s.count >= ?)"
+                    " ORDER BY s.fixed DESC, s.count DESC, s.last_seen DESC LIMIT ?",
                     (min_seen, limit)).fetchall()
             return [Candidate(key=r[0], text=r[1], chars=r[2], engine=r[3],
                               model=r[4], voice=r[5], pace=r[6], temperature=r[7])

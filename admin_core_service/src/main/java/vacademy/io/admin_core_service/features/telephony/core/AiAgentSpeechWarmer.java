@@ -32,15 +32,25 @@ import java.util.Set;
  * without having to decide whether a caller really heard it. Everything the LLM
  * says has to earn its place in the cache the slow way, from calls that worked.
  *
+ * <p>NEEDS telephony.vacademy-ai.client-secret (or VOICE_BOT_CLIENT_SECRET) on
+ * admin-core — the same value the bot already holds. Blank is a SUPPORTED state,
+ * not a broken one: warming simply does not happen, and the bot learns its fixed
+ * lines from the first call instead, hitting from the second. All this buys is
+ * moving the opening line's first hit from call 2 to call 1.
+ *
  * <p>WHY IT CANNOT FAIL A SAVE. This spends money (each render is a vendor
  * synthesis) and crosses an ocean (admin core in Singapore, bot in Mumbai). An
  * admin pressing Save must never see either. Fire-and-forget, exactly like
  * {@link vacademy.io.admin_core_service.features.telephony.ivr.IvrPromptWarmer}:
  * a warm that fails simply means the first calls pay the vendor, as they do today.
  *
- * <p>The handbacks and fillers are deliberately NOT sent from here. They are
- * chosen inside the bot from the agent's language, so the bot warms them itself
- * on first use rather than having two places agree on the same literals.
+ * <p>ONLY THE OPENING LINE, and only when it carries no {{placeholder}}. The
+ * handbacks, farewells, fillers and nudge are chosen inside the bot from the
+ * agent's language, and nothing pre-warms them — they reach the cache the same
+ * way an LLM sentence does, by being spoken on enough calls. So the first call
+ * for a newly-enabled agent can serve the opening from cache and nothing else,
+ * and an opening containing {{leadName}} means it serves nothing at all on that
+ * call. That is expected, not a failure.
  */
 @Component
 public class AiAgentSpeechWarmer {

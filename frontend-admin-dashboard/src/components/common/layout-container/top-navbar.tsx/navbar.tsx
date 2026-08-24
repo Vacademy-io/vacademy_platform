@@ -39,7 +39,6 @@ import { usePDFStore } from '@/routes/study-library/courses/course-details/subje
 import { useSelectedSessionStore } from '@/stores/study-library/selected-session-store';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import { SidebarSimple } from '@phosphor-icons/react';
-import { ConnectionStatusPill } from '@/components/common/perf/ConnectionStatusPill';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useSuspenseQuery, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
@@ -449,9 +448,6 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
             </div>
 
             <div className="flex shrink-0 items-center gap-2 text-neutral-600 md:gap-6">
-                {/* Server-vs-network status. Renders nothing unless something is
-                    actually degraded, so it costs no space in the normal case. */}
-                <ConnectionStatusPill />
                 {/* Language switcher (multi-language institutes only) */}
                 {showLanguageSwitcher && <LanguageDropdown className="relative" />}
                 {/* AI Credits */}

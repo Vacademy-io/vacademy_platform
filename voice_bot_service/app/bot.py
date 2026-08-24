@@ -84,7 +84,9 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
 from . import diagnostics as diag_mod
-from .providers import build_llm, build_stt, build_tts
+from .providers import (build_llm, build_stt, build_tts, engine_of,
+                        normalize_for_rumik, rumik_term_map_version)
+from . import ttscache
 from .turntake import (mid_reply_action, is_carrier_announcement,
                        is_audio_check, suppresses_opening, is_repeat,
                        caller_asked_to_repeat, normalize_spoken, question_topic,
@@ -137,6 +139,10 @@ class CallOutcome:
     # Per-call technical diagnostics (app/diagnostics.CallDiagnostics). Owned by
     # run_bot; None when the pipeline died before setup.
     diagnostics: Any = None
+    # TTS speech-cache candidates this call proposed (ttscache.CallCandidates).
+    # Declared rather than attached ad hoc so report.py can find it, and so the
+    # end-of-call admission (was it heard, was the call healthy) has one owner.
+    tts_candidates: Any = None
 
     def duration_seconds(self) -> int:
         end = self.ended_at or time.time()
@@ -155,7 +161,8 @@ class TranscriptCollector(FrameProcessor):
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  diag=None, in_machine_window=None, reply_in_flight=None,
-                 bot_spoke_once=None, on_voice_tick=None, on_continuation=None):
+                 bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
+                 voice_live=None):
         super().__init__()
         self._outcome = outcome
         self._diag = diag
@@ -163,6 +170,12 @@ class TranscriptCollector(FrameProcessor):
         # 0.2s while voice is live. The turn-level Started/Stopped frames can
         # lag this by seconds (see CallState.voice_tick_t).
         self._on_voice_tick = on_voice_tick or (lambda: None)
+        # Is the caller audibly speaking RIGHT NOW? Read from the same VAD ticks,
+        # not from the turn-level frames, which lag by seconds (CallState.voice_tick_t).
+        self._voice_live = voice_live or (lambda: False)
+        # When we last played a filler. Compared against bot_stopped_t so at most one
+        # filler covers any one gap between the bot's turns.
+        self._last_filler_t = 0.0
         # Tells NoRepeatGate the NEXT response is a continuation of a cut reply
         # — the one place a paraphrased restatement is never legitimate.
         self._on_continuation = on_continuation or (lambda: None)
@@ -437,11 +450,34 @@ class TranscriptCollector(FrameProcessor):
             # Filler only when the bot is quiet AND has spoken once already — a
             # barge-in has audio to cancel, and a filler before the opening meant
             # the first thing the caller ever heard was "Hmm…".
+            #
+            # Every guard above is about the BOT's state; none asked whether the CALLER
+            # had finished. Two things then went wrong together, and the client heard
+            # both as "too much hmm-ing":
+            #
+            #   * saaras splits one halting utterance into fragment finals (see
+            #     diagnostics.reconcile_answers — "नहीं जान।" + "सकते हैं आप।"), and EVERY
+            #     fragment was its own roll. A sentence that split five ways had a ~41%
+            #     chance of a filler at p=0.10, spoken INTO the caller's own speech.
+            #   * nothing stopped a second filler covering the same silence.
+            #
+            # So: never while the VAD says voice is live (acoustic truth, not the
+            # turn frames, which lag by seconds), and at most one per gap between the
+            # bot's turns. A filler after the caller genuinely stops is unaffected —
+            # by then the final trails the last voice tick by ~0.65s, well past the
+            # window — which is the latency mask this exists for.
+            # Strictly positive: at call start both stamps are 0.0, and '0 >= 0' would
+            # latch the very first filler off before any gap had been filled.
+            already_filled = (self._last_filler_t > 0.0
+                              and self._last_filler_t >= self._bot_stopped_t())
             if (self._filler_phrases and not self._is_bot_speaking()
                     and not (self._duck is not None and self._duck.is_ducked())
                     and self._fillers_armed()
                     and not text.startswith("[")     # synthetic cue, not real speech
+                    and not self._voice_live()
+                    and not already_filled
                     and random.random() < self._filler_probability):
+                self._last_filler_t = time.time()
                 await self.push_frame(
                     TTSSpeakFrame(random.choice(self._filler_phrases)), direction)
         await self.push_frame(frame, direction)
@@ -1112,6 +1148,13 @@ class RunGuard(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+# Spoken when a requested human transfer could not be registered. A module
+# constant rather than an inline default so the TTS cache can pre-warm it: it is
+# a fixed, bot-authored line like the farewells and the handbacks.
+TRANSFER_FAIL_CLOSING = ("Mujhe abhi connect karne mein dikkat aa rahi hai — hamare "
+                         "counsellor aapko jald call karenge. Dhanyavaad!")
+
+
 class SentinelGate(FrameProcessor):
     """Between LLM and TTS: strips the steering markers from the token stream so
     they are never spoken, accumulates the assistant transcript one utterance at
@@ -1122,9 +1165,7 @@ class SentinelGate(FrameProcessor):
                  on_reply_start=None, on_send=None,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
                  end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
-                 transfer_fail_closing: str = ("Mujhe abhi connect karne mein dikkat aa "
-                                               "rahi hai — hamare counsellor aapko jald "
-                                               "call karenge. Dhanyavaad!")):
+                 transfer_fail_closing: str = TRANSFER_FAIL_CLOSING):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
@@ -2568,6 +2609,61 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                 flags["tts_gen_t"] = time.time()
         tts.set_generate_callback(_stamp_generate)
 
+    # ── TTS speech cache ────────────────────────────────────────────────────
+    # Replay audio we already paid to synthesize, on an EXACT sha256 match of
+    # (engine, model, voice, pace, temperature, rate, term-map, sentence). One
+    # differing character is a miss and goes to the vendor.
+    #
+    # engine_of(tts), not _agent_tts_model(agent): build_tts silently falls back
+    # to Sarvam on a missing key, and filing that audio under the configured
+    # engine's key would serve the wrong voice to every future match.
+    _cache_engine, _cache_model = engine_of(tts)
+    # The bot's OWN lines. They never pass through the LLM, an admin authored
+    # them, and each arrives as a standalone TTSSpeakFrame — so they are the one
+    # class that can be pre-warmed and is exempt from the "was it heard" gate.
+    # Resolved exactly as _greet_when_ready will resolve it, so the key matches
+    # what actually gets spoken. Deterministic: same agent + same context in,
+    # same string out.
+    # Guarded: _greet_when_ready calls this same pair inside a background task,
+    # where a raise costs the opening line. Here it would be on the call setup
+    # path, where a raise costs the whole call — and _fill_placeholders reaches
+    # strftime with glibc-only directives. A warm target is not worth that.
+    try:
+        _opening_for_cache = _clean_opening(_fill_placeholders(
+            (agent.get("openingLine") or "").strip(), context))
+    except Exception:
+        logger.exception("tts-cache: could not resolve the opening line for warming")
+        _opening_for_cache = ""
+    _fixed_lines = {
+        _opening_for_cache, nudge_text, cap_farewell, transfer_closing,
+        idle_farewell, end_closing, TRANSFER_FAIL_CLOSING,
+    }
+    _fixed_lines.update(eng_fillers if eng else settings.filler_phrases)
+    _fixed_lines.update(NoRepeatGate._HANDBACK_EN if eng else NoRepeatGate._HANDBACK)
+    _fixed_lines.discard("")
+    tts_candidates = ttscache.CallCandidates(ttscache.get_cache())
+    tts_watcher = ttscache.install_tts_cache(
+        tts,
+        engine=_cache_engine, model=_cache_model,
+        voice=_agent_voice(agent) or "",
+        pace=_as_float(agent.get("pace")),
+        temperature=_as_float(agent.get("temperature")),
+        term_map_version=(rumik_term_map_version() if _cache_engine == "rumik" else ""),
+        fixed_lines=_fixed_lines,
+        # Per-agent rollout gate — one agent first, then widen (TTS_CACHE_AGENTS).
+        agent_id=str(agent.get("id") or ""), agent_name=str(agent.get("name") or ""),
+        # snake_case, like tts_model: admin_core emits it that way ON PURPOSE and
+        # always emits it, because the safe default for a MISSING key is OFF.
+        cache_mode=str(agent.get("speech_cache_mode") or ttscache.MODE_OFF),
+        # Rumik rewrites Devanagari-spelt English terms at the synthesis
+        # boundary, so the cache must key on the text the VENDOR sees.
+        normalize=(normalize_for_rumik if _cache_engine == "rumik" else None),
+        diag=diag, candidates=tts_candidates)
+    # Only hand the candidate list to the report when the cache is actually
+    # installed. Left attached for an OFF agent it would be empty forever, and
+    # report.py would still spawn a thread per call to flush nothing.
+    outcome.tts_candidates = tts_candidates if tts_watcher is not None else None
+
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context, sink=diag.note_unfilled)}]
     )
@@ -2704,6 +2800,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      bot_spoke_once=lambda: flags["bot_spoke_once"],
                                      on_voice_tick=lambda: flags.__setitem__(
                                          "voice_tick_t", time.time()),
+                                     # Two missed VAD ticks (they arrive every 0.2s
+                                     # while voice is live). Long enough to ride out a
+                                     # breath mid-sentence, short enough that a real
+                                     # end-of-turn still gets its filler.
+                                     voice_live=lambda: (
+                                         time.time() - flags["voice_tick_t"]
+                                         < settings.filler_voice_live_secs),
                                      # late-bound: no_repeat is created below
                                      on_continuation=lambda: no_repeat.mark_continuation())
     played_transcript = PlayedTranscriptRecorder(outcome)
@@ -2758,6 +2861,17 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         sentinel,
         no_repeat,
         tts,
+        # Feeds the cache's ordering guard: on an engine whose audio arrives
+        # out-of-band, a cached utterance may only be served when the vendor
+        # owes us nothing, or it would be heard BEFORE audio requested earlier.
+        #
+        # ABSENT ENTIRELY when the cache is not installed for this agent — which
+        # is every agent until one is switched on. A pass-through processor is
+        # cheap but it is not free, and "the chain is byte-identical to today"
+        # is a much stronger thing to be able to say than "the extra link does
+        # nothing".
+        *([ttscache.make_turn_watcher_processor(tts_watcher)]
+          if tts_watcher is not None else []),
         duck,
         transport.output(),
         played_transcript,

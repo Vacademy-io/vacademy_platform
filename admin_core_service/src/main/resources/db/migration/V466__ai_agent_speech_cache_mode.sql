@@ -8,7 +8,7 @@
 -- WHY A COLUMN AND NOT AN ENV VAR. The voice bot's env switches are process-wide:
 -- one flip turns the cache on for every agent taking calls on that box. Rolling
 -- out to a single agent, watching a batch, then widening is the shape this needs,
--- and that belongs where the agent is configured — reviewable in the UI, no ssh,
+-- and that belongs where the agent is configured — reviewable, no ssh,
 -- no container restart, and visible to whoever later asks "why does this agent
 -- sound different from that one".
 --

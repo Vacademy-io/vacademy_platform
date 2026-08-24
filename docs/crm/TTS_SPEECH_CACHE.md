@@ -315,8 +315,8 @@ LLM-sentence half earns its complexity.
 
 ## 10.1 Rollout — per agent, from the backend
 
-**What turns the cache on is `ai_agent.speech_cache_mode` (V466), set per agent in
-CRM → Calling → AI Agents.** Not an env var: the bot's env switches are process-wide, and
+**What turns the cache on is `ai_agent.speech_cache_mode` (V466), set per agent.** Not an env
+var: the bot's env switches are process-wide, and
 rolling out to one agent, watching a batch, then widening is the shape this needs. No ssh, no
 container restart, and the decision is visible to whoever later asks why one agent sounds
 different from another.
@@ -326,6 +326,12 @@ different from another.
 | `OFF` | nothing | **the default for every existing agent** — the feature is inert |
 | `FIXED` | the bot's authored lines only — opening, farewells, handbacks, fillers | first tier. Each is a standalone utterance with no join to a neighbouring sentence, so §11 cannot bite. Safe on every engine |
 | `FULL` | the above **plus** the LLM's own sentences | only after the §11 render-parity listen for that engine |
+
+> **There is no UI control for this yet.** `AiAgentDTO.speechCacheMode` is accepted, persisted
+> and returned by `POST /v1/telephony/ai-agents`, so the agent API can set it — but the AI
+> Agents page has no dropdown. Until one is added, enabling an agent means SQL (or a PUT
+> carrying the field). That is deliberate for now: a rollout control nobody can click by
+> accident is the right shape for a feature in its first week.
 
 ```sql
 -- one agent, fixed lines only

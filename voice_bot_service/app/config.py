@@ -545,7 +545,8 @@ class Settings:
     #
     # KILL switches, not the on switch. What actually enables the cache for an
     # agent is ai_agent.speech_cache_mode (OFF | FIXED | FULL, V466), set in
-    # CRM -> Calling -> AI Agents — per agent, reviewable, no restart. These
+    # per agent via the agent API or SQL (no UI control yet), reviewable and
+    # needing no restart. These
     # default TRUE so a normal rollout never needs an ssh, and exist so ops can
     # stop the feature fleet-wide in one restart without editing anybody's
     # configuration. Two of them because the two paths carry different risk: the

@@ -11,6 +11,7 @@
 		0118E8A822DD8D62C63A7588 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		02F5C080AD2E4959B0453516 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		0BEE3853FEB47C0B02EC3402 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
+		0DBD2FF7585B32626E7A31F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F3969B766B40EF22BCAE4710 /* GoogleService-Info.plist */; };
 		0E0C6D3250494547B873F88D /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		0E0D4AE92FC2BDC200E29BEC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		0E0D4AEE2FC2BDC200E29BEC /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -29,7 +30,6 @@
 		0E0D4B092FC2CB0100E29BEC /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		0E0D4B112FC2CB3C00E29BEC /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E0D4B102FC2CB3C00E29BEC /* GoogleService-Info.plist */; };
 		0E3507892F1C931700F1F9F9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
-		0E35078D2F1C931700F1F9F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
 		0E35078E2F1C931700F1F9F9 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0E35078F2F1C931700F1F9F9 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		0E3507902F1C931700F1F9F9 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
@@ -38,7 +38,6 @@
 		0E3507932F1C931700F1F9F9 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		0E3507942F1C931700F1F9F9 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		0E35079E2F1C931F00F1F9F9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
-		0E3507A22F1C931F00F1F9F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
 		0E3507A32F1C931F00F1F9F9 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0E3507A42F1C931F00F1F9F9 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		0E3507A52F1C931F00F1F9F9 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
@@ -66,11 +65,14 @@
 		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		11C855A6C72427C7B48AE0A9 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		12AD9106DDA4265C98D16D1F /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		1376A4A7F9FE68EC97D896F4 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		14E8D273FC7A03FCCF0B9EEE /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		159478D4A77785769B1BB798 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		1686093AAA320B3378BB8B28 /* Pods_Shiksha_Nation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D7FA5A0257B0DC08A2072CEE /* Pods_Shiksha_Nation.framework */; };
 		1893791D8E8340F5936C0B35 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		19167FC1C77149F193D6E6C7 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		193FC5F69363BA2D76BD043E /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		1A83A0208D25392F70B5D80C /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		1AAA00012F25A00000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		1AAA00022F25A00000000002 /* EnarkGoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */; };
 		1AAA00032F25A00000000003 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -79,19 +81,25 @@
 		1AAA00062F25A00000000006 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		1AAA00072F25A00000000007 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		1AAA00082F25A00000000008 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		1C400C4481F6A18318962E82 /* Pods_DumBee.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB270668FDA6CE831C168D9D /* Pods_DumBee.framework */; };
+		1D20BDAF629027264756B161 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		1F3E0E8F49B8A0BDB606F4EB /* LaunchScreenDumBee.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 24D512D1333882090B007013 /* LaunchScreenDumBee.storyboard */; };
 		1FD784859F894C6BB964779B /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		235EF7FF7C704F9E9022E9BE /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		260F0895AB5945E98BD705F3 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		2612C186DA7B446990F59A91 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		263A33B6F004F44F14CFE8E8 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
 		2BD9EADE27C148BDAAC05D3E /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
 		2CA63ACFEDFAE4D81F1F8DD9 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
 		2E1FE691860D4A8ABD9B8D92 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		31170A8D66EED80E34866581 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		329BB999A146DCEBDA88E078 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		3306FCC7C519944B9E3AF74F /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		335FE5CB3EDC27EE83F96112 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		3995D85EFF584B57881CC141 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
 		3A7868FD7D8DDF8CD40CF1AA /* Pods_The_Learning_Bridge.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DE9723D6B93107D671C918BB /* Pods_The_Learning_Bridge.framework */; };
+		4197D7C5EC301431364C6383 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		439F2F8A2EB44A3AB00BC81C /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		4445A6DD7B254233817F21CA /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		46A7B0ECA8980A28B0BD1018 /* Pods_Uplift_Teacher_Training.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */; };
@@ -100,6 +108,7 @@
 		49FAB1FA9EFE4D4829783A68 /* LaunchScreenSN.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */; };
 		4BBDA3A872CA19A3467D84F3 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 5AF1ACF2FB7E58A636751BAA /* GoogleService-Info.plist */; };
 		4C6D6B348A9E456FAD8CEF82 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
+		4FB756C8CCB1313579C87C74 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
@@ -108,22 +117,29 @@
 		506C1B40C8D810C9A093A73F /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		5196ADBA4C84E9586D75D263 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
+		52C921739581A979D976D4E6 /* LaunchScreenSN.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */; };
 		540A41F34EC54BDAAB02875E /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		542B13A323EA4A28A69BFA55 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		56486CF565863C7AD43A5AFA /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = D69F44CF9AF96B34A7B87E9B /* GoogleService-Info.plist */; };
 		56B497174D266CCA797B5FDF /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		5860C17569880D4CB1858FED /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		59E603FB5A3D3F4007F5CA7F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
 		5C81E7B1E26E4E219E727B00 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		5CEE86A08BED4F15A7548F90 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
 		5F9B7DDE407A109105FCE883 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		632A502BBCD083435CB3716D /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		6388A267971EC0D3EB04B5A9 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		647FFED3A78356EC35FF2321 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		64F13DB96EA440508443ECF1 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		661F44D6FD6CD47A777FAC1F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		69AD056C540847E4A3298870 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
 		6A06DF9587F957C47E506E6C /* LaunchScreenHCCA.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */; };
 		6A214F130D4C4807B42AF5B2 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		6BB1931143BC68C3CEB615FB /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		6BBC149E86E5EC57E969A322 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		6C4154AC2C76E90C80F8FAF0 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 739E6FC927EA6F6AAB2B0BAF /* GoogleService-Info.plist */; };
 		6E179A36BEC6A63E0C9A8EFA /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		6FCE29C515A312D02E6583F8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
 		701DDABAABAF4E7BB5C51AE9 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		732AEBA4D48A482C9947A155 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		7411584DD8EBBB621F299383 /* Pods_the7cs.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */; };
@@ -135,21 +151,26 @@
 		801EDFE3F88D4A70A44A00A1 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		8096B6932B8C76CF811F7345 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		80CBF2D1E6E14789BC249257 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		83D419E30B8538006CD080D1 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		89B75F7B56AA48949FC3667E /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		8D50592351C9F5AFCB6E79DB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		90EABC99592A9E3A378E9505 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1C6AC08EADA4D19EC616CAC1 /* GoogleService-Info.plist */; };
+		914B42132C1F6C7DF8EDC9EB /* Pods_Shiksha_Nation_SK.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F3DCD4D12768ECFD7DBB5AA /* Pods_Shiksha_Nation_SK.framework */; };
 		9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF80D54945E534E81704718B /* Pods_Five_Sep.framework */; };
 		9276850C792B3AA9C1644FDC /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		92CF6E9FD15192700D5BAD2F /* Pods_Edzumo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */; };
+		961C1D1C54F4AAC6B72445FD /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		96554FD5C2B79909CAF44F19 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		974474857A30479F153356F6 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		98335B98CBA8D56F4C87DA1B /* Pods_Brahm_Varchas_Shiksha.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EEAD3D035F5BC50264E48693 /* Pods_Brahm_Varchas_Shiksha.framework */; };
+		9AE419E8FC1C57A89150DC8C /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = DE0DAED4523A85A404429A06 /* GoogleService-Info.plist */; };
 		9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
+		9E02F1C86CA80E23BAB42261 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		A105E8843376451BD5F73DE4 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		A5742CAF260A4E0C4386CECF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		A57673D1AA9FB8686D5E5F16 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		A5A116509840E2943E414E2A /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
-		A60CC089905753E236B6F4B0 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 05656F4AC827527D07E072ED /* GoogleService-Info.plist */; };
 		A7D6712AA2A1334E27616C2D /* Pods_ZOE_Edtech.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */; };
 		AB74E2C5E5FB1BA34C8B492A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		AD056A8BAB964CF8A82B5E28 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
@@ -157,11 +178,12 @@
 		B0E2CD46332CEEC03CA442A4 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		B529081F47694FDCA934FD6C /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		B54A1F3CD7664D439F52C51A /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		B69485FE8BAC1BDCB3074B67 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1340CA8AE85454FAEA120CAC /* GoogleService-Info.plist */; };
 		B6EF8EEE4CC97793718ECA52 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		B83E117C7A3798C189F896E2 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		B9B61372F40DBDA5A41B7EFF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		BC67E2B60E714A6D84EC10FA /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
-		C0A3B7F3498147EF92F90117 /* Pods_Shiksha_Nation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */; };
+		C0A3B7F3498147EF92F90117 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
 		C1607586FA904122A833A480 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		C27B4B808CE5938482E862F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6AFDECE0F575C81EBF1DBA17 /* GoogleService-Info.plist */; };
 		C2B8C112621143C004BC58B9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
@@ -170,13 +192,22 @@
 		C83D4A360236AA28C273203D /* Pods_Sadbhavana.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */; };
 		CC0B89605B25954C71E0747C /* Pods_HCCA_Learning.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */; };
 		CC83C7694AF74710A268A7C3 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		CCA8C37F87460E22A3338EDC /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		CE49629F4B199F8FF5685F52 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		CED1EE3C4F924B449A849A75 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		D14435C32FA64923B57163FE /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
 		D1DA697911CA1F9685933BB9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		D1DB9AA50A3194B0D71D06B6 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		D2D5FAC0817300D38E298F8D /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		D3A395F821157DE968E622E5 /* Pods_Chanakya_IAS_Academy.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 920B2CD1F603B3CC23BAE8D8 /* Pods_Chanakya_IAS_Academy.framework */; };
+		D4DFC5CA0DB24B41396429CB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		D5880455C1FC9BDFE47CC628 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		D91136FEE2F248F99CB856B4 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
+		DA80D141BE869475443091A0 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		DB56E8ECB474A33AF1A60E38 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		E3A660A12A25E81555D25B8A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		E6761DF1E0A246B3A45D6630 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
+		E9E4B56C7B8576978768DB62 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
 		EF2B3D2F01CFC3B47C9035DB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		EF8061D5CA924D34A39DE777 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		F1D7138149EB4FA8AF385C15 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
@@ -209,22 +240,27 @@
 		0E6322D22FA4C995002966B3 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		0EB0C0F82F73B79D003DA394 /* Shiksha Nation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shiksha Nation.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		1340CA8AE85454FAEA120CAC /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Shiksha-Nation-SK/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		18C12CC3C7D43C0BDD7E4A08 /* ZOE Edtech.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ZOE Edtech.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1AAA00092F25A00000000009 /* Uplift Teacher Training.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Uplift Teacher Training.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1AAA000A2F25A0000000000A /* Enark-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Enark-Info.plist"; sourceTree = "<group>"; };
 		1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "EnarkGoogleService-Info.plist"; sourceTree = "<group>"; };
+		1C6AC08EADA4D19EC616CAC1 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/SSDC-Horizon/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		1EDD97834AF3CF16AC83FE71 /* Pods-ZOE Edtech.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ZOE Edtech.release.xcconfig"; path = "Pods/Target Support Files/Pods-ZOE Edtech/Pods-ZOE Edtech.release.xcconfig"; sourceTree = "<group>"; };
 		21216D9D311F8C984BCE098F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		24D512D1333882090B007013 /* LaunchScreenDumBee.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenDumBee.storyboard; path = App/Base.lproj/LaunchScreenDumBee.storyboard; sourceTree = "<group>"; };
 		25A963DCA873DEB99161804B /* Pods-the7cs.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-the7cs.debug.xcconfig"; path = "Pods/Target Support Files/Pods-the7cs/Pods-the7cs.debug.xcconfig"; sourceTree = "<group>"; };
 		2766B7B5D3F8CA099558461B /* Pods-HCCA Learning.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HCCA Learning.debug.xcconfig"; path = "Pods/Target Support Files/Pods-HCCA Learning/Pods-HCCA Learning.debug.xcconfig"; sourceTree = "<group>"; };
 		287CCFB97247580E305FA222 /* Pods-SSDC Horizon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.debug.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.debug.xcconfig"; sourceTree = "<group>"; };
 		295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenHCCA.storyboard; path = App/Base.lproj/LaunchScreenHCCA.storyboard; sourceTree = "<group>"; };
 		2AD8C058D1A8D73C46386616 /* Sadbhavana.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sadbhavana.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2ED551E0D8A31D6D1D597201 /* Pods-DumBee.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-DumBee.release.xcconfig"; path = "Pods/Target Support Files/Pods-DumBee/Pods-DumBee.release.xcconfig"; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Sadbhavana.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		33EFFB28CF0D60C91479D913 /* Pods-Shiksha Nation.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shiksha Nation.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Shiksha Nation/Pods-Shiksha Nation.debug.xcconfig"; sourceTree = "<group>"; };
 		3D7CB4FFA47FBB9D06D8073E /* Pods-The Learning Bridge.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-The Learning Bridge.release.xcconfig"; path = "Pods/Target Support Files/Pods-The Learning Bridge/Pods-The Learning Bridge.release.xcconfig"; sourceTree = "<group>"; };
 		3E3ECE5F6CF7DBF477DD159E /* Pods-ZOE Edtech.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ZOE Edtech.debug.xcconfig"; path = "Pods/Target Support Files/Pods-ZOE Edtech/Pods-ZOE Edtech.debug.xcconfig"; sourceTree = "<group>"; };
+		3E6C9A00466FFB42B1452F24 /* Pods-Shiksha Nation SK.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shiksha Nation SK.release.xcconfig"; path = "Pods/Target Support Files/Pods-Shiksha Nation SK/Pods-Shiksha Nation SK.release.xcconfig"; sourceTree = "<group>"; };
 		46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_ZOE_Edtech.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_HCCA_Learning.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E4BC21D4BDE198DA2C44057 /* Pods-HCCA Learning.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HCCA Learning.release.xcconfig"; path = "Pods/Target Support Files/Pods-HCCA Learning/Pods-HCCA Learning.release.xcconfig"; sourceTree = "<group>"; };
@@ -239,11 +275,13 @@
 		51BC25DC7BF907534AABBFCE /* Brahm Varchas Shiksha.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Brahm Varchas Shiksha.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		54FDC0D1DF0A5F5687F4CCC5 /* Pods-Five Sep.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.debug.xcconfig"; sourceTree = "<group>"; };
 		5AF1ACF2FB7E58A636751BAA /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist"; sourceTree = "<group>"; };
-		68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Shiksha_Nation.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		681E0047605C2D1CC1C51FC2 /* Pods-Shiksha Nation SK.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shiksha Nation SK.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Shiksha Nation SK/Pods-Shiksha Nation SK.debug.xcconfig"; sourceTree = "<group>"; };
 		6AFDECE0F575C81EBF1DBA17 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/HCCA/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6D00BA17496ED7B5FE48F90F /* Pods-Uplift Teacher Training.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Uplift Teacher Training.release.xcconfig"; path = "Pods/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training.release.xcconfig"; sourceTree = "<group>"; };
 		739E6FC927EA6F6AAB2B0BAF /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Sadbhavana/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SSDC_Horizon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		7F7AE15181A12EA5A29A8B17 /* Pods-DumBee.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-DumBee.debug.xcconfig"; path = "Pods/Target Support Files/Pods-DumBee/Pods-DumBee.debug.xcconfig"; sourceTree = "<group>"; };
+		81FB56EAC69048022036DE5C /* DumBee.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DumBee.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Uplift_Teacher_Training.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Edzumo.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8B279DBAA24BE3BC1F188689 /* Pods-Five Sep.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.release.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.release.xcconfig"; sourceTree = "<group>"; };
@@ -253,6 +291,7 @@
 		920B2CD1F603B3CC23BAE8D8 /* Pods_Chanakya_IAS_Academy.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Chanakya_IAS_Academy.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B00073F4475E3902818CE10 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Brahm-Varchas/GoogleService-Info.plist"; sourceTree = SOURCE_ROOT; };
 		9BF657DED25A2F36B05C0907 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
+		9F3DCD4D12768ECFD7DBB5AA /* Pods_Shiksha_Nation_SK.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Shiksha_Nation_SK.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9350ABD4CDFBB507639AA28 /* Pods-Chanakaya IAS Academy.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakaya IAS Academy.release.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakaya IAS Academy/Pods-Chanakaya IAS Academy.release.xcconfig"; sourceTree = "<group>"; };
 		AD27862833C67F02F11F73AB /* Pods-The Learning Bridge.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-The Learning Bridge.debug.xcconfig"; path = "Pods/Target Support Files/Pods-The Learning Bridge/Pods-The Learning Bridge.debug.xcconfig"; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -266,13 +305,19 @@
 		CC4F4A08331896C84D488EFF /* Pods-Chanakya IAS Academy.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakya IAS Academy.release.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakya IAS Academy/Pods-Chanakya IAS Academy.release.xcconfig"; sourceTree = "<group>"; };
 		D35753CB6D9F8BC8951462E0 /* Pods-Sadbhavana.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sadbhavana.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Sadbhavana/Pods-Sadbhavana.debug.xcconfig"; sourceTree = "<group>"; };
 		D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_the7cs.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		D69F44CF9AF96B34A7B87E9B /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/The-Learning-Bridge/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		D7AB920C24733C910B2A7F0C /* Pods-Edzumo.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Edzumo.release.xcconfig"; path = "Pods/Target Support Files/Pods-Edzumo/Pods-Edzumo.release.xcconfig"; sourceTree = "<group>"; };
+		D7FA5A0257B0DC08A2072CEE /* Pods_Shiksha_Nation.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Shiksha_Nation.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		DB270668FDA6CE831C168D9D /* Pods_DumBee.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_DumBee.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		DE0DAED4523A85A404429A06 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/the7cs/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		DE9723D6B93107D671C918BB /* Pods_The_Learning_Bridge.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_The_Learning_Bridge.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E6072116DBFDAD2CA617E513 /* Pods-SSDC Horizon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.release.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.release.xcconfig"; sourceTree = "<group>"; };
 		E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenSN.storyboard; path = App/Base.lproj/LaunchScreenSN.storyboard; sourceTree = "<group>"; };
 		E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineMediaCrypto.swift; sourceTree = "<group>"; };
 		EEAD3D035F5BC50264E48693 /* Pods_Brahm_Varchas_Shiksha.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Brahm_Varchas_Shiksha.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		F31D50D520F6C4986A9BDAEE /* Pods-Uplift Teacher Training.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Uplift Teacher Training.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training.debug.xcconfig"; sourceTree = "<group>"; };
+		F3969B766B40EF22BCAE4710 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/DumBee/GoogleService-Info.plist"; sourceTree = "<group>"; };
+		FC065B37A999C43E47D21A68 /* Shiksha Nation SK.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shiksha Nation SK.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FF80D54945E534E81704718B /* Pods_Five_Sep.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Five_Sep.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -323,7 +368,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C0A3B7F3498147EF92F90117 /* Pods_Shiksha_Nation.framework in Frameworks */,
+				C0A3B7F3498147EF92F90117 /* BuildFile in Frameworks */,
+				1686093AAA320B3378BB8B28 /* Pods_Shiksha_Nation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -354,6 +400,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		80B6BDE39A1448F65A320262 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6FCE29C515A312D02E6583F8 /* Foundation.framework in Frameworks */,
+				1C400C4481F6A18318962E82 /* Pods_DumBee.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		852721FC763114B33C5B93C8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -370,6 +425,15 @@
 				2CA63ACFEDFAE4D81F1F8DD9 /* Foundation.framework in Frameworks */,
 				A5A116509840E2943E414E2A /* Foundation.framework in Frameworks */,
 				98335B98CBA8D56F4C87DA1B /* Pods_Brahm_Varchas_Shiksha.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1C4A5374B82C5FB24602F2F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				59E603FB5A3D3F4007F5CA7F /* Foundation.framework in Frameworks */,
+				914B42132C1F6C7DF8EDC9EB /* Pods_Shiksha_Nation_SK.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -416,7 +480,6 @@
 				D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */,
 				FF80D54945E534E81704718B /* Pods_Five_Sep.framework */,
 				885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */,
-				68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */,
 				89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */,
 				126B41249BAB1AFC0A93D6EA /* iOS */,
 				302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */,
@@ -425,6 +488,9 @@
 				46F748A7E7E41885A3800499 /* Pods_ZOE_Edtech.framework */,
 				DE9723D6B93107D671C918BB /* Pods_The_Learning_Bridge.framework */,
 				EEAD3D035F5BC50264E48693 /* Pods_Brahm_Varchas_Shiksha.framework */,
+				9F3DCD4D12768ECFD7DBB5AA /* Pods_Shiksha_Nation_SK.framework */,
+				D7FA5A0257B0DC08A2072CEE /* Pods_Shiksha_Nation.framework */,
+				DB270668FDA6CE831C168D9D /* Pods_DumBee.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -453,6 +519,12 @@
 				295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */,
 				E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */,
 				5AF1ACF2FB7E58A636751BAA /* GoogleService-Info.plist */,
+				DE0DAED4523A85A404429A06 /* GoogleService-Info.plist */,
+				1C6AC08EADA4D19EC616CAC1 /* GoogleService-Info.plist */,
+				D69F44CF9AF96B34A7B87E9B /* GoogleService-Info.plist */,
+				1340CA8AE85454FAEA120CAC /* GoogleService-Info.plist */,
+				F3969B766B40EF22BCAE4710 /* GoogleService-Info.plist */,
+				24D512D1333882090B007013 /* LaunchScreenDumBee.storyboard */,
 			);
 			sourceTree = "<group>";
 		};
@@ -472,6 +544,8 @@
 				18C12CC3C7D43C0BDD7E4A08 /* ZOE Edtech.app */,
 				8F5C8CE0F71D5E46E46BEA3A /* The Learning Bridge.app */,
 				51BC25DC7BF907534AABBFCE /* Brahm Varchas Shiksha.app */,
+				FC065B37A999C43E47D21A68 /* Shiksha Nation SK.app */,
+				81FB56EAC69048022036DE5C /* DumBee.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -543,6 +617,10 @@
 				AD27862833C67F02F11F73AB /* Pods-The Learning Bridge.debug.xcconfig */,
 				B63349281C7C66C54BAD719A /* Pods-Brahm Varchas Shiksha.release.xcconfig */,
 				09276756C96D9E1BD5DE6D5D /* Pods-Brahm Varchas Shiksha.debug.xcconfig */,
+				3E6C9A00466FFB42B1452F24 /* Pods-Shiksha Nation SK.release.xcconfig */,
+				681E0047605C2D1CC1C51FC2 /* Pods-Shiksha Nation SK.debug.xcconfig */,
+				7F7AE15181A12EA5A29A8B17 /* Pods-DumBee.debug.xcconfig */,
+				2ED551E0D8A31D6D1D597201 /* Pods-DumBee.release.xcconfig */,
 			);
 			name = Pods;
 			sourceTree = "<group>";
@@ -758,6 +836,45 @@
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
 		};
+		7BED3DCC6DAE369E352658A2 /* DumBee */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D598F4B28D196652F0677421 /* Build configuration list for PBXNativeTarget "DumBee" */;
+			buildPhases = (
+				2BB92023408786AE3E25E1D7 /* [CP] Check Pods Manifest.lock */,
+				229EBA986509EB1115AD2127 /* Sources */,
+				258E4D520DDECFCED462257B /* Verify Firebase config */,
+				80B6BDE39A1448F65A320262 /* Frameworks */,
+				CBCBD0D85457B70F5E1C33D2 /* Resources */,
+				8BDC8FD2A23BBB32FA922362 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DumBee;
+			productName = DumBee;
+			productReference = 81FB56EAC69048022036DE5C /* DumBee.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8C23BBF1E95377BD0B890A32 /* Shiksha Nation SK */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02648BDBBA28FF573F398AB4 /* Build configuration list for PBXNativeTarget "Shiksha Nation SK" */;
+			buildPhases = (
+				0CB51A8CCA58A73A2F338926 /* [CP] Check Pods Manifest.lock */,
+				7018E123562157F3470D95A9 /* Sources */,
+				D1C4A5374B82C5FB24602F2F /* Frameworks */,
+				265749A60A02821D75E5CFA8 /* Resources */,
+				A31E680E5400A032BC3CCF5A /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Shiksha Nation SK";
+			productName = "Shiksha Nation SK";
+			productReference = FC065B37A999C43E47D21A68 /* Shiksha Nation SK.app */;
+			productType = "com.apple.product-type.application";
+		};
 		9E04A32BBEABFC7C87A4B817 /* HCCA Learning */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E01B5525935B4796C7568103 /* Build configuration list for PBXNativeTarget "HCCA Learning" */;
@@ -882,6 +999,8 @@
 				3A2DF063AB452C2097ED392D /* ZOE Edtech */,
 				48848ED30651CEC4CCEE23CF /* The Learning Bridge */,
 				B70235DAA9032CE4A4E8CF97 /* Brahm Varchas Shiksha */,
+				8C23BBF1E95377BD0B890A32 /* Shiksha Nation SK */,
+				7BED3DCC6DAE369E352658A2 /* DumBee */,
 			);
 		};
 /* End PBXProject section */
@@ -919,7 +1038,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0E35078D2F1C931700F1F9F9 /* GoogleService-Info.plist in Resources */,
 				0E35078E2F1C931700F1F9F9 /* ithinkersByFiveSep-Info.plist in Resources */,
 				0E35078F2F1C931700F1F9F9 /* LaunchScreen.storyboard in Resources */,
 				0E3507902F1C931700F1F9F9 /* public in Resources */,
@@ -927,6 +1045,7 @@
 				0E3507922F1C931700F1F9F9 /* capacitor.config.json in Resources */,
 				0E3507932F1C931700F1F9F9 /* Main.storyboard in Resources */,
 				0E3507942F1C931700F1F9F9 /* config.xml in Resources */,
+				9AE419E8FC1C57A89150DC8C /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -934,7 +1053,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0E3507A22F1C931F00F1F9F9 /* GoogleService-Info.plist in Resources */,
 				0E3507A32F1C931F00F1F9F9 /* ithinkersByFiveSep-Info.plist in Resources */,
 				0E3507A42F1C931F00F1F9F9 /* LaunchScreen.storyboard in Resources */,
 				0E3507A52F1C931F00F1F9F9 /* public in Resources */,
@@ -942,6 +1060,7 @@
 				0E3507A72F1C931F00F1F9F9 /* capacitor.config.json in Resources */,
 				0E3507A82F1C931F00F1F9F9 /* Main.storyboard in Resources */,
 				0E3507A92F1C931F00F1F9F9 /* config.xml in Resources */,
+				90EABC99592A9E3A378E9505 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -986,6 +1105,21 @@
 				1AAA00062F25A00000000006 /* capacitor.config.json in Resources */,
 				1AAA00072F25A00000000007 /* Main.storyboard in Resources */,
 				1AAA00082F25A00000000008 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		265749A60A02821D75E5CFA8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B69485FE8BAC1BDCB3074B67 /* GoogleService-Info.plist in Resources */,
+				D1DB9AA50A3194B0D71D06B6 /* LaunchScreen.storyboard in Resources */,
+				D5880455C1FC9BDFE47CC628 /* public in Resources */,
+				4197D7C5EC301431364C6383 /* Assets.xcassets in Resources */,
+				5860C17569880D4CB1858FED /* capacitor.config.json in Resources */,
+				D4DFC5CA0DB24B41396429CB /* Main.storyboard in Resources */,
+				9E02F1C86CA80E23BAB42261 /* config.xml in Resources */,
+				52C921739581A979D976D4E6 /* LaunchScreenSN.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1040,7 +1174,7 @@
 				11C855A6C72427C7B48AE0A9 /* capacitor.config.json in Resources */,
 				8D50592351C9F5AFCB6E79DB /* Main.storyboard in Resources */,
 				632A502BBCD083435CB3716D /* config.xml in Resources */,
-				A60CC089905753E236B6F4B0 /* GoogleService-Info.plist in Resources */,
+				56486CF565863C7AD43A5AFA /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1056,6 +1190,21 @@
 				EF2B3D2F01CFC3B47C9035DB /* Main.storyboard in Resources */,
 				74B8DD78D6B5433D776E4F60 /* config.xml in Resources */,
 				00811935E04FA62B1E99A99D /* LaunchScreenSadbhavana.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CBCBD0D85457B70F5E1C33D2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1D20BDAF629027264756B161 /* LaunchScreen.storyboard in Resources */,
+				3306FCC7C519944B9E3AF74F /* public in Resources */,
+				E3A660A12A25E81555D25B8A /* Assets.xcassets in Resources */,
+				DA80D141BE869475443091A0 /* capacitor.config.json in Resources */,
+				6BBC149E86E5EC57E969A322 /* Main.storyboard in Resources */,
+				1376A4A7F9FE68EC97D896F4 /* config.xml in Resources */,
+				0DBD2FF7585B32626E7A31F9 /* GoogleService-Info.plist in Resources */,
+				1F3E0E8F49B8A0BDB606F4EB /* LaunchScreenDumBee.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1077,6 +1226,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		0CB51A8CCA58A73A2F338926 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-Shiksha Nation SK-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
 		0E3507872F1C931700F1F9F9 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -1203,6 +1373,24 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Chanakya IAS Academy/Pods-Chanakya IAS Academy-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		258E4D520DDECFCED462257B /* Verify Firebase config */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Verify Firebase config";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "PLIST=\"${SRCROOT}/GoogleServiceConfigs/DumBee/GoogleService-Info.plist\"\nif /usr/libexec/PlistBuddy -c \"Print :GOOGLE_APP_ID\" \"$PLIST\" 2>/dev/null | grep -q \"REPLACE_WITH_REAL_IOS_APP_ID\"; then\n  echo \"error: GoogleServiceConfigs/DumBee/GoogleService-Info.plist still has the placeholder GOOGLE_APP_ID. Register io.dumbee.app in the 'vacademy-app-2' Firebase project and paste the real value, or the app crashes on launch in FirebaseApp.configure().\" >&2\n  exit 1\nfi\n";
+		};
 		2704FC21AA323503C3B50D6B /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -1219,6 +1407,28 @@
 			);
 			outputPaths = (
 				"$(DERIVED_FILE_DIR)/Pods-Chanakya IAS Academy-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		2BB92023408786AE3E25E1D7 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-DumBee-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1314,6 +1524,21 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		8BDC8FD2A23BBB32FA922362 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-DumBee/Pods-DumBee-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		9205CD15C99F3E5E12821A5D /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -1365,6 +1590,20 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-App/Pods-App-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
+		};
+		A31E680E5400A032BC3CCF5A /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Shiksha Nation SK/Pods-Shiksha Nation SK-frameworks.sh\"\n";
 		};
 		B9FB0D2B6BF55925498070D5 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1660,6 +1899,18 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		229EBA986509EB1115AD2127 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				961C1D1C54F4AAC6B72445FD /* AppDelegate.swift in Sources */,
+				263A33B6F004F44F14CFE8E8 /* OfflineMediaCrypto.swift in Sources */,
+				D2D5FAC0817300D38E298F8D /* OfflineMediaPlugin.swift in Sources */,
+				647FFED3A78356EC35FF2321 /* OfflineMediaSchemeHandler.swift in Sources */,
+				CCA8C37F87460E22A3338EDC /* MainViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		30C7A2F1DDA2F2755A2C1DB9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1716,6 +1967,18 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7018E123562157F3470D95A9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4FB756C8CCB1313579C87C74 /* AppDelegate.swift in Sources */,
+				E9E4B56C7B8576978768DB62 /* OfflineMediaCrypto.swift in Sources */,
+				1A83A0208D25392F70B5D80C /* OfflineMediaPlugin.swift in Sources */,
+				CE49629F4B199F8FF5685F52 /* OfflineMediaSchemeHandler.swift in Sources */,
+				83D419E30B8538006CD080D1 /* MainViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B22368B255F60AA23EADF127 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1757,14 +2020,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = ChanakayaIASAcademyIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Chanakaya-IAS/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Chanakya IAS Academy";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.7;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.chanakayaiasacademy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1781,14 +2044,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = ChanakayaIASAcademyIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Chanakaya-IAS/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Chanakya IAS Academy";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = io.chanakayaiasacademy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1804,14 +2067,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = EdzumoIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Edzumo/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Edzumo;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.edzumo.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1828,14 +2091,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = EdzumoIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Edzumo/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Edzumo;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = io.edzumo.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1851,13 +2114,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = the7csIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/the7cs/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = the7cs;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sevencs.learner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1874,13 +2137,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = the7csIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/the7cs/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = the7cs;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.sevencs.learner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1896,13 +2159,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SSDCicon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/SSDC-Horizon/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SSDC Horizon";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.1.9;
+				MARKETING_VERSION = 1.2.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.ssdc.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1919,13 +2182,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SSDCicon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/SSDC-Horizon/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SSDC Horizon";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.1.9;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = io.ssdc.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1941,13 +2204,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = FiveSepIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Five-Sep/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "iThinkers by Fivesep";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.fivesep.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1964,13 +2227,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = FiveSepIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Five-Sep/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "iThinkers by Fivesep";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = io.fivesep.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1986,14 +2249,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.learner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2010,14 +2273,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.learner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -2033,14 +2296,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = EnarkIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Uplift-Teacher-Training/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Uplift Teacher Training";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.8;
+				MARKETING_VERSION = 1.1.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.enarkuplift.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2057,14 +2320,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = EnarkIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Uplift-Teacher-Training/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Uplift Teacher Training";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.8;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.enarkuplift.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -2080,7 +2343,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = TLBIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/The-Learning-Bridge/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "The Learning Bridge";
@@ -2088,7 +2351,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.learningbridge.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2105,7 +2368,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = ZOEIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Edtech";
@@ -2113,7 +2376,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = io.zoeedtech.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -2129,7 +2392,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = TLBIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/The-Learning-Bridge/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "The Learning Bridge";
@@ -2137,7 +2400,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = io.learningbridge.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -2153,7 +2416,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = ZOEIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Edtech";
@@ -2161,7 +2424,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.zoeedtech.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2178,7 +2441,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = BrahmVarchasIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Brahm-Varchas/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Brahm Varchas Shiksha";
@@ -2186,7 +2449,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.brahmvarchas.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2346,6 +2609,30 @@
 			};
 			name = Release;
 		};
+		6BB2B457FD38E637CB62A58F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7F7AE15181A12EA5A29A8B17 /* Pods-DumBee.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = DumBeeIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/DumBee/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = DumBee;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.dumbee.app;
+				PRODUCT_NAME = DumBee;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		7784D1BFB2DC2DE146ED3068 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 2766B7B5D3F8CA099558461B /* Pods-HCCA Learning.debug.xcconfig */;
@@ -2353,15 +2640,15 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = HCCAIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/HCCA/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "HCCA Learning";
 				INFOPLIST_KEY_CFBundleName = "HCCA Learning";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.hcca.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2418,6 +2705,53 @@
 			};
 			name = Release;
 		};
+		907FC976D8DDA1305A34F8DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3E6C9A00466FFB42B1452F24 /* Pods-Shiksha Nation SK.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7XKD5M7288;
+				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation-SK/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.3;
+				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanationapp.com;
+				PRODUCT_NAME = "Shiksha Nation";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		910004BA5BE767694A399489 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 681E0047605C2D1CC1C51FC2 /* Pods-Shiksha Nation SK.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7XKD5M7288;
+				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation-SK/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.3;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanationapp.com;
+				PRODUCT_NAME = "Shiksha Nation";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		A36ED5450843C006D2038DC1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4E4BC21D4BDE198DA2C44057 /* Pods-HCCA Learning.release.xcconfig */;
@@ -2425,15 +2759,15 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = HCCAIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/HCCA/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "HCCA Learning";
 				INFOPLIST_KEY_CFBundleName = "HCCA Learning";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = io.hcca.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -2449,7 +2783,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = BrahmVarchasIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Brahm-Varchas/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Brahm Varchas Shiksha";
@@ -2457,9 +2791,32 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = io.brahmvarchas.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F2EF21286D924DAC0E72D017 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2ED551E0D8A31D6D1D597201 /* Pods-DumBee.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = DumBeeIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/DumBee/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = DumBee;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.dumbee.app;
+				PRODUCT_NAME = DumBee;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2469,6 +2826,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		02648BDBBA28FF573F398AB4 /* Build configuration list for PBXNativeTarget "Shiksha Nation SK" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				907FC976D8DDA1305A34F8DF /* Release */,
+				910004BA5BE767694A399489 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		0E0D4AF52FC2BDC200E29BEC /* Build configuration list for PBXNativeTarget "Chanakya IAS Academy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -2582,6 +2948,15 @@
 			buildConfigurations = (
 				38F1D384D5630BC96945343B /* Release */,
 				1E7410ADAD77DF3AF0D2D643 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D598F4B28D196652F0677421 /* Build configuration list for PBXNativeTarget "DumBee" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6BB2B457FD38E637CB62A58F /* Debug */,
+				F2EF21286D924DAC0E72D017 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

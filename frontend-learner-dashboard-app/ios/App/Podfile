@@ -51,6 +51,10 @@ target 'Shiksha Nation' do
   capacitor_pods
 end
 
+target 'Shiksha Nation SK' do
+  capacitor_pods
+end
+
 target 'Chanakya IAS Academy' do
   capacitor_pods
 end
@@ -76,6 +80,10 @@ target 'The Learning Bridge' do
 end
 
 target 'Brahm Varchas Shiksha' do
+  capacitor_pods
+end
+
+target 'DumBee' do
   capacitor_pods
 end
 

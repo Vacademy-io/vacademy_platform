@@ -222,4 +222,18 @@ export const flavorConfig: FlavorConfigs = {
     domain: "brahmvarchas.org",
     subdomain: "learning",
   },
+
+  // DumBee iOS app
+  "io.dumbee.app": {
+    appName: "DumBee",
+    domain: "soullifee.com",
+    subdomain: "learner",
+  },
+
+  // DumBee Android app
+  "com.dumbee.app": {
+    appName: "DumBee",
+    domain: "soullifee.com",
+    subdomain: "learner",
+  },
 };

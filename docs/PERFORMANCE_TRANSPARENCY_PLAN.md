@@ -1,6 +1,7 @@
 # Performance Transparency Plan — "Is it us or is it your internet?"
 
-**Status:** **Phase 0 BUILT + probe-verified 2026-08-24, NOT COMMITTED.** Phases 1–3 not started.
+**Status:** Phase 0 SHIPPED (`a1b9bfb05`). **Phase 1 BUILT + probe-verified 2026-08-24.**
+Phases 2–3 not started.
 **Surfaces:** admin portal (`frontend-admin-dashboard`), health / super-admin portal (`vacademy-health-check`)
 
 ---
@@ -238,6 +239,44 @@ Mount in the top navbar. **Silent when healthy** — it appears only on sustaine
 degradation, and it always names the side. This is where the support saving comes
 from: "your connection is slow" ends the argument before it starts.
 
+### 7.4 Phase 1 as built
+
+Files: new `admin_core_service/.../features/perf/controller/PerfPingController.java`
+(+ `ALLOWED_PATHS` entry), new `frontend-admin-dashboard/src/lib/perf/network-health.ts`,
+new `.../components/common/perf/ConnectionStatusPill.tsx`, instrumented
+`.../lib/auth/axiosInstance.ts`, mounted in `.../top-navbar.tsx/navbar.tsx`.
+
+**The network verdict comes from the ping baseline, not from `total - server`.**
+That subtraction includes response transfer, so a teacher downloading a 20MB
+report over hotel wifi would be reported as "network slow" when their connection
+is fine. The ping is a fixed three-byte body, so it is comparable across users and
+over time. This is gotcha §10.2 designed out rather than documented.
+
+25 probes pass (pure logic, run against the compiled module). The ones that matter:
+
+| behaviour | result |
+|---|---|
+| UUID / numeric / email segments templated out of route keys | ✅ no IDs in telemetry |
+| 7 very slow samples | stays **silent** (below `MIN_SAMPLES`) |
+| one 29s report export among 15 fast calls | stays **healthy** — median, not max |
+| unannotated responses (no `Server-Timing`) | counted separately, **not** treated as 0ms |
+| sustained 2.8s server time | `server-slow` |
+| slow ping, fast server | `network-slow` |
+| **both slow** | `server-slow` — never blame the user for our outage |
+| failed / offline ping | records nothing, rather than a fake huge number |
+| 500s under load | still measured — the indicator must not go blind in an incident |
+
+Verified separately: `JwtAuthFilter` returns immediately without a Bearer token, so
+the unauthenticated ping really does skip token parsing and user lookup — the
+collector uses a bare `fetch` (no Authorization header, no auth interceptors, no
+risk of a background timer tripping the refresh-token or forced-logout path).
+The ping is `no-store` *and* cache-busted: a cached ping returns in ~0ms without
+touching the network, which would make the baseline silently meaningless.
+
+**Not yet verified in a browser.** The pill's rendered behaviour needs Phase 0's
+header and this ping endpoint both live in prod; the logic beneath it is probed,
+the pixels are not.
+
 **Deliverable:** admin portal self-diagnoses and says which side.
 
 ---
@@ -323,7 +362,7 @@ because it changes the UX and the copy.
 | Phase | Scope | Rough size |
 |---|---|---|
 | 0 | header + 7 CORS configs + flag | **done** (built + verified, uncommitted) |
-| 1 | `/ping` + collector + pill | ~1–2 days |
+| 1 | `/ping` + collector + pill | **done** (built + probed; browser QA pending deploy) |
 | 2 | beacon + Redis/rollup + health page | ~3–5 days, the bulk of it ingest, not UI |
 | 3 | alerting into existing incidents | ~1 day after Phase 2 has baseline data |
 

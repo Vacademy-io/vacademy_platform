@@ -92,6 +92,11 @@ public class ApplicationSecurityConfig {
             // YouTube OAuth callback (Google redirects without Vacademy JWT; state token is the CSRF guard)
             "/admin-core-service/youtube/oauth/callback",
             "/admin-core-service/health/**",
+            // Network-baseline ping for the "is it us or your connection?" indicator.
+            // Must stay unauthenticated: JwtAuthFilter short-circuits without a Bearer
+            // token, so an anonymous call does no server work and its round trip is
+            // almost pure network. Does no DB access. See PerfPingController.
+            "/admin-core-service/v1/perf/ping",
             // Invoice test endpoints (for testing only)
             "/admin-core-service/v1/invoices/test/**",
             // Applicant public APIs for application form

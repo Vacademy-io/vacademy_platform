@@ -2685,6 +2685,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         fixed_lines=_fixed_lines,
         # Per-agent rollout gate — one agent first, then widen (TTS_CACHE_AGENTS).
         agent_id=str(agent.get("id") or ""), agent_name=str(agent.get("name") or ""),
+        institute_id=str(context.get("instituteId") or ""),
         # snake_case, like tts_model: admin_core emits it that way ON PURPOSE and
         # always emits it, because the safe default for a MISSING key is OFF.
         cache_mode=str(agent.get("speech_cache_mode") or ttscache.MODE_OFF),

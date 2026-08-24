@@ -125,3 +125,70 @@ async def post_action(corr: str, artefact: str, agent_id: Optional[str]) -> bool
         # degrades to a send a minute later rather than to nothing.
         logger.exception("mid-call action failed corr=%s artefact=%s", corr, artefact)
         return False
+
+
+async def post_tts_cache_report(entries: list) -> bool:
+    """Push the speech-cache ledger to admin-core so the analytics screens can be
+    plain SQL instead of a live dependency on this box's disk.
+
+    Uses the SAME clientName/Signature headers every other call here uses. That
+    is the whole point of pushing rather than being polled: this direction is
+    already authenticated and working, while admin-core has no credential for
+    reaching us — which is why warm-on-save has never fired in production.
+
+    Returns False rather than raising. A missed report costs a stale analytics
+    screen until the next cycle; nothing on a call depends on it.
+    """
+    s = get_settings()
+    url = f"{s.admin_core_base}/admin-core-service/internal/voice-bot/tts-cache/report"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+            resp = await client.post(url, json={"entries": entries},
+                                     headers=_internal_headers())
+        if resp.status_code >= 300:
+            logger.warning("tts-cache report rejected: %s %s",
+                           resp.status_code, resp.text[:200])
+            return False
+        return True
+    except Exception as e:
+        logger.warning("tts-cache report failed: %s", e)
+        return False
+
+
+async def fetch_tts_cache_commands() -> list:
+    """Claim any queued flush/delete commands.
+
+    A read is a mirror, but a flush is an ACTION on files that live on this
+    box's disk, so something has to come back the other way. admin-core writes a
+    row, we claim it here — the same DB-as-queue shape call_intelligence already
+    uses, and it needs no inbound channel to this process.
+    """
+    s = get_settings()
+    url = f"{s.admin_core_base}/admin-core-service/internal/voice-bot/tts-cache/commands"
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(url, headers=_internal_headers())
+        if resp.status_code >= 300:
+            return []
+        return (resp.json() or {}).get("commands") or []
+    except Exception as e:
+        logger.debug("tts-cache command fetch failed: %s", e)
+        return []
+
+
+async def post_tts_cache_command_result(command_id: str, ok: bool, result: str,
+                                        entries_removed: int, bytes_removed: int) -> bool:
+    """Report what a flush actually did. A destructive action with no record is
+    not one anybody should be able to trigger from a web page."""
+    s = get_settings()
+    url = (f"{s.admin_core_base}/admin-core-service/internal/voice-bot"
+           f"/tts-cache/commands/{command_id}/result")
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(url, headers=_internal_headers(), json={
+                "ok": ok, "result": result[:2000],
+                "entriesRemoved": entries_removed, "bytesRemoved": bytes_removed})
+        return resp.status_code < 300
+    except Exception as e:
+        logger.warning("tts-cache command result failed: %s", e)
+        return False

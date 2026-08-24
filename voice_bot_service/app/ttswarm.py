@@ -153,6 +153,10 @@ async def warm(*, engine: str, model: str, voice: str, pace, temperature,
 # signal, or work deferred because the box was busy).
 _SWEEP_NOW: Optional[asyncio.Event] = None
 _TICK_SECS = 300.0
+# How often the ledger is mirrored into Postgres. Analytics, not control: a
+# minute of staleness on a dashboard costs nothing, and a tighter loop would put
+# avoidable load on a box that is also carrying live calls.
+_REPORT_EVERY_SECS = 120.0
 
 
 def request_sweep() -> None:
@@ -227,3 +231,49 @@ async def sweeper() -> None:
             raise
         except Exception:
             logger.exception("tts-warm: sweeper pass failed")
+
+
+async def reporter() -> None:
+    """Push the ledger to admin-core, and run any flush it has queued for us.
+
+    Both directions ride the clientName/Signature auth the bot ALREADY uses for
+    call-context and reports. That is the reason this is a push rather than
+    admin-core polling us: this direction is authenticated and working, the
+    reverse one has no credential at all — which is why warm-on-save has never
+    fired in production.
+
+    Off every call path, and total: a failed report costs a stale analytics
+    screen until the next cycle. Nothing on a call depends on it.
+    """
+    from . import admin_core
+    cache = get_cache()
+    while True:
+        try:
+            await asyncio.sleep(_REPORT_EVERY_SECS)
+            if not cache.ready:
+                continue
+
+            # Commands first — a flush the operator queued should land before we
+            # report state, or the screen shows rows we are about to delete.
+            for cmd in await admin_core.fetch_tts_cache_commands():
+                cid = cmd.get("id")
+                if not cid:
+                    continue
+                entries, freed, note = await asyncio.to_thread(
+                    cache.forget,
+                    agent_id=cmd.get("agentId") or "",
+                    cache_key=cmd.get("cacheKey") or "",
+                    dry_run=bool(cmd.get("dryRun", True)))
+                logger.info("tts-cache: command {} {} -> {}", cid, cmd.get("kind"), note)
+                await admin_core.post_tts_cache_command_result(
+                    cid, True, note, entries, freed)
+
+            entries = await asyncio.to_thread(cache.export_for_report)
+            if entries:
+                ok = await admin_core.post_tts_cache_report(entries)
+                logger.info("tts-cache: reported {} entr{} ok={}",
+                            len(entries), "y" if len(entries) == 1 else "ies", ok)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("tts-cache: reporter pass failed")

@@ -8,6 +8,7 @@ import {
     subscribe,
     type PerfSnapshot,
 } from '@/lib/perf/network-health';
+import { startRumReporting } from '@/lib/perf/rum-reporter';
 import { cn } from '@/lib/utils';
 
 /**
@@ -39,9 +40,13 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
     useEffect(() => {
         const unsubscribe = subscribe(() => setSnapshot(getSnapshot()));
         const stopPinging = startPingLoop(BASE_URL);
+        // Hosted here because this is the one component mounted on every admin page.
+        // It is a no-op unless this session was sampled.
+        const stopReporting = startRumReporting();
         return () => {
             unsubscribe();
             stopPinging();
+            stopReporting();
         };
     }, []);
 

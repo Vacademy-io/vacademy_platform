@@ -68,6 +68,18 @@ const PING_INTERVAL_MS = 60_000;
 const PING_TIMEOUT_MS = 8000;
 
 const apiSamples: ApiSample[] = [];
+
+/**
+ * Separate from the ring buffer above. The ring buffer answers "how are things right
+ * now" for the pill and is pruned by age; this accumulates everything since the last
+ * report so nothing is lost between sends. Drained by the RUM reporter.
+ */
+const pendingRoutes = new Map<string, { n: number; u: number; s: number[] }>();
+const pendingPings: number[] = [];
+/** Ceilings so a long-lived tab cannot grow these without bound. */
+const MAX_PENDING_ROUTES = 40;
+const MAX_PENDING_SAMPLES_PER_ROUTE = 200;
+const MAX_PENDING_PINGS = 60;
 const pingSamples: { at: number; rttMs: number }[] = [];
 let unannotatedCount = 0;
 const listeners = new Set<() => void>();
@@ -154,6 +166,11 @@ export function recordApiSample(sample: {
     status: number;
 }) {
     try {
+        // Never measure our own telemetry. Recording the RUM upload would feed its
+        // own latency back into the next report — a loop that inflates every number
+        // it reports and grows with each cycle.
+        if (sample.url.includes('/v1/perf/')) return;
+
         const serverMs = parseServerTiming(sample.serverTimingHeader);
         // Absence means "the response could not be annotated" — never "the server
         // was fast". This should now be rare (the backend stamps the header at
@@ -162,13 +179,28 @@ export function recordApiSample(sample: {
         // toward zero, which would make us look faster than we are.
         if (serverMs === null) unannotatedCount++;
 
+        const routeKey = routeKeyFromUrl(sample.url);
+
         apiSamples.push({
             at: Date.now(),
             totalMs: sample.totalMs,
             serverMs,
-            routeKey: routeKeyFromUrl(sample.url),
+            routeKey,
             status: sample.status,
         });
+
+        let pending = pendingRoutes.get(routeKey);
+        if (!pending && pendingRoutes.size < MAX_PENDING_ROUTES) {
+            pending = { n: 0, u: 0, s: [] };
+            pendingRoutes.set(routeKey, pending);
+        }
+        if (pending) {
+            pending.n++;
+            if (serverMs === null) pending.u++;
+            else if (pending.s.length < MAX_PENDING_SAMPLES_PER_ROUTE)
+                pending.s.push(Math.round(serverMs));
+        }
+
         prune();
         notify();
     } catch {
@@ -198,6 +230,7 @@ export async function measurePing(baseUrl: string): Promise<number | null> {
         });
         const rttMs = performance.now() - started;
         pingSamples.push({ at: Date.now(), rttMs });
+        if (pendingPings.length < MAX_PENDING_PINGS) pendingPings.push(Math.round(rttMs));
         prune();
         notify();
         return rttMs;
@@ -275,9 +308,37 @@ export function startPingLoop(baseUrl: string): () => void {
     };
 }
 
+/**
+ * Hand over everything accumulated since the last call, and reset.
+ *
+ * Returns null when there is nothing to report, so the caller can skip the request
+ * entirely rather than posting an empty payload every minute from an idle tab.
+ */
+export function drainPending(): {
+    routes: { k: string; n: number; u: number; s: number[] }[];
+    pings: number[];
+} | null {
+    if (!pendingRoutes.size && !pendingPings.length) return null;
+
+    const routes = Array.from(pendingRoutes.entries()).map(([k, v]) => ({
+        k,
+        n: v.n,
+        u: v.u,
+        s: v.s,
+    }));
+    const pings = [...pendingPings];
+
+    pendingRoutes.clear();
+    pendingPings.length = 0;
+
+    return { routes, pings };
+}
+
 /** Test/debug seam. */
 export function __resetForTest() {
     apiSamples.length = 0;
     pingSamples.length = 0;
+    pendingRoutes.clear();
+    pendingPings.length = 0;
     unannotatedCount = 0;
 }

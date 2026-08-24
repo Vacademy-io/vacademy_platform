@@ -1,7 +1,7 @@
 # Performance Transparency Plan — "Is it us or is it your internet?"
 
 **Status:** Phase 0 SHIPPED (`a1b9bfb05`, **corrected** — see §6.5), Phase 1 SHIPPED
-(`e5f9f2cb2`). Phases 2–3 not started.
+(`e5f9f2cb2`). **Phase 2 BUILT + probe-verified 2026-08-24.** Phase 3 not started.
 **Surfaces:** admin portal (`frontend-admin-dashboard`), health / super-admin portal (`vacademy-health-check`)
 
 ---
@@ -359,6 +359,57 @@ either extend `PulsePage` or add a sibling page. `StatusAdminPage` already model
 incidents with severity/status — Phase 3 alerts should feed that, not a new
 concept.
 
+### 8.3 Phase 2 as built
+
+**Write path** (admin_core): `V468__perf_rum_minute.sql`,
+`features/perf/dto/PerfRumReportDTO.java`, `features/perf/service/PerfRumService.java`,
+`features/perf/controller/PerfRumController.java`. Browser side:
+`drainPending()` in `network-health.ts` + new `lib/perf/rum-reporter.ts`.
+
+**Read path** (health portal): `src/services/perf-api.ts`, `src/pages/PerfPage.tsx`,
+route `/performance`, sidebar entry "Experienced Perf".
+
+Decisions worth keeping:
+
+- **The read path is the analytics-api SQL proxy against the standby**, the same one
+  Live Pulse uses — not a new admin_core endpoint. The primary is the 4-core box an
+  analytics query OOM-killed on 2026-08-03; a dashboard nobody is watching must never
+  be able to do that again. The proxy is additionally fenced by a SELECT-only role, a
+  physically read-only standby, a 30s statement timeout and a 50k row cap.
+- **Histogram buckets, not a stored p95.** 4 pods each flush their own row for the
+  same minute, and percentiles cannot be averaged. Bucket counts sum exactly; the
+  percentile is derived from the summed histogram at read time.
+- **The flush is deliberately NOT `@SchedulerLock`'d**, unlike every other scheduled
+  job in admin_core. The buffer is per-pod in-process state; a lock would let one pod
+  win and silently discard three quarters of the data. Retention IS locked, because a
+  delete only needs to happen once.
+- **The UI shows bounds ("≤ 250ms"), never interpolated percentiles.** Manufacturing
+  precision the histogram does not have would be a lie on the one page whose job is
+  deciding whether to blame ourselves or the user.
+- **A read failure renders an explicit error**, not zeros. "No data" and "the query
+  failed" must never look the same here.
+
+**Verified.** 15 probes on the ingest service (bucket boundaries against V468's
+documented layout, the Postgres `integer[]` literal, no DB access on the request path,
+flush skipping the still-open minute then draining once closed, unannotated counted
+apart from the histogram, null/negative/hostile payloads survived, the 5000-key buffer
+ceiling holding at 6000 inputs). 11 probes on the browser side (self-exclusion of
+`/v1/perf/` — without it the upload's own latency feeds the next upload — drain shape,
+drain resetting, idle tabs sending nothing, route and sample caps, and the pill window
+surviving a drain). 15 probes on the read maths (percentile from a summed histogram,
+p95 ignoring a 5% tail, empty → null not 0, bounds formatting, and that four pod rows
+summed agree with one combined row).
+
+**Two things deliberately deferred from the original plan.** Redis counters — admin_core
+has no Redis client wired, and per-pod in-memory buffers plus a batched insert achieve
+the same "don't touch the DB on the request path" goal without adding a dependency.
+Table partitioning — a plain table with two indexes and a 14-day retention sweep is
+adequate at this volume; partition it if retention ever needs to grow.
+
+**Not verified:** the SQL has not been executed against a live engine (no local
+Postgres or Docker available, and `perf_rum_minute` does not exist in prod until V468
+deploys), and neither page has been opened in a browser.
+
 **Deliverable:** per-institute latency with server/network attribution.
 
 ---
@@ -409,7 +460,7 @@ because it changes the UX and the copy.
 |---|---|---|
 | 0 | header + 7 CORS configs + flag | **done** (built + verified, uncommitted) |
 | 1 | `/ping` + collector + pill | **done** (built + probed; browser QA pending deploy) |
-| 2 | beacon + Redis/rollup + health page | ~3–5 days, the bulk of it ingest, not UI |
+| 2 | beacon + rollup + health page | **done** (built + probed; SQL unexecuted, no browser QA) |
 | 3 | alerting into existing incidents | ~1 day after Phase 2 has baseline data |
 
 Extending coverage beyond `admin_core_service` (enabling the tracing filter in the

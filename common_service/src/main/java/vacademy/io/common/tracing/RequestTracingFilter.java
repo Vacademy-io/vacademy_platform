@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A filter that automatically traces all HTTP requests and logs slow APIs.
@@ -35,6 +36,12 @@ import java.util.concurrent.TimeUnit;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestTracingFilter implements Filter {
+
+    /** How many committed responses could not carry Server-Timing (see helper below). */
+    private static final AtomicLong serverTimingSkippedCount = new AtomicLong();
+
+    /** Log the skip counter every Nth occurrence rather than per request. */
+    private static final long SERVER_TIMING_SKIP_LOG_INTERVAL = 500;
 
     @Autowired
     private TracingProperties tracingProperties;
@@ -80,6 +87,12 @@ public class RequestTracingFilter implements Filter {
             long durationNanos = System.nanoTime() - startTime;
             long durationMs = TimeUnit.NANOSECONDS.toMillis(durationNanos);
 
+            // Tell the browser how much of the round trip was OUR processing, so the
+            // client can subtract it and attribute the remainder to the network. This
+            // is what lets us say "your connection is slow" instead of guessing when a
+            // client reports "the LMS is slow".
+            emitServerTimingHeader(httpResponse, uri, durationMs);
+
             // Get response status
             int status = httpResponse.getStatus();
 
@@ -88,6 +101,55 @@ public class RequestTracingFilter implements Filter {
 
             // Add completion breadcrumb to Sentry
             addRequestCompleteBreadcrumb(method, fullPath, status, durationMs);
+        }
+    }
+
+    /**
+     * Emit `Server-Timing: app;dur=<ms>` so the browser can separate our server time
+     * from network time.
+     *
+     * KNOWN COVERAGE GAP — read before trusting the absence of this header:
+     * Tomcat commits the response once its output buffer (8KB by default; we set no
+     * override) is flushed. A response larger than that buffer is therefore already
+     * committed by the time this runs, and headers can no longer be added. So this
+     * header is present on small responses and ABSENT on large ones — its absence
+     * means "response too big to annotate", never "the server was fast".
+     *
+     * Closing that gap requires wrapping the response (e.g. Spring Security's
+     * OnCommittedResponseWrapper, which is on the classpath) to write the header just
+     * before commit. That wraps every response's output stream platform-wide, which is
+     * a materially larger risk than setting a header, so it is deliberately NOT done
+     * here. The skip is counted below so we can measure whether the gap actually
+     * matters before taking that risk.
+     *
+     * Timing-Allow-Origin is required for the value to be readable cross-origin via
+     * the Resource Timing API; reading it off a fetch/axios response additionally
+     * requires Access-Control-Expose-Headers, which is set in each service's
+     * CorsConfig.
+     */
+    private void emitServerTimingHeader(HttpServletResponse response, String uri, long durationMs) {
+        try {
+            if (!tracingProperties.isServerTimingHeaderEffectivelyEnabled()) {
+                return;
+            }
+
+            // Already committed (large response, SSE stream, streamed download) — the
+            // headers are gone. Count it so the size of the gap is observable.
+            if (response.isCommitted()) {
+                long skipped = serverTimingSkippedCount.incrementAndGet();
+                if (skipped % SERVER_TIMING_SKIP_LOG_INTERVAL == 1) {
+                    log.debug(
+                            "Server-Timing skipped (response already committed) for {} — {} skipped so far",
+                            truncatePath(uri), skipped);
+                }
+                return;
+            }
+
+            response.setHeader("Server-Timing", "app;dur=" + durationMs);
+            response.setHeader("Timing-Allow-Origin", "*");
+        } catch (Exception e) {
+            // Observability must never break the response it is observing.
+            log.debug("Failed to set Server-Timing header: {}", e.getMessage());
         }
     }
 

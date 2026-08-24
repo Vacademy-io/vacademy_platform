@@ -5,6 +5,7 @@ import logging
 import sys
 
 from .config import get_settings
+from .core.server_timing import ServerTimingMiddleware
 from .routers.health import router as health_router
 from .routers.course_outline import router as course_outline_router
 from .routers.content_generation import router as content_generation_router
@@ -201,7 +202,17 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # RESPONSE headers the browser is allowed to reveal to JS. Note that
+        # allow_headers above is about REQUEST headers and does not cover this, and
+        # with allow_credentials=True a wildcard here would be invalid — so
+        # Server-Timing has to be listed explicitly or the client reads nothing,
+        # silently and with no error.
+        expose_headers=["Server-Timing"],
     )
+
+    # Outermost middleware: stamps how long we took, so the browser can subtract it
+    # and attribute the rest of the round trip to the network.
+    app.add_middleware(ServerTimingMiddleware)
 
     # Routers
     app.include_router(health_router, prefix=settings.api_base_path, tags=["health"])

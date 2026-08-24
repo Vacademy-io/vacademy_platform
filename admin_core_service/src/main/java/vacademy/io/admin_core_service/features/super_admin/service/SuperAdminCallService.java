@@ -362,11 +362,11 @@ public class SuperAdminCallService {
                                           AND r.duration_seconds > 0
                                          THEN (r.duration_seconds + 59) / 60 ELSE 0 END), 0),
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'
-                                         THEN (r.diagnostics->'tts'->>'cacheHits')::bigint END), 0),
+                                         THEN CAST(r.diagnostics->'tts'->>'cacheHits' AS bigint) END), 0),
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheMisses' ~ '^[0-9]+$'
-                                         THEN (r.diagnostics->'tts'->>'cacheMisses')::bigint END), 0),
+                                         THEN CAST(r.diagnostics->'tts'->>'cacheMisses' AS bigint) END), 0),
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheCharsSaved' ~ '^[0-9]+$'
-                                         THEN (r.diagnostics->'tts'->>'cacheCharsSaved')::bigint END), 0),
+                                         THEN CAST(r.diagnostics->'tts'->>'cacheCharsSaved' AS bigint) END), 0),
                        count(*) FILTER (WHERE r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$')
                 """ + BASE_FROM + " GROUP BY 1");
         bind(q, instituteId, from, to, health, disposition, agentId);

@@ -73,7 +73,7 @@ TTS_CACHE_SALT | engine | model | voice | pace | temperature
 | **G1** complete | before hashing **and again at `CallCandidates.add`** | the text ends in terminal punctuation (`.` `!` `?` `।` `…`), or is a registered fixed line. Re-checked at the counter on purpose: the count means "this WHOLE sentence was delivered N times", and that meaning must not depend on a caller remembering to filter |
 | **G2** uninterrupted | during dispatch | no interruption between dispatch and completion of that sentence |
 | **G3** actually heard | at call end | the sentence appears in the **played** transcript |
-| **G4** healthy call | at call end | the verdict is not RED and carries none of `CRASH`, `BOT_SILENT`, `TTS_WEDGE`, `REPLY_UNPLAYED`, `STT_DEAF`, `REPLY_LOOP` |
+| **G4** healthy enough | at call end | **Two standards.** A *fixed line* is vetoed only by faults that implicate the AUDIO — `CRASH`, `BOT_SILENT`, `TTS_WEDGE`, `REPLY_UNPLAYED`. An *LLM sentence* keeps the strict bar: those plus `STT_DEAF`, `REPLY_LOOP`, or a RED verdict |
 | **G5** sound render | at render | whole number of samples, ≥ 200 ms, written `tmp` + `os.replace` |
 | **G6** verified | at serve | the stored text equals the key's text, else it is a **miss** |
 
@@ -104,7 +104,27 @@ The confirmation is whitespace-tolerant (`turntake.normalize_spoken`) because th
 space-joins per-word text frames. **The key itself stays byte-exact** — the two comparisons
 answer different questions.
 
-### Fixed lines are exempt from G3 and G4
+### Why G4 has two standards
+
+It started as one strict rule for both, and live agent `shreya-v3` showed that was a stall
+rather than caution: **15 of its 22 calls are RED**, so its opening line could only be learned
+from roughly one call in three. Worse, the faults doing the blocking were `DEAD_AIR`,
+`SLOW_LLM`, `ANSWER_DELETED` and `REPLY_LOOP` — none of which say anything about whether the
+opening was *rendered correctly*. It demonstrably was; it is the first line of the transcript.
+Letting overall call health veto a per-sentence question was the error.
+
+The two candidates make different claims, so they answer to different bars:
+
+- A **fixed line** claims only *"this authored string is worth rendering"*. Its audio comes
+  from an off-call one-shot synthesis of a string an admin wrote, so nothing about how the
+  conversation went bears on it. Only audio faults can veto it.
+- An **LLM sentence** claims *"the model said this and will plausibly say it again"*. That does
+  lean on the conversation having worked, so it keeps the strict bar.
+
+The narrowing is not a free pass: `CRASH`, `BOT_SILENT`, `TTS_WEDGE` and `REPLY_UNPLAYED` still
+veto a fixed line, because each of those genuinely implicates the audio.
+
+### Fixed lines are exempt from G3
 
 The opening, farewells, nudge, handbacks, fillers and transfer-fail closing are *authored by an
 admin*, not learned from a call. There is no call to have heard them on. They still face G1,

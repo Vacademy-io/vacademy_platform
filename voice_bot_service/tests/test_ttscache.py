@@ -429,6 +429,55 @@ def test_the_counter_only_ever_counts_whole_sentences(cache):
     assert cache.due() == []
 
 
+def test_a_fixed_line_survives_a_red_call(cache):
+    """The change live agent shreya-v3 forced: 15 of its 22 calls are RED, so one
+    strict bar meant its opening line could only be learned from one call in
+    three. And the faults doing the blocking — DEAD_AIR, SLOW_LLM,
+    ANSWER_DELETED, REPLY_LOOP — say nothing about whether that opening was
+    rendered correctly. It demonstrably was; it is the first line of the
+    transcript."""
+    cc = CallCandidates(cache)
+    fixed = _cand("Namaste ji, main Shreya bol rahi hoon.", fixed=True)
+    cc.add(fixed)
+    n = cc.flush(played_text="",
+                 verdict_faults=["ANSWER_DELETED", "DEAD_AIR", "REPLY_LOOP", "SLOW_LLM"],
+                 health="RED")
+    assert n == 1
+    assert [d.key for d in cache.due()] == [fixed.key]
+
+
+@pytest.mark.parametrize("fault", ["CRASH", "BOT_SILENT", "TTS_WEDGE", "REPLY_UNPLAYED"])
+def test_a_fixed_line_is_still_dropped_when_the_AUDIO_is_suspect(cache, fault):
+    """The narrowing is not a free pass. These four implicate the audio itself,
+    and they must still veto a fixed line."""
+    cc = CallCandidates(cache)
+    cc.add(_cand("Theek hai, dhanyavaad.", fixed=True))
+    assert cc.flush(played_text="", verdict_faults=[fault], health="AMBER") == 0
+
+
+def test_an_llm_sentence_still_needs_a_healthy_call(cache):
+    """The strict bar stays where the claim actually leans on the conversation
+    having worked."""
+    cc = CallCandidates(cache)
+    llm = _cand("Aur uski fees kya hai?")
+    cc.add(llm)
+    assert cc.flush(played_text=llm.text, verdict_faults=["DEAD_AIR"], health="RED") == 0
+
+    cc.add(llm)
+    assert cc.flush(played_text=llm.text, verdict_faults=["REPLY_LOOP"], health="AMBER") == 0
+
+
+def test_one_red_call_can_teach_the_fixed_line_and_not_the_llm_one(cache):
+    """Both kinds arrive from the same call and are judged separately."""
+    cc = CallCandidates(cache)
+    fixed = _cand("Theek hai, dhanyavaad.", fixed=True)
+    llm = _cand("Aur uski fees kya hai?")
+    cc.add(fixed); cc.add(llm)
+    assert cc.flush(played_text=llm.text + " " + fixed.text,
+                    verdict_faults=["DEAD_AIR"], health="RED") == 1
+    assert [d.key for d in cache.due()] == [fixed.key]
+
+
 def test_g4_red_health_alone_blocks_laddering(cache):
     cc = CallCandidates(cache)
     c = _cand("Yeh humara flagship programme hai.")

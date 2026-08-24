@@ -57,9 +57,9 @@ const WINDOW = 20;
 /** Ring buffer size. */
 const MAX_SAMPLES = 60;
 /** Median server time above this reads as "our fault". */
-const SERVER_SLOW_MS = 1500;
+export const SERVER_SLOW_MS = 1500;
 /** Median ping RTT above this reads as "their connection". */
-const NETWORK_SLOW_MS = 700;
+export const NETWORK_SLOW_MS = 700;
 /** Samples older than this are stale — a network can recover. */
 const SAMPLE_TTL_MS = 5 * 60 * 1000;
 /** How often to re-measure the network baseline while the tab is visible. */

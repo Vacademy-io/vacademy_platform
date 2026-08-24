@@ -24,6 +24,7 @@ import vacademy.io.admin_core_service.features.live_session.repository.SessionSc
 import vacademy.io.admin_core_service.features.live_session.provider.support.ScheduleConflicts;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.media.dto.FileDetailsDTO;
+import vacademy.io.common.tracing.ExternalCallTimer;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.meeting.dto.CreateMeetingRequestDTO;
 import vacademy.io.common.meeting.dto.CreateMeetingResponseDTO;
@@ -229,7 +230,11 @@ public class LiveSessionProviderService {
 
         // BBB /create call — if this throws, the @Transactional rolls back and
         // the row's providerMeetingId stays null. No orphan/partial state.
-        CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
+        // Attributed to `ext`: this is BBB/Zoom creating the room, not our compute.
+        // Without the split, the first learner into a live class sees a ~2s request
+        // and the speed indicator blames us for the provider's work.
+        CreateMeetingResponseDTO response = ExternalCallTimer.time(
+                () -> strategy.createMeeting(meetingRequest, request.getInstituteId()));
 
         // Persist provider IDs onto the locked entity. Same field-set rules as
         // the legacy createMeeting() to preserve frontend-friendly linkType
@@ -305,7 +310,11 @@ public class LiveSessionProviderService {
                 .zoomConfig(request.getZoomConfig())
                 .build();
 
-        CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
+        // Attributed to `ext`: this is BBB/Zoom creating the room, not our compute.
+        // Without the split, the first learner into a live class sees a ~2s request
+        // and the speed indicator blames us for the provider's work.
+        CreateMeetingResponseDTO response = ExternalCallTimer.time(
+                () -> strategy.createMeeting(meetingRequest, request.getInstituteId()));
 
         // Write everything back to the schedule row — no extra table needed
         if (request.getScheduleId() != null) {

@@ -121,7 +121,9 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
         };
     }, []);
 
-    const { verdict, serverMs, networkMs, slowest } = snapshot;
+    const { verdict, serverMs, networkMs, externalMs, slowest } = snapshot;
+    // Only worth showing once it is big enough to be what the user is feeling.
+    const showExternal = externalMs !== null && externalMs >= 400;
     const showAsServerSlow = verdict === 'server-slow' && SHOW_SERVER_SIDE_TO_USERS;
 
     let RailIcon: Icon = Gauge;
@@ -146,7 +148,12 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
         label = 'Good';
         tone = 'good';
         headline = 'Running normally';
-        note = null;
+        // A page can feel slow while nothing is wrong: placing a call or opening a
+        // live class waits on an outside service. Say so, rather than leaving the
+        // user to conclude the LMS is slow.
+        note = showExternal
+            ? 'Some actions wait on an outside service, such as placing a call or starting a live class. That wait is normal.'
+            : null;
     }
 
     return (
@@ -155,7 +162,7 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
                 <button
                     type="button"
                     onClick={copyDiagnostics}
-                    aria-label={`${headline}. Vacademy ${ms(serverMs)}, your connection ${ms(networkMs)}. Click to copy diagnostics.`}
+                    aria-label={`${headline}. Vacademy ${ms(serverMs)}, your connection ${ms(networkMs)}${showExternal ? `, waiting on provider ${ms(externalMs)}` : ''}. Click to copy diagnostics.`}
                     className={cn(
                         'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5',
                         'transition-all duration-200 hover:bg-white/10',
@@ -208,6 +215,15 @@ export function ConnectionStatusPill({ className }: { className?: string }) {
                         label="Your connection"
                         value={ms(networkMs)}
                     />
+                    {/* Third-party wait, kept out of the "Vacademy" number on purpose.
+                        Neutral tone: it is not a fault on either side. */}
+                    {showExternal ? (
+                        <MetricRow
+                            tone="idle"
+                            label="Waiting on provider"
+                            value={ms(externalMs)}
+                        />
+                    ) : null}
                 </div>
 
                 {/* The single worst call in the window — a median says THAT it was

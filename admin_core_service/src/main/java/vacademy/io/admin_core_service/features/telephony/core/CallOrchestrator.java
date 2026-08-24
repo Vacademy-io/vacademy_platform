@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.telephony.spi.dto.OutboundCallHan
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderError;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderNumberView;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.SelectionContext;
+import vacademy.io.common.tracing.ExternalCallTimer;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -70,7 +71,12 @@ public class CallOrchestrator {
         // ── Phase 2: external HTTP (no DB connection held) ───────────────────
         OutboundCallHandle handle;
         try {
-            handle = registry.initiator(p.providerType()).initiate(p.bridge(), p.creds());
+            // Attributed to `ext`, not to us: this call is the provider dialling a real
+            // phone and it costs ~2s by nature. Counting it as our latency is what made
+            // the speed indicator tell counsellors "Vacademy is slow" while the platform
+            // was serving p50 16ms. See ExternalCallTimer.
+            handle = ExternalCallTimer.timeChecked(
+                    () -> registry.initiator(p.providerType()).initiate(p.bridge(), p.creds()));
         } catch (Exception e) {
             circuitBreaker.recordFailure(p.providerType(), e);
             tx.markFailedAfterDispatch(p.callLogId(), "provider_initiate_failure");

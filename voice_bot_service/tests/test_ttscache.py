@@ -697,9 +697,20 @@ def test_consistency_rule_is_present_once_the_cache_is_on():
 
 def test_consistency_rule_never_forces_devanagari_on_an_english_agent():
     """An en-IN agent is told to write Latin only; a Devanagari name rule there
-    would contradict its own SCRIPT rule."""
-    p = _prompt_for("FULL", language="en")
-    assert "never Raman" not in p
+    would contradict its own SCRIPT rule.
+
+    Both spellings a real agent is configured with. NOT bare "en": that is not a
+    key in _STT_LANGS and has no hyphen, so _agent_language returns tag=None and
+    the agent silently takes the HINDI branch — which is what this test asserted
+    against before, passing an English expectation through a Hindi prompt.
+    """
+    for language in ("english", "en-IN"):
+        p = _prompt_for("FULL", language=language)
+        # Prove we actually reached the English branch, so the assertion below
+        # cannot pass for the wrong reason a second time.
+        assert "Write every reply in English (Latin letters) only" in p, language
+        assert "never Raman" not in p, language
+        assert "SAY A RECURRING LINE THE SAME WAY" not in p, language
 
 
 # ── provenance + flush (the analytics dimension) ────────────────────────────

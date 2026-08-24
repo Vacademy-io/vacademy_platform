@@ -326,6 +326,13 @@ class Settings:
     )
     # 'Hmm…' only: clearly a thinking sound. 'Achha…'/'Ji…'/'Okay…' sound like
     # complete replies, which made stalls read as answers.
+    # How recently the VAD must have reported voice for the caller to count as
+    # STILL SPEAKING, suppressing the filler. Two missed ticks (they arrive every
+    # 0.2s). A real end-of-turn final trails the last tick by ~0.65s, so it is
+    # unaffected; a mid-utterance fragment final is not.
+    filler_voice_live_secs: float = field(
+        default_factory=lambda: float(_env("FILLER_VOICE_LIVE_SECS", "0.4"))
+    )
     filler_phrases: tuple = field(
         default_factory=lambda: tuple(
             p.strip() for p in _env("FILLER_PHRASES", "Hmm…").split(",") if p.strip()

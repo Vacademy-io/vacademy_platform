@@ -161,7 +161,8 @@ class TranscriptCollector(FrameProcessor):
                  on_absorb=None, backchannel_extra=frozenset(),
                  gate_enabled=None, interrupt_on_vad=None, recently_cut=None,
                  diag=None, in_machine_window=None, reply_in_flight=None,
-                 bot_spoke_once=None, on_voice_tick=None, on_continuation=None):
+                 bot_spoke_once=None, on_voice_tick=None, on_continuation=None,
+                 voice_live=None):
         super().__init__()
         self._outcome = outcome
         self._diag = diag
@@ -169,6 +170,12 @@ class TranscriptCollector(FrameProcessor):
         # 0.2s while voice is live. The turn-level Started/Stopped frames can
         # lag this by seconds (see CallState.voice_tick_t).
         self._on_voice_tick = on_voice_tick or (lambda: None)
+        # Is the caller audibly speaking RIGHT NOW? Read from the same VAD ticks,
+        # not from the turn-level frames, which lag by seconds (CallState.voice_tick_t).
+        self._voice_live = voice_live or (lambda: False)
+        # When we last played a filler. Compared against bot_stopped_t so at most one
+        # filler covers any one gap between the bot's turns.
+        self._last_filler_t = 0.0
         # Tells NoRepeatGate the NEXT response is a continuation of a cut reply
         # — the one place a paraphrased restatement is never legitimate.
         self._on_continuation = on_continuation or (lambda: None)
@@ -443,11 +450,34 @@ class TranscriptCollector(FrameProcessor):
             # Filler only when the bot is quiet AND has spoken once already — a
             # barge-in has audio to cancel, and a filler before the opening meant
             # the first thing the caller ever heard was "Hmm…".
+            #
+            # Every guard above is about the BOT's state; none asked whether the CALLER
+            # had finished. Two things then went wrong together, and the client heard
+            # both as "too much hmm-ing":
+            #
+            #   * saaras splits one halting utterance into fragment finals (see
+            #     diagnostics.reconcile_answers — "नहीं जान।" + "सकते हैं आप।"), and EVERY
+            #     fragment was its own roll. A sentence that split five ways had a ~41%
+            #     chance of a filler at p=0.10, spoken INTO the caller's own speech.
+            #   * nothing stopped a second filler covering the same silence.
+            #
+            # So: never while the VAD says voice is live (acoustic truth, not the
+            # turn frames, which lag by seconds), and at most one per gap between the
+            # bot's turns. A filler after the caller genuinely stops is unaffected —
+            # by then the final trails the last voice tick by ~0.65s, well past the
+            # window — which is the latency mask this exists for.
+            # Strictly positive: at call start both stamps are 0.0, and '0 >= 0' would
+            # latch the very first filler off before any gap had been filled.
+            already_filled = (self._last_filler_t > 0.0
+                              and self._last_filler_t >= self._bot_stopped_t())
             if (self._filler_phrases and not self._is_bot_speaking()
                     and not (self._duck is not None and self._duck.is_ducked())
                     and self._fillers_armed()
                     and not text.startswith("[")     # synthetic cue, not real speech
+                    and not self._voice_live()
+                    and not already_filled
                     and random.random() < self._filler_probability):
+                self._last_filler_t = time.time()
                 await self.push_frame(
                     TTSSpeakFrame(random.choice(self._filler_phrases)), direction)
         await self.push_frame(frame, direction)
@@ -1515,10 +1545,8 @@ _SMALLEST_V31_MALE = {"devansh", "kaustubh", "virat", "karan", "yash", "debashis
 _SMALLEST_V31_FEMALE = {"imogen", "nirupma", "niharika"}
 _SMALLEST_PRO_MALE = {"mandar", "mathan", "barath"}
 _SMALLEST_PRO_FEMALE = {"manasi", "mrunal", "ketaki", "meher"}
-SMALLEST_VOICES = _SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
-SMALLEST_PRO_VOICES = _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE
-# Kept for any caller that wants "is this a Smallest name at all" regardless of model.
-SMALLEST_ANY_VOICES = SMALLEST_VOICES | SMALLEST_PRO_VOICES
+SMALLEST_VOICES = (_SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
+                   | _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE)
 
 # ── Deepgram Aura-2 ─────────────────────────────────────────────────────────
 # ENGLISH ONLY — the live /v1/models catalog has no Hindi voice at any tier, so
@@ -1551,8 +1579,6 @@ def _engine_of(model: str) -> str:
         return "rumik"
     if m.startswith(("google", "chirp")):
         return "google"
-    if m.startswith(("smallest", "lightning")) and "pro" in m:
-        return "smallest_pro"
     if m.startswith(("smallest", "lightning")):
         return "smallest"
     if m.startswith(("deepgram", "aura")):
@@ -1568,7 +1594,6 @@ _ENGINE_DEFAULT_VOICE = {
     # Founder chose Chirp3-HD by ear; Achird is its male voice (agent Ameet).
     "google": "hi-IN-Chirp3-HD-Achird",
     "smallest": "devansh",
-    "smallest_pro": "mandar",
     # English-only engine; Asteria is its clear/confident female voice.
     "deepgram": "aura-2-asteria-en",
 }
@@ -1577,7 +1602,6 @@ _ENGINE_DEFAULT_VOICE = {
 def _engine_palette(engine: str):
     return {"rumik": RUMIK_VOICES, "google": GOOGLE_VOICES,
             "smallest": SMALLEST_VOICES,
-            "smallest_pro": SMALLEST_PRO_VOICES,
             "deepgram": DEEPGRAM_VOICES}.get(engine)
 
 
@@ -1632,7 +1656,7 @@ def _agent_voice(agent):
         return voice if low in palette else None
     # Sarvam has no enumerated palette here (dozens of speakers across bulbul
     # versions), so instead reject anything that clearly belongs elsewhere.
-    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_ANY_VOICES, DEEPGRAM_VOICES):
+    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_VOICES, DEEPGRAM_VOICES):
         if low in other:
             return None
     return voice
@@ -2776,6 +2800,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      bot_spoke_once=lambda: flags["bot_spoke_once"],
                                      on_voice_tick=lambda: flags.__setitem__(
                                          "voice_tick_t", time.time()),
+                                     # Two missed VAD ticks (they arrive every 0.2s
+                                     # while voice is live). Long enough to ride out a
+                                     # breath mid-sentence, short enough that a real
+                                     # end-of-turn still gets its filler.
+                                     voice_live=lambda: (
+                                         time.time() - flags["voice_tick_t"]
+                                         < settings.filler_voice_live_secs),
                                      # late-bound: no_repeat is created below
                                      on_continuation=lambda: no_repeat.mark_continuation())
     played_transcript = PlayedTranscriptRecorder(outcome)

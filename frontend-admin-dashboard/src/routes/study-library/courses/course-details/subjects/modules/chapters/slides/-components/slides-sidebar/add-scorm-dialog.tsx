@@ -30,6 +30,21 @@ import {
     buildAppendReorderPayload,
     getNextSlideOrder,
 } from '../../-helper/slide-naming-utils';
+import axios from 'axios';
+import { WarningCircle } from '@phosphor-icons/react';
+
+// Backend returns a Vacademy exception body ({ ex, responseCode, ... }) rather
+// than a generic message, so surface that instead of a one-size-fits-all
+// "upload failed" toast the admin then has to dig out of devtools.
+const getScormUploadErrorMessage = (err: unknown): string => {
+    if (axios.isAxiosError(err)) {
+        const data = err.response?.data as
+            | { ex?: string; responseCode?: string; detail?: string }
+            | undefined;
+        return data?.ex || data?.responseCode || data?.detail || err.message;
+    }
+    return err instanceof Error ? err.message : 'Failed to upload SCORM package';
+};
 
 const formSchema = z.object({
     title: z.string().min(1, 'Title is required'),
@@ -64,6 +79,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
     const [isUploading, setIsUploading] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [uploadProgress, setUploadProgress] = useState<string>('');
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const [scormUploadResult, setScormUploadResult] = useState<ScormUploadResponse | null>(null);
 
     const form = useForm<FormValues>({
@@ -81,6 +97,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                 toast.error('Please select a .zip file');
                 return;
             }
+            setUploadError(null);
             setSelectedFile(file);
             form.setValue('scormFile', file);
             form.setValue('title', file.name.replace(/\.zip$/i, ''));
@@ -92,6 +109,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
 
     const uploadScormPackage = async (file: File) => {
         try {
+            setUploadError(null);
             setUploadProgress('Uploading SCORM package...');
             const formData = new FormData();
             formData.append('file', file);
@@ -108,9 +126,11 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
             toast.success('SCORM package uploaded & parsed successfully!');
         } catch (err) {
             console.error('SCORM upload failed:', err);
+            const message = getScormUploadErrorMessage(err);
             setUploadProgress('');
             setScormUploadResult(null);
-            toast.error('Failed to upload SCORM package');
+            setUploadError(message);
+            toast.error(message, { duration: 8000 });
         }
     };
 
@@ -118,6 +138,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
         e.preventDefault();
         const file = e.dataTransfer.files?.[0];
         if (file && file.name.endsWith('.zip')) {
+            setUploadError(null);
             setSelectedFile(file);
             form.setValue('scormFile', file);
             form.setValue('title', file.name.replace(/\.zip$/i, ''));
@@ -185,9 +206,10 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
             setSelectedFile(null);
             setScormUploadResult(null);
             setUploadProgress('');
+            setUploadError(null);
         } catch (error) {
             console.error('Error creating SCORM slide:', error);
-            toast.error('Failed to create SCORM slide');
+            toast.error(getScormUploadErrorMessage(error) || 'Failed to create SCORM slide');
         } finally {
             setIsUploading(false);
         }
@@ -218,8 +240,12 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                             Supports SCORM 1.2 and SCORM 2004 (.zip)
                         </p>
                         {selectedFile && (
-                            <div className="mt-3 rounded-md bg-primary-50 p-2">
-                                <p className="text-sm font-medium text-primary-700">
+                            <div
+                                className={`mt-3 rounded-md p-2 ${uploadError ? 'bg-danger-50' : 'bg-primary-50'}`}
+                            >
+                                <p
+                                    className={`text-sm font-medium ${uploadError ? 'text-danger-700' : 'text-primary-700'}`}
+                                >
                                     Selected: {selectedFile.name}
                                 </p>
                                 {uploadProgress && (
@@ -236,6 +262,27 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                         onChange={handleFileChange}
                     />
                 </div>
+
+                {/* Upload error (raw backend reason, so the admin isn't left guessing) */}
+                {uploadError && (
+                    <div className="flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 p-3">
+                        <WarningCircle
+                            size={18}
+                            weight="fill"
+                            className="mt-0.5 shrink-0 text-danger-600"
+                        />
+                        <div className="text-xs text-danger-700">
+                            <p className="font-medium">{uploadError}</p>
+                            {uploadError.toLowerCase().includes('imsmanifest') && (
+                                <p className="mt-1 text-danger-600">
+                                    Make sure <code>imsmanifest.xml</code> sits at the root of the
+                                    zip, not inside a subfolder — re-zip the package&apos;s contents
+                                    directly, not the folder containing them, then try again.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Hidden input for Zod validation */}
                 <FormField

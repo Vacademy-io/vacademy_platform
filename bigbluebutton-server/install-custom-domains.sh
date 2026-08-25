@@ -89,6 +89,101 @@ else
     log "1/4 WARNING: $WEB not found — skipping redirect rewrite"
 fi
 
+# ── 1b. Rewrite the absolute URLs bbb-web advertises in its API index ──
+# GET /bigbluebutton/api is the FIRST call the HTML5 client makes, and bbb-web
+# answers with two absolute, canonical URLs derived from
+# bigbluebutton.web.serverURL:
+#
+#   <graphqlApiUrl>https://<canonical>/api/rest</graphqlApiUrl>
+#   <graphqlWebsocketUrl>wss://<canonical>/graphql</graphqlWebsocketUrl>
+#
+# The client uses both as bases for everything after. On an alias host that made
+# every subsequent call cross-origin: CORS blocked the REST fetch (which is sent
+# with credentials:"include"), and the websocket carried no cookie for that
+# origin. The client showed only "Oops, something went wrong".
+#
+# There is no static value that is correct for two hostnames — a WebSocket URL
+# needs a scheme, so it cannot simply be made relative. Rewriting per-request is
+# the only thing that works for both. For the canonical host this is an identity
+# transform, so existing traffic is untouched.
+#
+# An exact-match location wins over the packaged `location /bigbluebutton`
+# prefix, so this overrides just this one endpoint and nothing else.
+API_SNIP=/etc/bigbluebutton/nginx/01-vacademy-api-index.nginx
+cat > "$API_SNIP" <<NGX
+location = /bigbluebutton/api {
+    proxy_http_version 1.1;
+    proxy_pass         http://127.0.0.1:8090;
+    proxy_redirect     default;
+    proxy_redirect     ~^https://[^/]+/(.*)\$ https://\$host/\$1;
+    proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+    add_header P3P 'CP="No P3P policy available"';
+
+    # sub_filter cannot rewrite a compressed body.
+    proxy_set_header   Accept-Encoding "";
+    sub_filter_types   text/xml application/xml application/json;
+    sub_filter_once    off;
+    sub_filter "https://$CANONICAL" "https://\$host";
+    sub_filter "wss://$CANONICAL"   "wss://\$host";
+}
+NGX
+echo "1b/5 API-index URL rewrite installed ($CANONICAL -> \$host)"
+
+# ── 1c. Rewrite the absolute URLs inside the meetingStaticData payload ──
+# The client fetches this once at startup and takes its media endpoints from it:
+#
+#   clientSettings.public.kurento.wsUrl = wss://<canonical>/bbb-webrtc-sfu
+#   clientSettings.public.pads.url      = https://<canonical>/pad
+#   meeting.logoutUrl                   = https://<canonical>
+#
+# kurento.wsUrl is the one that matters: on an alias host the client opened the
+# media websocket against the canonical origin, where it has no session cookie,
+# so audio and video failed with WEBSOCKET_CONNECTION_FAILED (1002) while the
+# rest of the UI worked perfectly.
+#
+# These come from /etc/bigbluebutton/bbb-html5.yml, which is per-SERVER config —
+# there is no value that is simultaneously right for two hostnames, so again the
+# rewrite has to happen per-request.
+#
+# The packaged block caches this response with key "$uri|$meeting_id". Since the
+# body now differs per hostname, $host MUST be part of the key, otherwise one
+# institute's cached payload gets served to another and both domains break in a
+# way that looks intermittent and random.
+MSD_SNIP=/etc/bigbluebutton/nginx/02-vacademy-meeting-static-data.nginx
+cat > "$MSD_SNIP" <<NGX
+location = /api/rest/meetingStaticData {
+    auth_request /bigbluebutton/connection/checkGraphqlAuthorization;
+    auth_request_set \$meeting_id \$sent_http_meeting_id;
+
+    proxy_cache client_settings_cache;
+    proxy_cache_key "\$uri|\$meeting_id|\$host";
+    proxy_cache_use_stale updating;
+    proxy_cache_valid 24h;
+    proxy_cache_lock on;
+    proxy_cache_lock_timeout 5s;
+    proxy_cache_lock_age 10s;
+
+    add_header X-Cached \$upstream_cache_status;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 3s;
+    proxy_send_timeout 15s;
+    proxy_read_timeout 30s;
+    proxy_set_header Host \$host;
+
+    # sub_filter cannot rewrite a compressed body.
+    proxy_set_header Accept-Encoding "";
+    sub_filter_types application/json text/json text/plain;
+    sub_filter_once off;
+    sub_filter "https://$CANONICAL" "https://\$host";
+    sub_filter "wss://$CANONICAL"   "wss://\$host";
+
+    proxy_pass http://127.0.0.1:8185;
+}
+NGX
+echo "1c/5 meetingStaticData URL rewrite installed (media + pads + logout)"
+
 # ── 2. server_name + host-preserving HTTP redirect ───────────
 cp -a "$SITE" "$SITE.bak-$STAMP"
 ALL_NAMES="$CANONICAL${ALIASES:+ $ALIASES}"
@@ -151,6 +246,7 @@ else
     log "4/4 ERROR: nginx config test failed — rolling back"
     cp -a "$SITE.bak-$STAMP" "$SITE"
     [ -f "$WEB.bak-$STAMP" ] && cp -a "$WEB.bak-$STAMP" "$WEB"
+    rm -f "$API_SNIP" "$MSD_SNIP"
     nginx -t >/dev/null 2>&1 && systemctl reload nginx
     log "4/4 rolled back to the previous config"
     exit 1

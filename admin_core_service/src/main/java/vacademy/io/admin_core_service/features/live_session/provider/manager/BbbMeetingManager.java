@@ -324,7 +324,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         // the manifest keep it domain-agnostic across the pool. buildQueryString() URL-encodes
         // the JSON value. Toggle off via bbb.plugins.pip.enabled=false.
         if (pipPluginEnabled) {
-            String bbbBaseUrl = apiUrl.replaceAll("/bigbluebutton/api/?$", "");
+            // The participant's BROWSER fetches this manifest, so it has to be on the
+            // host they are actually on. Built from apiUrl it would always be the
+            // canonical domain, which still loads (plugin assets send CORS headers)
+            // but shows meet.vacademy.io in an institute's devtools.
+            String bbbBaseUrl = applyInstituteLiveSessionDomain(apiUrl, instituteId, selectedServer)
+                    .replaceAll("/bigbluebutton/api/?$", "");
             String pipManifestUrl = bbbBaseUrl + "/plugins/picture-in-picture/manifest.json";
             params.put("pluginManifests", "[{\"url\":\"" + pipManifestUrl + "\"}]");
         }

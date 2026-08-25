@@ -147,7 +147,12 @@ const ScheduleTestDetails = ({
                     />
                 </div>
             </div>
-            <div className="flex w-full items-start justify-start gap-8 text-sm text-neutral-500">
+            {/* A grid, not flex-wrap. Three fixed flex columns overflowed a phone and pushed
+                the whole card wider than the viewport; letting them wrap instead dropped the
+                third column onto its own row on desktop, which looked broken the other way.
+                A column count per breakpoint keeps the desktop three-up intact and stacks
+                cleanly below it. */}
+            <div className="grid w-full grid-cols-1 items-start gap-x-8 gap-y-4 text-sm text-neutral-500 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="flex flex-col gap-4">
                     <p>Created on: {convertToLocalDateTime(scheduleTestContent.created_at)}</p>
                     <p>
@@ -194,7 +199,7 @@ const ScheduleTestDetails = ({
                     <p>Total Participants: {scheduleTestContent.user_registrations}</p>
                 </div>
             </div>
-            <div className="flex justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2 text-sm text-neutral-500">
                     <h1 className="!font-normal text-black">Join Link:</h1>
                     <span className="px-3 py-2 text-sm underline">

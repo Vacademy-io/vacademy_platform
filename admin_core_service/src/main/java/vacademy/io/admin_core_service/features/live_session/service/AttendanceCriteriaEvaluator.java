@@ -329,7 +329,10 @@ public class AttendanceCriteriaEvaluator {
     private String explain(String verdict, String reason, int attendedSeconds,
                            int scheduledSeconds, double requiredSeconds, Integer pct) {
         if (STATUS_PRESENT.equals(verdict)) {
-            return null;
+            // The confirmation carries the time too: a learner who is told they
+            // passed should be able to see by how much, not just that they did.
+            return "You were in the class for " + hms(attendedSeconds)
+                    + " of its " + hms(scheduledSeconds) + ".";
         }
         String required = hms((int) Math.round(requiredSeconds));
         if ("NO_SHOW".equals(reason)) {

@@ -93,6 +93,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.status_type AS statusType,
                 lsl.engagement_data AS engagementData,
                 lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
                 fbl.details AS feedbackDetails,
                 1 AS priority
             FROM live_session_participants lsp
@@ -134,6 +135,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
                 lsl.status_type AS statusType,
                 lsl.engagement_data AS engagementData,
                 lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
                 fbl.details AS feedbackDetails,
                 2 AS priority
             FROM live_session_participants lsp
@@ -204,6 +206,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         fbl.details AS feedbackDetails,
         lsp.source_id AS packageSessionId,
         lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
         lsl.engagement_data AS engagementData
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
@@ -314,6 +317,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         fbl.details AS feedbackDetails,
         lsp.source_id AS packageSessionId,
         lsl.provider_total_duration_minutes AS providerTotalDurationMinutes,
+                lsl.provider_total_duration_seconds AS providerTotalDurationSeconds,
         lsl.engagement_data AS engagementData
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m

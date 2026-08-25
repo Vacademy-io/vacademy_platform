@@ -48,6 +48,21 @@ interface AttendanceMarkingTableProps {
 type SortField = 'status' | 'duration' | 'activePoints';
 type SortDir = 'asc' | 'desc';
 
+/**
+ * Vacademy Meet reports exact seconds; Zoom only whole minutes. Show "4m 50s"
+ * when we have the real figure, and plain minutes when that is all the provider
+ * gave — the minutes column is a floor, so "4 min" can be anything up to 4m59s.
+ */
+const formatAttendedDuration = (mins: number | null, secs?: number | null): string => {
+    if (secs != null) {
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        if (m === 0) return `${s}s`;
+        return s === 0 ? `${m}m` : `${m}m ${s}s`;
+    }
+    return mins != null ? `${mins} min` : '--';
+};
+
 function parseEngagement(json: string | null): EngagementData | null {
     if (!json) return null;
     try {
@@ -552,7 +567,10 @@ export function AttendanceMarkingTable({
                                             {student.providerTotalDurationMinutes != null ? (
                                                 <span className="flex items-center gap-1">
                                                     <Clock size={14} className="text-gray-400" />
-                                                    {student.providerTotalDurationMinutes} min
+                                                    {formatAttendedDuration(
+                                                        student.providerTotalDurationMinutes,
+                                                        student.providerTotalDurationSeconds
+                                                    )}
                                                 </span>
                                             ) : (
                                                 <span className="text-gray-300">--</span>
@@ -610,7 +628,11 @@ export function AttendanceMarkingTable({
                                                     {student.providerTotalDurationMinutes != null && (
                                                         <span className="flex items-center gap-1">
                                                             <Clock size={14} className="text-gray-400" />
-                                                            Duration: {student.providerTotalDurationMinutes} min
+                                                            Duration:{' '}
+                                                            {formatAttendedDuration(
+                                                                student.providerTotalDurationMinutes,
+                                                                student.providerTotalDurationSeconds
+                                                            )}
                                                         </span>
                                                     )}
                                                     {engagement && (

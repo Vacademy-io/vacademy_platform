@@ -497,7 +497,11 @@ async def preview(
     lang: str = Query("hi-IN", max_length=8),
     pace: float = Query(1.0, ge=0.5, le=2.0),
     temperature: float | None = Query(None, ge=0.01, le=2.0),
-    model: str = Query("sarvam", max_length=24),
+    # 24 was too short for the one form that needs it: "smallest:lightning_v3.1_pro"
+    # is 27 chars, so the documented per-model escape hatch 422'd before reaching
+    # any vendor. Still capped - this is a public endpoint - just not below the
+    # length of its own longest legitimate value.
+    model: str = Query("sarvam", max_length=48),
 ):
     """Voice tester for the admin AI-Agents editor: speak a short sample text in any
     Bulbul speaker at a chosen pace/expressiveness, so admins can A/B voices before

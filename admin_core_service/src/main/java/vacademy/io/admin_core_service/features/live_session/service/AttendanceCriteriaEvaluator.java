@@ -134,7 +134,12 @@ public class AttendanceCriteriaEvaluator {
                 log.warn("attendance_criteria.no_scheduled_duration scheduleId={} - skipping", scheduleId);
                 return;
             }
-            double requiredMinutes = scheduledMinutes * (config.getMinDurationPercent() / 100.0);
+            // Compare in seconds. Minutes are a floor of the real figure, so a
+            // learner present for 4m50s of a 7-minute class (69%) was truncated to
+            // 4 and failed a 4.2-minute bar — an absence for a class they attended.
+            int scheduledSeconds = scheduledMinutes * 60;
+            double requiredSeconds = scheduledSeconds * (config.getMinDurationPercent() / 100.0);
+            double requiredMinutes = requiredSeconds / 60.0;
 
             List<LiveSessionLogs> rows =
                     liveSessionLogsRepository.findAllAttendanceByScheduleId(scheduleId);
@@ -165,13 +170,18 @@ public class AttendanceCriteriaEvaluator {
                     // The provider says they were here but gave no minutes; we
                     // cannot judge how long, and they demonstrably attended.
                     writeAudit(row, config, STATUS_PRESENT, "NO_DURATION_DATA",
-                            null, scheduledMinutes, requiredMinutes);
+                            null, scheduledMinutes, requiredMinutes, null, requiredSeconds, false);
                     liveSessionLogsRepository.save(row);
                     continue;
                 }
 
                 int attendedMinutes = inRoster ? reported : 0;
-                boolean meets = attendedMinutes >= requiredMinutes;
+                // Exact seconds when the provider gave them (BBB); otherwise fall
+                // back to the floored minutes (Zoom reports whole minutes only).
+                Integer exactSeconds = row.getProviderTotalDurationSeconds();
+                int attendedSeconds = !inRoster ? 0
+                        : (exactSeconds != null ? exactSeconds : attendedMinutes * 60);
+                boolean meets = attendedSeconds >= requiredSeconds;
                 String verdict = meets ? STATUS_PRESENT : STATUS_ABSENT;
                 String reason = meets ? "MET_THRESHOLD" : (inRoster ? "BELOW_THRESHOLD" : "NO_SHOW");
 
@@ -185,10 +195,20 @@ public class AttendanceCriteriaEvaluator {
                 // when the underlying numbers do.
                 String previousVerdict = previousVerdict(row);
                 String previousStatus = row.getStatus();
-                boolean verdictMoved = !verdict.equalsIgnoreCase(
-                        previousVerdict != null ? previousVerdict : previousStatus);
+                // The first evaluation always notifies: while a rule is in force the
+                // join-time mail is suppressed, so this is the learner's only word on
+                // the class — including a PRESENT confirmation.
+                //
+                // After that, only a real change of verdict notifies. Keying off the
+                // stored verdict rather than the row's status matters because both
+                // provider paths reset status to PRESENT on every sync, and Zoom
+                // re-syncs an ended schedule every 15 minutes for two days — status
+                // would look "changed" every time and mail ~190 times.
+                boolean verdictMoved = previousVerdict == null
+                        || !verdict.equalsIgnoreCase(previousVerdict);
 
-                writeAudit(row, config, verdict, reason, attendedMinutes, scheduledMinutes, requiredMinutes);
+                writeAudit(row, config, verdict, reason, attendedMinutes, scheduledMinutes,
+                        requiredMinutes, attendedSeconds, requiredSeconds, exactSeconds != null);
 
                 if (!verdict.equalsIgnoreCase(previousStatus)) {
                     row.setStatus(verdict);
@@ -198,7 +218,9 @@ public class AttendanceCriteriaEvaluator {
                 liveSessionLogsRepository.save(row);
 
                 if (verdictMoved) {
-                    notify(session, row, verdict);
+                    notify(session, row, verdict,
+                            explain(verdict, reason, attendedSeconds, scheduledSeconds,
+                                    requiredSeconds, config.getMinDurationPercent()));
                 }
             }
 
@@ -230,7 +252,8 @@ public class AttendanceCriteriaEvaluator {
 
     private void writeAudit(LiveSessionLogs row, AttendanceCriteriaConfigDTO config, String verdict,
                             String reason, Integer attendedMinutes, Integer scheduledMinutes,
-                            double requiredMinutes) {
+                            double requiredMinutes, Integer attendedSeconds, Double requiredSeconds,
+                            boolean exact) {
         Map<String, Object> audit = new LinkedHashMap<>();
         audit.put("verdict", verdict);
         audit.put("reason", reason);
@@ -238,9 +261,15 @@ public class AttendanceCriteriaEvaluator {
         audit.put("scheduledMinutes", scheduledMinutes);
         audit.put("thresholdPercent", config.getMinDurationPercent());
         audit.put("requiredMinutes", Math.round(requiredMinutes));
-        if (attendedMinutes != null && scheduledMinutes != null && scheduledMinutes > 0) {
-            audit.put("attendedPercent", Math.round(attendedMinutes * 1000.0 / scheduledMinutes) / 10.0);
+        if (attendedSeconds != null && scheduledMinutes != null && scheduledMinutes > 0) {
+            audit.put("attendedPercent",
+                    Math.round(attendedSeconds * 1000.0 / (scheduledMinutes * 60)) / 10.0);
         }
+        audit.put("attendedSeconds", attendedSeconds);
+        audit.put("requiredSeconds", requiredSeconds == null ? null : Math.round(requiredSeconds));
+        audit.put("attendedDisplay", attendedSeconds == null ? null : hms(attendedSeconds));
+        // false = provider gave only whole minutes, so the figures are floored.
+        audit.put("exactSeconds", exact);
         audit.put("previousStatus", row.getStatus());
         audit.put("evaluatedAt", Instant.now().toString());
         try {
@@ -292,10 +321,38 @@ public class AttendanceCriteriaEvaluator {
         }
     }
 
-    private void notify(LiveSession session, LiveSessionLogs row, String newStatus) {
+    /**
+     * Plain-language arithmetic for the learner. Being told you are absent for a
+     * class you sat through most of is only defensible if the message says how
+     * many minutes were counted and how many were needed.
+     */
+    private String explain(String verdict, String reason, int attendedSeconds,
+                           int scheduledSeconds, double requiredSeconds, Integer pct) {
+        if (STATUS_PRESENT.equals(verdict)) {
+            return null;
+        }
+        String required = hms((int) Math.round(requiredSeconds));
+        if ("NO_SHOW".equals(reason)) {
+            return "Our records show you did not join the class. At least " + required
+                    + " of the " + hms(scheduledSeconds) + " class (" + pct + "%) was required"
+                    + " to be marked present.";
+        }
+        return "You were in the class for " + hms(attendedSeconds) + " of its "
+                + hms(scheduledSeconds) + ". At least " + required + " (" + pct + "%) was"
+                + " required to be marked present.";
+    }
+
+    /** "4m 50s", or "50s" under a minute — the learner-facing form of a duration. */
+    private static String hms(int totalSeconds) {
+        int m = totalSeconds / 60, sec = totalSeconds % 60;
+        if (m == 0) return sec + "s";
+        return sec == 0 ? m + "m" : m + "m " + sec + "s";
+    }
+
+    private void notify(LiveSession session, LiveSessionLogs row, String newStatus, String reasonDetail) {
         try {
             notificationProcessor.sendAttendanceNotification(
-                    session.getId(), row.getUserSourceId(), newStatus);
+                    session.getId(), row.getUserSourceId(), newStatus, reasonDetail);
         } catch (Exception e) {
             log.warn("attendance_criteria.notify_failed userId={}: {}",
                     row.getUserSourceId(), e.getMessage());

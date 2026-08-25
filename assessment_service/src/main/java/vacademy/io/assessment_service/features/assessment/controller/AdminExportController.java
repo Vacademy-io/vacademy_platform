@@ -57,8 +57,11 @@ public class AdminExportController {
     @GetMapping("/csv/registered-participants/columns")
     public ResponseEntity<ResultExportColumnsDto> getRegisteredCsvColumns(@RequestAttribute("user") CustomUserDetails user,
                                                                           @RequestParam(name = "instituteId") String instituteId,
-                                                                          @RequestParam(name = "assessmentId") String assessmentId) {
-        return adminExportManager.getResultExportColumns(user, instituteId, assessmentId);
+                                                                          @RequestParam(name = "assessmentId") String assessmentId,
+                                                                          // Which sheet the dialog is about to export. Defaults false so
+                                                                          // existing callers keep getting the result columns.
+                                                                          @RequestParam(name = "notAttempted", required = false, defaultValue = "false") boolean notAttempted) {
+        return adminExportManager.getResultExportColumns(user, instituteId, assessmentId, notAttempted);
     }
 
     @PostMapping("/pdf/registered-participants")

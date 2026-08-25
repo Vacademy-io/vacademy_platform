@@ -24,7 +24,6 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.requ
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.ReleaseRequestDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
-import vacademy.io.assessment_service.features.assessment.dto.batch_pending.EnrolledLearnerDto;
 import vacademy.io.assessment_service.features.assessment.dto.batch_pending.NotAttemptedParticipants;
 import vacademy.io.assessment_service.features.assessment.dto.create_assessment.AssessmentRegistrationsDto;
 import vacademy.io.assessment_service.features.assessment.entity.*;
@@ -128,7 +127,7 @@ public class AssessmentParticipantsManager {
     private vacademy.io.assessment_service.features.client.AdminCoreServiceClient adminCoreServiceClient;
 
     @Autowired
-    private AssessmentBatchRegistrationRepository assessmentBatchRegistrationRepository;
+    private vacademy.io.assessment_service.features.assessment.service.batch_pending.NotAttemptedLearnerService notAttemptedLearnerService;
 
     @Autowired
     private CacheManager cacheManager;
@@ -656,34 +655,20 @@ public class AssessmentParticipantsManager {
      * <p>Ordering matches the rest of the submissions list: learner name, then user id as
      * a tie-breaker, so paging is stable (see {@code StableSort}).
      */
+    /**
+     * Learners enrolled in this assessment's batches who never attempted it — the Pending
+     * tab for Batch Selection.
+     *
+     * <p>The resolution itself lives in {@link NotAttemptedLearnerService} because the CSV
+     * export asks the same question, and the two must never disagree about who is on the
+     * list. This method only pages the answer.
+     */
     private Page<ParticipantsDetailsDto> findBatchLearnersWhoNeverAttempted(
             String assessmentId, String instituteId, AssessmentUserFilter filter, Pageable pageable) {
-
-        // Always start from the batches this assessment was actually assigned to, then
-        // narrow by the filter chips — the chips are built from every batch in the
-        // institute, so they can name a batch that was never given this test. No batches
-        // means there is nothing to ask admin_core about, so return before any HTTP or
-        // cross-service work happens. (This lookup is ~0.2ms and index-backed.)
-        List<String> batchIds = NotAttemptedParticipants.resolveBatchIds(
-                assessmentBatchRegistrationRepository.findBatchIdsByAssessmentAndInstitute(
-                        assessmentId, instituteId, List.of(ACTIVE.name())),
-                filter.getBatches());
-        if (CollectionUtils.isEmpty(batchIds)) {
-            return Page.empty(pageable);
-        }
-
-        // resolveBatchIds already deduped and sorted these, so callers passing the same
-        // batches in a different order share one cache entry.
-        List<EnrolledLearnerDto> enrolled =
-                adminCoreServiceClient.getEnrolledLearnersForBatches(instituteId, batchIds);
-        if (CollectionUtils.isEmpty(enrolled)) {
-            return Page.empty(pageable);
-        }
-
-        Set<String> attempted = new HashSet<>(
-                assessmentUserRegistrationRepository.findAttemptedUserIdsForBatchAssessment(assessmentId, instituteId));
-
-        return NotAttemptedParticipants.page(enrolled, attempted, filter.getName(), pageable);
+        return NotAttemptedParticipants.page(
+                NotAttemptedParticipants.toRows(
+                        notAttemptedLearnerService.findNotAttempted(assessmentId, instituteId, filter)),
+                pageable);
     }
 
     /**

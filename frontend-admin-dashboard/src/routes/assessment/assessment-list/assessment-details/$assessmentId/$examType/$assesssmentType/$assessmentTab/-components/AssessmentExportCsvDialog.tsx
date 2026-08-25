@@ -17,6 +17,13 @@ interface AssessmentExportCsvDialogProps {
     assessmentId: string;
     instituteId: string | undefined;
     assessmentType: string;
+    /** True on the Pending tab: export the learners who never attempted, not the results. */
+    notAttempted?: boolean;
+    /**
+     * The Pending tab's on-screen scope, so the file matches what the admin was looking
+     * at when they clicked. Ignored unless notAttempted.
+     */
+    notAttemptedScope?: { batches: string[]; name: string };
 }
 
 const labelForCustomField = (field: ResultExportCustomFieldColumn) =>
@@ -24,14 +31,21 @@ const labelForCustomField = (field: ResultExportCustomFieldColumn) =>
 
 /**
  * Export CSV for the submissions tab. The dialog lists every column the file can
- * carry — the fixed result columns plus the registration-form fields external
- * participants filled in when registering for a public assessment — all ticked
- * by default, so the exported sheet includes that data unless the admin opts out.
+ * carry, all ticked by default, so the exported sheet includes that data unless the
+ * admin opts out.
+ *
+ * <p>Which columns are on offer depends on the tab. On Attempted it is the result
+ * columns plus the registration-form fields external participants filled in. On
+ * Pending it is contact details only — marks, rank and percentage would be blank for
+ * a learner who never started, and a zero in a Marks column reads as "sat it and
+ * scored nothing".
  */
 export const AssessmentExportCsvDialog = ({
     assessmentId,
     instituteId,
     assessmentType,
+    notAttempted = false,
+    notAttemptedScope,
 }: AssessmentExportCsvDialogProps) => {
     const [open, setOpen] = useState(false);
     const [selectedBaseColumns, setSelectedBaseColumns] = useState<string[]>([]);
@@ -39,8 +53,10 @@ export const AssessmentExportCsvDialog = ({
     const [isExporting, setIsExporting] = useState(false);
 
     const columnsQuery = useQuery({
-        queryKey: ['RESULT_EXPORT_COLUMNS', instituteId, assessmentId],
-        queryFn: () => getResultExportColumns(instituteId, assessmentId),
+        // notAttempted is part of the key: the two sheets offer different columns, so a
+        // cached list from the other tab would tick boxes the file will never contain.
+        queryKey: ['RESULT_EXPORT_COLUMNS', instituteId, assessmentId, notAttempted],
+        queryFn: () => getResultExportColumns(instituteId, assessmentId, notAttempted),
         enabled: open,
     });
 
@@ -99,7 +115,8 @@ export const AssessmentExportCsvDialog = ({
                 assessmentType,
                 // Column list unavailable → fall back to the full sheet rather
                 // than exporting an empty selection.
-                columnsQuery.isError ? undefined : selectedCustomFieldIds
+                columnsQuery.isError ? undefined : selectedCustomFieldIds,
+                notAttempted ? notAttemptedScope ?? { batches: [], name: '' } : undefined
             );
             if (!data) {
                 toast.error('No data returned. Please try again.');
@@ -124,7 +141,9 @@ export const AssessmentExportCsvDialog = ({
             link.href = url;
             link.setAttribute(
                 'download',
-                `results_${assessmentId}_${new Date().toLocaleDateString()}.csv`
+                // Name the file after the sheet: two downloads called results_*.csv, one
+                // of which is actually the not-attempted list, is a support ticket.
+                `${notAttempted ? 'not_attempted' : 'results'}_${assessmentId}_${new Date().toLocaleDateString()}.csv`
             );
             document.body.appendChild(link);
             link.click();

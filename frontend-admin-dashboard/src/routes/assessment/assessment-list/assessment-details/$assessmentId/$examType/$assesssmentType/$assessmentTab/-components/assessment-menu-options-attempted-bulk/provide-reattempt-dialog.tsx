@@ -50,12 +50,23 @@ const ProvideReattemptDialogContent = () => {
     const handleSubmit = () => {
         if (!isCountValid) return;
         if (isBulkAction && bulkActionInfo?.selectedStudents) {
-            provideReattemptMutation.mutate({
-                registrationIds: bulkActionInfo.selectedStudents.map(
-                    (student) => student.registration_id
-                ),
-            });
+            // Drop rows with no registration id instead of posting undefined. The backend
+            // resolves participants by registration id and rejects the whole call when it
+            // matches nothing, so one unmapped row used to fail the entire batch with a
+            // generic error and no indication of which learner was at fault.
+            const registrationIds = bulkActionInfo.selectedStudents
+                .map((student) => student.registration_id)
+                .filter((id): id is string => Boolean(id));
+            if (registrationIds.length === 0) {
+                toast.error('Could not resolve the selected participants’ registrations.');
+                return;
+            }
+            provideReattemptMutation.mutate({ registrationIds });
         } else if (selectedStudent) {
+            if (!selectedStudent.registration_id) {
+                toast.error('Could not resolve this participant’s registration.');
+                return;
+            }
             provideReattemptMutation.mutate({
                 registrationIds: [selectedStudent.registration_id],
             });

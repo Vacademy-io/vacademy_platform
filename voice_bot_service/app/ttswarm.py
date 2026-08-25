@@ -78,10 +78,10 @@ async def synthesize(*, engine: str, model: str, voice: str, pace, temperature,
             raw = await _main._synth_audio(text, voice or s.sarvam_tts_voice,
                                            model or s.sarvam_tts_model, "hi-IN")
         else:
-            logger.warning("tts-warm: no one-shot renderer for engine %r", eng)
+            logger.warning("tts-warm: no one-shot renderer for engine {!r}", eng)
             return None
     except Exception:
-        logger.exception("tts-warm: %s synthesis failed for %r", eng, text[:40])
+        logger.exception("tts-warm: {} synthesis failed for {!r}", eng, text[:40])
         return None
     if not raw:
         return None
@@ -140,9 +140,9 @@ async def warm(*, engine: str, model: str, voice: str, pace, temperature,
             else:
                 failed += 1
         except Exception:
-            logger.exception("tts-warm: failed on %r", t[:40])
+            logger.exception("tts-warm: failed on {!r}", t[:40])
             failed += 1
-    logger.info("tts-warm: %s/%s warmed=%d skipped=%d failed=%d",
+    logger.info("tts-warm: {}/{} warmed={} skipped={} failed={}",
                 engine, voice, done, skipped, failed)
     return {"warmed": done, "skipped": skipped, "failed": failed}
 

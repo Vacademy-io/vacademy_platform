@@ -574,9 +574,20 @@ async def _sentinel_run_tts(text, context_id=None):
 class _FakeTTS:
     _push_start_frame = True
     _push_stop_frames = True
+    # Mirrors smallest: word_timestamps=True, so pipecat sets this False and
+    # builds text frames from vendor word timings that a cache hit never gets.
+    _push_text_frames = False
 
     def __init__(self):
         self.run_tts = _sentinel_run_tts
+
+    # The serve path reports TTFB through the wrapped engine; stop_ttfb_metrics is
+    # called on every hit (the clock is only STARTED when the base class did not).
+    async def start_ttfb_metrics(self):
+        pass
+
+    async def stop_ttfb_metrics(self):
+        pass
 
 
 def _install(monkeypatch, tmp_path, *, mode, speech=True, llm=True, agents=()):
@@ -939,3 +950,99 @@ def test_min_seen_defaults_to_one(monkeypatch):
     monkeypatch.delenv("TTS_CACHE_MIN_SEEN", raising=False)
     from app.config import Settings
     assert Settings().tts_cache_min_seen == 1
+
+
+# ── a cache hit must count as speech ────────────────────────────────────────
+
+async def test_a_cache_hit_emits_a_TTSTextFrame(monkeypatch, tmp_path):
+    """THE frame that makes a served sentence visible downstream.
+
+    smallest and sarvam are built with word_timestamps=True, so pipecat sets
+    push_text_frames=False and builds TTSTextFrames from the vendor's word-timing
+    messages. A cache hit never calls the vendor, so those never arrive — and the
+    served sentence emitted ZERO TTSTextFrames.
+
+    Everything that decides "has the bot said this?" reads that frame.
+    PlayedTranscriptRecorder logs only TTSTextFrame; NoRepeatGate tests
+    containment in what it logged. With none emitted, a cached sentence was
+    permanently "never said" and the model could repeat it without limit. Live
+    call f425326e: one 8.2s line played THREE times at envelope correlation
+    0.996 — the same blob replayed, not a re-synthesis — with REPLY_LOOP and 30
+    unsaid-reverts.
+    """
+    from pipecat.frames.frames import TTSTextFrame
+    pytest.importorskip("pipecat.frames.frames")
+    line = "Theek hai, dhanyavaad."
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(600))
+
+    tts = _FakeTTS()
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+
+    frames = [f async for f in tts.run_tts(line, "ctx-1") if f is not None]
+    kinds = [type(f).__name__ for f in frames]
+    assert "TTSAudioRawFrame" in kinds, "expected a cache hit; got %r" % (kinds,)
+
+    texts = [f for f in frames if isinstance(f, TTSTextFrame)]
+    assert len(texts) == 1, "exactly one TTSTextFrame, got %d" % len(texts)
+    assert texts[0].text == line, "must carry the ORIGINAL text the caller heard"
+
+    # AFTER the audio, matching where pipecat's own base class appends its tail
+    # frame. Before it, the sentence would count as heard the moment playout
+    # STARTED, and a caller who talked over it would be told they had heard it —
+    # the exact bug NoRepeatGate's never-played revert exists to prevent.
+    assert kinds.index("TTSTextFrame") > kinds.index("TTSAudioRawFrame")
+
+
+async def test_a_cache_MISS_does_not_add_a_text_frame(monkeypatch, tmp_path):
+    """The vendor path is untouched: pipecat still owns the text frame there, and
+    emitting our own would duplicate it into the transcript."""
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    tts = _FakeTTS()
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines=set(), cache_mode="FULL", cache=c)
+    frames = [f async for f in tts.run_tts("Kuch aur poochhna hai?", "ctx-2")
+              if f is not None]
+    assert [type(f).__name__ for f in frames] == [],         "a miss must yield exactly what the engine yielded, and nothing more"
+
+
+async def test_no_text_frame_when_pipecat_already_emits_one(monkeypatch, tmp_path):
+    """sarvam, deepgram and google set push_text_frames=True, so pipecat appends
+    its OWN TTSTextFrame after run_tts returns. Emitting ours too would put the
+    sentence in the played transcript and the assistant context twice — the model
+    would see itself say the line twice and the repeat check would compare
+    doubled text. Only the word-timestamp services (smallest) need ours.
+    """
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    line = "Theek hai, dhanyavaad."
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(600))
+
+    tts = _FakeTTS()
+    tts._push_text_frames = True          # behave like sarvam
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+    kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-3")
+             if f is not None]
+    assert "TTSAudioRawFrame" in kinds, "still expected a cache hit"
+    assert "TTSTextFrame" not in kinds,         "pipecat appends its own here — ours would duplicate the sentence"
+
+
+def test_owns_text_frame_defaults_to_not_emitting():
+    """Unknown service: a missing frame degrades the repeat check, a duplicated
+    one corrupts the transcript. Prefer the recoverable failure."""
+    class _Unknown: pass
+    assert ttscache.owns_text_frame(_Unknown()) is False

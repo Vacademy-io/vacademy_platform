@@ -149,6 +149,30 @@ def mode_allows(mode: str, is_fixed_line: bool) -> bool:
     return False
 
 
+def owns_text_frame(tts) -> bool:
+    """Whether WE must emit the TTSTextFrame for a cached sentence.
+
+    Same principle as owns_turn_brackets: emit exactly what the wrapped engine
+    would have emitted, no more. But the two flags point opposite ways here.
+
+    When `push_text_frames` is set, pipecat appends its own TTSTextFrame after
+    run_tts returns (tts_service.py:1129), so ours would be a DUPLICATE — the
+    sentence would land in the played transcript and the assistant context
+    twice. sarvam, deepgram and google all set it.
+
+    When it is CLEAR the service uses word timestamps instead, and pipecat builds
+    the text frames from the vendor's word-timing messages. A cache hit never
+    calls the vendor, so those messages never arrive and NOTHING emits the frame.
+    smallest is built this way (push_text_frames=not word_timestamps, and
+    word_timestamps defaults True), which is how a served sentence came to be
+    invisible to every "has the bot said this?" check on live call f425326e.
+
+    Defaults to False on an unknown service: a missing frame degrades the repeat
+    check, a duplicated one corrupts the transcript. Prefer the recoverable one.
+    """
+    return not getattr(tts, "_push_text_frames", True)
+
+
 def owns_turn_brackets(tts) -> tuple:
     """(emit_started, emit_stopped) for a cached utterance on this service.
 
@@ -1002,7 +1026,8 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
     so nothing a live call does can put audio in front of a future caller.
     """
     from pipecat.frames.frames import (TTSAudioRawFrame, TTSStartedFrame,
-                                       TTSStoppedFrame)
+                                       TTSStoppedFrame, TTSTextFrame,
+                                       AggregationType)
 
     from .providers import has_word_char
 
@@ -1126,6 +1151,7 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                     # engine's own contract is what keeps a cached sentence
                     # indistinguishable from a synthesized one downstream.
                     own_start, own_stop = owns_turn_brackets(tts)
+                    own_text = owns_text_frame(tts)
                     if own_start:
                         # Only start the clock when the base class did not: on
                         # sarvam/google _push_tts_frames already called
@@ -1155,6 +1181,39 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                         # transport paces the line regardless — and it keeps the
                         # amount of already-committed audio identical to today.
                         await asyncio.sleep(_EMIT_SLEEP)
+
+                    # THE frame that makes a cache hit count as speech.
+                    #
+                    # smallest/sarvam are built with word_timestamps=True, so
+                    # pipecat sets push_text_frames=False and builds TTSTextFrames
+                    # from the vendor's word-timing messages. A cache hit never
+                    # calls the vendor, so those messages never arrive and the
+                    # sentence produced ZERO TTSTextFrames. Everything downstream
+                    # reads speech from that frame, so a cached sentence was
+                    # invisible: PlayedTranscriptRecorder never logged it,
+                    # NoRepeatGate's "already said" test could never match it, and
+                    # the model was free to say it again and again. Live call
+                    # f425326e: one 8.2s line played THREE times (envelope
+                    # correlation 0.996 — the same blob, not a re-synthesis),
+                    # REPLY_LOOP, and 30 unsaid-reverts.
+                    #
+                    # AFTER the audio, not before, because that is where the base
+                    # class appends its own (tts_service.py:1129, after
+                    # tts_process_generator returns). The transport releases it at
+                    # playout position, so a sentence the caller was interrupted
+                    # over is still correctly treated as NOT heard — "'already
+                    # said' has to mean 'already HEARD'".
+                    # SENTENCE, because G1 only admits a complete sentence to the
+                    # cache in the first place, and it is pipecat's own default
+                    # aggregation mode — so the frame is indistinguishable from
+                    # one the engine produced.
+                    if own_text:
+                        text_frame = TTSTextFrame(
+                            text, aggregated_by=AggregationType.SENTENCE)
+                        text_frame.context_id = context_id
+                        text_frame.will_be_spoken = True
+                        yield text_frame
+
                     if own_stop:
                         yield TTSStoppedFrame(context_id=context_id)
                     return

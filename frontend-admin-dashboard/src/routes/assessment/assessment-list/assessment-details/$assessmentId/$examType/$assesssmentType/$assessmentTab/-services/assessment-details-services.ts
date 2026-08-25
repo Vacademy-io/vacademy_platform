@@ -328,7 +328,12 @@ export const handleExportResultCSV = async (
     instituteId: string | undefined,
     assessmentId: string,
     assessmentType: string,
-    customFieldIds?: string[]
+    customFieldIds?: string[],
+    // Present only for the not-attempted sheet, which is not a slice of the attempt
+    // tables at all and so needs the tab's own scope (batch source + PENDING, plus
+    // whatever batch chips and name search are on screen) rather than the
+    // all-sources result scope below.
+    notAttemptedScope?: { batches: string[]; name: string }
 ) => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
@@ -337,16 +342,27 @@ export const handleExportResultCSV = async (
             instituteId,
             assessmentId,
         },
-        data: {
-            name: '',
-            assessment_type: assessmentType,
-            attempt_type: ['ENDED'],
-            registration_source: '', // empty = all sources (batch + open)
-            batches: [],
-            status: ['ACTIVE'],
-            custom_field_ids: customFieldIds ?? null,
-            sort_columns: {},
-        },
+        data: notAttemptedScope
+            ? {
+                  name: notAttemptedScope.name,
+                  assessment_type: assessmentType,
+                  attempt_type: ['PENDING'],
+                  registration_source: 'BATCH_PREVIEW_REGISTRATION',
+                  batches: notAttemptedScope.batches,
+                  status: ['ACTIVE'],
+                  custom_field_ids: null,
+                  sort_columns: {},
+              }
+            : {
+                  name: '',
+                  assessment_type: assessmentType,
+                  attempt_type: ['ENDED'],
+                  registration_source: '', // empty = all sources (batch + open)
+                  batches: [],
+                  status: ['ACTIVE'],
+                  custom_field_ids: customFieldIds ?? null,
+                  sort_columns: {},
+              },
     });
     return response?.data;
 };
@@ -370,12 +386,15 @@ export interface ResultExportColumns {
 
 export const getResultExportColumns = async (
     instituteId: string | undefined,
-    assessmentId: string
+    assessmentId: string,
+    // Which sheet the dialog is about to export. The not-attempted sheet carries
+    // contact columns instead of marks, and no registration fields at all.
+    notAttempted = false
 ): Promise<ResultExportColumns> => {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: GET_EXPORT_CSV_COLUMNS_SUBMISSIONS_LIST,
-        params: { instituteId, assessmentId },
+        params: { instituteId, assessmentId, notAttempted },
     });
     return response?.data;
 };

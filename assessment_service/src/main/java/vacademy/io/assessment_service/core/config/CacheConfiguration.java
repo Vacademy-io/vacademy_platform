@@ -52,6 +52,15 @@ public class CacheConfiguration {
                         .recordStats()
                         .build());
 
+        // Batch display names for the CSV exports. Names essentially never change and the
+        // map is tiny, so this is cached longer than the enrollment above.
+        cacheManager.registerCustomCache("batchNames",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(30, TimeUnit.MINUTES)
+                        .maximumSize(500)
+                        .recordStats()
+                        .build());
+
         return cacheManager;
     }
 }

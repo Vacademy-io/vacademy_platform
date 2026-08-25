@@ -1049,6 +1049,21 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             assessmentId={assessmentId}
                             instituteId={initData?.id}
                             assessmentType={assesssmentType}
+                            // On Pending the export is the "never attempted" list, which
+                            // only exists for batch-enrolled learners — Individual and
+                            // External participants already get a real registration row and
+                            // are covered by the result sheet.
+                            notAttempted={
+                                selectedTab === 'Pending' &&
+                                selectedParticipantsTab === 'internal' &&
+                                batchSelectionTab === 'batch'
+                            }
+                            notAttemptedScope={{
+                                batches: (selectedFilter.batches ?? []).map(
+                                    (batch: { id: string }) => batch.id
+                                ),
+                                name: searchText,
+                            }}
                         />
                         <AssessmentReportZipExportDialog
                             assessmentId={assessmentId}

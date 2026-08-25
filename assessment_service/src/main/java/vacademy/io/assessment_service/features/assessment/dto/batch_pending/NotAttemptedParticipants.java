@@ -67,7 +67,11 @@ public final class NotAttemptedParticipants {
                                                     Set<String> attemptedUserIds,
                                                     String nameQuery,
                                                     Pageable pageable) {
-        List<ParticipantsDetailsDto> rows = filterAndSort(enrolled, attemptedUserIds, nameQuery);
+        return page(toRows(filterAndSortLearners(enrolled, attemptedUserIds, nameQuery)), pageable);
+    }
+
+    /** Pages an already-filtered row list (the CSV export shares the filtering, not the paging). */
+    public static Page<ParticipantsDetailsDto> page(List<ParticipantsDetailsDto> rows, Pageable pageable) {
 
         // Guard both ends: an offset past the end must yield an empty page, not an
         // IndexOutOfBounds. A teacher sitting on page 3 while learners submit (shrinking
@@ -77,9 +81,22 @@ public final class NotAttemptedParticipants {
         return new PageImpl<>(rows.subList(from, to), pageable, rows.size());
     }
 
-    private static List<ParticipantsDetailsDto> filterAndSort(List<EnrolledLearnerDto> enrolled,
-                                                              Set<String> attemptedUserIds,
-                                                              String nameQuery) {
+    /** Maps learners to the row shape the submissions table and its response envelope use. */
+    public static List<ParticipantsDetailsDto> toRows(List<EnrolledLearnerDto> learners) {
+        return learners.stream()
+                .<ParticipantsDetailsDto>map(learner -> new NotAttemptedParticipantDto(
+                        learner.getUserId(), learner.getFullName(), learner.getPackageSessionId()))
+                .toList();
+    }
+
+    /**
+     * The learners who have not attempted, name-filtered and ordered. Returns the learner
+     * records rather than table rows because the CSV export needs their contact details,
+     * which the row shape deliberately does not carry.
+     */
+    public static List<EnrolledLearnerDto> filterAndSortLearners(List<EnrolledLearnerDto> enrolled,
+                                                                 Set<String> attemptedUserIds,
+                                                                 String nameQuery) {
         if (enrolled == null || enrolled.isEmpty()) {
             return List.of();
         }
@@ -97,8 +114,6 @@ public final class NotAttemptedParticipants {
                 .sorted(Comparator
                         .comparing(NotAttemptedParticipants::nameOf, String.CASE_INSENSITIVE_ORDER)
                         .thenComparing(EnrolledLearnerDto::getUserId))
-                .<ParticipantsDetailsDto>map(learner -> new NotAttemptedParticipantDto(
-                        learner.getUserId(), learner.getFullName(), learner.getPackageSessionId()))
                 .toList();
     }
 

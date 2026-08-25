@@ -434,6 +434,15 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session=Non
                 cand = model.split(":", 1)[1].strip()
                 if cand:
                     sm_model = cand if cand.startswith("lightning") else f"lightning_{cand}"
+            elif model.endswith("_pro") or model.endswith("-pro"):
+                # The engine key stored on an agent is "smallest_pro", not the
+                # "smallest:<model>" form this parser was written for, so the two
+                # conventions never met and a _pro agent silently got the STANDARD
+                # model. Smallest hard-rejects a cross-model voice, so every _pro
+                # voice (mrunal, manasi, ketaki, meher) was being sent somewhere it
+                # does not exist - proven by /preview.mp3 returning 502 for
+                # smallest_pro/mrunal while smallest/devansh returns audio.
+                sm_model = sm_model if sm_model.endswith("_pro") else sm_model + "_pro"
             sm_voice = (voice or s.smallest_voice).strip() or s.smallest_voice
             try:
                 return _tag_engine(

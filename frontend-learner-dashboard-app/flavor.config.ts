@@ -73,11 +73,19 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "learner",
   },
 
-  // Shiksha Nation Android & Electron app
+  // Shiksha Nation Android & Electron app.
+  //
+  // Deliberately points at vacademy.io/shiksha-nation, NOT shikshanation.com/learner.
+  // Both are live institute_domain_routing rows for the same institute, but only
+  // the vacademy.io one has redirect=/course-collections — shikshanation.com/learner
+  // was left at the default redirect=/login, so the app opened straight to the
+  // login page instead of the course catalogue. Fix the DB row (Prod-SN-Learner)
+  // instead of this mapping if shikshanation.com/learner ever needs to be the
+  // canonical one again.
   "com.shikshanation.new.app": {
     appName: "Shiksha Nation",
-    domain: "shikshanation.com",
-    subdomain: "learner",
+    domain: "vacademy.io",
+    subdomain: "shiksha-nation",
   },
 
   //SSDC Android App

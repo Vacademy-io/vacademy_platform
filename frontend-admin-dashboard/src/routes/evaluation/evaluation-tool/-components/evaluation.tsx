@@ -30,7 +30,7 @@ interface QuestionData {
 }
 
 interface EvaluationProps {
-    questionData: Record<string, QuestionData[]>; // Section-wise question data
+    questionData?: Record<string, QuestionData[]>; // Section-wise question data
     totalPages: number; // Total number of pages
     pagesVisited: number[]; // Array of visited page numbers
 }
@@ -47,7 +47,15 @@ const parseMaxMark = (markingJson: string): number => {
     }
 };
 
-export default function Evaluation({ questionData, totalPages, pagesVisited }: EvaluationProps) {
+// Stable reference (not a fresh `{}` per render) — questionData feeds a
+// useMemo dependency array, and the standalone free tool never passes one.
+const EMPTY_QUESTION_DATA: Record<string, QuestionData[]> = {};
+
+export default function Evaluation({
+    questionData = EMPTY_QUESTION_DATA,
+    totalPages,
+    pagesVisited,
+}: EvaluationProps) {
     const [activeSection, setActiveSection] = useState<string>(Object.keys(questionData)[0] || '');
     const { elapsedTime } = useTimerStore();
     const { addOrUpdateMark, setQuestionFeedback, marksData, feedbackByQuestion } = useMarksStore();

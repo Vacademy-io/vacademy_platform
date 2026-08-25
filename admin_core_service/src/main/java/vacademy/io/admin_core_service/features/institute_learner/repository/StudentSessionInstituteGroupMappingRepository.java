@@ -13,6 +13,47 @@ import java.util.Optional;
 public interface StudentSessionInstituteGroupMappingRepository
     extends JpaRepository<StudentSessionInstituteGroupMapping, String> {
 
+  /**
+   * Every learner enrolled in any of {@code psIds}, deduped to one row per learner.
+   *
+   * <p>Used by assessment_service to build the "enrolled but has not attempted" list.
+   * Two properties matter and must be preserved:
+   *
+   * <ul>
+   *   <li><b>No exclusion parameter.</b> The caller subtracts the already-attempted
+   *       learners itself. Pushing an exclude-list in as an array made the predicate
+   *       unestimable, and once Postgres picked a generic plan it re-evaluated the array
+   *       per row — measured on prod, the same page went from 22ms to 434-880ms,
+   *       intermittently. As written the plan is stable: 22ms custom / 28ms generic on
+   *       the largest batch in prod (4051 learners), 1-2ms on a typical one.</li>
+   *   <li><b>Index-only on the mapping side.</b> The WHERE columns match
+   *       {@code idx_student_batch_lookup (package_session_id, institute_id, user_id,
+   *       status) WHERE status = 'ACTIVE'}, so the mapping is read from the index with no
+   *       heap access. Adding a column from ssigm outside that index costs heap fetches
+   *       per row.</li>
+   * </ul>
+   *
+   * <p>DISTINCT ON is needed because a learner can sit in more than one of the requested
+   * batches; the ORDER BY inside picks the lowest package_session_id so the batch shown
+   * is at least deterministic.
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (ssigm.user_id)
+             ssigm.user_id AS userId,
+             s.full_name AS fullName,
+             ssigm.package_session_id AS packageSessionId
+      FROM student_session_institute_group_mapping ssigm
+      JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.package_session_id IN (:psIds)
+        AND ssigm.institute_id = :instituteId
+        AND ssigm.status IN (:statuses)
+      ORDER BY ssigm.user_id, ssigm.package_session_id
+      """, nativeQuery = true)
+  List<vacademy.io.admin_core_service.features.institute_learner.dto.batch_enrollment.BatchEnrolledLearnerDto>
+      findEnrolledLearnersByPackageSessions(@Param("psIds") List<String> psIds,
+                                            @Param("instituteId") String instituteId,
+                                            @Param("statuses") List<String> statuses);
+
   @Query(value = """
       SELECT
           ssigm.id AS mapping_id,                 -- Index 0

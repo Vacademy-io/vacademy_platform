@@ -315,4 +315,19 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
               AND (:leadTag IS NULL OR :leadTag = '' OR i.lead_tag = :leadTag)
             """, nativeQuery = true)
     Long countAllInstitutesFiltered(@Param("search") String search, @Param("leadTag") String leadTag);
+
+    /**
+     * Every custom live-class hostname currently configured, deduplicated.
+     *
+     * Consumed on each BBB pool-server start to rebuild that server's nginx
+     * server_name list and its certificate SAN set, so an institute added here
+     * becomes reachable on the next restore with no manual step.
+     */
+    @Query(value = """
+            SELECT DISTINCT i.live_session_base_url FROM institutes i
+            WHERE i.live_session_base_url IS NOT NULL
+              AND TRIM(i.live_session_base_url) <> ''
+            ORDER BY 1
+            """, nativeQuery = true)
+    List<String> findDistinctLiveSessionBaseUrls();
 }

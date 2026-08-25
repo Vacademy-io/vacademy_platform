@@ -45,8 +45,30 @@ public class BbbCustomDomainController {
 
     private final InstituteRepository instituteRepository;
 
-    @Value("${internal.service.token:}")
+    /**
+     * The shared cluster secret.
+     *
+     * Falls back to {@code ai.service.internal.token} because admin_core's deploy
+     * workflow historically injected the very same GitHub secret under the name
+     * AI_SERVICE_INTERNAL_TOKEN and never set INTERNAL_SERVICE_TOKEN at all — so
+     * without this fallback the property resolves to empty and every call 401s,
+     * including one carrying the correct token. Same two-level pattern
+     * assessment_service's copy-check callbacks use.
+     */
+    @Value("${internal.service.token:${ai.service.internal.token:}}")
     private String expectedToken;
+
+    @jakarta.annotation.PostConstruct
+    void logTokenConfig() {
+        // Length only, never the value — makes a misconfigured deploy obvious at
+        // startup instead of surfacing as an unexplained 401 hours later.
+        if (expectedToken == null || expectedToken.isEmpty()) {
+            log.error("[BBB] custom-domains token is EMPTY at startup — every call will 401. "
+                    + "Set INTERNAL_SERVICE_TOKEN on admin-core-service.");
+        } else {
+            log.info("[BBB] custom-domains token loaded (length={})", expectedToken.length());
+        }
+    }
 
     /**
      * GET /admin-core-service/bbb/custom-domains

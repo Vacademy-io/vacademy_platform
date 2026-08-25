@@ -447,6 +447,11 @@ jobs:
           VACADEMY_BACKEND_URL: ${{ vars.VACADEMY_BACKEND_URL }}
         run: |
           set -uo pipefail
+          # GitHub runs this step as `bash -e {0}`, so ANY failing command — a jq
+          # parse error, a transient curl — aborts before the explicit guards below
+          # can turn it into a warning. This step does its own error handling and
+          # decides deliberately what is fatal, so -e is turned off here.
+          set +e
           IP="${{ steps.poweron.outputs.server_ip }}"
           [ -z "$IP" ] && IP="${{ steps.create.outputs.server_ip }}"
           BACKEND_URL="${VACADEMY_BACKEND_URL:-https://backend-stage.vacademy.io}"
@@ -477,9 +482,12 @@ jobs:
             ZONES=$(curl -s --max-time 30 -H "Authorization: Bearer $CF_TOKEN" \
               "${{ env.CF_API }}/zones?per_page=50" | jq -c '[.result[] | {name, id}]')
             for HOST in $DOMAINS; do
-              # Longest-suffix match, so sub.school.co.in picks school.co.in
+              # Longest-suffix match, so sub.school.co.in picks school.co.in.
+              # `. as $z` matters: inside `$h | endswith(...)` the input is the
+              # STRING $h, so a bare .name there indexes a string and jq errors out,
+              # which would silently send every host down the warn-and-skip path.
               ZONE_ID=$(echo "$ZONES" | jq -r --arg h "$HOST" \
-                '[.[] | select(($h == .name) or ($h | endswith("." + .name)))]
+                '[.[] | . as $z | select(($h == $z.name) or ($h | endswith("." + $z.name)))]
                  | sort_by(.name | length) | last | .id // empty')
               if [ -z "$ZONE_ID" ]; then
                 echo "::warning::No Cloudflare zone for $HOST — skipping its DNS record."
@@ -497,17 +505,30 @@ jobs:
                 OK=$(curl -s -X POST "${{ env.CF_API }}/zones/$ZONE_ID/dns_records" \
                   -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" -d "$DATA" | jq -r '.success')
               fi
-              echo "  $HOST -> $IP (success=$OK)"
+              if [ "$OK" = "true" ]; then
+                echo "  $HOST -> $IP"
+              else
+                echo "::warning::DNS update failed for $HOST (Cloudflare success=${OK:-<no response>})"
+              fi
             done
           fi
 
           # ── Refresh the DNS-01 credentials, then apply on the box ───────
           printf 'dns_cloudflare_api_token = %s\n' "$CF_TOKEN" | \
-            ssh $SSH_OPTS root@$IP 'umask 077; cat > /etc/letsencrypt/cloudflare.ini && chmod 600 /etc/letsencrypt/cloudflare.ini'
+            ssh $SSH_OPTS root@$IP 'umask 077; cat > /etc/letsencrypt/cloudflare.ini && chmod 600 /etc/letsencrypt/cloudflare.ini' \
+            || echo "::warning::Could not refresh cloudflare.ini — certificate expansion may be skipped on the box."
 
-          scp $SSH_OPTS bigbluebutton-server/install-custom-domains.sh root@$IP:/tmp/
+          if ! scp $SSH_OPTS bigbluebutton-server/install-custom-domains.sh root@$IP:/tmp/; then
+            echo "::error::Could not copy install-custom-domains.sh to $IP"
+            exit 1
+          fi
           CSV=$(echo "$DOMAINS" | tr ' ' ',' | sed 's/,$//')
-          ssh $SSH_OPTS root@$IP "bash /tmp/install-custom-domains.sh '${{ matrix.domain }}' '$CSV'"
+          # This one IS fatal: nginx server_name and the certificate are what make
+          # the alias reachable at all, and the script rolls itself back on failure.
+          if ! ssh $SSH_OPTS root@$IP "bash /tmp/install-custom-domains.sh '${{ matrix.domain }}' '$CSV'"; then
+            echo "::error::install-custom-domains.sh failed on $IP — the canonical domain is unaffected, but institute domains may not be served."
+            exit 1
+          fi
 
       - name: Summary
         if: steps.check.outputs.skip != 'true'

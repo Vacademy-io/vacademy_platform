@@ -5,28 +5,22 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import {
     listConversations,
     getMessages,
     sendMessage as apiSendMessage,
     deleteMessage as apiDeleteMessage,
+    editMessage as apiEditMessage,
     markRead,
     getRules,
     acknowledgeRules,
-    createReport,
     createBatchConversation,
     createCommunityConversation,
     createDirectConversation,
     searchBatches,
     searchPeople,
     classifyChatSendError,
+    describeDeleteChatError,
+    describeEditChatError,
     type ChatConversationResponse,
     type ChatMessageResponse,
     type ChatRulesResponse,
@@ -49,6 +43,7 @@ import { NewChatModal } from './NewChatModal';
 import { CommunityRulesPanel } from './CommunityRulesPanel';
 import { RulesEditor } from './RulesEditor';
 import { ReportsReviewQueue } from './ReportsReviewQueue';
+import { ReportMessageDialog } from './ReportMessageDialog';
 import {
     getTerminology,
 } from '@/components/common/layout-container/sidebar/utils';
@@ -139,10 +134,8 @@ export function ChatScreen({
     const [isAcknowledging, setIsAcknowledging] = useState(false);
     const [chatDisabled, setChatDisabled] = useState(false);
 
-    // Report dialog state.
+    // Report dialog state (reason + details are collected inside ReportMessageDialog).
     const [reportTarget, setReportTarget] = useState<ChatMessageResponse | null>(null);
-    const [reportReason, setReportReason] = useState('');
-    const [reportSubmitting, setReportSubmitting] = useState(false);
 
     // Latest known seq for the open conversation — used for SSE resync.
     const latestSeqRef = useRef<number>(0);
@@ -523,8 +516,22 @@ export function ChatScreen({
         try {
             const updated = await apiDeleteMessage(message.conversationId, message.id);
             setMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
-        } catch {
-            toast.error('Failed to delete the message.');
+        } catch (err) {
+            toast.error(describeDeleteChatError(err));
+        }
+    }, []);
+
+    // ── Edit a message ────────────────────────────────────────────────────
+    const handleEdit = useCallback(async (message: ThreadMessage, text: string) => {
+        try {
+            const updated = await apiEditMessage(message.conversationId, message.id, { text });
+            setMessages((prev) =>
+                prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m))
+            );
+        } catch (err) {
+            toast.error(describeEditChatError(err));
+            // Rethrow so the dialog stays open on the text the user is still trying to save.
+            throw err;
         }
     }, []);
 
@@ -545,32 +552,7 @@ export function ChatScreen({
     // ── Report a message ──────────────────────────────────────────────────
     const handleReport = useCallback((message: ChatMessageResponse) => {
         setReportTarget(message);
-        setReportReason('');
     }, []);
-
-    const handleReportSubmit = useCallback(async () => {
-        if (!activeId || !reportTarget) return;
-        const trimmed = reportReason.trim();
-        if (!trimmed) {
-            toast.error('A reason is required to report.');
-            return;
-        }
-        setReportSubmitting(true);
-        try {
-            await createReport({
-                conversationId: activeId,
-                messageId: reportTarget.id,
-                reason: trimmed,
-            });
-            toast.success('Report submitted for review.');
-            setReportTarget(null);
-            setReportReason('');
-        } catch {
-            toast.error('Failed to submit the report.');
-        } finally {
-            setReportSubmitting(false);
-        }
-    }, [activeId, reportTarget, reportReason]);
 
     // ── SSE: receive new messages + read receipts ─────────────────────────
     const onStreamMessage = useCallback(
@@ -684,8 +666,29 @@ export function ChatScreen({
             .catch(() => undefined);
     }, [refetchConversations]);
 
+    // ── SSE: an existing message changed in place (edited / deleted) ──────
+    // NOT routed through onStreamMessage: that path reconciles optimistic sends, bumps the unread
+    // badge and rewrites the conversation-list preview — all wrong for a message that already exists.
+    const onStreamMessageUpdated = useCallback(
+        (payload: ChatMessagePayload) => {
+            const msg = payload.message;
+            if (!msg) return;
+            if (payload.conversationId === activeIdRef.current) {
+                setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)));
+            }
+            // The list preview only belongs to this message while it is still the newest one.
+            patchConversation(payload.conversationId, (c) =>
+                c.lastMessageSeq === msg.seq
+                    ? { ...c, lastMessagePreview: msg.content || 'Attachment' }
+                    : c
+            );
+        },
+        [patchConversation]
+    );
+
     useChatStream({
         onMessage: onStreamMessage,
+        onMessageUpdated: onStreamMessageUpdated,
         onRead: onStreamRead,
         onReconnect: onStreamReconnect,
         enabled: Boolean(userId),
@@ -913,6 +916,7 @@ export function ChatScreen({
                                     onReport={handleReport}
                                     onRetry={handleRetry}
                                     onDelete={handleDelete}
+                                    onEdit={handleEdit}
                                 />
 
                                 <MessageComposer
@@ -958,57 +962,11 @@ export function ChatScreen({
                 />
             )}
 
-            <Dialog
-                open={reportTarget !== null}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setReportTarget(null);
-                        setReportReason('');
-                    }
-                }}
-            >
-                <DialogContent className="w-full max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="text-base font-semibold text-neutral-700">
-                            Report message
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-2 py-2">
-                        <label
-                            htmlFor="chat-report-reason"
-                            className="text-sm font-medium text-neutral-600"
-                        >
-                            Why are you reporting this message?
-                        </label>
-                        <Textarea
-                            id="chat-report-reason"
-                            autoFocus
-                            rows={4}
-                            value={reportReason}
-                            onChange={(e) => setReportReason(e.target.value)}
-                            placeholder="Describe the issue..."
-                        />
-                    </div>
-                    <DialogFooter>
-                        <MyButton
-                            buttonType="secondary"
-                            onClick={() => {
-                                setReportTarget(null);
-                                setReportReason('');
-                            }}
-                        >
-                            Cancel
-                        </MyButton>
-                        <MyButton
-                            buttonType="primary"
-                            disabled={!reportReason.trim() || reportSubmitting}
-                            onClick={() => void handleReportSubmit()}
-                        >
-                            {reportSubmitting ? 'Submitting...' : 'Submit report'}
-                        </MyButton>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ReportMessageDialog
+                target={reportTarget}
+                conversationId={activeId}
+                onClose={() => setReportTarget(null)}
+            />
 
             <LeaderboardShareDialog
                 open={Boolean(leaderboardDialog)}

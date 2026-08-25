@@ -1,7 +1,15 @@
-import { useEffect, useRef } from "react";
-import { ArrowClockwise, Trash, X } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowClockwise, PencilSimple, Trash, X } from "@phosphor-icons/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type {
   ChatConversationResponse,
@@ -37,6 +45,8 @@ export interface ChatThreadProps {
   onDismissFailed?: (message: UiChatMessage) => void;
   /** Soft-delete one of the user's own messages. */
   onDelete?: (message: UiChatMessage) => void;
+  /** Rewrite one of the user's own messages. Resolves once the server has accepted it. */
+  onEdit?: (message: UiChatMessage, text: string) => Promise<void>;
 }
 
 /** Show sender names for multi-party threads (groups / community), not DMs. */
@@ -55,8 +65,13 @@ export function ChatThread({
   onRetry,
   onDismissFailed,
   onDelete,
+  onEdit,
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [editTarget, setEditTarget] = useState<UiChatMessage | null>(null);
+  const [editText, setEditText] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UiChatMessage | null>(null);
   const lastSeqRef = useRef<number | null>(null);
 
   // Auto-scroll to the newest message when a new one arrives at the tail.
@@ -134,8 +149,22 @@ export function ChatThread({
 
           const hasImage = isImageAttachment(msg.attachmentMime, msg.attachmentUrl);
           const isTombstoned = msg.isDeleted === true;
+          // Both actions are institute-configurable for learners. `!== false` so a build running
+          // against an older backend (which sends neither flag) keeps today's behaviour.
           const canDelete =
-            isOwn && !isTombstoned && !msg.pending && !msg.failed && !!onDelete;
+            isOwn &&
+            !isTombstoned &&
+            !msg.pending &&
+            !msg.failed &&
+            !!onDelete &&
+            conversation.canDeleteOwnMessages !== false;
+          const canEdit =
+            isOwn &&
+            !isTombstoned &&
+            !msg.pending &&
+            !msg.failed &&
+            !!onEdit &&
+            conversation.canEditOwnMessages !== false;
 
           return (
             <div key={msg.id} className="flex flex-col">
@@ -190,18 +219,39 @@ export function ChatThread({
                           msg.failed && "opacity-70 ring-1 ring-destructive",
                         )}
                       >
-                        {canDelete && (
-                          <button
-                            type="button"
-                            aria-label="Delete message"
-                            onClick={() => onDelete?.(msg)}
+                        {(canEdit || canDelete) && (
+                          <div
                             className={cn(
-                              "absolute -start-8 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm transition-opacity hover:bg-muted",
-                              "opacity-0 group-hover/msg:opacity-100 focus-visible:opacity-100",
+                              "absolute -start-8 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1",
+                              "opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
+                              // Touch devices never fire hover — keep the controls usable there.
+                              "max-md:opacity-100",
                             )}
                           >
-                            <Trash size={15} />
-                          </button>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                aria-label="Edit message"
+                                onClick={() => {
+                                  setEditTarget(msg);
+                                  setEditText(msg.content ?? "");
+                                }}
+                                className="flex size-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm hover:bg-muted"
+                              >
+                                <PencilSimple size={15} />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                type="button"
+                                aria-label="Delete message"
+                                onClick={() => setDeleteTarget(msg)}
+                                className="flex size-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm hover:bg-muted"
+                              >
+                                <Trash size={15} />
+                              </button>
+                            )}
+                          </div>
                         )}
 
                         {hasImage && msg.attachmentUrl && (
@@ -278,7 +328,9 @@ export function ChatThread({
                                 : "text-muted-foreground",
                             )}
                           >
-                            {msg.pending ? "Sending…" : timeLabel(msg.createdAt)}
+                            {msg.pending
+                              ? "Sending…"
+                              : `${timeLabel(msg.createdAt)}${msg.isEdited ? " · edited" : ""}`}
                           </span>
                         )}
                       </div>
@@ -292,6 +344,86 @@ export function ChatThread({
       </div>
 
       <div ref={bottomRef} />
+
+      <Dialog
+        open={editTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !isSavingEdit) setEditTarget(null);
+        }}
+      >
+        <DialogContent className="w-full max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-body font-semibold">Edit message</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            aria-label="Message text"
+            rows={4}
+            maxLength={8000}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+          />
+          <p className="text-caption text-muted-foreground">
+            Everyone in the conversation sees the change, marked as edited.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={isSavingEdit}
+              onClick={() => setEditTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                isSavingEdit ||
+                !editText.trim() ||
+                editText.trim() === (editTarget?.content ?? "").trim()
+              }
+              onClick={() => {
+                const target = editTarget;
+                if (!target || !onEdit) return;
+                setIsSavingEdit(true);
+                void onEdit(target, editText.trim())
+                  .then(() => setEditTarget(null))
+                  .finally(() => setIsSavingEdit(false));
+              }}
+            >
+              {isSavingEdit ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent className="w-full max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-body font-semibold">Delete message</DialogTitle>
+          </DialogHeader>
+          <p className="text-body text-muted-foreground">
+            This removes the message for everyone in the conversation. It can&apos;t be
+            undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const target = deleteTarget;
+                setDeleteTarget(null);
+                if (target) onDelete?.(target);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

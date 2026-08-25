@@ -82,6 +82,7 @@ class ChatMessageEditTest {
 
         when(rulesService.enforceBeforeEdit(any(), anyString()))
                 .thenReturn(ChatRulesService.ModerationResult.clean());
+        when(permissionService.canEditOwnMessage(any(), any())).thenReturn(true);
         when(messageMapper.toResponse(any(ChatMessage.class), any()))
                 .thenReturn(ChatMessageResponse.builder().id(MSG).conversationId(CONV).isEdited(true).build());
         when(messageMapper.toResponse(any(ChatMessage.class)))
@@ -101,7 +102,7 @@ class ChatMessageEditTest {
     void senderEditsOwnMessage() {
         ChatMessage msg = given(false, 1L);
 
-        service.editMessage(CONV, MSG, SENDER, req("the meeting is at 6"));
+        service.editMessage(CONV, MSG, SENDER, "STUDENT", req("the meeting is at 6"));
 
         assertThat(richText.getContent()).isEqualTo("the meeting is at 6");
         assertThat(msg.getIsEdited()).isTrue();
@@ -114,7 +115,7 @@ class ChatMessageEditTest {
     void othersCannotEdit() {
         given(false, 1L);
 
-        assertThatThrownBy(() -> service.editMessage(CONV, MSG, "moderator-1", req("different words")))
+        assertThatThrownBy(() -> service.editMessage(CONV, MSG, "moderator-1", "ADMIN", req("different words")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("NOT_THE_SENDER");
         assertThat(richText.getContent()).isEqualTo("teh meeting is at 5");
@@ -125,7 +126,7 @@ class ChatMessageEditTest {
     void deletedMessageCannotBeEdited() {
         given(true, 1L);
 
-        assertThatThrownBy(() -> service.editMessage(CONV, MSG, SENDER, req("back again")))
+        assertThatThrownBy(() -> service.editMessage(CONV, MSG, SENDER, "STUDENT", req("back again")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("MESSAGE_DELETED");
     }
@@ -135,7 +136,7 @@ class ChatMessageEditTest {
     void emptyEditRejected() {
         given(false, 1L);
 
-        assertThatThrownBy(() -> service.editMessage(CONV, MSG, SENDER, req("   ")))
+        assertThatThrownBy(() -> service.editMessage(CONV, MSG, SENDER, "STUDENT", req("   ")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("EMPTY_MESSAGE");
     }
@@ -145,7 +146,7 @@ class ChatMessageEditTest {
     void unchangedTextIsANoOp() {
         ChatMessage msg = given(false, 1L);
 
-        service.editMessage(CONV, MSG, SENDER, req("teh meeting is at 5"));
+        service.editMessage(CONV, MSG, SENDER, "STUDENT", req("teh meeting is at 5"));
 
         assertThat(msg.getIsEdited()).isFalse();
         verify(messageRepo, never()).save(any());
@@ -159,10 +160,22 @@ class ChatMessageEditTest {
         when(rulesService.enforceBeforeEdit(any(), anyString()))
                 .thenReturn(new ChatRulesService.ModerationResult(true, "Matched banned keyword: spam"));
 
-        service.editMessage(CONV, MSG, SENDER, req("now with spam"));
+        service.editMessage(CONV, MSG, SENDER, "STUDENT", req("now with spam"));
 
         assertThat(msg.getIsFlagged()).isTrue();
         verify(reportService).createSystemFlag(any(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("an institute that turns off student self-edit is enforced server-side")
+    void studentEditCanBeTurnedOffPerInstitute() {
+        given(false, 1L);
+        when(permissionService.canEditOwnMessage(INSTITUTE, "STUDENT")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.editMessage(CONV, MSG, SENDER, "STUDENT", req("new text")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("EDIT_NOT_ALLOWED");
+        assertThat(richText.getContent()).isEqualTo("teh meeting is at 5");
     }
 
     @Test
@@ -171,7 +184,7 @@ class ChatMessageEditTest {
         given(false, 1L);
         when(permissionService.isChatEnabled(INSTITUTE)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.editMessage(CONV, MSG, SENDER, req("anything")))
+        assertThatThrownBy(() -> service.editMessage(CONV, MSG, SENDER, "STUDENT", req("anything")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("CHAT_DISABLED");
     }
@@ -181,7 +194,7 @@ class ChatMessageEditTest {
     void latestMessageRefreshesPreview() {
         given(false, 7L);
 
-        service.editMessage(CONV, MSG, SENDER, req("the meeting is at 6"));
+        service.editMessage(CONV, MSG, SENDER, "STUDENT", req("the meeting is at 6"));
 
         verify(convRepo).save(any());
     }
@@ -194,7 +207,7 @@ class ChatMessageEditTest {
                 .id(CONV).type(ChatConversationType.BATCH_GROUP.name())
                 .instituteId(INSTITUTE).lastMessageSeq(9L).build()));
 
-        service.editMessage(CONV, MSG, SENDER, req("the meeting is at 6"));
+        service.editMessage(CONV, MSG, SENDER, "STUDENT", req("the meeting is at 6"));
 
         verify(convRepo, never()).save(any());
     }

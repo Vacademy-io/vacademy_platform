@@ -981,6 +981,45 @@ function ChatSection({
                     onChange={(checked) => onChange((c) => ({ ...c, enabled: checked }))}
                 />
 
+                {/* What learners may do to their OWN messages */}
+                <div className="space-y-2">
+                    <div className="text-sm font-medium">
+                        {chatRoleLabelPlural('student')} — own messages
+                    </div>
+                    <p className="text-xs text-neutral-500">
+                        Applies everywhere {chatRoleLabelPlural('student').toLowerCase()} can chat.{' '}
+                        {chatRoleLabelPlural('teacher')} and admins always keep both actions.
+                    </p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <ToggleRow
+                            label={`${chatRoleLabelPlural('student')} can edit their own messages`}
+                            checked={chat.message_actions.students_can_edit_own}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    message_actions: {
+                                        ...c.message_actions,
+                                        students_can_edit_own: checked,
+                                    },
+                                }))
+                            }
+                        />
+                        <ToggleRow
+                            label={`${chatRoleLabelPlural('student')} can delete their own messages`}
+                            checked={chat.message_actions.students_can_delete_own}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    message_actions: {
+                                        ...c.message_actions,
+                                        students_can_delete_own: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </div>
+
                 {/* Batch groups */}
                 <div className="space-y-2">
                     <div className="text-sm font-medium">{batchLabel} groups</div>

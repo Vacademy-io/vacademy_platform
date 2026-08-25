@@ -428,6 +428,8 @@ public class ChatConversationService {
                 .memberRole(callerMember != null ? callerMember.getMemberRole() : null)
                 .rulesVersion(c.getRulesVersion())
                 .canPost(canPost)
+                .canEditOwnMessages(permissionService.canEditOwnMessage(c.getInstituteId(), callerRole))
+                .canDeleteOwnMessages(permissionService.canDeleteOwnMessage(c.getInstituteId(), callerRole))
                 .build();
     }
 

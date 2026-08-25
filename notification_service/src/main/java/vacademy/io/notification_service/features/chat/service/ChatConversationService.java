@@ -211,6 +211,13 @@ public class ChatConversationService {
         return map;
     }
 
+    /**
+     * Get-or-create the caller's member row. The stored member_role is deliberately NEVER rewritten
+     * for an existing row: {@link ChatMembershipReconciler} keeps every non-MEMBER row out of roster
+     * reconciliation, so promoting a materialized MEMBER here would quietly make that person immune to
+     * being removed when they leave the batch. Moderation authority that comes from the institute role
+     * is evaluated per-request from the token instead (see ChatMessageService#canModerate).
+     */
     public ChatConversationMember ensureMember(ChatConversation conv, String userId, String userRole, ChatMemberRole memberRole) {
         Optional<ChatConversationMember> existing = memberRepo.findByConversationIdAndUserId(conv.getId(), userId);
         if (existing.isPresent()) {

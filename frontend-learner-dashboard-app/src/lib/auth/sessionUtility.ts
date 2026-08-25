@@ -445,6 +445,40 @@ const handleSSOLogin = (): boolean => {
   }
 };
 
+/**
+ * True when this device holds a usable learner session (token + the cached
+ * student/institute records the app needs to render an authenticated screen).
+ *
+ * Mirrors the check __root.tsx runs on every navigation. It lives here so the
+ * reader-mode route guards can ask the same question WITHOUT importing
+ * __root.tsx (that would be a circular import: __root is the parent of every
+ * route in the generated tree).
+ *
+ * Why the guards must ask at all: the reader-mode gates send blocked learners
+ * to /dashboard, which is an authenticated route. For a logged-OUT learner that
+ * bounces off __root's auth check straight back to the institute landing route,
+ * which is itself reader-blocked on iOS — an infinite redirect loop that pins
+ * the app on the boot splash forever. Send logged-out learners to /login.
+ */
+const hasActiveLearnerSession = async (): Promise<boolean> => {
+  try {
+    const token = await getTokenFromStorage(TokenKey.accessToken);
+    const studentDetails = await Storage.get({ key: "StudentDetails" });
+    const instituteDetails = await Storage.get({ key: "InstituteDetails" });
+
+    return (
+      !isNullOrEmptyOrUndefined(token) &&
+      !isNullOrEmptyOrUndefined(studentDetails?.value) &&
+      !isNullOrEmptyOrUndefined(instituteDetails?.value)
+    );
+  } catch (error) {
+    // Storage unavailable — treat as logged out. /login is always reachable,
+    // so this can never strand the learner the way /dashboard can.
+    console.error("[auth] session check failed:", error);
+    return false;
+  }
+};
+
 export {
   refreshTokens,
   removeTokensAndLogout,
@@ -457,4 +491,5 @@ export {
   getInstituteIdFromStorage,
   removeInstituteIdFromStorage,
   handleSSOLogin,
+  hasActiveLearnerSession,
 };

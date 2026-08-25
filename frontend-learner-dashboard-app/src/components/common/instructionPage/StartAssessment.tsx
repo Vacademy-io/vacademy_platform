@@ -10,7 +10,12 @@ import { Preferences } from "@capacitor/preferences";
 import { useAssessmentStore } from "@/stores/assessment-store";
 // import { enableProtection } from "@/constants/helper";
 
-const AssessmentStartModal = () => {
+interface AssessmentStartModalProps {
+  /** Held closed until the learner acknowledges the proctoring rules. */
+  disabled?: boolean;
+}
+
+const AssessmentStartModal = ({ disabled }: AssessmentStartModalProps) => {
   const location = useLocation();
   const pathSegments = location.pathname.split("/");
   const assessmentId = pathSegments[3];
@@ -149,42 +154,54 @@ const AssessmentStartModal = () => {
           buttonType="primary"
           scale="large"
           layoutVariant="default"
-          className="w-full max-w-sm"
+          disable={disabled}
+          className="h-12 w-full"
         >
           {isManual ? "Upload Answer" : "Start Assessment"}
         </MyButton>
       )}
 
       {isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg w-full max-w-md mx-4">
-            <div className="flex justify-between bg-primary-50 rounded-lg items-center p-4 border-b border-gray-200">
-              <h3 className="text-primary-500 text-xl font-medium">
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white">
+            <div className="flex items-center justify-between border-b border-neutral-100 bg-primary-50 p-4">
+              <h3 className="text-title font-semibold text-primary-500">
                 Start Assessment
               </h3>
               <button
+                type="button"
                 onClick={handleClose}
-                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close"
+                className="grid size-8 place-items-center rounded-full text-neutral-400 transition-colors hover:bg-white hover:text-neutral-700"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="p-6">
-              <p className="text-gray-600 sm:text-sm lg:text-subtitle">
+            <div className="p-5">
+              <p className="text-body leading-relaxed text-neutral-600">
                 {
                   "Once you start the assessment, you must complete it without interruption. Begin only when you're ready."
                 }
               </p>
             </div>
 
-            <div className="p-4 flex justify-center">
+            <div className="flex justify-end gap-2 border-t border-neutral-100 p-4">
+              <MyButton
+                onClick={handleClose}
+                buttonType="secondary"
+                scale="medium"
+                layoutVariant="default"
+                disable={isLoading}
+              >
+                Cancel
+              </MyButton>
               <MyButton
                 onClick={handleAssessmentAction}
                 buttonType="primary"
-                scale="large"
+                scale="medium"
                 layoutVariant="default"
-                disabled={isLoading}
+                disable={isLoading}
               >
                 {isLoading ? "Loading..." : "Proceed"}
               </MyButton>

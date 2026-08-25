@@ -248,19 +248,15 @@ export const Step3EnrollConfig = ({
                             </SelectTrigger>
                             <SelectContent className="z-popover-above-modal">
                                 <SelectItem value="SKIP">Skip silently (recommended)</SelectItem>
-                                <SelectItem value="RE_ENROLL">
-                                    Re-enroll (reactivate expired/terminated)
-                                </SelectItem>
                                 <SelectItem value="ERROR">Mark as error in report</SelectItem>
                             </SelectContent>
                         </Select>
                         <p className="mt-1 text-xs text-neutral-400">
                             {options.duplicateHandling === 'SKIP' &&
-                                `Already enrolled ${learnersTerm.toLowerCase()} will be silently skipped.`}
-                            {options.duplicateHandling === 'RE_ENROLL' &&
-                                `${learnersTerm} with expired or terminated access will be re-activated.`}
+                                `${learnersTerm} with active access or a pending invitation will be silently skipped.`}
                             {options.duplicateHandling === 'ERROR' &&
-                                `Already enrolled ${learnersTerm.toLowerCase()} will appear as failures in the results.`}
+                                `${learnersTerm} with active access or a pending invitation will appear as failures in the results.`}
+                            {` Expired or terminated ${learnersTerm.toLowerCase()} are always re-enrolled.`}
                         </p>
                     </div>
 

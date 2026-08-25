@@ -43,6 +43,7 @@ import { downloadAllAssignmentSubmissions } from '@/services/study-library/slide
 import { useRouter } from '@tanstack/react-router';
 import AssessmentAttemptActivity from './assessment-attempt-activity';
 import DocumentInteractionsPanel from './document-interactions-panel';
+import AiInsightsPanel from './ai-insights-panel';
 import { getInstituteId } from '@/constants/helper';
 
 interface AssignmentFileInfo {
@@ -1614,6 +1615,21 @@ export const ActivityLogDialog = ({
                                 </div>
                             )}
 
+                            {activeItem?.source_type === 'QUESTION' && (
+                                <AiInsightsPanel
+                                    slideId={
+                                        selectedUser && slideData
+                                            ? slideData.slide_id
+                                            : activeItem?.id || ''
+                                    }
+                                    userId={
+                                        selectedUser && slideData
+                                            ? selectedUser.user_id
+                                            : selectedUserId || ''
+                                    }
+                                />
+                            )}
+
                             {activeItem?.source_type === 'QUIZ' && (() => {
                                 const adminToken = getTokenFromCookie(TokenKey.accessToken);
                                 const adminUserId =
@@ -1697,6 +1713,22 @@ export const ActivityLogDialog = ({
                                         </div>
                                     )}
                                 </div>
+                            )}
+
+                            {(activeItem?.source_type === 'QUIZ' ||
+                                activeItem?.source_type === 'ASSIGNMENT') && (
+                                <AiInsightsPanel
+                                    slideId={
+                                        selectedUser && slideData
+                                            ? slideData.slide_id
+                                            : activeItem?.id || ''
+                                    }
+                                    userId={
+                                        selectedUser && slideData
+                                            ? selectedUser.user_id
+                                            : selectedUserId || ''
+                                    }
+                                />
                             )}
 
                             {activeItem?.source_type === 'DOCUMENT' && (

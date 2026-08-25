@@ -19,8 +19,13 @@ interface PaymentFiltersProps {
     endDate: string;
     onStartDateChange: (date: string) => void;
     onEndDateChange: (date: string) => void;
-    selectedPaymentStatuses: SelectOption[];
-    onPaymentStatusesChange: (statuses: SelectOption[]) => void;
+    /**
+     * Omit both to drop the Payment Status field — Manage Payments drives status from the KPI
+     * tiles / segmented switch instead, because the "Due" bucket also holds rows whose
+     * payment_status is NULL and those can never come back from an `IN (...)` filter.
+     */
+    selectedPaymentStatuses?: SelectOption[];
+    onPaymentStatusesChange?: (statuses: SelectOption[]) => void;
     selectedUserPlanStatuses: SelectOption[];
     onUserPlanStatusesChange: (statuses: SelectOption[]) => void;
     selectedPaymentSources: SelectOption[];
@@ -37,6 +42,18 @@ interface PaymentFiltersProps {
     onSearchChange: (value: string) => void;
     /** Optional action(s) rendered on the right of the control bar (e.g. export). */
     exportSlot?: ReactNode;
+    /**
+     * Render ONLY the detailed filter grid (payment type / status / plan / source / dates /
+     * course), always expanded and without the search + toggle bar. Used to embed the filters
+     * inside the redesign's slide-over panel, where search/segmented-status live in the control bar.
+     */
+    panelOnly?: boolean;
+    /**
+     * Drop the quick-range pills and the Start/End inputs. Set when the caller owns the date window
+     * itself (Manage Payments puts it in the toolbar dropdown), so the same period can't be set two
+     * ways in two places.
+     */
+    hideDateFilters?: boolean;
 }
 
 const PAYMENT_STATUS_OPTIONS: SelectOption[] = [
@@ -101,12 +118,13 @@ export function PaymentFilters({
     hasOrgAssociatedBatches,
     packageSessionFilter,
     onPackageSessionFilterChange,
-    batchesForSessions,
     onQuickFilterSelect,
     onClearFilters,
     searchValue,
     onSearchChange,
     exportSlot,
+    panelOnly = false,
+    hideDateFilters = false,
 }: PaymentFiltersProps) {
     const [showFilters, setShowFilters] = useState(false);
     // Which quick-range pill is highlighted. Cleared when the user edits dates manually
@@ -189,12 +207,11 @@ export function PaymentFilters({
     };
 
     const activeFilterCount =
-        (selectedPaymentStatuses.length || 0) +
+        (selectedPaymentStatuses?.length || 0) +
         (selectedUserPlanStatuses.length || 0) +
         (selectedPaymentSources.length || 0) +
         (selectedPaymentTypes.length || 0) +
-        (startDate ? 1 : 0) +
-        (endDate ? 1 : 0) +
+        (hideDateFilters ? 0 : (startDate ? 1 : 0) + (endDate ? 1 : 0)) +
         (packageSessionFilter.packageSessionIds?.length ||
             (packageSessionFilter.packageId ? 1 : 0));
 
@@ -205,129 +222,90 @@ export function PaymentFilters({
         onClearFilters();
     };
 
-    return (
-        <div className="space-y-4">
-            {/* Control bar: search + filters toggle + export */}
-            <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-3">
-                    {/* Search */}
-                    <div className="relative w-full sm:flex-1">
-                        <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-neutral-500" />
-                        <MyInput
-                            inputType="text"
-                            input={searchValue}
-                            onChangeFunction={(e) => onSearchChange(e.target.value)}
-                            inputPlaceholder="Search by name, email, phone, or amount"
-                            className="pl-9 sm:w-full"
-                        />
-                    </div>
-
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={cn(
-                            'h-9 gap-2',
-                            hasActiveFilters && 'border-primary-500 bg-primary-50 text-primary-600'
-                        )}
-                    >
-                        <Funnel size={16} weight={hasActiveFilters ? 'fill' : 'regular'} />
-                        Filters
-                        {hasActiveFilters && (
-                            <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-primary-500 text-caption text-neutral-50">
-                                {activeFilterCount}
-                            </span>
-                        )}
-                    </Button>
-
-                    {exportSlot}
-                </div>
-
-                {/* Quick range + clear */}
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-caption font-medium text-neutral-500">Quick range</span>
-                    <ChipToggleGroup
-                        value={activeQuick}
-                        onChange={handleQuickFilter}
-                        options={QUICK_RANGE_OPTIONS}
-                        ariaLabel="Quick date range"
+    // Shared detailed filter grid (attribute chips + quick/precise dates + course selector).
+    const filterGrid = (
+        <div className="space-y-5">
+            {/* Attribute filters */}
+            <div
+                className={cn(
+                    'grid grid-cols-1 gap-4 sm:grid-cols-2',
+                    !panelOnly && 'lg:grid-cols-4'
+                )}
+            >
+                <FilterField label="Payment Type">
+                    <SelectChips
+                        options={PAYMENT_TYPE_OPTIONS}
+                        selected={selectedPaymentTypes}
+                        onChange={onPaymentTypesChange}
+                        placeholder="All types"
+                        multiSelect
+                        fullWidth
+                        clearable
                     />
-                    {hasActiveFilters && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleClearAll}
-                            className="ml-auto gap-2 text-danger-600 hover:text-danger-700"
-                        >
-                            <X size={16} />
-                            Clear All
-                        </Button>
-                    )}
-                </div>
+                </FilterField>
+                {onPaymentStatusesChange && (
+                    <FilterField label="Payment Status">
+                        <SelectChips
+                            options={PAYMENT_STATUS_OPTIONS}
+                            selected={selectedPaymentStatuses ?? []}
+                            onChange={onPaymentStatusesChange}
+                            placeholder="All statuses"
+                            multiSelect
+                            fullWidth
+                            clearable
+                        />
+                    </FilterField>
+                )}
+                <FilterField label="Plan Status">
+                    <SelectChips
+                        options={USER_PLAN_STATUS_OPTIONS}
+                        selected={selectedUserPlanStatuses}
+                        onChange={onUserPlanStatusesChange}
+                        placeholder="All plan statuses"
+                        multiSelect
+                        fullWidth
+                        clearable
+                    />
+                </FilterField>
+                {hasOrgAssociatedBatches && (
+                    <FilterField label="Payment Source">
+                        <SelectChips
+                            options={PAYMENT_SOURCE_OPTIONS}
+                            selected={selectedPaymentSources}
+                            onChange={onPaymentSourcesChange}
+                            placeholder="All sources"
+                            multiSelect
+                            fullWidth
+                            clearable
+                        />
+                    </FilterField>
+                )}
             </div>
 
-            {/* Filter panel */}
-            {showFilters && (
-                <div className="space-y-5 rounded-lg border border-border bg-card p-5 shadow-sm">
-                    {/* Attribute filters */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <FilterField label="Payment Type">
-                            <SelectChips
-                                options={PAYMENT_TYPE_OPTIONS}
-                                selected={selectedPaymentTypes}
-                                onChange={onPaymentTypesChange}
-                                placeholder="All types"
-                                multiSelect
-                                fullWidth
-                                clearable
-                            />
-                        </FilterField>
-                        <FilterField label="Payment Status">
-                            <SelectChips
-                                options={PAYMENT_STATUS_OPTIONS}
-                                selected={selectedPaymentStatuses}
-                                onChange={onPaymentStatusesChange}
-                                placeholder="All statuses"
-                                multiSelect
-                                fullWidth
-                                clearable
-                            />
-                        </FilterField>
-                        <FilterField label="Plan Status">
-                            <SelectChips
-                                options={USER_PLAN_STATUS_OPTIONS}
-                                selected={selectedUserPlanStatuses}
-                                onChange={onUserPlanStatusesChange}
-                                placeholder="All plan statuses"
-                                multiSelect
-                                fullWidth
-                                clearable
-                            />
-                        </FilterField>
-                        {hasOrgAssociatedBatches && (
-                            <FilterField label="Payment Source">
-                                <SelectChips
-                                    options={PAYMENT_SOURCE_OPTIONS}
-                                    selected={selectedPaymentSources}
-                                    onChange={onPaymentSourcesChange}
-                                    placeholder="All sources"
-                                    multiSelect
-                                    fullWidth
-                                    clearable
-                                />
-                            </FilterField>
-                        )}
+            <div className="h-px bg-border" />
+
+            {/* Date range — omitted when the caller owns the window (see hideDateFilters). */}
+            {!hideDateFilters && (
+                <>
+                    <div className="space-y-2">
+                        <span className="text-caption font-medium text-neutral-500">
+                            Quick range
+                        </span>
+                        <ChipToggleGroup
+                            value={activeQuick}
+                            onChange={handleQuickFilter}
+                            options={QUICK_RANGE_OPTIONS}
+                            ariaLabel="Quick date range"
+                        />
                     </div>
-
-                    <div className="h-px bg-border" />
-
-                    {/* Date range */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <FilterField label="Start Date">
                             <Input
                                 type="datetime-local"
                                 value={startDate ? toLocalInputValue(startDate) : ''}
-                                onChange={(e) => handleDateChange(onStartDateChange, e.target.value)}
+                                onChange={(e) =>
+                                    handleDateChange(onStartDateChange, e.target.value)
+                                }
                                 className="h-9"
                             />
                         </FilterField>
@@ -342,26 +320,90 @@ export function PaymentFilters({
                     </div>
 
                     <div className="h-px bg-border" />
+                </>
+            )}
 
-                    {/* Course / session */}
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                            <GraduationCap size={16} className="text-neutral-500" />
-                            <Label className="text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                                {getTerminology(ContentTerms.Course, SystemTerms.Course)} /{' '}
-                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}
-                            </Label>
-                        </div>
-                        <PackageSelector
-                            instituteId={getCurrentInstituteId() || ''}
-                            onChange={handlePackageSessionChange}
-                            initialLevelId={packageSessionFilter.levelId}
-                            initialSessionId={packageSessionFilter.sessionId}
-                            initialPackageId={packageSessionFilter.packageId}
-                            multiSelect={true}
-                            initialPackageSessionIds={packageSessionFilter.packageSessionIds}
-                        />
-                    </div>
+            {/* Course / session */}
+            <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                    <GraduationCap size={16} className="text-neutral-500" />
+                    <Label className="text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                        {getTerminology(ContentTerms.Course, SystemTerms.Course)} /{' '}
+                        {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                    </Label>
+                </div>
+                <PackageSelector
+                    instituteId={getCurrentInstituteId() || ''}
+                    onChange={handlePackageSessionChange}
+                    initialLevelId={packageSessionFilter.levelId}
+                    initialSessionId={packageSessionFilter.sessionId}
+                    initialPackageId={packageSessionFilter.packageId}
+                    multiSelect={true}
+                    initialPackageSessionIds={packageSessionFilter.packageSessionIds}
+                />
+            </div>
+        </div>
+    );
+
+    // Slide-over embed: just the filters, plus a Clear-all when something is active.
+    if (panelOnly) {
+        return (
+            <div className="space-y-5">
+                {filterGrid}
+                {hasActiveFilters && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearAll}
+                        className="gap-2 text-danger-600 hover:text-danger-700"
+                    >
+                        <X size={16} />
+                        Clear all filters
+                    </Button>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            {/* Control bar: search + filters toggle + export */}
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="relative w-full sm:flex-1">
+                    <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-neutral-500" />
+                    <MyInput
+                        inputType="text"
+                        input={searchValue}
+                        onChangeFunction={(e) => onSearchChange(e.target.value)}
+                        inputPlaceholder="Search by name, email, phone, or amount"
+                        className="pl-9 sm:w-full"
+                    />
+                </div>
+
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={cn(
+                        'h-9 gap-2',
+                        hasActiveFilters && 'border-primary-500 bg-primary-50 text-primary-600'
+                    )}
+                >
+                    <Funnel size={16} weight={hasActiveFilters ? 'fill' : 'regular'} />
+                    Filters
+                    {hasActiveFilters && (
+                        <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-primary-500 text-caption text-neutral-50">
+                            {activeFilterCount}
+                        </span>
+                    )}
+                </Button>
+
+                {exportSlot}
+            </div>
+
+            {showFilters && (
+                <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
+                    {filterGrid}
                 </div>
             )}
         </div>

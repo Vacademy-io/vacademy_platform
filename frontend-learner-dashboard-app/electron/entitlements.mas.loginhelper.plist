@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Electron's nested "Login Helper.app". It must NOT declare
+       com.apple.application-identifier: Apple requires any nested executable
+       claiming an app identifier to embed a matching provisioning profile, and
+       this one has none — that produced upload warning ITMS-90885 and made the
+       build ineligible for TestFlight. Sandbox + inherit only, no identity
+       claim, so there is nothing left to mismatch. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <key>com.apple.security.inherit</key>
+  <true/>
+</dict>
+</plist>

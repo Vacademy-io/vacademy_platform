@@ -45,13 +45,26 @@ public class LearnerPackageDetailController {
             @RequestParam("userId") String userId,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int page,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int size) {
-        // Admin view: include INACTIVE enrollments by default so deactivated
-        // courses still surface (tagged with enrollment_status). Only the learner-
-        // facing /search endpoint keeps the ACTIVE-only default.
+        // Admin view: include INACTIVE enrollments by default so deactivated courses
+        // still surface for an admin (tagged with enrollment_status). The learner-facing
+        // /search endpoint keeps the ACTIVE-only default.
+        //
+        // Exception for the PROGRESS and COMPLETED buckets: those mean "live for this
+        // learner right now", and a deactivated enrollment is already returned by the PAST
+        // bucket (getPastLearnerPackages matches status INACTIVE). Defaulting them to
+        // ACTIVE + INACTIVE would list the same course twice — once as in-progress or
+        // completed, once as past. Defaulted here rather than left to each caller so the
+        // behaviour holds for every consumer (the student side-view, the mentorship
+        // mentee dialog, anything added later) without a coordinated frontend release.
         if (filterDTO.getStatus() == null || filterDTO.getStatus().isEmpty()) {
-            filterDTO.setStatus(List.of(
-                    LearnerSessionStatusEnum.ACTIVE.name(),
-                    LearnerSessionStatusEnum.INACTIVE.name()));
+            String type = filterDTO.getType();
+            boolean liveOnlyBucket = "PROGRESS".equalsIgnoreCase(type)
+                    || "COMPLETED".equalsIgnoreCase(type);
+            filterDTO.setStatus(liveOnlyBucket
+                    ? List.of(LearnerSessionStatusEnum.ACTIVE.name())
+                    : List.of(
+                            LearnerSessionStatusEnum.ACTIVE.name(),
+                            LearnerSessionStatusEnum.INACTIVE.name()));
         }
         Page<PackageDetailDTO> result = learnerPackageService.getLearnerPackageDetail(filterDTO, userId, instituteId,
                 page, size);

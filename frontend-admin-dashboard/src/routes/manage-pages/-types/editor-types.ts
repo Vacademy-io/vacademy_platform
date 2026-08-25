@@ -17,6 +17,15 @@ export interface GlobalSettings {
         value?: 'Course' | 'Product';
     };
     mode: 'light' | 'dark';
+    /** Site-wide custom CSS, injected into every imported HTML page's shadow
+     *  root ahead of that page's own styles.
+     *
+     *  A pasted multi-page bundle shares one stylesheet — the real one we
+     *  tested was 64KB across 36 pages. Stored per page that is ~2MB of
+     *  duplicated CSS inside a single catalogue_json; stored here it is one
+     *  copy. It cannot simply live in <head>: shadow roots inherit custom
+     *  properties but NOT stylesheets, so it has to be pushed into each root. */
+    customCss?: string;
     theme?: {
         /** Named color preset */
         preset?: CatalogueThemePreset;

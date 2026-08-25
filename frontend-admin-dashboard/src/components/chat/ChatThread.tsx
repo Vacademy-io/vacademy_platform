@@ -5,6 +5,8 @@ import type {
     ChatConversationResponse,
     ChatMessageResponse,
 } from '@/services/chat/chatApi';
+import { formatClockTime, toUtcDate } from './chatTime';
+import { MessageText } from './MessageText';
 
 export interface ThreadMessage extends ChatMessageResponse {
     /** Local-only dedup key threaded through the optimistic send for reconciliation/retry. */
@@ -31,8 +33,8 @@ interface ChatThreadProps {
 }
 
 const dayLabel = (iso: string): string => {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
+    const d = toUtcDate(iso);
+    if (!d) return '';
     const now = new Date();
     const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
     const diffDays = Math.round((startOf(now) - startOf(d)) / 86400000);
@@ -42,14 +44,13 @@ const dayLabel = (iso: string): string => {
 };
 
 const dayKey = (iso: string): string => {
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '' : d.toDateString();
+    const d = toUtcDate(iso);
+    return d ? d.toDateString() : '';
 };
 
 const timeLabel = (iso: string): string => {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const d = toUtcDate(iso);
+    return d ? formatClockTime(d) : '';
 };
 
 export function ChatThread({
@@ -173,9 +174,11 @@ export function ChatThread({
                                             )}
 
                                             {m.content && (
-                                                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                                                    {m.content}
-                                                </div>
+                                                <MessageText
+                                                    text={m.content}
+                                                    isOwn={isOwn}
+                                                    className="text-sm leading-relaxed"
+                                                />
                                             )}
                                         </>
                                     )}

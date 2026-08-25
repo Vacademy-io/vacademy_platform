@@ -39,6 +39,9 @@ import { AssessmentWindow } from "@/utils/assessment-window";
 import { formatDateTime } from "@/lib/format-date";
 import { playIllustrations } from "@/assets/play-illustrations";
 import { getSlideCompletionThreshold } from "@/constants/study-library";
+// Slide-type colours moved to a shared module so the flat sidebar and the full
+// course tree can't drift apart on what a colour means.
+import { getSlideTypeColors } from "./slide-type-colors";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 
@@ -80,68 +83,6 @@ export const getSlideStatus = (percentage: number | null | undefined) => {
 };
 
 // Map slide type to enterprise color palette for details display
-const getTypeColorClasses = (slide: Slide, mediaKind?: "audio" | "video") => {
-  switch (slide.source_type) {
-    case "VIDEO":
-      if (mediaKind === "audio") {
-        return {
-          text: "text-sky-700",
-          bg: "bg-sky-50",
-          dot: "bg-sky-500",
-          detailText: "text-sky-600",
-        };
-      }
-      return {
-        text: "text-blue-700",
-        bg: "bg-blue-50",
-        dot: "bg-blue-500",
-        detailText: "text-blue-600",
-      };
-    case "DOCUMENT":
-      return {
-        text: "text-amber-700",
-        bg: "bg-amber-50",
-        dot: "bg-amber-500",
-        detailText: "text-amber-600",
-      };
-    case "QUESTION":
-      return {
-        text: "text-purple-700",
-        bg: "bg-purple-50",
-        dot: "bg-purple-500",
-        detailText: "text-purple-600",
-      };
-    case "QUIZ":
-      return {
-        text: "text-teal-700",
-        bg: "bg-teal-50",
-        dot: "bg-teal-500",
-        detailText: "text-teal-600",
-      };
-    case "ASSIGNMENT":
-      return {
-        text: "text-emerald-700",
-        bg: "bg-emerald-50",
-        dot: "bg-emerald-500",
-        detailText: "text-emerald-600",
-      };
-    case "SCORM":
-      return {
-        text: "text-teal-700",
-        bg: "bg-teal-50",
-        dot: "bg-teal-500",
-        detailText: "text-teal-600",
-      };
-    default:
-      return {
-        text: "text-gray-700",
-        bg: "bg-gray-100",
-        dot: "bg-gray-400",
-        detailText: "text-gray-600",
-      };
-  }
-};
-
 // Helper function to get status details with modern design
 export const getStatusDetails = (percentage: number | null | undefined) => {
   const status = getSlideStatus(percentage);
@@ -418,7 +359,7 @@ const SlideItem = ({
     };
   }, [slide.id, slide.source_type, slide.video_slide?.published_url]);
 
-  const typeColors = getTypeColorClasses(slide, mediaKind || undefined);
+  const typeColors = getSlideTypeColors(slide, mediaKind || undefined);
   const statusDetails = getStatusDetails(slide.percentage_completed);
   const StatusIcon = statusDetails.icon;
   const isCompleted = slide.percentage_completed >= getSlideCompletionThreshold();

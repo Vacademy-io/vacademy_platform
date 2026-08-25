@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminCallDTO;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminCallSummaryDTO;
+import vacademy.io.admin_core_service.features.super_admin.dto.TtsCacheSummaryDTO;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminPageResponse;
 
 import java.math.BigDecimal;
@@ -208,6 +209,108 @@ public class SuperAdminCallService {
         // one, and reporting a rupee figure for it would be inventing revenue.
         if (perMinute == null || perMinute <= 0) return null;
         return round(charsSaved / CHARS_PER_CALL_MINUTE * perMinute);
+    }
+
+    /**
+     * TTS speech-cache monitoring: fleet totals plus a per-day series.
+     *
+     * <p>Grouped by day AND engine because the rupee value of a saved character
+     * differs sixfold across engines — summing characters fleet-wide and pricing
+     * them once would be meaningless. The day rows are then folded up in Java.
+     *
+     * <p>Every cast is {@code CAST(x AS bigint)}, never {@code x::bigint}:
+     * Hibernate parses ':' in a native query as a named-parameter marker, eats
+     * one colon, and ships Postgres ":bigint". That is what took
+     * /calls/summary down. The digit guard is here for the same reason as in
+     * {@link #summary}: one malformed row must cost its own contribution, not
+     * the whole range.
+     */
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public TtsCacheSummaryDTO ttsCacheSummary(String instituteId, String from, String to,
+                                              String agentId) {
+        Map<String, Double> card = rateCard();
+        Query q = em.createNativeQuery("""
+                SELECT to_char(date_trunc('day', r.created_at), 'YYYY-MM-DD') AS d,
+                       COALESCE(a.tts_model, 'sarvam') AS engine,
+                       count(*) FILTER (WHERE r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'),
+                       count(*) FILTER (WHERE r.diagnostics->'tts'->>'cacheHits' IS NULL),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'
+                                    THEN CAST(r.diagnostics->'tts'->>'cacheHits' AS bigint) END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheMisses' ~ '^[0-9]+$'
+                                    THEN CAST(r.diagnostics->'tts'->>'cacheMisses' AS bigint) END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheCharsSaved' ~ '^[0-9]+$'
+                                    THEN CAST(r.diagnostics->'tts'->>'cacheCharsSaved' AS bigint) END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheSecsSaved' ~ '^[0-9.]+$'
+                                    THEN CAST(r.diagnostics->'tts'->>'cacheSecsSaved' AS numeric) END), 0)
+                FROM ai_call_result r
+                LEFT JOIN ai_agent a ON a.id = r.campaign_id
+                WHERE (CAST(:inst AS text) IS NULL OR r.institute_id = CAST(:inst AS text))
+                  AND (CAST(:frm  AS text) IS NULL OR r.created_at >= CAST(:frm AS timestamp))
+                  AND (CAST(:to   AS text) IS NULL OR r.created_at <  CAST(:to  AS timestamp))
+                  AND (CAST(:agt  AS text) IS NULL OR r.campaign_id = CAST(:agt AS text))
+                GROUP BY 1, 2 ORDER BY 1
+                """);
+        q.setParameter("inst", blank(instituteId));
+        q.setParameter("frm", blank(from));
+        q.setParameter("to", blank(to));
+        q.setParameter("agt", blank(agentId));
+
+        Map<String, TtsCacheSummaryDTO.Day> byDay = new LinkedHashMap<>();
+        Map<String, Long> hitsByEngine = new LinkedHashMap<>();
+        long measured = 0, unmeasured = 0, hits = 0, misses = 0, chars = 0;
+        double secs = 0d, inr = 0d;
+
+        for (Object[] r : (List<Object[]>) q.getResultList()) {
+            String day = (String) r[0];
+            String engine = (String) r[1];
+            long m = ((Number) r[2]).longValue();
+            long um = ((Number) r[3]).longValue();
+            long h = ((Number) r[4]).longValue();
+            long ms = ((Number) r[5]).longValue();
+            long ch = ((Number) r[6]).longValue();
+            double sc = ((Number) r[7]).doubleValue();
+            // Priced per engine, on the group that produced the characters.
+            Double saved = ttsCacheSavingInr(card, engine, (int) Math.min(ch, Integer.MAX_VALUE));
+            double savedInr = saved == null ? 0d : saved;
+
+            measured += m; unmeasured += um; hits += h; misses += ms; chars += ch;
+            secs += sc; inr += savedInr;
+            if (h > 0) hitsByEngine.merge(engine, h, Long::sum);
+
+            TtsCacheSummaryDTO.Day d = byDay.get(day);
+            if (d == null) {
+                d = TtsCacheSummaryDTO.Day.builder().day(day).build();
+                byDay.put(day, d);
+            }
+            d.setMeasuredCalls(d.getMeasuredCalls() + m);
+            d.setHits(d.getHits() + h);
+            d.setMisses(d.getMisses() + ms);
+            d.setCharsSaved(d.getCharsSaved() + ch);
+            d.setInrSaved(round(d.getInrSaved() + savedInr));
+        }
+        // Days on which nothing was measured are dropped rather than plotted as a
+        // 0% day: the cache being off is not the cache performing badly.
+        List<TtsCacheSummaryDTO.Day> series = new ArrayList<>();
+        for (TtsCacheSummaryDTO.Day d : byDay.values()) {
+            if (d.getMeasuredCalls() == 0) continue;
+            long t = d.getHits() + d.getMisses();
+            d.setHitRate(t > 0 ? round((double) d.getHits() / t * 100) : null);
+            series.add(d);
+        }
+
+        long total = hits + misses;
+        return TtsCacheSummaryDTO.builder()
+                .measuredCalls(measured).unmeasuredCalls(unmeasured)
+                .hits(measured > 0 ? hits : null)
+                .misses(measured > 0 ? misses : null)
+                .hitRate(total > 0 ? round((double) hits / total * 100) : null)
+                .charsSaved(measured > 0 ? chars : null)
+                .secsSaved(measured > 0 ? round(secs) : null)
+                .inrSaved(measured > 0 ? round(inr) : null)
+                .hitsByEngine(hitsByEngine)
+                .series(series)
+                .build();
     }
 
     /**

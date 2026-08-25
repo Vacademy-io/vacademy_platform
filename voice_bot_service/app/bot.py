@@ -1545,8 +1545,10 @@ _SMALLEST_V31_MALE = {"devansh", "kaustubh", "virat", "karan", "yash", "debashis
 _SMALLEST_V31_FEMALE = {"imogen", "nirupma", "niharika"}
 _SMALLEST_PRO_MALE = {"mandar", "mathan", "barath"}
 _SMALLEST_PRO_FEMALE = {"manasi", "mrunal", "ketaki", "meher"}
-SMALLEST_VOICES = (_SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
-                   | _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE)
+SMALLEST_VOICES = _SMALLEST_V31_MALE | _SMALLEST_V31_FEMALE
+SMALLEST_PRO_VOICES = _SMALLEST_PRO_MALE | _SMALLEST_PRO_FEMALE
+# Kept for any caller that wants "is this a Smallest name at all" regardless of model.
+SMALLEST_ANY_VOICES = SMALLEST_VOICES | SMALLEST_PRO_VOICES
 
 # ── Deepgram Aura-2 ─────────────────────────────────────────────────────────
 # ENGLISH ONLY — the live /v1/models catalog has no Hindi voice at any tier, so
@@ -1579,6 +1581,8 @@ def _engine_of(model: str) -> str:
         return "rumik"
     if m.startswith(("google", "chirp")):
         return "google"
+    if m.startswith(("smallest", "lightning")) and "pro" in m:
+        return "smallest_pro"
     if m.startswith(("smallest", "lightning")):
         return "smallest"
     if m.startswith(("deepgram", "aura")):
@@ -1594,6 +1598,7 @@ _ENGINE_DEFAULT_VOICE = {
     # Founder chose Chirp3-HD by ear; Achird is its male voice (agent Ameet).
     "google": "hi-IN-Chirp3-HD-Achird",
     "smallest": "devansh",
+    "smallest_pro": "mandar",
     # English-only engine; Asteria is its clear/confident female voice.
     "deepgram": "aura-2-asteria-en",
 }
@@ -1602,6 +1607,7 @@ _ENGINE_DEFAULT_VOICE = {
 def _engine_palette(engine: str):
     return {"rumik": RUMIK_VOICES, "google": GOOGLE_VOICES,
             "smallest": SMALLEST_VOICES,
+            "smallest_pro": SMALLEST_PRO_VOICES,
             "deepgram": DEEPGRAM_VOICES}.get(engine)
 
 
@@ -1656,7 +1662,7 @@ def _agent_voice(agent):
         return voice if low in palette else None
     # Sarvam has no enumerated palette here (dozens of speakers across bulbul
     # versions), so instead reject anything that clearly belongs elsewhere.
-    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_VOICES, DEEPGRAM_VOICES):
+    for other in (RUMIK_VOICES, GOOGLE_VOICES, SMALLEST_ANY_VOICES, DEEPGRAM_VOICES):
         if low in other:
             return None
     return voice
@@ -2097,6 +2103,33 @@ def build_system_prompt(context: Dict[str, Any], sink=None) -> str:
                 "'Assessment', 'Foundation Batch' — NEVER 'लाइव क्लासेस', 'असेसमेंट'. Devanagari is "
                 "for Hindi words ONLY; if a word is English, spell it in English."
             )
+
+        # WORDING CONSISTENCY — only for agents whose speech cache is ON.
+        #
+        # The cache keys on the exact sentence, so one line said two ways is two
+        # renders and neither is ever reused. Measured on live agent shreya-v3:
+        # SEVEN of its most-spoken sentences were near-duplicate PAIRS, each half
+        # sitting at count 1 instead of one entry at count 2 — so the longest,
+        # most-repeated lines in the call (86-172 chars) never cached at all.
+        # Every pair was one of three drifts: रमन/Raman, class/क्लास, and an
+        # optional leading "सर,".
+        #
+        # GATED, because it tightens delivery for a reason that only exists when
+        # the cache is on. An agent not using the cache keeps today's freedom —
+        # this feature has no business changing how 26 other agents speak.
+        if str(agent.get("speech_cache_mode") or "OFF").strip().upper() != "OFF":
+            script_rule += (
+                "\n- SAY A RECURRING LINE THE SAME WAY EVERY TIME — same words, same "
+                "order, same spelling. Three things drift and must not:"
+                "\n  * the student's NAME is always in DEVANAGARI — रमन, never Raman; "
+                "आर्यन, never Aryan. In this conversation the name is a Hindi word, not an "
+                "English one."
+                "\n  * an English word is never in Devanagari — write 'class', never "
+                "'क्लास'."
+                "\n  * सर/मैम goes exactly where the script puts it and nowhere else. "
+                "Never add one to a line that does not already open with it."
+            )
+
     # REGISTER. Founder, after hearing live calls: "everything is highly formal
     # Hindi... words that in general are not used". Measured across two days of
     # calls: 198 uses of literary vocabulary — प्रदर्शन 37x, पूछताछ 28x, अकादमिक
@@ -2652,6 +2685,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         fixed_lines=_fixed_lines,
         # Per-agent rollout gate — one agent first, then widen (TTS_CACHE_AGENTS).
         agent_id=str(agent.get("id") or ""), agent_name=str(agent.get("name") or ""),
+        institute_id=str(context.get("instituteId") or ""),
         # snake_case, like tts_model: admin_core emits it that way ON PURPOSE and
         # always emits it, because the safe default for a MISSING key is OFF.
         cache_mode=str(agent.get("speech_cache_mode") or ttscache.MODE_OFF),

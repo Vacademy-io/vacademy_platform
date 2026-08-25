@@ -10,6 +10,7 @@ import {
     ArrowDown,
     Check,
     CaretDown,
+    CaretLeft,
     CaretRight,
     CircleNotch,
     FilePdf,
@@ -46,6 +47,9 @@ import {
     type StudentAuthPresentation,
     type StudentUiType,
     type SlidesSidebarNavigation,
+    type ContentCardImageFit,
+    type EnrolledCourseLayout,
+    type FeedbackTrigger,
     type StudentDashboardWidgetConfig,
     RETIRED_WIDGET_IDS,
     WIDGET_LABELS,
@@ -381,7 +385,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     </div>
                                     <div className="ml-8 space-y-2">
                                         <div className="flex items-center justify-between">
-                                            <div className="text-[11px] font-medium text-neutral-600">Sub Tabs</div>
+                                            <div className="text-2xs font-medium text-neutral-600">Sub Tabs</div>
                                             <Button type="button" size="sm" variant="secondary" onClick={() => addSubTab(t.id)}>Add Sub Tab</Button>
                                         </div>
                                         {(() => {
@@ -392,13 +396,13 @@ export default function StudentDisplaySettings(): JSX.Element {
                                                         <Button variant="ghost" size="icon" className="h-5 w-5" disabled={subIdx === 0} onClick={() => moveSubTab(t.id, s.id, 'up')}>
                                                             <ArrowUp className="h-3 w-3" />
                                                         </Button>
-                                                        <span className="text-[10px] text-muted-foreground">{subIdx + 1}</span>
+                                                        <span className="text-2xs text-muted-foreground">{subIdx + 1}</span>
                                                         <Button variant="ghost" size="icon" className="h-5 w-5" disabled={subIdx === sortedSubs.length - 1} onClick={() => moveSubTab(t.id, s.id, 'down')}>
                                                             <ArrowDown className="h-3 w-3" />
                                                         </Button>
                                                     </div>
                                                     <div className="flex flex-1 flex-wrap items-center gap-2">
-                                                        <div className="grow text-[11px] font-medium">{s.id}</div>
+                                                        <div className="grow text-2xs font-medium">{s.id}</div>
                                                         <Label className="text-xs">Label</Label>
                                                         <Input className="h-8 w-36" value={s.label || ''} onChange={(e) => {
                                                             const tabs = settings.sidebar.tabs.map((tab) => {
@@ -565,7 +569,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         />
                         <Label className="text-xs font-semibold">Signup enabled</Label>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-2xs text-muted-foreground">
                             Master toggle: when off, "Sign Up" links are hidden in the catalogue header.
                         </span>
                     </div>
@@ -810,6 +814,75 @@ export default function StudentDisplaySettings(): JSX.Element {
                     <CardDescription>Tabs, default tab and view preferences</CardDescription>
                 </CardHeader>
                 <div className="space-y-3 p-4 pt-0">
+                    {/* Page layout for learners who already own the course. Sits
+                        first because "Content structure only" overrides most of
+                        what follows for those learners. */}
+                    <EnrolledLayoutPicker
+                        value={settings.courseDetails.enrolledLayout ?? 'full'}
+                        onChange={(v) =>
+                            update('courseDetails', {
+                                ...settings.courseDetails,
+                                enrolledLayout: v,
+                            })
+                        }
+                    />
+
+                    {/* Card artwork fit. Sits with the layout because it only
+                        affects the Content Structure cards that layout shows. */}
+                    <div className="space-y-1 pb-4 border-b">
+                        <Label className="text-sm font-semibold">
+                            Content Card Artwork
+                        </Label>
+                        <p className="max-w-prose text-xs text-muted-foreground">
+                            How subject, module and chapter thumbnails fit their card.
+                            Choose Fill for photos; choose Fit Whole Image when your
+                            artwork has a title designed into it, which Fill crops off.
+                        </p>
+                        <Select
+                            value={settings.courseDetails.contentCardImageFit ?? 'cover'}
+                            onValueChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    contentCardImageFit: v as ContentCardImageFit,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="mt-1 w-full max-w-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="cover">
+                                    Fill the card (crops to fit) — default
+                                </SelectItem>
+                                <SelectItem value="contain">
+                                    Fit whole image (no cropping)
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Tri-state in storage (unset = follow the page layout).
+                        The switch shows the value in effect, so saving pins
+                        whatever the admin can see. */}
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={
+                                settings.courseDetails.chapterOpensFirstSlide ??
+                                (settings.courseDetails.enrolledLayout ?? 'full') ===
+                                    'contentOnly'
+                            }
+                            onCheckedChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    chapterOpensFirstSlide: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">
+                            Chapter Card Opens the First Slide Directly
+                        </Label>
+                    </div>
+
                     {/* Tabs visibility */}
                     <div className="space-y-2">
                         {(() => {
@@ -1014,6 +1087,98 @@ export default function StudentDisplaySettings(): JSX.Element {
                         </div>
                         <div className="flex items-center gap-2">
                             <Switch
+                                checked={
+                                    settings.courseDetails.slidesView.chapterCompleteCta ??
+                                    settings.courseDetails.slidesView.sidebarNavigation ===
+                                        'hidden'
+                                }
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        slidesView: {
+                                            ...settings.courseDetails.slidesView,
+                                            chapterCompleteCta: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">
+                                &quot;Chapter Complete — Next Up&quot; Bar
+                            </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                checked={
+                                    settings.courseDetails.slidesView.feedbackInSlideNav ??
+                                    settings.courseDetails.slidesView.sidebarNavigation !==
+                                        'hidden'
+                                }
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        slidesView: {
+                                            ...settings.courseDetails.slidesView,
+                                            feedbackInSlideNav: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">
+                                Include Feedback in Previous/Next
+                            </Label>
+                        </div>
+                        {/* Tri-state in storage (unset = follow the sidebar mode,
+                            i.e. shown only in the sidebar-less viewer). The
+                            switch renders the value actually in effect, so
+                            saving pins whatever the admin can see. */}
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                checked={
+                                    settings.courseDetails.slidesView.manualCompletion ??
+                                    settings.courseDetails.slidesView.sidebarNavigation ===
+                                        'hidden'
+                                }
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        slidesView: {
+                                            ...settings.courseDetails.slidesView,
+                                            manualCompletion: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">
+                                &quot;Mark as Complete&quot; Button in Slide Viewer
+                            </Label>
+                        </div>
+                        {/* Tri-state in storage (unset = follow the sidebar mode),
+                            but a switch can only show two. It renders the value
+                            that is actually in effect, so saving simply pins
+                            whatever the admin can see. */}
+                        <div className="flex items-center gap-2">
+                            <Switch
+                                checked={
+                                    settings.courseDetails.slidesView.collapseSidebarOnOpen ??
+                                    settings.courseDetails.slidesView.sidebarNavigation ===
+                                        'hidden'
+                                }
+                                onCheckedChange={(v) =>
+                                    update('courseDetails', {
+                                        ...settings.courseDetails,
+                                        slidesView: {
+                                            ...settings.courseDetails.slidesView,
+                                            collapseSidebarOnOpen: v,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label className="text-xs">
+                                Collapse App Sidebar in Slide Viewer
+                            </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Switch
                                 checked={settings.courseDetails.slidesView.canAskDoubt}
                                 onCheckedChange={(v) =>
                                     update('courseDetails', {
@@ -1027,6 +1192,36 @@ export default function StudentDisplaySettings(): JSX.Element {
                             />
                             <Label className="text-xs">Can Ask Doubt</Label>
                         </div>
+                    </div>
+
+                    {/* When the feedback slide is offered. Asking after every
+                        chapter suits a short course and fatigues a long one, so
+                        the cadence is the institute's call. */}
+                    <div className="flex items-center gap-2">
+                        <Label className="text-xs">Ask for Feedback After</Label>
+                        <Select
+                            value={settings.courseDetails.slidesView.feedbackTrigger ?? 'CHAPTER'}
+                            onValueChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    slidesView: {
+                                        ...settings.courseDetails.slidesView,
+                                        feedbackTrigger: v as FeedbackTrigger,
+                                    },
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-56 text-xs">
+                                <SelectValue placeholder="Select when" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="CHAPTER">Every chapter</SelectItem>
+                                <SelectItem value="MODULE">Every module</SelectItem>
+                                <SelectItem value="SUBJECT">Every subject</SelectItem>
+                                <SelectItem value="COURSE">Course completion only</SelectItem>
+                                <SelectItem value="NEVER">Never (button only)</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* ── Sidebar content navigation picker ─────────────────
@@ -1422,6 +1617,113 @@ export default function StudentDisplaySettings(): JSX.Element {
     );
 }
 
+// ── Enrolled course-details layout picker ───────────────────────────────────
+// What a learner sees on their own course page (the /study-library one they
+// land on after enrolling). The catalogue and the shopper-facing course page
+// are separate screens this never touches, so a buyer still gets the
+// description and price they need to decide.
+function EnrolledLayoutPicker({
+    value,
+    onChange,
+}: {
+    value: EnrolledCourseLayout;
+    onChange: (v: EnrolledCourseLayout) => void;
+}): JSX.Element {
+    return (
+        <div className="pb-4 border-b">
+            <div className="text-sm font-semibold">Page Layout (After Enrollment)</div>
+            <p className="text-xs text-muted-foreground max-w-prose">
+                Applies to the learner&apos;s own course page — the one they open
+                from their courses after enrolling. The public catalogue always
+                shows the full page.
+            </p>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <NavOptionCard
+                    selected={value === 'full'}
+                    onSelect={() => onChange('full')}
+                    title="Full course page"
+                    badge="Default"
+                    description={
+                        <>
+                            Banner, description and tags, course highlights, the
+                            enrollment/configuration block and the right-hand
+                            overview card (author, duration, counts) — plus every
+                            tab you have made visible below.
+                        </>
+                    }
+                    preview={<FullLayoutPreview />}
+                />
+                <NavOptionCard
+                    selected={value === 'contentOnly'}
+                    onSelect={() => onChange('contentOnly')}
+                    title="Content structure only"
+                    badge="Focused"
+                    description={
+                        <>
+                            Just the title and the <strong>Content Structure</strong> card.
+                            No description, tags, banner, highlights or right-hand
+                            card. Opening the card drills{' '}
+                            <strong>Subject → Module → Chapter</strong> as large cards,
+                            then the slides open in the viewer. The tab, outline and
+                            overview settings below stop applying to enrolled learners.
+                        </>
+                    }
+                    preview={<ContentOnlyLayoutPreview />}
+                />
+            </div>
+        </div>
+    );
+}
+
+// Mock of today's page: two columns, marketing copy left, stats card right.
+function FullLayoutPreview(): JSX.Element {
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden p-2">
+            <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2 space-y-1">
+                    <div className="flex gap-1">
+                        <span className="h-2 w-6 rounded-full bg-primary-200" />
+                        <span className="h-2 w-8 rounded-full bg-primary-200" />
+                    </div>
+                    <div className="h-2.5 w-4/5 rounded bg-neutral-300" />
+                    <div className="h-1.5 w-full rounded bg-neutral-200" />
+                    <div className="h-1.5 w-3/4 rounded bg-neutral-200" />
+                    <div className="mt-2 h-10 rounded border border-neutral-200 bg-white" />
+                </div>
+                <div className="space-y-1 rounded border border-neutral-200 bg-white p-1.5">
+                    <div className="h-1.5 w-full rounded bg-neutral-200" />
+                    <div className="h-1.5 w-2/3 rounded bg-neutral-200" />
+                    <div className="h-1.5 w-3/4 rounded bg-neutral-200" />
+                    <div className="h-1.5 w-1/2 rounded bg-neutral-200" />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Mock of the focused page: title + a single card of large content tiles.
+function ContentOnlyLayoutPreview(): JSX.Element {
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden p-2">
+            <div className="h-2.5 w-1/2 rounded bg-neutral-300" />
+            <div className="mt-2 rounded border border-neutral-200 bg-white p-1.5">
+                <div className="mb-1.5 h-1.5 w-1/3 rounded bg-neutral-300" />
+                <div className="grid grid-cols-3 gap-1.5">
+                    {[0, 1, 2].map((i) => (
+                        <div
+                            key={i}
+                            className="space-y-1 rounded border border-neutral-200 p-1"
+                        >
+                            <div className="h-6 rounded bg-neutral-100" />
+                            <div className="h-1.5 w-4/5 rounded bg-neutral-200" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ── Sidebar content navigation picker ───────────────────────────────────────
 // Two mutually-exclusive modes for the slide viewer sidebar. Rendered as a
 // pair of radio-style cards, each containing a tiny live mock of how the
@@ -1435,19 +1737,18 @@ function SidebarNavigationPicker({
     onChange: (v: SlidesSidebarNavigation) => void;
 }): JSX.Element {
     return (
-        <div className="mt-4 pt-4 border-t">
+        <div className="mt-4 border-t pt-4">
             <div className="mb-1 flex items-baseline justify-between gap-2">
                 <div>
                     <div className="text-sm font-semibold">Sidebar Navigation</div>
-                    <p className="text-xs text-muted-foreground max-w-prose">
-                        Controls how the learner moves across subjects, modules
-                        and chapters from the slide viewer. Each option changes
-                        what the left sidebar shows — pick whichever fits your
-                        learners&apos; mental model.
+                    <p className="max-w-prose text-xs text-muted-foreground">
+                        Controls how the learner moves across subjects, modules and chapters from
+                        the slide viewer. Each option changes what the left sidebar shows — pick
+                        whichever fits your learners&apos; mental model.
                     </p>
                 </div>
             </div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <NavOptionCard
                     selected={value === 'breadcrumb'}
                     onSelect={() => onChange('breadcrumb')}
@@ -1456,10 +1757,9 @@ function SidebarNavigationPicker({
                     description={
                         <>
                             Sidebar lists <strong>only the current chapter&apos;s slides</strong>.
-                            To jump to another module or subject, the learner
-                            taps the breadcrumb at the top and picks from a
-                            dropdown. Best when courses are small or you want
-                            learners focused on the current chapter.
+                            To jump to another module or subject, the learner taps the breadcrumb at
+                            the top and picks from a dropdown. Best when courses are small or you
+                            want learners focused on the current chapter.
                         </>
                     }
                     preview={<BreadcrumbModePreview />}
@@ -1471,20 +1771,50 @@ function SidebarNavigationPicker({
                     badge="Richer"
                     description={
                         <>
-                            Sidebar shows the <strong>entire Subject → Module → Chapter → Slide tree</strong>.
-                            Learners can scan, expand and jump to any slide
-                            without leaving the viewer. The breadcrumb becomes
-                            a passive label. Best for longer courses where
-                            side-by-side discovery matters.
+                            Sidebar shows the{' '}
+                            <strong>entire Subject → Module → Chapter → Slide tree</strong>.
+                            Learners can scan, expand and jump to any slide without leaving the
+                            viewer. The breadcrumb becomes a passive label. Best for longer courses
+                            where side-by-side discovery matters.
                         </>
                     }
                     preview={<TreeModePreview />}
+                />
+                <NavOptionCard
+                    selected={value === 'lessons'}
+                    onSelect={() => onChange('lessons')}
+                    title="Lesson list"
+                    badge="Media-rich"
+                    description={
+                        <>
+                            The whole course as a <strong>flat list of lessons</strong>, each with a
+                            thumbnail, a full two-line title and its length. Chapters become
+                            headings rather than toggles, so nothing has to be expanded, and a
+                            course-wide progress bar sits at the top. Best for courses learners work
+                            through in order.
+                        </>
+                    }
+                    preview={<LessonListModePreview />}
+                />
+                <NavOptionCard
+                    selected={value === 'hidden'}
+                    onSelect={() => onChange('hidden')}
+                    title="No sidebar"
+                    badge="Focused"
+                    description={
+                        <>
+                            The viewer shows <strong>only the slide</strong>. Learners move with the{' '}
+                            <strong>Previous / Next</strong> buttons above the content, which roll
+                            over into the next or previous chapter at the edges. Best when you want
+                            a single, guided path with nothing to browse past.
+                        </>
+                    }
+                    preview={<NoSidebarModePreview />}
                 />
             </div>
         </div>
     );
 }
-
 function NavOptionCard({
     selected,
     onSelect,
@@ -1519,7 +1849,7 @@ function NavOptionCard({
             <div className="flex items-center gap-2">
                 <div className="text-sm font-semibold">{title}</div>
                 {badge && (
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-primary-600 bg-primary-100 rounded-full px-1.5 py-0.5">
+                    <span className="text-2xs font-medium uppercase tracking-wider text-primary-600 bg-primary-100 rounded-full px-1.5 py-0.5">
                         {badge}
                     </span>
                 )}
@@ -1536,7 +1866,7 @@ function NavOptionCard({
 function BreadcrumbModePreview(): JSX.Element {
     return (
         <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
-            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-200 text-[10px] text-neutral-600 bg-white">
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-200 text-2xs text-neutral-600 bg-white">
                 <span className="flex items-center gap-0.5 rounded px-1 py-0.5 bg-neutral-100">
                     S1 <CaretDown className="h-2.5 w-2.5" />
                 </span>
@@ -1556,11 +1886,38 @@ function BreadcrumbModePreview(): JSX.Element {
     );
 }
 
+// Mock of the sidebar-less view: just the slide, with Prev/Next above it.
+function NoSidebarModePreview(): JSX.Element {
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-200 bg-white">
+                <span className="truncate text-2xs font-semibold text-neutral-800">
+                    Integer line
+                </span>
+                <span className="ms-auto flex items-center gap-1">
+                    <span className="flex items-center gap-0.5 rounded border border-neutral-200 px-1 py-0.5 text-2xs text-neutral-600">
+                        <CaretLeft className="h-2 w-2" /> Prev
+                    </span>
+                    <span className="text-2xs text-neutral-400">2 / 6</span>
+                    <span className="flex items-center gap-0.5 rounded border border-neutral-200 px-1 py-0.5 text-2xs text-neutral-600">
+                        Next <CaretRight className="h-2 w-2" />
+                    </span>
+                </span>
+            </div>
+            <div className="space-y-1 p-2">
+                <div className="h-8 rounded bg-neutral-200/70" />
+                <div className="h-1.5 w-4/5 rounded bg-neutral-200" />
+                <div className="h-1.5 w-3/5 rounded bg-neutral-200" />
+            </div>
+        </div>
+    );
+}
+
 // Mock of the tree view: nested subjects/modules/chapters/slides with chevrons.
 function TreeModePreview(): JSX.Element {
     return (
         <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
-            <div className="px-2 py-1.5 border-b border-neutral-200 text-[10px] text-neutral-500 bg-white font-medium tracking-wide uppercase">
+            <div className="px-2 py-1.5 border-b border-neutral-200 text-2xs text-neutral-500 bg-white font-medium tracking-wide uppercase">
                 Course content
             </div>
             <div className="py-1">
@@ -1577,6 +1934,69 @@ function TreeModePreview(): JSX.Element {
     );
 }
 
+// Mock of the lesson list: a progress line, chapter headings and thumbnail rows.
+function LessonListModePreview(): JSX.Element {
+    return (
+        <div className="overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
+            <div className="border-b border-neutral-200 bg-white px-2 py-1.5">
+                <div className="text-2xs font-medium text-neutral-600">3 / 24 completed</div>
+                <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-200">
+                    <div className="h-full w-1/6 rounded-full bg-primary-400" />
+                </div>
+            </div>
+            <div className="py-1">
+                <div className="px-2 pb-0.5 pt-1.5 text-2xs font-semibold text-neutral-800">
+                    C1 · Basics
+                </div>
+                <MockLessonRow label="Welcome to the course" meta="9m" tone="bg-blue-100" done />
+                <MockLessonRow label="How numbers behave" meta="4m" tone="bg-amber-100" />
+                <div className="px-2 pb-0.5 pt-2 text-2xs font-semibold text-neutral-800">
+                    C2 · Integers
+                </div>
+                <MockLessonRow label="The integer line" meta="12m" tone="bg-blue-100" active />
+                <MockLessonRow label="Practice set" meta="6 questions" tone="bg-teal-100" />
+            </div>
+        </div>
+    );
+}
+
+function MockLessonRow({
+    label,
+    meta,
+    tone,
+    active,
+    done,
+}: {
+    label: string;
+    meta: string;
+    tone: string;
+    active?: boolean;
+    done?: boolean;
+}): JSX.Element {
+    return (
+        <div
+            className={`flex items-center gap-1.5 border-s-2 px-2 py-1 ${
+                active ? 'border-primary-500 bg-primary-50' : 'border-transparent'
+            }`}
+        >
+            <span className={`h-4 w-6 shrink-0 rounded-sm ${done ? 'bg-success-200' : tone}`} />
+            <span className="min-w-0 flex-1">
+                <span
+                    className={`block truncate text-2xs ${
+                        active
+                            ? 'font-semibold text-primary-700'
+                            : done
+                              ? 'text-neutral-400'
+                              : 'text-neutral-700'
+                    }`}
+                >
+                    {label}
+                </span>
+                <span className="block text-2xs text-neutral-400">{meta}</span>
+            </span>
+        </div>
+    );
+}
 function MockSlideRow({
     label,
     active,
@@ -1589,7 +2009,7 @@ function MockSlideRow({
     return (
         <div
             style={{ paddingLeft: `${depth * 10 + 8}px` }}
-            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] rounded ${
+            className={`flex items-center gap-1.5 px-2 py-1 text-2xs rounded ${
                 active
                     ? 'bg-primary-100 text-primary-700 font-semibold'
                     : 'text-neutral-600'
@@ -1624,7 +2044,7 @@ function MockTreeRow({
     return (
         <div
             style={{ paddingLeft: `${indent * 10 + 4}px` }}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] ${
+            className={`flex items-center gap-1 px-2 py-1 text-2xs ${
                 muted
                     ? 'text-neutral-400'
                     : activeAncestor

@@ -345,19 +345,12 @@ public class CpoSideViewService {
         }
 
         if (req.isGenerateInvoice()) {
-            try {
-                PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
-                        .orElseThrow(() -> new VacademyException("Payment log not found: " + paymentLogId));
-                if (instituteId != null) {
-                    invoiceService.generateInvoice(plan, persistedLog, instituteId);
-                } else {
-                    log.warn("Skipping invoice generation for userPlan={} paymentLog={}: institute_id not resolvable",
-                            userPlanId, paymentLogId);
-                }
-            } catch (Exception e) {
-                log.warn("Failed to generate invoice for side-view offline payment userPlan={}, paymentLogId={}: {}",
-                        userPlanId, paymentLogId, e.getMessage());
-            }
+            // Deferred to after this transaction commits. Generating inline killed the payment:
+            // the invoice's REQUIRES_NEW transaction could not see this method's still-uncommitted
+            // PaymentLog, so invoice_payment_log_mapping failed its FK — and because catching that
+            // exception does not clear rollbackOnly, the commit died with "Transaction silently
+            // rolled back", discarding the payment log, the ledger credit and the allocation.
+            invoiceService.generateInvoiceAfterCommit(paymentLogId, instituteId);
         }
 
         return list(userPlanId);

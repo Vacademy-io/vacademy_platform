@@ -7,6 +7,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentStatusUpdateRequest;
+import vacademy.io.admin_core_service.features.learner_access.enums.LearnerAccessSourceEnum;
+import vacademy.io.admin_core_service.features.learner_access.service.LearnerAccessService;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -25,6 +27,9 @@ public class StudentSessionManager {
 
     @Autowired
     private LearnerTerminationWorkflowHelper learnerTerminationWorkflowHelper;
+
+    @Autowired
+    private LearnerAccessService learnerAccessService;
 
     @Transactional
     public void updateStudentStatus(List<StudentStatusUpdateRequest> requests, String operation,
@@ -45,7 +50,17 @@ public class StudentSessionManager {
                     case "ADD_EXPIRY":
                         SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy");
                         Date expiryDate = dateFormat.parse(request.getNewState());
+                        // Snapshot before the native UPDATE: it bypasses the persistence
+                        // context, so once it has run the previous window is gone and the
+                        // change could not be logged truthfully. Without this the row-menu
+                        // "Extend Session" would leave a hole in the learner's access
+                        // history that the Manage Access dialog writes into.
+                        List<StudentSessionRepository.AccessWindowSnapshot> beforeExpiryChange =
+                                studentSessionRepository.findAccessWindowSnapshots(
+                                        request.getUserId(), request.getCurrentPackageSessionId(),
+                                        request.getInstituteId());
                         studentSessionRepository.updateExpiryDate(request.getUserId(), request.getCurrentPackageSessionId(), request.getInstituteId(), expiryDate);
+                        recordExpiryChanges(beforeExpiryChange, expiryDate, request.getInstituteId(), adminDetails);
                         break;
                     case "MAKE_INACTIVE":
                         handleMakeInactive(request, terminations);
@@ -79,6 +94,40 @@ public class StudentSessionManager {
         }
 
         fireTerminationWorkflowsAfterCommit(terminations, adminUserId);
+    }
+
+    /**
+     * Logs an ADD_EXPIRY into the learner access history, one row per affected mapping,
+     * so an extension made from the learner row menu appears in the same timeline as one
+     * made from the Manage Access dialog.
+     */
+    private void recordExpiryChanges(List<StudentSessionRepository.AccessWindowSnapshot> affected,
+                                     Date newExpiry,
+                                     String instituteId,
+                                     CustomUserDetails adminDetails) {
+        if (affected == null || affected.isEmpty()) {
+            return;
+        }
+        String actorId = adminDetails != null ? adminDetails.getUserId() : null;
+        String actorName = adminDetails != null ? adminDetails.getFullName() : null;
+
+        for (StudentSessionRepository.AccessWindowSnapshot snapshot : affected) {
+            learnerAccessService.recordGrant(
+                    LearnerAccessSourceEnum.ADMIN_EXTENSION,
+                    instituteId,
+                    snapshot.getUserId(),
+                    snapshot.getPackageSessionId(),
+                    snapshot.getId(),
+                    snapshot.getExpiryDate(),
+                    newExpiry,
+                    null,
+                    snapshot.getUserPlanId(),
+                    null,
+                    null,
+                    "Expiry date set from learner list",
+                    actorId,
+                    actorName);
+        }
     }
 
     private void handleMakeInactive(StudentStatusUpdateRequest request, List<TerminationFiring> terminations) {

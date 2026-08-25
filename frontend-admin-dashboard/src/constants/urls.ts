@@ -163,6 +163,11 @@ export const VIMOTION_VIDEO_THUMBNAIL_REGENERATE = (videoId: string) =>
     `${AI_SERVICE_BASE_URL}/external/video/v1/thumbnail/${videoId}/regenerate`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
+// Where the institute's certificate counter currently stands. Read-only and
+// reserves nothing, so the numbering screen can call it while the admin edits.
+// Rasterises an uploaded verification PDF into a canvas the editor can use.
+export const CERTIFICATE_VERIFICATION_DOCUMENT_UPLOAD = `${BASE_URL}/admin-core-service/institute/v1/certificate/verification-document/upload`;
+export const CERTIFICATE_NUMBERING_STATUS = `${BASE_URL}/admin-core-service/institute/v1/certificate/numbering-status`;
 // Course-scoped certificate management, backing the Certificates tab on the
 // course page. Settings are addressed by packageId (an override applies to every
 // batch of the course); the dashboard and learner list are addressed by
@@ -365,9 +370,19 @@ export const MY_PENDING_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/my-pending`;
 export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
+/**
+ * Authenticated twin of SUBMIT_AUDIENCE_LEAD_URL, for leads an admin/counsellor
+ * adds from the dashboard. Same payload and same intake pipeline; the token is
+ * what lets the backend stamp the creator as the lead's counsellor when the
+ * audience-access setting asks for it. Website/webhook integrations keep using
+ * the open URL above.
+ */
+export const SUBMIT_AUDIENCE_LEAD_ADMIN_URL = `${BASE_URL}/admin-core-service/v1/audience/lead/submit`;
 export const SUBMIT_CATALOGUE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-catalogue`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
 export const BULK_SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit`;
+/** Authenticated twin of BULK_SUBMIT_AUDIENCE_LEAD — see SUBMIT_AUDIENCE_LEAD_ADMIN_URL. */
+export const BULK_SUBMIT_AUDIENCE_LEAD_ADMIN_URL = `${BASE_URL}/admin-core-service/v1/audience/lead/bulk-submit`;
 export const BULK_SUBMIT_APPLICATION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/applicant/bulk-apply`;
 export const BULK_SUBMIT_ADMISSION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/admission/bulk-submit-with-admission`;
 export const GET_CUSTOM_FIELD_SETUP = `${BASE_URL}/admin-core-service/common/custom-fields/setup`;
@@ -507,6 +522,8 @@ export const GET_EXPORT_PDF_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-servic
 export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/respondent-list`;
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
 export const GET_EXPORT_CSV_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants`;
+// Columns the result CSV can carry (fixed result columns + registration-form custom fields)
+export const GET_EXPORT_CSV_COLUMNS_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants/columns`;
 // Bulk Assessment Report Export (ZIP)
 export const REPORT_ZIP_EXPORT_INITIATE_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/initiate`;
 export const REPORT_ZIP_EXPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/reports/zip/status`;
@@ -522,6 +539,10 @@ export const GET_PARTICIPANTS_QUESTION_WISE = `${BASE_URL}/assessment-service/as
 export const GET_REVALUATE_STUDENT_RESULT = `${BASE_URL}/assessment-service/assessment/admin/revaluate`;
 export const GET_RELEASE_STUDENT_RESULT = `${BASE_URL}/assessment-service/admin/participants/release-result`;
 export const PROVIDE_REATTEMPT_URL = `${BASE_URL}/assessment-service/admin/participants/provide-reattempt`;
+// Learner-raised reattempt / time-extension requests awaiting an admin decision.
+export const REATTEMPT_REQUEST_LIST_URL = `${BASE_URL}/assessment-service/admin/reattempt-request/v1/list`;
+export const REATTEMPT_REQUEST_PENDING_COUNT_URL = `${BASE_URL}/assessment-service/admin/reattempt-request/v1/pending-count`;
+export const REATTEMPT_REQUEST_REVIEW_URL = `${BASE_URL}/assessment-service/admin/reattempt-request/v1`;
 export const GET_DELETE_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/create/v1/delete`;
 export const GET_ASSESSMENT_TOTAL_MARKS_URL = `${BASE_URL}/assessment-service/assessment/admin/init/total-marks`;
 export const GET_BATCH_DETAILS_URL = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v1/all`;
@@ -685,6 +706,8 @@ export const GET_LEARNER_PACKAGES_BY_USER_ID = `${BASE_URL}/admin-core-service/l
 
 export const BULK_ASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/assign`;
 export const BULK_DEASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/deassign`;
+export const CHANGE_LEARNER_ACCESS = `${BASE_URL}/admin-core-service/v1/learner-access/change`;
+export const GET_LEARNER_ACCESS_HISTORY = `${BASE_URL}/admin-core-service/v1/learner-access/history`;
 export const PARENT_LINK = `${BASE_URL}/admin-core-service/parent-link/v1/link`;
 export const PARENT_LINK_NEW_GUARDIAN = `${BASE_URL}/admin-core-service/parent-link/v1/link-new-guardian`;
 export const GET_DEFAULT_INVITE = (instituteId: string, packageSessionId: string) =>
@@ -1006,6 +1029,11 @@ export const GET_INSITITUTE_SETTINGS = `${BASE_URL}/admin-core-service/institute
 export const SAVE_INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
 
+// LLM-analytics — per-attempt AI insight reports (activity_log.processed_json).
+// Query by userId + slideId for content slides (quiz / question / assignment);
+// the assessment variant keys off sourceId instead.
+export const GET_AI_PROCESSED_LOGS = `${BASE_URL}/admin-core-service/llm-analytics/processed-logs`;
+
 // Short links — settings toggles + institute link management (proxied to media-service)
 export const SHORT_LINK_ADMIN_BASE = `${BASE_URL}/admin-core-service/v1/short-link`;
 export const SHORT_LINK_EFFECTIVE_SETTINGS = `${SHORT_LINK_ADMIN_BASE}/settings`;
@@ -1142,6 +1170,9 @@ export const PUT_UPDATE_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/mark-paid-manual`;
+// Bulk "which invoice covers each of these payments?" lookup — drives the Invoice
+// column on Manage Payments. Institute-scoped via the instituteId query param.
+export const POST_INVOICES_BY_PAYMENT_LOGS = `${BASE_URL}/admin-core-service/v1/invoices/by-payment-logs`;
 // Invoice number strategy (Settings > Invoice Settings > Numbering). Preview never
 // consumes a sequence number; the token catalogue is served by the backend so the
 // palette can't drift from what the renderer understands.
@@ -1261,6 +1292,10 @@ export const MEETINGS_SCOPE = `${MEETINGS_BASE}/scope`;
 export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
 
 // Mentorship (mentors + assignments + dashboard)
+export const OPEN_BOOKING_BASE = `${BASE_URL}/admin-core-service/open/v1/booking`;
+export const OPEN_BOOKING_SLOTS = (instituteId: string, slug: string) =>
+    `${OPEN_BOOKING_BASE}/page/${instituteId}/${slug}/slots`;
+
 export const MENTORSHIP_BASE = `${BASE_URL}/admin-core-service/mentorship/v1`;
 export const MENTORSHIP_MENTORS = `${MENTORSHIP_BASE}/mentors`;
 export const MENTORSHIP_MENTOR_BY_ID = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}`;
@@ -1275,6 +1310,22 @@ export const MENTORSHIP_MY_MENTORS = `${MENTORSHIP_BASE}/my-mentors`;
 export const MENTORSHIP_MY_MENTOR_PROFILE = `${MENTORSHIP_BASE}/my-mentor-profile`;
 export const MENTORSHIP_MY_GOOGLE_INITIATE = `${MENTORSHIP_BASE}/my-google/initiate`;
 export const MENTORSHIP_MY_BOOKING_PAGE = `${MENTORSHIP_BASE}/my-booking-page`;
+export const MENTORSHIP_REQUESTS = `${MENTORSHIP_BASE}/requests`;
+export const MENTORSHIP_REQUEST_APPROVE = (id: string) => `${MENTORSHIP_BASE}/requests/${id}/approve`;
+export const MENTORSHIP_REQUEST_DECLINE = (id: string) => `${MENTORSHIP_BASE}/requests/${id}/decline`;
+export const MENTORSHIP_MENTOR_FEEDBACK = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/feedback`;
+export const MENTORSHIP_SESSIONS = `${MENTORSHIP_BASE}/sessions`;
+export const MENTORSHIP_SESSION_STATS = `${MENTORSHIP_BASE}/sessions/stats`;
+export const MENTORSHIP_MY_SESSIONS_AWAITING = `${MENTORSHIP_BASE}/my-sessions/awaiting-review`;
+export const MENTORSHIP_MY_SESSION_RECORD = `${MENTORSHIP_BASE}/my-sessions/record`;
+export const MENTORSHIP_SESSION_CANCEL = `${MENTORSHIP_BASE}/sessions/cancel`;
+export const MENTORSHIP_SESSION_RESCHEDULE = `${MENTORSHIP_BASE}/sessions/reschedule`;
+export const MENTORSHIP_MY_SESSION_CANCEL = `${MENTORSHIP_BASE}/my-sessions/cancel`;
+export const MENTORSHIP_MY_SESSION_RESCHEDULE = `${MENTORSHIP_BASE}/my-sessions/reschedule`;
+export const MENTORSHIP_SESSION_SCHEDULE = `${MENTORSHIP_BASE}/sessions/schedule`;
+export const MENTORSHIP_MY_SESSION_SCHEDULE = `${MENTORSHIP_BASE}/my-sessions/schedule`;
+export const MENTORSHIP_MENTOR_MENTEES = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/mentees`;
+export const MENTORSHIP_MENTOR_AVAILABILITY = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/availability`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
@@ -1299,6 +1350,12 @@ export const SAVE_GENERIC_SETTING = `${BASE_URL}/admin-core-service/institute/v1
 export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white-label/v1/setup`;
 export const WHITE_LABEL_STATUS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
+
+// App Registry Status (read-only) — mobile/desktop app registration status for this institute,
+// sourced from the health-check dashboard's App Registration module. Registration itself stays
+// ops-only in that dashboard; this is a status view only.
+export const APP_REGISTRY_STATUS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/institute/app-registry/v1/status?instituteId=${instituteId}`;
 
 // Institute Payment Gateway Admin CRUD
 export const INSTITUTE_PAYMENT_GATEWAYS = (instituteId: string) =>

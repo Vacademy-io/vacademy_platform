@@ -166,6 +166,7 @@ Fields:
 - `json_web_metadata` — optional string (used by embed customization)
 - `send_respondent_email`, `to_notify` — email notification config
 - `campaign_image` — optional URL
+- `postSubmitConfiguration` — the thank-you screen / redirect (see §13)
 
 ---
 
@@ -198,6 +199,8 @@ Dropdown actions:
 ### Create / Edit form — `CreateCampaignForm`
 
 Driven by `useAudienceCampaignForm` (RHF + Zod). Loads custom fields via `getCampaignCustomFieldsAsync()` (or from `useGetCampaignById` when editing). Submits through `useCreateAudienceCampaign` or `useUpdateAudienceCampaign` depending on mode.
+
+Below the custom-fields card it renders **Post Submit Configuration** (§13) — the audience-list twin of the enroll invite's "Post Form Fill Configuration" card.
 
 ### Leads table — `CampaignUsersTable`
 
@@ -259,7 +262,8 @@ Channels: WhatsApp (templated), Email, Push, System Alert. Supports template var
 1. Click **Add Audience List** (or Edit on a card).
 2. `CreateCampaignDialog` opens; on edit, `useGetCampaignById` hydrates the form.
 3. User fills metadata + custom fields; Zod validates.
-4. Submit → `useCreateAudienceCampaign` or `useUpdateAudienceCampaign` → list invalidated.
+4. Optionally edits **Post Submit Configuration** — prefilled from the institute default on create, from the campaign's own `setting_json` on edit.
+5. Submit → `useCreateAudienceCampaign` or `useUpdateAudienceCampaign` → list invalidated.
 
 ### C. View / collect responses
 
@@ -536,3 +540,135 @@ Anything that touches lead/enrollment state typically needs one or more of these
 2. **Convert = a separate manual click** in the lead-profile drawer that POSTs to `…/user-lead-profile/update-status` (or `mark-converted`).
 3. The `UserLeadProfile`, timeline, and communications history are preserved across conversion; only score updates are frozen and the badge is hidden in most tables.
 4. Conversion is reversible; bulk application/admission flows live in the Admissions module and are decoupled from the audience-manager UI.
+
+
+---
+
+## 13. Post Submit Configuration (thank-you screen / redirect)
+
+What a respondent sees the instant they submit an audience form. Modelled on the
+enroll invite's `postformfillConfiguration`
+([PostFormFillConfigurationCard.tsx](src/routes/manage-students/invite/-components/create-invite/-components/PostFormFillConfigurationCard.tsx)) —
+same idea, different surface.
+
+### 13.1 Options
+
+**Off by default.** `enabled` is `false` until an admin turns it on. While off,
+every respondent-facing surface renders exactly what it rendered before this
+feature existed and no redirect fires — whatever else is sitting in the blob.
+
+| Field | Effect |
+|---|---|
+| `enabled` | Master switch. Off = standard confirmation, unchanged |
+| `successTitle` | Heading. Blank hides it |
+| `successMessage` | Plain-text body |
+| `content` | Optional formatted body (TipTap, with an "Edit HTML source" escape hatch). Replaces `successMessage` when set. Sanitized at render |
+| `buttons[]` | Up to `MAX_POST_SUBMIT_BUTTONS` (4) action buttons, each `{text, url, variant}` (solid / outline). External links open in a new tab |
+| `allowAnotherResponse` + `anotherResponseText` | "Submit another response" button with a custom label |
+| `redirectUrl` + `redirectDelaySeconds` | Sends the respondent elsewhere. `0` = immediate; a delay shows a countdown first |
+
+There is deliberately **no artwork configuration** — no icon picker, accent
+colour or banner image. The success icon stays the one each surface already
+used; only copy, buttons and the redirect are configurable. That keeps the card
+the same shape as the enroll invite's Post Form Fill Configuration.
+
+The card is a single column of stacked fields, and the thank-you screen
+**preview sits behind a Preview button** (a dialog), not a permanent
+side-by-side pane — the pane cost half the campaign dialog to show a few lines
+of text.
+
+`successTitle`, `successMessage`, `content`, button text, button URLs and
+`redirectUrl` all support the tokens `{{name}}`, `{{email}}` and
+`{{campaignName}}`. In URLs the value is URL-encoded, so `?email={{email}}`
+works.
+
+`redirectUrl` and button URLs accept a relative path (`/thank-you`) or an
+absolute `http(s)` URL only. `javascript:`, `data:` and protocol-relative
+`//host` are rejected — on save in the admin, and again at render time, where an
+unsafe button is dropped rather than rendered as a dead control.
+
+### 13.2 Where it is stored
+
+| Scope | Location | Written by |
+|---|---|---|
+| Per campaign | `audience.setting_json` → `postSubmitConfiguration` | `CreateCampaignForm` (POST/PUT `/v1/audience/campaign`) |
+| Institute default | institute setting `AUDIENCE_FORM_SETTING` → `postSubmitConfiguration` | Settings → Lead Settings → **Forms** |
+
+No backend change was needed: `setting_json` already round-trips through
+`Audience(dto)` (create), `AudienceService.updateCampaign` (update) and both the
+admin and public campaign GETs.
+
+The institute default is prefilled into **new** campaigns only. Editing the
+default never rewrites campaigns that are already saved — each keeps the copy it
+was created with. `Reset` in the create form restores the institute default, not
+a blank block.
+
+`setting_json` also carries unrelated keys (`workflow_setting.offset_day`,
+`SCHOOL_SETTING…COUNSELLOR_ALLOCATION_SETTING`), so the save path merges into the
+existing blob rather than replacing it — see `applyPostSubmitConfiguration`.
+
+### 13.3 Where it is read
+
+| Surface | File |
+|---|---|
+| Shared campaign link `/audience-response` | `frontend-learner-dashboard-app/src/routes/audience-response/-components/audience-response-form.tsx` |
+| Catalogue inline form + `AudienceFormModal` | `frontend-learner-dashboard-app/src/routes/$tagName/-components/components/LeadFormComponent.tsx` |
+
+Both parse with `parsePostSubmitConfiguration` and share
+`resolvePostSubmitButtons` and `usePostSubmitRedirect`, so a campaign behaves
+identically wherever its form was filled. Two deliberate differences:
+
+- On the catalogue surface a page-builder `successMessage` prop still wins over
+  the campaign message — that override is per-placement.
+- Catalogue buttons use catalogue tokens rather than the config's accent, so
+  they stay on the hosting page's theme.
+
+Campaigns created before this feature have no `postSubmitConfiguration` (often
+no `setting_json` at all); every field falls back to the previous hardcoded copy,
+so they render exactly as they did before. The original single-button shape
+(`showCtaButton` / `ctaButtonText` / `ctaButtonUrl`) is migrated into
+`buttons[0]` on read, in both apps.
+
+### 13.4 Non-regression rules
+
+Three guards keep this from changing behaviour for anyone who never opened the card:
+
+1. **`enabled` is off by default**, and every renderer plus the redirect hook is
+   gated on it, so an untouched campaign behaves exactly as before. Validation
+   is also skipped while off, so half-finished content can never block a save.
+2. **The Zod block is deliberately unfailable** (`.catch()` on every leaf, no
+   `.max()` on `buttons`). This block has no error UI, and RHF's `handleSubmit`
+   silently skips the success handler when any field fails — a strict rule here
+   would turn "Save Changes" into a dead button with nothing on screen. Real
+   enforcement lives in `validatePostSubmitConfiguration` (toast) and
+   `normalizePostSubmitConfiguration` (coerce + cap).
+3. **The catalogue keeps its original block** while
+   `isDefaultPostSubmitConfiguration()` is true — which it always is while the
+   master switch is off — so live catalogue pages don't gain a heading or change
+   copy because a default now exists.
+4. **A blank button row never blocks the save.** Adding a button and leaving it
+   empty is a change of mind — normalize drops it. Only half-filled rows error.
+5. **The card is collapsed by default in the campaign form**, behind a header
+   showing an `Off` / `On` chip, so the create flow is visually unchanged for
+   anyone who doesn't use it.
+
+One dependency worth knowing: the body editor passes `minimalToolbar` to
+`RichTextEditor`, and that is **load-bearing, not cosmetic**. The full toolbar's
+"More tools" menu opens a link modal whose Cancel / Apply / Remove buttons carry
+no `type="button"`; this card sits inside the campaign `<form>`, so with the full
+toolbar those would submit the campaign mid-edit. Same for the math modal. (A
+pre-existing quirk of `TipTapEditor` — unreachable in the minimal toolbar, so it
+is not fixed here.)
+
+### 13.5 Not covered
+
+The Admissions module's **enquiry** forms (`/enquiry-response`) are a separate
+entity with their own creation flow and do not read this block.
+
+### 13.6 Key files
+
+| File | Role |
+|---|---|
+| [audience-post-submit-settings.ts](src/services/audience-post-submit-settings.ts) | Types, defaults, parse/merge, validation, institute-default fetch/save |
+| [PostSubmitConfigurationEditor.tsx](src/components/audience/PostSubmitConfigurationEditor.tsx) | The one editor UI (single column + Preview dialog), used by both the campaign form and Settings |
+| [AudienceFormSettings.tsx](src/routes/settings/-components/AudienceFormSettings.tsx) | Settings → Lead Settings → Forms |

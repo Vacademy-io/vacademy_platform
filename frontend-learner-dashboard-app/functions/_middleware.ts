@@ -36,6 +36,8 @@ interface DomainRoutingResponse {
   instituteThemeCode: string;
   tabText?: string | null;
   tabIconFileId?: string | null;
+  playStoreAppLink?: string | null;
+  appStoreAppLink?: string | null;
 }
 
 async function resolveLogoUrl(fileId: string, backendBase: string): Promise<string> {
@@ -54,7 +56,7 @@ async function resolveLogoUrl(fileId: string, backendBase: string): Promise<stri
   return "";
 }
 
-async function fetchBranding(
+async function fetchBrandingOnce(
   domain: string,
   subdomain: string,
   backendBase: string
@@ -63,12 +65,32 @@ async function fetchBranding(
     const url = `${getDomainRoutingUrl(backendBase)}?domain=${encodeURIComponent(domain)}&subdomain=${encodeURIComponent(subdomain)}`;
     const res = await fetch(url, {
       headers: { accept: "application/json" },
-    });
+      // Edge-cache the resolve: crawlers arrive in bursts and every manifest
+      // request now goes through here too. Branding changes rarely.
+      cf: { cacheTtl: 300, cacheEverything: true },
+    } as RequestInit);
     if (res.ok) {
       return (await res.json()) as DomainRoutingResponse;
     }
   } catch {
     // fall through
+  }
+  return null;
+}
+
+async function fetchBranding(
+  domain: string,
+  subdomain: string,
+  backendBase: string
+): Promise<DomainRoutingResponse | null> {
+  const direct = await fetchBrandingOnce(domain, subdomain, backendBase);
+  if (direct) return direct;
+  // Apex domains (no subdomain) are stored with the wildcard subdomain "*" —
+  // that is what the app itself sends (see getCurrentDomainInfo). Without this
+  // retry, every two-part white-label host resolved to nothing and fell back to
+  // Vacademy branding.
+  if (!subdomain) {
+    return await fetchBrandingOnce(domain, "*", backendBase);
   }
   return null;
 }
@@ -158,9 +180,222 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function isVacademyHost(hostname: string): boolean {
+  return (
+    /(^|\.)vacademy\.io$/.test(hostname) ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1"
+  );
+}
+
+/** Play Store links carry the package id in ?id=; related_applications wants it. */
+function playPackageId(link: string): string {
+  try {
+    return new URL(link).searchParams.get("id") || "";
+  } catch {
+    return "";
+  }
+}
+
+const nonEmpty = (v: string | null | undefined): string =>
+  typeof v === "string" && v.trim() ? v.trim() : "";
+
+/**
+ * instituteThemeCode is not always a colour — plenty of institutes store a
+ * theme *name* ("amber", "blue") that the app maps through theme.json. A
+ * manifest theme_color must be a CSS colour, so only pass hex through and let
+ * the browser pick its own default otherwise.
+ */
+const hexColor = (v: string | null | undefined): string => {
+  const value = nonEmpty(v);
+  return /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value) ? value : "";
+};
+
+/**
+ * Per-institute PWA manifest.
+ *
+ * The static public/manifest.webmanifest is hardcoded to name "Vacademy" with
+ * Vacademy icons, and it was served verbatim on every white-labelled domain —
+ * so Chrome's install prompt read "Install Vacademy" with the Vacademy mark on
+ * e.g. students.zoeedtech.com. Resolve the institute from the hostname and
+ * answer with its own name, icon and theme colour instead.
+ *
+ * When the institute ships a real native app we go further: `related_applications`
+ * + `prefer_related_applications` tells Chrome to stop offering the PWA at all,
+ * so the only thing a learner is nudged towards is that institute's own store
+ * listing (the in-app <GetAppBanner /> does the actual suggesting).
+ */
+async function serveManifest(
+  context: Parameters<PagesFunction>[0],
+  url: URL
+): Promise<Response> {
+  const hostname = url.hostname;
+  const backendBase = getBackendBase(hostname);
+  const { domain, subdomain } = parseDomainParts(hostname);
+  const branding = await fetchBranding(domain, subdomain, backendBase);
+
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body, null, 2), {
+      status: 200,
+      headers: {
+        "content-type": "application/manifest+json; charset=utf-8",
+        "cache-control": "public, max-age=300, must-revalidate",
+      },
+    });
+
+  if (!branding) {
+    // Vacademy's own hosts legitimately want the Vacademy manifest.
+    if (isVacademyHost(hostname)) return context.next();
+    // On an unresolved white-label host, an install prompt is better suppressed
+    // than mis-branded: no icons => Chrome treats the app as not installable,
+    // so nobody is offered "Install Vacademy" under someone else's domain.
+    return json({
+      name: hostname,
+      short_name: hostname,
+      start_url: "/",
+      scope: "/",
+      display: "standalone",
+      background_color: "#ffffff",
+    });
+  }
+
+  const name = nonEmpty(branding.tabText) || nonEmpty(branding.instituteName) || hostname;
+
+  // Prefer the dedicated tab icon: it is the square-ish mark, whereas the main
+  // institute logo is often a wide lockup that would be squashed into the
+  // launcher's square icon slot.
+  const iconFileId =
+    nonEmpty(branding.tabIconFileId) || nonEmpty(branding.instituteLogoFileId);
+  const iconSource = iconFileId ? await resolveLogoUrl(iconFileId, backendBase) : "";
+  // Same-origin proxy: guarantees an image/* content-type (S3 objects are stored
+  // with the wrong one) and keeps the icon on our own cache-control.
+  const iconUrl = iconSource
+    ? `${url.origin}/branding-image?u=${encodeURIComponent(iconSource)}`
+    : "";
+
+  // Declared sizes are what Chrome's installability check reads; it only requires
+  // the fetched bitmap to decode. "any" purpose (not "maskable") on purpose — an
+  // arbitrary institute logo has no safe zone and would be cropped into a circle.
+  const icons = iconUrl
+    ? ["96x96", "128x128", "192x192", "256x256", "512x512"].map((sizes) => ({
+        src: iconUrl,
+        sizes,
+        purpose: "any",
+      }))
+    : [];
+
+  const play = nonEmpty(branding.playStoreAppLink);
+  const itunes = nonEmpty(branding.appStoreAppLink);
+  const relatedApplications = [
+    ...(play
+      ? [{ platform: "play", url: play, ...(playPackageId(play) ? { id: playPackageId(play) } : {}) }]
+      : []),
+    ...(itunes ? [{ platform: "itunes", url: itunes }] : []),
+  ];
+
+  return json({
+    name,
+    short_name: name,
+    description: nonEmpty(branding.instituteName) || name,
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: "#ffffff",
+    ...(hexColor(branding.instituteThemeCode)
+      ? { theme_color: hexColor(branding.instituteThemeCode) }
+      : {}),
+    orientation: "portrait-primary",
+    categories: ["education", "productivity"],
+    lang: "en-US",
+    icons,
+    ...(relatedApplications.length
+      ? {
+          related_applications: relatedApplications,
+          // The institute has its own app — don't compete with it.
+          prefer_related_applications: true,
+        }
+      : {}),
+  });
+}
+
+/**
+ * Per-institute /favicon.ico.
+ *
+ * The crawler branch below rewrites the icon <link> tags in the HTML, but that
+ * only helps consumers that (a) send a crawler UA we recognise and (b) read the
+ * markup at all. Google's favicon fetcher does neither reliably, and a browser
+ * with no icon link requests /favicon.ico by convention. That path used to be
+ * excluded from Functions in public/_routes.json, so every white-labelled
+ * domain served the static Vacademy "V" — which is what Google indexed and
+ * showed next to e.g. readonrent.in.
+ *
+ * Resolve the institute from the hostname and redirect to its own mark instead.
+ * A redirect (rather than proxying the bytes) reuses /branding-image, which
+ * already fixes the wrong content-type S3 hands back for branding uploads.
+ */
+async function serveFavicon(
+  context: Parameters<PagesFunction>[0],
+  url: URL
+): Promise<Response> {
+  const hostname = url.hostname;
+  const backendBase = getBackendBase(hostname);
+  const { domain, subdomain } = parseDomainParts(hostname);
+  const branding = await fetchBranding(domain, subdomain, backendBase);
+
+  // Prefer the dedicated tab icon for the same reason the manifest does: the
+  // main logo is often a wide lockup, and a favicon slot is square.
+  const iconFileId = branding
+    ? nonEmpty(branding.tabIconFileId) || nonEmpty(branding.instituteLogoFileId)
+    : "";
+  const iconSource = iconFileId ? await resolveLogoUrl(iconFileId, backendBase) : "";
+
+  if (iconSource) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `${url.origin}/branding-image?u=${encodeURIComponent(iconSource)}`,
+        // Short enough that a branding change propagates the same day. The old
+        // immutable year-long rule on *.ico pinned the wrong mark for far longer
+        // than any fix could undo.
+        "cache-control": "public, max-age=3600, must-revalidate",
+      },
+    });
+  }
+
+  // Vacademy's own hosts legitimately want the Vacademy mark.
+  if (isVacademyHost(hostname)) return context.next();
+
+  // Unresolved white-label host: no icon beats someone else's icon. Same
+  // reasoning as the cold-cache branch of the inline script in index.html.
+  return new Response(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>',
+    {
+      status: 200,
+      headers: {
+        "content-type": "image/svg+xml",
+        "cache-control": "public, max-age=300, must-revalidate",
+      },
+    }
+  );
+}
+
 export const onRequest: PagesFunction = async (context) => {
   const { request } = context;
   const ua = request.headers.get("user-agent") || "";
+  const url = new URL(request.url);
+
+  // Per-institute PWA manifest. Handled before the crawler check because this
+  // one is for real browsers, not bots.
+  if (url.pathname === "/manifest.webmanifest") {
+    return serveManifest(context, url);
+  }
+
+  // Per-institute favicon. Also handled before the crawler check: the whole
+  // point is that the callers that ask for it (browsers, Google's favicon
+  // fetcher) do not identify as crawlers.
+  if (url.pathname === "/favicon.ico") {
+    return serveFavicon(context, url);
+  }
 
   // Only intercept for crawlers
   if (!CRAWLER_UA_REGEX.test(ua)) {
@@ -168,7 +403,6 @@ export const onRequest: PagesFunction = async (context) => {
   }
 
   // Only intercept HTML page requests, not assets
-  const url = new URL(request.url);
   const ext = url.pathname.split(".").pop()?.toLowerCase();
   if (
     ext &&
@@ -281,8 +515,16 @@ export const onRequest: PagesFunction = async (context) => {
       /<link\s+rel="(?:shortcut )?icon"[^>]*\/>/g,
       `<link rel="icon" href="${escapedLogo}" />`
     );
-    // Also add a favicon link if none existed
-    if (!html.includes('rel="icon"')) {
+    // Also add a favicon link if none existed.
+    //
+    // This MUST test for a real <link> tag, not the bare substring `rel="icon"`.
+    // index.html has no icon link at all (only apple-touch-icon), but its inline
+    // branding script contains the selector string 'link[rel="icon"]' — so a
+    // substring check matched the JS source and silently skipped the injection
+    // on every white-labelled domain. Crawlers then found no icon link, fell
+    // back to /favicon.ico, and Google listed those domains with the Vacademy
+    // mark.
+    if (!/<link[^>]+rel="(?:shortcut )?icon"/.test(html)) {
       html = html.replace(
         "</head>",
         `    <link rel="icon" href="${escapedLogo}" />\n  </head>`

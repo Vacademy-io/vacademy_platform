@@ -48,10 +48,19 @@ _DOC_START_RE = re.compile(r"<!doctype html|<html", re.IGNORECASE)
 
 # Content elements the admin can ask the page to include → concrete directives.
 _CONTENT_TYPE_SPECS = {
-    "notes": "STRUCTURED NOTES: clear teaching notes with headings, short explanations, concrete examples, and a 'Key Takeaways' summary.",
-    "flashcards": "FLASHCARDS: an INTERACTIVE flashcard deck — cards the learner clicks/taps to flip (question → answer), built with inline JS/CSS (a 3D flip). Include the handful of most important cards.",
+    "notes": "SHORT NOTES: concise, scannable teaching notes with headings, tight bullets, and concrete examples.",
+    "summary": "SUMMARY: a short, scannable recap / TL;DR of the key points as a compact card or bullet list — for quick revision.",
+    "flashcards": (
+        "FLASHCARDS: an INTERACTIVE flashcard deck — cards the learner clicks/taps to flip (question → answer), built with inline JS/CSS. Include the handful of most important cards. LAYOUT RULES (a flip card collapses if you get these wrong — this has shipped broken before): the card element MUST have its own explicit `width:100%` AND a `min-height` (≈170px); if the faces use `position:absolute;inset:0` they contribute NO width or height, so the card itself must define both. Lay the deck out with `grid-template-columns:repeat(auto-fit,minmax(240px,1fr))` — NEVER put a card in an `auto` grid track (it collapses to zero width and the text spills out one word per line). Put any prev/next controls on their OWN row, not in a track beside the card. Give the face text `overflow-wrap:break-word` and keep it comfortably inside the padding."
+    ),
     "practical_examples": "PRACTICAL EXAMPLES: worked, real-world examples/applications showing the concept in action, step by step.",
-    "interactive_games": "INTERACTIVE GAME: a small self-contained learning game (e.g. drag-and-drop matching, click-to-reveal, memory, or a timed challenge) in inline JS — track state and give feedback. Make it genuinely playable.",
+    "interactive_games": (
+        "INTERACTIVE GAME (REQUIRED when listed — never omit it): one small, genuinely playable "
+        "learning game built from the material's own terms — match term to definition, order the "
+        "steps of a process, sort items into categories, or a click-to-reveal/timed recall challenge. "
+        "Inline JS with real state, scoring, per-answer feedback and a Reset control. Must work with "
+        "mouse AND touch (if you use drag-and-drop, also support tap-to-select-then-tap-to-place)."
+    ),
     "quiz": "QUIZ: an INTERACTIVE multiple-choice quiz — the learner selects answers and gets instant feedback + a score (inline JS). 3-6 questions, each with a short explanation.",
     "assignment": "ASSIGNMENT: a clearly-scoped task section — objective, step-by-step instructions, the deliverable, and a simple rubric / success criteria (static content).",
 }
@@ -122,7 +131,7 @@ _SYSTEM_DIRECTIVE = (
     "content must be visible on load; entrance animations must play automatically on load, not "
     "on scroll. Keep motion smooth and honor `prefers-reduced-motion`.\n"
     "4. Responsive (mobile → desktop), accessible (semantic tags, alt text, adequate "
-    "contrast — dark text on light surfaces by default), and readable.\n"
+    "contrast — dark text on light surfaces by default), and readable CONTRAST (content has shipped INVISIBLE): set the text colour explicitly on EVERY surface (hero, card, band) for ALL its descendants — dark surfaces set light text, and a LIGHT panel nested inside a dark surface must re-set its own DARK text (white-on-pale-mint has shipped invisible). Never use muted/grey text on a coloured or gradient background. Inline emphasis (`strong`,`b`,`em`,`mark`,`span`) always INHERITS its container's colour — never a fixed colour; emphasise with weight or background instead. LAYOUT: sections/cards stack in normal flow — never absolutely position text or captions over other content, no negative-margin overlaps, no `position:absolute;bottom:0` captions inside cards with flowing content, no fixed heights that clip. Any animation touching opacity must END at opacity:1.\n"
     "5. Real, substantive content about the TOPIC — no lorem ipsum, no placeholder text. "
     "Use headings, sections, tables, callouts, diagrams as the content warrants.\n"
     "6. External resources: you MAY use Google Fonts via `<link>` and reputable CDN "
@@ -155,6 +164,11 @@ def _content_types_block(content_types: Optional[list[str]]) -> str:
         "\n\n**Include these sections, in this order** (design them into one cohesive page, "
         "not disconnected blocks — interactive parts use inline JS and must actually work):\n"
         + "\n".join(specs)
+        + "\n\nIMPORTANT — these are PRESENTATION FORMATS, not new subject matter. Any "
+        "source-fidelity rule above restricts the FACTS you may state; it does NOT excuse you from "
+        "building these sections. Build each one USING the supplied material's own content, and "
+        "never skip a requested section because the material 'does not contain a game/quiz' — "
+        "constructing the interaction is your job."
     )
 
 

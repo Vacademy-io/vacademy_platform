@@ -71,17 +71,37 @@ export interface Permissions {
 }
 
 // Drip Conditions Types
-export type DripConditionLevel = 'package' | 'chapter' | 'slide';
+export type DripConditionLevel = 'package' | 'subject' | 'module' | 'chapter' | 'slide';
+/** Content levels a condition can be attached to (everything below the course). */
+export type DripConditionContentLevel = Exclude<DripConditionLevel, 'package'>;
 export type DripConditionBehavior = 'lock' | 'hide' | 'both';
 export type DripConditionRuleType =
     | 'date_based'
+    | 'relative_date'
     | 'completion_based'
     | 'prerequisite'
     | 'sequential';
 export type DripConditionMetric = 'average_of_last_n' | 'average_of_all';
+/** What a day-wise rule counts day 1 from. */
+export type DripAnchor = 'enrollment' | 'session_start';
 
 export interface DateBasedParams {
     unlock_date: string; // ISO 8601 format
+}
+
+/**
+ * Day-wise unlocking, counted per learner rather than on the calendar.
+ *
+ * A "30-day course, one chapter a day" schedule cannot use fixed dates: every
+ * learner enrols on a different day, so day 7 has to mean their day 7.
+ */
+export interface RelativeDateParams {
+    /** 1-based day of access. Day 1 is the anchor day itself (open immediately). */
+    unlock_on_day: number;
+    /** Which day counts as day 1. Defaults to the learner's own enrollment. */
+    anchor?: DripAnchor;
+    /** Local time-of-day it opens, "HH:mm". Defaults to midnight. */
+    unlock_time?: string;
 }
 
 export interface CompletionBasedParams {
@@ -103,6 +123,7 @@ export interface SequentialParams {
 
 export type DripConditionRuleParams =
     | DateBasedParams
+    | RelativeDateParams
     | CompletionBasedParams
     | PrerequisiteParams
     | SequentialParams;
@@ -113,7 +134,7 @@ export interface DripConditionRule {
 }
 
 export interface DripConditionConfig {
-    target: 'chapter' | 'slide'; // Required for all levels
+    target: DripConditionContentLevel; // Required for all levels
     behavior: DripConditionBehavior;
     is_enabled: boolean;
     rules: DripConditionRule[];
@@ -132,10 +153,58 @@ export interface DripCondition {
     updated_at?: string;
 }
 
+/**
+ * What the "Schedule day-wise unlock" generator starts from.
+ *
+ * Kept in institute settings so an admin sets the house rule once ("modules,
+ * one a day, hidden until their day") and every course they schedule after
+ * that opens with it pre-filled.
+ */
+export interface DripScheduleDefaults {
+    /** Which level the generator drips: subject, module, chapter or slide. */
+    level: DripConditionContentLevel;
+    /** Day the FIRST item unlocks on. 1 = available immediately. */
+    startDay: number;
+    /** Days between one item unlocking and the next. */
+    intervalDays: number;
+    /** Whether not-yet-due content shows locked or is hidden entirely. */
+    behavior: DripConditionBehavior;
+    /** What day 1 counts from. */
+    anchor: DripAnchor;
+    /** Local time-of-day content opens on its day, "HH:mm". */
+    unlockTime: string;
+}
+
 export interface DripConditionsSettings {
     enabled: boolean; // Global toggle for drip functionality
     conditions: DripCondition[];
+
+    /**
+     * Explicit opt-in to ENFORCE the conditions above on learners.
+     *
+     * MUST default to false and must never be inferred from `enabled`.
+     * The admin dashboard wrote conditions into this blob for a long time
+     * while the learner app read a different source entirely, so institutes
+     * are carrying rules that have never locked anything — 83 across 10
+     * institutes as of Aug 2026, nearly all `lock` or `hide`. Turning them on
+     * automatically would take content away from learners who have had it
+     * open for months, which is why this is a separate, deliberate switch.
+     */
+    applyConfiguredRules?: boolean;
+
+    /** Optional; falls back to DEFAULT_DRIP_SCHEDULE when absent. */
+    scheduleDefaults?: DripScheduleDefaults;
 }
+
+/** One item per day, locked (not hidden), counted from the learner's enrollment. */
+export const DEFAULT_DRIP_SCHEDULE: DripScheduleDefaults = {
+    level: 'chapter',
+    startDay: 1,
+    intervalDays: 1,
+    behavior: 'lock',
+    anchor: 'enrollment',
+    unlockTime: '00:00',
+};
 
 export type OfferPriceRoundingMode = 'NONE' | 'CEIL' | 'FLOOR';
 
@@ -242,6 +311,9 @@ export const DEFAULT_COURSE_SETTINGS: CourseSettingsData = {
     dripConditions: {
         enabled: true,
         conditions: [],
+        // Off by default, deliberately — see DripConditionsSettings.
+        applyConfiguredRules: false,
+        scheduleDefaults: DEFAULT_DRIP_SCHEDULE,
     },
     offerPricing: {
         enabled: false,

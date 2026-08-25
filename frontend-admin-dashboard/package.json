@@ -1,6 +1,6 @@
 {
     "name": "admin",
-    "version": "1.0.1",
+    "version": "1.0.4",
     "private": true,
     "type": "module",
     "engines": {
@@ -15,7 +15,7 @@
     "scripts": {
         "dev": "vite",
         "build": "concurrently -n tsc,vite -c blue,green --kill-others-on-fail \"pnpm run build:tsc\" \"pnpm run build:vite\"",
-        "build:tsc": "cross-env NODE_OPTIONS=--max-old-space-size=3072 tsc",
+        "build:tsc": "cross-env NODE_OPTIONS=--max-old-space-size=6144 tsc",
         "build:vite": "cross-env NODE_OPTIONS=--max-old-space-size=8192 vite build",
         "serve": "vite preview",
         "test": "vitest",

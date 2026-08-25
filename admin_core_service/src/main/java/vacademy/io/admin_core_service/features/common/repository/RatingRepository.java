@@ -31,7 +31,7 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
             "    (r.source_id = :sourceId AND (:ratingStatuses IS NULL OR r.status IN (:ratingStatuses))) " +
             ")",
         countQuery = "SELECT COUNT(DISTINCT r.id) FROM rating r " +
-            "LEFT JOIN package_session ps ON ps.p.id = r.source_id " +
+            "LEFT JOIN package_session ps ON ps.id = r.source_id " +
             "AND (:packageSessionStatuses IS NULL OR ps.status IN (:packageSessionStatuses)) " +
             "WHERE ( " +
             "    ((:ratingStatuses IS NULL OR r.status IN (:ratingStatuses)) " +

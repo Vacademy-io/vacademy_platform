@@ -11,6 +11,15 @@ ENV APP_ENV=${APP_ENV}
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Bake the NLTK corpora the video pipeline needs INTO the image. Downloading
+# them at runtime is a blocking network call on a request path, and NLTK's
+# servers rate-limit (429/503) — which stalled content generation past the
+# client timeout. Build-time failure here is non-fatal: the app still starts
+# and falls back to a one-shot background fetch.
+ENV NLTK_DATA=/usr/local/share/nltk_data
+RUN python -m nltk.downloader -d /usr/local/share/nltk_data \
+        averaged_perceptron_tagger cmudict || true
 # Install system dependencies for Playwright (Chromium) manually
 # Install system dependencies for Playwright (Chromium) manually
 # Using libgtk-3-0 to pull in most GUI dependencies including atk/atspi

@@ -54,6 +54,9 @@ export const START_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learn
 export const ASSESSMENT_SAVE = `${BASE_URL}/assessment-service/assessment/learner/status/update`;
 export const ASSESSMENT_SUBMIT = `${BASE_URL}/assessment-service/assessment/learner/status/submit`;
 export const RESTART_ASSESSMENT = `${BASE_URL}/assessment-service/assessment/learner/status/restart`;
+// Learner-raised reattempt / time-extension requests, reviewed by an admin.
+export const REATTEMPT_REQUEST = `${BASE_URL}/assessment-service/learner/reattempt-request/v1`;
+export const REATTEMPT_REQUEST_MINE = `${BASE_URL}/assessment-service/learner/reattempt-request/v1/mine`;
 // Learner-scoped report endpoints (properly authorized)
 export const STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/learner/report/list`;
 export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/assessment/learner/report/detail`;
@@ -83,6 +86,8 @@ const ENROLL_API_BASE =
 export const ENROLL_USER_INVITE_PAYMENT_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
+/** Per-enrollment detail: carries the learner's enrollment date for one batch. */
+export const LEARNER_BATCH_DETAIL = `${BASE_URL}/admin-core-service/learner/info/v1/batch-details`;
 // Learner self-service payment method (saved card + billing details)
 export const LEARNER_PAYMENT_METHOD_SUMMARY = `${BASE_URL}/admin-core-service/learner/payment-method/v1/summary`;
 export const LEARNER_PAYMENT_METHOD_SETUP_INTENT = `${BASE_URL}/admin-core-service/learner/payment-method/v1/stripe/setup-intent`;
@@ -108,6 +113,7 @@ export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/lear
 // (checklist ticks, fill-in-the-blank answers, inline MCQ choices). GET lists
 // all blocks for the current learner; POST upserts one block.
 export const SLIDE_INTERACTION = `${BASE_URL}/admin-core-service/learner-tracking/v1/slide-interaction`;
+export const MARK_SLIDE_COMPLETION = `${BASE_URL}/admin-core-service/learner-tracking/v1/mark-slide-completion`;
 export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/add-or-update`;
 export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/add-or-update-assignment-slide-activity-log`;
 export const GET_ASSIGNMENT_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;
@@ -293,6 +299,17 @@ export const AUTHENTICATED_BOOKING_BASE = `${BASE_URL}/admin-core-service/v1/boo
 
 // Mentorship — a learner's assigned mentors
 export const MENTORSHIP_MY_MENTORS = `${BASE_URL}/admin-core-service/mentorship/v1/my-mentors`;
+export const MENTORSHIP_DIRECTORY = `${BASE_URL}/admin-core-service/mentorship/v1/directory`;
+export const MENTORSHIP_MY_REQUESTS = `${BASE_URL}/admin-core-service/mentorship/v1/my-requests`;
+export const MENTORSHIP_MY_REQUEST_BY_ID = (id: string) =>
+    `${BASE_URL}/admin-core-service/mentorship/v1/my-requests/${id}`;
+export const MENTORSHIP_MY_PENDING_FEEDBACK = `${BASE_URL}/admin-core-service/mentorship/v1/my-pending-feedback`;
+export const MENTORSHIP_MY_FEEDBACK = `${BASE_URL}/admin-core-service/mentorship/v1/my-feedback`;
+// The learner's own 1:1 sessions — list, cancel, reschedule. Distinct from
+// /my-sessions/*, which is the MENTOR's side of the same feature.
+export const MENTORSHIP_MY_MENTOR_SESSIONS = `${BASE_URL}/admin-core-service/mentorship/v1/my-mentor-sessions`;
+export const MENTORSHIP_MY_MENTOR_SESSION_CANCEL = `${MENTORSHIP_MY_MENTOR_SESSIONS}/cancel`;
+export const MENTORSHIP_MY_MENTOR_SESSION_RESCHEDULE = `${MENTORSHIP_MY_MENTOR_SESSIONS}/reschedule`;
 // A learner's own bookings (by invitee user id) — membership-scoped, self only.
 export const MEETINGS_BY_LEAD = `${BASE_URL}/admin-core-service/v1/meetings/by-lead`;
 

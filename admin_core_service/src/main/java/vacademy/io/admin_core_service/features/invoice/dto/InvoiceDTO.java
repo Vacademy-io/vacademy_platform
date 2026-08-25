@@ -48,6 +48,12 @@ public class InvoiceDTO {
     // Admin-entered notes (from invoice_data_json), if any — used by the frontend
     // "Duplicate" action to prefill a new Create-Invoice dialog from this invoice.
     private String notes;
+    /**
+     * True while this document is still an unpaid PROFORMA — it carries a number from the
+     * institute's separate proforma series, not from its real invoice series, and only
+     * becomes a numbered invoice when it is paid.
+     */
+    private Boolean proforma;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<InvoiceLineItemDTO> lineItems;

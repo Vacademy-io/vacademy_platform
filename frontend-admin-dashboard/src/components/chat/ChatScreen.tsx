@@ -117,6 +117,12 @@ export function ChatScreen({
     const [openedConversation, setOpenedConversation] = useState<ChatConversationResponse | null>(
         null
     );
+    // The institute community, provisioned on mount. Held separately so it survives every list
+    // refetch: it is a usually-never-messaged channel, so on an older backend (before the community
+    // was pinned to the top of the page) recency ordering buries it past the cap and the refetched
+    // list drops it again.
+    const [communityConversation, setCommunityConversation] =
+        useState<ChatConversationResponse | null>(null);
     const [newChatOpen, setNewChatOpen] = useState(false);
     const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
 
@@ -162,20 +168,26 @@ export function ChatScreen({
         const fromList = conversations.find((c) => c.id === activeId);
         if (fromList) return fromList;
         // Fall back to the locally-held copy for a conversation outside the capped server list.
-        return openedConversation && openedConversation.id === activeId
-            ? openedConversation
+        if (openedConversation && openedConversation.id === activeId) return openedConversation;
+        return communityConversation && communityConversation.id === activeId
+            ? communityConversation
             : undefined;
-    }, [conversations, activeId, openedConversation]);
+    }, [conversations, activeId, openedConversation, communityConversation]);
 
     // The sidebar keeps showing the conversation the user just opened, even when the server list
-    // (capped + ordered by last message) doesn't carry it.
-    const listedConversations = useMemo(
-        () =>
+    // (capped + ordered by last message) doesn't carry it. The institute community is pinned to the
+    // top the same way, so it is always reachable no matter how many batch channels fill the page.
+    const listedConversations = useMemo(() => {
+        const withOpened =
             openedConversation && !conversations.some((c) => c.id === openedConversation.id)
                 ? [openedConversation, ...conversations]
-                : conversations,
-        [conversations, openedConversation]
-    );
+                : conversations;
+        if (!communityConversation) return withOpened;
+        const rest = withOpened.filter((c) => c.id !== communityConversation.id);
+        const fromList = withOpened.find((c) => c.id === communityConversation.id);
+        // Prefer the server's copy (fresh preview/unread) but keep the pinned position.
+        return [fromList ?? communityConversation, ...rest];
+    }, [conversations, openedConversation, communityConversation]);
 
     const refetchConversations = useCallback(() => {
         void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_KEY });
@@ -197,12 +209,35 @@ export function ChatScreen({
         [queryClient]
     );
 
+    // ── Auto-provision the institute community on mount ───────────────────
+    // Mirrors the learner app. Get-or-create is idempotent, so this both creates the channel for an
+    // institute that never had one and joins the caller (admins land as MODERATOR, mentors/teachers
+    // as MEMBER) — which is what gives them a read cursor and posting rights. Held in local state
+    // rather than written into the conversations cache: seeding the cache would flip the list query
+    // out of its loading state, which the auto-select below waits on.
+    // Fail-soft: a 403 just means chat or the community channel is off for this institute.
+    useEffect(() => {
+        let cancelled = false;
+        createCommunityConversation()
+            .then((community) => {
+                if (cancelled) return;
+                setCommunityConversation(community);
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     // Patch a single conversation in the cached list (preview/unread/order) without a refetch.
     const patchConversation = useCallback(
         (conversationId: string, patch: (c: ChatConversationResponse) => ChatConversationResponse) => {
             // Keep the locally-held copy in step too — it's the only carrier for a conversation
             // that isn't in the capped server list.
             setOpenedConversation((prev) =>
+                prev && prev.id === conversationId ? patch(prev) : prev
+            );
+            setCommunityConversation((prev) =>
                 prev && prev.id === conversationId ? patch(prev) : prev
             );
             queryClient.setQueryData<ChatConversationResponse[]>(CONVERSATIONS_KEY, (prev) => {
@@ -664,11 +699,16 @@ export function ChatScreen({
     // Auto-select the first conversation on first load — DESKTOP ONLY. On mobile
     // the list and thread share one column, so auto-selecting would trap the user
     // in a thread with the list hidden (mirrors the learner app behavior).
+    // Deep-links resolve against the DISPLAYED list so a locally-held conversation (the community)
+    // opens too, not just one that made the capped server page. Waits for the list query to settle,
+    // so which thread opens doesn't depend on whether community provisioning wins the race.
     useEffect(() => {
-        if (activeId || showReports || conversations.length === 0) return;
+        if (activeId || showReports || conversationsLoading || listedConversations.length === 0) {
+            return;
+        }
         // A chat push deep-link takes precedence and opens even on mobile.
         if (initialConversationId && !deepLinkedRef.current) {
-            const target = conversations.find((c) => c.id === initialConversationId);
+            const target = listedConversations.find((c) => c.id === initialConversationId);
             if (target) {
                 deepLinkedRef.current = true;
                 handleSelect(target);
@@ -676,11 +716,15 @@ export function ChatScreen({
             }
         }
         if (!isMobile) {
-            const first = conversations[0];
+            // Unchanged landing behaviour: the most recently active real conversation. The community
+            // is pinned to the top of the list for reachability, but it shouldn't displace the thread
+            // an admin was working in — it's only auto-opened when there is nothing else.
+            const first =
+                listedConversations.find((c) => c.type !== 'COMMUNITY') ?? listedConversations[0];
             if (first) handleSelect(first);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversations, isMobile, initialConversationId]);
+    }, [listedConversations, conversationsLoading, isMobile, initialConversationId]);
 
     const isCommunity = activeConversation?.type === 'COMMUNITY';
     const ackRequired = rules?.rules?.acknowledgement_required;

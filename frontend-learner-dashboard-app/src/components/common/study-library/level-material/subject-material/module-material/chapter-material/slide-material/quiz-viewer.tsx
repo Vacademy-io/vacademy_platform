@@ -393,8 +393,19 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     };
   };
 
-  // Helper to build payload
-  const buildQuizPayload = async (): Promise<QuizSlideActivityLogPayload> => {
+  // The single quiz payload builder, shared by the "Finish" button and the
+  // timer-expiry auto-submit.
+  //
+  // The Finish path used to have its own version that sent
+  // `{answer: <optionId>}` with response_status "SUBMITTED" for every question.
+  // The server stores that status verbatim, so a learner who scored 16/18 was
+  // recorded as having got nothing right — which is what the AI report, the
+  // marks-by-subject report and the pulse weak-area queries all then read.
+  // The server now grades from the answer key rather than trusting this, but
+  // there is no reason for the two paths to disagree in the first place.
+  const buildQuizPayload = async (
+    finalAnswers: typeof answers
+  ): Promise<QuizSlideActivityLogPayload> => {
     const userId = (await getUserId()) || "";
     const { slideId } = getUrlParams();
     const now = Date.now();
@@ -420,13 +431,41 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         pause_count: 0,
         answer_times_in_seconds: [],
       },
-      quiz_sides: questions.map((q) => ({
-        id: uuidv4(),
-        response_json: JSON.stringify({ answer: answers[q.id] }),
-        response_status: "SUBMITTED",
-        activity_id: slideId,
-        question_id: q.id,
-      })),
+      quiz_sides: questions.map((q) => {
+        const answer = finalAnswers[q.id];
+        const questionName =
+          typeof q.text === "string"
+            ? q.text
+            : q.text_data?.content ?? q.text?.content ?? "";
+        const selectedOptions = buildSelectedOptions(q, answer);
+        const correctIds = getCorrectOptionIds(q);
+        const correctOptions = correctIds.map((id) => ({
+          id,
+          name: q.options?.find((o) => o.id === id)?.text?.content ?? id,
+        }));
+        const qMaxMarks = q.marks != null ? q.marks : marksPerQuestion;
+        const qNeg = q.negative_marking != null ? q.negative_marking : defaultNegativeMarking;
+        const isAnswered =
+          answer != null && !(typeof answer === "string" && answer.trim() === "");
+        const correct = isAnswered && isAnswerCorrect(q, answer);
+        const earnedMarks = correct ? qMaxMarks : isAnswered ? -qNeg : 0;
+        const responseStatus = !isAnswered ? "SKIPPED" : correct ? "CORRECT" : "WRONG";
+        return {
+          id: uuidv4(),
+          response_json: JSON.stringify({
+            questionName,
+            selectedOptions,
+            correctOptions,
+            marks: earnedMarks,
+            maxMarks: qMaxMarks,
+            isCorrect: correct,
+            questionType: q.question_type ?? "",
+          }),
+          response_status: responseStatus,
+          activity_id: slideId,
+          question_id: q.id,
+        };
+      }),
     };
   };
 
@@ -684,65 +723,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         return;
       }
 
-      const now = Date.now();
-      const payload: QuizSlideActivityLogPayload = {
-        id: uuidv4(),
-        source_id: slideId,
-        source_type: "QUIZ",
-        user_id: userId,
-        slide_id: slideId,
-        start_time_in_millis: activityStartRef.current,
-        end_time_in_millis: now,
-        percentage_watched: 100,
-        videos: [],
-        documents: [],
-        question_slides: [],
-        assignment_slides: [],
-        video_slides_questions: [],
-        new_activity: true,
-        concentration_score: {
-          id: uuidv4(),
-          concentration_score: 100,
-          tab_switch_count: 0,
-          pause_count: 0,
-          answer_times_in_seconds: [],
-        },
-        quiz_sides: questions.map((q) => {
-          const answer = finalAnswers[q.id];
-          const questionName =
-            typeof q.text === "string"
-              ? q.text
-              : q.text_data?.content ?? q.text?.content ?? "";
-          const selectedOptions = buildSelectedOptions(q, answer);
-          const correctIds = getCorrectOptionIds(q);
-          const correctOptions = correctIds.map((id) => ({
-            id,
-            name: q.options?.find((o) => o.id === id)?.text?.content ?? id,
-          }));
-          const qMaxMarks = q.marks != null ? q.marks : marksPerQuestion;
-          const qNeg = q.negative_marking != null ? q.negative_marking : defaultNegativeMarking;
-          const isAnswered =
-            answer != null && !(typeof answer === "string" && answer.trim() === "");
-          const correct = isAnswered && isAnswerCorrect(q, answer);
-          const earnedMarks = correct ? qMaxMarks : isAnswered ? -qNeg : 0;
-          const responseStatus = !isAnswered ? "SKIPPED" : correct ? "CORRECT" : "WRONG";
-          return {
-            id: uuidv4(),
-            response_json: JSON.stringify({
-              questionName,
-              selectedOptions,
-              correctOptions,
-              marks: earnedMarks,
-              maxMarks: qMaxMarks,
-              isCorrect: correct,
-              questionType: q.question_type ?? "",
-            }),
-            response_status: responseStatus,
-            activity_id: slideId,
-            question_id: q.id,
-          };
-        }),
-      };
+      const payload = await buildQuizPayload(finalAnswers);
 
       let offlineQueued = await trackOrQueue({
         userId,
@@ -899,7 +880,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           return;
         }
 
-        const payload = await buildQuizPayload();
+        const payload = await buildQuizPayload(answers);
 
         console.group("📤 [QuizViewer] Submitting quiz activity log");
         console.log("Params:", { slideId, chapterId, moduleId, subjectId, packageSessionId, userId });

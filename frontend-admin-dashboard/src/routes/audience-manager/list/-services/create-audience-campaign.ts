@@ -22,6 +22,8 @@ export interface AudienceCampaignPayload {
     to_notify: string;
     send_respondent_email: boolean;
     json_web_metadata?: string;
+    /** Per-campaign settings blob. Carries `postSubmitConfiguration` (thank-you screen / redirect). */
+    setting_json?: string;
     created_by_user_id?: string;
     start_date_local: string; // format: YYYY-MM-DDTHH:mm:ss
     end_date_local: string; // format: YYYY-MM-DDTHH:mm:ss

@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.doubts.manager;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,7 +74,14 @@ public class DoubtsManager {
     @Autowired
     SubOrgStaffLookupService subOrgStaffLookupService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    /**
+     * Lenient on purpose: this mapper reads a settings blob the admin frontend owns and extends.
+     * Jackson's default is to THROW on an unknown property, and the caller swallows that into
+     * "no setting" — so one field written by a newer frontend would silently drop the institute's
+     * whole doubt-routing config back to defaults. Unknown keys are ignored instead.
+     */
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /** Role name as configured in auth_service for institute-level admins. */
     private static final String ADMIN_ROLE = "ADMIN";
@@ -408,7 +416,8 @@ public class DoubtsManager {
         String typeKey = StringUtils.hasText(doubt.getType()) ? doubt.getType() : DEFAULT_TYPE;
         DoubtManagementSettingDataDto.QueryTypeConfig typeConfig = findTypeConfig(setting, typeKey);
         if (typeConfig != null && typeConfig.getAssignee() != null
-                && StringUtils.hasText(typeConfig.getAssignee().getSource())) {
+                && (StringUtils.hasText(typeConfig.getAssignee().getSource())
+                    || hasAdditionalHandlers(typeConfig.getAssignee()))) {
             return resolveTypeAssignees(typeConfig.getAssignee(), doubt.getPackageSessionId(),
                     subjectId, instituteId, setting);
         }
@@ -437,7 +446,12 @@ public class DoubtsManager {
                     || !StringUtils.hasText(typeConfig.getAssignee().getSource())) {
                 return false;
             }
-            return parseSource(typeConfig.getAssignee().getSource()) == DoubtDefaultAssigneeSourceEnum.NONE;
+
+            if (parseSource(typeConfig.getAssignee().getSource()) != DoubtDefaultAssigneeSourceEnum.NONE) {
+                return false;
+            }
+            // NONE plus additive handlers that resolved to nobody is a failed lookup, not a choice.
+            return !hasAdditionalHandlers(typeConfig.getAssignee());
         } catch (Exception e) {
             // Can't confirm the empty result was intentional → treat it as a real drop and log it.
             return false;
@@ -527,6 +541,11 @@ public class DoubtsManager {
         }
     }
 
+    private boolean hasAdditionalHandlers(DoubtManagementSettingDataDto.QueryTypeAssignee assignee) {
+        return (assignee.getAlsoUserIds() != null && !assignee.getAlsoUserIds().isEmpty())
+                || (assignee.getAlsoRoles() != null && !assignee.getAlsoRoles().isEmpty());
+    }
+
     private DoubtManagementSettingDataDto.QueryTypeConfig findTypeConfig(
             DoubtManagementSettingDataDto setting, String typeKey) {
         if (setting == null || setting.getQueryTypes() == null) return null;
@@ -536,21 +555,60 @@ public class DoubtsManager {
     }
 
     /**
-     * Resolves assignees for a type whose {@code assignee.source} is set:
-     *   SPECIFIC_USERS → the configured user ids; ROLE → all users holding that role;
-     *   SUBJECT/BATCH/BOTH → the faculty cascade; NONE → no implicit assignee (manual triage from
-     *   the institute-scoped admin inbox). SPECIFIC_USERS/ROLE fall back to admin when they resolve
-     *   to nobody so the query isn't dropped.
+     * Resolves assignees for a type whose {@code assignee.source} is set. The result is the UNION of
+     * two independent parts, which is what lets one type route to "subject teacher AND these three
+     * people" rather than forcing a single winner:
+     *
+     * <ul>
+     *   <li>the base route — SPECIFIC_USERS → the configured user ids; ROLE → all users holding that
+     *       role; SUBJECT/BATCH/BOTH → the faculty cascade; NONE → nobody;</li>
+     *   <li>the additive handlers — {@code also_user_ids} plus everyone holding an {@code also_roles}
+     *       role, always added on top of the base.</li>
+     * </ul>
+     *
+     * <p>The admin safety net now fires only when the whole union comes out empty. Once an institute
+     * has named additive handlers they ARE the safety net, and adding every admin on top of them
+     * would notify exactly the people the admin routed around. A per-type {@code NONE} with no
+     * additive handlers still means "assign nobody" — deliberate manual triage from the inbox.</p>
      */
     private List<String> resolveTypeAssignees(DoubtManagementSettingDataDto.QueryTypeAssignee assignee,
                                               String packageSessionId, String subjectId, String instituteId,
                                               DoubtManagementSettingDataDto setting) {
-        DoubtDefaultAssigneeSourceEnum source = parseSource(assignee.getSource());
+        // A blank source means the type never overrode the institute default — keep that cascade as
+        // the base so "default auto-assignment PLUS these two people" is expressible.
+        DoubtDefaultAssigneeSourceEnum source = StringUtils.hasText(assignee.getSource())
+                ? parseSource(assignee.getSource())
+                : parseAssigneeSource(setting);
+        List<String> additional = resolveAdditionalAssignees(assignee, instituteId);
+        // With additive handlers configured, the base route must not drag in its own admin fallback.
+        boolean allowAdminFallback = additional.isEmpty();
+
+        Set<String> assignees = new LinkedHashSet<>(resolveBaseTypeAssignees(
+                assignee, source, packageSessionId, subjectId, instituteId, setting, allowAdminFallback));
+        assignees.addAll(additional);
+
+        // Only needed when the base route's own safety net was suppressed above. With no additive
+        // handlers the base already applied it, and repeating the identical (retrying) ADMIN lookup
+        // here would double its cost for a guaranteed-identical result.
+        if (assignees.isEmpty() && !allowAdminFallback
+                && source != DoubtDefaultAssigneeSourceEnum.NONE) {
+            assignees.addAll(resolveAdminFallback(instituteId));
+        }
+        return new ArrayList<>(assignees);
+    }
+
+    /** The {@code assignee.source} leg of {@link #resolveTypeAssignees}, minus the additive handlers. */
+    private List<String> resolveBaseTypeAssignees(DoubtManagementSettingDataDto.QueryTypeAssignee assignee,
+                                                  DoubtDefaultAssigneeSourceEnum source, String packageSessionId,
+                                                  String subjectId, String instituteId,
+                                                  DoubtManagementSettingDataDto setting,
+                                                  boolean allowAdminFallback) {
         switch (source) {
             case SPECIFIC_USERS: {
                 List<String> ids = assignee.getUserIds() == null ? List.of()
                         : assignee.getUserIds().stream().filter(StringUtils::hasText).distinct().toList();
-                return ids.isEmpty() ? resolveAdminFallback(instituteId) : ids;
+                if (!ids.isEmpty()) return ids;
+                return allowAdminFallback ? resolveAdminFallback(instituteId) : List.of();
             }
             case ROLE: {
                 String role = StringUtils.hasText(assignee.getRole()) ? assignee.getRole() : ADMIN_ROLE;
@@ -559,13 +617,35 @@ public class DoubtsManager {
                 // lookup — which now carries its own retries — for a guaranteed-identical result.
                 // Skip it so an empty admin role costs the same attempts as any other empty role.
                 if (!ids.isEmpty() || ADMIN_ROLE.equalsIgnoreCase(role)) return ids;
-                return resolveAdminFallback(instituteId);
+                return allowAdminFallback ? resolveAdminFallback(instituteId) : List.of();
             }
             case NONE:
                 return List.of();
             default:
-                return resolveImplicitAssignees(source, packageSessionId, subjectId, instituteId, setting);
+                return resolveImplicitAssignees(source, packageSessionId, subjectId, instituteId,
+                        setting, allowAdminFallback);
         }
+    }
+
+    /**
+     * The additive handlers for a type: {@code also_user_ids} verbatim, plus every user holding one
+     * of {@code also_roles}. Order is preserved (explicit ids first) and duplicates collapse, so a
+     * person named both explicitly and via a role is assigned once. Empty when neither is configured
+     * — the overwhelmingly common case, and it costs zero lookups.
+     */
+    private List<String> resolveAdditionalAssignees(DoubtManagementSettingDataDto.QueryTypeAssignee assignee,
+                                                    String instituteId) {
+        Set<String> additional = new LinkedHashSet<>();
+        if (assignee.getAlsoUserIds() != null) {
+            assignee.getAlsoUserIds().stream().filter(StringUtils::hasText).forEach(additional::add);
+        }
+        if (assignee.getAlsoRoles() != null) {
+            assignee.getAlsoRoles().stream()
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .forEach(role -> additional.addAll(resolveUsersByRole(instituteId, role)));
+        }
+        return new ArrayList<>(additional);
     }
 
     /**
@@ -581,19 +661,32 @@ public class DoubtsManager {
     List<String> resolveImplicitAssignees(DoubtDefaultAssigneeSourceEnum source, String packageSessionId,
                                           String subjectId, String instituteId,
                                           DoubtManagementSettingDataDto setting) {
+        return resolveImplicitAssignees(source, packageSessionId, subjectId, instituteId, setting, true);
+    }
+
+    /**
+     * @param allowAdminFallback false only when the caller has its own guaranteed recipients (a
+     *        type's additive handlers). The cascade then returns empty instead of widening to every
+     *        admin, so "batch teacher + these two people" doesn't quietly become "+ all admins" on a
+     *        batch with no faculty mapped.
+     */
+    List<String> resolveImplicitAssignees(DoubtDefaultAssigneeSourceEnum source, String packageSessionId,
+                                          String subjectId, String instituteId,
+                                          DoubtManagementSettingDataDto setting,
+                                          boolean allowAdminFallback) {
         // NONE → skip teachers entirely, go straight to admin so the doubt is still routed.
         if (source == DoubtDefaultAssigneeSourceEnum.NONE) {
-            return resolveAdminFallback(instituteId);
+            return adminFallbackIfAllowed(instituteId, allowAdminFallback);
         }
         // ROLE / SPECIFIC_USERS are only meaningful as a per-type choice, not a global cascade — if
         // one reaches here, route to admin rather than nobody.
         if (source == DoubtDefaultAssigneeSourceEnum.ROLE
                 || source == DoubtDefaultAssigneeSourceEnum.SPECIFIC_USERS) {
-            return resolveAdminFallback(instituteId);
+            return adminFallbackIfAllowed(instituteId, allowAdminFallback);
         }
         // The faculty cascade needs a batch. GENERAL queries (no batch) → admin fallback.
         if (packageSessionId == null || packageSessionId.isEmpty()) {
-            return resolveAdminFallback(instituteId);
+            return adminFallbackIfAllowed(instituteId, allowAdminFallback);
         }
 
         // Step 1: SUBJECT_TEACHER → try the subject-specific faculty first.
@@ -609,7 +702,7 @@ public class DoubtsManager {
             if (!fallback) {
                 // Strict subject-only mode: skip batch but still keep the admin safety net so
                 // the doubt isn't dropped on the floor.
-                return resolveAdminFallback(instituteId);
+                return adminFallbackIfAllowed(instituteId, allowAdminFallback);
             }
         }
 
@@ -620,7 +713,11 @@ public class DoubtsManager {
         if (!batchFaculty.isEmpty()) return batchFaculty;
 
         // Step 3: final fallback — institute admin(s).
-        return resolveAdminFallback(instituteId);
+        return adminFallbackIfAllowed(instituteId, allowAdminFallback);
+    }
+
+    private List<String> adminFallbackIfAllowed(String instituteId, boolean allowAdminFallback) {
+        return allowAdminFallback ? resolveAdminFallback(instituteId) : List.of();
     }
 
     /**

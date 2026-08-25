@@ -626,6 +626,64 @@ export function GenerateCourseAssetsDialog({
     );
 }
 
+interface LeaveDuringGenerationDialogProps {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    /** Stay on the page and let generation continue. */
+    onStay: () => void;
+    /** Abandon the run: the in-flight stream is aborted and partial pages are lost. */
+    onLeave: () => void;
+    /** Pages finished so far, e.g. "4 of 25" — omitted while the outline itself is generating. */
+    progressLabel?: string;
+}
+
+/**
+ * Confirmation shown when the user tries to leave while AI generation is still
+ * streaming. Generation is driven entirely from this page, so navigating away
+ * kills the stream and the partially generated pages cannot be resumed — hence
+ * a hard confirm rather than the usual discard/save-to-drafts choice.
+ */
+export function LeaveDuringGenerationDialog({
+    open,
+    onOpenChange,
+    onStay,
+    onLeave,
+    progressLabel,
+}: LeaveDuringGenerationDialogProps) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="w-[95vw] sm:w-full sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Generation still in progress</DialogTitle>
+                    <DialogDescription className="text-neutral-600">
+                        {progressLabel
+                            ? `Only ${progressLabel} pages have been generated. `
+                            : ''}
+                        If you leave now, generation stops and everything created so far is lost.
+                        The credits already spent will not be returned.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="mt-6 flex flex-col items-center justify-end gap-3 border-t border-neutral-200 pt-4 sm:flex-row">
+                    <MyButton
+                        buttonType="secondary"
+                        onClick={onLeave}
+                        className="w-full min-w-[160px] border-red-300 text-red-600 hover:border-red-400 hover:bg-red-50 hover:text-red-700 sm:w-auto"
+                    >
+                        Leave and stop
+                    </MyButton>
+                    <MyButton
+                        buttonType="primary"
+                        onClick={onStay}
+                        className="w-full min-w-[130px] sm:w-auto"
+                    >
+                        Stay on page
+                    </MyButton>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 interface BackToLibraryDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;

@@ -224,7 +224,32 @@ function mergeWithDefaults(
                 sidebarNavigation:
                     incoming?.courseDetails?.slidesView?.sidebarNavigation ??
                     d.courseDetails.slidesView.sidebarNavigation,
+                // Deliberately no `?? default`: undefined is a real state here
+                // ("follow the sidebar mode"), so defaulting it would collapse
+                // the tri-state into a boolean and lose the inference.
+                collapseSidebarOnOpen:
+                    incoming?.courseDetails?.slidesView?.collapseSidebarOnOpen,
+                // Same tri-state contract as collapseSidebarOnOpen above:
+                // undefined means "follow the sidebar mode", not false.
+                manualCompletion:
+                    incoming?.courseDetails?.slidesView?.manualCompletion,
+                // Tri-state like the two above — undefined means "follow the
+                // sidebar mode", so neither may be defaulted here.
+                chapterCompleteCta:
+                    incoming?.courseDetails?.slidesView?.chapterCompleteCta,
+                feedbackInSlideNav:
+                    incoming?.courseDetails?.slidesView?.feedbackInSlideNav,
+                // Plain enum with a real default — 'CHAPTER' is today's cadence.
+                feedbackTrigger:
+                    incoming?.courseDetails?.slidesView?.feedbackTrigger ?? 'CHAPTER',
             },
+            enrolledLayout:
+                incoming?.courseDetails?.enrolledLayout ?? d.courseDetails.enrolledLayout,
+            contentCardImageFit:
+                incoming?.courseDetails?.contentCardImageFit ??
+                d.courseDetails.contentCardImageFit,
+            // Tri-state — undefined means "follow enrolledLayout".
+            chapterOpensFirstSlide: incoming?.courseDetails?.chapterOpensFirstSlide,
         },
         courseSettings: {
             quiz: {

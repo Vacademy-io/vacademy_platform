@@ -335,6 +335,8 @@ export function BulkScheduleGrid() {
                 webcamsOnlyForModerator:
                     liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false,
                 guestPolicy: liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+                disableMic: liveSessionSettings.defaultBbbDisableMic ?? false,
+                disableCam: liveSessionSettings.defaultBbbDisableCam ?? false,
                 disablePrivateChat: liveSessionSettings.defaultBbbDisablePrivateChat ?? false,
                 disablePublicChat: liveSessionSettings.defaultBbbDisablePublicChat ?? false,
                 disableSharedNotes: liveSessionSettings.defaultBbbDisableSharedNotes ?? false,
@@ -801,6 +803,8 @@ export function BulkScheduleGrid() {
         }
         const snapBbbLockBool = (
             name:
+                | 'sharedOptions.disableMic'
+                | 'sharedOptions.disableCam'
                 | 'sharedOptions.disablePrivateChat'
                 | 'sharedOptions.disablePublicChat'
                 | 'sharedOptions.disableSharedNotes'
@@ -812,6 +816,14 @@ export function BulkScheduleGrid() {
                 form.setValue(name, def);
             }
         };
+        snapBbbLockBool(
+            'sharedOptions.disableMic',
+            liveSessionSettings.defaultBbbDisableMic ?? false
+        );
+        snapBbbLockBool(
+            'sharedOptions.disableCam',
+            liveSessionSettings.defaultBbbDisableCam ?? false
+        );
         snapBbbLockBool(
             'sharedOptions.disablePrivateChat',
             liveSessionSettings.defaultBbbDisablePrivateChat ?? false
@@ -846,6 +858,8 @@ export function BulkScheduleGrid() {
         liveSessionSettings.defaultBbbMuteOnStart,
         liveSessionSettings.defaultBbbWebcamsOnlyForModerator,
         liveSessionSettings.defaultBbbGuestPolicy,
+        liveSessionSettings.defaultBbbDisableMic,
+        liveSessionSettings.defaultBbbDisableCam,
         liveSessionSettings.defaultBbbDisablePrivateChat,
         liveSessionSettings.defaultBbbDisablePublicChat,
         liveSessionSettings.defaultBbbDisableSharedNotes,
@@ -1011,6 +1025,8 @@ export function BulkScheduleGrid() {
                         ? shared.webcamsOnlyForModerator
                         : undefined,
                     bbbGuestPolicy: isBbb ? shared.guestPolicy : undefined,
+                    bbbDisableMic: isBbb ? shared.disableMic : undefined,
+                    bbbDisableCam: isBbb ? shared.disableCam : undefined,
                     bbbDisablePrivateChat: isBbb ? shared.disablePrivateChat : undefined,
                     bbbDisablePublicChat: isBbb ? shared.disablePublicChat : undefined,
                     bbbDisableSharedNotes: isBbb ? shared.disableSharedNotes : undefined,
@@ -1809,6 +1825,32 @@ export function BulkScheduleGrid() {
                                 Participant restrictions — the host always keeps full access
                             </div>
                             <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.disableMic"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants join in listen-only mode</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={form.control}
+                                    name="sharedOptions.disableCam"
+                                    render={({ field }) => (
+                                        <label className="flex items-center justify-between text-sm">
+                                            <span>Participants can&apos;t turn on their camera</span>
+                                            <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
                                 <Controller
                                     control={form.control}
                                     name="sharedOptions.disablePrivateChat"

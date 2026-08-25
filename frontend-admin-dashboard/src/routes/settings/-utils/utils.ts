@@ -12,8 +12,10 @@ import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
 import CertificatesSettings from '../-components/Certificates/CertificatesSettings';
 import { TemplateSettings } from '@/components/templates';
 import AiSettings from '../-components/AiSettings';
+import ScheduledReportsSettings from '../-components/ScheduledReportsSettings';
 import SchoolSettings from '../-components/School/SchoolSettings';
 import WhiteLabelSettings from '../-components/WhiteLabelSettings';
+import AppStatusSettings from '../-components/AppStatusSettings';
 import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 import LeadSettings from '../-components/LeadSettings';
@@ -113,6 +115,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             group: 'Branding & Identity',
         },
         {
+            tab: SettingsTabs.AppStatus,
+            value: 'App Status',
+            component: AppStatusSettings,
+            domain: 'General',
+            group: 'Branding & Identity',
+        },
+        {
             tab: SettingsTabs.Naming,
             value: 'Naming Settings',
             component: NamingSettings,
@@ -154,6 +163,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.AiSettings,
             value: 'AI Settings',
             component: AiSettings,
+            domain: 'General',
+            group: 'Platform Configuration',
+        },
+        {
+            tab: SettingsTabs.ScheduledReports,
+            value: 'Scheduled Reports',
+            component: ScheduledReportsSettings,
             domain: 'General',
             group: 'Platform Configuration',
         },

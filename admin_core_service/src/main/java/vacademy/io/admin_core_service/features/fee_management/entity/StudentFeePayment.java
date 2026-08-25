@@ -44,7 +44,11 @@ public class StudentFeePayment {
     @Column(name = "asv_id", nullable = false)
     private String asvId;
 
-    @Column(name = "i_id", nullable =  false)
+    // Nullable since V452: a one-off fee type (has_installment = false) has no
+    // AftInstallment to point at. Hibernate enforces nullable = false itself and
+    // rejects the insert before it reaches the database, so dropping the DB
+    // constraint alone was not enough. asv_id still links the row to its fee value.
+    @Column(name = "i_id")
     private String iId;
 
     @Column(name = "amount_expected", nullable = false)

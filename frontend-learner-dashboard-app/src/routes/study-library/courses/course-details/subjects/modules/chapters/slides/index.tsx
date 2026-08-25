@@ -1,4 +1,5 @@
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
+import { useTranslation } from "react-i18next";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, ChevronDownIcon } from "@radix-ui/react-icons";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
@@ -14,6 +15,7 @@ import {
   CheckCircle,
   ArrowsIn,
   ArrowsOut,
+  X,
 } from "@phosphor-icons/react";
 import { SlideMaterial } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-material";
 import {
@@ -21,6 +23,7 @@ import {
   calculateOverallCompletion,
 } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { CourseTreeSidebar } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/course-tree-sidebar";
+import { LessonListSidebar } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/lesson-list-sidebar";
 import {
   computeDisplayTitles,
   getSlideMeta,
@@ -30,12 +33,14 @@ import { getModuleName } from "@/utils/study-library/get-name-by-id/getModuleNam
 import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
 import { getChapterName } from "@/utils/study-library/get-name-by-id/getChapterById";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import useSidebarBranding from "@/components/common/layout-container/sidebar/useSidebar";
 import { InitStudyLibraryProvider } from "@/providers/study-library/init-study-library-provider";
 import { ModulesWithChaptersProvider } from "@/providers/study-library/modules-with-chapters-provider";
 import { useSlides, Slide } from "@/hooks/study-library/use-slides";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { useModulesWithChaptersStore, ModulesWithChapters } from "@/stores/study-library/use-modules-with-chapters-store";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
+import { useCourseDripSchedule } from "@/hooks/use-course-drip-schedule";
 import { useDripConditions } from "@/hooks/use-drip-conditions";
 import {
   evaluateDripCondition,
@@ -55,6 +60,7 @@ import { toast } from "sonner";
 import FeedbackPage from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/FeedbackPage";
 import { PencilSimple } from "@phosphor-icons/react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import type { FeedbackTrigger } from "@/types/student-display-settings";
 import { Preferences } from "@capacitor/preferences";
 import { BatchForSessionType } from "@/stores/study-library/institute-schema";
 import { getPublicUrl } from "@/services/upload_file";
@@ -77,6 +83,32 @@ import { playIllustrations } from "@/assets/play-illustrations";
 
 // sessionStorage key for the viewer's focus mode (per-tab persistence).
 const SLIDES_FOCUS_MODE_KEY = "slides-viewer-focus-mode";
+
+/**
+ * QA override, mirroring DEBUG_UI_TYPE. Student Display Settings are cached in
+ * localStorage for 24h per institute, so a change in the admin does not reach a
+ * warm cache — and previewing a navigation mode should not require editing a
+ * live institute's settings. Set `DEBUG_SLIDES_SIDEBAR_NAV` to "hidden",
+ * "breadcrumb", "ancestors" or "lessons" and reload; remove the key to go back
+ * to the institute's own configuration.
+ */
+type SidebarNavMode = "ancestors" | "breadcrumb" | "lessons" | "hidden";
+const SIDEBAR_NAV_MODES: SidebarNavMode[] = [
+  "ancestors",
+  "breadcrumb",
+  "lessons",
+  "hidden",
+];
+function readDebugSidebarNav(): SidebarNavMode | null {
+  try {
+    const v = localStorage.getItem("DEBUG_SLIDES_SIDEBAR_NAV");
+    return SIDEBAR_NAV_MODES.includes(v as SidebarNavMode)
+      ? (v as SidebarNavMode)
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 // ── Play celebration guards ──────────────────────────────────────────────────
 // Once-per-chapter guard mirroring shouldCelebrateSlide, so the chapter volley
@@ -370,10 +402,147 @@ function Slides() {
     courseDetails?.dripCondition ||
     null;
 
+  // Conditions the admin configured live in the institute's course settings,
+  // not on the slide rows — same source the course page reads.
+  const dripSchedule = useCourseDripSchedule(courseId, resolvedSessionId);
+  const { conditionFor: dripConditionFor, now: dripNow } = dripSchedule;
+  // Anchors plus the first-item strictness flag, spread into every
+  // LearnerProgressData below. strictFirstItem rides the same opt-in as the
+  // rest: institutes that have not turned this on keep today's behaviour.
+  const dripAnchors = useMemo(
+    () => ({
+      enrollmentDate: dripSchedule.enrollmentDate,
+      sessionStartDate: dripSchedule.sessionStartDate,
+      strictFirstItem: dripSchedule.applyConfiguredRules,
+    }),
+    [
+      dripSchedule.enrollmentDate,
+      dripSchedule.sessionStartDate,
+      dripSchedule.applyConfiguredRules,
+    ],
+  );
+
   const { condition: slideCondition } = useDripConditions(
     dripConditionJson,
     "slide"
   );
+
+  const [showLearningPath, setShowLearningPath] = useState(true);
+  const [feedbackVisible, setFeedbackVisible] = useState(true);
+  // undefined = "follow the sidebar mode" (see collapseSidebarOnOpen in
+  // student-display-settings). Resolved against sidebarNavigation below.
+  const [collapseSidebarSetting, setCollapseSidebarSetting] = useState<
+    boolean | undefined
+  >(undefined);
+  // undefined = "follow the sidebar mode" (see manualCompletion in
+  // student-display-settings). Resolved against sidebarNavigation below.
+  const [manualCompletionSetting, setManualCompletionSetting] = useState<
+    boolean | undefined
+  >(undefined);
+  // Both tri-state, both resolved against the sidebar mode further down.
+  const [chapterCompleteCtaSetting, setChapterCompleteCtaSetting] = useState<
+    boolean | undefined
+  >(undefined);
+  const [feedbackInSlideNavSetting, setFeedbackInSlideNavSetting] = useState<
+    boolean | undefined
+  >(undefined);
+  // When the feedback slide is offered. "CHAPTER" is today's cadence.
+  const [feedbackTrigger, setFeedbackTrigger] =
+    useState<FeedbackTrigger>("CHAPTER");
+  // Loads the studyContent catalog for the chapter hand-off strings and
+  // re-renders this route once it arrives.
+  const { t } = useTranslation("studyContent");
+  // "breadcrumb" = legacy per-chapter slide list; cross-module navigation
+  // happens via the popovers in the breadcrumb. This is the default to keep
+  // existing learners on familiar terrain — admins can opt into the richer
+  // "ancestors" tree from Student Display Settings.
+  const [sidebarNavigation, setSidebarNavigation] = useState<SidebarNavMode>(
+    () => readDebugSidebarNav() ?? "breadcrumb"
+  );
+  // "hidden": no viewer sidebar at all — the learner moves through the course
+  // with the Prev/Next controls in the slide header alone.
+  const hideSlidesSidebar = sidebarNavigation === "hidden";
+
+  // Whether the "Give Feedback" slide sits in the Prev/Next sequence. Unset
+  // follows the sidebar mode: the sidebar-less viewer leaves it out so Next
+  // rolls into the next chapter rather than a form the learner has no context
+  // for, every other mode keeps today's behaviour.
+  const feedbackInSlideNav = feedbackInSlideNavSetting ?? !hideSlidesSidebar;
+
+  /**
+   * Has the learner just crossed the boundary the institute wants feedback at?
+   *
+   * Every scope requires the current chapter to be finished; the wider ones
+   * additionally require everything else in that scope to be done, so the ask
+   * lands once per module / subject / course instead of once per chapter.
+   *
+   * The current chapter is treated as complete rather than read from the store:
+   * modulesWithChaptersData is fetched separately and lags the completion we
+   * have just computed from this chapter's own slides.
+   */
+  const feedbackBoundaryReached = useCallback(
+    (chapterCompletion: number): boolean => {
+      if (!feedbackVisible || feedbackTrigger === "NEVER") return false;
+      // Never auto-open a form the learner cannot leave. With no sidebar AND
+      // the feedback slide kept out of Prev/Next there is no control on screen
+      // that moves off it — the buttons resolve against a list it isn't in.
+      if (hideSlidesSidebar && !feedbackInSlideNav) return false;
+      if (chapterCompletion !== 100) return false;
+      if (feedbackTrigger === "CHAPTER") return true;
+
+      const threshold = getSlideCompletionThreshold();
+      const chapterDone = (c: { id: string; percentage_completed?: number }) =>
+        c.id === chapterId || (c.percentage_completed || 0) >= threshold;
+      const moduleDone = (m: ModulesWithChapters) =>
+        (m.chapters?.length ?? 0) > 0 && (m.chapters ?? []).every(chapterDone);
+
+      const modules = modulesWithChaptersData ?? [];
+      if (feedbackTrigger === "MODULE") {
+        const current = modules.find((m) => m.module.id === moduleId);
+        return !!current && moduleDone(current);
+      }
+
+      // modulesWithChaptersData is scoped to the subject in the URL, so "every
+      // module done" is exactly "this subject done".
+      const subjectDone = modules.length > 0 && modules.every(moduleDone);
+      if (feedbackTrigger === "SUBJECT") return subjectDone;
+
+      // COURSE: this subject finished and every other subject already was.
+      return (
+        subjectDone &&
+        (studyLibraryData ?? []).every(
+          (sub) =>
+            sub.id === subjectId || (sub.percentage_completed || 0) >= threshold
+        )
+      );
+    },
+    [
+      feedbackVisible,
+      feedbackTrigger,
+      hideSlidesSidebar,
+      feedbackInSlideNav,
+      modulesWithChaptersData,
+      studyLibraryData,
+      chapterId,
+      moduleId,
+      subjectId,
+    ]
+  );
+
+  /** One key per scope, so "ask once" means once per module / subject / course
+   *  rather than once per chapter when a wider scope is configured. */
+  const feedbackSeenKey = useCallback((): string => {
+    switch (feedbackTrigger) {
+      case "MODULE":
+        return `feedback_seen_${courseId}_module_${moduleId}`;
+      case "SUBJECT":
+        return `feedback_seen_${courseId}_subject_${subjectId}`;
+      case "COURSE":
+        return `feedback_seen_${courseId}_course`;
+      default:
+        return `feedback_seen_${courseId}_${chapterId}`;
+    }
+  }, [feedbackTrigger, courseId, moduleId, subjectId, chapterId]);
 
   useEffect(() => {
     if (slides?.length) {
@@ -437,6 +606,7 @@ function Slides() {
           recentScores: slides
             .slice(0, index)
             .map((s: Slide) => s.percentage_completed || 0),
+          ...dripAnchors,
         };
 
         // Check if this slide has its own drip condition (check both fields)
@@ -473,19 +643,27 @@ function Slides() {
           }
         }
 
-        // Use slide-specific condition if available, otherwise fall back to package-level
-        const conditionToUse = slideDripCondition || slideCondition;
-        const hasCondition = !!slideDripCondition || !!slideCondition;
+        // Admin-configured conditions win over anything stamped on the row.
+        const configuredCondition = dripConditionFor("slide", slide.id);
+        const conditionToUse =
+          configuredCondition || slideDripCondition || slideCondition;
+        const hasCondition =
+          !!configuredCondition || !!slideDripCondition || !!slideCondition;
 
-        // Check global flag first, then per-item condition's is_enabled flag
+        // `isDrippingEnable` owns the original row-level path; a configured
+        // condition has already cleared the new path's opt-in in conditionFor.
         const shouldEvaluate =
-          isDrippingEnable &&
+          (isDrippingEnable || !!configuredCondition) &&
           hasCondition &&
           conditionToUse?.is_enabled !== false;
 
         const evaluation =
           shouldEvaluate && conditionToUse
-            ? evaluateDripCondition(conditionToUse, progressData)
+            ? evaluateDripCondition(
+                conditionToUse,
+                progressData,
+                dripNow ? new Date(dripNow) : new Date(),
+              )
             : {
               isLocked: false,
               isHidden: false,
@@ -500,7 +678,18 @@ function Slides() {
       // Store evaluations for all accessible slides
       setSlideEvaluations(evaluations);
 
-      const slidesWithFeedback = [...accessibleSlides, feedbackSlide];
+      // The "Give Feedback" slide is synthesised here, not returned by the
+      // API. feedbackVisible used to hide only the sidebar BUTTON while the
+      // slide stayed in `items` — so Prev/Next still walked into the feedback
+      // form, and the completion auto-open below still fired. With the viewer
+      // sidebar off that was the whole failure: Next from a one-slide chapter
+      // landed on a feedback page instead of the next chapter.
+      // Annotated: as a ternary this no longer infers from the feedbackSlide
+      // literal the way the old spread did, and the widened element type left
+      // every downstream .some()/.find() callback param implicitly any.
+      const slidesWithFeedback: Slide[] = feedbackVisible && feedbackInSlideNav
+        ? [...accessibleSlides, feedbackSlide]
+        : accessibleSlides;
       setItems(slidesWithFeedback);
 
       const completion = calculateOverallCompletion(accessibleSlides);
@@ -520,13 +709,13 @@ function Slides() {
       // intentionally fall through to the preserve-current-slide guard below
       // instead of being reset to the first slide on every refetch. The
       // !slideId gate keeps explicit deep links / sidebar navigation in control.
-      if (completion === 100 && !slideId) {
-        const feedbackSeenKey = `feedback_seen_${courseId}_${chapterId}`;
-        const hasSeenFeedback = localStorage.getItem(feedbackSeenKey);
+      if (!slideId && feedbackBoundaryReached(completion)) {
+        const seenKey = feedbackSeenKey();
+        const hasSeenFeedback = localStorage.getItem(seenKey);
 
         if (!hasSeenFeedback) {
-          // First time completion - show feedback page
-          localStorage.setItem(feedbackSeenKey, "true");
+          // First time this scope completes — offer feedback once.
+          localStorage.setItem(seenKey, "true");
           setActiveItem(feedbackSlide);
           return;
         }
@@ -544,9 +733,13 @@ function Slides() {
       if (!slideIdChanged) {
         const currentItem = useContentStore.getState().activeItem;
         if (currentItem) {
-          const stillPresent = slidesWithFeedback.some(
-            (s) => s.id === currentItem.id
-          );
+          // The feedback slide is synthetic and may deliberately be absent from
+          // the list (feedbackInSlideNav off) while still being the open item,
+          // so it counts as present or the next refetch would kick the learner
+          // off the form mid-answer.
+          const stillPresent =
+            currentItem.id === "feedback-slide" ||
+            slidesWithFeedback.some((s) => s.id === currentItem.id);
           const currentLocked =
             !!evaluations[currentItem.id] &&
             isItemLocked(evaluations[currentItem.id]);
@@ -565,7 +758,7 @@ function Slides() {
           const evaluation = evaluations[targetSlide.id];
 
           if (evaluation && isItemLocked(evaluation)) {
-            setActiveItem(slidesWithFeedback[0]);
+            setActiveItem(slidesWithFeedback[0] ?? null);
             return;
           }
 
@@ -577,7 +770,7 @@ function Slides() {
       // Default: first slide. Reached on initial load / chapter change, or when
       // the previously active slide is no longer in the list. The preserve-
       // current-slide guard above already short-circuits plain cache refreshes.
-      setActiveItem(slidesWithFeedback[0]);
+      setActiveItem(slidesWithFeedback[0] ?? null);
     }
   }, [
     slides,
@@ -590,6 +783,13 @@ function Slides() {
     setSlideEvaluations,
     isDrippingEnable,
     modulesWithChaptersData,
+    feedbackVisible,
+    feedbackInSlideNav,
+    feedbackBoundaryReached,
+    feedbackSeenKey,
+    dripConditionFor,
+    dripAnchors,
+    dripNow,
   ]);
 
   const [moduleName, setModuleName] = useState("");
@@ -598,6 +798,23 @@ function Slides() {
   const [courseName, setCourseName] = useState("");
   const [levelName, setLevelName] = useState("");
   const [instituteLogoUrl, setInstituteLogoUrl] = useState<string>("");
+  // Identity for the panel header — the app sidebar's own header is suppressed
+  // while this panel is mounted, so this is where the institute name now
+  // appears. `hideInstituteName` is an operator branding switch, honoured here
+  // exactly as it is there.
+  //
+  // Subscribed field by field ON PURPOSE. A bare `useStore()` subscribes to
+  // the whole store, and every write to it allocates a new state object — so
+  // this route would re-render, rebuild `SidebarComponent`, and re-trigger
+  // LayoutContainer's hasCustomSidebar effect, forever.
+  const instituteName = useSidebarBranding((state) => state.instituteName);
+  const hideInstituteName = useSidebarBranding(
+    (state) => state.hideInstituteName
+  );
+  // A sub-org learner is white-labelled: their own name and logo replace the
+  // parent institute's. The app sidebar header did this and it went with it.
+  const subOrgName = useSidebarBranding((state) => state.subOrgName);
+  const subOrgLogoUrl = useSidebarBranding((state) => state.subOrgLogoUrl);
   const [homeIconClickRoute, setHomeIconClickRoute] = useState<string | null>(
     null
   );
@@ -978,16 +1195,6 @@ function Slides() {
     }
   }, [playStreak, isPlay]);
 
-  const [showLearningPath, setShowLearningPath] = useState(true);
-  const [feedbackVisible, setFeedbackVisible] = useState(true);
-  // "breadcrumb" = legacy per-chapter slide list; cross-module navigation
-  // happens via the popovers in the breadcrumb. This is the default to keep
-  // existing learners on familiar terrain — admins can opt into the richer
-  // "ancestors" tree from Student Display Settings.
-  const [sidebarNavigation, setSidebarNavigation] = useState<
-    "ancestors" | "breadcrumb"
-  >("breadcrumb");
-
   // Load Student Display Settings for slides view
   useEffect(() => {
     getStudentDisplaySettings(false).then((s) => {
@@ -995,8 +1202,25 @@ function Slides() {
         s?.courseDetails?.slidesView?.showLearningPath ?? true
       );
       setFeedbackVisible(s?.courseDetails?.slidesView?.feedbackVisible ?? true);
+      setCollapseSidebarSetting(
+        s?.courseDetails?.slidesView?.collapseSidebarOnOpen
+      );
+      setManualCompletionSetting(
+        s?.courseDetails?.slidesView?.manualCompletion
+      );
+      setChapterCompleteCtaSetting(
+        s?.courseDetails?.slidesView?.chapterCompleteCta
+      );
+      setFeedbackInSlideNavSetting(
+        s?.courseDetails?.slidesView?.feedbackInSlideNav
+      );
+      setFeedbackTrigger(
+        s?.courseDetails?.slidesView?.feedbackTrigger ?? "CHAPTER"
+      );
       setSidebarNavigation(
-        s?.courseDetails?.slidesView?.sidebarNavigation ?? "breadcrumb"
+        readDebugSidebarNav() ??
+          s?.courseDetails?.slidesView?.sidebarNavigation ??
+          "breadcrumb"
       );
     });
   }, []);
@@ -1029,19 +1253,46 @@ function Slides() {
   // the sidebar's open state (shadcn useCallback dep), so route it through a
   // ref and key the effect on focusMode only — otherwise manual sidebar
   // toggles from the navbar would re-trigger this effect and fight the user.
+  //
+  // Focus mode's only entry point is a button in the viewer sidebar. With the
+  // sidebar off there is nothing to collapse and no way back out, so a value
+  // left over in sessionStorage must not keep driving the layout.
+  const effectiveFocusMode = focusMode && !hideSlidesSidebar;
+
+  // Whether the APP sidebar (the global nav rail) should be collapsed while the
+  // viewer is open. Focus mode is the manual way in; the institute setting is
+  // the automatic one. An explicit setting wins; unset follows the sidebar
+  // mode, so the sidebar-less viewer collapses the rail and the modes with
+  // their own sidebar are left exactly as they were. Restored on the way out
+  // so the rest of the app never inherits a collapsed rail.
+  const collapseSidebarOnOpen = collapseSidebarSetting ?? hideSlidesSidebar;
+  const collapseAppSidebar = effectiveFocusMode || collapseSidebarOnOpen;
+
+  // "Mark as complete" defaults to the sidebar-less viewer only. That mode has
+  // no tick list and no progress readout, so it is the one place the learner
+  // otherwise gets no completion feedback at all; the breadcrumb and tree modes
+  // already show both, and adding a button there would change the default
+  // viewer for every institute. An explicit setting overrides either way.
+  const manualCompletion = manualCompletionSetting ?? hideSlidesSidebar;
+
+  // Chapter hand-off bar. Unset follows the sidebar mode: the sidebar-less
+  // viewer shows it (it is the one that dead-ends at chapter end), the sidebar
+  // modes already list chapters and let the learner choose.
+  const chapterCompleteCta = chapterCompleteCtaSetting ?? hideSlidesSidebar;
+
   const setAppSidebarOpenRef = useRef(setAppSidebarOpen);
   useEffect(() => {
     setAppSidebarOpenRef.current = setAppSidebarOpen;
   }, [setAppSidebarOpen]);
   useEffect(() => {
-    setAppSidebarOpenRef.current(!focusMode);
-  }, [focusMode]);
+    setAppSidebarOpenRef.current(!collapseAppSidebar);
+  }, [collapseAppSidebar]);
   // Restore the sidebar when leaving the route while focus mode is on, so
   // the rest of the app doesn't inherit a collapsed sidebar.
-  const focusModeRef = useRef(focusMode);
+  const focusModeRef = useRef(collapseAppSidebar);
   useEffect(() => {
-    focusModeRef.current = focusMode;
-  }, [focusMode]);
+    focusModeRef.current = collapseAppSidebar;
+  }, [collapseAppSidebar]);
   useEffect(
     () => () => {
       if (focusModeRef.current) setAppSidebarOpenRef.current(true);
@@ -1133,6 +1384,31 @@ function Slides() {
     });
   }, [nextSlide, navigate, courseId, subjectId, moduleId, chapterId, sessionId]);
 
+  // ── Market-standard chapter hand-off ──────────────────────────────────────
+  // Mainstream course players end a section with an explicit "you're done —
+  // here's what's next" moment rather than a dead stop. That matters most in
+  // the sidebar-less viewer: there is no chapter list there to tell the learner
+  // they finished, and no way to pick what comes next except guessing at Next.
+  // Which modes show it is settings-driven (chapterCompleteCta), defaulting to
+  // the sidebar-less viewer since the sidebar modes already show chapter
+  // progress and let the learner choose.
+  const chapterComplete = useMemo(() => {
+    const real = (slides || []).filter(
+      (sl: Slide) => sl.id !== "feedback-slide"
+    );
+    if (!real.length) return false;
+    const threshold = getSlideCompletionThreshold();
+    return real.every(
+      (sl: Slide) => (sl.percentage_completed || 0) >= threshold
+    );
+  }, [slides]);
+
+  const [chapterCtaDismissed, setChapterCtaDismissed] = useState(false);
+  // A new chapter deserves its own hand-off, so the dismissal does not carry.
+  useEffect(() => {
+    setChapterCtaDismissed(false);
+  }, [chapterId]);
+
   const previousChapter = useMemo(() => {
     if (!modulesWithChaptersData?.length) return null;
 
@@ -1187,47 +1463,89 @@ function Slides() {
     }
   }, [previousChapter, navigate, courseId, subjectId, sessionId]);
 
+  // "Institute · Level" on one line. The level is dropped when it's absent,
+  // a "default" placeholder, or already spelled out inside the course name.
+  const sidebarEyebrow = useMemo(() => {
+    const showLevel =
+      !!levelName &&
+      levelName.trim().toLowerCase() !== "default" &&
+      !(
+        courseName &&
+        courseName.toLowerCase().includes(levelName.trim().toLowerCase())
+      );
+    // Sub-org branding wins over the parent's, and is never suppressed by
+    // `hideInstituteName` — that switch is about the PARENT's name.
+    const owner = subOrgName || (hideInstituteName ? null : instituteName);
+    return [owner, showLevel ? toTitleCase(levelName) : null]
+      .filter(Boolean)
+      .join(" · ");
+  }, [
+    instituteName,
+    hideInstituteName,
+    subOrgName,
+    levelName,
+    courseName,
+  ]);
+
   const SidebarComponent = (
     <div className="flex flex-col h-full bg-white border-e border-gray-100">
-      {/* --- Header Section: Title & Breadcrumbs --- */}
-      <div className="flex-none px-3 py-2.5 space-y-2 border-b border-gray-100 bg-white z-10">
+      {/* --- Header Section: Identity & Breadcrumbs ---
+          One header, not two. This panel now replaces the app sidebar's own
+          institute header (see mySidebar), so it carries both names: the
+          institute as a small eyebrow and the course as the title, beside a
+          single logo. The level joins the eyebrow rather than taking a third
+          line, and is dropped when the course name already contains it — batch
+          names routinely embed the level ("Class 8 | MGP | B 3" under level
+          "Class 8"), which said the same thing twice. Between this and the
+          removed duplicate header the panel gets ~110px back. */}
+      <div className="flex-none px-3 py-2 space-y-1.5 border-b border-gray-100 bg-white z-10">
         {/* Course Info Row */}
         <div className="flex items-center gap-2.5">
-          <div className="flex-shrink-0 w-7 h-7 rounded-md border border-gray-150 bg-white flex items-center justify-center text-primary-600">
-            {instituteLogoUrl ? (
+          {/* The affordance is the whole tile, not just the image: the logo id
+              can be missing or fail to resolve, and the fallback icon used to
+              be dead where the image was clickable. A real button when it
+              navigates, a plain tile when it doesn't. */}
+          {(() => {
+            const logoUrl = subOrgLogoUrl || instituteLogoUrl;
+            const inner = logoUrl ? (
               <img
-                src={instituteLogoUrl}
-                alt="Institute"
-                onClick={
-                  homeIconClickRoute ? handleInstituteLogoClick : undefined
-                }
-                className={`max-w-full max-h-full object-contain ${homeIconClickRoute ? "cursor-pointer" : ""
-                  }`}
+                src={logoUrl}
+                alt={subOrgName || "Institute"}
+                className="max-w-full max-h-full object-contain"
               />
             ) : (
               <GraduationCap size={16} weight="duotone" />
-            )}
-          </div>
+            );
+            const tile =
+              "flex-shrink-0 w-7 h-7 rounded-md border border-gray-150 bg-white flex items-center justify-center text-primary-500";
+            return homeIconClickRoute ? (
+              <button
+                type="button"
+                onClick={handleInstituteLogoClick}
+                aria-label="Go to home"
+                className={`${tile} cursor-pointer transition-colors hover:border-gray-300`}
+              >
+                {inner}
+              </button>
+            ) : (
+              <div className={tile}>{inner}</div>
+            );
+          })()}
           <div className="min-w-0 flex-1">
-            <h3 className="text-caption font-semibold text-gray-900 leading-tight truncate">
-              {courseName ? toTitleCase(courseName) : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
-            </h3>
-            {/* Batch names routinely embed the level ("Class 8 | MGP | B 3"
-                under level "Class 8") — repeating it as a subtitle said the
-                same thing twice, so the subtitle is dropped when redundant. */}
-            {!(
-              levelName &&
-              courseName &&
-              courseName
-                .toLowerCase()
-                .includes(levelName.trim().toLowerCase())
-            ) && (
-              <p className="text-caption text-gray-400 font-medium tracking-wide uppercase mt-0.5">
-                {levelName && levelName.toLowerCase() !== "default"
-                  ? toTitleCase(levelName)
-                  : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Material`}
+            {sidebarEyebrow && (
+              <p
+                className="text-2xs font-medium tracking-wide text-gray-500 truncate"
+                title={sidebarEyebrow}
+              >
+                {sidebarEyebrow}
               </p>
             )}
+            <h3
+              className="text-caption font-semibold text-gray-900 leading-tight truncate"
+              title={courseName ? toTitleCase(courseName) : undefined}
+            >
+              {courseName ? toTitleCase(courseName) : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
+            </h3>
           </div>
           {/* Focus mode: hides this sidebar + tightens content margins.
               Desktop only — on mobile the sidebar is already an offcanvas
@@ -1244,14 +1562,15 @@ function Slides() {
         </div>
 
         {/* Breadcrumb: [Subject >] Module Switcher > Current Chapter.
-            Rendered only in "breadcrumb" (flat list) mode — in "ancestors"
-            tree mode the expanded tree below already shows the full path, so
-            the crumb was pure duplication (and truncated into noise at
-            sidebar width). Subject crumb is only rendered when the course
-            structure actually has subjects (`subjectId` set +
-            studyLibraryData populated) — otherwise the crumb collapses to
-            Module > Chapter as before. */}
-        {showLearningPath && sidebarNavigation === "breadcrumb" && (() => {
+            Rendered in every mode. It was gated to "breadcrumb" mode on the
+            reasoning that the tree already shows the path — but the tree shows
+            it only where the learner happens to be scrolled, and the crumb is
+            the one line that says where you are without having to look for it.
+            It also stays the fastest way to jump a module. Subject crumb is
+            only rendered when the course structure actually has subjects
+            (`subjectId` set + studyLibraryData populated) — otherwise the
+            crumb collapses to Module > Chapter as before. */}
+        {showLearningPath && (() => {
           // Backends frequently emit a "Default"-named subject / module /
           // chapter as a placeholder when that level isn't really part of
           // the course. Those crumbs aren't useful navigation context — hide
@@ -1419,10 +1738,39 @@ function Slides() {
           • "breadcrumb" renders the legacy per-chapter flat slide list;
             cross-module navigation happens via the breadcrumb popovers. */}
       <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
-        {sidebarNavigation === "ancestors" ? (
+        {sidebarNavigation === "lessons" ? (
+          <LessonListSidebar
+            courseId={courseId || ""}
+            sessionId={resolvedSessionId}
+            subjects={courseSubjects}
+            currentSubjectId={subjectId || ""}
+            currentChapterId={chapterId || ""}
+            currentSlideId={slideId || ""}
+            currentSubjectModules={modulesWithChaptersData}
+            onSlideSelect={({
+              subjectId: targetSubjectId,
+              moduleId: targetModuleId,
+              chapterId: targetChapterId,
+              slideId: targetSlideId,
+            }) => {
+              navigate({
+                to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+                search: {
+                  courseId,
+                  subjectId: targetSubjectId,
+                  moduleId: targetModuleId,
+                  chapterId: targetChapterId,
+                  slideId: targetSlideId,
+                  sessionId,
+                },
+              });
+            }}
+          />
+        ) : sidebarNavigation === "ancestors" ? (
           <div className="py-1">
             <CourseTreeSidebar
               courseId={courseId || ""}
+              courseName={courseName}
               sessionId={resolvedSessionId}
               subjects={courseSubjects}
               currentSubjectId={subjectId || ""}
@@ -1623,8 +1971,22 @@ function Slides() {
   return (
     <LayoutContainer
       fullWidth
-      sidebarComponent={SidebarComponent}
-      className={focusMode ? "m-0 md:m-1" : "md:my-0 md:mx-2 lg:mx-3"}
+      // No sidebar prop at all in "hidden" mode — passing an empty node would
+      // still reserve the rail. LayoutContainer then falls back to the app's
+      // own sidebar, so the learner keeps a way out of the viewer.
+      {...(hideSlidesSidebar
+        ? {}
+        : {
+            sidebarComponent: SidebarComponent,
+            // This panel's own header carries the institute name, so the app
+            // sidebar's branding header would be a second copy.
+            hideBrandingHeader: true,
+          })}
+      className={
+        effectiveFocusMode || hideSlidesSidebar
+          ? "m-0 md:m-1"
+          : "md:my-0 md:mx-2 lg:mx-3"
+      }
     >
       <InitStudyLibraryProvider>
         <ModulesWithChaptersProvider
@@ -1635,7 +1997,30 @@ function Slides() {
             {activeItem?.id === "feedback-slide" ? (
               <FeedbackPage />
             ) : (
-              <SlideMaterial onNavigateToSlide={handleNavigateToSlide} />
+              <SlideMaterial
+                onNavigateToSlide={handleNavigateToSlide}
+                standaloneNav={hideSlidesSidebar}
+                manualCompletion={manualCompletion}
+                completionContext={{
+                  chapterId,
+                  moduleId,
+                  subjectId,
+                  packageSessionId: resolvedSessionId || undefined,
+                }}
+                // Only in "hidden" mode: with a sidebar on screen the learner
+                // already has a way across chapters, and making Next jump
+                // chapters there would change long-standing behaviour.
+                onPastLastSlide={
+                  hideSlidesSidebar && nextChapter
+                    ? handleNextChapter
+                    : undefined
+                }
+                onBeforeFirstSlide={
+                  hideSlidesSidebar && previousChapter
+                    ? handlePreviousChapter
+                    : undefined
+                }
+              />
             )}
           </SidebarProvider>
         </ModulesWithChaptersProvider>
@@ -1644,7 +2029,50 @@ function Slides() {
           replaced lived on the left; bottom-right belongs to the chatbot
           button and the doubt sidebar). Rendered only while focused, so it
           never overlaps the open sidebar's footer. */}
-      {focusMode && (
+      {/* Chapter hand-off. Dismissible, and only appears once every slide in
+          the chapter has crossed the completion threshold AND there is
+          somewhere to go. Visibility itself is settings-driven. */}
+      {chapterCompleteCta &&
+        chapterComplete &&
+        nextChapter &&
+        !chapterCtaDismissed && (
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-success-200 bg-success-50 px-4 py-3">
+            <div className="mx-auto flex max-w-screen-lg items-center gap-3">
+              <CheckCircle
+                size={20}
+                weight="fill"
+                className="shrink-0 text-success-600"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-neutral-900">
+                  {toTitleCase(
+                    getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)
+                  )}{" "}
+                  complete
+                </p>
+                <p className="truncate text-caption text-neutral-600">
+                  {toTitleCase(nextChapter.chapter.chapter_name)}
+                </p>
+              </div>
+              <button
+                onClick={handleNextChapter}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-primary-400 [.ui-play_&]:rounded-xl [.ui-play_&]:font-bold"
+              >
+                <span>{t("slideNav.next")}</span>
+                <CaretRight size={14} weight="bold" />
+              </button>
+              <button
+                onClick={() => setChapterCtaDismissed(true)}
+                aria-label="Dismiss"
+                className="shrink-0 rounded-md p-1 text-neutral-500 transition-colors hover:bg-success-100 hover:text-neutral-800"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+      {effectiveFocusMode && (
         <button
           onClick={toggleFocusMode}
           aria-label="Exit focus mode"

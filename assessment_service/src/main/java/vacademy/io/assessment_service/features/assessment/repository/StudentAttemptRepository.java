@@ -157,6 +157,9 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             WITH RankedAttemptsRaw AS (
                                     SELECT
                                         sa.id AS attemptId,
+                                        aur.participant_name AS studentName,
+                                        sa.total_time_in_seconds AS completionTimeInSeconds,
+                                        sa.total_marks AS achievedMarks,
                                         ROW_NUMBER() OVER (PARTITION BY aur.user_id ORDER BY sa.created_at DESC) AS rn
                                     FROM student_attempt sa
                                     JOIN assessment_user_registration aur ON aur.id = sa.registration_id

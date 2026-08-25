@@ -60,6 +60,22 @@ public class Mentor {
     @Column(name = "google_account_id")
     private String googleAccountId;
 
+    /**
+     * Comma-separated topics this mentor covers (e.g. "JEE Physics,Career guidance").
+     * Free text so institutes aren't boxed into a fixed taxonomy; the API exposes it
+     * as a list and the learner directory filters on it.
+     */
+    @Column(name = "expertise_tags")
+    private String expertiseTags;
+
+    /** Max ACTIVE mentees. NULL = unlimited. Assignment (manual + round-robin) skips mentors at capacity. */
+    @Column(name = "max_mentees")
+    private Integer maxMentees;
+
+    /** Whether learners can find this mentor in the directory and request them. */
+    @Column(name = "is_discoverable")
+    private Boolean isDiscoverable;
+
     @Column(name = "sub_org_id")
     private String subOrgId;
 

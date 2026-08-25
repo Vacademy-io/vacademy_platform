@@ -13,6 +13,10 @@ public class CorsConfig implements WebMvcConfigurer {
         registry.addMapping("/**")
                 .allowedOrigins("*") // Allow requests from any origin
                 .allowedMethods("*") // Allow any HTTP method (GET, POST, etc.)
-                .allowedHeaders("*"); // Allow any headers
+                .allowedHeaders("*") // Allow any headers (these are REQUEST headers)
+                // RESPONSE headers are a separate list and Spring does NOT
+                // wildcard it. Without this, the browser hides Server-Timing
+                // from JS on cross-origin calls — silently, with no error.
+                .exposedHeaders("Server-Timing");
     }
 }

@@ -20,6 +20,7 @@ import type {
     ChatBatchResponse,
     ChatPersonResponse,
 } from '@/services/chat/chatApi';
+import { formatClockTime, toUtcDate } from './chatTime';
 
 interface ConversationListProps {
     conversations: ChatConversationResponse[];
@@ -67,16 +68,15 @@ const conversationTitle = (c: ChatConversationResponse): string => {
 };
 
 const formatTime = (iso?: string): string => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
+    const d = toUtcDate(iso);
+    if (!d) return '';
     const now = new Date();
     const sameDay =
         d.getFullYear() === now.getFullYear() &&
         d.getMonth() === now.getMonth() &&
         d.getDate() === now.getDate();
     if (sameDay) {
-        return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        return formatClockTime(d);
     }
     return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
 };

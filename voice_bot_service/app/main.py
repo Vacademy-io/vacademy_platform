@@ -94,11 +94,16 @@ async def lifespan(app: FastAPI):
 
     app.state.speech_cache_task = asyncio.create_task(_open_speech_cache())
     app.state.tts_sweeper_task = asyncio.create_task(ttswarm.sweeper())
+    # Mirrors the ledger into Postgres so the analytics screens are plain SQL
+    # rather than a live dependency on this box's disk, and picks up any flush
+    # queued the other way. Both use the auth this process already has.
+    app.state.tts_reporter_task = asyncio.create_task(ttswarm.reporter())
     try:
         yield
     finally:
         for t in (app.state.warm_task, app.state.spool_task,
-                  app.state.speech_cache_task, app.state.tts_sweeper_task):
+                  app.state.speech_cache_task, app.state.tts_sweeper_task,
+                  app.state.tts_reporter_task):
             t.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await t
@@ -354,6 +359,112 @@ async def tts_cache_stats(request: Request):
         "top": [{"engine": r["engine"], "voice": r["voice"], "count": r["count"],
                  "chars": r["chars"], "text": r["text"][:120]} for r in rows],
     }
+
+
+@router.get("/internal/tts-cache/export")
+async def tts_cache_export(request: Request):
+    """The whole ledger, as JSON — the same payload the 120s reporter pushes.
+
+    Exists because the ledger lives on ONE box's local disk, so until now the
+    only way to read it was a shell on that box. That made an empty analytics
+    table impossible to diagnose remotely: a reporter that never started and a
+    ledger with nothing in it look identical from Postgres.
+
+    `ready` is returned separately from the rows for the same reason. A cache
+    still opening returns ready=false with zero entries, which is NOT the same
+    answer as an open cache that genuinely holds nothing, and a caller that
+    cannot tell those apart will "fix" the wrong thing.
+    """
+    if not _internal_ok(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    cache = ttscache.get_cache()
+    try:
+        limit = min(max(int(request.query_params.get("limit") or 2000), 1), 5000)
+    except ValueError:
+        return JSONResponse({"error": "limit must be an integer"}, status_code=400)
+    agent_id = (request.query_params.get("agentId") or "").strip()
+    try:
+        entries = await asyncio.to_thread(cache.export_for_report, limit)
+    except Exception:
+        logger.exception("tts-cache: export route failed")
+        return JSONResponse({"error": "export failed"}, status_code=502)
+    if agent_id:
+        entries = [e for e in entries if e.get("agentId") == agent_id]
+    return {
+        "ready": cache.ready,
+        "blobs": cache.size,
+        "count": len(entries),
+        "truncated": len(entries) >= limit,
+        "entries": entries,
+    }
+
+
+@router.post("/internal/tts-cache/report-now")
+async def tts_cache_report_now(request: Request):
+    """Push the ledger to admin-core immediately instead of waiting for the tick.
+
+    The reporter already does this every 120s; this is the same call, on demand,
+    for the case where the analytics table needs filling right now — a box that
+    was redeployed late, or a first rollout where nobody wants to watch a clock.
+
+    Safe to repeat: admin-core upserts on (cache_key, agent_id), so a second
+    push updates the same rows rather than duplicating them.
+    """
+    if not _internal_ok(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    cache = ttscache.get_cache()
+    try:
+        entries = await asyncio.to_thread(cache.export_for_report)
+    except Exception:
+        logger.exception("tts-cache: report-now export failed")
+        return JSONResponse({"error": "export failed"}, status_code=502)
+    if not entries:
+        # The reporter's own `if entries:` guard makes this case silent. Say it
+        # out loud here, because "pushed nothing" and "pushed successfully" are
+        # the same HTTP 200 otherwise.
+        return {"ready": cache.ready, "pushed": 0, "ok": None,
+                "note": "ledger is empty — nothing to push"}
+    ok = await admin_core.post_tts_cache_report(entries)
+    logger.info("tts-cache: report-now pushed %s entries ok=%s", len(entries), ok)
+    return {"ready": cache.ready, "pushed": len(entries), "ok": ok}
+
+
+@router.post("/internal/tts-cache/flush")
+async def tts_cache_flush(request: Request):
+    """Drop one cached sentence, or everything one agent contributed.
+
+    dryRun defaults TRUE — it reports what WOULD go and deletes nothing. The
+    destructive reading of an ambiguous request is the wrong one, and this route
+    deletes audio we paid a vendor to render.
+
+    Audio another agent still references is kept: the cache key is global, so
+    agents on the same voice share one blob and flushing one must not take
+    somebody else's. The returned note says how many were kept for that reason.
+    """
+    if not _internal_ok(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    agent_id = (body.get("agentId") or "").strip()
+    cache_key = (body.get("cacheKey") or "").strip()
+    if not agent_id and not cache_key:
+        return JSONResponse(
+            {"error": "pass agentId or cacheKey — refusing to flush everything"},
+            status_code=400)
+    dry_run = bool(body.get("dryRun", True))
+    cache = ttscache.get_cache()
+    try:
+        entries, freed, note = await asyncio.to_thread(
+            cache.forget, agent_id=agent_id, cache_key=cache_key, dry_run=dry_run)
+    except Exception:
+        logger.exception("tts-cache: flush route failed")
+        return JSONResponse({"error": "flush failed"}, status_code=502)
+    logger.info("tts-cache: flush agent=%s key=%s dryRun=%s -> %s",
+                agent_id or "-", cache_key or "-", dry_run, note)
+    return {"dryRun": dry_run, "entriesRemoved": entries,
+            "bytesRemoved": freed, "result": note}
 
 
 def _cache_write(path: str, data: bytes) -> bool:

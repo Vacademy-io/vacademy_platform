@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { getUserId } from "@/constants/getUserId";
 
-export const MainViewQuillEditor = ({ value, onChange, className="", isDoubtResolution = false }) => {
+export const MainViewQuillEditor = ({ value, onChange, className="", isDoubtResolution = false, placeholder, autoFocus = false }) => {
     const reactQuillRef = useRef(null);
     const mathQuillInitialized = useRef(false); // Flag to prevent multiple initializations
     const [isUploading, setIsUploading] = useState(false);
@@ -40,6 +40,17 @@ export const MainViewQuillEditor = ({ value, onChange, className="", isDoubtReso
             }
         }
     }, []); // Only run on mount
+
+    // Put the caret in the editor when it is opened on purpose (e.g. the learner
+    // tapped "Ask a doubt"), so they can type — and get the mobile keyboard —
+    // without a second tap.
+    useEffect(() => {
+        if (!autoFocus) return;
+        const quill = reactQuillRef.current?.getEditor();
+        if (!quill) return;
+        const focusTimer = setTimeout(() => quill.focus(), 50);
+        return () => clearTimeout(focusTimer);
+    }, [autoFocus]);
 
     useEffect(() => {
         const styleElement = document.createElement("style");
@@ -121,15 +132,16 @@ export const MainViewQuillEditor = ({ value, onChange, className="", isDoubtReso
                 ref={reactQuillRef}
                 modules={rightBarmodules}
                 theme="snow"
+                placeholder={placeholder}
                 value={value}
                 onChange={onChange}
                 preserveWhitespace={true}
                 className={cn("", isUploading && "opacity-50")}
             />
             {isUploading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/50 rounded-xl">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <div className="animate-spin w-4 h-4 border-2 border-primary-500 border-t-transparent rounded-full"></div>
+                <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+                    <div className="flex items-center gap-2 text-caption text-neutral-600">
+                        <div className="animate-spin size-4 border-2 border-primary-500 border-t-transparent rounded-full"></div>
                         Uploading image...
                     </div>
                 </div>

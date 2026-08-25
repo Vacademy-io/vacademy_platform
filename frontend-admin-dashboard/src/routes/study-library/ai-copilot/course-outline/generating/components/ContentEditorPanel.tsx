@@ -268,7 +268,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
     // Empty state - no slide selected
     if (!slide) {
         return (
-            <div className="flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-md">
+            <div className="flex h-full w-full min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-md">
                 <div className="flex flex-1 items-center justify-center text-neutral-400">
                     <div className="text-center">
                         <FileText className="mx-auto mb-3 size-10 opacity-50 sm:size-12" />
@@ -282,7 +282,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
     // Pending state - show prompt
     if (slide.status === 'pending') {
         return (
-            <div className="flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-md">
+            <div className="flex h-full w-full min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-md">
                 {/* Header */}
                 <div className="shrink-0 border-b border-neutral-200 bg-neutral-50 px-4 py-3">
                     <div className="flex items-center justify-between">
@@ -298,7 +298,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
 
                 {/* Prompt Display */}
                 <div className="flex flex-1 items-center justify-center p-4 sm:p-6">
-                    <div className="max-w-md text-center">
+                    <div className="w-full max-w-2xl text-center">
                         <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-amber-100">
                             <Sparkles className="size-6 text-amber-600" />
                         </div>
@@ -320,7 +320,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
     // Generating state
     if (slide.status === 'generating') {
         return (
-            <div className="flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-md">
+            <div className="flex h-full w-full min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-md">
                 {/* Header */}
                 <div className="shrink-0 border-b border-neutral-200 bg-neutral-50 px-4 py-3">
                     <div className="flex items-center justify-between">
@@ -359,7 +359,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
 
     // Completed state - show editable content
     return (
-        <div className="flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-md">
+        <div className="flex h-full w-full min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-md">
             {/* Header */}
             <div className="shrink-0 border-b border-neutral-200 bg-neutral-50 px-4 py-3">
                 <div className="flex items-center justify-between">

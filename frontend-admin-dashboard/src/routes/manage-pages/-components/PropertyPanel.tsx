@@ -1399,6 +1399,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <SpacerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'htmlBlock':
             return <HtmlBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'htmlPage':
+            return <HtmlPageEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productPageOffer':
             return <ProductPageOfferEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'leadForm':
@@ -4243,6 +4245,118 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
                         <Switch checked={props[key] !== false} onCheckedChange={(c) => updateProp(key, c)} />
                     </div>
                 ))}
+            </div>
+        </div>
+    );
+};
+
+/** The whole-page paste editor. Deliberately not a canvas: an HTML page is
+ *  someone else's markup and we do not pretend to understand its structure. */
+const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    // Paste a whole document and the parts that silently disappear are the ones
+    // you would blame us for: <style> is not an allowed tag, so ALL styling is
+    // lost with no visible cause. Detect and offer to move it rather than
+    // leaving a note the admin reads after the page looks broken.
+    const html: string = props.html || '';
+    const styleBlocks = html.match(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi) || [];
+    const scriptCount = (html.match(/<script\b/gi) || []).length;
+    const linkedCss = (html.match(/<link\b[^>]*stylesheet/gi) || []).length;
+
+    const moveStylesToCss = () => {
+        const extracted = styleBlocks
+            .map((b) => b.replace(/<style\b[^>]*>/i, '').replace(/<\/style\s*>/i, ''))
+            .join('\n');
+        updateComponent(pageId, component.id, {
+            props: {
+                ...props,
+                html: html.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ''),
+                css: [props.css || '', extracted].filter(Boolean).join('\n'),
+            },
+        });
+    };
+
+    return (
+        <div className="space-y-4">
+            {(styleBlocks.length > 0 || scriptCount > 0 || linkedCss > 0) && (
+                <div className="space-y-2 rounded border border-warning-200 bg-warning-50 p-2.5">
+                    <p className="text-caption font-medium text-warning-700">
+                        Some of this paste will not render
+                    </p>
+                    <ul className="list-disc space-y-0.5 pl-4 text-caption text-warning-700">
+                        {styleBlocks.length > 0 && (
+                            <li>
+                                {styleBlocks.length} &lt;style&gt; block
+                                {styleBlocks.length === 1 ? '' : 's'} — style tags are stripped, so
+                                this CSS is lost
+                            </li>
+                        )}
+                        {linkedCss > 0 && (
+                            <li>
+                                {linkedCss} linked stylesheet{linkedCss === 1 ? '' : 's'} — paste that
+                                CSS into the CSS field
+                            </li>
+                        )}
+                        {scriptCount > 0 && (
+                            <li>
+                                {scriptCount} script{scriptCount === 1 ? '' : 's'} — removed; use the
+                                action attributes below instead
+                            </li>
+                        )}
+                    </ul>
+                    {styleBlocks.length > 0 && (
+                        <Button size="sm" variant="outline" onClick={moveStylesToCss}>
+                            Move styles into the CSS field
+                        </Button>
+                    )}
+                </div>
+            )}
+            <div className="rounded border border-primary-200 bg-primary-50 p-2 text-caption text-primary-500">
+                Paste the page you built elsewhere. Scripts, forms and iframes are removed; SVG,
+                images and your CSS are kept. Put <code>&lt;style&gt;</code> contents in the CSS
+                field — style tags are stripped.
+            </div>
+            <div>
+                <Label className="text-xs">HTML</Label>
+                <Textarea
+                    value={props.html || ''}
+                    onChange={(e) => updateProp('html', e.target.value)}
+                    rows={16}
+                    className="mt-1 font-mono text-caption"
+                    placeholder="<section>…</section>"
+                />
+            </div>
+            <div>
+                <Label className="text-xs">CSS</Label>
+                <Textarea
+                    value={props.css || ''}
+                    onChange={(e) => updateProp('css', e.target.value)}
+                    rows={12}
+                    className="mt-1 font-mono text-caption"
+                    placeholder=".hero { background: var(--catalogue-bg); }"
+                />
+                <p className="mt-1 text-caption text-gray-400">
+                    Shared across several pasted pages? Put it in Global Settings → Custom CSS
+                    instead, so it is stored once rather than per page.
+                </p>
+            </div>
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-600">
+                <p className="font-medium text-gray-700">Making buttons and links work</p>
+                <p className="mt-1">
+                    A plain link leaves the site, and <code>#anchor</code> cannot work inside the
+                    page&apos;s shadow root. Use these instead — pasted links are converted
+                    automatically where we can:
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    <li><code>data-vacademy=&quot;route&quot; data-route=&quot;pricing&quot;</code> — another page</li>
+                    <li><code>data-vacademy=&quot;scroll&quot; data-target=&quot;faq&quot;</code> — scroll on this page</li>
+                    <li><code>data-vacademy=&quot;lead-form&quot; data-audience=&quot;…&quot;</code> — open a campaign form</li>
+                    <li><code>data-vacademy=&quot;enrol&quot; data-course=&quot;…&quot;</code> — open a course</li>
+                    <li>External links: a normal <code>&lt;a href=&quot;https://…&quot;&gt;</code></li>
+                </ul>
             </div>
         </div>
     );

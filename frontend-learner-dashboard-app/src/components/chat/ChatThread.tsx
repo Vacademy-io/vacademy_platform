@@ -14,6 +14,7 @@ import {
   initialsOf,
   isImageAttachment,
 } from "./chatUtils";
+import { MessageText } from "./MessageText";
 
 /** A message augmented with optimistic-send bookkeeping. */
 export interface UiChatMessage extends ChatMessageResponse {
@@ -230,9 +231,7 @@ export function ChatThread({
                         )}
 
                         {msg.content && (
-                          <p className="whitespace-pre-wrap break-words">
-                            {msg.content}
-                          </p>
+                          <MessageText text={msg.content} isOwn={isOwn} />
                         )}
 
                         {msg.failed ? (

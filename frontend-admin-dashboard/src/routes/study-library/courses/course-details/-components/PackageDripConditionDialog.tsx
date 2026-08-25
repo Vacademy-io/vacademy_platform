@@ -17,7 +17,9 @@ import {
     DripConditionRuleType,
     DripConditionBehavior,
     DripConditionConfig,
+    DripConditionContentLevel,
 } from '@/types/course-settings';
+import { getLevelDisplayName } from '@/utils/drip-conditions';
 import { MyButton } from '@/components/design-system/button';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -45,7 +47,7 @@ interface PackageDripConditionDialogProps {
     packageId: string;
     packageName: string;
     condition?: DripCondition;
-    initialTarget?: 'chapter' | 'slide';
+    initialTarget?: DripConditionContentLevel;
 }
 
 export const PackageDripConditionDialog: React.FC<PackageDripConditionDialogProps> = ({
@@ -58,10 +60,10 @@ export const PackageDripConditionDialog: React.FC<PackageDripConditionDialogProp
     initialTarget,
 }) => {
     // Start with chapter as default target
-    const [selectedTarget, setSelectedTarget] = useState<'chapter' | 'slide'>('chapter');
+    const [selectedTarget, setSelectedTarget] = useState<DripConditionContentLevel>('chapter');
 
     // Find existing config for selected target or create new one
-    const getConfigForTarget = (target: 'chapter' | 'slide'): DripConditionConfig => {
+    const getConfigForTarget = (target: DripConditionContentLevel): DripConditionConfig => {
         if (condition) {
             const existingConfig = condition.drip_condition.find((c) => c.target === target);
             if (existingConfig) {
@@ -88,7 +90,7 @@ export const PackageDripConditionDialog: React.FC<PackageDripConditionDialogProp
     const [configEnabled, setConfigEnabled] = useState(currentConfig.is_enabled ?? true);
 
     // Update config when target changes
-    const handleTargetChange = (newTarget: 'chapter' | 'slide') => {
+    const handleTargetChange = (newTarget: DripConditionContentLevel) => {
         setSelectedTarget(newTarget);
         const newConfig = getConfigForTarget(newTarget);
         setCurrentConfig(newConfig);
@@ -98,7 +100,7 @@ export const PackageDripConditionDialog: React.FC<PackageDripConditionDialogProp
     useEffect(() => {
         if (open) {
             // When editing existing condition, use initialTarget if provided, otherwise find which target has configs
-            let targetToSelect: 'chapter' | 'slide' = 'chapter';
+            let targetToSelect: DripConditionContentLevel = 'chapter';
 
             if (initialTarget) {
                 // Use the explicitly passed target (when editing a specific target)
@@ -320,7 +322,7 @@ export const PackageDripConditionDialog: React.FC<PackageDripConditionDialogProp
                         <Label>Target Content</Label>
                         <Select
                             value={selectedTarget}
-                            onValueChange={(value: 'chapter' | 'slide') =>
+                            onValueChange={(value: DripConditionContentLevel) =>
                                 handleTargetChange(value)
                             }
                         >
@@ -328,13 +330,15 @@ export const PackageDripConditionDialog: React.FC<PackageDripConditionDialogProp
                                 <SelectValue placeholder="Select target" />
                             </SelectTrigger>
                             <SelectContent>
+                                <SelectItem value="subject">{getTerminologyPlural(ContentTerms.Subjects, SystemTerms.Subjects)}</SelectItem>
+                                <SelectItem value="module">{getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}</SelectItem>
                                 <SelectItem value="chapter">{getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter)}</SelectItem>
                                 <SelectItem value="slide">{getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide)}</SelectItem>
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
                             This condition will apply to all{' '}
-                            {selectedTarget === 'chapter' ? getTerminologyPlural(ContentTerms.Chapter, SystemTerms.Chapter).toLowerCase() : getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide).toLowerCase()} in this package
+                            {getLevelDisplayName(selectedTarget).toLowerCase()}s in this package
                         </p>
                     </div>
 

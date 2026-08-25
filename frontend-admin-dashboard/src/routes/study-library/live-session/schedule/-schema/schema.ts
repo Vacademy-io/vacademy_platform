@@ -104,6 +104,8 @@ export const sessionFormSchema = z
         bbbWebcamsOnlyForModerator: z.boolean().optional(),
         bbbGuestPolicy: z.enum(['ALWAYS_ACCEPT', 'ASK_MODERATOR', 'ALWAYS_DENY']).optional(),
         // Lock settings — restrict students only; the host keeps full access
+        bbbDisableMic: z.boolean().optional(),
+        bbbDisableCam: z.boolean().optional(),
         bbbDisablePrivateChat: z.boolean().optional(),
         bbbDisablePublicChat: z.boolean().optional(),
         bbbDisableSharedNotes: z.boolean().optional(),

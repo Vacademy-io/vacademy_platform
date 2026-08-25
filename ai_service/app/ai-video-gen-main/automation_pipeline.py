@@ -1251,7 +1251,84 @@ def _snap_shots_to_word_boundaries(
     return snapped
 
 
-def _whisper_align(audio_path: Path, language: str = "English") -> list:
+def _relabel_words_from_script(word_entries: list, script_text: str) -> list:
+    """Replace ASR word TEXT with the authored script, keeping ASR TIMINGS.
+
+    Whisper transcribes the synthesized audio, so captions inherit ASR errors.
+    On a cranial-nerve script that meant "Rinne" rendered as "René", "hertz" as
+    "herds" and "mastoid" as "mastide" — burned into the captions of a video
+    whose brief pinned those exact terms. The spoken words are known: Whisper
+    should contribute timing, not vocabulary.
+
+    Aligns the two token streams and transfers the script's words onto the
+    matched timings, spreading them across the span when a run differs. Returns
+    the input unchanged when there is no script or the alignment is too poor to
+    trust (a real mismatch means the audio is not this script).
+    """
+    if not word_entries or not script_text or not script_text.strip():
+        return word_entries
+    try:
+        import difflib as _difflib
+
+        script_words = [w for w in re.findall(r"\S+", script_text) if w.strip()]
+        if not script_words:
+            return word_entries
+
+        def _norm(t: str) -> str:
+            return re.sub(r"[^a-z0-9]", "", str(t).lower())
+
+        a_norm = [_norm(w.get("word") or w.get("text") or "") for w in word_entries]
+        b_norm = [_norm(w) for w in script_words]
+        matcher = _difflib.SequenceMatcher(a=a_norm, b=b_norm, autojunk=False)
+        if matcher.ratio() < 0.55:
+            print(f"   \u26a0\ufe0f caption relabel skipped — script/audio similarity "
+                  f"{matcher.ratio():.2f} too low")
+            return word_entries
+
+        out: list = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            a_slice = word_entries[i1:i2]
+            s_slice = script_words[j1:j2]
+            if tag == "equal":
+                for a, sw in zip(a_slice, s_slice):
+                    out.append({"word": sw, "start": a.get("start"), "end": a.get("end")})
+                continue
+            if tag == "delete":
+                continue          # heard but never written — drop it
+            if a_slice:
+                t0 = a_slice[0].get("start") or 0.0
+                t1 = a_slice[-1].get("end") or t0
+            elif out:
+                t0 = t1 = out[-1]["end"]
+            else:
+                t0 = t1 = 0.0
+            step = (t1 - t0) / len(s_slice) if (s_slice and t1 > t0) else 0.0
+            for k, sw in enumerate(s_slice):
+                out.append({
+                    "word": sw,
+                    "start": round(t0 + k * step, 3),
+                    "end": round(t0 + (k + 1) * step, 3) if step else t1,
+                })
+        # keep timings monotonic after the splices
+        for i in range(1, len(out)):
+            if (out[i]["start"] or 0) < (out[i - 1]["start"] or 0):
+                out[i]["start"] = out[i - 1]["start"]
+            if (out[i]["end"] or 0) < (out[i]["start"] or 0):
+                out[i]["end"] = out[i]["start"]
+        changed = sum(
+            1 for a, b in zip(a_norm, [_norm(w["word"]) for w in out]) if a != b
+        )
+        if changed:
+            print(f"   \U0001f4dd captions: {changed} word(s) relabelled from the script "
+                  f"(ASR text discarded, timings kept)")
+        return out
+    except Exception as _rl_err:  # pragma: no cover - never break narration
+        print(f"   \u26a0\ufe0f caption relabel skipped ({_rl_err})")
+        return word_entries
+
+
+def _whisper_align(audio_path: Path, language: str = "English",
+                   script_text: Optional[str] = None) -> list:
     """Standalone Whisper forced alignment. Returns word-level timestamps.
 
     Works for any language supported by Whisper (Hindi, Bengali, etc.).
@@ -1321,7 +1398,7 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
             return []
 
         print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
-        return word_entries
+        return _relabel_words_from_script(word_entries, script_text)
     except Exception as e:
         print(f"    ❌ Whisper alignment failed: {e}")
         return []
@@ -2076,8 +2153,12 @@ class GoogleCloudTTSClient:
         return word_entries
 
     def _align_with_whisper(self, audio_path: Path, text: str, language: str = "English") -> list:
-        """Use Whisper for forced alignment to get accurate word timestamps from audio."""
-        return _whisper_align(audio_path, language)
+        """Use Whisper for forced alignment to get accurate word timestamps from audio.
+
+        `text` is the script that was synthesized — it is passed through so the
+        captions keep the author's wording and borrow only Whisper's timings.
+        """
+        return _whisper_align(audio_path, language, script_text=text)
 
     def _generate_timestamps_with_fallback(self, audio_path: Path, text: str, raw_json_path: Path) -> None:
         """Generate word timestamps using Whisper alignment, with linear fallback."""
@@ -2112,6 +2193,82 @@ class GoogleCloudTTSClient:
             t += duration
         
         raw_json_path.write_text(json.dumps(word_entries, indent=2))
+
+
+def _hex_is_dark(value: str) -> bool:
+    """True when a hex colour is dark enough that light artwork reads better on it."""
+    v = str(value or "").strip()
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
+        return False
+    r, g, b = int(v[1:3], 16), int(v[3:5], 16), int(v[5:7], 16)
+    # Rec. 601 luma — cheap and adequate for a light/dark decision.
+    return (0.299 * r + 0.587 * g + 0.114 * b) < 128
+
+
+def _colour_name_for_hex(value: str) -> str:
+    """Nearest plain-English colour name for a hex string.
+
+    An image prompt must never carry a hex code. Passing "accent colour
+    #0071b8" to the image model made it draw the literal text "#0071b" into
+    the corner of the illustration — visible in the finished video — because a
+    hex is a string to a generator, not a colour. A word is unambiguous.
+    Returns "" when the value is not a usable hex.
+    """
+    v = str(value or "").strip()
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
+        return ""
+    r, g, b = int(v[1:3], 16), int(v[3:5], 16), int(v[5:7], 16)
+    names = {
+        "black": (0, 0, 0), "white": (255, 255, 255), "grey": (128, 128, 128),
+        "red": (200, 30, 30), "crimson": (150, 20, 60), "orange": (230, 130, 30),
+        "amber": (240, 190, 60), "yellow": (240, 230, 60), "olive": (128, 128, 40),
+        "green": (40, 160, 70), "emerald": (20, 140, 100), "teal": (20, 140, 150),
+        "cyan": (60, 200, 220), "sky blue": (90, 170, 230), "blue": (30, 100, 190),
+        "navy": (25, 45, 100), "indigo": (70, 60, 160), "violet": (130, 80, 190),
+        "purple": (110, 50, 140), "magenta": (200, 50, 150), "pink": (230, 130, 170),
+        "brown": (120, 80, 50), "tan": (190, 160, 120),
+    }
+    best, best_d = "", None
+    for name, (nr, ng, nb) in names.items():
+        d = (r - nr) ** 2 + (g - ng) ** 2 + (b - nb) ** 2
+        if best_d is None or d < best_d:
+            best, best_d = name, d
+    return best
+
+
+def _repair_undefined_css_vars(html: str) -> str:
+    """Module-level wrapper: never let a repair failure break a render."""
+    try:
+        from html_contract_repair import (
+            repair_undefined_css_vars as _ruv,
+            repair_dark_bed_text as _rdb,
+            repair_inline_flex_direction as _rfd,
+            repair_callback_state_changes as _rcb,
+            repair_newline_stripped_comments as _rnl,
+        )
+        repaired, fixed = _ruv(html)
+        if fixed:
+            print(f"   \U0001f3a8 css-var repair: gave fallbacks to undefined tokens {fixed}")
+        repaired, bed_fixes = _rdb(repaired)
+        if bed_fixes:
+            print(f"   \U0001f3a8 dark-bed repair: {bed_fixes}")
+        repaired, flex_fixes = _rfd(repaired)
+        if flex_fixes:
+            print(f"   \U0001f3a8 flex-direction repair: {len(flex_fixes)} container(s)")
+        # Must run BEFORE the callback hoist: on a newline-stripped script the
+        # callbacks are inside a comment, so there is nothing to hoist until
+        # the line breaks come back.
+        repaired, nl_fixes = _rnl(repaired)
+        if nl_fixes:
+            print(f"   \U0001f3a8 script newline repair: {nl_fixes}")
+        repaired, cb_fixes = _rcb(repaired)
+        if cb_fixes:
+            print(f"   \U0001f3a8 act-swap repair: {len(cb_fixes)} callback state change(s) "
+                  "hoisted onto the timeline")
+        return repaired
+    except Exception as _cv_err:  # pragma: no cover - defensive
+        print(f"   \u26a0\ufe0f css-var repair skipped ({_cv_err})")
+        return html
 
 
 class VideoGenerationPipeline:
@@ -5800,6 +5957,22 @@ class VideoGenerationPipeline:
                         except Exception as _pg_err:
                             print(f"   ⚠️ dialogue clip pre-generation failed: {_pg_err}")
 
+                    # ── Support visuals (visual beats) ──────────────────
+                    # Resolve every shot's planner-authored support_visuals
+                    # into real image URLs / inline icons BEFORE the HTML
+                    # loop, so the per-shot LLM receives ready assets it is
+                    # REQUIRED to embed narration-synced. Best-effort: a
+                    # failed image just drops that item, never the shot.
+                    try:
+                        _sv_images = self._resolve_support_visuals(_director_plan["shots"], run_dir)
+                        if _sv_images:
+                            # Meter the Seedream spend — every other image
+                            # path bills via image_count; without this the
+                            # support photos were free to the institute.
+                            accumulate_usage({"image_count": _sv_images})
+                    except Exception as _sv_err:
+                        print(f"   ⚠️ support-visuals resolve failed: {_sv_err}")
+
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
                         "message": f"Generating visuals for {len(_director_plan['shots'])} shots...",
@@ -9305,6 +9478,174 @@ class VideoGenerationPipeline:
             print(f"   ⚠️ clip QC unavailable (shot {shot.get('shot_index')}): {_qc_err}")
             return None
 
+    def _support_visual_style_suffix(self) -> str:
+        """Render-style clause for generated support visuals.
+
+        Defaults to the photoreal look these have always had. When the run's
+        visual direction asks for illustration/diagram work — or rules
+        photography out — the same concept is rendered as line art instead, so
+        support beats match the deck around them rather than fighting it.
+        """
+        prefs = getattr(self, "_visual_preferences", None) or {}
+        wants_diagram = str(prefs.get("svg_illustrated") or "").lower() == "high"
+        rejects_photo = str(prefs.get("stock_video") or "").lower() == "no"
+        if not (wants_diagram or rejects_photo):
+            return ("Photorealistic, clean modern composition, soft natural light, "
+                    "no text or captions in frame.")
+        # The ground the art sits on must match the deck. Hardcoding a white
+        # background put glowing white rectangles on a dark-themed video —
+        # the illustration read as a pasted card rather than part of the slide.
+        bg_hex, accent_name = "", ""
+        try:
+            _sg = getattr(self, "_current_style_guide", None) or {}
+            _pal = (_sg.get("palette") or {}) if isinstance(_sg, dict) else {}
+            bg_hex = str(_pal.get("background") or "").strip()
+            accent_name = _colour_name_for_hex(str(_pal.get("primary") or "").strip())
+        except Exception:
+            pass
+        dark_deck = _hex_is_dark(bg_hex) or str(
+            getattr(self, "_current_background_type", "") or ""
+        ).lower() == "black"
+        if dark_deck:
+            ground = ("a plain dark charcoal background, light strokes that read "
+                      "clearly against dark")
+            palette = f" Single {accent_name} accent colour." if accent_name else ""
+        else:
+            ground = "a plain white background"
+            palette = f" Single {accent_name} accent colour on white." if accent_name else ""
+        return (f"Clean editorial line-art diagram, precise vector linework on {ground}, "
+                "flat colour, no shading, no photographic texture. No text, captions, "
+                f"labels, numbers or colour codes anywhere in the frame.{palette}")
+
+    def _resolve_support_visuals(
+        self, shots: List[Dict[str, Any]], run_dir: Path,
+    ) -> int:
+        """Visual-beats pre-pass: turn every shot's planner-authored
+        `support_visuals` into READY assets before HTML generation —
+        icons from the bundled inline set, photos AI-generated + uploaded.
+        Identical concepts share one image across shots. Best-effort per
+        item; resolved URLs persist on the shots (→ shot_plan.json) so a
+        resume leg never regenerates. Cap bounds the per-run image spend."""
+        try:
+            from support_visuals import pick_icon
+        except ImportError:
+            return 0
+        self._check_stop()
+        _SKIP_TYPES = {"DIALOGUE_SCENE", "KINETIC_TITLE", "KINETIC_TEXT", "LOWER_THIRD"}
+        # Honor user-authored "text only / no imagery" shot notes.
+        _deny = getattr(self, "_user_authored_no_host_indices", None) or set()
+        photo_queue: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+        icons = 0
+        for s in shots:
+            if not isinstance(s, dict):
+                continue
+            if str(s.get("shot_type") or "").upper() in _SKIP_TYPES:
+                continue
+            if s.get("shot_index") in _deny:
+                continue
+            _sv_list = s.get("support_visuals")
+            if not isinstance(_sv_list, list):
+                # Gate edits round-trip raw FE JSON — junk shapes must never
+                # cost us the shot downstream. Scrub here.
+                if _sv_list is not None:
+                    s.pop("support_visuals", None)
+                continue
+            for it in _sv_list:
+                if not isinstance(it, dict) or it.get("url") or it.get("icon_svg"):
+                    continue
+                if not str(it.get("concept") or "").strip():
+                    continue
+                if it.get("kind") == "icon":
+                    svg = pick_icon(it.get("concept", ""))
+                    if svg:
+                        it["icon_svg"] = svg
+                        icons += 1
+                        continue
+                    # no icon match → promote to photo
+                photo_queue.append((s, it))
+
+        MAX_PHOTOS = 20
+        generated: Dict[str, str] = {}  # concept_norm -> url (cross-shot reuse)
+        if photo_queue:
+            if not getattr(self, "_ai_video_s3_service", None):
+                self._build_ai_video_uploaders()
+            svc = getattr(self, "_ai_video_s3_service", None)
+            run_name = getattr(self, "_run_name", None) or "run"
+            if svc:
+                import concurrent.futures as _cf
+
+                def _norm(c: str) -> str:
+                    return re.sub(r"[^a-z0-9]+", "_", c.lower()).strip("_")[:48]
+
+                # Unique concepts only, bounded.
+                unique: Dict[str, str] = {}
+                for _s, it in photo_queue:
+                    k = _norm(it["concept"])
+                    if k and k not in unique and len(unique) < MAX_PHOTOS:
+                        unique[k] = it["concept"]
+
+                # Support visuals used to be hardcoded photorealistic. A brief
+                # that asks for anatomical line art and annotated diagrams — and
+                # rejects stock photography outright — still got glossy clinical
+                # photos for every beat, which is both off-brief and, for medical
+                # subjects, invented imagery presented as if observed. Follow the
+                # run's resolved visual direction instead.
+                _style_suffix = self._support_visual_style_suffix()
+
+                def _gen(kv):
+                    key, concept = kv
+                    _prompt = f"{concept}. {_style_suffix}"
+                    try:
+                        try:
+                            img, _ = self._call_image_generation_llm(
+                                _prompt, width=1024, height=576,
+                                model_override="bytedance-seed/seedream-4.5",
+                            )
+                        except _ImageGenRateLimitError:
+                            # One paced retry — the blanket except below was
+                            # swallowing 429s as permanent failures while six
+                            # workers amplified the rate limit.
+                            import time as _t
+                            _t.sleep(15)
+                            img, _ = self._call_image_generation_llm(
+                                _prompt, width=1024, height=576,
+                                model_override="bytedance-seed/seedream-4.5",
+                            )
+                        if not img:
+                            return key, None
+                        local = run_dir / "support" / f"{key}.png"
+                        local.parent.mkdir(parents=True, exist_ok=True)
+                        local.write_bytes(img)
+                        return key, svc.upload_file(
+                            local,
+                            s3_key=f"ai-videos/{run_name}/support/{key}.png",
+                            content_type="image/png",
+                        )
+                    except Exception as _g_err:
+                        print(f"   ⚠️ support visual '{concept[:40]}' failed: {_g_err}")
+                        return key, None
+
+                with _cf.ThreadPoolExecutor(max_workers=6) as ex:
+                    for key, url in ex.map(_gen, unique.items()):
+                        if url:
+                            generated[key] = url
+
+                for _s, it in photo_queue:
+                    u = generated.get(_norm(it["concept"]))
+                    if u:
+                        it["url"] = u
+
+        n_url = sum(
+            1 for s in shots if isinstance(s, dict)
+            for it in (s.get("support_visuals") or [] if isinstance(s.get("support_visuals"), list) else [])
+            if isinstance(it, dict) and it.get("url")
+        )
+        if icons or n_url:
+            print(f"   🖼️  Support visuals resolved: {n_url} photo placement(s) "
+                  f"({len(generated)} unique image(s)), {icons} icon(s)")
+            self._persist_dialogue_plan(run_dir, shots=shots)
+        return len(generated)
+
     def _pregenerate_dialogue_clips(
         self, shots: List[Dict[str, Any]], run_dir: Path,
     ) -> None:
@@ -10608,7 +10949,7 @@ class VideoGenerationPipeline:
         # Use Whisper forced alignment to get word timings.
         whisper_lang = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
         print(f"    🎯 Running Whisper alignment for Sarvam audio (lang={whisper_lang})...")
-        word_entries = _whisper_align(audio_path, language)
+        word_entries = _whisper_align(audio_path, language, script_text=script_text)
 
         if not word_entries:
             # Fallback: linear interpolation
@@ -18531,6 +18872,15 @@ class VideoGenerationPipeline:
                 "(they are viewport-relative clamps — e.g. `font-size: clamp(...)`). "
                 "Never substitute a plain rem/px size.\n"
                 "- SPACING: use `spacing` tokens for padding/margin/gap. Use `safe_area` for outer padding.\n"
+                "- Every token above ALSO exists as a CSS variable, so either form works: "
+                "`var(--font-scale-h1)`, `var(--font-scale-body)`, `var(--spacing-safe_area)`, "
+                "`var(--spacing-lg)`, `var(--font-heading)`, `var(--font-mono)`. "
+                "Do NOT invent variable names outside this list — an undefined var makes the whole "
+                "declaration invalid, which silently collapses font-size to 16px and padding to 0.\n"
+                "- CONTRAST: `var(--brand-text)` is tuned for the run's page background. On a dark "
+                "full-bleed bed (stock video / photo + dark overlay) it is UNREADABLE, and writing "
+                "`var(--brand-text, #fff)` does NOT help — the variable is defined, so your fallback "
+                "is never used. Set `color:#fff` (or a light literal) explicitly on dark beds.\n"
                 "- EASES: use `ease` tokens in GSAP tweens (ease: 'power3.out' → use `ease_tokens.entry`).\n"
                 "- IDs: prefix every element id with `s{shot_idx}_` (replace {shot_idx} with this shot's index) "
                 "so IDs never collide between shots.\n"
@@ -18933,6 +19283,15 @@ class VideoGenerationPipeline:
                 # deterministic template would re-render the identical frame
                 # and silently discard the user's input.
                 and not _has_user_directive
+                # Resolved support visuals need the LLM path too: templates
+                # have NO image slots, so the deterministic render would
+                # silently discard the narration-synced imagery — the exact
+                # "2 images in a 2.5-minute video" density failure.
+                and not any(
+                    isinstance(_svi, dict) and (_svi.get("url") or _svi.get("icon_svg"))
+                    for _svi in (shot.get("support_visuals")
+                                 if isinstance(shot.get("support_visuals"), list) else [])
+                )
             ):
                 _t_transition_in = shot.get("transition_in") or "fade"
                 _t_transition_block = TRANSITION_CSS_BLOCKS.get(_t_transition_in, "")
@@ -19017,6 +19376,11 @@ class VideoGenerationPipeline:
                 aspirational=_aspirational_prompt,
                 cultural_context=getattr(self, "_cultural_context", None),
                 mode=self._resolve_visual_style_mode(),
+                # Frame composition assigned by the ShotPlanner (and variety-
+                # enforced by composition_kit). Without this the shot inherits
+                # the card exemplar's centre-stacked frame — the root cause of
+                # "every shot looks the same" in the 2026-08-20 craft review.
+                composition=str((shot or {}).get("composition") or ""),
             )
             # Pillar 2.4 — append the "don't re-emit shared preamble" rule
             # when the tier knob is on. Token cost: ~600 chars in the system
@@ -19541,7 +19905,19 @@ class VideoGenerationPipeline:
                     )
                 if _brand_images and _shot_uses_image:
                     _brand_parts.append(
-                        "\nUploaded brand/product images — when this shot includes an `<img>` "
+                        "\nThese uploaded images are PRIMARY SOURCES — the chapter's own "
+                        "plates, figures or documents. They are the subject matter, not "
+                        "decoration. A generated illustration must NOT stand in for one: "
+                        "inventing anatomy or a diagram when the real plate was supplied is "
+                        "the single most damaging thing this shot can do.\n"
+                        "STAGE them rather than pasting them flat — wrap in "
+                        "`<div class='artifact artifact-laid'>` for a real shadow and "
+                        "perspective, `.aged-edge` for a document, `.print-frame` for a "
+                        "photograph — and ANNOTATE ON TOP: `marker-hl` over the exact detail "
+                        "the narration cites, `annotate(...)` for a circle or arrow, a label "
+                        "with `.swash-underline`. Holding one plate and pushing in on the "
+                        "part being described is stronger than any panel of text.\n"
+                        "When this shot includes an `<img>` "
                         "element, prefer embedding via "
                         "`<img data-img-source=\"reference\" data-reference-url=\"<url>\" "
                         "data-img-prompt=\"<short alt>\" src='placeholder.png'>`. The "
@@ -19589,6 +19965,18 @@ class VideoGenerationPipeline:
                     "packaging on a vintage Indian tea stall')."
                 )
                 user_prompt = user_prompt + "\n".join(_brand_parts)
+
+            # ── Support visuals (visual beats) — narration-synced imagery ──
+            # Pre-resolved by _resolve_support_visuals; the block carries
+            # ready URLs / inline icon SVGs + per-item reveal times and a
+            # hard embed requirement. Empty string when nothing resolved.
+            try:
+                from support_visuals import build_support_visuals_block
+                _sv_block = build_support_visuals_block(shot)
+                if _sv_block:
+                    user_prompt = user_prompt + _sv_block
+            except ImportError:
+                pass
 
             # ── Fix B + Fix E: Hex-code-as-CSS rule + Global brand directives ──
             # Both apply to EVERY shot (host or non-host). Surfaces:
@@ -20647,7 +21035,10 @@ class VideoGenerationPipeline:
                 # in the harness is the second line of defence.
                 print(f"   ⚠️ Shot {shot_idx + 1} JS sanitizer failed ({_jcs_err}); shipping unsanitized")
 
-            html = self._clamp_entry_animations(html, duration)
+            html = self._clamp_entry_animations(
+                html, duration,
+                exempt_delays=shot.get("_sv_reveal_times") or None,
+            )
 
             # Pillar 2.4 — strip the redundant shared preamble the LLM tends
             # to re-emit (SVG <defs>, font @imports, brand palette :root, text-
@@ -22117,7 +22508,10 @@ class VideoGenerationPipeline:
         )
 
     @staticmethod
-    def _clamp_entry_animations(html: str, shot_duration_s: float) -> str:
+    def _clamp_entry_animations(
+        html: str, shot_duration_s: float,
+        exempt_delays: Optional[List[float]] = None,
+    ) -> str:
         """Clamp GSAP entry-animation `delay:` and `duration:` to a shot-aware
         budget so short shots don't waste their first 1–3 seconds in pure black.
 
@@ -22190,6 +22584,12 @@ class VideoGenerationPipeline:
                     return m.group(0)
                 # Leave intentional back-half reveals (delay ≥ skip_above) alone.
                 if skip_above is not None and cur >= skip_above:
+                    return m.group(0)
+                # Leave narration-synced support-visual reveals alone — their
+                # delay IS the moment the narrator speaks the concept; pulling
+                # them to the entry cap desyncs image from voice (front-half
+                # reveals landed in the clamp's dead window otherwise).
+                if exempt_delays and any(abs(cur - e) <= 0.25 for e in exempt_delays):
                     return m.group(0)
                 if cur > cap:
                     pre = m.group('pre')
@@ -22786,6 +23186,80 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # would double up.
         return self._ensure_fonts(html_doc, finish=False)
 
+    def _design_token_css_block(self) -> str:
+        """Every shot_pack token, emitted as a CSS custom property.
+
+        Colors already ship as vars; sizes/spacings/families historically did
+        not, so any shot that referenced them as vars rendered with invalid
+        declarations (16px text, zero padding). Both spellings of safe_area
+        are emitted because models write either. Values come from the live
+        shot pack when one exists so the vars and the literals in the prompt
+        can never disagree.
+        """
+        pack = getattr(self, "_current_shot_pack", None)
+        if not isinstance(pack, dict) or not pack:
+            try:
+                pack = self._build_shot_pack(
+                    getattr(self, "_current_style_guide", None) or {},
+                    int(getattr(self, "video_width", 1920) or 1920),
+                    int(getattr(self, "video_height", 1080) or 1080),
+                )
+            except Exception:
+                pack = {}
+        fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+        sp = (pack.get("spacing") or {}) if isinstance(pack, dict) else {}
+        ff = (pack.get("font_family") or {}) if isinstance(pack, dict) else {}
+        sa = (pack.get("semantic_accents") or {}) if isinstance(pack, dict) else {}
+
+        _fs_default = {
+            "display": "clamp(2.75rem, min(8.75vw, 15.5vh), 10.5rem)",
+            "h1": "clamp(2rem, min(6vw, 10.7vh), 7.25rem)",
+            "h2": "clamp(1.5rem, min(4vw, 7vh), 4.75rem)",
+            "body": "clamp(1rem, min(1.7vw, 3vh), 2rem)",
+            "caption": "clamp(0.9rem, 1.2vmin, 1.25rem)",
+            "label": "clamp(0.9rem, 1.2vmin, 1.25rem)",
+            "micro": "clamp(0.9rem, 1.2vmin, 1.25rem)",
+        }
+        _sp_default = {
+            "xs": "8px", "sm": "16px", "md": "24px",
+            "lg": "40px", "xl": "64px", "2xl": "96px", "safe_area": "6%",
+        }
+        _sa_default = {"warn": "#ff2e3a", "good": "#16a34a", "gold": "#c9a86a"}
+
+        def _clean(v: str) -> str:
+            # These land inside a CSS declaration — never let a stray brace or
+            # semicolon from a malformed pack break the whole :root block.
+            return re.sub(r"[{};<>]", "", str(v or "")).strip()
+
+        lines: List[str] = []
+        for k, dflt in _fs_default.items():
+            lines.append(f"              --font-scale-{k}: {_clean(fs.get(k) or dflt)};")
+        for k, dflt in _sp_default.items():
+            val = _clean(sp.get(k) or dflt)
+            lines.append(f"              --spacing-{k}: {val};")
+            if k == "safe_area":
+                # Models write both `safe_area` (JSON key echoed verbatim) and
+                # the CSS-idiomatic `safe-area`. Define both.
+                lines.append(f"              --spacing-safe-area: {val};")
+                lines.append(f"              --safe-area: {val};")
+        _heading = _clean(ff.get("heading") or "") or "var(--font-display)"
+        _mono = _clean(ff.get("mono") or "") or "'Fira Code', monospace"
+        lines.append(f"              --font-heading: {_heading};")
+        lines.append(f"              --font-mono: {_mono};")
+        # Alias families under the --brand- prefix used by the color tokens —
+        # models pattern-match the prefix and write --brand-font-display.
+        lines.append("              --brand-font-display: var(--font-display);")
+        lines.append("              --brand-font-body: var(--font-body);")
+        lines.append("              --brand-font-heading: var(--font-heading);")
+        lines.append("              --brand-font-mono: var(--font-mono);")
+        for k, dflt in _sa_default.items():
+            lines.append(f"              --{k}: {_clean(sa.get(k) or dflt)};")
+        # Bare aliases for the brand palette — the shot pack names them
+        # `text`/`bg`/`primary`, so models reference them unprefixed.
+        lines.append("              --bg: var(--brand-bg);")
+        lines.append("              --surface: var(--brand-bg);")
+        return "\n".join(lines)
+
     def _ensure_fonts(self, html: str, *, finish: bool = True) -> str:
         # IDEMPOTENT (Phase B): the preamble is now injected EARLY in the LLM
         # path (before bbox lint / vision review, so QA screenshots finally
@@ -22888,8 +23362,25 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 VX_FINISHING_CSS as _VX_CSS,
             )
             _vx_css = _VX_CSS
-            if finish and self._resolve_visual_style_mode() in ("marketing", "bold"):
-                _finish_overlay = _di_overlay(_di.get("finishing"))
+            if finish:
+                _mode = self._resolve_visual_style_mode()
+                _fin = _di.get("finishing")
+                if _mode in ("marketing", "bold"):
+                    _finish_overlay = _di_overlay(_fin)
+                else:
+                    # Educational runs had NO finishing layer at all — every
+                    # frame was raw flat CSS, which is a large part of why they
+                    # read as slides rather than film. Reference documentaries
+                    # carry a constant grain + edge vignette on every frame.
+                    # Restrained defaults (soft/soft, no glow) so lecture
+                    # legibility is untouched; an identity that specifies its
+                    # own finishing still wins.
+                    if not isinstance(_fin, dict) or not any(
+                        str(_fin.get(k) or "none") != "none"
+                        for k in ("grain", "vignette", "light")
+                    ):
+                        _fin = {"grain": "soft", "vignette": "soft", "light": "none"}
+                    _finish_overlay = _di_overlay(_fin)
         except Exception:
             _finish_overlay = ""
 
@@ -22908,6 +23399,31 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 overflow: hidden;
             }
         """
+
+        # --- SHOT-PACK DESIGN TOKENS AS REAL CSS VARS -------------------
+        # The prompt hands the model a `shot_pack` JSON whose COLORS are CSS
+        # vars (var(--brand-primary)) but whose font sizes / spacings / font
+        # families are raw literals, and then says "use only tokens, never
+        # hardcode". The model generalises the var() form to every token and
+        # writes `font-size: var(--font-scale-h1)` / `padding:
+        # var(--spacing-safe_area)` / `font-family: var(--font-heading)`.
+        # Those names were never defined, so the declarations are INVALID at
+        # computed-value time: font-size silently falls back to the inherited
+        # ~16px and padding to 0 — which is exactly the "tiny text flush
+        # against the frame edge" failure. Defining the same tokens as vars
+        # makes both authoring styles (verbatim literal OR var reference)
+        # produce the designed value.
+        _tok_css = self._design_token_css_block()
+
+        # Frame-composition grid, kept in composition_kit.py rather than inline
+        # here. Interpolating it as a value means its braces are inert — CSS
+        # written directly into this f-string needs every brace doubled, and
+        # missing one fails at generation time with a bare NameError (the
+        # staging-kit block cost a debug cycle to that on 2026-08-20).
+        try:
+            from composition_kit import COMPOSITION_CSS as _COMPOSITION_CSS_BLOCK
+        except Exception:
+            _COMPOSITION_CSS_BLOCK = ""
 
         global_css = f"""<!--vx-preamble--><style>
             @import url('{_fonts_url}');
@@ -22930,6 +23446,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               --primary-color: {primary_color};
               --accent-color: {accent_color};
               --text-color: {text_color};
+{_tok_css}
             }}
 {_vx_css}
 
@@ -23295,11 +23812,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               width: 100%;
               height: 100%;
               display: flex;
-              flex-direction: column;
               align-items: center;
               justify-content: center;
               transform-origin: center center;
               will-change: transform;
+            }}
+            /* `flex-direction: column` applies ONLY when stage-drift is the
+               element's sole class. It is documented as a MOTION helper, so the
+               model also drops it onto containers that already have a layout —
+               `class="process-container stage-drift"`. Those containers rarely
+               declare a direction of their own, so the column here won
+               unopposed and turned an intended flex ROW into a stack twice the
+               height of the frame, clipping its last line. Elements that use
+               stage-drift alone are pure wrappers and keep the old behaviour. */
+            [class="stage-drift"] {{
+              flex-direction: column;
             }}
 
             /* --- DRAFT/BLUEPRINT guides (two-phase SVG reveal) ---
@@ -23433,6 +23960,107 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                stay readable. See the inline <svg> defs block prepended at the
                top of every generated HTML. */
 
+{_COMPOSITION_CSS_BLOCK}
+
+            /* --- DOCUMENTARY STAGING KIT -------------------------------
+               Reference documentaries do not put text on a background; they
+               STAGE artifacts on a surface and let the camera and annotations
+               explain. These primitives give a shot that vocabulary: a ground
+               to place things on, a card that sits in perspective with a real
+               shadow, frames that read as physical objects, and marker
+               annotation. Compose them the way `.flat-badge` is composed.  */
+
+            /* Grounds — never a flat fill. Pick ONE per shot. */
+            .stage-paper {{
+              position: absolute; inset: 0;
+              background-color: #ece7da;
+              background-image:
+                linear-gradient(rgba(140,130,110,0.13) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(140,130,110,0.13) 1px, transparent 1px);
+              background-size: 48px 48px;
+            }}
+            .stage-slate {{
+              position: absolute; inset: 0;
+              background-color: #1b1e22;
+              background-image:
+                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+              background-size: 56px 56px;
+            }}
+            .stage-desk {{
+              position: absolute; inset: 0;
+              background-color: #4a3527;
+              background-image:
+                repeating-linear-gradient(96deg,
+                  rgba(0,0,0,0.16) 0 3px, rgba(255,255,255,0.03) 3px 9px);
+            }}
+            /* A graph-paper patch used as a compositional accent, not a fill. */
+            .stage-grid-patch {{
+              position: absolute; width: 260px; height: 260px; opacity: 0.5;
+              background-image:
+                linear-gradient(rgba(60,80,60,0.35) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(60,80,60,0.35) 1px, transparent 1px);
+              background-size: 22px 22px; pointer-events: none;
+            }}
+
+            /* An artifact placed on the ground: real shadow, slight tilt. */
+            .artifact {{
+              position: relative; display: inline-block;
+              box-shadow: 0 26px 50px rgba(0,0,0,0.42), 0 3px 8px rgba(0,0,0,0.28);
+              transform: rotate(-1.2deg);
+              background: #fff;
+            }}
+            .artifact img {{ display: block; width: 100%; height: auto; }}
+            .artifact-tilt-r {{ transform: rotate(1.6deg); }}
+            /* Perspective placement — the artifact lies ON the surface. */
+            .artifact-laid {{
+              transform: perspective(1400px) rotateX(7deg) rotateZ(-1.2deg);
+              transform-origin: 50% 80%;
+            }}
+            /* A photo print: white border + weight. */
+            .print-frame {{ padding: 16px 16px 52px; background: #fbf9f4; }}
+            /* A torn/aged edge on a document. */
+            .aged-edge {{
+              filter: sepia(0.18) contrast(1.04);
+              mask-image: linear-gradient(to right, transparent 0, #000 6px,
+                          #000 calc(100% - 6px), transparent 100%);
+            }}
+            /* 35mm film strip around footage or a still. */
+            .film-strip {{
+              position: relative; padding: 26px 0; background: #0d0d0d;
+              box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+            }}
+            .film-strip::before, .film-strip::after {{
+              content: ""; position: absolute; left: 0; right: 0; height: 26px;
+              background-image: radial-gradient(#0d0d0d 38%, transparent 39%),
+                linear-gradient(#e9e9e9, #e9e9e9);
+              background-size: 34px 26px; background-repeat: repeat-x;
+            }}
+            .film-strip::before {{ top: 0; }}
+            .film-strip::after {{ bottom: 0; }}
+
+            /* Annotation as a character — marker over the evidence. */
+            .marker-hl {{
+              position: relative; display: inline-block;
+              background: linear-gradient(transparent 8%, rgba(214,40,40,0.82) 8%,
+                          rgba(214,40,40,0.82) 92%, transparent 92%);
+              color: #fff; padding: 0 6px; transform: rotate(-0.6deg);
+            }}
+            .swash-underline {{
+              display: block; height: 10px; border: 0; border-bottom: 4px solid
+                var(--brand-accent, #2f7d52);
+              border-radius: 0 0 60% 40%; opacity: 0.9;
+            }}
+            /* Timeline spine + node, as in a documentary chronology. */
+            .spine {{
+              position: absolute; top: 6%; bottom: 6%; width: 0;
+              border-left: 4px dashed rgba(0,0,0,0.55);
+            }}
+            .spine-node {{
+              width: 22px; height: 22px; border-radius: 50%;
+              border: 5px solid var(--brand-accent, #2f7d52); background: transparent;
+            }}
+
             {svg_canvas_css}
             </style>"""
 
@@ -23457,7 +24085,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # If the model already imports fonts, trust it.
         # But still inject our global helpers.
         if "fonts.googleapis.com" in html:
-            return svg_defs + global_css + html + _finish_overlay
+            return _repair_undefined_css_vars(svg_defs + global_css + html + _finish_overlay)
 
         # Fallback corporate pairing if none found
         base_style = (
@@ -23467,7 +24095,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "h1, h2, h3, h4, h5, h6 { font-family: var(--font-display, 'Montserrat', sans-serif); }"
             "</style>"
         )
-        return svg_defs + global_css + base_style + html + _finish_overlay
+        return _repair_undefined_css_vars(
+            svg_defs + global_css + base_style + html + _finish_overlay
+        )
 
     def _ensure_segment_coverage(
         self, entries: List[Dict[str, Any]], seg: Dict[str, Any], base_start: float, base_end: float

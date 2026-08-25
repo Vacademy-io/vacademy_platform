@@ -55,6 +55,7 @@ import {
     listPaymentGateways,
     updatePaymentGateway,
 } from '../-services/payment-gateway-service';
+import { resolveGatewayBranding } from '../-constants/payment-gateway-branding';
 
 // ─── Vendor schemas ──────────────────────────────────────────────────────────
 // What the backend's per-vendor payment manager expects to find in
@@ -284,22 +285,9 @@ const findSchema = (vendor: string): VendorSchema | undefined =>
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const vendorBadgeClass = (vendor: string): string => {
-    switch (vendor) {
-        case 'STRIPE':
-            return 'border-violet-200 bg-violet-50 text-violet-700';
-        case 'RAZORPAY':
-            return 'border-blue-200 bg-blue-50 text-blue-700';
-        case 'PHONEPE':
-            return 'border-indigo-200 bg-indigo-50 text-indigo-700';
-        case 'CASHFREE':
-            return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-        case 'EWAY':
-            return 'border-amber-200 bg-amber-50 text-amber-700';
-        default:
-            return 'border-slate-200 bg-slate-50 text-slate-700';
-    }
-};
+// Delegates to the shared gateway branding so the settings list and the payments screens render the
+// same badge for a vendor (single source of truth in `payment-gateway-branding`).
+const vendorBadgeClass = (vendor: string): string => resolveGatewayBranding(vendor).badgeClass;
 
 const StatusBadge = ({ status }: { status: string }) =>
     status === 'ACTIVE' ? (

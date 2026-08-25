@@ -104,11 +104,11 @@ public class VacademyAiOutboundCaller implements AiOutboundCaller {
             throw new VacademyException("Lead has no valid phone number to dial");
         }
 
+        // Recording rides on the bot's answer XML (<Record recordSession>), never the
+        // create API — which has no record argument at all.
         Map<String, Object> resp = plivoHttpClient.createCall(
                 resolved.getCredentials(), callerId, dialTo,
-                answerUrl, hangupUrl, null,
-                /* recording via the bot's answer XML, not the create API */ false,
-                "40");
+                answerUrl, hangupUrl, null, "40");
 
         String requestUuid = resp == null ? null : asString(resp.get("request_uuid"));
         log.info("vacademy-ai: dialed corr={} inst={} agent={} requestUuid={}",

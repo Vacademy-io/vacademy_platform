@@ -4,26 +4,50 @@ A professional payment management page for tracking and managing institute payme
 
 ## Features
 
-### 📊 Dashboard Statistics
-- **Total Payments**: Count of all payment records
-- **Successful Payments**: Number of successfully completed payments
-- **Failed Payments**: Number of failed payment attempts
-- **Total Revenue**: Sum of all successful payments
+### 📊 KPI cards (`PaymentKpiCards`)
+Four tiles, amount-first, shared verbatim with the Payment Dashboard so both screens report the
+same numbers:
+- **Total payment**: amount billed across every record in view
+- **Collected payment**: settled (PAID)
+- **Due payment**: still owed — PAYMENT_PENDING, NOT_INITIATED and any other unsettled status
+- **Failed payment**: attempts the gateway declined
 
-### 🔍 Advanced Filtering
+Each tile is also the status filter for the table below. The filtering happens client-side
+(`classifyEntry`), because the API's `payment_status IN (…)` can never return the NULL-status rows
+that make up part of "Due".
 
-#### Quick Filters
-- Last 1 Hour
-- Today
-- Last 7 Days
-- Last 30 Days
-- Last 90 Days
-- All Time
+**Scope of these numbers.** They count *payment records* — money raised through a gateway or
+recorded against a plan. Fees billed on an installment schedule live in Financial Management
+(`aft_installments`), which `payment_log` knows nothing about, so an institute can be 100% collected
+here and still be owed lakhs there. When that happens the page says so: Manage Payments prints a
+one-line pointer under the tiles, and the Payment Dashboard shows a "Fee installment dues" band
+(billed / expected / collected / overdue, institute-to-date — the endpoint takes no date window).
+On an institute with no unsettled records at all, Total and Collected are simply equal.
 
-#### Custom Filters
-- **Date Range**: Start and end date/time selection
-- **Payment Status**: Filter by PAID, FAILED, or PAYMENT_PENDING
-- **User Plan Status**: Filter by ACTIVE, PAYMENT_FAILED, EXPIRED, or INACTIVE
+### 🔍 Filtering
+
+#### Date range (`DateRangeDropdown`, toolbar)
+A single dropdown at the top of the page — Today / Yesterday / Last 7·30·90 days / This month /
+Last month / All time, plus a custom two-date calendar. Presets are cut on local day boundaries and
+sent to the API as UTC instants (`-utils/dateRange.ts`). The Payment Dashboard uses the same
+control, so a window means the same thing on both screens.
+
+#### Free-text search (toolbar)
+Matches a payment when ANY of these hit: the payer (name / email / phone, resolved to user ids via
+the auth service), the amount, the **invoice number** of an invoice covering the payment, or the
+**payment plan** name. Debounced 400ms and resolved entirely server-side, so it works across the
+whole result set rather than the loaded page.
+
+The two subquery predicates are guarded by `:noSearchFilter = false`, so Postgres constant-folds
+them away when nobody is searching — an unsearched listing plans and costs exactly what it did
+before (verified with EXPLAIN: neither `invoice` nor `payment_plan` appears in the plan). While
+searching, both are index-driven (`idx_invoice_payment_log_mapping_payment_log_id`, and the
+`payment_plan` primary key) and evaluated only over rows that already passed the institute, date
+and status filters.
+
+#### Slide-over filters
+- **Payment Type**, **Plan Status**, **Payment Source**, **Course / Session**
+- Payment status and the date window are deliberately *not* here — they live in the toolbar
 
 ### 📋 Payment Logs Table
 
@@ -35,8 +59,69 @@ Displays detailed payment information with the following columns:
 - **Payment Method**: Payment vendor information
 - **Plan Status**: User plan status
 - **Course/Membership**: Enroll invite name and code
+- **Invoice**: Invoice number issued for the payment, with an inline PDF preview
 - **Transaction ID**: Payment transaction reference
+- **Tracking ID / Tracking Source / Order Status / Actions**: physical-order tracking (hidden by default)
 - **Payment Plan**: Plan name and validity period
+
+#### Column layout (`ManageColumnsPopover`)
+Every column except **Date & Time** and **Amount** can be switched off — those two are the row,
+so their checkbox is ticked and disabled. Columns can also be **dragged into a different order**,
+either by the grip in the Manage Column popover or by the grip on the column header itself
+(`MyTable`'s opt-in `enableColumnReorder`).
+
+Both choices are per-browser localStorage (`manage-payments:hidden-columns`,
+`manage-payments:column-order`) and are reconciled against the columns that actually exist, so a
+newly shipped column lands in its natural place rather than at the end of a saved layout, and a
+column that only some institutes have (Organization Name) doesn't disturb the rest.
+
+#### Invoice column
+The invoice number is **not** part of the payment-logs response. It is resolved for the ~20 rows
+on screen via `POST /v1/invoices/by-payment-logs?instituteId=…`, which reads the
+`invoice_payment_log_mapping` table the invoice itself was built from — so the number shown is the
+one the learner was actually issued, never inferred from amounts or dates. Payment logs with no
+invoice render a dash; a voided (REJECTED) invoice renders struck through.
+
+The lookup deliberately returns no PDF URL: presigning is one media-service round trip per file,
+so it happens lazily when someone clicks preview (`InvoicePreviewByIdDialog` → the invoice detail
+endpoint → the shared `InvoicePreviewDialog`, which renders the real stored PDF). The query is
+skipped entirely while the column is hidden, and a failed lookup degrades to dashes rather than
+taking the table down.
+
+**Backend-version fallback.** The dashboard and admin_core_service deploy separately, and a local
+dev server points at stage by default — so a build routinely runs against a backend that predates
+the bulk endpoint. `resolvePaymentLogInvoices` therefore tries the bulk lookup first and, on any
+failure, falls back to the long-standing `GET /v1/invoices/user/{userId}?instituteId=…` (one
+request per distinct learner on the page), joining on the same `payment_log_ids` the invoice
+carries. The number rendered is identical either way; only the request count differs, and the fast
+path resumes automatically once the backend ships.
+
+**Raised-but-unpaid invoices are rows too.** Creating an invoice does NOT create a payment log —
+one only appears when the learner initiates payment — so an invoice an admin raised used to be
+invisible on this screen entirely. The combined listing query therefore has a third UNION arm that
+emits such invoices by invoice id, discriminated by a `row_type` column
+(`CombinedPaymentRowProjection`). The service loads both kinds, resolves users for both in one
+call, and re-emits them in the query's `created_at DESC` order.
+
+These rows carry their invoice inline (`invoice` on the entry), so the Invoice column renders
+without any lookup — and the bulk lookup deliberately skips them. They have no `user_plan`, so
+every consumer must stay optional-chained (`PaymentDetailSheet` and `resolveEntryCurrency` already
+are).
+
+A voided (`REJECTED`) invoice is shown struck through with a `CANCELLED` status and is excluded
+from every total by `isCancelledEntry` — cancelled money is neither collected nor owed.
+
+**KPI impact.** Unpaid (non-voided) invoices are also added to the billed side of the billing
+summary via a `billed_invoices` CTE, so Total and Due finally include invoice obligations, which
+carry no `user_plan` and were previously owed by nobody. Measured on HCCA: Due ₹69,840 → ₹146,440,
+Total ₹133,840 → ₹210,440. The rise is smaller than the ₹103,600 raw invoice total because due is
+netted per learner — an over-payment elsewhere absorbs part of a new obligation, which is this
+query's long-standing (documented) behaviour.
+
+**Still not counted:** an invoice that is only PARTIALLY paid. Its payment logs make it visible as
+rows, but its obligation is in neither `billed_plans` (no user_plan) nor `billed_invoices` (it has
+payment logs). Widening that would risk double-counting against the `paid` CTE, so it was left
+alone deliberately.
 
 ### 🔄 Pagination
 

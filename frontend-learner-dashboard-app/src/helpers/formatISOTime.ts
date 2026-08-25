@@ -48,4 +48,36 @@ export function formatLocalDateTime(isoString?: string | null): string | null {
     return date.toLocaleString(undefined, options);
 }
 
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * Short, human "3 min ago" style stamp for feed-like lists (doubts, replies).
+ * Falls back to an absolute date past a week, and always formats in the
+ * caller's active locale (pass i18n.language) so Hindi/Arabic learners don't
+ * silently get browser-locale output.
+ */
+export function formatRelativeTime(isoString?: string | null, locale?: string): string {
+    const date = parseApiDate(isoString);
+    if (!date) return '';
+
+    const diffMs = date.getTime() - Date.now();
+    const absMs = Math.abs(diffMs);
+
+    if (absMs < 7 * DAY_MS) {
+        const rtf = new Intl.RelativeTimeFormat(locale || undefined, { numeric: 'auto' });
+        if (absMs < MINUTE_MS) return rtf.format(0, 'second');
+        if (absMs < HOUR_MS) return rtf.format(Math.round(diffMs / MINUTE_MS), 'minute');
+        if (absMs < DAY_MS) return rtf.format(Math.round(diffMs / HOUR_MS), 'hour');
+        return rtf.format(Math.round(diffMs / DAY_MS), 'day');
+    }
+
+    return date.toLocaleDateString(locale || undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+    });
+}
+
 export { parseApiDate };

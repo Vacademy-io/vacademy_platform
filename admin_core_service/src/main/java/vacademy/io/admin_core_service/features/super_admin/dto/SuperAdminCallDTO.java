@@ -65,9 +65,6 @@ public class SuperAdminCallDTO {
     private java.util.Map<String, Double> costBreakdown;
     private Boolean costIsModelled;
 
-    /** Sentences served from the TTS speech cache instead of the vendor, and the
-     *  characters they represent. NULL (never 0) when the bot did not measure —
-     *  the cache was off, or the row predates it. */
     /**
      * Characters the bot actually synthesised on this call (diagnostics.tts.chars).
      *
@@ -78,6 +75,9 @@ public class SuperAdminCallDTO {
      */
     private Integer ttsCharsMeasured;
 
+    /** Sentences served from the TTS speech cache instead of the vendor, and the
+     *  characters they represent. NULL (never 0) when the bot did not measure —
+     *  the cache was off, or the row predates it. */
     private Integer ttsCacheHits;
     private Integer ttsCacheMisses;
     private Integer ttsCacheCharsSaved;

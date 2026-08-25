@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications, Token, ActionPerformed, PushNotificationSchema } from '@capacitor/push-notifications';
 import { Preferences } from '@capacitor/preferences';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getCachedInstituteBranding } from '@/services/domain-routing';
 import { RoleTerms, SystemTerms } from '@/types/naming-settings';
 
 export interface NotificationPayload {
@@ -503,7 +504,13 @@ class PushNotificationService {
       if (Notification.permission === 'granted') {
         new Notification(notification.title, {
           body: notification.body,
-          icon: notification.imageUrl || '/icon-192.webp'
+          // '/icon-192.webp' is the Vacademy mark — only correct on Vacademy's
+          // own hosts. Fall back to the resolved institute logo first so a
+          // white-label learner never sees a Vacademy icon.
+          icon:
+            notification.imageUrl ||
+            getCachedInstituteBranding()?.instituteLogoUrl ||
+            '/icon-192.webp'
         });
       }
     } else if (platform === 'android' || platform === 'ios') {

@@ -1,6 +1,4 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CaretRight, WarningCircle } from "@phosphor-icons/react";
+import { Check, WarningCircle } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useState } from "react";
@@ -8,7 +6,7 @@ import {
   distribution_duration_types,
   QUESTION_TYPES,
 } from "@/types/assessment";
-import { parseHtmlToString } from "@/lib/utils";
+import { cn, parseHtmlToString } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
 import { NumericInputWithKeypad } from "./otherQuestionTypes/numeric";
 import { ExpandableParagraph } from "./otherQuestionTypes/paragraph";
@@ -17,28 +15,52 @@ import { LongAnswerInput } from "./otherQuestionTypes/LongAnswerInput";
 import { CodingQuestionDisplay } from "./otherQuestionTypes/CodingQuestionDisplay";
 import { QuestionHtmlContent } from "./question-html-content";
 import { QuestionPassage } from "./question-passage";
+import { useLiveTestUi } from "./live-test-ui-context";
+
+const OPTION_LETTERS = "abcdefghijklmnopqrstuvwxyz";
+
+/** Small pill used for question type and marking scheme. */
+function MetaChip({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "positive" | "negative";
+}) {
+  const tones = {
+    neutral: "bg-neutral-100 text-neutral-600",
+    positive: "bg-success-50 text-success-700",
+    negative: "bg-danger-50 text-danger-600",
+  } as const;
+  return (
+    <span
+      className={cn(
+        "flex-none rounded-md px-2 py-1 text-3xs font-semibold uppercase tracking-wide",
+        tones[tone],
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 
 export function QuestionDisplay() {
+  const { settings } = useLiveTestUi();
   const {
     currentQuestion,
     currentSection,
     answers,
     setAnswer,
-    markForReview,
-    clearResponse,
-    questionStates,
     sectionTimers,
     questionTimers,
     assessment,
     updateQuestionTimer,
     moveToNextQuestion,
-    // questionTimeSpent,
     initializeQuestionTime,
     incrementQuestionTime,
   } = useAssessmentStore();
 
   const [playMode, setPlayMode] = useState<string | null>(null);
-  const [isParagraph, setIsParagraph] = useState(false);
   const [isManualTest, setIsManualTest] = useState(false);
 
   useEffect(() => {
@@ -48,9 +70,6 @@ export function QuestionDisplay() {
       });
       if (storedMode.value) {
         const parsedData = JSON.parse(storedMode.value);
-        if (parsedData.about_id) {
-          setIsParagraph(true);
-        }
         setPlayMode(parsedData.play_mode);
         setIsManualTest(parsedData.evaluation_type === "MANUAL");
       }
@@ -100,20 +119,16 @@ export function QuestionDisplay() {
 
   if (!currentQuestion) {
     return (
-      <Card className="w-full">
-        <CardContent className="p-6">
-          <p className="text-center text-muted-foreground">
-            Select a question to begin
-          </p>
-        </CardContent>
-      </Card>
+      <p className="py-12 text-center text-body text-neutral-500">
+        Select a question to begin
+      </p>
     );
   }
 
   if (isTimeUp && !isPracticeMode) {
     return (
-      <Alert variant="destructive" className="mb-6">
-        <WarningCircle className="h-4 w-4" />
+      <Alert variant="destructive">
+        <WarningCircle className="size-4" />
         <AlertDescription>
           Time is up for this section. Please move to the next available
           section.
@@ -122,34 +137,15 @@ export function QuestionDisplay() {
     );
   }
 
-  const hasPassage = Boolean(
-    currentQuestion.parent_rich_text?.content?.trim()
-  );
   const currentAnswer = answers[currentQuestion.question_id] || [];
 
-  // Quick-advance affordance: only offered once the question actually holds an
-  // answer, and never on the very last question of the last section (where the
-  // footer's next arrow is disabled too — there is nowhere to advance to).
-  const hasAnswered = currentAnswer.some(
-    (value) => value !== null && value !== undefined && String(value).trim() !== ""
-  );
   const sectionQuestions =
     assessment?.section_dtos?.[currentSection]?.question_preview_dto_list ?? [];
   const indexInSection = sectionQuestions.findIndex(
-    (question) => question.question_id === currentQuestion.question_id
+    (question) => question.question_id === currentQuestion.question_id,
   );
-  const isLastQuestionOfTest =
-    indexInSection === sectionQuestions.length - 1 &&
-    currentSection === (assessment?.section_dtos?.length ?? 1) - 1;
-  const isMarkedForReview =
-    questionStates[currentQuestion.question_id]?.isMarkedForReview;
-  // const isDisabled =
-  //   questionStates[currentQuestion.question_id]?.isDisabled ||
-  //   questionTimers[currentQuestion.question_id] === 0;
 
   const handleAnswerChange = (optionId: string) => {
-    // if (isDisabled) return;
-
     const newAnswer =
       currentQuestion.question_type === QUESTION_TYPES.MCQM
         ? currentAnswer.includes(optionId)
@@ -160,27 +156,30 @@ export function QuestionDisplay() {
     setAnswer(currentQuestion.question_id, newAnswer);
   };
 
-  const calculateMarkingScheme = (marking_json: string) => {
+  const parseMarkingScheme = (marking_json: string) => {
     try {
-      const marking_scheme = JSON.parse(marking_json);
-      return marking_scheme;
+      return JSON.parse(marking_json)?.data ?? {};
     } catch (error) {
       console.error("Error parsing marking_json:", error);
-      return 0;
+      return {};
     }
   };
+
+  const marking = parseMarkingScheme(currentQuestion.marking_json);
+  const totalMark = Number(marking?.totalMark ?? 0);
+  const negativeMark = Number(marking?.negativeMark ?? 0);
 
   const hasEmbeddedOptionPrefix = (optionHtml: string, optionIndex: number) => {
     const plainText = parseHtmlToString(optionHtml).trim();
     if (!plainText) return false;
 
-    const expectedAlpha = String.fromCharCode(97 + (optionIndex % 26));
+    const expectedAlpha = OPTION_LETTERS[optionIndex % OPTION_LETTERS.length];
     const alphaPattern = new RegExp(
-      `^\\(?${expectedAlpha}\\)?[\\).:-]\\s*`,
+      `^\\(?${expectedAlpha}\\)?[).:-]\\s*`,
       "i",
     );
-    const genericAlphaPattern = /^\(?[a-z]\)?[\).:-]\s*/i;
-    const numericPattern = /^\(?\d+\)?[\).:-]\s*/;
+    const genericAlphaPattern = /^\(?[a-z]\)?[).:-]\s*/i;
+    const numericPattern = /^\(?\d+\)?[).:-]\s*/;
 
     return (
       alphaPattern.test(plainText) ||
@@ -189,90 +188,52 @@ export function QuestionDisplay() {
     );
   };
 
+  const isMultiSelect = currentQuestion.question_type === QUESTION_TYPES.MCQM;
+
   return (
-    <div className="space-y-6 mx-auto">
-      <div className="flex flex-col items-start justify-between w-full">
-        <div className="w-full">
-          <div className="flex items-baseline justify-between gap-5 mb-2">
-            <div className="flex items-baseline gap-8">
-              <span className="text-lg text-gray-700">
-                Question {currentQuestion.serial_number}
-              </span>
-              {!isPracticeMode &&
-                assessment?.distribution_duration ===
-                  distribution_duration_types.QUESTION && (
-                  <span className="text-base text-primary-500">
-                    {new Date(questionTimers[currentQuestion.question_id] || 0)
-                      .toISOString()
-                      .substr(14, 5)}
-                  </span>
-                )}
-            </div>
-
-            <div>
-              <span className="text-base text-gray-600">
-                {
-                  calculateMarkingScheme(currentQuestion.marking_json).data
-                    .totalMark
-                }{" "}
-                Marks |{" "}
-              </span>
-              {isParagraph ? (
-                <span>Comprehension Type:</span>
-              ) : (
-                <span>{currentQuestion.question_type}</span>
-              )}
-            </div>
-          </div>
-          {<ExpandableParagraph />}
-
-          {/* Comprehension passage for this question (backend: parent_rich_text).
-              ExpandableParagraph above is a different thing — the assessment-wide
-              "about" text fetched once from about_id — so it never showed passages. */}
-          <QuestionPassage html={currentQuestion.parent_rich_text?.content} />
-
-          {/* After a large tinted passage block the question read as a caption,
-              so learners could not tell where the passage ended. Label it and
-              give it weight — only when a passage precedes it, since a standalone
-              question needs no such separator. */}
-          {hasPassage && (
-            <p className="mb-1 text-caption font-bold uppercase tracking-wide text-gray-500">
-              Question
-            </p>
+    <div className="mx-auto w-full max-w-4xl">
+      {/* Question header — number on the left, marking scheme on the right, so
+          both survive a narrow phone without the stem shifting around. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 md:mb-5">
+        <span className="text-title font-bold text-neutral-900">
+          Question {indexInSection >= 0 ? indexInSection + 1 : currentQuestion.serial_number}
+        </span>
+        <span className="text-caption text-neutral-400">
+          of {sectionQuestions.length}
+        </span>
+        {!isPracticeMode &&
+          assessment?.distribution_duration ===
+            distribution_duration_types.QUESTION && (
+            <span className="font-mono text-caption font-semibold tabular-nums text-primary-500">
+              {new Date(questionTimers[currentQuestion.question_id] || 0)
+                .toISOString()
+                .substr(14, 5)}
+            </span>
           )}
-          {/* Same weight as a question with no passage — the label above is what
-              separates it from the passage, not a heavier font. */}
-          <QuestionHtmlContent
-            html={currentQuestion.question.content}
-            className="text-lg text-gray-800"
-          />
-        </div>
-        {!isManualTest && (
-          <div className="flex gap-2 mt-4 w-full justify-between">
-            <Button
-              variant="outline"
-              size="sm"
-              className={
-                isMarkedForReview
-                  ? "text-primary-500 hover:text-primary-500 hover:bg-transparent"
-                  : ""
-              }
-              onClick={() => markForReview(currentQuestion.question_id)}
-            >
-              Review Later
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => clearResponse(currentQuestion.question_id)}
-              disabled={currentAnswer.length === 0}
-            >
-              Clear Response
-            </Button>
-          </div>
+        <span className="flex-1" />
+        <MetaChip>{currentQuestion.question_type}</MetaChip>
+        {settings.showMarkingScheme && totalMark > 0 && (
+          <MetaChip tone="positive">+{totalMark}</MetaChip>
+        )}
+        {settings.showMarkingScheme && negativeMark > 0 && (
+          <MetaChip tone="negative">−{negativeMark}</MetaChip>
         )}
       </div>
+
+      <ExpandableParagraph />
+
+      {/* Comprehension passage for this question (backend: parent_rich_text).
+          ExpandableParagraph above is a different thing — the assessment-wide
+          "about" text fetched once from about_id — so it never showed passages. */}
+      <QuestionPassage html={currentQuestion.parent_rich_text?.content} />
+
+      {/* Tailwind's reset strips <p> margins — a multi-paragraph stem would
+          otherwise render as one block with no breaks. */}
+      <QuestionHtmlContent
+        html={currentQuestion.question.content}
+        className="mb-5 text-subtitle leading-relaxed text-neutral-900 md:mb-6 md:text-title [&_img]:h-auto [&_img]:max-w-full [&_p:last-child]:mb-0 [&_p]:mb-3"
+      />
+
       {(() => {
         switch (currentQuestion.question_type) {
           case QUESTION_TYPES.NUMERIC:
@@ -293,9 +254,9 @@ export function QuestionDisplay() {
             }
             if (!codingConfig) {
               return (
-                <div className="text-sm text-muted-foreground">
+                <p className="text-body text-neutral-500">
                   Coding question is missing configuration.
-                </div>
+                </p>
               );
             }
             return (
@@ -311,71 +272,99 @@ export function QuestionDisplay() {
           case QUESTION_TYPES.MCQS:
           case QUESTION_TYPES.TRUE_FALSE:
             return (
-              <div className="space-y-4">
-                {currentQuestion?.options?.map((option, index) => (
-                  <div
-                    key={option.id}
-                    className={`flex ${
-                      isManualTest ? "flex-row" : "flex-row-reverse"
-                    } items-center justify-between rounded-lg border p-4 w-full ${
-                      currentAnswer.includes(option.id)
-                        ? "border-primary-500 bg-primary-50"
-                        : "border-gray-200"
-                    }`}
-                    onClick={
-                      !isManualTest
-                        ? () => handleAnswerChange(option.id)
-                        : undefined
-                    }
-                  >
-                    {!isManualTest && (
-                      <div className="relative flex items-center">
-                        <div
-                          className={`w-6 h-6 border rounded-md flex items-center justify-center ${
-                            currentAnswer.includes(option.id)
-                              ? "bg-green-500 border-green-500"
-                              : "border-gray-300"
-                          }`}
-                        >
-                          {currentAnswer.includes(option.id) && (
-                            <span className="text-white font-bold">✔</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
+              <div
+                className="flex flex-col gap-3"
+                role={isMultiSelect ? "group" : "radiogroup"}
+                aria-label="Answer options"
+              >
+                {currentQuestion?.options?.map((option, index) => {
+                  const isSelected = currentAnswer.includes(option.id);
+                  const letter =
+                    OPTION_LETTERS[index % OPTION_LETTERS.length];
+                  const showLetterPrefix = !hasEmbeddedOptionPrefix(
+                    option.text.content,
+                    index,
+                  );
 
-                    <label
-                      className={`flex-grow text-sm ${
-                        currentAnswer.includes(option.id)
-                          ? "font-semibold"
-                          : "text-gray-700"
-                      }`}
-                    >
-                      {!hasEmbeddedOptionPrefix(option.text.content, index) && (
-                        <span>{`(${String.fromCharCode(97 + index)}) `}</span>
+                  const body = (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "grid size-7 flex-none place-items-center border text-caption font-bold transition-colors",
+                          isMultiSelect ? "rounded-md" : "rounded-full",
+                          isSelected
+                            ? "border-primary-500 bg-primary-500 text-white"
+                            : "border-neutral-300 bg-white text-neutral-500",
+                        )}
+                      >
+                        {isSelected ? (
+                          <Check size={15} weight="bold" />
+                        ) : showLetterPrefix ? (
+                          letter
+                        ) : (
+                          ""
+                        )}
+                      </span>
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 pt-0.5 text-body leading-relaxed md:text-subtitle",
+                          isSelected
+                            ? "font-medium text-neutral-900"
+                            : "text-neutral-700",
+                        )}
+                      >
+                        <QuestionHtmlContent
+                          html={option.text.content}
+                          inline
+                        />
+                      </span>
+                    </>
+                  );
+
+                  // MANUAL assessments are answered by uploading a paper, so
+                  // options are reference material — readable, not tappable.
+                  if (isManualTest) {
+                    return (
+                      <div
+                        key={option.id}
+                        className="flex w-full items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4"
+                      >
+                        {body}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role={isMultiSelect ? "checkbox" : "radio"}
+                      aria-checked={isSelected}
+                      onClick={() => handleAnswerChange(option.id)}
+                      className={cn(
+                        // p-4 on a 44px-plus row: the whole option is the target,
+                        // not just the letter badge.
+                        "flex w-full items-start gap-3 rounded-xl border-2 p-4 text-start transition-colors",
+                        isSelected
+                          ? "border-primary-500 bg-primary-50"
+                          : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50",
                       )}
-                      <QuestionHtmlContent html={option.text.content} inline />
-                    </label>
-                  </div>
-                ))}
+                    >
+                      {body}
+                    </button>
+                  );
+                })}
               </div>
             );
           default:
-            return <div className="">other question type was found</div>;
+            return (
+              <p className="text-body text-neutral-500">
+                This question type cannot be displayed here.
+              </p>
+            );
         }
       })()}
-
-      {/* Quick advance. Deliberately a button rather than auto-advancing on
-          selection: in a timed exam a stray tap would silently skip a question,
-          and the learner could not tell whether their answer registered. */}
-      {!isManualTest && hasAnswered && !isLastQuestionOfTest && (
-        <div className="flex justify-end">
-          <Button size="sm" onClick={moveToNextQuestion}>
-            Next
-            <CaretRight className="ml-1 size-4" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

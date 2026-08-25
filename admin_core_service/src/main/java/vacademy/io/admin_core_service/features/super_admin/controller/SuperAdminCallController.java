@@ -6,11 +6,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminCallDTO;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminCallSummaryDTO;
+import vacademy.io.admin_core_service.features.super_admin.dto.TtsCacheDTOs;
+import vacademy.io.admin_core_service.features.super_admin.dto.TtsCacheSummaryDTO;
+import vacademy.io.admin_core_service.features.super_admin.service.TtsCacheAnalyticsService;
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminPageResponse;
 import vacademy.io.admin_core_service.features.super_admin.service.SuperAdminCallService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.util.SuperAdminAuthUtil;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,6 +32,9 @@ public class SuperAdminCallController {
 
     @Autowired
     private SuperAdminCallService service;
+
+    @Autowired
+    private TtsCacheAnalyticsService ttsCache;
 
     @GetMapping
     public ResponseEntity<SuperAdminPageResponse<SuperAdminCallDTO>> list(
@@ -58,11 +65,108 @@ public class SuperAdminCallController {
         return ResponseEntity.ok(service.summary(instituteId, from, to, health, disposition, agentId));
     }
 
+    /**
+     * TTS speech-cache monitoring: fleet totals plus a per-day series.
+     *
+     * <p>Lives here rather than proxying the voice bot's own ledger, because the
+     * ledger is a snapshot on one box's disk with no history — it can say what is
+     * cached right now but never what the hit rate was last Tuesday. Every call's
+     * counters land in ai_call_result.diagnostics, so Postgres has the series.
+     */
+    @GetMapping("/tts-cache/summary")
+    public ResponseEntity<TtsCacheSummaryDTO> ttsCacheSummary(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(required = false) String instituteId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String agentId) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(service.ttsCacheSummary(instituteId, from, to, agentId));
+    }
+
     /** The rate card the costs above were computed from — so the UI can show its work. */
     @GetMapping("/rate-card")
     public ResponseEntity<Map<String, Double>> rateCard(
             @RequestAttribute("user") CustomUserDetails user) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
         return ResponseEntity.ok(service.rateCard());
+    }
+
+    // ── TTS speech-cache analytics tab ──────────────────────────────────────
+    //
+    // All reads come from tts_cache_entry, which the voice bot mirrors in every
+    // two minutes. Nothing here calls the bot, so a screen keeps rendering while
+    // the box restarts — and reportedAt on every row lets the UI say how stale
+    // it is rather than implying live.
+
+    /** Tab landing: every agent that has contributed to the cache. */
+    @GetMapping("/tts-cache/agents")
+    public ResponseEntity<List<TtsCacheDTOs.Agent>> ttsCacheAgents(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(required = false) String instituteId) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ttsCache.agents(instituteId));
+    }
+
+    /** The sentences one agent has cached audio for. */
+    @GetMapping("/tts-cache/agents/{agentId}/entries")
+    public ResponseEntity<TtsCacheDTOs.Page<TtsCacheDTOs.Entry>> ttsCacheEntries(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String agentId,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ttsCache.entries(agentId, q, Math.max(page, 0),
+                Math.min(Math.max(size, 1), 200)));
+    }
+
+    /** What is NOT cached, dearest first, with why and what it has cost. */
+    @GetMapping("/tts-cache/agents/{agentId}/misses")
+    public ResponseEntity<TtsCacheDTOs.Page<TtsCacheDTOs.Entry>> ttsCacheMisses(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String agentId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ttsCache.misses(agentId, Math.max(page, 0),
+                Math.min(Math.max(size, 1), 200)));
+    }
+
+    /**
+     * Drop one cached sentence. QUEUED, not immediate: the audio is a file on the
+     * bot's disk, so the bot performs it on its next cycle. dryRun defaults TRUE
+     * — the destructive reading of an ambiguous request is the wrong one.
+     */
+    @DeleteMapping("/tts-cache/entries/{cacheKey}")
+    public ResponseEntity<TtsCacheDTOs.FlushResult> ttsCacheDeleteEntry(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String cacheKey,
+            @RequestParam(defaultValue = "true") boolean dryRun) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ttsCache.queueFlush("DELETE_ENTRY", null, cacheKey,
+                dryRun, user.getUserId()));
+    }
+
+    /** Drop everything one agent contributed. Audio another agent still uses is
+     *  kept — the key is shared, and a flush must not take somebody else's. */
+    @PostMapping("/tts-cache/agents/{agentId}/flush")
+    public ResponseEntity<TtsCacheDTOs.FlushResult> ttsCacheFlushAgent(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String agentId,
+            @RequestParam(defaultValue = "true") boolean dryRun) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ttsCache.queueFlush("FLUSH_AGENT", agentId, null,
+                dryRun, user.getUserId()));
+    }
+
+    /** Every flush ever queued, and what it did. */
+    @GetMapping("/tts-cache/flush-log")
+    public ResponseEntity<List<TtsCacheDTOs.FlushResult>> ttsCacheFlushLog(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(required = false) String agentId,
+            @RequestParam(defaultValue = "50") int limit) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ttsCache.flushLog(agentId, limit));
     }
 }

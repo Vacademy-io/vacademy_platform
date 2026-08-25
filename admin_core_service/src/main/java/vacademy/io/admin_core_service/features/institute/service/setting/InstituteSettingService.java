@@ -35,9 +35,12 @@ import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEn
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.certificate.dto.ResolvedCertificateConfig;
+import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateNumberingDto;
 import vacademy.io.admin_core_service.features.certificate.entity.IssuedCertificate;
 import vacademy.io.admin_core_service.features.certificate.repository.IssuedCertificateRepository;
 import vacademy.io.admin_core_service.features.certificate.service.CertificateCodeService;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateCustomFieldService;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateTextFitService;
 import vacademy.io.admin_core_service.features.certificate.service.CertificateNumberService;
 import vacademy.io.admin_core_service.features.certificate.service.CertificateSettingsResolver;
 import vacademy.io.admin_core_service.features.certificate.service.CertificateVerificationService;
@@ -75,6 +78,8 @@ public class InstituteSettingService {
     private final CertificateNumberService certificateNumberService;
     private final CertificateCodeService certificateCodeService;
     private final CertificateVerificationService certificateVerificationService;
+    private final CertificateCustomFieldService certificateCustomFieldService;
+    private final CertificateTextFitService certificateTextFitService;
     private final LearnerOperationRepository learnerOperationRepository;
 
     // The default completion threshold now lives in
@@ -89,6 +94,8 @@ public class InstituteSettingService {
             CertificateNumberService certificateNumberService,
             CertificateCodeService certificateCodeService,
             CertificateVerificationService certificateVerificationService,
+            CertificateCustomFieldService certificateCustomFieldService,
+            CertificateTextFitService certificateTextFitService,
             LearnerOperationRepository learnerOperationRepository) {
         this.instituteRepository = instituteRepository;
         this.objectMapper = objectMapper;
@@ -101,6 +108,8 @@ public class InstituteSettingService {
         this.certificateNumberService = certificateNumberService;
         this.certificateCodeService = certificateCodeService;
         this.certificateVerificationService = certificateVerificationService;
+        this.certificateCustomFieldService = certificateCustomFieldService;
+        this.certificateTextFitService = certificateTextFitService;
         this.learnerOperationRepository = learnerOperationRepository;
     }
 
@@ -480,8 +489,8 @@ public class InstituteSettingService {
      * QR will encode that, so a scan lands on a page proving the certificate is
      * genuine.
      *
-     * <p>Deliberately not defaulted to a platform URL: there is no public
-     * certificate-verification endpoint today, and a QR pointing at an
+     * <p>Falls back to the platform verification page on the institute's own
+     * learner portal, which is unauthenticated — a QR pointing at an
      * authenticated route would just show a scanner a login wall.
      */
     private String resolveCertificateCodePayload(Institute institute, String certificateId,
@@ -489,26 +498,10 @@ public class InstituteSettingService {
         if (!StringUtils.hasText(certificateId)) {
             return null;
         }
-        try {
-            String settingJson = institute != null ? institute.getSetting() : null;
-            if (StringUtils.hasText(settingJson)) {
-                JsonNode root = objectMapper.readTree(settingJson);
-                JsonNode entries = root.path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
-                if (entries.isArray()) {
-                    for (JsonNode config : entries) {
-                        if (CertificateTypeEnum.COURSE_COMPLETION.name()
-                                .equals(config.path("key").asText(null))) {
-                            String template = config.path("qrVerificationUrlTemplate").asText(null);
-                            if (StringUtils.hasText(template)) {
-                                return template.trim().replace("{{CERTIFICATE_ID}}", certificateId);
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Could not read the QR verification URL template; encoding the number instead", e);
+        String settingJson = institute != null ? institute.getSetting() : null;
+        String template = readCertificateSettingText(settingJson, "qrVerificationUrlTemplate");
+        if (StringUtils.hasText(template)) {
+            return template.trim().replace("{{CERTIFICATE_ID}}", certificateId);
         }
 
         // No institute-specific template configured: point the QR at the
@@ -522,7 +515,100 @@ public class InstituteSettingService {
 
         // Last resort — no portal configured, or a legacy certificate with no
         // token. Encoding the bare number at least identifies the certificate.
+        //
+        // Deliberately NOT changed to the compound `number*code` payload, even
+        // though that would verify where the bare number cannot. Institutes in
+        // this branch never opted into anything, and some scan the number into
+        // their own systems; silently changing what their QR emits would break
+        // that. The fix for these institutes is to configure a learner portal,
+        // which puts them on the verifying branch above.
         return certificateId;
+    }
+
+    /**
+     * What {@code {{CERTIFICATE_BARCODE}}} encodes, per the institute's
+     * {@code barcodeContent} setting.
+     *
+     * <p>A barcode cannot hold the verification URL the QR carries — Code 128
+     * spends ~11 modules per character, so the URL would need a barcode roughly
+     * a quarter of an A4 landscape page wide before it scanned reliably. The
+     * short code exists for exactly this: {@code <number>*<code>} is ~21
+     * characters and fits.
+     *
+     * <p>Defaults to the bare number, which is what every certificate issued
+     * before this setting existed encodes. Switching an institute to verifying
+     * barcodes is opt-in because it makes the barcode noticeably wider, and an
+     * unannounced width change would break templates whose barcode box was sized
+     * by hand.
+     */
+    private String resolveCertificateBarcodePayload(String settingJson, String certificateId,
+                                                    String shortCode) {
+        if (!StringUtils.hasText(certificateId)) {
+            return null;
+        }
+        String mode = readCertificateSettingText(settingJson, "barcodeContent");
+        if (!"VERIFICATION_CODE".equalsIgnoreCase(mode)) {
+            return certificateId;
+        }
+        // Legacy certificate with no short code: fall back to the number rather
+        // than emitting a dangling separator that would resolve to nothing.
+        return Optional
+                .ofNullable(certificateVerificationService.buildBarcodePayload(certificateId, shortCode))
+                .orElse(certificateId);
+    }
+
+    /**
+     * Whether the platform may stamp this part of the badge. Absent, malformed
+     * or unreadable all mean {@code true}: the historical behaviour, and the
+     * safe direction — a certificate that carries its number and a scannable
+     * code when it did not have to is a cosmetic surprise, while one silently
+     * missing them cannot be verified at all.
+     */
+    static boolean isAutoStampEnabled(String settingJson, String fieldName) {
+        try {
+            if (!StringUtils.hasText(settingJson)) return true;
+            // Its own mapper rather than the injected one: this is a read-only
+            // parse of a settings blob, and being static is what lets the
+            // decision be tested on its own — the switch it implements is the
+            // difference between a code an admin removed staying removed and
+            // reappearing on every certificate.
+            JsonNode entries = new ObjectMapper().readTree(settingJson)
+                    .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (entries.isArray()) {
+                for (JsonNode config : entries) {
+                    if (CertificateTypeEnum.COURSE_COMPLETION.name().equals(config.path("key").asText(null))) {
+                        JsonNode flag = config.path(fieldName);
+                        return !flag.isBoolean() || flag.asBoolean();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read certificate setting '{}'; stamping as before", fieldName, e);
+        }
+        return true;
+    }
+
+    /**
+     * One string field off the COURSE_COMPLETION certificate config. Every read
+     * of this blob has the same three-deep path and the same "a malformed blob
+     * must not break issuance" requirement, so it lives in one place.
+     */
+    private String readCertificateSettingText(String settingJson, String fieldName) {
+        try {
+            if (!StringUtils.hasText(settingJson)) return null;
+            JsonNode entries = objectMapper.readTree(settingJson)
+                    .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (entries.isArray()) {
+                for (JsonNode config : entries) {
+                    if (CertificateTypeEnum.COURSE_COMPLETION.name().equals(config.path("key").asText(null))) {
+                        return config.path(fieldName).asText(null);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read certificate setting '{}'; using the default", fieldName, e);
+        }
+        return null;
     }
 
     /** Branding that the shipped default certificate template hardcoded until this fix. */
@@ -662,9 +748,25 @@ public class InstituteSettingService {
                             mapping.getUserId(), packageSessionId).isPresent()) {
                 return; // already have an audit row
             }
+            // Resolve the institute's numbering config rather than passing null.
+            // Null means "shipped defaults", which draws from the per-year
+            // counter — but an institute that turned the yearly restart off is
+            // counting in a different one, so a backfill could hand out a number
+            // that series has already issued. It also means backfilled rows now
+            // carry the institute's own format instead of the default shape.
+            CertificateNumberingDto backfillNumbering = null;
+            try {
+                ResolvedCertificateConfig backfillConfig = certificateSettingsResolver.resolve(
+                        mapping.getInstitute(), null, CertificateTypeEnum.COURSE_COMPLETION.name());
+                backfillNumbering = backfillConfig != null ? backfillConfig.getNumbering() : null;
+            } catch (Exception e) {
+                log.warn("Could not read numbering settings while backfilling a certificate for user {}; "
+                        + "using defaults", mapping.getUserId(), e);
+            }
             // Generate once and write to *both* `id` (PK) and `certificate_id`
             // (self-documenting column) so the two stay 1:1.
-            String backfilledCertId = certificateNumberService.generate(mapping.getInstitute(), null, null);
+            String backfilledCertId = certificateNumberService.generate(
+                    mapping.getInstitute(), backfillNumbering, null);
             IssuedCertificate audit = IssuedCertificate.builder()
                     .id(backfilledCertId)
                     .certificateId(backfilledCertId)
@@ -698,22 +800,36 @@ public class InstituteSettingService {
      * dropping the code.
      */
     private String resolveBadgeCodeType(String settingJson) {
-        try {
-            if (!StringUtils.hasText(settingJson)) return "QR";
-            JsonNode entries = objectMapper.readTree(settingJson)
-                    .path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
-            if (entries.isArray()) {
-                for (JsonNode config : entries) {
-                    if (CertificateTypeEnum.COURSE_COMPLETION.name().equals(config.path("key").asText(null))) {
-                        String type = config.path("badgeCodeType").asText(null);
-                        return StringUtils.hasText(type) ? type : "QR";
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Could not read the certificate badge code type; defaulting to QR", e);
+        String type = readCertificateSettingText(settingJson, "badgeCodeType");
+        return StringUtils.hasText(type) ? type : "QR";
+    }
+
+    /**
+     * Blanks any {@code {{TOKEN}}} still standing after every substitution pass.
+     *
+     * <p>Nothing upstream guarantees a template only uses tokens the renderer
+     * knows. An admin can drop a field the platform has no value for, delete a
+     * custom field definition a saved template still references, or paste HTML
+     * from elsewhere — and until this ran, the literal text {@code {{GRADE}}}
+     * printed on the learner's certificate. A blank is always the better
+     * failure: the certificate looks slightly sparse instead of visibly broken.
+     *
+     * <p>Matches only {@code [A-Za-z0-9_]} with optional inner whitespace, the
+     * exact shape this pipeline emits. Anything else inside braces is left
+     * alone, so hand-written CSS or script in an HTML-editor template is never
+     * touched.
+     */
+    static String scrubUnresolvedTokens(String html) {
+        if (!StringUtils.hasText(html)) {
+            return html;
         }
-        return "QR";
+        try {
+            return html.replaceAll("\\{\\{\\s*[A-Za-z0-9_]+\\s*\\}\\}", "");
+        } catch (Exception e) {
+            // Leaving a raw token is bad; failing the render is worse.
+            log.warn("Could not scrub unresolved certificate tokens", e);
+            return html;
+        }
     }
 
     /**
@@ -751,7 +867,7 @@ public class InstituteSettingService {
      * untouched.
      */
     private String appendCertificateIdBadge(String html, String certificateId, String codeDataUri,
-                                            boolean isBarcode) {
+                                            boolean isBarcode, boolean barcodeVerifies) {
         // Nothing left to stamp: the template positions both the number and a
         // code itself, so the automatic badge would only duplicate them.
         if (!StringUtils.hasText(certificateId) && !StringUtils.hasText(codeDataUri)) {
@@ -759,20 +875,30 @@ public class InstituteSettingService {
         }
         // A 1D barcode needs a wide, short box; a QR needs a square one. Sizing
         // both the same squashes the barcode until it stops scanning.
-        String codeStyle = isBarcode
-                ? "width:34mm;height:11mm;display:block;"
-                : "width:16mm;height:16mm;display:block;";
+        //
+        // A verifying barcode carries roughly twice the payload (the number plus
+        // a 10-character code), so it needs roughly twice the width. Stamping it
+        // at the number-only size prints bars too thin to scan — a verification
+        // code nobody can read is worse than no code at all.
+        String barcodeStyle = barcodeVerifies
+                ? "width:60mm;height:14mm;display:block;"
+                : "width:34mm;height:11mm;display:block;";
+        String codeStyle = isBarcode ? barcodeStyle : "width:16mm;height:16mm;display:block;";
         String codeImg = StringUtils.hasText(codeDataUri)
                 ? "<img src=\"" + codeDataUri + "\" alt=\"\" style=\"" + codeStyle + "\" />"
                 : "";
         String idSpan = StringUtils.hasText(certificateId)
-                ? "<span style=\"display:block;margin-top:2px;\">" + certificateId + "</span>"
+                ? "<span style=\"display:block;margin-top:3px;\">" + certificateId + "</span>"
                 : "";
+        // Plain: the code, the number under it, nothing else. It used to be
+        // drawn as a bordered, translucent-white chip, which read as a sticker
+        // applied to the certificate rather than part of it — and on a design
+        // with its own artwork behind, a grey box is exactly what you notice
+        // first. The QR carries its own white quiet zone (CertificateCodeService),
+        // so it stays scannable without a panel drawn behind it.
         String badge = "<div style=\"position:fixed;bottom:8mm;right:10mm;"
-                + "font-family:Arial,sans-serif;font-size:10px;color:#444;"
-                + "background:rgba(255,255,255,0.85);padding:3px 8px;"
-                + "border:1px solid #d0d7de;border-radius:4px;letter-spacing:0.5px;"
-                + "text-align:center;\">"
+                + "font-family:Arial,sans-serif;font-size:8px;color:#6b7280;"
+                + "letter-spacing:0.4px;text-align:center;\">"
                 + codeImg
                 + idSpan
                 + "</div>";
@@ -894,6 +1020,16 @@ public class InstituteSettingService {
                 .filter(StringUtils::hasText)
                 .orElseGet(certificateVerificationService::newVerificationToken);
 
+        // The barcode's credential, reused on a re-render for the same reason.
+        // Minted even for certificates whose institute currently prints a bare
+        // number: the setting can be switched on later, and a re-render is not
+        // guaranteed to happen, so an unused short code costs nothing while a
+        // missing one would leave the barcode permanently unverifiable.
+        final String shortCode = alreadyIssued
+                .map(IssuedCertificate::getShortCode)
+                .filter(StringUtils::hasText)
+                .orElseGet(certificateVerificationService::newShortCode);
+
         placeHolderMapping.put("1",
                 studentSessionInstituteGroupMapping.getPackageSession().getSession().getSessionName());
         placeHolderMapping.put("2", studentSessionInstituteGroupMapping.getPackageSession().getLevel().getLevelName());
@@ -974,8 +1110,17 @@ public class InstituteSettingService {
                 studentSessionInstituteGroupMapping.getInstitute(), certificateId, verificationToken);
         namedPlaceholders.put("{{CERTIFICATE_QR}}",
                 Optional.ofNullable(certificateCodeService.generateQrDataUri(codePayload)).orElse(""));
+        String barcodePayload = resolveCertificateBarcodePayload(settingJson, certificateId, shortCode);
         namedPlaceholders.put("{{CERTIFICATE_BARCODE}}",
-                Optional.ofNullable(certificateCodeService.generateBarcodeDataUri(certificateId)).orElse(""));
+                Optional.ofNullable(certificateCodeService.generateBarcodeDataUri(barcodePayload)).orElse(""));
+        // The short code in readable form, so a certificate carrying a barcode
+        // can also print the code beside it — a damaged or unscannable barcode
+        // then still verifies by typing it into the public verify page.
+        namedPlaceholders.put("{{CERTIFICATE_SHORT_CODE}}", Optional.ofNullable(shortCode).orElse(""));
+        // Admin-defined fields. Merged before substitution runs so they go
+        // through the same tolerant two-pass replacement as everything else.
+        namedPlaceholders.putAll(
+                certificateCustomFieldService.resolveTokens(settingJson, studentId));
         // Institute theme color, used for borders / accents in the certificate.
         // Falls back to the historical default border color so older templates
         // that hardcoded {{INSTITUTE_THEME_COLOR}} still render sanely.
@@ -1082,6 +1227,18 @@ public class InstituteSettingService {
         // from the template editor if they want theirs.
         filledTemplate = scrubHardcodedDefaultBranding(filledTemplate);
 
+        // Last line of defence before the PDF is drawn: no raw {{TOKEN}} ever
+        // reaches a learner. Runs after every substitution pass, so it only sees
+        // tokens nothing could resolve.
+        filledTemplate = scrubUnresolvedTokens(filledTemplate);
+
+        // Shrink any field whose substituted value is too long for the box the
+        // admin drew — a long learner name or course title. Must run after
+        // substitution: the length of the real value is the whole input. A
+        // no-op for templates that carry no field metadata, which is every
+        // hand-authored one.
+        filledTemplate = certificateTextFitService.fitTemplate(filledTemplate);
+
         // Guarantee every certificate carries its number and a scannable code by
         // stamping a bottom-right badge — but only for the parts the template
         // does not position itself. Wherever the admin placed a field, that
@@ -1095,15 +1252,26 @@ public class InstituteSettingService {
         // Detection is token-tolerant for the same reason the substitution pass
         // is: templates pasted from Word arrive as `{{ certificate_id }}`, and a
         // strict contains() would miss those and duplicate anyway.
+        //
+        // The stamp is also switchable. It used to be unconditional, so an admin
+        // who deleted the QR or the number from their design got it back
+        // bottom-right on every issued certificate, with nothing anywhere to
+        // turn it off. autoStampCode / autoStampNumber are that switch; both
+        // default to on, which is exactly what every institute had before.
         boolean templatePlacesOwnCode = templateContainsToken(template, "{{CERTIFICATE_QR}}")
                 || templateContainsToken(template, "{{CERTIFICATE_BARCODE}}");
         boolean templatePlacesOwnId = templateContainsToken(template, "{{CERTIFICATE_ID}}");
         boolean useBarcode = "BARCODE".equalsIgnoreCase(resolveBadgeCodeType(settingJson));
-        String badgeCode = templatePlacesOwnCode
+        String badgeCode = templatePlacesOwnCode || !isAutoStampEnabled(settingJson, "autoStampCode")
                 ? null
                 : namedPlaceholders.get(useBarcode ? "{{CERTIFICATE_BARCODE}}" : "{{CERTIFICATE_QR}}");
-        String badgeId = templatePlacesOwnId ? null : certificateId;
-        filledTemplate = appendCertificateIdBadge(filledTemplate, badgeId, badgeCode, useBarcode);
+        String badgeId = templatePlacesOwnId || !isAutoStampEnabled(settingJson, "autoStampNumber")
+                ? null
+                : certificateId;
+        boolean barcodeVerifies = "VERIFICATION_CODE"
+                .equalsIgnoreCase(readCertificateSettingText(settingJson, "barcodeContent"));
+        filledTemplate = appendCertificateIdBadge(filledTemplate, badgeId, badgeCode, useBarcode,
+                barcodeVerifies);
 
         // Render the PDF using the institute-configured page size if present.
         final String renderedHtml = filledTemplate;
@@ -1136,6 +1304,7 @@ public class InstituteSettingService {
                         // Re-render keeps the date the learner actually earned it.
                         .issuedAt(originalIssuedAt != null ? originalIssuedAt : new Date())
                         .verificationToken(verificationToken)
+                        .shortCode(shortCode)
                         .fileId(file.getId())
                         .templateHtmlSnapshot(renderedHtml)
                         .build();
@@ -1287,11 +1456,31 @@ public class InstituteSettingService {
                     // For data: URLs (base64), keep as-is
                     // For file: URLs, keep as-is (will be resolved with baseUri)
 
-                    // Ensure images have proper styling for PDF rendering
-                    String style = img.attr("style");
-                    if (!style.contains("max-width")) {
-                        style += (style.isEmpty() ? "" : "; ") + "max-width: 100%; height: auto;";
-                        img.attr("style", style);
+                    // Keep loose images from overflowing the page — but never
+                    // touch one the template has positioned itself.
+                    //
+                    // This used to append "max-width: 100%; height: auto" to
+                    // *every* image. Inline styles outrank the stylesheet, so on
+                    // a certificate that rule silently replaced the artwork's
+                    // `height: 100%` with `height: auto`: the background then
+                    // drew at its own aspect ratio instead of filling the
+                    // canvas, and whatever it no longer covered came out blank
+                    // white. It only showed up when the uploaded artwork's
+                    // aspect ratio differed from the page, which is why the
+                    // stock templates looked fine. `object-fit: cover` would
+                    // have masked it, but openhtmltopdf is a CSS 2.1 renderer
+                    // and ignores object-fit entirely.
+                    //
+                    // The guard is deliberately broad: an absolutely positioned
+                    // image, an image with its own dimensions, or one dressed by
+                    // a stylesheet class is placed on purpose, and a generic
+                    // "fit to the page" rule can only break it.
+                    if (!isTemplatePositioned(img)) {
+                        String style = img.attr("style");
+                        if (!style.contains("max-width")) {
+                            style += (style.isEmpty() ? "" : "; ") + "max-width: 100%; height: auto;";
+                            img.attr("style", style);
+                        }
                     }
                 }
             }
@@ -1301,6 +1490,25 @@ public class InstituteSettingService {
             System.err.println("Error processing images for PDF: " + e.getMessage());
             return html; // Return original HTML if processing fails
         }
+    }
+
+    /**
+     * Whether the template positions or sizes this image itself, in which case
+     * the generic page-fitting rule must be left off.
+     *
+     * <p>Covers the three ways a certificate template takes control: a stylesheet
+     * class (the full-bleed background is {@code <img class="bg">} with no inline
+     * style at all), absolute positioning, or explicit inline dimensions.
+     */
+    static boolean isTemplatePositioned(Element img) {
+        if (StringUtils.hasText(img.attr("class"))) {
+            return true;
+        }
+        String style = img.attr("style").replace(" ", "").toLowerCase();
+        return style.contains("position:absolute")
+                || style.contains("position:fixed")
+                || style.contains("width:")
+                || style.contains("height:");
     }
 
     private String convertUrlToBase64(String imageUrl) {

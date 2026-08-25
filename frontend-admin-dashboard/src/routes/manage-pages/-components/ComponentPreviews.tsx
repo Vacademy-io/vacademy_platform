@@ -10,7 +10,7 @@ import {
     Sparkle, Star, Target, Trophy, UsersThree, Wrench,
 } from '@phosphor-icons/react';
 
-import { renderHtmlSection } from '../-utils/catalogue-html';
+import { renderHtmlPage, renderHtmlSection } from '../-utils/catalogue-html';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { PRODUCT_PAGE_OPEN_URL, AUDIENCE_CAMPAIGN_OPEN_URL } from '@/constants/urls';
@@ -334,6 +334,18 @@ const DetailBlocksPreview: React.FC<P> = ({ props }) => {
 
 /** Live, sanitized, shadow-scoped render of an htmlBlock on the canvas —
  *  same safety layer the learner renderer uses (catalogue-html.ts). */
+const HtmlPageLivePreview = ({ props }: P) => {
+    const hostRef = React.useRef<HTMLDivElement>(null);
+    React.useEffect(() => {
+        if (!hostRef.current) return;
+        // Page mode: bigger caps, SVG allowed, hooks bound. No onAction — a
+        // click on the canvas should select the component, not navigate the
+        // admin away from the editor.
+        return renderHtmlPage(hostRef.current, props.html || '', props.css || '');
+    }, [props.html, props.css]);
+    return <div ref={hostRef} className="catalogue-html-section" />;
+};
+
 const HtmlBlockLivePreview = ({ props }: P) => {
     const hostRef = React.useRef<HTMLDivElement>(null);
     React.useEffect(() => {
@@ -1561,6 +1573,20 @@ export const renderComponentPreview = (
             return <DetailBlocksPreview props={props} />;
         case 'leadForm':
             return <LeadFormPreview props={props} />;
+        case 'htmlPage': {
+            if (!props.html) {
+                return (
+                    <div className="px-6 py-10 text-center">
+                        <p className="text-sm font-medium text-gray-600">Empty HTML page</p>
+                        <p className="mt-1 text-caption text-gray-400">
+                            Paste your HTML and CSS in the Properties panel.
+                        </p>
+                    </div>
+                );
+            }
+            return <HtmlPageLivePreview props={props} />;
+        }
+
         case 'htmlBlock': {
             if (!props.html) {
                 return (

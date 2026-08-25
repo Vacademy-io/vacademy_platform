@@ -91,15 +91,20 @@ export const scrubCss = (css: string, page = false): string =>
     css
         .slice(0, page ? MAX_PAGE_CSS : MAX_CSS)
         .replace(CSS_COMMENT_RE, '')
-        // :root does not match inside a shadow root — it selects the document
-        // element, which is outside the boundary. A pasted page almost always
-        // defines its palette there (`:root { --brand: … }`), so every rule
-        // using those variables silently loses its value: a real bundle we
-        // imported had 17 custom properties on :root and 257 rules reading
-        // them, and the whole design fell back to nothing. :host is the shadow
-        // equivalent. Page mode only — an existing htmlBlock with dead :root
-        // rules should not suddenly start applying them.
+        // :root, html and body cannot match inside a shadow root: the first two
+        // select the document element and the third does not exist there at
+        // all — the content sits directly under the root. A pasted page uses
+        // all three for exactly the things you notice when they are missing.
+        // The real bundle we imported put 17 custom properties on :root (read
+        // by 257 rules) and its page background, text colour and base font on
+        // `body`. Rewriting :root alone restored the VARIABLES while the rule
+        // that USED them still matched nothing, so the page stayed grey.
+        // :host is the shadow equivalent of all three.
+        //
+        // Page mode only — an existing htmlBlock carrying dead :root/body
+        // rules should not suddenly start applying them to a published page.
         .replace(page ? /(^|[\s,{}])\:root\b/g : /(?!)/g, '$1:host')
+        .replace(page ? /(^|[\s,{}>+~])(?:html|body)\b/g : /(?!)/g, '$1:host')
         // Keep url() when it points at our own media (an uploaded @font-face
         // or background); strip every other host. Blanket stripping meant a
         // pasted page always lost its custom fonts.

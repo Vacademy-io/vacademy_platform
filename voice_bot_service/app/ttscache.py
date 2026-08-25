@@ -149,6 +149,30 @@ def mode_allows(mode: str, is_fixed_line: bool) -> bool:
     return False
 
 
+def owns_text_frame(tts) -> bool:
+    """Whether WE must emit the TTSTextFrame for a cached sentence.
+
+    Same principle as owns_turn_brackets: emit exactly what the wrapped engine
+    would have emitted, no more. But the two flags point opposite ways here.
+
+    When `push_text_frames` is set, pipecat appends its own TTSTextFrame after
+    run_tts returns (tts_service.py:1129), so ours would be a DUPLICATE — the
+    sentence would land in the played transcript and the assistant context
+    twice. sarvam, deepgram and google all set it.
+
+    When it is CLEAR the service uses word timestamps instead, and pipecat builds
+    the text frames from the vendor's word-timing messages. A cache hit never
+    calls the vendor, so those messages never arrive and NOTHING emits the frame.
+    smallest is built this way (push_text_frames=not word_timestamps, and
+    word_timestamps defaults True), which is how a served sentence came to be
+    invisible to every "has the bot said this?" check on live call f425326e.
+
+    Defaults to False on an unknown service: a missing frame degrades the repeat
+    check, a duplicated one corrupts the transcript. Prefer the recoverable one.
+    """
+    return not getattr(tts, "_push_text_frames", True)
+
+
 def owns_turn_brackets(tts) -> tuple:
     """(emit_started, emit_stopped) for a cached utterance on this service.
 
@@ -1127,6 +1151,7 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                     # engine's own contract is what keeps a cached sentence
                     # indistinguishable from a synthesized one downstream.
                     own_start, own_stop = owns_turn_brackets(tts)
+                    own_text = owns_text_frame(tts)
                     if own_start:
                         # Only start the clock when the base class did not: on
                         # sarvam/google _push_tts_frames already called
@@ -1182,11 +1207,12 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                     # cache in the first place, and it is pipecat's own default
                     # aggregation mode — so the frame is indistinguishable from
                     # one the engine produced.
-                    text_frame = TTSTextFrame(text,
-                                              aggregated_by=AggregationType.SENTENCE)
-                    text_frame.context_id = context_id
-                    text_frame.will_be_spoken = True
-                    yield text_frame
+                    if own_text:
+                        text_frame = TTSTextFrame(
+                            text, aggregated_by=AggregationType.SENTENCE)
+                        text_frame.context_id = context_id
+                        text_frame.will_be_spoken = True
+                        yield text_frame
 
                     if own_stop:
                         yield TTSStoppedFrame(context_id=context_id)

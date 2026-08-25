@@ -574,6 +574,9 @@ async def _sentinel_run_tts(text, context_id=None):
 class _FakeTTS:
     _push_start_frame = True
     _push_stop_frames = True
+    # Mirrors smallest: word_timestamps=True, so pipecat sets this False and
+    # builds text frames from vendor word timings that a cache hit never gets.
+    _push_text_frames = False
 
     def __init__(self):
         self.run_tts = _sentinel_run_tts
@@ -1010,3 +1013,36 @@ async def test_a_cache_MISS_does_not_add_a_text_frame(monkeypatch, tmp_path):
     frames = [f async for f in tts.run_tts("Kuch aur poochhna hai?", "ctx-2")
               if f is not None]
     assert [type(f).__name__ for f in frames] == [],         "a miss must yield exactly what the engine yielded, and nothing more"
+
+
+async def test_no_text_frame_when_pipecat_already_emits_one(monkeypatch, tmp_path):
+    """sarvam, deepgram and google set push_text_frames=True, so pipecat appends
+    its OWN TTSTextFrame after run_tts returns. Emitting ours too would put the
+    sentence in the played transcript and the assistant context twice — the model
+    would see itself say the line twice and the repeat check would compare
+    doubled text. Only the word-timestamp services (smallest) need ours.
+    """
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    line = "Theek hai, dhanyavaad."
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(600))
+
+    tts = _FakeTTS()
+    tts._push_text_frames = True          # behave like sarvam
+    ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+    kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-3")
+             if f is not None]
+    assert "TTSAudioRawFrame" in kinds, "still expected a cache hit"
+    assert "TTSTextFrame" not in kinds,         "pipecat appends its own here — ours would duplicate the sentence"
+
+
+def test_owns_text_frame_defaults_to_not_emitting():
+    """Unknown service: a missing frame degrades the repeat check, a duplicated
+    one corrupts the transcript. Prefer the recoverable failure."""
+    class _Unknown: pass
+    assert ttscache.owns_text_frame(_Unknown()) is False

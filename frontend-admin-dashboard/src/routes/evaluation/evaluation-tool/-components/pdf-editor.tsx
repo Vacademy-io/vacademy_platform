@@ -219,6 +219,10 @@ const PDFEvaluator = ({
     const [pageCanvasDims, setPageCanvasDims] = useState<
         Record<number, { width: number; height: number }>
     >({});
+    // Each page's OWN /Rotate as authored in the PDF (scanner output commonly
+    // carries one). The evaluator's rotation is applied on top of this, never
+    // instead of it — see the <Page rotate> prop and buildEvaluatedPdfBytes.
+    const [pageIntrinsicRotations, setPageIntrinsicRotations] = useState<Record<number, number>>({});
 
     // Jump to page state
     const [jumpPage, setJumpPage] = useState<number | "">("");
@@ -285,6 +289,12 @@ const PDFEvaluator = ({
     // Set when a new PDF is loaded from the device so the canvas re-measures to the
     // newly-rendered page size on its next render.
     const pendingResizeRef = useRef(false);
+    // Guards against overlapping page changes (rapid Next/Prev clicking): the
+    // sequence marks which page-load is current, and the in-flight flag stops
+    // a cleared/partially-loaded canvas being snapshotted over a real page's
+    // saved annotations. See the page-change effect below.
+    const pageLoadSeqRef = useRef(0);
+    const pageLoadInFlightRef = useRef(false);
     const [canUndo, setCanUndo] = useState(false);
     const [canRedo, setCanRedo] = useState(false);
 
@@ -325,6 +335,7 @@ const PDFEvaluator = ({
         // and render pre-rotated, sized from the old file's dimensions.
         setPageRotations({});
         setPageCanvasDims({});
+        setPageIntrinsicRotations({});
 
         // Start a fresh annotation layer on the uploaded PDF (any marks already
         // baked into the file stay as part of the page image and aren't editable).
@@ -524,21 +535,31 @@ const PDFEvaluator = ({
     useEffect(() => {
         if (!fabricCanvas) return;
 
-        // Save current page annotations (+ the canvas size they were captured
-        // at) before loading new ones.
-        const currentAnnotations = fabricCanvas.toJSON();
-        setAnnotations((prev) => ({
-            ...prev,
-            [prevPageNumber]: currentAnnotations, // Use previous page number reference
-        }));
-        setPageCanvasDims((prev) => ({
-            ...prev,
-            [prevPageNumber]: { width: fabricCanvas.width, height: fabricCanvas.height },
-        }));
+        // Identifies THIS page-change. Flipping pages again supersedes it, and
+        // the async work below bails rather than painting a stale page's ink
+        // onto the page the evaluator has since moved to.
+        const seq = ++pageLoadSeqRef.current;
+
+        // Snapshot the outgoing page — but ONLY when the canvas actually holds
+        // its content. Mid-flight the canvas is cleared/partially loaded, and
+        // saving that would overwrite a real page's marks with an empty layer
+        // (i.e. silently erase them) when pages are flipped rapidly.
+        if (!pageLoadInFlightRef.current) {
+            const currentAnnotations = fabricCanvas.toJSON();
+            setAnnotations((prev) => ({
+                ...prev,
+                [prevPageNumber]: currentAnnotations, // Use previous page number reference
+            }));
+            setPageCanvasDims((prev) => ({
+                ...prev,
+                [prevPageNumber]: { width: fabricCanvas.width, height: fabricCanvas.height },
+            }));
+        }
 
         // Clearing + loading fire canvas events — guard them so they don't get
         // recorded as user edits in the undo history.
         isRestoringRef.current = true;
+        pageLoadInFlightRef.current = true;
         fabricCanvas.clear();
 
         const targetAnnotations = annotations[pageNumber];
@@ -548,14 +569,20 @@ const PDFEvaluator = ({
             // No-op when this page's dims already match (the common case: same
             // rotation/size as whatever was already on screen).
             await waitForCanvasDims(expectedDims);
+            if (seq !== pageLoadSeqRef.current) return; // superseded mid-wait
             if (targetAnnotations) {
                 await fabricCanvas.loadFromJSON(targetAnnotations);
+                if (seq !== pageLoadSeqRef.current) return; // superseded mid-load
             }
             fabricCanvas.requestRenderAll();
             // Reset undo/redo to this page's freshly-loaded baseline.
             undoStack.current = [JSON.stringify(fabricCanvas.toJSON())];
             redoStack.current = [];
+            // Only the run that actually finished may lift the guards — a
+            // superseded run returning early would otherwise re-enable undo
+            // recording while the winning run is still painting.
             isRestoringRef.current = false;
+            pageLoadInFlightRef.current = false;
             syncHistoryFlags();
         })();
 
@@ -711,17 +738,35 @@ const PDFEvaluator = ({
                 // canvas to catch up to that size before loading its ink, or the ink
                 // would land at the wrong scale. Degrades to painting immediately when
                 // there's no recorded size to wait for (older drafts, or rotation 0).
+                // Claim the page-load sequence so this restore and any page
+                // change the evaluator made while the draft was still being
+                // fetched can't both paint the canvas — whichever is newer wins.
                 const currentPageAnnotations = restoredAnnotations[pageNumber];
                 if (currentPageAnnotations && fabricCanvas) {
+                    // Claim the sequence only when we're actually going to paint:
+                    // claiming it unconditionally would invalidate an in-flight
+                    // page-load that then bails without ever clearing the
+                    // restore guards, silently stopping undo from recording.
+                    const restoreSeq = ++pageLoadSeqRef.current;
                     await waitForCanvasDims(restoredDims[pageNumber]);
-                    isRestoringRef.current = true;
-                    fabricCanvas.clear();
-                    await fabricCanvas.loadFromJSON(currentPageAnnotations);
-                    fabricCanvas.requestRenderAll();
-                    undoStack.current = [JSON.stringify(fabricCanvas.toJSON())];
-                    redoStack.current = [];
-                    isRestoringRef.current = false;
-                    syncHistoryFlags();
+                    // If the evaluator changed page while the draft was being
+                    // fetched, that page-load owns the canvas now — skip only
+                    // the painting here. The marks/feedback/timer restored above
+                    // still stand, so the draft-restored notice below is correct.
+                    if (restoreSeq === pageLoadSeqRef.current) {
+                        isRestoringRef.current = true;
+                        pageLoadInFlightRef.current = true;
+                        fabricCanvas.clear();
+                        await fabricCanvas.loadFromJSON(currentPageAnnotations);
+                        if (restoreSeq === pageLoadSeqRef.current) {
+                            fabricCanvas.requestRenderAll();
+                            undoStack.current = [JSON.stringify(fabricCanvas.toJSON())];
+                            redoStack.current = [];
+                            isRestoringRef.current = false;
+                            pageLoadInFlightRef.current = false;
+                            syncHistoryFlags();
+                        }
+                    }
                 }
 
                 setDraftSavedAt(draft.savedAt || null);
@@ -857,13 +902,34 @@ const PDFEvaluator = ({
             // flatten the ink on top at matching resolution, and replace the page.
             const srcDoc = await getPdfJsDoc();
             const srcPage = await srcDoc.getPage(pageNum1);
-            const viewport = srcPage.getViewport({ scale: RENDER_SCALE, rotation });
+            // The evaluator's rotation is relative to what they SAW, which was
+            // the page at its own /Rotate — so combine them, exactly as the
+            // on-screen <Page rotate> prop does. Using `rotation` alone here
+            // would discard the page's intrinsic orientation.
+            const totalRotation = ((srcPage.rotate || 0) + rotation) % 360;
+
+            // Page size in PDF points, at the final orientation.
+            const baseViewport = srcPage.getViewport({ scale: 1, rotation: totalRotation });
+            // Cap the raster so a large scan can't blow the browser's canvas
+            // limit (iOS Safari tops out near 16.7 MPx, where toDataURL silently
+            // returns "data:," and the export then throws — failing the whole
+            // submission). Below the cap this is a no-op and quality is unchanged.
+            const MAX_RASTER_PIXELS = 12_000_000;
+            const fitScale = Math.sqrt(
+                MAX_RASTER_PIXELS / Math.max(baseViewport.width * baseViewport.height, 1),
+            );
+            const rasterScale = Math.max(Math.min(RENDER_SCALE, fitScale), 1);
+            const viewport = srcPage.getViewport({ scale: rasterScale, rotation: totalRotation });
 
             const contentCanvas = document.createElement("canvas");
             contentCanvas.width = viewport.width;
             contentCanvas.height = viewport.height;
             const ctx = contentCanvas.getContext("2d");
             if (!ctx) throw new Error("Could not get a 2D context to rotate this page.");
+            // JPEG has no alpha, so paint an opaque base first — otherwise the
+            // un-drawn margins would encode as black.
+            ctx.fillStyle = "#ffffff"; // design-lint-ignore: canvas paint value, not UI chrome
+            ctx.fillRect(0, 0, contentCanvas.width, contentCanvas.height);
             await srcPage.render({ canvasContext: ctx, viewport }).promise;
 
             if (pageAnnotations) {
@@ -874,10 +940,13 @@ const PDFEvaluator = ({
                 }
             }
 
-            const flattenedPng = contentCanvas.toDataURL("image/png");
-            const flattenedImg = await pdfDoc.embedPng(dataUrlToUint8(flattenedPng));
-            const ptWidth = viewport.width / RENDER_SCALE;
-            const ptHeight = viewport.height / RENDER_SCALE;
+            // JPEG rather than lossless PNG: a rotated page is a photographic
+            // scan, and PNG here cost ~100MB peak per page and produced files
+            // large enough to stall or fail the upload.
+            const flattenedJpg = contentCanvas.toDataURL("image/jpeg", 0.92);
+            const flattenedImg = await pdfDoc.embedJpg(dataUrlToUint8(flattenedJpg));
+            const ptWidth = baseViewport.width;
+            const ptHeight = baseViewport.height;
             pdfDoc.removePage(i);
             const newPage = pdfDoc.insertPage(i, [ptWidth, ptHeight]);
             newPage.drawImage(flattenedImg, { x: 0, y: 0, width: ptWidth, height: ptHeight });
@@ -1758,11 +1827,36 @@ const PDFEvaluator = ({
                                                 <Page
                                                     pageNumber={pageNumber}
                                                     scale={scale}
-                                                    rotate={pageRotations[pageNumber] ?? 0}
+                                                    // Pass undefined (NOT 0) when the evaluator
+                                                    // hasn't rotated: react-pdf resolves this as
+                                                    // `rotate ?? page.rotate`, so a literal 0 would
+                                                    // override the PDF's own /Rotate and render
+                                                    // scanner output (which routinely carries one)
+                                                    // sideways. Their rotation is applied ON TOP of
+                                                    // the page's intrinsic orientation.
+                                                    rotate={
+                                                        pageRotations[pageNumber]
+                                                            ? ((pageIntrinsicRotations[pageNumber] ?? 0) +
+                                                                  pageRotations[pageNumber]) %
+                                                              360
+                                                            : undefined
+                                                    }
                                                     devicePixelRatio={renderPixelRatio}
                                                     renderTextLayer={false}
                                                     renderAnnotationLayer={false}
                                                     className="max-h-fit shadow-lg"
+                                                    onLoadSuccess={(loadedPage) => {
+                                                        // Remember the page's own /Rotate so the
+                                                        // evaluator's rotation can be added to it
+                                                        // rather than replace it. Guarded so it
+                                                        // can't loop on re-render.
+                                                        const intrinsic = loadedPage.rotate ?? 0;
+                                                        setPageIntrinsicRotations((prev) =>
+                                                            prev[pageNumber] === intrinsic
+                                                                ? prev
+                                                                : { ...prev, [pageNumber]: intrinsic },
+                                                        );
+                                                    }}
                                                     onRenderSuccess={() => {
                                                         pendingResizeRef.current = false;
                                                         // Always sync the annotation canvas to the

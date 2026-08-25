@@ -870,3 +870,51 @@ async def test_report_now_pushes_what_the_reporter_would(routes, cache, monkeypa
     cache.ladder([c]); cache.store(c, _pcm(800))
     out = await routes.tts_cache_report_now(_Req())
     assert out["pushed"] == 1 and out["ok"] is True and sent["n"] == 1
+
+
+def test_export_reports_rows_that_predate_per_agent_tracking(cache):
+    """THE bug that made the first rollout look like a dead reporter.
+
+    seen_agent is only written for a candidate carrying an agent_id, so every
+    sentence laddered by the pre-analytics build had no provenance row. With an
+    INNER JOIN a ledger holding real sentences exported ZERO, the push was a
+    silent no-op, and the analytics table stayed empty with no error anywhere.
+    """
+    c = _cand("Namaste ji.", fixed=True)          # no agent_id at all
+    cache.ladder([c]); cache.store(c, _pcm(800))
+
+    out = cache.export_for_report()
+    assert len(out) == 1, "an unowned row must still be reported, not dropped"
+    e = out[0]
+    assert e["agentId"] == ttscache.UNATTRIBUTED
+    assert e["agentName"] == ttscache.UNATTRIBUTED_NAME
+    assert e["sentence"] == "Namaste ji."
+    assert e["rendered"] is True
+    # Sightings are real; per-agent hits were never recorded, so they must read
+    # 0 rather than be invented from the call-level counters.
+    assert e["sightings"] == 1 and e["hits"] == 0
+
+
+def test_export_still_prefers_real_provenance_when_it_exists(cache):
+    c = _acand("Theek hai.", "agent-a", fixed=True)
+    cache.ladder([c])
+    e = cache.export_for_report()[0]
+    assert e["agentId"] == "agent-a" and e["agentName"] == "AGENT-A"
+
+
+async def test_report_now_pushes_unattributed_history(routes, cache, monkeypatch):
+    """The backfill case end to end: an old ledger with no provenance must
+    still reach admin-core."""
+    from app import admin_core
+    sent = {}
+
+    async def _fake(entries):
+        sent["ids"] = [x["agentId"] for x in entries]
+        return True
+
+    monkeypatch.setattr(admin_core, "post_tts_cache_report", _fake)
+    c = _cand("Namaste ji.", fixed=True)
+    cache.ladder([c]); cache.store(c, _pcm(800))
+    out = await routes.tts_cache_report_now(_Req())
+    assert out["pushed"] == 1 and out["ok"] is True
+    assert sent["ids"] == [ttscache.UNATTRIBUTED]

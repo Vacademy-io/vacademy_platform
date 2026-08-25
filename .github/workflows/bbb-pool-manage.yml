@@ -396,17 +396,16 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15"
 
           echo "[${{ matrix.slug }}] Shipping recording hook + heal service + health dashboard files to $IP"
-          ssh $SSH_OPTS root@$IP "mkdir -p /tmp/vacademy-bbb"
-          scp $SSH_OPTS \
-            bigbluebutton-server/post-publish-s3-upload.sh \
-            bigbluebutton-server/install-recording-hook.sh \
-            bigbluebutton-server/bbb-heal-service.py \
-            bigbluebutton-server/bbb-heal-service.service \
-            bigbluebutton-server/vacademy-heal.nginx \
-            bigbluebutton-server/bbb-health-dashboard.py \
-            bigbluebutton-server/bbb-health-dashboard.service \
-            bigbluebutton-server/vacademy-health.nginx \
-            root@$IP:/tmp/vacademy-bbb/
+          # Copy the WHOLE directory rather than a hand-maintained file list.
+          # install-recording-hook.sh reads several paths relative to its own
+          # directory — systemd/bbb-rap-resque-worker.service.d/lowprio.conf, the
+          # highprio.conf drop-ins, bbb-recording-drain.sh, bbb-rap-autotune.sh and
+          # their units — none of which were in the old explicit list, so step 9/10
+          # died on `cp: cannot stat` and took the whole start job down with it.
+          # A recursive copy means adding a file to the repo can never again break
+          # the daily start.
+          ssh $SSH_OPTS root@$IP "rm -rf /tmp/vacademy-bbb && mkdir -p /tmp/vacademy-bbb"
+          scp -r $SSH_OPTS bigbluebutton-server/* root@$IP:/tmp/vacademy-bbb/
 
           # Read BBB secret from the running server — no need to store per-server secrets in GitHub
           echo "[${{ matrix.slug }}] Reading BBB secret from server"
@@ -435,7 +434,12 @@ jobs:
       - name: Sync per-institute custom live-class domains
         # Aliases resolve to the PRIMARY pool server only (BbbServerRouter.isPrimary),
         # so there is nothing to do on any other server in the pool.
-        if: steps.check.outputs.skip != 'true' && matrix.priority == 1
+        #
+        # `!cancelled()` deliberately decouples this from the recording-hook step:
+        # those are unrelated concerns, and a recording-pipeline problem should not
+        # leave an institute's live-class domain pointing at a dead IP. The job still
+        # reports failure if the earlier step failed.
+        if: "!cancelled() && steps.check.outputs.skip != 'true' && matrix.priority == 1"
         env:
           SSH_PRIVATE_KEY: ${{ secrets.BBB_SSH_PRIVATE_KEY }}
           INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}

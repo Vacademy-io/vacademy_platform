@@ -153,7 +153,8 @@ public class SuperAdminCallService {
      * telephony leg fractionally understated every short call.
      */
     private Map<String, Double> breakdown(Map<String, Double> card, String ttsModel,
-                                          double minutes, int seconds, Integer ttsChars) {
+                                          double minutes, int seconds, Integer ttsChars,
+                                          Integer charsSynthesised, Integer charsSaved) {
         String engine = (ttsModel == null || ttsModel.isBlank()) ? "sarvam" : ttsModel.trim().toLowerCase();
         long billedMinutes = seconds <= 0 ? 0 : (seconds + 59) / 60;
         Map<String, Double> b = new LinkedHashMap<>();
@@ -168,11 +169,40 @@ public class SuperAdminCallService {
         // disagree, and the average stays as the fallback for any call whose blob is
         // absent (cache off, older row, a bot that crashed before reporting).
         double ttsPerMin = card.getOrDefault("tts_" + engine, 0d);
-        b.put("tts", round(ttsChars != null && ttsChars > 0
-                ? ttsChars / CHARS_PER_CALL_MINUTE * ttsPerMin
-                : ttsPerMin * minutes));
+        b.put("tts", round(billableChars(minutes, ttsChars, charsSynthesised, charsSaved)
+                / CHARS_PER_CALL_MINUTE * ttsPerMin));
         b.put("llm", round(card.getOrDefault("llm", 0d) * minutes));
         return b;
+    }
+
+    /**
+     * Characters we actually PAID the vendor for, best source first.
+     *
+     * <p>A call served largely from the speech cache costs a fraction of its duration.
+     * One 8m42s call showed 60 cache hits against 19 misses - ~76% of its characters
+     * never left the box - yet it was costed at the full 8.7 minutes while the panel
+     * beside it reported Rs 7.25 saved. Two lines about the same call, disagreeing.
+     *
+     * <ol>
+     *   <li>{@code cacheCharsSynthesised} - the misses, i.e. exactly what the vendor
+     *       was asked to speak. Exact, and present on any engine once the cache is on.
+     *   <li>{@code chars} - the vendor's own credits callback. Already excludes cache
+     *       hits (it only fires on a real synthesis), so it needs no subtraction. Only
+     *       some engines report it.
+     *   <li>duration x the 779 average MINUS what the cache saved. The fallback when
+     *       neither is measured, and it cannot disagree with the savings line because
+     *       both use the one divisor.
+     * </ol>
+     */
+    private static double billableChars(double minutes, Integer ttsChars,
+                                        Integer charsSynthesised, Integer charsSaved) {
+        if (charsSynthesised != null && charsSynthesised > 0) return charsSynthesised;
+        if (ttsChars != null && ttsChars > 0) return ttsChars;
+        double modelled = minutes * CHARS_PER_CALL_MINUTE;
+        double saved = (charsSaved != null && charsSaved > 0) ? charsSaved : 0d;
+        // Never negative: a cache that saved more than the average predicts is a
+        // statement about the average, not a refund.
+        return Math.max(0d, modelled - saved);
     }
 
     /**
@@ -382,7 +412,9 @@ public class SuperAdminCallService {
             double minutes = secs / 60.0;
             String tts = (String) r[6];
             Integer ttsChars = diagInt((String) r[18], "chars");
-            Map<String, Double> b = breakdown(card, tts, minutes, secs, ttsChars);
+            Map<String, Double> b = breakdown(card, tts, minutes, secs, ttsChars,
+                    diagInt((String) r[18], "cacheCharsSynthesised"),
+                    diagInt((String) r[18], "cacheCharsSaved"));
             double cost = round(b.values().stream().mapToDouble(Double::doubleValue).sum());
             double billed = round(billedInr(card, surcharge, pricing, tts,
                     (String) r[10], (String) r[19], secs));
@@ -491,7 +523,13 @@ public class SuperAdminCallService {
                                          THEN CAST(r.diagnostics->'tts'->>'chars' AS bigint) END), 0),
                        COALESCE(sum(r.duration_seconds) FILTER (
                            WHERE r.diagnostics->'tts'->>'chars' IS NULL
-                              OR NOT (r.diagnostics->'tts'->>'chars' ~ '^[0-9]+$')), 0)
+                              OR NOT (r.diagnostics->'tts'->>'chars' ~ '^[0-9]+$')), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheCharsSynthesised' ~ '^[0-9]+$'
+                                         THEN CAST(r.diagnostics->'tts'->>'cacheCharsSynthesised' AS bigint) END), 0),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheCharsSaved' ~ '^[0-9]+$'
+                                          AND (r.diagnostics->'tts'->>'chars' IS NULL
+                                               OR NOT (r.diagnostics->'tts'->>'chars' ~ '^[0-9]+$'))
+                                         THEN CAST(r.diagnostics->'tts'->>'cacheCharsSaved' AS bigint) END), 0)
                 """ + BASE_FROM + " GROUP BY 1");
         bind(q, instituteId, from, to, health, disposition, agentId);
 
@@ -535,8 +573,16 @@ public class SuperAdminCallService {
             long measuredChars = ((Number) r[14]).longValue();
             double unmeasuredMins = ((Number) r[15]).longValue() / 60.0;
             double ttsPerMin = card.getOrDefault("tts_" + engine, 0d);
-            b.put("tts", round(measuredChars / CHARS_PER_CALL_MINUTE * ttsPerMin
-                               + unmeasuredMins * ttsPerMin));
+            // [16] what the vendor synthesised, [17] savings belonging ONLY to rows we
+            // could not measure - subtracting the whole group's savings would discount
+            // rows that were already exact. Indices verified against this query's own
+            // column count, not eyeballed: reading the wrong one here previously
+            // invoiced ~6,500 phantom minutes of TTS.
+            long synthChars = ((Number) r[16]).longValue();
+            long savedUnmeasured = ((Number) r[17]).longValue();
+            double chars = measuredChars + synthChars
+                    + Math.max(0d, unmeasuredMins * CHARS_PER_CALL_MINUTE - savedUnmeasured);
+            b.put("tts", round(chars / CHARS_PER_CALL_MINUTE * ttsPerMin));
             b.put("llm", round(card.getOrDefault("llm", 0d) * mins));
             b.forEach((k, v) -> agg.merge(k, v, Double::sum));
             cost += b.values().stream().mapToDouble(Double::doubleValue).sum();

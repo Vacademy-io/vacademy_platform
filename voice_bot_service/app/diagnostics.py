@@ -260,6 +260,10 @@ class CallDiagnostics:
     tts_cache_hits: Optional[int] = None
     tts_cache_misses: Optional[int] = None
     tts_cache_chars_saved: int = 0
+    # Characters we DID pay for: the misses. The counterpart of tts_cache_chars_saved,
+    # and the only exact basis for what a call cost on an engine that reports no
+    # credits of its own. note_tts_cache_miss already received this and dropped it.
+    tts_cache_chars_synth: int = 0
     tts_cache_secs_saved: float = 0.0
 
     # ── infrastructure ──
@@ -331,6 +335,7 @@ class CallDiagnostics:
         try:
             self._arm_cache_counters()
             self.tts_cache_misses += 1
+            self.tts_cache_chars_synth += int(chars or 0)
         except Exception:
             pass
 
@@ -808,6 +813,11 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "cacheMisses": d.tts_cache_misses,
                 "cacheCharsSaved": (d.tts_cache_chars_saved
                                     if d.tts_cache_hits is not None else None),
+                # What the vendor was actually asked to synthesise. Cost is priced off
+                # THIS, not off call duration: a call served 76% from cache paid for
+                # 24% of its characters.
+                "cacheCharsSynthesised": (d.tts_cache_chars_synth
+                                          if d.tts_cache_hits is not None else None),
                 "cacheSecsSaved": (round(d.tts_cache_secs_saved, 2)
                                    if d.tts_cache_hits is not None else None),
                 "cacheHitRate": _hit_rate(d.tts_cache_hits, d.tts_cache_misses),

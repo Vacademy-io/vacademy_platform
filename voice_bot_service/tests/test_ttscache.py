@@ -1046,3 +1046,35 @@ def test_owns_text_frame_defaults_to_not_emitting():
     one corrupts the transcript. Prefer the recoverable failure."""
     class _Unknown: pass
     assert ttscache.owns_text_frame(_Unknown()) is False
+
+
+def test_a_hit_records_itself_even_with_no_prior_provenance(cache):
+    """THE reason every backfilled entry read 0 hits forever.
+
+    A cache HIT never ladders — only the miss path adds a candidate — so the
+    provenance row may not exist when the first hit lands, and it certainly does
+    not for anything laddered before per-agent tracking existed. This used to be
+    a bare UPDATE, which matched zero rows there and dropped the hit silently.
+    """
+    c = _cand("Namaste ji.", fixed=True)          # laddered with NO agent_id
+    cache.ladder([c]); cache.store(c, _pcm(600))
+    assert [e for e in cache.export_for_report()
+            if e["agentId"] == "agent-a"] == [], "no provenance row yet"
+
+    cache._bump_agent_hit(c.key, "agent-a", "AGENT-A", "inst-1")
+
+    rows = [e for e in cache.export_for_report() if e["agentId"] == "agent-a"]
+    assert len(rows) == 1, "the hit must CREATE the attribution row"
+    assert rows[0]["hits"] == 1
+    assert rows[0]["agentName"] == "AGENT-A"
+    assert rows[0]["sentence"] == "Namaste ji."
+
+
+def test_repeated_hits_accumulate_on_the_same_row(cache):
+    c = _acand("Theek hai.", "agent-a", fixed=True)
+    cache.ladder([c])
+    for _ in range(3):
+        cache._bump_agent_hit(c.key, "agent-a", "AGENT-A", "inst-1")
+    row = [e for e in cache.export_for_report() if e["agentId"] == "agent-a"][0]
+    assert row["hits"] == 3
+    assert row["sightings"] == 1, "a hit is not a sighting — ladder owns that"

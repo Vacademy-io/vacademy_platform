@@ -551,22 +551,41 @@ class SpeechCache:
 
     # -- ledger -------------------------------------------------------------
 
-    def note_hit_for_agent(self, key: str, agent_id: str) -> None:
+    def note_hit_for_agent(self, key: str, agent_id: str, agent_name: str = "",
+                           institute_id: str = "") -> None:
         """Attribute a cache hit to an agent. Fire-and-forget: analytics must
         never be a reason a call goes wrong."""
         if not (key and agent_id):
             return
         try:
-            asyncio.get_running_loop().create_task(
-                asyncio.to_thread(self._bump_agent_hit, key, agent_id))
+            asyncio.get_running_loop().create_task(asyncio.to_thread(
+                self._bump_agent_hit, key, agent_id, agent_name, institute_id))
         except RuntimeError:
             pass
 
-    def _bump_agent_hit(self, key: str, agent_id: str) -> None:
+    def _bump_agent_hit(self, key: str, agent_id: str, agent_name: str = "",
+                        institute_id: str = "") -> None:
+        """UPSERT, not UPDATE.
+
+        A cache HIT never ladders — only the miss path adds a candidate — so the
+        provenance row may not exist when the first hit lands. It certainly does
+        not for anything laddered before per-agent tracking existed. A bare
+        UPDATE matched zero rows there and threw the hit away silently, which is
+        why every one of those entries read 0 hits no matter how often it was
+        served. A hit is itself proof this agent spoke the line, so it is enough
+        to create the row.
+        """
         try:
             with self._connect() as db:
-                db.execute("UPDATE seen_agent SET hits = hits + 1, last_hit_at = ?"
-                           " WHERE key = ? AND agent_id = ?", (time.time(), key, agent_id))
+                db.execute(
+                    "INSERT INTO seen_agent(key, agent_id, agent_name,"
+                    " institute_id, sightings, hits, last_hit_at)"
+                    " VALUES(?,?,?,?,0,1,?)"
+                    " ON CONFLICT(key, agent_id) DO UPDATE SET"
+                    " hits = hits + 1, last_hit_at = excluded.last_hit_at,"
+                    " agent_name = COALESCE(NULLIF(excluded.agent_name,''), agent_name),"
+                    " institute_id = COALESCE(NULLIF(excluded.institute_id,''), institute_id)",
+                    (key, agent_id, agent_name or "", institute_id or "", time.time()))
         except Exception:
             logger.debug("tts-cache: agent hit bookkeeping failed", exc_info=True)
 
@@ -1135,7 +1154,8 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                 if blob:
                     _bump("note_tts_cache_hit", entry.duration_ms, len(norm))
                     cache.note_hit(key)
-                    cache.note_hit_for_agent(key, agent_id)
+                    cache.note_hit_for_agent(key, agent_id, agent_name,
+                                             institute_id)
                     logger.info("tts-cache: HIT {}ms {!r}", entry.duration_ms, norm[:48])
 
                     # Emit the turn brackets ONLY if the base class is not already

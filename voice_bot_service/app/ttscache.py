@@ -204,6 +204,14 @@ def _num(v) -> str:
         return str(v)
 
 
+#: Ledger rows written before per-agent provenance existed have no owner and
+#: cannot gain one retroactively. They are reported under these sentinels so the
+#: analytics screens show them for what they are, rather than silently losing
+#: them to a join — which is exactly what happened on the first rollout.
+UNATTRIBUTED = "(unattributed)"
+UNATTRIBUTED_NAME = "(before per-agent tracking)"
+
+
 def cache_key(*, engine: str, model: str, voice: str, pace, temperature,
               sample_rate: int, term_map_version: str, text: str,
               salt: Optional[str] = None) -> str:
@@ -614,20 +622,33 @@ class SpeechCache:
         answer to "what is not cached yet" — the misses screen is exactly these
         rows. Bounded, because a report is not a reason to load an unbounded
         result set into memory on a box that is also carrying live calls.
+
+        LEFT JOIN on seen_agent for the same reason, learned the hard way: this
+        was an INNER JOIN, and seen_agent is only written for a candidate that
+        carries an agent_id. Every sentence laddered before per-agent tracking
+        existed therefore had no provenance row, so a ledger holding 73 real
+        sentences exported ZERO and the analytics table stayed empty with no
+        error anywhere. Those rows are reported under a sentinel agent instead
+        of being dropped: their sightings are real (seen.count), their hits are
+        not knowable per agent and so read 0. Labelling what we do not know
+        beats both discarding it and inventing an owner for it.
         """
         try:
             with self._connect() as db:
                 rows = db.execute(
-                    "SELECT s.key, sa.agent_id, sa.agent_name, sa.institute_id,"
+                    "SELECT s.key,"
+                    "       COALESCE(sa.agent_id, ?), COALESCE(sa.agent_name, ?),"
+                    "       sa.institute_id,"
                     " s.engine, s.model, s.voice, s.text, s.chars, s.fixed,"
-                    " sa.sightings, sa.hits, sa.last_hit_at,"
+                    "       COALESCE(sa.sightings, s.count), COALESCE(sa.hits, 0),"
+                    "       sa.last_hit_at,"
                     " s.first_seen, s.last_seen,"
                     " b.key IS NOT NULL, b.nbytes, b.duration_ms"
                     " FROM seen s"
-                    " JOIN seen_agent sa ON sa.key = s.key"
+                    " LEFT JOIN seen_agent sa ON sa.key = s.key"
                     " LEFT JOIN blob b ON b.key = s.key"
-                    " ORDER BY sa.hits DESC, s.chars DESC LIMIT ?",
-                    (limit,)).fetchall()
+                    " ORDER BY COALESCE(sa.hits, 0) DESC, s.chars DESC LIMIT ?",
+                    (UNATTRIBUTED, UNATTRIBUTED_NAME, limit)).fetchall()
             out = []
             for r in rows:
                 out.append({

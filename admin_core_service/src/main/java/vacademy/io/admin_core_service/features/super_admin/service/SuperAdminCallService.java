@@ -153,13 +153,24 @@ public class SuperAdminCallService {
      * telephony leg fractionally understated every short call.
      */
     private Map<String, Double> breakdown(Map<String, Double> card, String ttsModel,
-                                          double minutes, int seconds) {
+                                          double minutes, int seconds, Integer ttsChars) {
         String engine = (ttsModel == null || ttsModel.isBlank()) ? "sarvam" : ttsModel.trim().toLowerCase();
         long billedMinutes = seconds <= 0 ? 0 : (seconds + 59) / 60;
         Map<String, Double> b = new LinkedHashMap<>();
         b.put("plivo", round(card.getOrDefault("plivo", 0d) * billedMinutes));
         b.put("stt", round(card.getOrDefault("stt_sarvam", 0d) * minutes));
-        b.put("tts", round(card.getOrDefault("tts_" + engine, 0d) * minutes));
+        // TTS is the one component the bot meters EXACTLY: the vendor bills per
+        // character and diagnostics.tts.chars is the count it actually synthesised.
+        // Prefer it over duration x the fleet average, because 779 chars/call-min is
+        // a mean and every real call sits somewhere off it — an agent that monologues
+        // exceeds it and was being under-costed, one whose caller does the talking was
+        // being over-costed. Same divisor as the savings line, so the two still cannot
+        // disagree, and the average stays as the fallback for any call whose blob is
+        // absent (cache off, older row, a bot that crashed before reporting).
+        double ttsPerMin = card.getOrDefault("tts_" + engine, 0d);
+        b.put("tts", round(ttsChars != null && ttsChars > 0
+                ? ttsChars / CHARS_PER_CALL_MINUTE * ttsPerMin
+                : ttsPerMin * minutes));
         b.put("llm", round(card.getOrDefault("llm", 0d) * minutes));
         return b;
     }
@@ -370,7 +381,8 @@ public class SuperAdminCallService {
             int secs = r[14] == null ? 0 : ((Number) r[14]).intValue();
             double minutes = secs / 60.0;
             String tts = (String) r[6];
-            Map<String, Double> b = breakdown(card, tts, minutes, secs);
+            Integer ttsChars = diagInt((String) r[18], "chars");
+            Map<String, Double> b = breakdown(card, tts, minutes, secs, ttsChars);
             double cost = round(b.values().stream().mapToDouble(Double::doubleValue).sum());
             double billed = round(billedInr(card, surcharge, pricing, tts,
                     (String) r[10], (String) r[19], secs));
@@ -394,7 +406,11 @@ public class SuperAdminCallService {
                     .diagnostics((String) r[18])
                     .costInr(cost).billedInr(billed).marginInr(margin)
                     .marginPct(billed > 0 ? round(margin / billed * 100) : null)
+                    // Still true overall: plivo, stt and llm remain duration-modelled.
+                    // ttsCharsMeasured is what tells the UI that the TTS line, at least,
+                    // is the vendor's own metered quantity on this particular call.
                     .costBreakdown(b).costIsModelled(true)
+                    .ttsCharsMeasured(ttsChars)
                     .ttsCacheHits(cacheHits)
                     .ttsCacheMisses(diagInt(diagJson, "cacheMisses"))
                     .ttsCacheCharsSaved(cacheHits == null ? null : cacheChars)
@@ -470,7 +486,12 @@ public class SuperAdminCallService {
                                          THEN CAST(r.diagnostics->'tts'->>'cacheMisses' AS bigint) END), 0),
                        COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'cacheCharsSaved' ~ '^[0-9]+$'
                                          THEN CAST(r.diagnostics->'tts'->>'cacheCharsSaved' AS bigint) END), 0),
-                       count(*) FILTER (WHERE r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$')
+                       count(*) FILTER (WHERE r.diagnostics->'tts'->>'cacheHits' ~ '^[0-9]+$'),
+                       COALESCE(sum(CASE WHEN r.diagnostics->'tts'->>'chars' ~ '^[0-9]+$'
+                                         THEN CAST(r.diagnostics->'tts'->>'chars' AS bigint) END), 0),
+                       COALESCE(sum(r.duration_seconds) FILTER (
+                           WHERE r.diagnostics->'tts'->>'chars' IS NULL
+                              OR NOT (r.diagnostics->'tts'->>'chars' ~ '^[0-9]+$')), 0)
                 """ + BASE_FROM + " GROUP BY 1");
         bind(q, instituteId, from, to, health, disposition, agentId);
 
@@ -503,7 +524,19 @@ public class SuperAdminCallService {
             Map<String, Double> b = new LinkedHashMap<>();
             b.put("plivo", round(card.getOrDefault("plivo", 0d) * billedMins));
             b.put("stt", round(card.getOrDefault("stt_sarvam", 0d) * mins));
-            b.put("tts", round(card.getOrDefault("tts_" + engine, 0d) * mins));
+            // Mirror of breakdown(): metered characters where the bot reported them,
+            // the 779 chars/call-min average only for the calls it did not. Computed
+            // the same way in both places so the summary can never drift from the
+            // rows it is summing.
+            // [13] is the count of calls that MEASURED; the characters are [14]
+            // and the unmeasured seconds [15]. Reading 13/14 here billed a call
+            // count as characters and characters as seconds — a group with 390k
+            // characters invoiced ~6,500 phantom minutes of TTS.
+            long measuredChars = ((Number) r[14]).longValue();
+            double unmeasuredMins = ((Number) r[15]).longValue() / 60.0;
+            double ttsPerMin = card.getOrDefault("tts_" + engine, 0d);
+            b.put("tts", round(measuredChars / CHARS_PER_CALL_MINUTE * ttsPerMin
+                               + unmeasuredMins * ttsPerMin));
             b.put("llm", round(card.getOrDefault("llm", 0d) * mins));
             b.forEach((k, v) -> agg.merge(k, v, Double::sum));
             cost += b.values().stream().mapToDouble(Double::doubleValue).sum();

@@ -168,7 +168,7 @@ public class TtsCacheAnalyticsService {
         Map<String, Double> card = callService.rateCard();
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT e.agent_id,
-                       COALESCE(a.name, '(deleted agent)'),
+                       COALESCE(a.name, e.agent_id),
                        e.institute_id,
                        i.name,
                        max(e.engine), max(e.voice),

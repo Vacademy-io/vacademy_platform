@@ -17,7 +17,7 @@ import {
   X,
   Minus,
 } from "@phosphor-icons/react";
-import { isToday } from "date-fns";
+import { format, isToday, parseISO } from "date-fns";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import iconAttendance from "@/assets/cleaner-play/icon-attendance.webp";
@@ -146,6 +146,18 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
     (total === 0 && (!showStreak || streak === 0)) ||
     (present === 0 && !hasMarkedDay);
 
+  // The chosen period is only an upper bound: the backend also floors results at
+  // the learner's enrolment date, and a studio may have no older sessions. When
+  // it does, "30 Days" and "3 Months" return the identical set and the card
+  // reads as broken — state the span actually covered so the numbers make sense.
+  const coverageNote =
+    !isEmpty && stats?.firstClassDay
+      ? `${total} class ${total === 1 ? "day" : "days"} since ${format(
+          parseISO(stats.firstClassDay),
+          "d MMM"
+        )}`
+      : null;
+
   // Empty-state copy has to drop the streak framing too, else an institute with
   // game mechanics off still reads "start your streak".
   const emptyTitle = showStreak
@@ -272,16 +284,25 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
               />
             </div>
 
+            {coverageNote && (
+              <p className="text-3xs font-bold text-play-ink/60">{coverageNote}</p>
+            )}
+
             {weeklyData && (
-              <div className="flex justify-between px-1">
-                {weeklyData.days.map((day) => (
-                  <DayDot
-                    key={day.day}
-                    status={day.status}
-                    label={day.day}
-                    isCurrentDay={isToday(day.date)}
-                  />
-                ))}
+              <div className="space-y-1.5">
+                {/* Always the CURRENT Mon-Sun week — it does not follow the
+                    period toggle above, so it is labelled to say so. */}
+                <p className="text-3xs font-bold uppercase tracking-widest text-play-ink/60">This week</p>
+                <div className="flex justify-between px-1">
+                  {weeklyData.days.map((day) => (
+                    <DayDot
+                      key={day.day}
+                      status={day.status}
+                      label={day.day}
+                      isCurrentDay={isToday(day.date)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </>
@@ -398,16 +419,25 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
               />
             </div>
 
+            {coverageNote && (
+              <p className="cp-muted text-3xs">{coverageNote}</p>
+            )}
+
             {weeklyData && (
-              <div className="flex justify-between px-1">
-                {weeklyData.days.map((day) => (
-                  <DayDot
-                    key={day.day}
-                    status={day.status}
-                    label={day.day}
-                    isCurrentDay={isToday(day.date)}
-                  />
-                ))}
+              <div className="space-y-1.5">
+                {/* Always the CURRENT Mon-Sun week — it does not follow the
+                    period toggle above, so it is labelled to say so. */}
+                <p className="cp-muted text-3xs uppercase tracking-widest">This week</p>
+                <div className="flex justify-between px-1">
+                  {weeklyData.days.map((day) => (
+                    <DayDot
+                      key={day.day}
+                      status={day.status}
+                      label={day.day}
+                      isCurrentDay={isToday(day.date)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </>
@@ -544,16 +574,25 @@ export function AttendanceWidget({ showStreak = true }: { showStreak?: boolean }
             </div>
 
             {/* Weekly grid */}
+            {coverageNote && (
+              <p className="text-3xs text-muted-foreground">{coverageNote}</p>
+            )}
+
             {weeklyData && (
-              <div className="flex justify-between px-1">
-                {weeklyData.days.map((day) => (
-                  <DayDot
-                    key={day.day}
-                    status={day.status}
-                    label={day.day}
-                    isCurrentDay={isToday(day.date)}
-                  />
-                ))}
+              <div className="space-y-1.5">
+                {/* Always the CURRENT Mon-Sun week — it does not follow the
+                    period toggle above, so it is labelled to say so. */}
+                <p className="text-3xs uppercase tracking-widest text-muted-foreground">This week</p>
+                <div className="flex justify-between px-1">
+                  {weeklyData.days.map((day) => (
+                    <DayDot
+                      key={day.day}
+                      status={day.status}
+                      label={day.day}
+                      isCurrentDay={isToday(day.date)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </>

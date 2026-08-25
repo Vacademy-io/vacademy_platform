@@ -609,10 +609,23 @@ class Settings:
 
     # How many times a sentence must be seen — COMPLETE, uninterrupted, confirmed
     # played to the caller, on a call with a healthy verdict — before we spend one
-    # off-call render on it. Break-even is 3 uses. 2 catches recurring names and
-    # script lines early; raise it if the ledger shows a fat twice-only tail.
+    # off-call render on it.
+    #
+    # 1, because the arithmetic favours it. Counting vendor payments for a
+    # sentence spoken N times: no cache costs N; at 2 it costs 3 (two live plus
+    # the render) and is free from the third use; at 1 it costs 2 and is free
+    # from the SECOND. So 1 wins whenever a sentence recurs at all, and loses
+    # exactly one render for each that never does.
+    #
+    # Measured on shreya-v3's first day: 54 of 73 sentences sat at one sighting,
+    # so 2 was holding back the entire backlog. Rendering all 54 speculatively
+    # costs 4,237 chars — about Rs 7 — and happens off-call, where it buys no
+    # latency penalty. The hedge was costing more than it saved.
+    #
+    # Raise it if the ledger ever shows a fat never-recurring tail; that is the
+    # signal this trade has flipped.
     tts_cache_min_seen: int = field(
-        default_factory=lambda: int(_env("TTS_CACHE_MIN_SEEN", "2")))
+        default_factory=lambda: int(_env("TTS_CACHE_MIN_SEEN", "1")))
 
     # Own budget, because _evict_tts_cache only sweeps *.mp3 — this namespace
     # would otherwise grow until the volume is full. 8 kHz s16 = 16 KB/s, so

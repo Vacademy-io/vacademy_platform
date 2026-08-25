@@ -332,6 +332,9 @@ def test_a_row_whose_file_vanished_is_not_indexed(cache):
 # ── the ledger ──────────────────────────────────────────────────────────────
 
 def test_render_is_due_only_after_min_seen_sightings(cache):
+    """The knob still works when raised — _Settings pins it to 2, while the
+    shipped default is 1. This is the way back if the ledger ever shows a fat
+    never-recurring tail, so it has to keep being exercised."""
     c = _cand("Yeh humara flagship programme hai.")
     cache.ladder([c])
     assert cache.due() == []                    # once seen is not evidence
@@ -918,3 +921,21 @@ async def test_report_now_pushes_unattributed_history(routes, cache, monkeypatch
     out = await routes.tts_cache_report_now(_Req())
     assert out["pushed"] == 1 and out["ok"] is True
     assert sent["ids"] == [ttscache.UNATTRIBUTED]
+
+
+def test_min_seen_defaults_to_one(monkeypatch):
+    """A sentence renders on its FIRST sighting, not its second.
+
+    Counting vendor payments for a line spoken N times: no cache costs N; at a
+    threshold of 2 it costs 3 (two live plus the render) and is free from the
+    third use; at 1 it costs 2 and is free from the SECOND. So 1 wins whenever
+    the line recurs at all and loses one cheap off-call render when it does not.
+
+    Pinned because the value is a silent economic trade — nothing fails if it
+    drifts back to 2, the cache just quietly stops earning on everything with a
+    short tail. Measured on shreya-v3's first day, 54 of 73 sentences sat at one
+    sighting, so a threshold of 2 was holding back the whole backlog.
+    """
+    monkeypatch.delenv("TTS_CACHE_MIN_SEEN", raising=False)
+    from app.config import Settings
+    assert Settings().tts_cache_min_seen == 1

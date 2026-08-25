@@ -37,6 +37,8 @@ import CustomHTMLCard from './-components/CustomHTMLCard';
 import InviteAvailabilityCard from './-components/InviteAvailabilityCard';
 import PostFormFillConfigurationCard from './-components/PostFormFillConfigurationCard';
 import SubOrgSettingsCard from './-components/SubOrgSettingsCard';
+import TeamNotificationsCard from './-components/TeamNotificationsCard';
+import { MultiEmailInputHandle } from '@/routes/audience-manager/list/-components/audience-invite/components/MultiEmailInput';
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { handleEnrollInvite, handleGetEnrollSingleInviteDetails } from './-services/enroll-invite';
@@ -166,6 +168,7 @@ const GenerateInviteLinkDialog = ({
             accessDurationDays: '',
             inviteeEmail: '',
             inviteeEmails: [],
+            teamNotificationEmails: [],
             customHtml: '',
             showRelatedCourses: false,
             selectedOptionValue: 'textfield',
@@ -244,6 +247,9 @@ const GenerateInviteLinkDialog = ({
 
     const { uploadFile, getPublicUrl } = useFileUpload();
 
+    // Lets the submit handler commit a half-typed Team Notifications address before
+    // the payload is built (the input's blur is unreliable on a button click).
+    const teamNotificationsRef = useRef<MultiEmailInputHandle>(null);
     const coursePreviewRef = useRef<HTMLInputElement>(null);
     const courseBannerRef = useRef<HTMLInputElement>(null);
     const courseMediaRef = useRef<HTMLInputElement>(null);
@@ -900,6 +906,13 @@ const GenerateInviteLinkDialog = ({
                         memberCount: subOrg?.MEMBER_COUNT ?? null,
                     };
                 })(),
+                teamNotificationEmails: (
+                    safeJsonParse(inviteLinkDetails?.setting_json, {})?.setting
+                        ?.NOTIFICATION_SETTING?.TO_NOTIFY || ''
+                )
+                    .split(',')
+                    .map((email: string) => email.trim())
+                    .filter(Boolean),
                 autopaySettings: (() => {
                     const autopay = safeJsonParse(inviteLinkDetails?.setting_json, {})?.setting
                         ?.AUTOPAY_SETTING;
@@ -1040,6 +1053,9 @@ const GenerateInviteLinkDialog = ({
 
                             {/* Sub-organization Settings Card */}
                             <SubOrgSettingsCard form={form} />
+
+                            {/* Team members notified on every form fill */}
+                            <TeamNotificationsCard form={form} ref={teamNotificationsRef} />
                         </form>
                     </Form>
                 </div>
@@ -1058,7 +1074,10 @@ const GenerateInviteLinkDialog = ({
                         scale="small"
                         buttonType="primary"
                         className="p-5"
-                        onClick={handleSubmit(onSubmit, onInvalid)}
+                        onClick={() => {
+                            teamNotificationsRef.current?.flush();
+                            handleSubmit(onSubmit, onInvalid)();
+                        }}
                         disable={!form.watch('name') || handleSubmitInviteLinkMutation.isPending}
                     >
                         {handleSubmitInviteLinkMutation.isPending ? (

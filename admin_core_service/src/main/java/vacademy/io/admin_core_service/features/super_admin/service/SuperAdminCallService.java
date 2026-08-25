@@ -425,8 +425,12 @@ public class SuperAdminCallService {
             // the 779 chars/call-min average only for the calls it did not. Computed
             // the same way in both places so the summary can never drift from the
             // rows it is summing.
-            long measuredChars = ((Number) r[13]).longValue();
-            double unmeasuredMins = ((Number) r[14]).longValue() / 60.0;
+            // [13] is the count of calls that MEASURED; the characters are [14]
+            // and the unmeasured seconds [15]. Reading 13/14 here billed a call
+            // count as characters and characters as seconds — a group with 390k
+            // characters invoiced ~6,500 phantom minutes of TTS.
+            long measuredChars = ((Number) r[14]).longValue();
+            double unmeasuredMins = ((Number) r[15]).longValue() / 60.0;
             double ttsPerMin = card.getOrDefault("tts_" + engine, 0d);
             b.put("tts", round(measuredChars / CHARS_PER_CALL_MINUTE * ttsPerMin
                                + unmeasuredMins * ttsPerMin));

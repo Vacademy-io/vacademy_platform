@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Microsoft Store (AppX) Windows build script for ZOE Edtech.
+# Microsoft Store (AppX) Windows build script for ZOE Online School.
 # Publishes under the Shiksha Nation Partner Center account (shared publisher
 # identity CN=86D745F8-... in electron-builder.zoe-store.json).
 #
@@ -27,7 +27,7 @@ trap cleanup EXIT
 export FLAVOR="zoe"
 export VITE_ELECTRON_APP_ID="com.zoeedtech.app"
 
-echo "🚀 Building ZOE Edtech Windows Store (AppX) App (x64 + x86)"
+echo "🚀 Building ZOE Online School Windows Store (AppX) App (x64 + x86)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "   FLAVOR=$FLAVOR"
 echo "   VITE_ELECTRON_APP_ID=$VITE_ELECTRON_APP_ID"
@@ -64,14 +64,14 @@ echo -e "${GREEN}✅ Flavor file written${NC}"
 echo ""
 
 # Step 4: Patch package.json for ZOE branding
-echo -e "${BLUE}📝 Patching package.json for ZOE Edtech...${NC}"
+echo -e "${BLUE}📝 Patching package.json for ZOE Online School...${NC}"
 cp "$SCRIPT_DIR/package.json" "$SCRIPT_DIR/package.json.bak"
 node -e "
 const fs = require('fs');
 const pkg = JSON.parse(fs.readFileSync('$SCRIPT_DIR/package.json', 'utf8'));
 pkg.name = 'ZOE_Edtech';
-pkg.description = 'ZOE Global Edtech — AI-Powered Learning Platform';
-pkg.author = { name: 'ZOE Global Edtech', email: 'support@zoeedtech.com' };
+pkg.description = 'ZOE Global Online School — AI-Powered Learning Platform';
+pkg.author = { name: 'ZOE Global Online School', email: 'support@zoeedtech.com' };
 fs.writeFileSync('$SCRIPT_DIR/package.json', JSON.stringify(pkg, null, 2) + '\n');
 "
 echo -e "${GREEN}✅ package.json patched${NC}"
@@ -116,4 +116,4 @@ fi
 
 # Restore original package.json (trap also handles failures)
 mv "$SCRIPT_DIR/package.json.bak" "$SCRIPT_DIR/package.json"
-echo -e "${GREEN}✅ ZOE Edtech Store build finished. Upload dist-store/*.appx to Partner Center.${NC}"
+echo -e "${GREEN}✅ ZOE Online School Store build finished. Upload dist-store/*.appx to Partner Center.${NC}"

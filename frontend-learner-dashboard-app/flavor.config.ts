@@ -175,16 +175,16 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "student",
   },
 
-  // ZOE Edtech iOS app
+  // ZOE Online School iOS app
   "io.zoeedtech.app": {
-    appName: "ZOE Edtech",
+    appName: "ZOE Online School",
     domain: "zoeedtech.com",
     subdomain: "student",
   },
 
-  // ZOE Edtech Android app
+  // ZOE Online School Android app
   "com.zoeedtech.app": {
-    appName: "ZOE Edtech",
+    appName: "ZOE Online School",
     domain: "zoeedtech.com",
     subdomain: "student",
   },

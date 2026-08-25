@@ -1,6 +1,6 @@
 {
   "appId": "io.zoeedtech.app",
-  "productName": "ZOE Edtech",
+  "productName": "ZOE Online School",
   "directories": {
     "buildResources": "resources-zoe",
     "output": "dist-mas-zoe"
@@ -59,9 +59,9 @@
     "entitlementsLoginHelper": "entitlements.mas.loginhelper.plist"
   },
   "extraMetadata": {
-    "version": "1.0"
+    "version": "1.0.1"
   },
-  "buildVersion": "4",
+  "buildVersion": "6",
   "mac": {
     "category": "public.app-category.education",
     "icon": "assets/zoe.icns",

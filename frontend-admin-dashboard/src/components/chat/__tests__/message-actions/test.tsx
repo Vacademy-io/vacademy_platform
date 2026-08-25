@@ -191,6 +191,41 @@ describe('ChatThread message actions', () => {
         expect(screen.getByText('edited')).toBeInTheDocument();
     });
 
+    it('hides self-delete when the institute has switched it off', () => {
+        renderThread({
+            conversation: { ...conversation('MEMBER'), canDeleteOwnMessages: false },
+            messages: [message({ senderId: ME })],
+        });
+
+        expect(screen.queryByRole('button', { name: /delete message/i })).toBeNull();
+    });
+
+    it('hides self-edit when the institute has switched it off', () => {
+        renderThread({
+            conversation: { ...conversation('MEMBER'), canEditOwnMessages: false },
+            messages: [message({ senderId: ME })],
+        });
+
+        expect(screen.queryByRole('button', { name: /edit message/i })).toBeNull();
+    });
+
+    it('still lets a moderator delete OTHERS when self-delete is switched off', () => {
+        // The institute flag governs the sender path only — it must never disarm moderation.
+        renderThread({
+            conversation: { ...conversation('MODERATOR'), canDeleteOwnMessages: false },
+        });
+
+        expect(screen.getByRole('button', { name: /delete message/i })).toBeInTheDocument();
+    });
+
+    it('keeps both actions when the backend sends no flags at all', () => {
+        // An older backend omits them; absent must mean allowed, not denied.
+        renderThread({ messages: [message({ senderId: ME })] });
+
+        expect(screen.getByRole('button', { name: /delete message/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /edit message/i })).toBeInTheDocument();
+    });
+
     it('keeps the action rail hit-testable rather than display:none, anchored inside the scroll area', () => {
         // The shipped regression: the controls used `hidden` + `group-hover:block` at a NEGATIVE right
         // offset. `display:none` drops them from hit-testing until the bubble is hovered, and the gap

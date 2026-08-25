@@ -81,6 +81,7 @@ class ChatMessageDeletePermissionTest {
         when(conversationService.getActiveMemberIds(CONV)).thenReturn(Collections.emptyList());
         when(memberRepo.findByConversationIdAndUserId(CONV, callerId))
                 .thenReturn(Optional.ofNullable(callerMember));
+        when(permissionService.canDeleteOwnMessage(any(), any())).thenReturn(true);
     }
 
     private ChatConversationMember member(String userId, ChatMemberRole role, boolean active) {
@@ -157,6 +158,28 @@ class ChatMessageDeletePermissionTest {
         assertThatThrownBy(() -> service.deleteMessage(CONV, MSG, ADMIN, "ADMIN", INSTITUTE))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("NOT_ALLOWED");
+    }
+
+    @Test
+    @DisplayName("an institute that turns off student self-delete is enforced server-side")
+    void studentDeleteCanBeTurnedOffPerInstitute() {
+        given(ChatConversationType.BATCH_GROUP.name(), member(STUDENT, ChatMemberRole.MEMBER, true), STUDENT);
+        when(permissionService.canDeleteOwnMessage(INSTITUTE, "STUDENT")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.deleteMessage(CONV, MSG, STUDENT, "STUDENT", INSTITUTE))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("DELETE_NOT_ALLOWED");
+    }
+
+    @Test
+    @DisplayName("turning off student self-delete never disarms a moderator deleting their own message")
+    void selfDeleteFlagDoesNotDisarmModerators() {
+        // The flag is student-scoped, but guard the interaction explicitly: a moderator's own message
+        // must stay deletable even if the flag is somehow false for them.
+        given(ChatConversationType.BATCH_GROUP.name(), member(STUDENT, ChatMemberRole.MODERATOR, true), STUDENT);
+        when(permissionService.canDeleteOwnMessage(INSTITUTE, "ADMIN")).thenReturn(false);
+
+        service.deleteMessage(CONV, MSG, STUDENT, "ADMIN", INSTITUTE);
     }
 
     @Test

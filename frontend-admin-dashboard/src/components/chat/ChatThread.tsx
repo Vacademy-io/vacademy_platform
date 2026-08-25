@@ -147,12 +147,22 @@ export function ChatThread({
                     const isOwn = m.senderId === currentUserId;
                     // Only persisted (non-temp), non-deleted, settled messages can be deleted.
                     const isLocalOnly = m.id.startsWith('temp-') || m.pending || m.failed;
-                    const canDelete = !m.isDeleted && !isLocalOnly && (isOwn || canModerate);
+                    // Deleting your OWN message can be switched off per institute (students only);
+                    // moderation is a separate grant and is never gated by it. `!== false` so an older
+                    // backend that doesn't send the flag keeps today's behaviour.
+                    const canDeleteOwn = conversation.canDeleteOwnMessages !== false;
+                    const canDelete =
+                        !m.isDeleted && !isLocalOnly && ((isOwn && canDeleteOwn) || canModerate);
                     // Reporting targets a persisted message id, so an optimistic bubble can't be one.
                     const canReport = !!onReport && !isOwn && !isLocalOnly && !m.isDeleted;
                     // Only a message of your own that still has (or can hold) a body is editable —
                     // an edit rewrites text, so a tombstone or an unsent bubble has nothing to edit.
-                    const canEdit = !!onEdit && isOwn && !m.isDeleted && !isLocalOnly;
+                    const canEdit =
+                        !!onEdit &&
+                        isOwn &&
+                        !m.isDeleted &&
+                        !isLocalOnly &&
+                        conversation.canEditOwnMessages !== false;
                     const hasActions = canReport || canDelete || canEdit;
                     const key = dayKey(m.createdAt);
                     const showDay = key !== lastDay;

@@ -88,7 +88,8 @@ public class ChatConversationController {
             @RequestHeader(value = "clientId", required = false) String clientId,
             @Valid @RequestBody EditChatMessageRequest request) {
         ChatIdentity id = ChatIdentity.from(user, clientId);
-        return ResponseEntity.ok(messageService.editMessage(conversationId, messageId, id.userId(), request));
+        return ResponseEntity.ok(
+                messageService.editMessage(conversationId, messageId, id.userId(), id.role(), request));
     }
 
     @DeleteMapping("/conversations/{conversationId}/messages/{messageId}")

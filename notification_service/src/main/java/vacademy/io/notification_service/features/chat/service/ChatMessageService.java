@@ -189,7 +189,7 @@ public class ChatMessageService {
      */
     @Transactional
     public ChatMessageResponse editMessage(String conversationId, String messageId, String userId,
-                                           EditChatMessageRequest req) {
+                                           String userRole, EditChatMessageRequest req) {
         ChatConversation conv = convRepo.findById(conversationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "CONVERSATION_NOT_FOUND"));
 
@@ -204,6 +204,10 @@ public class ChatMessageService {
 
         if (!userId.equals(msg.getSenderId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "NOT_THE_SENDER");
+        }
+        // Institute setting (students only) — enforced HERE, not just hidden in the client.
+        if (!permissionService.canEditOwnMessage(conv.getInstituteId(), userRole)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "EDIT_NOT_ALLOWED");
         }
         if (Boolean.TRUE.equals(msg.getIsDeleted())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "MESSAGE_DELETED");
@@ -279,7 +283,14 @@ public class ChatMessageService {
 
         // Sender may delete their own message; otherwise the caller must be able to moderate here.
         boolean isSender = userId.equals(msg.getSenderId());
-        if (!isSender && !canModerate(conv, userId, userRole, instituteId)) {
+        if (isSender) {
+            // Institute setting (students only). A moderator deleting their OWN message is unaffected:
+            // the flag never applies to teachers/admins, and moderation is a separate authority below.
+            if (!permissionService.canDeleteOwnMessage(conv.getInstituteId(), userRole)
+                    && !canModerate(conv, userId, userRole, instituteId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "DELETE_NOT_ALLOWED");
+            }
+        } else if (!canModerate(conv, userId, userRole, instituteId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "NOT_ALLOWED");
         }
 

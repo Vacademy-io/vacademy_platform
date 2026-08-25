@@ -26,6 +26,9 @@ export interface ChatConversationResponse {
     memberRole?: string;
     rulesVersion?: number;
     canPost: boolean;
+    /** Institute setting (students only): may the caller edit/delete a message THEY sent? */
+    canEditOwnMessages?: boolean;
+    canDeleteOwnMessages?: boolean;
 }
 
 export interface ChatMessageResponse {

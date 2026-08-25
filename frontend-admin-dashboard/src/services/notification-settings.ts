@@ -236,6 +236,13 @@ export type ChatSettings = {
         files_enabled: boolean;
         max_file_size_mb: number;
     };
+    // What a learner may do to a message they already sent. Students only — teachers and admins keep
+    // both actions regardless. Default true: students could already delete their own messages before
+    // these flags existed, so defaulting them off would silently remove that on upgrade.
+    message_actions: {
+        students_can_edit_own: boolean;
+        students_can_delete_own: boolean;
+    };
 };
 
 // Defaults used when settings.chat is missing. Chat is OFF by default — an admin opts in here; the
@@ -282,6 +289,10 @@ export function getDefaultChatSettings(): ChatSettings {
             images_enabled: true,
             files_enabled: true,
             max_file_size_mb: 25,
+        },
+        message_actions: {
+            students_can_edit_own: true,
+            students_can_delete_own: true,
         },
     };
 }
@@ -350,6 +361,10 @@ export function mergeChatSettings(partial?: DeepPartial<ChatSettings> | null): C
         attachments: {
             ...d.attachments,
             ...(p.attachments ?? {}),
+        },
+        message_actions: {
+            ...d.message_actions,
+            ...(p.message_actions ?? {}),
         },
     };
 }

@@ -588,7 +588,11 @@ class SpeechCache:
 
         TTS_CACHE_MIN_SEEN exists for ONE reason: an LLM sentence might be a
         one-off — "Namaste Rohan ji" for a name that never recurs — and rendering
-        it would buy nothing. Waiting for a second sighting is how we find out.
+        it buys nothing. It now defaults to 1, because that hedge turned out to
+        cost more than it saved: rendering on the first sighting makes a sentence
+        free from its SECOND use instead of its third, so it wins whenever the
+        line recurs at all and loses one cheap off-call render when it does not.
+        Raise it if the ledger ever shows a fat never-recurring tail.
 
         That reasoning is simply false for a fixed line. The opening, the
         farewells, the handbacks and the fillers are authored, and every one of

@@ -128,6 +128,11 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                 if (selectedTab === 'Attempted') {
                     return {
                         id: student.user_id,
+                        // Needed by Provide Reattempt (single and bulk), which resolves
+                        // the participant by registration id. PUBLIC always mapped this;
+                        // PRIVATE dropped it, so reattempt failed with "Could not resolve
+                        // this participant's registration" on every private assessment.
+                        registration_id: student.registration_id,
                         attempt_id: student.attempt_id,
                         full_name: student.student_name,
                         package_session_id: getBatchNameById(
@@ -154,6 +159,9 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                 } else if (selectedTab === 'Ongoing') {
                     return {
                         id: student.user_id,
+                        // See the Attempted branch above — reattempt resolves by
+                        // registration id, so it must survive the mapping here too.
+                        registration_id: student.registration_id,
                         attempt_id: student.attempt_id,
                         full_name: student.student_name,
                         start_time: extractDateTime(convertToLocalDateTime(student.attempt_date))
@@ -162,6 +170,9 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                 } else if (selectedTab === 'Pending') {
                     return {
                         id: student.user_id,
+                        // See the Attempted branch above — reattempt resolves by
+                        // registration id, so it must survive the mapping here too.
+                        registration_id: student.registration_id,
                         attempt_id: student.attempt_id,
                         full_name: student.student_name,
                     };

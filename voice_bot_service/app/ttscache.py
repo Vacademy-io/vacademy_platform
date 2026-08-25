@@ -97,6 +97,20 @@ _TRAILING = "\"'’”)]》」»"
 _ASYNC_ARRIVAL_ENGINES = frozenset({"sarvam", "smallest", "rumik"})
 
 
+def per_sentence_contexts(tts) -> bool:
+    """True when each sentence gets its OWN pipecat audio context.
+
+    This is what makes cached audio safe to serve mid-turn on an async-arrival
+    engine. With one context per turn (pipecat's default) every sentence shares
+    a single FIFO drained in APPEND order, so a cached sentence — available
+    instantly — lands ahead of vendor audio still in flight for an earlier
+    sentence, and the caller hears them out of order. With one context per
+    sentence they sit in separate slots on the serialization queue, drained in
+    CREATION order, and arrival time stops mattering.
+    """
+    return not getattr(tts, "_reuse_context_id_within_turn", True)
+
+
 def is_async_arrival(engine: str) -> bool:
     """True when the engine delivers audio out-of-band from run_tts (§ ordering)."""
     return (engine or "").strip().lower() in _ASYNC_ARRIVAL_ENGINES
@@ -551,22 +565,41 @@ class SpeechCache:
 
     # -- ledger -------------------------------------------------------------
 
-    def note_hit_for_agent(self, key: str, agent_id: str) -> None:
+    def note_hit_for_agent(self, key: str, agent_id: str, agent_name: str = "",
+                           institute_id: str = "") -> None:
         """Attribute a cache hit to an agent. Fire-and-forget: analytics must
         never be a reason a call goes wrong."""
         if not (key and agent_id):
             return
         try:
-            asyncio.get_running_loop().create_task(
-                asyncio.to_thread(self._bump_agent_hit, key, agent_id))
+            asyncio.get_running_loop().create_task(asyncio.to_thread(
+                self._bump_agent_hit, key, agent_id, agent_name, institute_id))
         except RuntimeError:
             pass
 
-    def _bump_agent_hit(self, key: str, agent_id: str) -> None:
+    def _bump_agent_hit(self, key: str, agent_id: str, agent_name: str = "",
+                        institute_id: str = "") -> None:
+        """UPSERT, not UPDATE.
+
+        A cache HIT never ladders — only the miss path adds a candidate — so the
+        provenance row may not exist when the first hit lands. It certainly does
+        not for anything laddered before per-agent tracking existed. A bare
+        UPDATE matched zero rows there and threw the hit away silently, which is
+        why every one of those entries read 0 hits no matter how often it was
+        served. A hit is itself proof this agent spoke the line, so it is enough
+        to create the row.
+        """
         try:
             with self._connect() as db:
-                db.execute("UPDATE seen_agent SET hits = hits + 1, last_hit_at = ?"
-                           " WHERE key = ? AND agent_id = ?", (time.time(), key, agent_id))
+                db.execute(
+                    "INSERT INTO seen_agent(key, agent_id, agent_name,"
+                    " institute_id, sightings, hits, last_hit_at)"
+                    " VALUES(?,?,?,?,0,1,?)"
+                    " ON CONFLICT(key, agent_id) DO UPDATE SET"
+                    " hits = hits + 1, last_hit_at = excluded.last_hit_at,"
+                    " agent_name = COALESCE(NULLIF(excluded.agent_name,''), agent_name),"
+                    " institute_id = COALESCE(NULLIF(excluded.institute_id,''), institute_id)",
+                    (key, agent_id, agent_name or "", institute_id or "", time.time()))
         except Exception:
             logger.debug("tts-cache: agent hit bookkeeping failed", exc_info=True)
 
@@ -1059,6 +1092,35 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                     s.tts_cache_speech_enabled, s.tts_cache_llm_enabled)
         return None
 
+    # ONE CONTEXT PER SENTENCE, for enabled agents on an async-arrival engine.
+    #
+    # This is the fix for the ordering guard starving the cache. pipecat's
+    # create_context_id() reuses one context id for a whole turn by default, so
+    # every sentence of that turn shares a single FIFO drained in APPEND order.
+    # Cached audio is on disk and appends instantly; vendor audio appends when
+    # the websocket delivers it. Serve a cached sentence behind a vendor one and
+    # the caller hears them swapped — so TtsTurnWatcher refused to serve at all
+    # once anything in the turn had gone to the vendor. And because
+    # TTSStoppedFrame brackets the whole TURN on these engines, ONE miss early in
+    # a turn forced every later sentence to the vendor with its audio sitting
+    # ready. Measured on live call a2d883c4: 14 sentences, 955 characters,
+    # already rendered and already paid for, re-synthesised anyway.
+    #
+    # With a context per sentence they occupy separate slots on the
+    # serialization queue, which is drained in CREATION order — so position is
+    # fixed when run_tts is called and arrival time stops mattering.
+    #
+    # Set HERE, after the not-installed return, so it can only ever affect an
+    # agent whose cache is on. Every other agent keeps today's exact turn
+    # bracketing. The cost for the ones that opt in is that TTSStarted/Stopped —
+    # and so BotStartedSpeaking/BotStoppedSpeaking — fire per sentence rather
+    # than per turn; google already behaves that way in production, which is the
+    # evidence the pipeline handles the shape.
+    if async_arrival and getattr(tts, "_reuse_context_id_within_turn", False):
+        tts._reuse_context_id_within_turn = False
+        logger.info("tts-cache: per-sentence audio contexts enabled for {} — "
+                    "cached audio can now be served mid-turn", engine_l)
+
     def _bump(name: str, *args) -> None:
         if diag is None:
             return
@@ -1118,7 +1180,12 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
         # Ordering (§ TtsTurnWatcher): on an async-arrival engine we may only
         # serve when the vendor owes us nothing, or the cached audio would be
         # heard before audio that was requested earlier.
-        may_serve = key and (not async_arrival or not watcher.vendor_inflight)
+        # The ordering guard is only needed while a turn shares one context. With
+        # a context per sentence pipecat fixes the order at creation time, so a
+        # cached sentence can be served even with vendor audio still in flight.
+        may_serve = key and (not async_arrival
+                             or per_sentence_contexts(tts)
+                             or not watcher.vendor_inflight)
 
         if not may_serve and s.tts_cache_debug:
             # The ordering guard, not the cache, refused this one. Worth its own
@@ -1135,7 +1202,8 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                 if blob:
                     _bump("note_tts_cache_hit", entry.duration_ms, len(norm))
                     cache.note_hit(key)
-                    cache.note_hit_for_agent(key, agent_id)
+                    cache.note_hit_for_agent(key, agent_id, agent_name,
+                                             institute_id)
                     logger.info("tts-cache: HIT {}ms {!r}", entry.duration_ms, norm[:48])
 
                     # Emit the turn brackets ONLY if the base class is not already

@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.client;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.assessment_service.features.assessment.dto.batch_pending.EnrolledLearnerDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportBrandingDto;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
@@ -170,6 +172,51 @@ public class AdminCoreServiceClient {
             if (value != null && StringUtils.hasText(value.toString())) return value.toString();
         }
         return null;
+    }
+
+    /**
+     * Learners enrolled in {@code batchIds}, for the "enrolled but has not attempted"
+     * list. Returns an empty list on any failure — the Pending tab degrades to empty
+     * rather than failing the whole submissions page.
+     *
+     * <p><b>Cached, and that is load-critical.</b> The submissions page fetches the
+     * Pending count on every mount, so without a cache each page view would cost an
+     * admin_core round trip. Batch enrollment barely changes, so a short window collapses
+     * every mount, tab switch and page step for the same batch set onto one call. The key
+     * is the SORTED batch id list, so callers passing the same batches in a different
+     * order still share the entry.
+     *
+     * <p>Deliberately fetches the whole enrolled set instead of asking admin_core to
+     * exclude the already-attempted learners: an exclusion array is unestimable, and on a
+     * generic plan Postgres re-evaluated it per row (22ms -> 434-880ms on prod data,
+     * intermittently). See the endpoint's own javadoc.
+     */
+    @Cacheable(value = "batchEnrolledLearners", key = "#instituteId + '|' + #batchIds", unless = "#result.isEmpty()")
+    public List<EnrolledLearnerDto> getEnrolledLearnersForBatches(String instituteId, List<String> batchIds) {
+        if (instituteId == null || instituteId.isBlank() || batchIds == null || batchIds.isEmpty()) {
+            return List.of();
+        }
+        try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("package_session_ids", batchIds);
+            body.put("statuses", List.of("ACTIVE"));
+
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "POST", adminCoreServiceBaseUrl,
+                    "/admin-core-service/internal/learner/v1/enrolled-by-package-sessions", body);
+
+            if (response.getStatusCode() == HttpStatus.OK && StringUtils.hasText(response.getBody())) {
+                return objectMapper.readValue(response.getBody(), new TypeReference<List<EnrolledLearnerDto>>() {
+                });
+            }
+            log.warn("Enrolled-learner lookup returned {} for institute {} ({} batches)",
+                    response.getStatusCode(), instituteId, batchIds.size());
+        } catch (Exception e) {
+            log.warn("Failed to fetch enrolled learners for institute {} ({} batches): {}",
+                    instituteId, batchIds.size(), e.getMessage());
+        }
+        return List.of();
     }
 
     private static final String STUDENT = "STUDENT";

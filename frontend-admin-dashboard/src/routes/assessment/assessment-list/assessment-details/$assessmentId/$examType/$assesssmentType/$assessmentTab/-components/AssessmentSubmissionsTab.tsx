@@ -861,22 +861,36 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                 setIsParticipantsLoading(true);
 
                 try {
+                    // Only the Attempted slice is rendered on first paint; the other two
+                    // exist purely to fill their tab badges. So they ask for ONE row and
+                    // read total_elements — the badge was reading content.length, which
+                    // capped every count at the page size (a batch with 27 learners who
+                    // never attempted showed "10"), and fetching 10 unread rows twice per
+                    // mount was wasted work on both services.
+                    const COUNT_ONLY_PAGE_SIZE = 1;
+                    // A badge is not worth the page. These two share a Promise.all with
+                    // the Attempted fetch, so an unhandled rejection in either used to
+                    // take down the whole submissions table — and the Pending count now
+                    // depends on a cross-service call to admin_core, which is exactly the
+                    // kind of thing that can fail on its own. Swallow per call and let the
+                    // badge read 0.
+                    const countOnly = (attemptType: string) =>
+                        getAdminParticipants(assessmentId, instituteId, 0, COUNT_ONLY_PAGE_SIZE, {
+                            ...selectedFilter,
+                            attempt_type: [attemptType],
+                        }).catch(() => null);
+
                     const [attemptedData, ongoingData, pendingData] = await Promise.all([
                         getAdminParticipants(assessmentId, instituteId, page, 10, selectedFilter),
-                        getAdminParticipants(assessmentId, instituteId, page, 10, {
-                            ...selectedFilter,
-                            attempt_type: ['LIVE'],
-                        }),
-                        getAdminParticipants(assessmentId, instituteId, page, 10, {
-                            ...selectedFilter,
-                            attempt_type: ['Pending'],
-                        }),
+                        countOnly('LIVE'),
+                        // 'PENDING' — the backend compares against the enum name, so the
+                        // old 'Pending' never matched and this call always came back empty.
+                        countOnly('PENDING'),
                     ]);
-                    console.log('participants data', attemptedData);
                     setParticipantsData(attemptedData);
-                    setAttemptedCount(attemptedData.content.length);
-                    setOngoingCount(ongoingData.content.length);
-                    setPendingCount(pendingData.content.length);
+                    setAttemptedCount(attemptedData.total_elements ?? attemptedData.content.length);
+                    setOngoingCount(ongoingData?.total_elements ?? 0);
+                    setPendingCount(pendingData?.total_elements ?? 0);
                 } catch (error) {
                     console.log(error);
                 } finally {

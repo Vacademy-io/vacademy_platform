@@ -590,6 +590,17 @@ class _FakeTTS:
         pass
 
 
+def _install_on(monkeypatch, tmp_path, tts, *, mode):
+    """install_tts_cache against a caller-supplied service object."""
+    pytest.importorskip("pipecat.frames.frames")
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    return ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines=set(), cache_mode=mode,
+        cache=SpeechCache(root=str(tmp_path / "speech")))
+
+
 def _install(monkeypatch, tmp_path, *, mode, speech=True, llm=True, agents=()):
     pytest.importorskip("pipecat.frames.frames")
     monkeypatch.setattr(
@@ -1046,3 +1057,107 @@ def test_owns_text_frame_defaults_to_not_emitting():
     one corrupts the transcript. Prefer the recoverable failure."""
     class _Unknown: pass
     assert ttscache.owns_text_frame(_Unknown()) is False
+
+
+def test_a_hit_records_itself_even_with_no_prior_provenance(cache):
+    """THE reason every backfilled entry read 0 hits forever.
+
+    A cache HIT never ladders — only the miss path adds a candidate — so the
+    provenance row may not exist when the first hit lands, and it certainly does
+    not for anything laddered before per-agent tracking existed. This used to be
+    a bare UPDATE, which matched zero rows there and dropped the hit silently.
+    """
+    c = _cand("Namaste ji.", fixed=True)          # laddered with NO agent_id
+    cache.ladder([c]); cache.store(c, _pcm(600))
+    assert [e for e in cache.export_for_report()
+            if e["agentId"] == "agent-a"] == [], "no provenance row yet"
+
+    cache._bump_agent_hit(c.key, "agent-a", "AGENT-A", "inst-1")
+
+    rows = [e for e in cache.export_for_report() if e["agentId"] == "agent-a"]
+    assert len(rows) == 1, "the hit must CREATE the attribution row"
+    assert rows[0]["hits"] == 1
+    assert rows[0]["agentName"] == "AGENT-A"
+    assert rows[0]["sentence"] == "Namaste ji."
+
+
+def test_repeated_hits_accumulate_on_the_same_row(cache):
+    c = _acand("Theek hai.", "agent-a", fixed=True)
+    cache.ladder([c])
+    for _ in range(3):
+        cache._bump_agent_hit(c.key, "agent-a", "AGENT-A", "inst-1")
+    row = [e for e in cache.export_for_report() if e["agentId"] == "agent-a"][0]
+    assert row["hits"] == 3
+    assert row["sightings"] == 1, "a hit is not a sighting — ladder owns that"
+
+
+# ── the ordering guard no longer starves the cache ──────────────────────────
+
+def test_enabling_the_cache_switches_the_engine_to_per_sentence_contexts(
+        monkeypatch, tmp_path):
+    """One context per turn is what forced a cached sentence to the vendor."""
+    tts = _FakeTTS()
+    tts._reuse_context_id_within_turn = True
+    _install_on(monkeypatch, tmp_path, tts, mode="FULL")
+    assert tts._reuse_context_id_within_turn is False
+    assert ttscache.per_sentence_contexts(tts) is True
+
+
+def test_a_DISABLED_agent_keeps_pipecat_turn_bracketing(monkeypatch, tmp_path):
+    """The ship-safety guarantee. Turn bracketing drives DuckGate, the watchdog
+    and dead-air measurement, so an agent nobody enabled must not have it
+    changed underneath them."""
+    tts = _FakeTTS()
+    tts._reuse_context_id_within_turn = True
+    _install_on(monkeypatch, tmp_path, tts, mode="OFF")
+    assert tts._reuse_context_id_within_turn is True, "must be left untouched"
+
+
+async def test_a_cached_sentence_serves_even_with_vendor_audio_in_flight(
+        monkeypatch, tmp_path):
+    """THE fix. On live call a2d883c4, 14 sentences worth 955 characters were
+    already rendered and were re-synthesised anyway, because one earlier miss in
+    the turn had set vendor_inflight and TTSStoppedFrame only clears it at the
+    END of a turn on these engines.
+    """
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    line = "Theek hai, dhanyavaad."
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(600))
+
+    tts = _FakeTTS()
+    tts._reuse_context_id_within_turn = True
+    watcher = ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+
+    watcher.note_vendor_dispatch()          # an earlier sentence went to the vendor
+    assert watcher.vendor_inflight is True
+    kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-9")
+             if f is not None]
+    assert "TTSAudioRawFrame" in kinds,         "cached audio must serve mid-turn now that ordering is fixed by context"
+
+
+async def test_the_guard_still_applies_if_contexts_are_NOT_per_sentence(
+        monkeypatch, tmp_path):
+    """Belt and braces: on any service we could not switch, serving mid-turn
+    would still reorder audio, so the guard must keep refusing."""
+    monkeypatch.setattr(ttscache, "get_settings",
+                        lambda: _Settings(str(tmp_path)))
+    line = "Theek hai, dhanyavaad."
+    c = SpeechCache(root=str(tmp_path / "speech")); c.open()
+    cand = _cand(line, engine="sarvam", model="bulbul:v3", voice="priya",
+                 pace=1.1, temperature=0.5, fixed=True)
+    c.ladder([cand]); c.store(cand, _pcm(600))
+    tts = _FakeTTS()
+    watcher = ttscache.install_tts_cache(
+        tts, engine="sarvam", model="bulbul:v3", voice="priya", pace=1.1,
+        temperature=0.5, fixed_lines={line}, cache_mode="FULL", cache=c)
+    tts._reuse_context_id_within_turn = True     # pretend the switch did not take
+    watcher.note_vendor_dispatch()
+    kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-10")
+             if f is not None]
+    assert "TTSAudioRawFrame" not in kinds, "ordering beats hit rate, always"

@@ -340,6 +340,68 @@ Five added fields alongside the existing cost/margin ones:
 | **Screens 1–4 are empty until the new bot build deploys** | they read a table only that build populates. `/summary` and the `/calls` fields work today |
 | **`/tts-cache/summary` SQL is unverified against prod** | it compiles, but a Java text block is only parsed at execution — the same way the `::bigint` bug reached production. The ssh tunnel has been down; worth one run before relying on it |
 
+## Appendix — operator routes on the voice bot
+
+Separate surface from everything above: these live on the **bot**, not admin-core,
+and are gated by the shared internal secret rather than a super-admin token.
+
+```
+-H 'x-voice-bot-token: <INTERNAL_CLIENT_SECRET>'
+```
+
+They exist because the ledger is SQLite plus audio files on **one box's local
+disk**. Until now the only way to read or clear it was a shell on that box, which
+made an empty analytics table impossible to diagnose remotely — a reporter that
+never started and a ledger with nothing in it look identical from Postgres.
+
+**Export the whole ledger** — the same payload the 120s reporter pushes:
+
+```bash
+curl -H 'x-voice-bot-token: <secret>'   'https://voice-bot-in.vacademy.io/voice-bot-service/internal/tts-cache/export?limit=2000'
+```
+
+```json
+{ "ready": true, "blobs": 13, "count": 56, "truncated": false, "entries": [ … ] }
+```
+
+`ready` and `blobs` are returned *beside* the rows on purpose: a cache still
+opening returns zero entries, which is not the same answer as an open cache that
+genuinely holds nothing. Optional `agentId` filters; `limit` defaults 2000, caps
+5000, and `truncated` tells you when you hit it.
+
+**Push to admin-core now**, instead of waiting for the tick — this is the backfill:
+
+```bash
+curl -X POST -H 'x-voice-bot-token: <secret>'   'https://voice-bot-in.vacademy.io/voice-bot-service/internal/tts-cache/report-now'
+```
+
+```json
+{ "ready": true, "pushed": 56, "ok": true }
+```
+
+An empty ledger returns `{"pushed": 0, "ok": null, "note": "ledger is empty — nothing to push"}`
+rather than a bare 200 — "pushed nothing" and "pushed successfully" must not look
+alike. Safe to repeat: admin-core upserts on `(cache_key, agent_id)`.
+
+**Flush** — `dryRun` defaults **true**, and it refuses a request naming neither an
+agent nor a key (that is not "flush everything"):
+
+```bash
+curl -X POST -H 'x-voice-bot-token: <secret>' -H 'content-type: application/json'   -d '{"agentId":"b759218d-…","dryRun":true}'   'https://voice-bot-in.vacademy.io/voice-bot-service/internal/tts-cache/flush'
+```
+
+```json
+{ "dryRun": true, "entriesRemoved": 3, "bytesRemoved": 412800,
+  "result": "DRY RUN — 3 entries, 2 shared with another agent and kept" }
+```
+
+Audio another agent still references is kept — the key is global, so agents on the
+same voice share one blob.
+
+> Point these at the box that actually serves calls. `voice-bot-in.vacademy.io`
+> resolves to the Linode Mumbai host; the Hetzner `voice-bot-service` pods take no
+> call traffic and declare no volumes, so their ledger is always empty.
+
 ## Conventions
 
 - **`null` never means zero.** `hit_rate`, `inr_saved`, `inr_wasted` and the `tts_cache_*`

@@ -772,3 +772,101 @@ def test_flushing_the_last_agent_does_remove_the_audio(cache):
     assert entries == 1 and freed > 0
     assert cache.lookup(c.key, c.text) is None
     assert cache.export_for_report() == []
+
+
+# ── the internal routes (export / report-now / flush) ───────────────────────
+#
+# These exist because the ledger lives on ONE box's local disk. Reading or
+# clearing it used to need a shell on that box, which made an empty analytics
+# table impossible to diagnose remotely. Handlers are called directly with a
+# stub Request so the suite needs no HTTP client.
+
+class _Req:
+    def __init__(self, token="s3cret", query=None, body=None):
+        self.headers = {"x-voice-bot-token": token} if token else {}
+        self.query_params = query or {}
+        self._body = body
+
+    async def json(self):
+        if self._body is None:
+            raise ValueError("no body")
+        return self._body
+
+
+@pytest.fixture
+def routes(cache, monkeypatch):
+    """app.main wired to the test cache and a known internal secret."""
+    pytest.importorskip("fastapi")
+    import dataclasses
+    from app import main as m
+    from app import ttscache as tc
+    monkeypatch.setattr(tc, "get_cache", lambda: cache)
+    # Settings is a frozen dataclass, so swap the accessor rather than the field.
+    stub = dataclasses.replace(m.get_settings(), internal_client_secret="s3cret")
+    monkeypatch.setattr(m, "get_settings", lambda: stub)
+    return m
+
+
+async def test_export_and_flush_refuse_a_bad_token(routes):
+    for call in (routes.tts_cache_export(_Req(token="")),
+                 routes.tts_cache_flush(_Req(token="wrong", body={"agentId": "a"})),
+                 routes.tts_cache_report_now(_Req(token=None))):
+        assert (await call).status_code == 401
+
+
+async def test_export_returns_the_ledger_and_says_whether_it_is_ready(routes, cache):
+    c = _acand("Namaste ji.", "agent-a", fixed=True)
+    cache.ladder([c]); cache.store(c, _pcm(800))
+    out = await routes.tts_cache_export(_Req())
+    assert out["count"] == 1 and out["truncated"] is False
+    assert out["entries"][0]["sentence"] == "Namaste ji."
+    # ready/blobs travel separately from the rows: a cache still opening returns
+    # zero entries, which is NOT the same answer as an open, empty one.
+    assert "ready" in out and out["blobs"] == 1
+
+
+async def test_export_filters_by_agent(routes, cache):
+    a = _acand("Namaste ji.", "agent-a", fixed=True)
+    cache.ladder([a]); cache.ladder([_acand("Theek hai.", "agent-b", fixed=True)])
+    out = await routes.tts_cache_export(_Req(query={"agentId": "agent-b"}))
+    assert out["count"] == 1
+    assert out["entries"][0]["agentId"] == "agent-b"
+
+
+async def test_flush_defaults_to_a_dry_run(routes, cache):
+    """The destructive reading of an ambiguous request is the wrong one."""
+    c = _acand("Namaste ji.", "agent-a", fixed=True)
+    cache.ladder([c]); cache.store(c, _pcm(800))
+    out = await routes.tts_cache_flush(_Req(body={"agentId": "agent-a"}))
+    assert out["dryRun"] is True
+    assert "DRY RUN" in out["result"]
+    assert cache.lookup(c.key, c.text) is not None, "a dry run must delete nothing"
+
+
+async def test_flush_refuses_to_wipe_everything(routes):
+    """No agentId and no cacheKey is not 'flush the whole cache'."""
+    r = await routes.tts_cache_flush(_Req(body={"dryRun": False}))
+    assert r.status_code == 400
+
+
+async def test_report_now_is_explicit_about_an_empty_ledger(routes, monkeypatch):
+    """The reporter's own `if entries:` guard makes this silent; the route must
+    not return the same 200 for 'pushed nothing' and 'pushed successfully'."""
+    out = await routes.tts_cache_report_now(_Req())
+    assert out["pushed"] == 0 and out["ok"] is None
+    assert "empty" in out["note"]
+
+
+async def test_report_now_pushes_what_the_reporter_would(routes, cache, monkeypatch):
+    from app import admin_core
+    sent = {}
+
+    async def _fake(entries):
+        sent["n"] = len(entries)
+        return True
+
+    monkeypatch.setattr(admin_core, "post_tts_cache_report", _fake)
+    c = _acand("Namaste ji.", "agent-a", fixed=True)
+    cache.ladder([c]); cache.store(c, _pcm(800))
+    out = await routes.tts_cache_report_now(_Req())
+    assert out["pushed"] == 1 and out["ok"] is True and sent["n"] == 1

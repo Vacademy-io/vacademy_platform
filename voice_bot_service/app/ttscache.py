@@ -345,7 +345,7 @@ class SpeechCache:
                     idx[key] = Entry(key, path, nbytes, duration_ms, text)
             self._index = idx
             self._ready = True
-            logger.info("tts-cache: %d entries loaded from %s", len(idx), self.root)
+            logger.info("tts-cache: {} entries loaded from {}", len(idx), self.root)
         except Exception:
             logger.exception("tts-cache: open failed — cache disabled for this process")
             self._ready = False
@@ -389,7 +389,7 @@ class SpeechCache:
         if entry is None:
             return None
         if entry.text != text:
-            logger.warning("tts-cache: text mismatch for key %s… — treating as miss", key[:12])
+            logger.warning("tts-cache: text mismatch for key {}… — treating as miss", key[:12])
             return None
         return entry
 
@@ -403,12 +403,12 @@ class SpeechCache:
         try:
             data = await asyncio.to_thread(self._read_blob, entry.path)
         except Exception:
-            logger.exception("tts-cache: read failed for %s", entry.key[:12])
+            logger.exception("tts-cache: read failed for {}", entry.key[:12])
             return None
         if data is None:
             return None
         if len(data) != entry.nbytes or len(data) % (SAMPLE_WIDTH * CHANNELS):
-            logger.warning("tts-cache: blob %s… is %d bytes, expected %d — dropping",
+            logger.warning("tts-cache: blob {}… is {} bytes, expected {} — dropping",
                            entry.key[:12], len(data), entry.nbytes)
             await self.discard(entry.key)
             return None
@@ -469,14 +469,14 @@ class SpeechCache:
         """
         try:
             if not pcm or len(pcm) % (SAMPLE_WIDTH * CHANNELS):
-                logger.warning("tts-cache: refusing ragged render for %r", cand.text[:40])
+                logger.warning("tts-cache: refusing ragged render for {!r}", cand.text[:40])
                 return False
             duration_ms = int(len(pcm) * 1000 / _BYTES_PER_SEC)
             if duration_ms < get_settings().tts_cache_min_blob_ms:
                 # Too short to be a spoken sentence: a silent stub or a vendor
                 # error page decoded to noise. Either would be dead air on a
                 # real call.
-                logger.warning("tts-cache: refusing %dms render for %r",
+                logger.warning("tts-cache: refusing {}ms render for {!r}",
                                duration_ms, cand.text[:40])
                 return False
 
@@ -510,11 +510,11 @@ class SpeechCache:
                     " duration_ms=excluded.duration_ms, text=excluded.text",
                     (cand.key, len(pcm), duration_ms, cand.text, now, now))
             self._index[cand.key] = Entry(cand.key, path, len(pcm), duration_ms, cand.text)
-            logger.info("tts-cache: stored %dms (%d chars) %s/%s %r",
+            logger.info("tts-cache: stored {}ms ({} chars) {}/{} {!r}",
                         duration_ms, cand.chars, cand.engine, cand.voice, cand.text[:48])
             return True
         except Exception:
-            logger.exception("tts-cache: store failed for %r", cand.text[:40])
+            logger.exception("tts-cache: store failed for {!r}", cand.text[:40])
             return False
 
     # -- ledger -------------------------------------------------------------
@@ -741,7 +741,7 @@ class SpeechCache:
                 total -= nbytes or 0
                 removed += 1
             if removed:
-                logger.warning("tts-cache: evicted %d entries (budget %d bytes)", removed, budget)
+                logger.warning("tts-cache: evicted {} entries (budget {} bytes)", removed, budget)
             return removed
         except Exception:
             logger.exception("tts-cache: eviction failed")
@@ -836,7 +836,7 @@ class CallCandidates:
         if not self._enabled:
             return
         if not is_complete(cand.text):
-            logger.warning("tts-cache: refusing incomplete candidate %r", cand.text[:48])
+            logger.warning("tts-cache: refusing incomplete candidate {!r}", cand.text[:48])
             return
         # Bounded: a runaway generation must not grow this without limit.
         if len(self._items) < 400:
@@ -913,10 +913,10 @@ class CallCandidates:
                     unheard += 1
             self._items = []
             if dropped:
-                logger.info("tts-cache: dropped %d candidate(s) — health=%s audio_faults=%s",
+                logger.info("tts-cache: dropped {} candidate(s) — health={} audio_faults={}",
                             dropped, health, sorted(audio_bad) or "none")
             if unheard:
-                logger.info("tts-cache: %d candidate(s) never reached the caller — not laddered",
+                logger.info("tts-cache: {} candidate(s) never reached the caller — not laddered",
                             unheard)
             return self._cache.ladder(heard)
         except Exception:
@@ -1002,8 +1002,8 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
     can_serve_anything = ((mode_allows(cache_mode, True) and s.tts_cache_speech_enabled)
                           or (mode_allows(cache_mode, False) and s.tts_cache_llm_enabled))
     if not (can_serve_anything and in_rollout):
-        logger.info("tts-cache: NOT installed engine=%s agent=%s mode=%s rollout=%s "
-                    "kill_speech=%s kill_llm=%s — call is untouched",
+        logger.info("tts-cache: NOT installed engine={} agent={} mode={} rollout={} "
+                    "kill_speech={} kill_llm={} — call is untouched",
                     engine_l, agent_id or agent_name or "?",
                     (cache_mode or MODE_OFF).upper(), "in" if in_rollout else "OUT",
                     s.tts_cache_speech_enabled, s.tts_cache_llm_enabled)
@@ -1074,19 +1074,19 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
             # The ordering guard, not the cache, refused this one. Worth its own
             # wording: it looks identical to a cold cache from the outside, and
             # chasing a "miss" that was really a deferral wastes a rollout.
-            logger.info("tts-cache: MISS (vendor in flight, ordering) %r", norm[:48])
+            logger.info("tts-cache: MISS (vendor in flight, ordering) {!r}", norm[:48])
 
         if may_serve:
             entry = cache.lookup(key, norm)          # G6 verifies the stored text
             if entry is None and s.tts_cache_debug:
-                logger.info("tts-cache: MISS (not stored) key=%s %r", key[:12], norm[:48])
+                logger.info("tts-cache: MISS (not stored) key={} {!r}", key[:12], norm[:48])
             if entry is not None:
                 blob = await cache.read(entry)       # G5 re-checks the length
                 if blob:
                     _bump("note_tts_cache_hit", entry.duration_ms, len(norm))
                     cache.note_hit(key)
                     cache.note_hit_for_agent(key, agent_id)
-                    logger.info("tts-cache: HIT %dms %r", entry.duration_ms, norm[:48])
+                    logger.info("tts-cache: HIT {}ms {!r}", entry.duration_ms, norm[:48])
 
                     # Emit the turn brackets ONLY if the base class is not already
                     # doing it, or the caller hears two of everything.
@@ -1163,8 +1163,8 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
     tts.run_tts = run_tts
     # One line per call saying exactly which gates are open. Without it, "why did
     # this call not hit the cache" is a guess between four different switches.
-    logger.info("tts-cache: installed engine=%s voice=%s agent=%s mode=%s rollout=%s "
-                "kill_speech=%s kill_llm=%s async_arrival=%s entries=%d",
+    logger.info("tts-cache: installed engine={} voice={} agent={} mode={} rollout={} "
+                "kill_speech={} kill_llm={} async_arrival={} entries={}",
                 engine_l, voice, agent_id or agent_name or "?",
                 (cache_mode or MODE_OFF).upper(), "in" if in_rollout else "OUT",
                 s.tts_cache_speech_enabled, s.tts_cache_llm_enabled,

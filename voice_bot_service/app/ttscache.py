@@ -250,6 +250,11 @@ class Candidate:
     pace: Optional[float]
     temperature: Optional[float]
     fixed: bool = False          # a bot-authored line: exempt from G3/G4
+    # Provenance for the analytics screens. Never part of the KEY — the key is
+    # global so agents share blobs; this only records who contributed.
+    agent_id: str = ""
+    agent_name: str = ""
+    institute_id: str = ""
 
 
 _DDL = """
@@ -269,6 +274,21 @@ CREATE TABLE IF NOT EXISTS blob(
   hits        INTEGER NOT NULL DEFAULT 0,
   last_served REAL, created_at REAL
 );
+-- Which agents contributed to, and hit, each entry.
+-- The KEY stays global so agents keep sharing blobs; this is a separate
+-- dimension, not a change to identity. Without it the ledger cannot answer
+-- "what has this agent cached", because nothing in it names an agent.
+CREATE TABLE IF NOT EXISTS seen_agent(
+  key          TEXT NOT NULL,
+  agent_id     TEXT NOT NULL,
+  agent_name   TEXT,
+  institute_id TEXT,
+  sightings    INTEGER NOT NULL DEFAULT 0,
+  hits         INTEGER NOT NULL DEFAULT 0,
+  last_hit_at  REAL,
+  PRIMARY KEY (key, agent_id)
+);
+CREATE INDEX IF NOT EXISTS idx_seen_agent_agent ON seen_agent(agent_id);
 CREATE INDEX IF NOT EXISTS idx_seen_ready ON seen(count);
 CREATE INDEX IF NOT EXISTS idx_blob_evict ON blob(hits, last_served);
 """
@@ -499,6 +519,25 @@ class SpeechCache:
 
     # -- ledger -------------------------------------------------------------
 
+    def note_hit_for_agent(self, key: str, agent_id: str) -> None:
+        """Attribute a cache hit to an agent. Fire-and-forget: analytics must
+        never be a reason a call goes wrong."""
+        if not (key and agent_id):
+            return
+        try:
+            asyncio.get_running_loop().create_task(
+                asyncio.to_thread(self._bump_agent_hit, key, agent_id))
+        except RuntimeError:
+            pass
+
+    def _bump_agent_hit(self, key: str, agent_id: str) -> None:
+        try:
+            with self._connect() as db:
+                db.execute("UPDATE seen_agent SET hits = hits + 1, last_hit_at = ?"
+                           " WHERE key = ? AND agent_id = ?", (time.time(), key, agent_id))
+        except Exception:
+            logger.debug("tts-cache: agent hit bookkeeping failed", exc_info=True)
+
     def ladder(self, cands: Iterable[Candidate]) -> int:
         """Record qualifying sightings. Blocking; called at call end.
 
@@ -521,6 +560,16 @@ class SpeechCache:
                         " fixed = MAX(seen.fixed, excluded.fixed), last_seen = ?",
                         (c.key, c.engine, c.model, c.voice, c.pace, c.temperature,
                          c.text, c.chars, 1 if c.fixed else 0, now, now, now))
+                    if c.agent_id:
+                        db.execute(
+                            "INSERT INTO seen_agent(key, agent_id, agent_name,"
+                            " institute_id, sightings, hits)"
+                            " VALUES(?,?,?,?,1,0)"
+                            " ON CONFLICT(key, agent_id) DO UPDATE SET"
+                            " sightings = sightings + 1,"
+                            " agent_name = excluded.agent_name,"
+                            " institute_id = COALESCE(excluded.institute_id, institute_id)",
+                            (c.key, c.agent_id, c.agent_name, c.institute_id))
             return len(rows)
         except Exception:
             logger.exception("tts-cache: ladder failed")
@@ -557,6 +606,95 @@ class SpeechCache:
         except Exception:
             logger.exception("tts-cache: due query failed")
             return []
+
+    def export_for_report(self, limit: int = 2000) -> list:
+        """The ledger joined to its provenance, shaped for admin-core.
+
+        LEFT JOIN on blob: a row with no blob is not missing data, it is the
+        answer to "what is not cached yet" — the misses screen is exactly these
+        rows. Bounded, because a report is not a reason to load an unbounded
+        result set into memory on a box that is also carrying live calls.
+        """
+        try:
+            with self._connect() as db:
+                rows = db.execute(
+                    "SELECT s.key, sa.agent_id, sa.agent_name, sa.institute_id,"
+                    " s.engine, s.model, s.voice, s.text, s.chars, s.fixed,"
+                    " sa.sightings, sa.hits, sa.last_hit_at,"
+                    " s.first_seen, s.last_seen,"
+                    " b.key IS NOT NULL, b.nbytes, b.duration_ms"
+                    " FROM seen s"
+                    " JOIN seen_agent sa ON sa.key = s.key"
+                    " LEFT JOIN blob b ON b.key = s.key"
+                    " ORDER BY sa.hits DESC, s.chars DESC LIMIT ?",
+                    (limit,)).fetchall()
+            out = []
+            for r in rows:
+                out.append({
+                    "cacheKey": r[0], "agentId": r[1], "agentName": r[2],
+                    "instituteId": r[3], "engine": r[4], "model": r[5],
+                    "voice": r[6], "sentence": r[7], "chars": r[8],
+                    "isFixed": bool(r[9]), "sightings": r[10], "hits": r[11],
+                    "lastHitAt": r[12], "firstSeenAt": r[13], "lastSeenAt": r[14],
+                    "rendered": bool(r[15]), "bytes": r[16], "durationMs": r[17],
+                })
+            return out
+        except Exception:
+            logger.exception("tts-cache: export failed")
+            return []
+
+    def forget(self, *, agent_id: str = "", cache_key: str = "",
+               dry_run: bool = True) -> tuple:
+        """Flush one entry, or everything one agent contributed to.
+
+        Returns (entries, bytes, note). A dry run reports what WOULD go and
+        deletes nothing — the default everywhere, because the destructive
+        reading of an ambiguous request is the wrong one.
+
+        A blob is only deleted when NO OTHER AGENT still references it. The key
+        is global, so agents share renders; flushing one agent must not silently
+        take audio another is still serving.
+        """
+        try:
+            with self._connect() as db:
+                if cache_key:
+                    keys = [cache_key]
+                elif agent_id:
+                    keys = [r[0] for r in db.execute(
+                        "SELECT key FROM seen_agent WHERE agent_id = ?", (agent_id,))]
+                else:
+                    return (0, 0, "neither agent_id nor cache_key given")
+
+                shared, removable = [], []
+                for k in keys:
+                    others = db.execute(
+                        "SELECT count(*) FROM seen_agent WHERE key = ? AND agent_id <> ?",
+                        (k, agent_id or "")).fetchone()[0]
+                    (shared if others > 0 and not cache_key else removable).append(k)
+
+                freed = 0
+                for k in removable:
+                    row = db.execute("SELECT nbytes FROM blob WHERE key = ?", (k,)).fetchone()
+                    if row and row[0]:
+                        freed += int(row[0])
+
+                note = "%d entr%s, %d shared with another agent and kept" % (
+                    len(removable), "y" if len(removable) == 1 else "ies", len(shared))
+                if dry_run:
+                    return (len(removable), freed, "DRY RUN — " + note)
+
+                for k in removable:
+                    self._index.pop(k, None)
+                    self._discard_sync(k)
+                    db.execute("DELETE FROM seen WHERE key = ?", (k,))
+                if agent_id:
+                    db.execute("DELETE FROM seen_agent WHERE agent_id = ?", (agent_id,))
+                elif cache_key:
+                    db.execute("DELETE FROM seen_agent WHERE key = ?", (cache_key,))
+                return (len(removable), freed, note)
+        except Exception as e:
+            logger.exception("tts-cache: forget failed")
+            return (0, 0, "failed: %s" % e)
 
     def repeat_report(self, limit: int = 40) -> list[dict]:
         """What actually repeats, per engine/voice. This is the number that says
@@ -822,7 +960,7 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                       temperature, term_map_version: str = "",
                       fixed_lines: Optional[set] = None,
                       agent_id: str = "", agent_name: str = "",
-                      cache_mode: str = MODE_OFF,
+                      institute_id: str = "", cache_mode: str = MODE_OFF,
                       normalize=None, diag=None,
                       cache: Optional[SpeechCache] = None,
                       watcher: Optional[TtsTurnWatcher] = None,
@@ -947,6 +1085,7 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                 if blob:
                     _bump("note_tts_cache_hit", entry.duration_ms, len(norm))
                     cache.note_hit(key)
+                    cache.note_hit_for_agent(key, agent_id)
                     logger.info("tts-cache: HIT %dms %r", entry.duration_ms, norm[:48])
 
                     # Emit the turn brackets ONLY if the base class is not already
@@ -1017,7 +1156,9 @@ def install_tts_cache(tts, *, engine: str, model: str, voice: str, pace,
                 candidates.add(Candidate(
                     key=key, text=norm, chars=len(norm), engine=engine_l,
                     model=model or "", voice=voice or "", pace=pace,
-                    temperature=temperature, fixed=is_fixed))
+                    temperature=temperature, fixed=is_fixed,
+                    agent_id=agent_id, agent_name=agent_name,
+                    institute_id=institute_id))
 
     tts.run_tts = run_tts
     # One line per call saying exactly which gates are open. Without it, "why did

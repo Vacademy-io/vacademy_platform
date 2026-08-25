@@ -94,11 +94,16 @@ async def lifespan(app: FastAPI):
 
     app.state.speech_cache_task = asyncio.create_task(_open_speech_cache())
     app.state.tts_sweeper_task = asyncio.create_task(ttswarm.sweeper())
+    # Mirrors the ledger into Postgres so the analytics screens are plain SQL
+    # rather than a live dependency on this box's disk, and picks up any flush
+    # queued the other way. Both use the auth this process already has.
+    app.state.tts_reporter_task = asyncio.create_task(ttswarm.reporter())
     try:
         yield
     finally:
         for t in (app.state.warm_task, app.state.spool_task,
-                  app.state.speech_cache_task, app.state.tts_sweeper_task):
+                  app.state.speech_cache_task, app.state.tts_sweeper_task,
+                  app.state.tts_reporter_task):
             t.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await t

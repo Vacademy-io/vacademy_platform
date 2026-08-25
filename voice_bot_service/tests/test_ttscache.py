@@ -697,6 +697,78 @@ def test_consistency_rule_is_present_once_the_cache_is_on():
 
 def test_consistency_rule_never_forces_devanagari_on_an_english_agent():
     """An en-IN agent is told to write Latin only; a Devanagari name rule there
-    would contradict its own SCRIPT rule."""
-    p = _prompt_for("FULL", language="en")
-    assert "never Raman" not in p
+    would contradict its own SCRIPT rule.
+
+    Both spellings a real agent is configured with. NOT bare "en": that is not a
+    key in _STT_LANGS and has no hyphen, so _agent_language returns tag=None and
+    the agent silently takes the HINDI branch — which is what this test asserted
+    against before, passing an English expectation through a Hindi prompt.
+    """
+    for language in ("english", "en-IN"):
+        p = _prompt_for("FULL", language=language)
+        # Prove we actually reached the English branch, so the assertion below
+        # cannot pass for the wrong reason a second time.
+        assert "Write every reply in English (Latin letters) only" in p, language
+        assert "never Raman" not in p, language
+        assert "SAY A RECURRING LINE THE SAME WAY" not in p, language
+
+
+# ── provenance + flush (the analytics dimension) ────────────────────────────
+
+def _acand(text, agent, **over):
+    return _cand(text, agent_id=agent, agent_name=agent.upper(),
+                 institute_id="inst-1", **over)
+
+
+def test_provenance_records_which_agents_contributed(cache):
+    """The cache key is global so agents share blobs — nothing in the ledger
+    names an agent. seen_agent is the separate dimension that makes
+    "what has THIS agent cached" answerable at all."""
+    line = "Theek hai, dhanyavaad."
+    cache.ladder([_acand(line, "agent-a", fixed=True)])
+    cache.ladder([_acand(line, "agent-b", fixed=True)])
+    rows = cache.export_for_report()
+    agents = sorted(r["agentId"] for r in rows)
+    assert agents == ["agent-a", "agent-b"]
+    assert all(r["cacheKey"] == rows[0]["cacheKey"] for r in rows), "one shared key"
+
+
+def test_export_marks_unrendered_rows(cache):
+    """The misses screen IS the rows with no blob — not missing data."""
+    c = _acand("Aur uski fees kya hai?", "agent-a")
+    cache.ladder([c])
+    assert cache.export_for_report()[0]["rendered"] is False
+    cache.store(c, _pcm(600))
+    assert cache.export_for_report()[0]["rendered"] is True
+
+
+def test_flush_defaults_to_a_dry_run_that_deletes_nothing(cache):
+    """The destructive reading of an ambiguous request is the wrong one."""
+    c = _acand("Theek hai, dhanyavaad.", "agent-a", fixed=True)
+    cache.ladder([c]); cache.store(c, _pcm(800))
+    entries, freed, note = cache.forget(agent_id="agent-a")
+    assert entries == 1 and freed > 0 and note.startswith("DRY RUN")
+    assert cache.lookup(c.key, c.text) is not None, "dry run must not delete"
+
+
+def test_flushing_one_agent_keeps_audio_another_still_uses(cache):
+    """THE hazard of a global key: two agents share one blob, so flushing one
+    must not take the audio the other is still serving."""
+    line = "Theek hai, dhanyavaad."
+    a = _acand(line, "agent-a", fixed=True)
+    cache.ladder([a]); cache.ladder([_acand(line, "agent-b", fixed=True)])
+    cache.store(a, _pcm(800))
+
+    entries, freed, note = cache.forget(agent_id="agent-a", dry_run=False)
+    assert entries == 0, "nothing removable — agent-b still references it"
+    assert "1 shared with another agent and kept" in note
+    assert cache.lookup(a.key, a.text) is not None, "audio must survive"
+
+
+def test_flushing_the_last_agent_does_remove_the_audio(cache):
+    c = _acand("Theek hai, dhanyavaad.", "agent-a", fixed=True)
+    cache.ladder([c]); cache.store(c, _pcm(800))
+    entries, freed, note = cache.forget(agent_id="agent-a", dry_run=False)
+    assert entries == 1 and freed > 0
+    assert cache.lookup(c.key, c.text) is None
+    assert cache.export_for_report() == []

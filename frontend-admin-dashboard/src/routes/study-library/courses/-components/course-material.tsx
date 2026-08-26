@@ -1,6 +1,7 @@
 import { getInstituteId } from '@/constants/helper';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AddCourseButton } from '@/components/common/study-library/add-course/add-course-button';
 import { MyButton } from '@/components/design-system/button';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
@@ -139,6 +140,7 @@ interface CourseMaterialProps {
 }
 
 export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMaterialProps = {}) => {
+    const { t } = useTranslation('courseMaterial');
     const [isAddCourseOpen, setIsAddCourseOpen] = useState(false);
 
     // Sync initialAction with dialog state
@@ -378,7 +380,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             setDeletingCourseId(courseId);
             deleteCourseMutation.mutate(courseId, {
                 onSuccess: () => {
-                    toast.success('Course deleted successfully');
+                    toast.success(t('deletedSuccess'));
                     handlePageChange(page);
                     setDeletingCourseId(null);
                 },
@@ -387,7 +389,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                         error && typeof error === 'object' && 'message' in error
                             ? (error as { message?: string }).message
                             : undefined;
-                    toast.error(errMsg || 'Failed to delete course');
+                    toast.error(errMsg || t('deleteFailed'));
                     setDeletingCourseId(null);
                 },
             });
@@ -395,7 +397,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     };
 
     useEffect(() => {
-        setNavHeading(`Explore ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`);
+        setNavHeading(t('exploreTerm', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) }));
     }, []);
 
     // Update sort_columns in selectedFilters when sortBy changes and call handleGetCourses after update
@@ -588,13 +590,13 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         const labelFor = (id: CourseListTabId): string => {
             switch (id) {
                 case 'AuthoredCourses':
-                    return `Authored ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`;
+                    return t('tabs.authoredTerm', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) });
                 case 'AllCourses':
-                    return `All ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`;
+                    return t('tabs.allTerm', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) });
                 case 'CourseInReview':
-                    return `${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} In Review`;
+                    return t('tabs.termInReview', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) });
                 case 'CourseApproval':
-                    return `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Approval`;
+                    return t('tabs.termApproval', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) });
                 default:
                     return String(id);
             }
@@ -613,22 +615,22 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         const tabs: { key: string; label: string; show: boolean }[] = [
             {
                 key: 'AuthoredCourses',
-                label: `Authored ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
+                label: t('tabs.authoredTerm', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) }),
                 show: true,
             },
             {
                 key: 'AllCourses',
-                label: `All ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
+                label: t('tabs.allTerm', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) }),
                 show: true,
             },
             {
                 key: 'CourseInReview',
-                label: `${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} In Review`,
+                label: t('tabs.termInReview', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) }),
                 show: !isAdmin,
             },
             {
                 key: 'CourseApproval',
-                label: `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Approval`,
+                label: t('tabs.termApproval', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
                 show: isAdmin,
             },
         ];
@@ -761,15 +763,15 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
         return (
             <div className="flex h-full flex-col items-center justify-center py-20">
                 <div className="mb-2 text-2xl font-semibold">
-                    No {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} found
+                    {t('noTermFound', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) })}
                 </div>
                 <div className="mb-4 text-gray-500">
-                    Try adding a new {getTerminology(ContentTerms.Course, SystemTerms.Course)}.
+                    {t('tryAddingNewTerm', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) })}
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2">
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.Course}
-                        label="Course settings"
+                        label={t('courseSettings')}
                     />
                     {canShowCreateCourse && <AddCourseButton />}
                     {canShowCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
@@ -781,7 +783,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                             onClick={() => navigate({ to: '/study-library/ai-copilot' })}
                         >
                             <Sparkles className="h-4 w-4 mr-1" />
-                            Create {getTerminology(ContentTerms.Course, SystemTerms.Course)} with AI
+                            {t('createTermWithAI', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) })}
                         </MyButton>
                     )}
                 </div>
@@ -795,16 +797,16 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-col gap-1">
                     <div className="sm:text-h5 text-lg font-semibold">
-                        Explore {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
+                        {t('exploreTerm', { term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course) })}
                     </div>
                     <div className="text-xs text-neutral-500 sm:text-sm">
-                        Effortlessly organize, upload, and track educational resources in one place.
+                        {t('exploreSubtitle')}
                     </div>
                 </div>
                 <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.Course}
-                        label="Course settings"
+                        label={t('courseSettings')}
                     />
                     {canShowCreateCourse && <AddCourseButton />}
                     {canShowCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
@@ -816,7 +818,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                             onClick={() => navigate({ to: '/study-library/ai-copilot' })}
                         >
                             <Sparkles className="h-4 w-4 mr-1" />
-                            Create {getTerminology(ContentTerms.Course, SystemTerms.Course)} with AI
+                            {t('createTermWithAI', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) })}
                         </MyButton>
                     )}
                 </div>
@@ -888,12 +890,12 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                                 if (!hasActiveFilters) {
                                     return (
                                         <div className="flex h-40 flex-col items-center justify-center text-gray-500">
-                                            No{' '}
-                                            {getTerminology(
-                                                ContentTerms.Course,
-                                                SystemTerms.Course
-                                            ).toLocaleLowerCase()}
-                                            s found for this tab.
+                                            {t('noTermFoundForTab', {
+                                                term: getTerminologyPlural(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                ).toLocaleLowerCase(),
+                                            })}
                                         </div>
                                     );
                                 } else {
@@ -933,12 +935,12 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                                                 }
                                             />
                                             <div className="mt-4 flex h-20 flex-col items-center justify-center text-gray-500">
-                                                No{' '}
-                                                {getTerminology(
-                                                    ContentTerms.Course,
-                                                    SystemTerms.Course
-                                                ).toLocaleLowerCase()}
-                                                s found for the applied filters.
+                                                {t('noTermFoundForFilters', {
+                                                    term: getTerminologyPlural(
+                                                        ContentTerms.Course,
+                                                        SystemTerms.Course
+                                                    ).toLocaleLowerCase(),
+                                                })}
                                             </div>
                                         </>
                                     );

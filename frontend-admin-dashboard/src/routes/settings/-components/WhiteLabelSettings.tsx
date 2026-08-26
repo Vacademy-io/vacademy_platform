@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -184,11 +185,11 @@ interface DomainFormEntry {
 
 const ROLES = ['LEARNER', 'ADMIN', 'TEACHER'] as const;
 
-const roleLabel = (role: string): string => {
+const roleLabel = (role: string, t: (key: string) => string): string => {
     switch (role?.toUpperCase()) {
-        case 'LEARNER': return 'Learner Portal';
-        case 'ADMIN':   return 'Admin Portal';
-        case 'TEACHER': return 'Teacher Portal';
+        case 'LEARNER': return t('roles.learnerPortal');
+        case 'ADMIN':   return t('roles.adminPortal');
+        case 'TEACHER': return t('roles.teacherPortal');
         default:        return role;
     }
 };
@@ -221,6 +222,7 @@ const ImageUploadButton = ({
     fileId?: string;
     onChange: (fileId: string | undefined) => void;
 }) => {
+    const { t } = useTranslation('settingsWhiteLabel');
     const instituteId = getInstituteId() || 'admin';
     const [isUploading, setIsUploading] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -255,7 +257,7 @@ const ImageUploadButton = ({
             }
         } catch (error) {
             console.error('Upload failed:', error);
-            toast.error('Failed to upload image');
+            toast.error(t('imageUpload.uploadFailed'));
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) {
@@ -276,13 +278,13 @@ const ImageUploadButton = ({
 
             {previewUrl ? (
                 <div className="group relative size-12 shrink-0 rounded-md border border-slate-200 overflow-hidden bg-slate-50">
-                    <img src={previewUrl} alt="Icon preview" className="size-full object-cover" />
+                    <img src={previewUrl} alt={t('imageUpload.iconPreviewAlt')} className="size-full object-cover" />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
                             className="p-1 rounded text-white hover:bg-white/20"
-                            title="Change image"
+                            title={t('imageUpload.changeImage')}
                         >
                             <Pencil className="size-3" />
                         </button>
@@ -290,7 +292,7 @@ const ImageUploadButton = ({
                             type="button"
                             onClick={() => onChange(undefined)}
                             className="p-1 rounded text-white hover:bg-red-500/80"
-                            title="Remove image"
+                            title={t('imageUpload.removeImage')}
                         >
                             <Trash2 className="size-3" />
                         </button>
@@ -315,7 +317,7 @@ const ImageUploadButton = ({
 
             <div className="flex-1 space-y-1">
                 <Input
-                    placeholder="or enter file UUID"
+                    placeholder={t('imageUpload.fileUuidPlaceholder')}
                     value={fileId || ''}
                     onChange={(e) => onChange(e.target.value || undefined)}
                     className="h-8 text-sm"
@@ -325,18 +327,20 @@ const ImageUploadButton = ({
     );
 };
 
-const StatusBadge = ({ configured }: { configured: boolean }) =>
-    configured ? (
+const StatusBadge = ({ configured }: { configured: boolean }) => {
+    const { t } = useTranslation('settingsWhiteLabel');
+    return configured ? (
         <Badge className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100">
             <CheckCircle2 className="size-3" />
-            Configured
+            {t('status.configured')}
         </Badge>
     ) : (
         <Badge variant="secondary" className="gap-1">
             <AlertCircle className="size-3" />
-            Not Configured
+            {t('status.notConfigured')}
         </Badge>
     );
+};
 
 const DnsRecordRow = ({ record }: { record: DnsRecordResult }) => (
     <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-mono">
@@ -366,32 +370,35 @@ const pagesStatusClass = (status: string): string => {
     }
 };
 
-const PagesDomainRow = ({ record }: { record: PagesDomainResult }) => (
-    <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm space-y-1.5">
-        <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-                <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-xs font-semibold text-violet-700">
-                    PAGES
-                </span>
-                <span className="truncate font-mono text-slate-700">{record.name}</span>
-                <span className="hidden shrink-0 text-slate-400 sm:inline">→</span>
-                <span className="hidden truncate font-mono text-slate-500 sm:inline">{record.project}</span>
+const PagesDomainRow = ({ record }: { record: PagesDomainResult }) => {
+    const { t } = useTranslation('settingsWhiteLabel');
+    return (
+        <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm space-y-1.5">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                    <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-xs font-semibold text-violet-700">
+                        PAGES
+                    </span>
+                    <span className="truncate font-mono text-slate-700">{record.name}</span>
+                    <span className="hidden shrink-0 text-slate-400 sm:inline">→</span>
+                    <span className="hidden truncate font-mono text-slate-500 sm:inline">{record.project}</span>
+                </div>
+                <Badge variant="outline" className={`ml-3 shrink-0 text-xs ${pagesStatusClass(record.status)}`}>
+                    {record.status || record.action}
+                </Badge>
             </div>
-            <Badge variant="outline" className={`ml-3 shrink-0 text-xs ${pagesStatusClass(record.status)}`}>
-                {record.status || record.action}
-            </Badge>
+            {record.status?.toLowerCase() !== 'active' && record.pages_cname_target && (
+                <p className="text-xs text-slate-500">
+                    {t('pagesDomain.cnameHint')}{' '}
+                    <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-slate-700">
+                        {record.name} → {record.pages_cname_target}
+                    </code>
+                    . {t('pagesDomain.sslHint')}
+                </p>
+            )}
         </div>
-        {record.status?.toLowerCase() !== 'active' && record.pages_cname_target && (
-            <p className="text-xs text-slate-500">
-                If this is a custom (non-vacademy.io) domain, add a CNAME at your DNS provider:{' '}
-                <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-slate-700">
-                    {record.name} → {record.pages_cname_target}
-                </code>
-                . SSL activates automatically once Cloudflare validates it.
-            </p>
-        )}
-    </div>
-);
+    );
+};
 
 const PortalUrlRow = ({ label, url }: { label: string; url: string | null | undefined }) => {
     if (!url) return null;
@@ -409,8 +416,9 @@ const PortalUrlRow = ({ label, url }: { label: string; url: string | null | unde
 
 /** Displays a single config value in the current config table */
 const ConfigValue = ({ label, value }: { label: string; value: any }) => {
+    const { t } = useTranslation('settingsWhiteLabel');
     if (value === null || value === undefined || value === '') return null;
-    const display = typeof value === 'boolean' ? (value ? '✓ Yes' : '✗ No') : String(value);
+    const display = typeof value === 'boolean' ? (value ? t('configValue.yes') : t('configValue.no')) : String(value);
     return (
         <div className="flex items-center justify-between gap-2 text-xs">
             <span className="text-slate-500 shrink-0">{label}</span>
@@ -427,35 +435,37 @@ const ConfigFormSection = ({
 }: {
     config: RoutingConfig;
     onUpdate: (field: keyof RoutingConfig, value: any) => void;
-}) => (
+}) => {
+    const { t } = useTranslation('settingsWhiteLabel');
+    return (
     <div className="space-y-5 pt-4">
         {/* Branding */}
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <Palette className="size-4 text-blue-500" />
-                Branding
+                {t('configForm.branding.heading')}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Tab Title</Label>
-                    <Input placeholder="My School" value={config.tab_text || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.branding.tabTitleLabel')}</Label>
+                    <Input placeholder={t('configForm.branding.tabTitlePlaceholder')} value={config.tab_text || ''}
                            onChange={e => onUpdate('tab_text', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Tab Icon File ID</Label>
+                    <Label className="text-xs text-slate-500">{t('configForm.branding.tabIconLabel')}</Label>
                     <ImageUploadButton
                         fileId={config.tab_icon_file_id}
                         onChange={(id) => onUpdate('tab_icon_file_id', id)}
                     />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Theme / Color</Label>
-                    <Input placeholder="#4F46E5 or theme-name" value={config.theme || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.branding.themeLabel')}</Label>
+                    <Input placeholder={t('configForm.branding.themePlaceholder')} value={config.theme || ''}
                            onChange={e => onUpdate('theme', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Font Family</Label>
-                    <Input placeholder="Inter, Roboto, etc." value={config.font_family || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.branding.fontFamilyLabel')}</Label>
+                    <Input placeholder={t('configForm.branding.fontFamilyPlaceholder')} value={config.font_family || ''}
                            onChange={e => onUpdate('font_family', e.target.value)} className="h-8 text-sm" />
                 </div>
             </div>
@@ -465,11 +475,10 @@ const ConfigFormSection = ({
                 <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-xs font-medium text-slate-700 cursor-pointer" htmlFor="switch-hide_institute_name">
-                            Hide institute name
+                            {t('configForm.branding.hideNameLabel')}
                         </Label>
                         <p className="text-[11px] text-slate-400">
-                            Enable if your logo already contains the institute name. Hides
-                            the name in the sidebar and login page.
+                            {t('configForm.branding.hideNameHint')}
                         </p>
                     </div>
                     <Switch
@@ -481,11 +490,10 @@ const ConfigFormSection = ({
                 <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-xs font-medium text-slate-700 cursor-pointer" htmlFor="switch-stack_name_below_logo">
-                            Stack name below logo
+                            {t('configForm.branding.stackNameLabel')}
                         </Label>
                         <p className="text-xs text-slate-400">
-                            Render the institute name centered underneath the logo instead
-                            of beside it, in the sidebar header.
+                            {t('configForm.branding.stackNameHint')}
                         </p>
                     </div>
                     <Switch
@@ -497,7 +505,7 @@ const ConfigFormSection = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                         <Label className="text-xs text-slate-500">
-                            Logo width (px)
+                            {t('configForm.branding.logoWidthLabel')}
                         </Label>
                         <Input
                             type="number"
@@ -522,13 +530,12 @@ const ConfigFormSection = ({
                             className="h-8 text-sm"
                         />
                         <p className="text-[10px] text-slate-400">
-                            Leave blank to use default. Set 250+ AND clear the height to
-                            make the sidebar logo span the full width, edge to edge.
+                            {t('configForm.branding.logoWidthHint')}
                         </p>
                     </div>
                     <div className="space-y-1">
                         <Label className="text-xs text-slate-500">
-                            Logo height (px)
+                            {t('configForm.branding.logoHeightLabel')}
                         </Label>
                         <Input
                             type="number"
@@ -553,9 +560,7 @@ const ConfigFormSection = ({
                             className="h-8 text-sm"
                         />
                         <p className="text-[10px] text-slate-400">
-                            Leave blank to scale proportionally to the width (required for
-                            a full-width sidebar logo). Set a value to fit the logo inside
-                            a fixed box instead.
+                            {t('configForm.branding.logoHeightHint')}
                         </p>
                     </div>
                 </div>
@@ -568,17 +573,17 @@ const ConfigFormSection = ({
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <KeyRound className="size-4 text-amber-500" />
-                Authentication
+                {t('configForm.auth.heading')}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {([
-                    ['allow_signup', 'Allow Sign Up'],
-                    ['allow_google_auth', 'Google Auth'],
-                    ['allow_github_auth', 'GitHub Auth'],
-                    ['allow_email_otp_auth', 'Email OTP Auth'],
-                    ['allow_phone_auth', 'Phone Auth'],
-                    ['allow_username_password_auth', 'Username/Password Auth'],
-                    ['convert_username_password_to_lowercase', 'Convert Username to Lowercase'],
+                    ['allow_signup', t('configForm.auth.allowSignup')],
+                    ['allow_google_auth', t('configForm.auth.googleAuth')],
+                    ['allow_github_auth', t('configForm.auth.githubAuth')],
+                    ['allow_email_otp_auth', t('configForm.auth.emailOtpAuth')],
+                    ['allow_phone_auth', t('configForm.auth.phoneAuth')],
+                    ['allow_username_password_auth', t('configForm.auth.usernamePasswordAuth')],
+                    ['convert_username_password_to_lowercase', t('configForm.auth.convertUsernameLowercase')],
                 ] as [keyof RoutingConfig, string][]).map(([field, label]) => (
                     <div key={field} className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/50 px-3 py-2">
                         <Label className="text-xs text-slate-600 cursor-pointer" htmlFor={`switch-${field}`}>
@@ -600,11 +605,11 @@ const ConfigFormSection = ({
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <Phone className="size-4 text-sky-500" />
-                Phone Input Preferences
+                {t('configForm.phone.heading')}
             </div>
             <div className="space-y-1.5">
                 <Label className="text-xs text-slate-500">
-                    Preferred Countries
+                    {t('configForm.phone.preferredCountriesLabel')}
                 </Label>
                 <PreferredCountriesSelector
                     value={parsePreferredCountriesString(
@@ -618,9 +623,7 @@ const ConfigFormSection = ({
                     }
                 />
                 <p className="text-[11px] text-slate-400">
-                    The first selected country is pre-selected in phone inputs across the
-                    learner and admin portals. The full list determines the order of the
-                    country picker. Use the ↑ / ↓ arrows on each chip to reorder.
+                    {t('configForm.phone.preferredCountriesHint')}
                 </p>
             </div>
         </div>
@@ -631,27 +634,27 @@ const ConfigFormSection = ({
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <Route className="size-4 text-green-500" />
-                Routes
+                {t('configForm.routes.heading')}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Redirect URL</Label>
-                    <Input placeholder="/dashboard" value={config.redirect || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.routes.redirectLabel')}</Label>
+                    <Input placeholder={t('configForm.routes.redirectPlaceholder')} value={config.redirect || ''}
                            onChange={e => onUpdate('redirect', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">After Login Route</Label>
-                    <Input placeholder="/dashboard" value={config.after_login_route || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.routes.afterLoginLabel')}</Label>
+                    <Input placeholder={t('configForm.routes.afterLoginPlaceholder')} value={config.after_login_route || ''}
                            onChange={e => onUpdate('after_login_route', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">After Logout Route</Label>
-                    <Input placeholder="/login" value={config.admin_portal_after_logout_route || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.routes.afterLogoutLabel')}</Label>
+                    <Input placeholder={t('configForm.routes.afterLogoutPlaceholder')} value={config.admin_portal_after_logout_route || ''}
                            onChange={e => onUpdate('admin_portal_after_logout_route', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Home Icon Click Route</Label>
-                    <Input placeholder="/" value={config.home_icon_click_route || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.routes.homeClickLabel')}</Label>
+                    <Input placeholder={t('configForm.routes.homeClickPlaceholder')} value={config.home_icon_click_route || ''}
                            onChange={e => onUpdate('home_icon_click_route', e.target.value)} className="h-8 text-sm" />
                 </div>
             </div>
@@ -663,47 +666,49 @@ const ConfigFormSection = ({
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <Link2 className="size-4 text-violet-500" />
-                Links
+                {t('configForm.links.heading')}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Privacy Policy URL</Label>
-                    <Input placeholder="https://myschool.com/privacy" value={config.privacy_policy_url || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.links.privacyPolicyLabel')}</Label>
+                    <Input placeholder={t('configForm.links.privacyPolicyPlaceholder')} value={config.privacy_policy_url || ''}
                            onChange={e => onUpdate('privacy_policy_url', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Terms & Conditions URL</Label>
-                    <Input placeholder="https://myschool.com/terms" value={config.terms_and_condition_url || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.links.termsLabel')}</Label>
+                    <Input placeholder={t('configForm.links.termsPlaceholder')} value={config.terms_and_condition_url || ''}
                            onChange={e => onUpdate('terms_and_condition_url', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Play Store Link</Label>
-                    <Input placeholder="https://play.google.com/..." value={config.play_store_app_link || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.links.playStoreLabel')}</Label>
+                    <Input placeholder={t('configForm.links.playStorePlaceholder')} value={config.play_store_app_link || ''}
                            onChange={e => onUpdate('play_store_app_link', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">App Store Link</Label>
-                    <Input placeholder="https://apps.apple.com/..." value={config.app_store_app_link || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.links.appStoreLabel')}</Label>
+                    <Input placeholder={t('configForm.links.appStorePlaceholder')} value={config.app_store_app_link || ''}
                            onChange={e => onUpdate('app_store_app_link', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Windows App Link</Label>
-                    <Input placeholder="https://..." value={config.windows_app_link || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.links.windowsLabel')}</Label>
+                    <Input placeholder={t('configForm.links.genericUrlPlaceholder')} value={config.windows_app_link || ''}
                            onChange={e => onUpdate('windows_app_link', e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                    <Label className="text-xs text-slate-500">Mac App Link</Label>
-                    <Input placeholder="https://..." value={config.mac_app_link || ''}
+                    <Label className="text-xs text-slate-500">{t('configForm.links.macLabel')}</Label>
+                    <Input placeholder={t('configForm.links.genericUrlPlaceholder')} value={config.mac_app_link || ''}
                            onChange={e => onUpdate('mac_app_link', e.target.value)} className="h-8 text-sm" />
                 </div>
             </div>
         </div>
     </div>
-);
+    );
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
+    const { t } = useTranslation('settingsWhiteLabel');
     const instituteId = getInstituteId();
 
     const [formEntries, setFormEntries] = useState<DomainFormEntry[]>([
@@ -792,10 +797,10 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
     };
 
     const handleSetup = async () => {
-        if (!instituteId) { toast.error('No institute selected'); return; }
+        if (!instituteId) { toast.error(t('toast.noInstituteSelected')); return; }
 
         const nonEmpty = formEntries.filter(e => e.domain.trim());
-        if (nonEmpty.length === 0) { toast.error('Add at least one domain entry'); return; }
+        if (nonEmpty.length === 0) { toast.error(t('toast.addAtLeastOneDomain')); return; }
 
         setSetupLoading(true);
         setLastSetupResult(null);
@@ -814,11 +819,11 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                 payload
             );
             setLastSetupResult(res.data);
-            toast.success('White-label setup completed! 🎉');
+            toast.success(t('toast.setupCompleted'));
             await fetchStatus();
         } catch (err: any) {
-            const errMsg = err?.response?.data?.message || err?.response?.data || 'Setup failed.';
-            toast.error(typeof errMsg === 'string' ? errMsg : 'Setup failed');
+            const errMsg = err?.response?.data?.message || err?.response?.data || t('toast.setupFailed');
+            toast.error(typeof errMsg === 'string' ? errMsg : t('toast.setupFailed'));
         } finally {
             setSetupLoading(false);
         }
@@ -861,15 +866,14 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg">
                             <Globe className="size-5 text-slate-400" />
-                            White-Label Domain Setup
+                            {t('header.title')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Alert className="border-slate-200 bg-slate-50">
                             <Info className="size-4 text-slate-500" />
                             <AlertDescription className="text-slate-600">
-                                <strong>Not available on this deployment.</strong> Cloudflare API
-                                credentials are not configured. Contact your platform administrator.
+                                <strong>{t('notAvailable.strong')}</strong> {t('notAvailable.description')}
                             </AlertDescription>
                         </Alert>
                     </CardContent>
@@ -887,10 +891,10 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                         <div className="space-y-1">
                             <CardTitle className="flex items-center gap-2 text-lg">
                                 <Globe className="size-5 text-blue-600" />
-                                White-Label Domain Setup
+                                {t('header.title')}
                             </CardTitle>
                             <CardDescription>
-                                Configure custom domains, branding, auth settings and more for each portal.
+                                {t('header.description')}
                             </CardDescription>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
@@ -901,7 +905,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                             ) : null}
                             <button onClick={fetchStatus} disabled={statusLoading}
                                     className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                                    title="Refresh status">
+                                    title={t('header.refreshStatus')}>
                                 <RefreshCw className="size-4" />
                             </button>
                         </div>
@@ -915,21 +919,21 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     <CardHeader className="pb-3">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <LinkIcon className="size-4 text-blue-600" />
-                            Current Configuration
+                            {t('currentConfig.title')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {/* Primary URLs */}
                         <div>
                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                                Primary Portal URLs (Institute Default)
+                                {t('currentConfig.primaryUrlsLabel')}
                             </p>
                             <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3">
                                 <PortalUrlRow label={getTerminology(RoleTerms.Learner, SystemTerms.Learner)} url={status.learner_portal_url} />
                                 <PortalUrlRow label={getTerminology(RoleTerms.Admin, SystemTerms.Admin)} url={status.admin_portal_url} />
                                 <PortalUrlRow label={getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)} url={status.teacher_portal_url} />
                                 {!status.learner_portal_url && !status.admin_portal_url && !status.teacher_portal_url && (
-                                    <p className="text-sm text-slate-400 italic">No portal URLs set.</p>
+                                    <p className="text-sm text-slate-400 italic">{t('currentConfig.noPortalUrls')}</p>
                                 )}
                             </div>
                         </div>
@@ -942,10 +946,10 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                     <div className="flex items-center gap-2">
                                         <TableIcon className="size-4 text-slate-500" />
                                         <p className="text-sm font-semibold text-slate-700">
-                                            Domain Routing Entries
+                                            {t('currentConfig.domainRoutingEntries')}
                                         </p>
                                         <Badge variant="secondary" className="text-xs">
-                                            {status.routing_entries.length} total
+                                            {t('currentConfig.totalBadge', { count: status.routing_entries.length })}
                                         </Badge>
                                     </div>
                                     <div className="space-y-2">
@@ -964,22 +968,19 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
             <Card>
                 <CardHeader>
                     <CardTitle className="text-base">
-                        {status?.is_configured ? 'Add / Update Domains' : 'New Setup'}
+                        {status?.is_configured ? t('setupCard.titleUpdate') : t('setupCard.titleNew')}
                     </CardTitle>
                     <CardDescription>
-                        Add domain entries below. Click <strong>⚙ Settings</strong> on each entry to
-                        configure branding, authentication, routes, and links.
+                        {t('setupCard.descriptionPart1')} <strong>{t('setupCard.settingsLabel')}</strong> {t('setupCard.descriptionPart2')}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <Alert className="border-blue-100 bg-blue-50">
                         <Info className="size-4 text-blue-600" />
                         <AlertDescription className="text-blue-700 text-sm">
-                            <strong>Tip:</strong> Enter{' '}
-                            <code className="text-xs bg-blue-100 px-1 py-0.5 rounded">my-school.vacademy.io</code> for
-                            Vacademy subdomains, or{' '}
-                            <code className="text-xs bg-blue-100 px-1 py-0.5 rounded">learn.myschool.com</code> for
-                            custom domains. Mark one per role as ⭐ Primary.
+                            <strong>{t('setupCard.tip.label')}</strong> {t('setupCard.tip.enterPrefix')}{' '}
+                            <code className="text-xs bg-blue-100 px-1 py-0.5 rounded">my-school.vacademy.io</code> {t('setupCard.tip.vacademySuffix')}{' '}
+                            <code className="text-xs bg-blue-100 px-1 py-0.5 rounded">learn.myschool.com</code> {t('setupCard.tip.customSuffix')}
                         </AlertDescription>
                     </Alert>
 
@@ -996,21 +997,21 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
 
                                     <div className="flex-1 grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-3">
                                         <div className="space-y-1">
-                                            <Label className="text-xs text-slate-500">Role</Label>
+                                            <Label className="text-xs text-slate-500">{t('setupCard.roleLabel')}</Label>
                                             <Select value={entry.role}
                                                     onValueChange={v => updateEntry(entry.id, 'role', v)}>
                                                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     {ROLES.map(r => (
-                                                        <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>
+                                                        <SelectItem key={r} value={r}>{roleLabel(r, t)}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
                                         </div>
 
                                         <div className="space-y-1">
-                                            <Label className="text-xs text-slate-500">Domain</Label>
-                                            <Input placeholder="learn.myschool.com" value={entry.domain}
+                                            <Label className="text-xs text-slate-500">{t('setupCard.domainLabel')}</Label>
+                                            <Input placeholder={t('setupCard.domainPlaceholder')} value={entry.domain}
                                                    onChange={e => updateEntry(entry.id, 'domain',
                                                        e.target.value.toLowerCase().replace(/\s/g, ''))}
                                                    className="h-9" />
@@ -1025,24 +1026,24 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                                     ? 'bg-amber-100 text-amber-700 border border-amber-200'
                                                     : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100 hover:text-slate-600'
                                             }`}
-                                            title={entry.isPrimary ? 'Primary domain for this role' : 'Set as primary'}>
+                                            title={entry.isPrimary ? t('setupCard.primaryTooltip') : t('setupCard.setPrimaryTooltip')}>
                                         <Star className={`size-3 ${entry.isPrimary ? 'fill-amber-500' : ''}`} />
-                                        {entry.isPrimary ? 'Primary' : 'Set primary'}
+                                        {entry.isPrimary ? t('setupCard.primary') : t('setupCard.setPrimary')}
                                     </button>
 
                                     {/* Expand config */}
                                     <button type="button" onClick={() => toggleExpand(entry.id)}
                                             className="mt-6 flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-                                            title="Toggle settings">
+                                            title={t('setupCard.toggleSettingsTooltip')}>
                                         {entry.expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-                                        Settings
+                                        {t('setupCard.settingsToggle')}
                                     </button>
 
                                     {/* Remove */}
                                     {formEntries.length > 1 && (
                                         <button type="button" onClick={() => removeEntry(entry.id)}
                                                 className="mt-6 rounded p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                                title="Remove">
+                                                title={t('setupCard.removeTooltip')}>
                                             <Trash2 className="size-4" />
                                         </button>
                                     )}
@@ -1065,7 +1066,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     <button type="button" onClick={addEntry}
                             className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-4 py-2.5 text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-colors w-full justify-center">
                         <Plus className="size-4" />
-                        Add another domain
+                        {t('setupCard.addAnotherDomain')}
                     </button>
 
                     <Separator />
@@ -1075,12 +1076,12 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                         <MyButton id="white-label-setup-btn" onClick={handleSetup}
                                   disabled={setupLoading} buttonType="primary" scale="large" layoutVariant="default">
                             {setupLoading ? (
-                                <><Loader2 className="size-4 animate-spin mr-2" /> Configuring…</>
-                            ) : status?.is_configured ? 'Update White-Label Setup' : 'Apply White-Label Setup'}
+                                <><Loader2 className="size-4 animate-spin mr-2" /> {t('setupCard.configuring')}</>
+                            ) : status?.is_configured ? t('setupCard.updateButton') : t('setupCard.applyButton')}
                         </MyButton>
                         {status?.is_configured && (
                             <p className="text-xs text-slate-500">
-                                Existing entries are preserved. Only listed domains are created/updated.
+                                {t('setupCard.preservedHint')}
                             </p>
                         )}
                     </div>
@@ -1093,7 +1094,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     <CardHeader className="pb-3">
                         <CardTitle className="flex items-center gap-2 text-base text-emerald-700">
                             <CheckCircle2 className="size-5" />
-                            Setup Complete
+                            {t('setupResult.title')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -1107,11 +1108,10 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                 <Separator />
                                 <div className="space-y-2">
                                     <p className="text-sm font-semibold text-slate-700">
-                                        Pages Custom Domains
+                                        {t('setupResult.pagesCustomDomains')}
                                     </p>
                                     <p className="text-xs text-slate-500">
-                                        These attach the host to the app so it is actually served. A DNS
-                                        record alone is not enough.
+                                        {t('setupResult.pagesHint')}
                                     </p>
                                     <div className="space-y-1.5">
                                         {lastSetupResult.pages_domains_configured!.map((r, i) => (
@@ -1125,7 +1125,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                             <>
                                 <Separator />
                                 <div className="space-y-2">
-                                    <p className="text-sm font-semibold text-slate-700">DNS Records Configured</p>
+                                    <p className="text-sm font-semibold text-slate-700">{t('setupResult.dnsRecordsConfigured')}</p>
                                     <div className="space-y-1.5">
                                         {lastSetupResult.dns_records_configured.map((r, i) => (
                                             <DnsRecordRow key={i} record={r} />
@@ -1152,6 +1152,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
 // ─── Routing Entry Card (current config display) ──────────────────────────────
 
 function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
+    const { t } = useTranslation('settingsWhiteLabel');
     const [expanded, setExpanded] = useState(false);
     const full = fqdn(entry);
 
@@ -1180,7 +1181,7 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
             <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-3 min-w-0">
                     <Badge variant="outline" className={roleBadgeClass(entry.role)}>
-                        {roleLabel(entry.role)}
+                        {roleLabel(entry.role, t)}
                     </Badge>
                     <a href={`https://${full}`} target="_blank" rel="noopener noreferrer"
                        className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-mono truncate">
@@ -1193,25 +1194,25 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                         <Badge
                             variant="outline"
                             className={`text-xs capitalize ${pagesStatusClass(entry.pages_status)}`}
-                            title="Cloudflare custom-domain status"
+                            title={t('routingEntryCard.cloudflareStatusTooltip')}
                         >
                             {entry.pages_status}
                         </Badge>
                     )}
                     {entry.tab_text && (
                         <span className="text-xs text-slate-500 hidden sm:inline">
-                            Tab: {entry.tab_text}
+                            {t('routingEntryCard.tabPrefix', { value: entry.tab_text })}
                         </span>
                     )}
                     {entry.theme && (
                         <span className="text-xs text-slate-500 hidden sm:inline">
-                            Theme: {entry.theme}
+                            {t('routingEntryCard.themePrefix', { value: entry.theme })}
                         </span>
                     )}
                     {hasConfig && (
                         <button onClick={() => setExpanded(!expanded)}
                                 className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                                title="Show details">
+                                title={t('routingEntryCard.showDetailsTooltip')}>
                             {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
                         </button>
                     )}
@@ -1225,25 +1226,25 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                 !full.toLowerCase().endsWith('.vacademy.io') && (
                     <div className="border-t border-amber-100 bg-amber-50 px-4 py-3">
                         <p className="mb-2 text-xs font-medium text-amber-800">
-                            Add this DNS record at your provider for{' '}
-                            <span className="font-mono">{entry.domain}</span> to activate this domain:
+                            {t('routingEntryCard.cnameInstructionPrefix')}{' '}
+                            <span className="font-mono">{entry.domain}</span> {t('routingEntryCard.cnameInstructionSuffix')}
                         </p>
                         <div className="space-y-1 text-xs font-mono">
                             <div className="flex gap-3">
-                                <span className="w-12 text-slate-500">Type</span>
+                                <span className="w-12 text-slate-500">{t('routingEntryCard.dnsType')}</span>
                                 <span className="text-slate-800">CNAME</span>
                             </div>
                             <div className="flex gap-3">
-                                <span className="w-12 text-slate-500">Name</span>
+                                <span className="w-12 text-slate-500">{t('routingEntryCard.dnsName')}</span>
                                 <span className="text-slate-800">{entry.subdomain}</span>
                             </div>
                             <div className="flex gap-3">
-                                <span className="w-12 text-slate-500">Value</span>
+                                <span className="w-12 text-slate-500">{t('routingEntryCard.dnsValue')}</span>
                                 <span className="break-all text-slate-800">{entry.pages_cname_target}</span>
                             </div>
                         </div>
                         <p className="mt-2 text-xs text-amber-700">
-                            SSL activates automatically once Cloudflare validates the record.
+                            {t('routingEntryCard.sslAutoActivate')}
                         </p>
                     </div>
                 )}
@@ -1252,37 +1253,37 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
             {expanded && (
                 <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-3">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1.5">
-                        <ConfigValue label="Domain" value={entry.domain} />
-                        <ConfigValue label="Subdomain" value={entry.subdomain} />
-                        <ConfigValue label="Tab Title" value={entry.tab_text} />
-                        <ConfigValue label="Tab Icon" value={entry.tab_icon_file_id} />
-                        <ConfigValue label="Theme" value={entry.theme} />
-                        <ConfigValue label="Font" value={entry.font_family} />
-                        <ConfigValue label="Redirect" value={entry.redirect} />
-                        <ConfigValue label="After Login" value={entry.after_login_route} />
-                        <ConfigValue label="After Logout" value={entry.admin_portal_after_logout_route} />
-                        <ConfigValue label="Home Click" value={entry.home_icon_click_route} />
-                        <ConfigValue label="Sign Up" value={entry.allow_signup} />
-                        <ConfigValue label="Google Auth" value={entry.allow_google_auth} />
-                        <ConfigValue label="GitHub Auth" value={entry.allow_github_auth} />
-                        <ConfigValue label="Email OTP" value={entry.allow_email_otp_auth} />
-                        <ConfigValue label="Phone Auth" value={entry.allow_phone_auth} />
-                        <ConfigValue label="User/Pass Auth" value={entry.allow_username_password_auth} />
-                        <ConfigValue label="Privacy Policy" value={entry.privacy_policy_url} />
-                        <ConfigValue label="Terms" value={entry.terms_and_condition_url} />
-                        <ConfigValue label="Play Store" value={entry.play_store_app_link} />
-                        <ConfigValue label="App Store" value={entry.app_store_app_link} />
-                        <ConfigValue label="Windows" value={entry.windows_app_link} />
-                        <ConfigValue label="Mac" value={entry.mac_app_link} />
-                        <ConfigValue label="Hide Institute Name" value={entry.hide_institute_name} />
-                        <ConfigValue label="Logo Width (px)" value={entry.logo_width_px} />
-                        <ConfigValue label="Logo Height (px)" value={entry.logo_height_px} />
-                        <ConfigValue label="Stack Name Below Logo" value={entry.stack_name_below_logo} />
+                        <ConfigValue label={t('routingEntryCard.fields.domain')} value={entry.domain} />
+                        <ConfigValue label={t('routingEntryCard.fields.subdomain')} value={entry.subdomain} />
+                        <ConfigValue label={t('routingEntryCard.fields.tabTitle')} value={entry.tab_text} />
+                        <ConfigValue label={t('routingEntryCard.fields.tabIcon')} value={entry.tab_icon_file_id} />
+                        <ConfigValue label={t('routingEntryCard.fields.theme')} value={entry.theme} />
+                        <ConfigValue label={t('routingEntryCard.fields.font')} value={entry.font_family} />
+                        <ConfigValue label={t('routingEntryCard.fields.redirect')} value={entry.redirect} />
+                        <ConfigValue label={t('routingEntryCard.fields.afterLogin')} value={entry.after_login_route} />
+                        <ConfigValue label={t('routingEntryCard.fields.afterLogout')} value={entry.admin_portal_after_logout_route} />
+                        <ConfigValue label={t('routingEntryCard.fields.homeClick')} value={entry.home_icon_click_route} />
+                        <ConfigValue label={t('routingEntryCard.fields.signUp')} value={entry.allow_signup} />
+                        <ConfigValue label={t('routingEntryCard.fields.googleAuth')} value={entry.allow_google_auth} />
+                        <ConfigValue label={t('routingEntryCard.fields.githubAuth')} value={entry.allow_github_auth} />
+                        <ConfigValue label={t('routingEntryCard.fields.emailOtp')} value={entry.allow_email_otp_auth} />
+                        <ConfigValue label={t('routingEntryCard.fields.phoneAuth')} value={entry.allow_phone_auth} />
+                        <ConfigValue label={t('routingEntryCard.fields.userPassAuth')} value={entry.allow_username_password_auth} />
+                        <ConfigValue label={t('routingEntryCard.fields.privacyPolicy')} value={entry.privacy_policy_url} />
+                        <ConfigValue label={t('routingEntryCard.fields.terms')} value={entry.terms_and_condition_url} />
+                        <ConfigValue label={t('routingEntryCard.fields.playStore')} value={entry.play_store_app_link} />
+                        <ConfigValue label={t('routingEntryCard.fields.appStore')} value={entry.app_store_app_link} />
+                        <ConfigValue label={t('routingEntryCard.fields.windows')} value={entry.windows_app_link} />
+                        <ConfigValue label={t('routingEntryCard.fields.mac')} value={entry.mac_app_link} />
+                        <ConfigValue label={t('routingEntryCard.fields.hideInstituteName')} value={entry.hide_institute_name} />
+                        <ConfigValue label={t('routingEntryCard.fields.logoWidth')} value={entry.logo_width_px} />
+                        <ConfigValue label={t('routingEntryCard.fields.logoHeight')} value={entry.logo_height_px} />
+                        <ConfigValue label={t('routingEntryCard.fields.stackNameBelowLogo')} value={entry.stack_name_below_logo} />
                     </div>
                     {preferredCountryCodes.length > 0 && (
                         <div className="mt-3 border-t border-slate-200 pt-3">
                             <div className="flex items-center gap-2 text-xs">
-                                <span className="text-slate-500">Preferred Countries</span>
+                                <span className="text-slate-500">{t('routingEntryCard.preferredCountries')}</span>
                                 <div className="flex flex-wrap gap-1">
                                     {preferredCountryCodes.map((code, idx) => (
                                         <span
@@ -1294,7 +1295,7 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                                             }`}
                                             title={
                                                 idx === 0
-                                                    ? 'Default selected country'
+                                                    ? t('routingEntryCard.defaultCountryTooltip')
                                                     : undefined
                                             }
                                         >

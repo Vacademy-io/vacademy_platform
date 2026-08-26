@@ -1,0 +1,150 @@
+{
+    "catalog": {
+        "tab": {
+            "all": "Tous les {{courses}}",
+            "inProgress": "En cours",
+            "completed": "Terminés"
+        },
+        "toast": {
+            "loadError": "Une erreur s'est produite lors du chargement des {{courses}}. Veuillez réessayer.",
+            "loadTabError": "Impossible de charger les {{courses}} de cet onglet. Veuillez réessayer.",
+            "loadFallbackError": "Impossible de charger les {{courses}}. Veuillez réessayer."
+        },
+        "search": {
+            "placeholder": "Rechercher des {{courses}}..."
+        },
+        "sort": {
+            "label": "Trier par :",
+            "ariaLabel": "Trier les {{courses}}",
+            "placeholder": "Ordre de tri",
+            "newest": "Plus récents d'abord",
+            "oldest": "Plus anciens d'abord",
+            "highestRated": "Les mieux notés",
+            "shortest": "Les plus courts d'abord"
+        },
+        "empty": {
+            "title": "Aucun {{courses}} trouvé",
+            "description": "Nous n'avons rien trouvé qui corresponde à votre recherche. Essayez d'autres mots-clés, ajustez vos filtres ou effacez-les pour voir tous les {{courses}} disponibles."
+        },
+        "results": {
+            "summary": "{{total}} {{courses}} • Page {{page}}/{{totalPages}} • {{showing}} affichés sur {{total}}"
+        },
+        "card": {
+            "untitledPackage": "Pack sans titre"
+        }
+    },
+    "filters": {
+        "title": "Filtres",
+        "clearAll": "Tout effacer",
+        "close": "Fermer",
+        "show": "Afficher",
+        "apply": "Appliquer les filtres",
+        "applyShort": "Appliquer",
+        "applyWithCount": "Appliquer ({{selected}})",
+        "appliedCount_one": "{{count}} filtre appliqué",
+        "appliedCount_many": "{{count}} filtres appliqués",
+        "appliedCount_other": "{{count}} filtres appliqués",
+        "noOptions": "Aucune option disponible",
+        "unavailable": "Indisponible",
+        "unnamedLevel": "{{level}} sans nom",
+        "unnamedSession": "{{session}} sans nom",
+        "unnamedInstructor": "{{instructor}} sans nom"
+    },
+    "catalogFilterWizard": {
+        "title": "Choisissez votre {{term}}",
+        "description": "Sélectionnez une ou plusieurs options ci-dessous — nous afficherons les cours correspondants.",
+        "stepOf": "Étape {{current}} sur {{total}}",
+        "next": "Suivant",
+        "back": "Retour",
+        "showCourses": "Afficher les cours",
+        "skip": "Ignorer, afficher tous les cours"
+    },
+    "pagination": {
+        "ariaLabel": "Pagination",
+        "previous": "Précédent",
+        "next": "Suivant"
+    },
+    "dialog": {
+        "close": "Fermer"
+    },
+    "enrollment": {
+        "success": {
+            "title": "Inscription réussie !",
+            "welcome": "Bienvenue dans {{courseTitle}} !",
+            "description": "Votre inscription au {{course}} a bien été enregistrée. Vous pouvez maintenant accéder à toutes les {{slides}} et commencer à apprendre.",
+            "exploreCourse": "Découvrir le {{course}}"
+        },
+        "pending": {
+            "title": "Demande d'inscription envoyée",
+            "heading": "Demande envoyée avec succès",
+            "nextTitle": "Que se passe-t-il ensuite ?",
+            "step1": "{{admin}} examinera votre demande d'inscription",
+            "step2": "Vous recevrez une notification une fois la demande approuvée",
+            "step3": "L'accès aux {{slides}} du {{course}} vous sera accordé"
+        }
+    },
+    "approval": {
+        "success": {
+            "srTitle": "Approbation réussie",
+            "srDescription": "Votre inscription a été approuvée et vous avez désormais accès au {{course}}",
+            "heading": "Approbation réussie !",
+            "readyTitle": "Prêt à apprendre !",
+            "readyMessage": "Vous pouvez maintenant accéder au contenu du {{course}} et commencer à apprendre.",
+            "startLearning": "Commencer à apprendre"
+        }
+    },
+    "payment": {
+        "success": {
+            "srTitle": "Paiement réussi",
+            "srDescription": "Votre paiement a été traité avec succès",
+            "heading": "Paiement réussi !",
+            "approvalTitle": "Approbation de {{admin}} requise",
+            "approvalStep1": "L'administrateur examinera votre demande d'inscription",
+            "approvalStep2": "Vous recevrez un e-mail de notification une fois la demande approuvée",
+            "approvalStep3": "L'accès au {{course}} sera accordé automatiquement",
+            "accessMessage": "Vous pouvez maintenant accéder au contenu du {{course}} et commencer à apprendre.",
+            "exploreCourse": "Découvrir le {{course}}"
+        },
+        "failed": {
+            "srTitle": "Échec du paiement",
+            "srDescription": "Votre paiement n'a pas pu être traité",
+            "heading": "Échec du paiement",
+            "description": "Votre paiement n'a pas pu être traité. Veuillez réessayer.",
+            "nextTitle": "Que faire ensuite ?",
+            "step1": "Vérifiez votre moyen de paiement et réessayez",
+            "step2": "Contactez l'assistance si le problème persiste",
+            "step3": "Vous pouvez relancer le processus d'inscription",
+            "tryAgain": "Réessayer"
+        }
+    },
+    "hero": {
+        "resume": {
+            "eyebrow": "Reprenez là où vous en étiez",
+            "continue": "Continuer"
+        },
+        "catalogEyebrow": "Catalogue de {{course}}",
+        "title": "Explorer et découvrir",
+        "description": "Organisez, importez et suivez vos ressources pédagogiques en un seul endroit, sans effort.",
+        "createCourse": "Créer un {{course}}"
+    },
+    "card": {
+        "unknownInstructor": "{{instructor}} inconnu",
+        "cta": {
+            "review": "Revoir",
+            "continue": "Continuer",
+            "startLearning": "Commencer à apprendre",
+            "view": "Voir le {{course}}"
+        },
+        "tagsMore_one": "+{{count}} autre",
+        "tagsMore_many": "+{{count}} autres",
+        "tagsMore_other": "+{{count}} autres",
+        "status": {
+            "notStarted": "Non commencé",
+            "percentComplete": "{{percent}} % terminé",
+            "keepGoing": "Continuez comme ça !"
+        },
+        "nextSlide": "Suivant : {{title}}",
+        "overview": "Aperçu",
+        "overviewAriaLabel": "Voir l'aperçu du {{course}}"
+    }
+}

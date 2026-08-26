@@ -8,6 +8,8 @@
  */
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { SpinnerGap, Sparkle } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -71,17 +73,19 @@ export interface GuardianSettingsData {
     parentPortal?: ParentPortalConfig;
 }
 
-const PARENT_PORTAL_MODULES: { key: string; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'attendance', label: 'Attendance' },
-    { key: 'liveSessions', label: 'Live Classes' },
-    { key: 'assessments', label: 'Tests' },
-    { key: 'progress', label: 'Progress' },
-    { key: 'payments', label: 'Fees' },
-    { key: 'badges', label: 'Rewards & Badges' },
-    { key: 'certificates', label: 'Certificates' },
-    { key: 'reports', label: 'Report Cards' },
-];
+function getParentPortalModules(t: TFunction): { key: string; label: string }[] {
+    return [
+        { key: 'overview', label: t('parentPortal.modules.overview') },
+        { key: 'attendance', label: t('parentPortal.modules.attendance') },
+        { key: 'liveSessions', label: t('parentPortal.modules.liveSessions') },
+        { key: 'assessments', label: t('parentPortal.modules.assessments') },
+        { key: 'progress', label: t('parentPortal.modules.progress') },
+        { key: 'payments', label: t('parentPortal.modules.payments') },
+        { key: 'badges', label: t('parentPortal.modules.badges') },
+        { key: 'certificates', label: t('parentPortal.modules.certificates') },
+        { key: 'reports', label: t('parentPortal.modules.reports') },
+    ];
+}
 
 const DEFAULT_PARENT_PORTAL: ParentPortalConfig = {
     enabled: false,
@@ -237,9 +241,11 @@ const saveCredentialTemplateConfig = async (templateId: string): Promise<void> =
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function GuardianSettings() {
+    const { t } = useTranslation('settingsGuardian');
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<GuardianSettingsData>(DEFAULT_GUARDIAN_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
+    const parentPortalModules = getParentPortalModules(t);
 
     const { data, isLoading } = useQuery({
         queryKey: ['guardian-settings'],
@@ -257,13 +263,13 @@ export default function GuardianSettings() {
     const { mutate: save, isPending: saving } = useMutation({
         mutationFn: saveGuardianSettings,
         onSuccess: () => {
-            toast.success('Guardian settings saved');
+            toast.success(t('toasts.settingsSaved'));
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['guardian-settings'] });
             queryClient.invalidateQueries({ queryKey: ['parent-settings-config'] });
         },
         onError: () => {
-            toast.error('Failed to save guardian settings');
+            toast.error(t('toasts.saveFailed'));
         },
     });
 
@@ -282,16 +288,12 @@ export default function GuardianSettings() {
                 {/* ── Enable / Disable Guardian Linking ── */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Guardian Setting</CardTitle>
-                        <CardDescription>
-                            Controls whether guardian-student linking (bulk assignment, student
-                            side-view, and backfill) is available institute-wide. Disabling hides
-                            all guardian-linking UI without deleting existing links.
-                        </CardDescription>
+                        <CardTitle>{t('enableCard.title')}</CardTitle>
+                        <CardDescription>{t('enableCard.description')}</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {isLoading ? (
-                            <div className="text-body text-neutral-500">Loading guardian settings…</div>
+                            <div className="text-body text-neutral-500">{t('enableCard.loading')}</div>
                         ) : (
                             <div className="flex items-center gap-3">
                                 <Switch
@@ -300,7 +302,9 @@ export default function GuardianSettings() {
                                     onCheckedChange={(v) => update({ enabled: v })}
                                 />
                                 <Label htmlFor="guardian-enabled" className="cursor-pointer">
-                                    {settings.enabled ? 'Enable Guardian Linking' : 'Guardian Linking Disabled'}
+                                    {settings.enabled
+                                        ? t('enableCard.enabledLabel')
+                                        : t('enableCard.disabledLabel')}
                                 </Label>
                             </div>
                         )}
@@ -310,17 +314,12 @@ export default function GuardianSettings() {
                 {/* ── Parent Portal ("My Child" monitoring) ── */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Parent Portal</CardTitle>
-                        <CardDescription>
-                            Let linked guardians monitor their child&apos;s progress, attendance,
-                            tests, live classes, fees, and rewards from the learner app. This is
-                            separate from guardian linking above — turn it on and choose which
-                            sections parents can see.
-                        </CardDescription>
+                        <CardTitle>{t('parentPortal.title')}</CardTitle>
+                        <CardDescription>{t('parentPortal.description')}</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {isLoading ? (
-                            <div className="text-body text-neutral-500">Loading…</div>
+                            <div className="text-body text-neutral-500">{t('parentPortal.loading')}</div>
                         ) : (
                             <div className="space-y-4">
                                 <div className="flex items-center gap-3">
@@ -338,18 +337,18 @@ export default function GuardianSettings() {
                                     />
                                     <Label htmlFor="parent-portal-enabled" className="cursor-pointer">
                                         {settings.parentPortal?.enabled
-                                            ? 'Parent Portal Enabled'
-                                            : 'Parent Portal Disabled'}
+                                            ? t('parentPortal.enabledLabel')
+                                            : t('parentPortal.disabledLabel')}
                                     </Label>
                                 </div>
 
                                 {settings.parentPortal?.enabled && (
                                     <div className="space-y-3">
                                         <p className="text-body font-medium text-neutral-700">
-                                            Sections visible to parents
+                                            {t('parentPortal.sectionsVisible')}
                                         </p>
                                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                            {PARENT_PORTAL_MODULES.map((m) => {
+                                            {parentPortalModules.map((m) => {
                                                 const pp =
                                                     settings.parentPortal ?? DEFAULT_PARENT_PORTAL;
                                                 const visible =
@@ -386,7 +385,7 @@ export default function GuardianSettings() {
                                         </div>
 
                                         <p className="pt-2 text-body font-medium text-neutral-700">
-                                            View switching
+                                            {t('parentPortal.viewSwitching')}
                                         </p>
                                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                             <div className="flex items-center gap-3">
@@ -409,7 +408,7 @@ export default function GuardianSettings() {
                                                     htmlFor="pp-view-as-child"
                                                     className="cursor-pointer"
                                                 >
-                                                    Parent can open student view (read-only)
+                                                    {t('parentPortal.viewAsChildLabel')}
                                                 </Label>
                                             </div>
                                             <div className="flex items-center gap-3">
@@ -433,7 +432,7 @@ export default function GuardianSettings() {
                                                     htmlFor="pp-switch-to-parent"
                                                     className="cursor-pointer"
                                                 >
-                                                    Student can switch to their parent portal
+                                                    {t('parentPortal.switchToParentLabel')}
                                                 </Label>
                                             </div>
                                         </div>

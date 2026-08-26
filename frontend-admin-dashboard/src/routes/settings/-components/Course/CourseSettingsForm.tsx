@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -51,6 +52,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
     onSave,
     isSaving,
 }) => {
+    const { t } = useTranslation('settingsCourseForm');
     const [formData, setFormData] = useState<CourseSettingsData>(settings);
     const [hasChanges, setHasChanges] = useState(false);
 
@@ -226,7 +228,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                 <div className="flex items-center gap-2">
                     <Button variant="outline" onClick={resetAllToDefault} disabled={isSaving}>
                         <RotateCcw className="mr-2 size-4" />
-                        Reset All
+                        {t('actions.resetAll')}
                     </Button>
                     <MyButton
                         onClick={handleSave}
@@ -234,7 +236,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                         className="bg-primary-500"
                     >
                         <Save className="mr-2 size-4" />
-                        {isSaving ? 'Saving...' : 'Save Changes'}
+                        {isSaving ? t('actions.saving') : t('actions.saveChanges')}
                     </MyButton>
                 </div>
             </div>
@@ -242,9 +244,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
             {/* Unsaved Changes Warning */}
             {hasChanges && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                    <p className="text-sm text-amber-800">
-                        You have unsaved changes. Don&apos;t forget to save your updates.
-                    </p>
+                    <p className="text-sm text-amber-800">{t('unsavedChanges')}</p>
                 </div>
             )}
 
@@ -254,7 +254,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <BookOpen className="size-5 text-blue-600" />
-                            Course Information Requirements
+                            {t('courseInformation.heading')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -264,7 +264,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                     htmlFor="description-required"
                                     className="flex items-center gap-2"
                                 >
-                                    <span>Description Required</span>
+                                    <span>{t('courseInformation.descriptionRequired')}</span>
                                 </Label>
                                 <Switch
                                     id="description-required"
@@ -277,7 +277,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
 
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="popular-topics" className="flex items-center gap-2">
-                                    <span>Enable Popular Topics</span>
+                                    <span>{t('courseInformation.enablePopularTopics')}</span>
                                 </Label>
                                 <Switch
                                     id="popular-topics"
@@ -293,7 +293,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                     htmlFor="learner-outcomes"
                                     className="flex items-center gap-2"
                                 >
-                                    <span>Learner Outcomes Required</span>
+                                    <span>{t('courseInformation.learnerOutcomesRequired')}</span>
                                 </Label>
                                 <Switch
                                     id="learner-outcomes"
@@ -306,7 +306,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
 
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="about-course" className="flex items-center gap-2">
-                                    <span>About Course Required</span>
+                                    <span>{t('courseInformation.aboutCourseRequired')}</span>
                                 </Label>
                                 <Switch
                                     id="about-course"
@@ -322,7 +322,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                     htmlFor="target-audience"
                                     className="flex items-center gap-2"
                                 >
-                                    <span>Target Audience Required</span>
+                                    <span>{t('courseInformation.targetAudienceRequired')}</span>
                                 </Label>
                                 <Switch
                                     id="target-audience"
@@ -336,7 +336,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="preview-image" className="flex items-center gap-2">
                                     <Image className="size-4" />
-                                    <span>Preview Image Required</span>
+                                    <span>{t('courseInformation.previewImageRequired')}</span>
                                 </Label>
                                 <Switch
                                     id="preview-image"
@@ -350,7 +350,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="banner-enabled" className="flex items-center gap-2">
                                     <Image className="size-4" />
-                                    <span>Enable Banner Image</span>
+                                    <span>{t('courseInformation.enableBannerImage')}</span>
                                 </Label>
                                 <Switch
                                     id="banner-enabled"
@@ -367,7 +367,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                     className="flex items-center gap-2"
                                 >
                                     <Image className="size-4" />
-                                    <span>Banner Image Required</span>
+                                    <span>{t('courseInformation.bannerImageRequired')}</span>
                                 </Label>
                                 <Switch
                                     id="banner-required"
@@ -382,7 +382,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="course-media" className="flex items-center gap-2">
                                     <Play className="size-4" />
-                                    <span>Enable Course Media</span>
+                                    <span>{t('courseInformation.enableCourseMedia')}</span>
                                 </Label>
                                 <Switch
                                     id="course-media"
@@ -401,13 +401,13 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Layers className="size-5 text-green-600" />
-                            Course Structure Configuration
+                            {t('courseStructure.heading')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="default-depth">Default Course Depth</Label>
+                                <Label htmlFor="default-depth">{t('courseStructure.defaultDepth')}</Label>
                                 <Select
                                     value={formData.courseStructure.defaultDepth.toString()}
                                     onValueChange={(value) =>
@@ -418,17 +418,25 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="2">2 Levels</SelectItem>
-                                        <SelectItem value="3">3 Levels</SelectItem>
-                                        <SelectItem value="4">4 Levels</SelectItem>
-                                        <SelectItem value="5">5 Levels</SelectItem>
+                                        <SelectItem value="2">
+                                            {t('courseStructure.depthOption', { count: 2 })}
+                                        </SelectItem>
+                                        <SelectItem value="3">
+                                            {t('courseStructure.depthOption', { count: 3 })}
+                                        </SelectItem>
+                                        <SelectItem value="4">
+                                            {t('courseStructure.depthOption', { count: 4 })}
+                                        </SelectItem>
+                                        <SelectItem value="5">
+                                            {t('courseStructure.depthOption', { count: 5 })}
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="fix-depth" className="flex items-center gap-2">
-                                    <span>Fix Course Depth</span>
+                                    <span>{t('courseStructure.fixCourseDepth')}</span>
                                 </Label>
                                 <Switch
                                     id="fix-depth"
@@ -444,7 +452,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                     htmlFor="enable-sessions"
                                     className="flex items-center gap-2"
                                 >
-                                    <span>Enable Sessions</span>
+                                    <span>{t('courseStructure.enableSessions')}</span>
                                 </Label>
                                 <Switch
                                     id="enable-sessions"
@@ -457,7 +465,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
 
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="enable-levels" className="flex items-center gap-2">
-                                    <span>Enable Levels</span>
+                                    <span>{t('courseStructure.enableLevels')}</span>
                                 </Label>
                                 <Switch
                                     id="enable-levels"
@@ -476,13 +484,13 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <List className="size-5 text-purple-600" />
-                            Catalogue & Publishing Settings
+                            {t('catalogueSettings.heading')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="catalogue-mode">Catalogue Mode</Label>
+                                <Label htmlFor="catalogue-mode">{t('catalogueSettings.catalogueMode')}</Label>
                                 <Select
                                     value={formData.catalogueSettings.catalogueMode}
                                     onValueChange={(value) =>
@@ -493,16 +501,16 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="ask">Ask Before Publishing</SelectItem>
-                                        <SelectItem value="auto">Auto Publish</SelectItem>
-                                        <SelectItem value="manual">Manual Only</SelectItem>
+                                        <SelectItem value="ask">{t('catalogueSettings.modeAsk')}</SelectItem>
+                                        <SelectItem value="auto">{t('catalogueSettings.modeAuto')}</SelectItem>
+                                        <SelectItem value="manual">{t('catalogueSettings.modeManual')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="auto-publish" className="flex items-center gap-2">
-                                    <span>Auto Publish to Catalogue</span>
+                                    <span>{t('catalogueSettings.autoPublish')}</span>
                                 </Label>
                                 <Switch
                                     id="auto-publish"
@@ -520,12 +528,10 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                             <div className="flex items-center justify-between gap-4">
                                 <div className="space-y-1">
                                     <Label htmlFor="filter-wizard-enabled">
-                                        Course Filter Wizard (Learner Catalogue)
+                                        {t('catalogueSettings.filterWizard.heading')}
                                     </Label>
                                     <p className="text-caption text-neutral-500">
-                                        The first time a learner opens the course catalogue, ask
-                                        them to pick filters step by step, then show only the
-                                        matching courses.
+                                        {t('catalogueSettings.filterWizard.description')}
                                     </p>
                                 </div>
                                 <Switch
@@ -538,7 +544,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                             {formData.catalogueSettings.filterWizard?.enabled && (
                                 <div className="space-y-4 rounded-lg border border-neutral-200 p-3">
                                     <div className="space-y-2">
-                                        <Label>Steps to ask</Label>
+                                        <Label>{t('catalogueSettings.filterWizard.stepsToAsk')}</Label>
                                         <div className="flex flex-wrap gap-4">
                                             {(['level', 'session', 'tag'] as const).map((step) => {
                                                 const [contentTerm, systemTerm] =
@@ -567,13 +573,20 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                             })}
                                         </div>
                                         <p className="text-xs text-muted-foreground">
-                                            Learners are asked in this fixed order —{' '}
-                                            {getTerminology(ContentTerms.Level, SystemTerms.Level)},
-                                            then{' '}
-                                            {getTerminology(ContentTerms.Session, SystemTerms.Session)},
-                                            then{' '}
-                                            {getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag)}{' '}
-                                            — skipping any step left unchecked.
+                                            {t('catalogueSettings.filterWizard.order', {
+                                                level: getTerminology(
+                                                    ContentTerms.Level,
+                                                    SystemTerms.Level
+                                                ),
+                                                session: getTerminology(
+                                                    ContentTerms.Session,
+                                                    SystemTerms.Session
+                                                ),
+                                                tag: getTerminology(
+                                                    ContentTerms.PopularTag,
+                                                    SystemTerms.PopularTag
+                                                ),
+                                            })}
                                         </p>
                                     </div>
 
@@ -582,7 +595,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                             htmlFor="filter-wizard-mandatory"
                                             className="flex items-center gap-2"
                                         >
-                                            <span>Require completion (no skip)</span>
+                                            <span>{t('catalogueSettings.filterWizard.requireCompletion')}</span>
                                         </Label>
                                         <Switch
                                             id="filter-wizard-mandatory"

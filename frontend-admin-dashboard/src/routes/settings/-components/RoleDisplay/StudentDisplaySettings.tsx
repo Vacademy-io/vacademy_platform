@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -75,22 +77,37 @@ function widgetRows(widgets: StudentDashboardWidgetConfig[]): StudentDashboardWi
         .sort((a, b) => (a.order || 0) - (b.order || 0));
 }
 
-const STUDENT_DISPLAY_SECTIONS: SettingsSectionGroup[] = [
-    {
-        sections: [
-            { id: 'grp-layout', label: 'Layout & Navigation', icon: SquaresFour },
-            { id: 'grp-account', label: 'Login & Account', icon: SignIn },
-            { id: 'grp-learning', label: 'Learning Experience', icon: GraduationCap },
-            {
-                id: 'grp-notifications',
-                label: 'Notifications & Redirect',
-                icon: BellSimple,
-            },
-        ],
-    },
-];
+function getStudentDisplaySections(t: TFunction): SettingsSectionGroup[] {
+    return [
+        {
+            sections: [
+                { id: 'grp-layout', label: t('sections.layoutNav'), icon: SquaresFour },
+                { id: 'grp-account', label: t('sections.loginAccount'), icon: SignIn },
+                { id: 'grp-learning', label: t('sections.learningExperience'), icon: GraduationCap },
+                {
+                    id: 'grp-notifications',
+                    label: t('sections.notificationsRedirect'),
+                    icon: BellSimple,
+                },
+            ],
+        },
+    ];
+}
 
 export default function StudentDisplaySettings(): JSX.Element {
+    const { t } = useTranslation('settingsStudentDisplay');
+    const STUDENT_DISPLAY_SECTIONS = getStudentDisplaySections(t);
+    // Precomputed labels for the tab/sub-tab list renderers below: those loops
+    // use `t` as the loop variable name for the tab item (matching the
+    // surrounding helper functions), which shadows the translate function, so
+    // the strings they need are resolved here instead of via inline t() calls.
+    const tCommonLabel = t('common.label');
+    const tCommonRoute = t('common.route');
+    const tCommonVisible = t('common.visible');
+    const tCommonRemove = t('common.remove');
+    const tSidebarRemoveTab = t('sidebar.removeTab');
+    const tSidebarSubTabs = t('sidebar.subTabs');
+    const tSidebarAddSubTab = t('sidebar.addSubTab');
     const [settings, setSettings] = useState<StudentDisplaySettingsData | null>(null);
     const [saving, setSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
@@ -141,7 +158,7 @@ export default function StudentDisplaySettings(): JSX.Element {
         const nextOrder = (settings.sidebar.tabs?.length || 0) + 1;
         const newTab = {
             id: `custom-tab-${Date.now()}`,
-            label: 'Custom Tab',
+            label: t('sidebar.defaultTabLabel'),
             route: '/',
             order: nextOrder,
             visible: true,
@@ -186,7 +203,7 @@ export default function StudentDisplaySettings(): JSX.Element {
             const nextOrder = ((t.subTabs?.length || 0) + 1) as number;
             const sub = {
                 id: `custom-sub-${Date.now()}`,
-                label: 'Custom Sub Tab',
+                label: t('sidebar.defaultSubTabLabel'),
                 route: '/',
                 order: nextOrder,
                 visible: true,
@@ -214,7 +231,7 @@ export default function StudentDisplaySettings(): JSX.Element {
         const nextOrder = (settings.dashboard.widgets?.length || 0) + 1;
         const custom = {
             id: 'custom' as const,
-            title: 'Custom Widget',
+            title: t('widgets.defaultTitle'),
             subTitle: '',
             link: '/',
             order: nextOrder,
@@ -316,12 +333,12 @@ export default function StudentDisplaySettings(): JSX.Element {
         });
     };
 
-    if (!settings) return <div className="p-4 text-sm">Loading...</div>;
+    if (!settings) return <div className="p-4 text-sm">{t('loading')}</div>;
 
     return (
         <SettingsPageShell
-            title="Student Display Settings"
-            description="Control what learners see — sidebar, courses, login, certificates, notifications and more."
+            title={t('page.title')}
+            description={t('page.description')}
             maxWidth="max-w-7xl"
         >
             {/* Save is handled by the sticky UnsavedChangesBar at the bottom of
@@ -331,9 +348,9 @@ export default function StudentDisplaySettings(): JSX.Element {
             <section id="grp-layout" className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Sidebar</CardTitle>
+                    <CardTitle>{t('sidebar.cardTitle')}</CardTitle>
                     <CardDescription>
-                        Toggle entire sidebar and configure tabs, order and visibility
+                        {t('sidebar.cardDescription')}
                     </CardDescription>
                 </CardHeader>
                 <div className="space-y-3 p-4 pt-0">
@@ -344,11 +361,11 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 update('sidebar', { ...settings.sidebar, visible: v })
                             }
                         />
-                        <Label>Sidebar Visible</Label>
+                        <Label>{t('sidebar.visibleLabel')}</Label>
                     </div>
                     <div className="mb-3 flex items-center gap-2">
                         <Button type="button" onClick={addCustomTab} size="sm" variant="secondary">
-                            Add Custom Tab
+                            {t('sidebar.addCustomTab')}
                         </Button>
                     </div>
                     <div className="space-y-2">
@@ -370,23 +387,23 @@ export default function StudentDisplaySettings(): JSX.Element {
                                         </div>
                                         <div className="flex flex-1 flex-wrap items-center gap-2">
                                             <div className="grow text-xs font-medium">{t.id}</div>
-                                            <Label className="text-xs">Label</Label>
+                                            <Label className="text-xs">{tCommonLabel}</Label>
                                             <Input className="h-8 w-40" value={t.label || ''} onChange={(e) => updateTabField(t.id, 'label', e.target.value)} />
-                                            <Label className="text-xs">Route</Label>
+                                            <Label className="text-xs">{tCommonRoute}</Label>
                                             <Input className="h-8 w-56" value={t.route || ''} onChange={(e) => updateTabField(t.id, 'route', e.target.value)} />
-                                            <Label className="text-xs">Visible</Label>
+                                            <Label className="text-xs">{tCommonVisible}</Label>
                                             <Switch checked={t.visible} onCheckedChange={(v) => updateTabField(t.id, 'visible', v)} />
                                             {t.isCustom && (
                                                 <Button type="button" size="sm" variant="destructive" onClick={() => removeTab(t.id)}>
-                                                    Remove Tab
+                                                    {tSidebarRemoveTab}
                                                 </Button>
                                             )}
                                         </div>
                                     </div>
                                     <div className="ml-8 space-y-2">
                                         <div className="flex items-center justify-between">
-                                            <div className="text-2xs font-medium text-neutral-600">Sub Tabs</div>
-                                            <Button type="button" size="sm" variant="secondary" onClick={() => addSubTab(t.id)}>Add Sub Tab</Button>
+                                            <div className="text-2xs font-medium text-neutral-600">{tSidebarSubTabs}</div>
+                                            <Button type="button" size="sm" variant="secondary" onClick={() => addSubTab(t.id)}>{tSidebarAddSubTab}</Button>
                                         </div>
                                         {(() => {
                                             const sortedSubs = (t.subTabs || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -403,7 +420,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                                     </div>
                                                     <div className="flex flex-1 flex-wrap items-center gap-2">
                                                         <div className="grow text-2xs font-medium">{s.id}</div>
-                                                        <Label className="text-xs">Label</Label>
+                                                        <Label className="text-xs">{tCommonLabel}</Label>
                                                         <Input className="h-8 w-36" value={s.label || ''} onChange={(e) => {
                                                             const tabs = settings.sidebar.tabs.map((tab) => {
                                                                 if (tab.id !== t.id) return tab;
@@ -412,7 +429,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                                             });
                                                             update('sidebar', { ...settings.sidebar, tabs });
                                                         }} />
-                                                        <Label className="text-xs">Route</Label>
+                                                        <Label className="text-xs">{tCommonRoute}</Label>
                                                         <Input className="h-8 w-56" value={s.route} onChange={(e) => {
                                                             const tabs = settings.sidebar.tabs.map((tab) => {
                                                                 if (tab.id !== t.id) return tab;
@@ -421,7 +438,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                                             });
                                                             update('sidebar', { ...settings.sidebar, tabs });
                                                         }} />
-                                                        <Label className="text-xs">Visible</Label>
+                                                        <Label className="text-xs">{tCommonVisible}</Label>
                                                         <Switch checked={s.visible} onCheckedChange={(v) => {
                                                             const tabs = settings.sidebar.tabs.map((tab) => {
                                                                 if (tab.id !== t.id) return tab;
@@ -431,7 +448,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                                             update('sidebar', { ...settings.sidebar, tabs });
                                                         }} />
                                                         {s.id.startsWith('custom-sub-') && (
-                                                            <Button type="button" size="sm" variant="destructive" onClick={() => removeSubTab(t.id, s.id)}>Remove</Button>
+                                                            <Button type="button" size="sm" variant="destructive" onClick={() => removeSubTab(t.id, s.id)}>{tCommonRemove}</Button>
                                                         )}
                                                     </div>
                                                 </div>
@@ -447,12 +464,12 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>UI</CardTitle>
-                    <CardDescription>Select the visual theme for learner portal</CardDescription>
+                    <CardTitle>{t('ui.cardTitle')}</CardTitle>
+                    <CardDescription>{t('ui.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs">Theme Skin</Label>
+                        <Label className="text-xs">{t('ui.themeSkin')}</Label>
                         <Select
                             value={settings.ui.type}
                             onValueChange={(v) =>
@@ -462,13 +479,13 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder="Select UI type" />
+                                <SelectValue placeholder={t('ui.selectUiType')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="default">default</SelectItem>
                                 <SelectItem value="vibrant">vibrant</SelectItem>
                                 <SelectItem value="play">play</SelectItem>
-                                <SelectItem value="cleanerPlay">Cleaner Play</SelectItem>
+                                <SelectItem value="cleanerPlay">{t('ui.cleanerPlay')}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -477,8 +494,8 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Dashboard Widgets</CardTitle>
-                    <CardDescription>Hide/Unhide, order and add custom widgets</CardDescription>
+                    <CardTitle>{t('widgets.cardTitle')}</CardTitle>
+                    <CardDescription>{t('widgets.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
                     <div className="mb-3 flex items-center gap-2">
@@ -488,7 +505,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             size="sm"
                             variant="secondary"
                         >
-                            Add Custom Widget
+                            {t('widgets.addCustom')}
                         </Button>
                     </div>
                     {(() => {
@@ -517,24 +534,24 @@ export default function StudentDisplaySettings(): JSX.Element {
                                         </div>
                                         {w.id === 'custom' && (
                                             <>
-                                                <Label className="text-xs">Title</Label>
+                                                <Label className="text-xs">{t('common.title')}</Label>
                                                 <Input className="h-8 w-40" value={w.title || ''} onChange={(e) => {
                                                     const widgets = settings.dashboard.widgets.map((x, i) => i === origIdx ? { ...x, title: e.target.value } : x);
                                                     update('dashboard', { widgets });
                                                 }} />
-                                                <Label className="text-xs">Sub Title</Label>
+                                                <Label className="text-xs">{t('widgets.subTitle')}</Label>
                                                 <Input className="h-8 w-48" value={w.subTitle || ''} onChange={(e) => {
                                                     const widgets = settings.dashboard.widgets.map((x, i) => i === origIdx ? { ...x, subTitle: e.target.value } : x);
                                                     update('dashboard', { widgets });
                                                 }} />
-                                                <Label className="text-xs">Link</Label>
-                                                <Input className="h-8 w-56" placeholder="/route or https://..." value={w.link || ''} onChange={(e) => {
+                                                <Label className="text-xs">{t('common.link')}</Label>
+                                                <Input className="h-8 w-56" placeholder={t('widgets.linkPlaceholder')} value={w.link || ''} onChange={(e) => {
                                                     const widgets = settings.dashboard.widgets.map((x, i) => i === origIdx ? { ...x, link: e.target.value } : x);
                                                     update('dashboard', { widgets });
                                                 }} />
                                             </>
                                         )}
-                                        <Label className="text-xs">Visible</Label>
+                                        <Label className="text-xs">{t('common.visible')}</Label>
                                         <Switch
                                             checked={w.visible}
                                             onCheckedChange={(v) => {
@@ -543,7 +560,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                             }}
                                         />
                                         {(w.id === 'custom' || w.isCustom) && (
-                                            <Button type="button" size="sm" variant="destructive" onClick={() => removeWidgetAt(origIdx)}>Remove</Button>
+                                            <Button type="button" size="sm" variant="destructive" onClick={() => removeWidgetAt(origIdx)}>{t('common.remove')}</Button>
                                         )}
                                     </div>
                                 </div>
@@ -557,8 +574,8 @@ export default function StudentDisplaySettings(): JSX.Element {
             <section id="grp-account" className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Login & Signup</CardTitle>
-                    <CardDescription>Providers and defaults for student signup</CardDescription>
+                    <CardTitle>{t('loginSignup.cardTitle')}</CardTitle>
+                    <CardDescription>{t('loginSignup.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
                     <div className="flex items-center gap-2 pb-2 border-b">
@@ -568,9 +585,9 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 update('signup', { ...settings.signup, enabled: v })
                             }
                         />
-                        <Label className="text-xs font-semibold">Signup enabled</Label>
+                        <Label className="text-xs font-semibold">{t('loginSignup.signupEnabled')}</Label>
                         <span className="text-2xs text-muted-foreground">
-                            Master toggle: when off, "Sign Up" links are hidden in the catalogue header.
+                            {t('loginSignup.masterToggleHint')}
                         </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -592,7 +609,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                         )}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                        <Label className="text-xs">Default Provider</Label>
+                        <Label className="text-xs">{t('loginSignup.defaultProvider')}</Label>
                         <Select
                             value={settings.signup.providers.defaultProvider}
                             onValueChange={(v: string) =>
@@ -606,7 +623,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-40 text-xs">
-                                <SelectValue placeholder="Select provider" />
+                                <SelectValue placeholder={t('loginSignup.selectProvider')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="google">google</SelectItem>
@@ -618,7 +635,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                     </div>
                     {/* Username / Password strategies */}
                     <div className="flex flex-wrap items-center gap-3">
-                        <Label className="text-xs">Username Strategy</Label>
+                        <Label className="text-xs">{t('loginSignup.usernameStrategy')}</Label>
                         <Select
                             value={settings.signup.usernameStrategy}
                             onValueChange={(v) =>
@@ -629,7 +646,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder="Select strategy" />
+                                <SelectValue placeholder={t('loginSignup.selectStrategy')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="email">email</SelectItem>
@@ -639,7 +656,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                         </Select>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                        <Label className="text-xs">Password Strategy</Label>
+                        <Label className="text-xs">{t('loginSignup.passwordStrategy')}</Label>
                         <Select
                             value={settings.signup.passwordStrategy}
                             onValueChange={(v) =>
@@ -650,7 +667,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder="Select strategy" />
+                                <SelectValue placeholder={t('loginSignup.selectStrategy')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="manual">manual</SelectItem>
@@ -659,7 +676,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                         </Select>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                        <Label className="text-xs">Password Delivery</Label>
+                        <Label className="text-xs">{t('loginSignup.passwordDelivery')}</Label>
                         <Select
                             value={settings.signup.passwordDelivery}
                             onValueChange={(v) =>
@@ -670,7 +687,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder="Select delivery method" />
+                                <SelectValue placeholder={t('loginSignup.selectDeliveryMethod')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="showOnScreen">showOnScreen</SelectItem>
@@ -680,7 +697,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                         </Select>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                        <Label className="text-xs">Catalogue Header Auth</Label>
+                        <Label className="text-xs">{t('loginSignup.catalogueHeaderAuth')}</Label>
                         <Select
                             value={settings.signup.presentation ?? 'page'}
                             onValueChange={(v) =>
@@ -691,11 +708,11 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder="Select presentation" />
+                                <SelectValue placeholder={t('loginSignup.selectPresentation')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="page">page (navigate to /login)</SelectItem>
-                                <SelectItem value="modal">modal (open in-place)</SelectItem>
+                                <SelectItem value="page">{t('loginSignup.presentationPage')}</SelectItem>
+                                <SelectItem value="modal">{t('loginSignup.presentationModal')}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -708,8 +725,8 @@ export default function StudentDisplaySettings(): JSX.Element {
             <section id="grp-learning" className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Course Settings</CardTitle>
-                    <CardDescription>Global course interactions</CardDescription>
+                    <CardTitle>{t('courseSettings.cardTitle')}</CardTitle>
+                    <CardDescription>{t('courseSettings.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-3 p-4 pt-0">
                     <div className="flex items-center gap-2">
@@ -724,7 +741,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Move only on correct answer</Label>
+                        <Label className="text-xs">{t('courseSettings.moveOnlyOnCorrect')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -738,7 +755,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Celebrate on quiz complete</Label>
+                        <Label className="text-xs">{t('courseSettings.celebrateOnComplete')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -752,15 +769,15 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show report &amp; correct answers</Label>
+                        <Label className="text-xs">{t('courseSettings.showReportAndAnswers')}</Label>
                     </div>
                 </div>
             </Card>
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Permissions</CardTitle>
-                    <CardDescription>Profile permissions</CardDescription>
+                    <CardTitle>{t('permissions.cardTitle')}</CardTitle>
+                    <CardDescription>{t('permissions.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
                     {(
@@ -787,8 +804,8 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Profile Page</CardTitle>
-                    <CardDescription>What learners see on their Profile tab</CardDescription>
+                    <CardTitle>{t('profilePage.cardTitle')}</CardTitle>
+                    <CardDescription>{t('profilePage.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
                     <div className="flex items-center gap-2">
@@ -802,7 +819,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         />
                         <Label className="text-xs">
-                            Show Membership Status (Access Days &amp; expiry)
+                            {t('profilePage.showMembershipStatus')}
                         </Label>
                     </div>
                 </div>
@@ -810,8 +827,8 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Course Details</CardTitle>
-                    <CardDescription>Tabs, default tab and view preferences</CardDescription>
+                    <CardTitle>{t('courseDetails.cardTitle')}</CardTitle>
+                    <CardDescription>{t('courseDetails.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-3 p-4 pt-0">
                     {/* Page layout for learners who already own the course. Sits
@@ -831,12 +848,10 @@ export default function StudentDisplaySettings(): JSX.Element {
                         affects the Content Structure cards that layout shows. */}
                     <div className="space-y-1 pb-4 border-b">
                         <Label className="text-sm font-semibold">
-                            Content Card Artwork
+                            {t('courseDetails.contentCardArtwork')}
                         </Label>
                         <p className="max-w-prose text-xs text-muted-foreground">
-                            How subject, module and chapter thumbnails fit their card.
-                            Choose Fill for photos; choose Fit Whole Image when your
-                            artwork has a title designed into it, which Fill crops off.
+                            {t('courseDetails.contentCardArtworkHint')}
                         </p>
                         <Select
                             value={settings.courseDetails.contentCardImageFit ?? 'cover'}
@@ -852,10 +867,10 @@ export default function StudentDisplaySettings(): JSX.Element {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="cover">
-                                    Fill the card (crops to fit) — default
+                                    {t('courseDetails.fitFill')}
                                 </SelectItem>
                                 <SelectItem value="contain">
-                                    Fit whole image (no cropping)
+                                    {t('courseDetails.fitContain')}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
@@ -879,7 +894,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         />
                         <Label className="text-xs">
-                            Chapter Card Opens the First Slide Directly
+                            {t('courseDetails.chapterOpensFirstSlide')}
                         </Label>
                     </div>
 
@@ -899,7 +914,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                         </Button>
                                     </div>
                                     <div className="grow text-xs font-medium">{t.id}</div>
-                                    <Label className="text-xs">Visible</Label>
+                                    <Label className="text-xs">{tCommonVisible}</Label>
                                     <Switch checked={t.visible} onCheckedChange={(v) => {
                                         const tabs = settings.courseDetails.tabs.map((x) => x.id === t.id ? { ...x, visible: v } : x);
                                         update('courseDetails', { ...settings.courseDetails, tabs });
@@ -911,7 +926,7 @@ export default function StudentDisplaySettings(): JSX.Element {
 
                     {/* Default tab select */}
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs">Default Tab</Label>
+                        <Label className="text-xs">{t('common.defaultTab')}</Label>
                         <Select
                             value={settings.courseDetails.defaultTab}
                             onValueChange={(v) =>
@@ -922,7 +937,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder="Select default tab" />
+                                <SelectValue placeholder={t('common.selectDefaultTab')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="OUTLINE">OUTLINE</SelectItem>
@@ -935,7 +950,7 @@ export default function StudentDisplaySettings(): JSX.Element {
 
                     {/* Outline mode select */}
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs">Outline Mode</Label>
+                        <Label className="text-xs">{t('courseDetails.outlineMode')}</Label>
                         <Select
                             value={settings.courseDetails.outlineMode}
                             onValueChange={(v) =>
@@ -946,7 +961,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder="Select mode" />
+                                <SelectValue placeholder={t('courseDetails.selectMode')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="expanded">expanded</SelectItem>
@@ -966,7 +981,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Ratings & Reviews Visible</Label>
+                        <Label className="text-xs">{t('courseDetails.ratingsReviewsVisible')}</Label>
                     </div>
 
                     {/* Hide author name on the course-details Course Overview panel */}
@@ -980,7 +995,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Hide Author Name (Course Details Page)</Label>
+                        <Label className="text-xs">{t('courseDetails.hideAuthorName')}</Label>
                     </div>
 
                     {/* Show Teachers/Instructors section on the course-details page (default off = hidden) */}
@@ -994,7 +1009,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show Teachers (Course Details Page)</Label>
+                        <Label className="text-xs">{t('courseDetails.showTeachers')}</Label>
                     </div>
 
                     {/* General visibility toggles */}
@@ -1008,7 +1023,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show Course Configuration</Label>
+                        <Label className="text-xs">{t('courseDetails.showCourseConfiguration')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1020,7 +1035,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show Course Content Prefixes</Label>
+                        <Label className="text-xs">{t('courseDetails.showCourseContentPrefixes')}</Label>
                     </div>
 
                     {/* Course Overview / Slides View */}
@@ -1038,7 +1053,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     })
                                 }
                             />
-                            <Label className="text-xs">Course Overview Visible</Label>
+                            <Label className="text-xs">{t('courseDetails.courseOverviewVisible')}</Label>
                         </div>
                         <div className="flex items-center gap-2">
                             <Switch
@@ -1053,7 +1068,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     })
                                 }
                             />
-                            <Label className="text-xs">Show Slides Data</Label>
+                            <Label className="text-xs">{t('courseDetails.showSlidesData')}</Label>
                         </div>
                         <div className="flex items-center gap-2">
                             <Switch
@@ -1068,7 +1083,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     })
                                 }
                             />
-                            <Label className="text-xs">Show Learning Path</Label>
+                            <Label className="text-xs">{t('courseDetails.showLearningPath')}</Label>
                         </div>
                         <div className="flex items-center gap-2">
                             <Switch
@@ -1083,7 +1098,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     })
                                 }
                             />
-                            <Label className="text-xs">Feedback Visible</Label>
+                            <Label className="text-xs">{t('courseDetails.feedbackVisible')}</Label>
                         </div>
                         <div className="flex items-center gap-2">
                             <Switch
@@ -1103,7 +1118,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 }
                             />
                             <Label className="text-xs">
-                                &quot;Chapter Complete — Next Up&quot; Bar
+                                {t('courseDetails.chapterCompleteBar')}
                             </Label>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1124,7 +1139,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 }
                             />
                             <Label className="text-xs">
-                                Include Feedback in Previous/Next
+                                {t('courseDetails.includeFeedbackInNav')}
                             </Label>
                         </div>
                         {/* Tri-state in storage (unset = follow the sidebar mode,
@@ -1149,7 +1164,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 }
                             />
                             <Label className="text-xs">
-                                &quot;Mark as Complete&quot; Button in Slide Viewer
+                                {t('courseDetails.markCompleteButton')}
                             </Label>
                         </div>
                         {/* Tri-state in storage (unset = follow the sidebar mode),
@@ -1174,7 +1189,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 }
                             />
                             <Label className="text-xs">
-                                Collapse App Sidebar in Slide Viewer
+                                {t('courseDetails.collapseAppSidebar')}
                             </Label>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1190,7 +1205,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     })
                                 }
                             />
-                            <Label className="text-xs">Can Ask Doubt</Label>
+                            <Label className="text-xs">{t('courseDetails.canAskDoubt')}</Label>
                         </div>
                     </div>
 
@@ -1198,7 +1213,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                         chapter suits a short course and fatigues a long one, so
                         the cadence is the institute's call. */}
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs">Ask for Feedback After</Label>
+                        <Label className="text-xs">{t('courseDetails.askFeedbackAfter')}</Label>
                         <Select
                             value={settings.courseDetails.slidesView.feedbackTrigger ?? 'CHAPTER'}
                             onValueChange={(v) =>
@@ -1212,14 +1227,14 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-56 text-xs">
-                                <SelectValue placeholder="Select when" />
+                                <SelectValue placeholder={t('courseDetails.selectWhen')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="CHAPTER">Every chapter</SelectItem>
-                                <SelectItem value="MODULE">Every module</SelectItem>
-                                <SelectItem value="SUBJECT">Every subject</SelectItem>
-                                <SelectItem value="COURSE">Course completion only</SelectItem>
-                                <SelectItem value="NEVER">Never (button only)</SelectItem>
+                                <SelectItem value="CHAPTER">{t('courseDetails.everyChapter')}</SelectItem>
+                                <SelectItem value="MODULE">{t('courseDetails.everyModule')}</SelectItem>
+                                <SelectItem value="SUBJECT">{t('courseDetails.everySubject')}</SelectItem>
+                                <SelectItem value="COURSE">{t('courseDetails.courseCompletionOnly')}</SelectItem>
+                                <SelectItem value="NEVER">{t('courseDetails.neverButtonOnly')}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -1249,8 +1264,8 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>All Courses Page</CardTitle>
-                    <CardDescription>Tabs and default selection</CardDescription>
+                    <CardTitle>{t('allCourses.cardTitle')}</CardTitle>
+                    <CardDescription>{t('allCourses.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-3 p-4 pt-0">
                     {/* Tabs visibility */}
@@ -1269,7 +1284,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                         </Button>
                                     </div>
                                     <div className="grow text-xs font-medium">{t.id}</div>
-                                    <Label className="text-xs">Visible</Label>
+                                    <Label className="text-xs">{tCommonVisible}</Label>
                                     <Switch checked={t.visible} onCheckedChange={(v) => {
                                         const tabs = settings.allCourses.tabs.map((x) => x.id === t.id ? { ...x, visible: v } : x);
                                         update('allCourses', { ...settings.allCourses, tabs });
@@ -1281,7 +1296,7 @@ export default function StudentDisplaySettings(): JSX.Element {
 
                     {/* Default tab select */}
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs">Default Tab</Label>
+                        <Label className="text-xs">{t('common.defaultTab')}</Label>
                         <Select
                             value={settings.allCourses.defaultTab}
                             onValueChange={(v) =>
@@ -1292,7 +1307,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         >
                             <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder="Select default tab" />
+                                <SelectValue placeholder={t('common.selectDefaultTab')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="InProgress">InProgress</SelectItem>
@@ -1313,7 +1328,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Hide Instructor Name (Course Cards)</Label>
+                        <Label className="text-xs">{t('allCourses.hideInstructorName')}</Label>
                     </div>
                 </div>
             </Card>
@@ -1327,9 +1342,9 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Live Classes</CardTitle>
+                    <CardTitle>{t('liveClasses.cardTitle')}</CardTitle>
                     <CardDescription>
-                        What learners can see about past live sessions
+                        {t('liveClasses.cardDescription')}
                     </CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
@@ -1343,7 +1358,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show Past Sessions</Label>
+                        <Label className="text-xs">{t('liveClasses.showPastSessions')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1356,7 +1371,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show Recordings</Label>
+                        <Label className="text-xs">{t('liveClasses.showRecordings')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1369,7 +1384,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show Attendance</Label>
+                        <Label className="text-xs">{t('liveClasses.showAttendance')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1382,7 +1397,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show Activity Stats</Label>
+                        <Label className="text-xs">{t('liveClasses.showActivityStats')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1395,18 +1410,21 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Show Class Materials</Label>
+                        <Label className="text-xs">{t('liveClasses.showClassMaterials')}</Label>
                     </div>
                 </div>
             </Card>
 
             <Card>
                 <CardHeader>
-                    <CardTitle>App Tutorials</CardTitle>
+                    <CardTitle>{t('tutorials.cardTitle')}</CardTitle>
                     <CardDescription>
-                        Guided step-by-step tours{' '}
-                        {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLowerCase()}{' '}
-                        can replay from their Help menu
+                        {t('tutorials.cardDescription', {
+                            learnerPlural: getTerminologyPlural(
+                                RoleTerms.Learner,
+                                SystemTerms.Learner
+                            ).toLowerCase(),
+                        })}
                     </CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
@@ -1420,12 +1438,12 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Enable guided tutorials</Label>
+                        <Label className="text-xs">{t('tutorials.enableGuided')}</Label>
                     </div>
                     {settings.tutorials.enabled && (
                         <div className="space-y-2 border-t pt-3">
                             <div className="text-xs font-medium text-muted-foreground">
-                                Available tours
+                                {t('tutorials.availableTours')}
                             </div>
                             {getLearnerTourOptions().map((tour) => (
                                 <div key={tour.key} className="flex items-start gap-2">
@@ -1473,15 +1491,14 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     }
                                 />
                                 <div className="grid gap-0.5">
-                                    <Label className="text-xs">How-to guide (PDF)</Label>
+                                    <Label className="text-xs">{t('tutorials.pdfGuideLabel')}</Label>
                                     <p className="text-xs text-muted-foreground">
-                                        Let{' '}
-                                        {getTerminologyPlural(
-                                            RoleTerms.Learner,
-                                            SystemTerms.Learner
-                                        ).toLowerCase()}{' '}
-                                        download a branded step-by-step PDF from their Help
-                                        menu. Chapters follow the tours checked above.
+                                        {t('tutorials.pdfGuideHint', {
+                                            learnerPlural: getTerminologyPlural(
+                                                RoleTerms.Learner,
+                                                SystemTerms.Learner
+                                            ).toLowerCase(),
+                                        })}
                                     </p>
                                 </div>
                             </div>
@@ -1504,9 +1521,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                             'Error downloading tutorial guide PDF:',
                                             error
                                         );
-                                        toast.error(
-                                            'Could not generate the guide PDF. Please try again.'
-                                        );
+                                        toast.error(t('tutorials.pdfGuideError'));
                                     } finally {
                                         setDownloadingGuide(false);
                                     }
@@ -1519,8 +1534,8 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     <FilePdf className="size-4" />
                                 )}
                                 {downloadingGuide
-                                    ? 'Generating...'
-                                    : 'Download guide (PDF)'}
+                                    ? t('tutorials.generating')
+                                    : t('tutorials.downloadGuideButton')}
                             </Button>
                         </div>
                     )}
@@ -1531,8 +1546,8 @@ export default function StudentDisplaySettings(): JSX.Element {
             <section id="grp-notifications" className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Notifications</CardTitle>
-                    <CardDescription>Student notifications preferences</CardDescription>
+                    <CardTitle>{t('notifications.cardTitle')}</CardTitle>
+                    <CardDescription>{t('notifications.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
                     <div className="flex items-center gap-2">
@@ -1545,7 +1560,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Allow System Alerts</Label>
+                        <Label className="text-xs">{t('notifications.allowSystemAlerts')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1557,7 +1572,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Allow Dashboard Pins</Label>
+                        <Label className="text-xs">{t('notifications.allowDashboardPins')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1569,7 +1584,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 })
                             }
                         />
-                        <Label className="text-xs">Allow Batch Stream</Label>
+                        <Label className="text-xs">{t('notifications.allowBatchStream')}</Label>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1582,9 +1597,9 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         />
                         <div>
-                            <Label className="text-xs">Allow App Overlays</Label>
+                            <Label className="text-xs">{t('notifications.allowAppOverlays')}</Label>
                             <p className="text-xs text-muted-foreground">
-                                Full-screen announcements on app open
+                                {t('notifications.appOverlaysHint')}
                             </p>
                         </div>
                     </div>
@@ -1593,8 +1608,8 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Post-login Redirect</CardTitle>
-                    <CardDescription>Route to redirect student after login</CardDescription>
+                    <CardTitle>{t('postLoginRedirect.cardTitle')}</CardTitle>
+                    <CardDescription>{t('postLoginRedirect.cardDescription')}</CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
                     <Input
@@ -1629,44 +1644,35 @@ function EnrolledLayoutPicker({
     value: EnrolledCourseLayout;
     onChange: (v: EnrolledCourseLayout) => void;
 }): JSX.Element {
+    const { t } = useTranslation('settingsStudentDisplay');
     return (
         <div className="pb-4 border-b">
-            <div className="text-sm font-semibold">Page Layout (After Enrollment)</div>
+            <div className="text-sm font-semibold">{t('enrolledLayout.title')}</div>
             <p className="text-xs text-muted-foreground max-w-prose">
-                Applies to the learner&apos;s own course page — the one they open
-                from their courses after enrolling. The public catalogue always
-                shows the full page.
+                {t('enrolledLayout.hint')}
             </p>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <NavOptionCard
                     selected={value === 'full'}
                     onSelect={() => onChange('full')}
-                    title="Full course page"
-                    badge="Default"
-                    description={
-                        <>
-                            Banner, description and tags, course highlights, the
-                            enrollment/configuration block and the right-hand
-                            overview card (author, duration, counts) — plus every
-                            tab you have made visible below.
-                        </>
-                    }
+                    title={t('enrolledLayout.fullTitle')}
+                    badge={t('enrolledLayout.fullBadge')}
+                    description={<>{t('enrolledLayout.fullDescription')}</>}
                     preview={<FullLayoutPreview />}
                 />
                 <NavOptionCard
                     selected={value === 'contentOnly'}
                     onSelect={() => onChange('contentOnly')}
-                    title="Content structure only"
-                    badge="Focused"
+                    title={t('enrolledLayout.contentOnlyTitle')}
+                    badge={t('enrolledLayout.contentOnlyBadge')}
                     description={
-                        <>
-                            Just the title and the <strong>Content Structure</strong> card.
-                            No description, tags, banner, highlights or right-hand
-                            card. Opening the card drills{' '}
-                            <strong>Subject → Module → Chapter</strong> as large cards,
-                            then the slides open in the viewer. The tab, outline and
-                            overview settings below stop applying to enrolled learners.
-                        </>
+                        <Trans i18nKey="settingsStudentDisplay:enrolledLayout.contentOnlyDescription">
+                            Just the title and the <strong>Content Structure</strong> card. No
+                            description, tags, banner, highlights or right-hand card. Opening
+                            the card drills <strong>Subject → Module → Chapter</strong> as
+                            large cards, then the slides open in the viewer. The tab, outline
+                            and overview settings below stop applying to enrolled learners.
+                        </Trans>
                     }
                     preview={<ContentOnlyLayoutPreview />}
                 />
@@ -1736,15 +1742,14 @@ function SidebarNavigationPicker({
     value: SlidesSidebarNavigation;
     onChange: (v: SlidesSidebarNavigation) => void;
 }): JSX.Element {
+    const { t } = useTranslation('settingsStudentDisplay');
     return (
         <div className="mt-4 border-t pt-4">
             <div className="mb-1 flex items-baseline justify-between gap-2">
                 <div>
-                    <div className="text-sm font-semibold">Sidebar Navigation</div>
+                    <div className="text-sm font-semibold">{t('sidebarNav.title')}</div>
                     <p className="max-w-prose text-xs text-muted-foreground">
-                        Controls how the learner moves across subjects, modules and chapters from
-                        the slide viewer. Each option changes what the left sidebar shows — pick
-                        whichever fits your learners&apos; mental model.
+                        {t('sidebarNav.hint')}
                     </p>
                 </div>
             </div>
@@ -1752,62 +1757,61 @@ function SidebarNavigationPicker({
                 <NavOptionCard
                     selected={value === 'breadcrumb'}
                     onSelect={() => onChange('breadcrumb')}
-                    title="Breadcrumb dropdowns"
-                    badge="Compact"
+                    title={t('sidebarNav.breadcrumbTitle')}
+                    badge={t('sidebarNav.breadcrumbBadge')}
                     description={
-                        <>
+                        <Trans i18nKey="settingsStudentDisplay:sidebarNav.breadcrumbDescription">
                             Sidebar lists <strong>only the current chapter&apos;s slides</strong>.
-                            To jump to another module or subject, the learner taps the breadcrumb at
-                            the top and picks from a dropdown. Best when courses are small or you
-                            want learners focused on the current chapter.
-                        </>
+                            To jump to another module or subject, the learner taps the breadcrumb
+                            at the top and picks from a dropdown. Best when courses are small or
+                            you want learners focused on the current chapter.
+                        </Trans>
                     }
                     preview={<BreadcrumbModePreview />}
                 />
                 <NavOptionCard
                     selected={value === 'ancestors'}
                     onSelect={() => onChange('ancestors')}
-                    title="Full course tree"
-                    badge="Richer"
+                    title={t('sidebarNav.treeTitle')}
+                    badge={t('sidebarNav.treeBadge')}
                     description={
-                        <>
-                            Sidebar shows the{' '}
-                            <strong>entire Subject → Module → Chapter → Slide tree</strong>.
+                        <Trans i18nKey="settingsStudentDisplay:sidebarNav.treeDescription">
+                            Sidebar shows the <strong>entire Subject → Module → Chapter → Slide tree</strong>.
                             Learners can scan, expand and jump to any slide without leaving the
-                            viewer. The breadcrumb becomes a passive label. Best for longer courses
-                            where side-by-side discovery matters.
-                        </>
+                            viewer. The breadcrumb becomes a passive label. Best for longer
+                            courses where side-by-side discovery matters.
+                        </Trans>
                     }
                     preview={<TreeModePreview />}
                 />
                 <NavOptionCard
                     selected={value === 'lessons'}
                     onSelect={() => onChange('lessons')}
-                    title="Lesson list"
-                    badge="Media-rich"
+                    title={t('sidebarNav.lessonsTitle')}
+                    badge={t('sidebarNav.lessonsBadge')}
                     description={
-                        <>
-                            The whole course as a <strong>flat list of lessons</strong>, each with a
-                            thumbnail, a full two-line title and its length. Chapters become
-                            headings rather than toggles, so nothing has to be expanded, and a
-                            course-wide progress bar sits at the top. Best for courses learners work
-                            through in order.
-                        </>
+                        <Trans i18nKey="settingsStudentDisplay:sidebarNav.lessonsDescription">
+                            The whole course as a <strong>flat list of lessons</strong>, each
+                            with a thumbnail, a full two-line title and its length. Chapters
+                            become headings rather than toggles, so nothing has to be expanded,
+                            and a course-wide progress bar sits at the top. Best for courses
+                            learners work through in order.
+                        </Trans>
                     }
                     preview={<LessonListModePreview />}
                 />
                 <NavOptionCard
                     selected={value === 'hidden'}
                     onSelect={() => onChange('hidden')}
-                    title="No sidebar"
-                    badge="Focused"
+                    title={t('sidebarNav.hiddenTitle')}
+                    badge={t('sidebarNav.hiddenBadge')}
                     description={
-                        <>
-                            The viewer shows <strong>only the slide</strong>. Learners move with the{' '}
-                            <strong>Previous / Next</strong> buttons above the content, which roll
-                            over into the next or previous chapter at the edges. Best when you want
-                            a single, guided path with nothing to browse past.
-                        </>
+                        <Trans i18nKey="settingsStudentDisplay:sidebarNav.hiddenDescription">
+                            The viewer shows <strong>only the slide</strong>. Learners move with
+                            the <strong>Previous / Next</strong> buttons above the content, which
+                            roll over into the next or previous chapter at the edges. Best when
+                            you want a single, guided path with nothing to browse past.
+                        </Trans>
                     }
                     preview={<NoSidebarModePreview />}
                 />
@@ -1864,6 +1868,7 @@ function NavOptionCard({
 
 // Mock of the legacy view: breadcrumb with a dropdown arrow + a flat slide list.
 function BreadcrumbModePreview(): JSX.Element {
+    const { t } = useTranslation('settingsStudentDisplay');
     return (
         <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
             <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-200 text-2xs text-neutral-600 bg-white">
@@ -1878,9 +1883,9 @@ function BreadcrumbModePreview(): JSX.Element {
                 <span className="font-semibold text-neutral-800">C1</span>
             </div>
             <div className="p-2 space-y-1">
-                <MockSlideRow label="Intro video" active />
-                <MockSlideRow label="Reading note" />
-                <MockSlideRow label="Practice quiz" />
+                <MockSlideRow label={t('preview.introVideo')} active />
+                <MockSlideRow label={t('preview.readingNote')} />
+                <MockSlideRow label={t('preview.practiceQuiz')} />
             </div>
         </div>
     );
@@ -1888,19 +1893,20 @@ function BreadcrumbModePreview(): JSX.Element {
 
 // Mock of the sidebar-less view: just the slide, with Prev/Next above it.
 function NoSidebarModePreview(): JSX.Element {
+    const { t } = useTranslation('settingsStudentDisplay');
     return (
         <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
             <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-200 bg-white">
                 <span className="truncate text-2xs font-semibold text-neutral-800">
-                    Integer line
+                    {t('preview.integerLine')}
                 </span>
                 <span className="ms-auto flex items-center gap-1">
                     <span className="flex items-center gap-0.5 rounded border border-neutral-200 px-1 py-0.5 text-2xs text-neutral-600">
-                        <CaretLeft className="h-2 w-2" /> Prev
+                        <CaretLeft className="h-2 w-2" /> {t('preview.prev')}
                     </span>
                     <span className="text-2xs text-neutral-400">2 / 6</span>
                     <span className="flex items-center gap-0.5 rounded border border-neutral-200 px-1 py-0.5 text-2xs text-neutral-600">
-                        Next <CaretRight className="h-2 w-2" />
+                        {t('preview.next')} <CaretRight className="h-2 w-2" />
                     </span>
                 </span>
             </div>
@@ -1915,20 +1921,21 @@ function NoSidebarModePreview(): JSX.Element {
 
 // Mock of the tree view: nested subjects/modules/chapters/slides with chevrons.
 function TreeModePreview(): JSX.Element {
+    const { t } = useTranslation('settingsStudentDisplay');
     return (
         <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
             <div className="px-2 py-1.5 border-b border-neutral-200 text-2xs text-neutral-500 bg-white font-medium tracking-wide uppercase">
-                Course content
+                {t('preview.courseContent')}
             </div>
             <div className="py-1">
-                <MockTreeRow indent={0} chevron="down" label="S1 · Algebra" bold />
-                <MockTreeRow indent={1} chevron="down" label="M1 · Numbers" />
-                <MockTreeRow indent={2} chevron="right" label="C1 · Basics" />
-                <MockTreeRow indent={2} chevron="down" label="C2 · Integers" activeAncestor />
-                <MockSlideRow label="Integer line" depth={3} />
-                <MockSlideRow label="Practice set" depth={3} active />
-                <MockTreeRow indent={1} chevron="right" label="M2 · Fractions" muted />
-                <MockTreeRow indent={0} chevron="right" label="S2 · Geometry" muted />
+                <MockTreeRow indent={0} chevron="down" label={t('preview.algebra')} bold />
+                <MockTreeRow indent={1} chevron="down" label={t('preview.numbers')} />
+                <MockTreeRow indent={2} chevron="right" label={t('preview.basics')} />
+                <MockTreeRow indent={2} chevron="down" label={t('preview.integers')} activeAncestor />
+                <MockSlideRow label={t('preview.integerLine')} depth={3} />
+                <MockSlideRow label={t('preview.practiceSet')} depth={3} active />
+                <MockTreeRow indent={1} chevron="right" label={t('preview.fractions')} muted />
+                <MockTreeRow indent={0} chevron="right" label={t('preview.geometry')} muted />
             </div>
         </div>
     );
@@ -1936,25 +1943,26 @@ function TreeModePreview(): JSX.Element {
 
 // Mock of the lesson list: a progress line, chapter headings and thumbnail rows.
 function LessonListModePreview(): JSX.Element {
+    const { t } = useTranslation('settingsStudentDisplay');
     return (
         <div className="overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
             <div className="border-b border-neutral-200 bg-white px-2 py-1.5">
-                <div className="text-2xs font-medium text-neutral-600">3 / 24 completed</div>
+                <div className="text-2xs font-medium text-neutral-600">{t('preview.completedCount')}</div>
                 <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-200">
                     <div className="h-full w-1/6 rounded-full bg-primary-400" />
                 </div>
             </div>
             <div className="py-1">
                 <div className="px-2 pb-0.5 pt-1.5 text-2xs font-semibold text-neutral-800">
-                    C1 · Basics
+                    {t('preview.basics')}
                 </div>
-                <MockLessonRow label="Welcome to the course" meta="9m" tone="bg-blue-100" done />
-                <MockLessonRow label="How numbers behave" meta="4m" tone="bg-amber-100" />
+                <MockLessonRow label={t('preview.welcomeToCourse')} meta={t('preview.minutesShort', { count: 9 })} tone="bg-blue-100" done />
+                <MockLessonRow label={t('preview.howNumbersBehave')} meta={t('preview.minutesShort', { count: 4 })} tone="bg-amber-100" />
                 <div className="px-2 pb-0.5 pt-2 text-2xs font-semibold text-neutral-800">
-                    C2 · Integers
+                    {t('preview.integers')}
                 </div>
-                <MockLessonRow label="The integer line" meta="12m" tone="bg-blue-100" active />
-                <MockLessonRow label="Practice set" meta="6 questions" tone="bg-teal-100" />
+                <MockLessonRow label={t('preview.theIntegerLine')} meta={t('preview.minutesShort', { count: 12 })} tone="bg-blue-100" active />
+                <MockLessonRow label={t('preview.practiceSet')} meta={t('preview.questionsCount', { count: 6 })} tone="bg-teal-100" />
             </div>
         </div>
     );

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -52,6 +53,7 @@ export interface TutorConfiguration {
 }
 
 export const StudentAiSettingsSection = () => {
+    const { t } = useTranslation('settingsStudentAi');
     const instituteId = getInstituteId();
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
     const [isSavingTutor, setIsSavingTutor] = useState(false);
@@ -158,11 +160,11 @@ export const StudentAiSettingsSection = () => {
                     },
                 }
             );
-            toast.success('Student AI configuration saved successfully!');
+            toast.success(t('toast.saveSuccess'));
             await fetchTutorSettings();
         } catch (error) {
             console.error('Error saving tutor configuration:', error);
-            toast.error('Failed to save Student AI configuration');
+            toast.error(t('toast.saveFailed'));
         } finally {
             setIsSavingTutor(false);
         }
@@ -179,11 +181,8 @@ export const StudentAiSettingsSection = () => {
                                 <Sparkle className="size-5" />
                             </div>
                             <div>
-                                <CardTitle className="text-xl">Student AI</CardTitle>
-                                <CardDescription>
-                                    Configure AI tutor behavior and settings for student
-                                    interactions
-                                </CardDescription>
+                                <CardTitle className="text-xl">{t('card.title')}</CardTitle>
+                                <CardDescription>{t('card.description')}</CardDescription>
                             </div>
                         </div>
                     </div>
@@ -192,7 +191,7 @@ export const StudentAiSettingsSection = () => {
                     <div className="space-y-4">
                         <div className="flex items-center gap-2">
                             <Label htmlFor="role" className="text-sm font-medium">
-                                Enable
+                                {t('fields.enable')}
                             </Label>
                             <Switch
                                 id="enable"
@@ -208,7 +207,7 @@ export const StudentAiSettingsSection = () => {
                         <div className="grid gap-6 md:grid-cols-2">
                             <div className="space-y-2">
                                 <Label htmlFor="role" className="text-sm font-medium">
-                                    Role
+                                    {t('fields.role')}
                                 </Label>
                                 <Input
                                     id="role"
@@ -219,13 +218,13 @@ export const StudentAiSettingsSection = () => {
                                             role: e.target.value,
                                         })
                                     }
-                                    placeholder="e.g., Tutor, Mentor, Guide"
+                                    placeholder={t('fields.rolePlaceholder')}
                                     className="border-indigo-100 focus:border-indigo-300"
                                 />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="assistantName" className="text-sm font-medium">
-                                    Assistant Name
+                                    {t('fields.assistantName')}
                                 </Label>
                                 <Input
                                     id="assistantName"
@@ -236,7 +235,7 @@ export const StudentAiSettingsSection = () => {
                                             assistant_name: e.target.value,
                                         })
                                     }
-                                    placeholder="e.g., Savir, Alex"
+                                    placeholder={t('fields.assistantNamePlaceholder')}
                                     className="border-indigo-100 focus:border-indigo-300"
                                 />
                             </div>
@@ -244,7 +243,7 @@ export const StudentAiSettingsSection = () => {
 
                         <div className="space-y-2">
                             <Label htmlFor="instituteName" className="text-sm font-medium">
-                                Institute Name
+                                {t('fields.instituteName')}
                             </Label>
                             <Input
                                 id="instituteName"
@@ -261,7 +260,7 @@ export const StudentAiSettingsSection = () => {
 
                         <div className="space-y-2">
                             <Label htmlFor="coreInstruction" className="text-sm font-medium">
-                                Core Instruction
+                                {t('fields.coreInstruction')}
                             </Label>
                             <textarea
                                 id="coreInstruction"
@@ -272,14 +271,14 @@ export const StudentAiSettingsSection = () => {
                                         core_instruction: e.target.value,
                                     })
                                 }
-                                placeholder="Define the core behavior of your AI tutor..."
+                                placeholder={t('fields.coreInstructionPlaceholder')}
                                 rows={3}
                                 className="w-full rounded-md border border-indigo-100 px-3 py-2 text-sm focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <Label className="text-sm font-medium">Hard Rules</Label>
+                            <Label className="text-sm font-medium">{t('hardRules.label')}</Label>
                             <div className="space-y-2">
                                 {tutorConfig.hard_rules.map((rule, index) => (
                                     <div key={index} className="flex items-center gap-2">
@@ -318,7 +317,7 @@ export const StudentAiSettingsSection = () => {
                                     <Input
                                         value={newHardRule}
                                         onChange={(e) => setNewHardRule(e.target.value)}
-                                        placeholder="Add a new hard rule..."
+                                        placeholder={t('hardRules.addPlaceholder')}
                                         className="border-indigo-100 focus:border-indigo-300"
                                         onKeyPress={(e) => {
                                             if (e.key === 'Enter' && newHardRule.trim()) {
@@ -351,7 +350,7 @@ export const StudentAiSettingsSection = () => {
                                         className="border-indigo-100 text-indigo-600 hover:bg-indigo-50"
                                     >
                                         <Plus className="mr-1 size-4" />
-                                        Add
+                                        {t('hardRules.add')}
                                     </Button>
                                 </div>
                             </div>
@@ -360,7 +359,7 @@ export const StudentAiSettingsSection = () => {
                         <div className="grid gap-6 md:grid-cols-2">
                             <div className="space-y-2">
                                 <Label htmlFor="adherenceLevel" className="text-sm font-medium">
-                                    Adherence Level
+                                    {t('adherence.label')}
                                 </Label>
                                 <Select
                                     value={tutorConfig.adherence_settings.level}
@@ -381,18 +380,26 @@ export const StudentAiSettingsSection = () => {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="strict">Strict</SelectItem>
-                                        <SelectItem value="moderate">Moderate</SelectItem>
-                                        <SelectItem value="flexible">Flexible</SelectItem>
+                                        <SelectItem value="strict">
+                                            {t('adherence.strict')}
+                                        </SelectItem>
+                                        <SelectItem value="moderate">
+                                            {t('adherence.moderate')}
+                                        </SelectItem>
+                                        <SelectItem value="flexible">
+                                            {t('adherence.flexible')}
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <p className="text-caption text-neutral-500">
-                                    How strictly the AI follows the configured rules
+                                    {t('adherence.helpText')}
                                 </p>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="temperature" className="text-sm font-medium">
-                                    Temperature ({tutorConfig.adherence_settings.temperature})
+                                    {t('adherence.temperature', {
+                                        value: tutorConfig.adherence_settings.temperature,
+                                    })}
                                 </Label>
                                 <input
                                     id="temperature"

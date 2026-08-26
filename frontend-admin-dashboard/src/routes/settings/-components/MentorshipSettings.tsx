@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     UsersThree,
     CalendarPlus,
@@ -49,14 +51,14 @@ import {
 } from '@/components/templates/TemplateSearchableSelect';
 
 /** Mentorship fields an admin can map a WhatsApp template variable to. '' = auto-match by name. */
-const WA_FIELD_OPTIONS: { value: string; label: string }[] = [
-    { value: '', label: 'Auto (match by name)' },
-    { value: 'name', label: "Recipient's name" },
-    { value: 'mentor_name', label: "Mentor's name" },
-    { value: 'student_name', label: "Student's name" },
-    { value: 'session_title', label: 'Session title' },
-    { value: 'session_datetime', label: 'Session date & time' },
-    { value: 'decision_note', label: 'Decline reason (mentor request)' },
+const getWaFieldOptions = (t: TFunction): { value: string; label: string }[] => [
+    { value: '', label: t('waFieldOptions.auto') },
+    { value: 'name', label: t('waFieldOptions.recipientName') },
+    { value: 'mentor_name', label: t('waFieldOptions.mentorName') },
+    { value: 'student_name', label: t('waFieldOptions.studentName') },
+    { value: 'session_title', label: t('waFieldOptions.sessionTitle') },
+    { value: 'session_datetime', label: t('waFieldOptions.sessionDatetime') },
+    { value: 'decision_note', label: t('waFieldOptions.declineReason') },
 ];
 
 /** Extract {{tokens}} from an approved template's BODY text. */
@@ -67,9 +69,11 @@ const templateBodyTokens = (template: MetaWhatsAppTemplate | undefined): string[
     return Array.from(new Set(tokens));
 };
 
-const PlaceholderHint = () => (
+const PlaceholderHint = () => {
+    const { t } = useTranslation('settingsMentorship');
+    return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-neutral-400">Placeholders:</span>
+        <span className="text-xs text-neutral-400">{t('placeholderHint.label')}</span>
         {MENTORSHIP_PLACEHOLDERS.map((p) => (
             <code
                 key={p.token}
@@ -80,7 +84,8 @@ const PlaceholderHint = () => (
             </code>
         ))}
     </div>
-);
+    );
+};
 
 /**
  * Email or in-app/push channel: just the toggle. The message itself uses the

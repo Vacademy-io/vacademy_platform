@@ -1,0 +1,227 @@
+{
+  "common": {
+    "yourChild": "votre enfant",
+    "back": "Retour",
+    "errorTitle": "Nous n'avons pas pu charger cette page",
+    "errorBody": "Veuillez vérifier votre connexion et réessayer.",
+    "emptyTitle": "Rien ici pour le moment"
+  },
+  "picker": {
+    "hello": "Bonjour, {{name}}",
+    "parent": "là",
+    "choose": "Choisissez un enfant pour voir ses progrès",
+    "disabledTitle": "Pas encore disponible",
+    "disabledBody": "Votre établissement n'a pas encore activé la vue parent. Veuillez revenir plus tard.",
+    "emptyTitle": "Aucun enfant associé",
+    "emptyBody": "Aucun élève n'est encore associé à votre compte. Veuillez contacter le secrétariat de votre établissement."
+  },
+  "home": {
+    "title": "Mon enfant",
+    "greeting": "Voici comment {{name}} progresse",
+    "greetingLabel": "Voici comment progresse",
+    "hiParent": "Bonjour {{name}} 👋",
+    "allClear": "Rien ne nécessite votre attention pour le moment.",
+    "attentionTitle": "Nécessite votre attention"
+  },
+  "stats": {
+    "badges": "Badges",
+    "certificates": "Certificats",
+    "feesDue": "Frais dus"
+  },
+  "info": {
+    "attendance": "Aperçu de la présence",
+    "tests": "Aperçu des évaluations",
+    "liveClasses": "Cours à venir",
+    "fees": "Frais"
+  },
+  "nav": {
+    "home": "Accueil",
+    "ask": "Demander",
+    "studentView": "Vue élève"
+  },
+  "tiles": {
+    "progress": "Progression",
+    "attendance": "Présence",
+    "assessments": "Évaluations",
+    "liveClasses": "Cours en direct",
+    "payments": "Frais",
+    "rewards": "Récompenses",
+    "sub": {
+      "badges": "{{count}} obtenus",
+      "feesDue": "{{count}} dus",
+      "feesPaid": "Tout est payé",
+      "tests": "{{count}} passées",
+      "seeTests": "Voir les résultats",
+      "attendance": "{{percent}} % de présence",
+      "seeAttendance": "Voir la présence",
+      "progress": "{{percent}} % terminé",
+      "seeProgress": "Voir les leçons",
+      "upcoming": "{{count}} à venir",
+      "seeClasses": "Voir le programme"
+    }
+  },
+  "account": {
+    "logout": "Se déconnecter",
+    "menu": "Compte",
+    "signedInAs": "Connecté en tant que {{name}}",
+    "switchChild": "Changer d'enfant",
+    "viewAsChild": "Voir l'écran de {{name}}"
+  },
+  "search": {
+    "placeholder": "Rechercher — essayez « présence »"
+  },
+  "tour": {
+    "help": "Aide et visite guidée",
+    "search": {
+      "title": "Recherche rapide",
+      "body": "Tapez quelques lettres — comme « pr » — pour accéder directement à Présence, Évaluations, et plus encore."
+    },
+    "attention": {
+      "title": "Ce qui nécessite votre attention",
+      "body": "Tout ce qui nécessite votre attention — comme des frais dus — s'affiche ici en premier."
+    },
+    "tiles": {
+      "title": "Tout au même endroit",
+      "body": "Touchez une carte pour voir la progression, la présence, les évaluations, les cours, les frais et les récompenses de votre enfant."
+    },
+    "chat": {
+      "title": "Posez une question rapide",
+      "body": "Touchez ici à tout moment pour demander comment va votre enfant — tapez votre question ou touchez le micro pour poser votre question à voix haute."
+    }
+  },
+  "chat": {
+    "open": "Demander à propos de votre enfant",
+    "title": "Réponses rapides",
+    "greeting": "Bonjour ! Touchez une question pour en savoir plus sur {{name}}.",
+    "askTitle": "Posez-moi une question sur {{name}}",
+    "askSubtitle": "Touchez le bouton et parlez dans votre propre langue.",
+    "view": "Voir",
+    "q": {
+      "attendance": "Comment est la présence ?",
+      "fees": "Y a-t-il des frais dus ?",
+      "rewards": "Qu'est-ce que {{name}} a obtenu ?",
+      "tests": "Combien d'évaluations ?",
+      "progress": "Comment progresse-t-il/elle ?"
+    },
+    "a": {
+      "attendance": "{{name}} a assisté à {{percent}} % des cours.",
+      "attendanceNone": "Je n'ai pas encore de données de présence pour {{name}}.",
+      "feesDue": "{{count}} paiement(s) de frais sont dus.",
+      "feesPaid": "Tous les frais sont payés. Merci !",
+      "rewards": "{{name}} a obtenu {{badges}} badges et {{certs}} certificats.",
+      "tests": "{{name}} a passé {{count}} évaluation(s).",
+      "testsNone": "Aucun résultat d'évaluation pour le moment.",
+      "progress": "{{name}} a terminé {{percent}} % des leçons.",
+      "progressNone": "Consultez la section Progression pour plus de détails."
+    },
+    "placeholder": "Posez une question sur votre enfant…",
+    "send": "Envoyer",
+    "fallback": "Je peux vous aider concernant la présence, les frais, les évaluations, la progression et les récompenses — essayez de poser une question sur l'un de ces sujets.",
+    "thinking": "Réflexion en cours…",
+    "mic": "Demander à voix haute",
+    "listening": "Écoute en cours…",
+    "micCta": "Touchez pour parler",
+    "speak": "Écouter",
+    "mute": "Couper la voix",
+    "unmute": "Activer la voix"
+  },
+  "tone": {
+    "good": "Ça se passe bien",
+    "watch": "À surveiller",
+    "action": "Nécessite votre attention",
+    "neutral": "À venir"
+  },
+  "attention": {
+    "pendingFees": "{{count}} paiement de frais est dû",
+    "pendingFees_one": "{{count}} paiement de frais est dû",
+    "pendingFees_many": "{{count}} paiements de frais sont dus",
+    "pendingFees_other": "{{count}} paiements de frais sont dus"
+  },
+  "attendance": {
+    "summary": "{{name}} a assisté à {{percent}} % des cours.",
+    "noData": "Nous n'avons pas encore de données de présence pour {{name}}.",
+    "attended": "{{present}} cours sur {{total}} suivis",
+    "recentTitle": "Cours récents",
+    "present": "Présent",
+    "absent": "Absent",
+    "late": "En retard",
+    "notMarked": "Non renseigné",
+    "statusGood": "Bon",
+    "statusOkay": "Correct",
+    "statusLow": "Faible",
+    "emptyTitle": "Aucune présence pour le moment",
+    "emptyBody": "La présence s'affichera ici une fois les cours commencés.",
+    "daysAttended": "{{present}} jours sur {{total}}",
+    "graphTitle": "Répartition de la présence",
+    "presentDays": "Présent",
+    "absentDays": "Absent",
+    "unmarkedDays": "Non renseigné",
+    "streak": "Jours consécutifs",
+    "timeInClassTitle": "Temps passé en cours",
+    "upcomingChip": "À venir",
+    "attendedFor": "Présent pendant {{duration}}"
+  },
+  "progress": {
+    "summary": "{{name}} a terminé {{percent}} % de ses leçons.",
+    "summaryGeneric": "Comment {{name}} progresse dans ses cours.",
+    "subject": "Matière",
+    "noCourseData": "Aucune leçon ici pour le moment.",
+    "emptyTitle": "Aucune leçon pour le moment",
+    "emptyBody": "La progression des cours apparaîtra ici dès que {{name}} commencera à apprendre."
+  },
+  "assessments": {
+    "summary": "{{name}} a passé {{count}} évaluation.",
+    "summary_one": "{{name}} a passé {{count}} évaluation.",
+    "summary_many": "{{name}} a passé {{count}} évaluations.",
+    "summary_other": "{{name}} a passé {{count}} évaluations.",
+    "test": "Évaluation",
+    "report": "Bulletin",
+    "fullReports": "Bulletins détaillés",
+    "reportPendingTitle": "Rapport pas encore prêt",
+    "reportPendingBody": "Ce rapport détaillé est encore en cours de préparation. Veuillez revenir bientôt.",
+    "emptyTitle": "Aucune évaluation pour le moment",
+    "emptyBody": "Les résultats des évaluations s'afficheront ici une fois que {{name}} aura passé une évaluation.",
+    "classAvg": "Moyenne de la classe {{value}} %",
+    "rank": "Rang {{value}}",
+    "percentile": "{{value}}e percentile",
+    "accuracy": "{{value}} % de précision"
+  },
+  "liveClasses": {
+    "summary": "{{name}} a {{count}} cours à venir.",
+    "summary_one": "{{name}} a {{count}} cours à venir.",
+    "summary_many": "{{name}} a {{count}} cours à venir.",
+    "summary_other": "{{name}} a {{count}} cours à venir.",
+    "session": "Cours",
+    "emptyTitle": "Aucun cours à venir",
+    "emptyBody": "Les cours en direct programmés s'afficheront ici."
+  },
+  "payments": {
+    "allPaid": "Tous les frais de {{name}} sont payés. Merci !",
+    "duesSummary": "{{name}} a {{count}} paiement de frais dû.",
+    "duesSummary_one": "{{name}} a {{count}} paiement de frais dû.",
+    "duesSummary_many": "{{name}} a {{count}} paiements de frais dus.",
+    "duesSummary_other": "{{name}} a {{count}} paiements de frais dus.",
+    "invoice": "Frais",
+    "paid": "Payé",
+    "due": "Dû",
+    "payNow": "Payer maintenant",
+    "emptyTitle": "Aucun frais pour le moment",
+    "emptyBody": "Les détails des frais apparaîtront ici."
+  },
+  "rewards": {
+    "summary": "{{name}} a obtenu {{count}} badge.",
+    "summary_one": "{{name}} a obtenu {{count}} badge.",
+    "summary_many": "{{name}} a obtenu {{count}} badges.",
+    "summary_other": "{{name}} a obtenu {{count}} badges.",
+    "badge": "Badge",
+    "emptyTitle": "Aucune récompense pour le moment",
+    "emptyBody": "Les badges et points s'afficheront ici au fur et à mesure que {{name}} apprend.",
+    "points": "Points obtenus",
+    "rank": "Rang n°{{value}}",
+    "badgesTitle": "Badges",
+    "certificatesTitle": "Certificats",
+    "certificate": "Certificat",
+    "earnedOn": "Obtenu le {{date}}",
+    "completed": "{{percent}} % terminé"
+  }
+}

@@ -52,14 +52,24 @@ echo ""
 echo -e "${BLUE}📁 Copying frontend build to electron/app...${NC}"
 rm -rf "$SCRIPT_DIR/app"
 cp -r "$PARENT_DIR/dist" "$SCRIPT_DIR/app"
-echo -e "${GREEN}✅ Frontend copied${NC}"
+
+# Record which OTA bundle version is baked in. Without it ota.ts falls back to the
+# ELECTRON package version (1.0.x) — a different numbering space — so every OTA
+# bundle looks newer and the fresh builtin bundle is replaced by an older one on
+# first launch. build-mas-zoe.sh has always done this; this script had not.
+WEB_VERSION=$(node -p "require('$PARENT_DIR/package.json').version")
+echo -n "$WEB_VERSION" > "$SCRIPT_DIR/app/ota-bundle-version.txt"
+echo -e "${GREEN}✅ Frontend copied (packaged OTA bundle version: ${WEB_VERSION})${NC}"
 echo ""
 
 cd "$SCRIPT_DIR"
 
 # Step 3: Write flavor file so capacitor.config reads it at runtime
 echo -e "${BLUE}📝 Writing electron-flavor.json...${NC}"
-echo '{"flavor":"zoe"}' > "$SCRIPT_DIR/electron-flavor.json"
+# otaAppId is the STORE bundle id (com.zoeedtech.app for the Microsoft Store
+# package). ota.ts falls back to app.getName() without it, which never matches an
+# OTA target_app_ids, so the app would silently never receive an update.
+echo '{"flavor":"zoe","otaAppId":"com.zoeedtech.app"}' > "$SCRIPT_DIR/electron-flavor.json"
 echo -e "${GREEN}✅ Flavor file written${NC}"
 echo ""
 

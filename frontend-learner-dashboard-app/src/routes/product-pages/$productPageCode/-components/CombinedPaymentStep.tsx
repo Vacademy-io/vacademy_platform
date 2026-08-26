@@ -10,6 +10,7 @@ import { RazorpayCheckoutForm } from '@/components/common/enroll-by-invite/-comp
 import type { RazorpayCheckoutFormRef } from '@/components/common/enroll-by-invite/-components/razorpay-checkout-form';
 import { ArrowLeft, SpinnerGap, ShieldCheck } from "@phosphor-icons/react";
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
+import { resolveLearnerIdentity } from '../-utils/learner-identity';
 
 interface CombinedPaymentStepProps {
     pageData: ProductPageData;
@@ -32,7 +33,7 @@ export const CombinedPaymentStep = ({
 }: CombinedPaymentStepProps) => {
     const {
         selectedPsOptionIds, registrationData, userId, couponCode,
-        discountAmount, totalPrice, finalPrice, utmParams,
+        finalPrice, utmParams,
     } = useProductPageStore();
 
     const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
@@ -50,21 +51,15 @@ export const CombinedPaymentStep = ({
 
     const currency = (pageData.currency || pageData.mappings[0]?.payment_plan?.currency || 'INR') as string;
     const amount = finalPrice();
-    const subtotal = totalPrice();
 
-    const emailEntry = Object.values(registrationData).find(
-        (f) => f.type?.toLowerCase().includes('email') || f.name?.toLowerCase().includes('email')
-    );
-    const phoneEntry = Object.values(registrationData).find(
-        (f) => f.type?.toLowerCase().includes('phone') || f.name?.toLowerCase().includes('phone') || f.name?.toLowerCase().includes('mobile')
-    );
-    const nameEntry = Object.values(registrationData).find(
-        (f) => f.name?.toLowerCase().includes('name') && !f.name?.toLowerCase().includes('email') && !f.name?.toLowerCase().includes('phone')
-    );
-
-    const userEmail = emailEntry?.value || '';
-    const userPhone = phoneEntry?.value || '';
-    const userName = nameEntry?.value || '';
+    // These three prefill the payment vendor's contact block, so they must be
+    // the same values the enrolment is created under. Shared resolver: a label
+    // search for "name" also matches "School Name". See learner-identity.
+    const {
+        email: userEmail,
+        phone: userPhone,
+        name: userName,
+    } = resolveLearnerIdentity(Object.values(registrationData));
 
     const doEnroll = async (paymentInitiationRequest: Record<string, unknown>) => {
         setIsProcessing(true);
@@ -167,67 +162,16 @@ export const CombinedPaymentStep = ({
         }
     };
 
-    const orderSummaryContent = (
-        <>
-            <div className="border-b border-gray-100 px-5 py-4">
-                <h2 className="font-semibold text-gray-900">Order Summary</h2>
-            </div>
-            <div className="divide-y divide-gray-100">
-                {selectedMappings.map((m) => {
-                    const mapping = pageData.mappings.find(
-                        (pm) => pm.ps_invite_payment_option_id === m.ps_invite_payment_option_id
-                    );
-                    const nameParts = [mapping?.package_name, mapping?.level_name, mapping?.session_name].filter(Boolean);
-                    const courseName = nameParts.join(' | ') || mapping?.payment_plan?.name || 'Course';
-                    return (
-                        <div key={m.ps_invite_payment_option_id} className="px-5 py-3">
-                            <p className="mb-1 text-xs font-semibold text-gray-800 leading-snug">{courseName}</p>
-                            <div className="flex justify-between text-sm text-gray-500">
-                                <span>{mapping?.payment_plan?.name}</span>
-                                <span className="font-medium text-gray-900">
-                                    {m.amount > 0 ? `${currency} ${m.amount.toLocaleString()}` : 'Free'}
-                                </span>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-            <div className="space-y-2 border-t border-gray-100 px-5 py-4">
-                {discountAmount > 0 && (
-                    <div className="flex justify-between text-sm text-green-600">
-                        <span>Coupon ({couponCode})</span>
-                        <span>− {currency} {discountAmount.toLocaleString()}</span>
-                    </div>
-                )}
-                {subtotal !== amount && (
-                    <div className="flex justify-between text-sm text-gray-400 line-through">
-                        <span>Subtotal</span>
-                        <span>{currency} {subtotal.toLocaleString()}</span>
-                    </div>
-                )}
-                <div className="flex justify-between pt-1 text-base font-bold text-gray-900">
-                    <span>Total</span>
-                    <span>{currency} {amount.toLocaleString()}</span>
-                </div>
-                <p className="text-end text-xs text-gray-400">All prices in {currency}</p>
-            </div>
-        </>
-    );
-
     return (
         <>
-            {/* Two-column body */}
-            <div className="mx-auto max-w-3xl px-4 py-8 lg:flex lg:items-start lg:gap-8">
-                {/* Left: payment form */}
-                <div className="min-w-0 flex-1">
-                    {/* Order summary — mobile only, shown above the payment form */}
-                    <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:hidden">
-                        {orderSummaryContent}
-                    </div>
-
-                    <h1 className="mb-1 text-xl font-bold text-gray-900">Payment</h1>
-                    <p className="mb-6 text-sm text-gray-500">
-                        Complete your enrollment for {selectedPsOptionIds.length} course{selectedPsOptionIds.length !== 1 ? 's' : ''}
+            {/* Line items and totals live in CheckoutLayout's OrderSummaryPanel,
+                which is on screen throughout checkout — this step shows only
+                the payment action itself. */}
+            <div className="px-5 py-6 sm:px-6">
+                <div className="min-w-0">
+                    <h1 className="mb-1 text-lg font-bold text-gray-900">Review &amp; Pay</h1>
+                    <p className="mb-6 text-caption text-gray-500">
+                        Completing enrollment for {selectedPsOptionIds.length} course{selectedPsOptionIds.length !== 1 ? 's' : ''} · {currency} {amount.toLocaleString()} payable
                     </p>
 
                     {paymentError && (
@@ -321,13 +265,6 @@ export const CombinedPaymentStep = ({
                             <ShieldCheck className="size-3.5" />
                             Secured payment
                         </div>
-                    </div>
-                </div>
-
-                {/* Right: order summary (desktop only) */}
-                <div className="hidden lg:mt-0 lg:block lg:w-72 lg:shrink-0">
-                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                        {orderSummaryContent}
                     </div>
                 </div>
             </div>

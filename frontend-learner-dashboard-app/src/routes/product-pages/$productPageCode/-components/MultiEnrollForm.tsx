@@ -1,10 +1,17 @@
 import { useState, useMemo } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useProductPageStore } from '../-stores/product-page-store';
-import { getActiveFields, resolveInitialSelection } from '../-utils/custom-field-aggregator';
+import { getFieldVerification } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
+import {
+    dedupeFieldsByKey,
+    fieldOrder,
+    getActiveFields,
+    resolveInitialSelection,
+} from '../-utils/custom-field-aggregator';
 import { submitProductPageForm } from '../-services/product-page-service';
 import { pushTnCAccepted } from '@/components/common/enroll-by-invite/-utils/gtm';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
+import { FieldVerification } from './FieldVerification';
 import { FieldRenderType, getFieldRenderType } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
 import { parseDropdownOptions } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
 import { validatePhoneField } from '@/lib/phone-validation';
@@ -64,11 +71,16 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
         (m) => suggestedIds.includes(m.ps_invite_payment_option_id) && m.status === 'ACTIVE'
     ), [pageData.mappings, suggestedIds]);
 
-    const activeAggregatedFields = getActiveFields(
-        pageData.mappings,
-        selectedPsOptionIds,
-        pageData.aggregated_custom_fields
+    // Deduped BEFORE anything reads it: validation, submission and rendering all
+    // key off fieldKey, so a duplicate row is never a second answer — only a
+    // second box asking for the same one.
+    const activeAggregatedFields = dedupeFieldsByKey(
+        getActiveFields(pageData.mappings, selectedPsOptionIds, pageData.aggregated_custom_fields)
     );
+
+    // The VALUE that was verified, per field — not a boolean. Editing a verified
+    // number has to re-arm the gate, and a flag cannot tell you that it did.
+    const [verifiedValues, setVerifiedValues] = useState<Record<string, string>>({});
 
     const [formValues, setFormValues] = useState<Record<string, string>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -96,6 +108,14 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
             } else if (cf.isMandatory && !formValues[cf.fieldKey]?.trim()) {
                 newErrors[cf.fieldKey] = `${cf.fieldName} is required`;
             }
+
+            // Checked here as well as in the UI: the gate is the whole point of
+            // the field, and a disabled button is not a guarantee.
+            const verification = getFieldVerification(cf.config);
+            const answer = formValues[cf.fieldKey]?.trim();
+            if (verification && answer && verifiedValues[cf.fieldKey] !== formValues[cf.fieldKey]) {
+                newErrors[cf.fieldKey] = `Please verify your ${cf.fieldName.toLowerCase()} first`;
+            }
         }
         if (settings.tnc.enabled && !tncAccepted) {
             newErrors['_tnc'] = 'Please accept the terms and conditions to continue';
@@ -111,6 +131,7 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                 const cf = af.field.custom_field;
                 registrationData[cf.fieldKey] = {
                     id: cf.id,
+                    key: cf.fieldKey,
                     name: cf.fieldName,
                     value: formValues[cf.fieldKey] || '',
                     is_mandatory: cf.isMandatory,
@@ -149,11 +170,12 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
 
     return (
         <>
-            {/* Form */}
-            <div className="mx-auto max-w-xl px-4 py-8">
+            {/* Form. Sits inside CheckoutLayout's card, alongside the live
+                order summary — hence panel padding rather than a page shell. */}
+            <div className="px-5 py-6 sm:px-6">
                 <div className="mb-6">
-                    <h1 className="text-xl font-bold text-gray-900">Registration Details</h1>
-                    <p className="mt-1 text-sm text-gray-500">
+                    <h1 className="text-lg font-bold text-gray-900">Your Details</h1>
+                    <p className="mt-0.5 text-caption text-gray-500">
                         Fill in the details below to complete your enrollment
                     </p>
                 </div>
@@ -249,10 +271,11 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                 <form onSubmit={handleSubmit} className="space-y-5">
                     {activeAggregatedFields
                         .slice()
-                        .sort((a, b) => (a.field.custom_field.formOrder ?? 0) - (b.field.custom_field.formOrder ?? 0))
+                        .sort((a, b) => fieldOrder(a) - fieldOrder(b))
                         .map((af) => {
                             const cf = af.field.custom_field;
                             const renderType = getFieldRenderType(cf.fieldKey, cf.fieldType);
+                            const verification = getFieldVerification(cf.config);
                             const options = cf.commaSeparatedOptions
                                 ? parseDropdownOptions(cf.commaSeparatedOptions)
                                 : cf.config && cf.config !== '{}'
@@ -277,6 +300,25 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                                         config={cf.config ?? undefined}
                                         required={cf.isMandatory}
                                     />
+                                    {verification && (
+                                        <FieldVerification
+                                            verification={verification}
+                                            value={formValues[cf.fieldKey] || ''}
+                                            instituteId={pageData.institute_id}
+                                            label={cf.fieldName}
+                                            verified={
+                                                !!formValues[cf.fieldKey] &&
+                                                verifiedValues[cf.fieldKey] === formValues[cf.fieldKey]
+                                            }
+                                            onVerified={(verifiedValue) => {
+                                                setVerifiedValues((prev) => ({
+                                                    ...prev,
+                                                    [cf.fieldKey]: verifiedValue,
+                                                }));
+                                                setErrors((prev) => ({ ...prev, [cf.fieldKey]: '' }));
+                                            }}
+                                        />
+                                    )}
                                     {errors[cf.fieldKey] && (
                                         <p className="text-xs text-red-600">{errors[cf.fieldKey]}</p>
                                     )}

@@ -56,6 +56,34 @@ const parseFieldsInput = (fields?: any[] | string | null) => {
     return null;
 };
 
+/**
+ * The settings half of `custom_fields.config` — help text, file limits, the
+ * verification gate. Returns undefined for the legacy dropdown-only shape (a
+ * bare options array), which is not settings and must not be fed back to the
+ * dialog as if it were.
+ */
+const parseSettingsConfig = (raw?: string | null): Record<string, unknown> | undefined => {
+    if (!raw) return undefined;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+
+        // Options are NOT settings. They are owned by the field's type and are
+        // rebuilt from `options` on save — carrying them here would put them
+        // back after an admin switched a Dropdown to a plain Text field, which
+        // is precisely the stale-option bug the save path guards against.
+        const { options, commaSeparatedOptions, coommaSepartedOptions, ...settings } =
+            parsed as Record<string, unknown>;
+        void options;
+        void commaSeparatedOptions;
+        void coommaSepartedOptions;
+
+        return Object.keys(settings).length > 0 ? settings : undefined;
+    } catch {
+        return undefined;
+    }
+};
+
 export const convertExistingCustomFields = (fields?: any[] | string | null) => {
     const normalizedFields = parseFieldsInput(fields);
 
@@ -123,6 +151,9 @@ export const convertExistingCustomFields = (fields?: any[] | string | null) => {
                 group_internal_order: field.group_internal_order,
                 // Store full custom_field object for payload
                 custom_field_data: meta,
+                // The stored settings object, so editing a field starts from the
+                // help text / file limits / verification it already has.
+                config: parseSettingsConfig(meta.config),
             };
 
             return convertedField;
@@ -218,9 +249,19 @@ export const convertFieldsToPayload = (fields: any[], instituteId: string) => {
                               label: v,
                           }))
                       )
-                    : configHoldsOptions(customFieldData.config)
-                      ? ''
-                      : customFieldData.config || '',
+                    : // What the admin just set in the dialog wins over the copy
+                      // loaded from the API, which is what makes an edit stick.
+                      // PRESENCE decides, not emptiness: clearing the last
+                      // setting leaves an empty object, and treating that as
+                      // "nothing was edited" would fall through and restore the
+                      // stale API config — turning a switch off would not stick.
+                      field.config !== undefined
+                      ? Object.keys(field.config).length > 0
+                          ? JSON.stringify(field.config)
+                          : ''
+                      : configHoldsOptions(customFieldData.config)
+                        ? ''
+                        : customFieldData.config || '',
                 // Only read for brand-new master rows — the backend leaves form_order
                 // alone on an existing field so one form cannot reshuffle the
                 // shared catalog every other form inherits.

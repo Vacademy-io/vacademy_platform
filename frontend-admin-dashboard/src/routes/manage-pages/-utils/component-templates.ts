@@ -763,6 +763,15 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             showViewAll: true,
             viewAllLabel: 'See all',
             ctaLabel: 'Enrol now',
+            // Multi-course basket. OFF by default so existing sections keep the
+            // one-card-one-checkout behaviour; turned on, each card's CTA
+            // becomes an add/remove toggle and a basket bar carries the whole
+            // selection into the product page's cart in one go. Worth it when
+            // a visitor normally buys several at once (Olympiad subjects,
+            // a class's whole set of practice courses).
+            enableCart: false,
+            cartCtaLabel: 'Add to Cart',
+            checkoutCtaLabel: 'Proceed to checkout',
             // Second CTA per card: browse the course details page first. Its
             // enrol button re-enters this product page's checkout, so both
             // paths converge on the same funnel.

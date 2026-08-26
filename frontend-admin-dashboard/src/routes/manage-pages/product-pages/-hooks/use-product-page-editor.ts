@@ -33,6 +33,8 @@ function mappingResponseToRow(m: ProductPageResponse['mappings'][number], idx: n
         currency: m.payment_plan?.currency || '',
         preselected: m.preselected ?? false,
         displayOrder: m.display_order ?? idx,
+        levelName: m.level_name || '',
+        packageName: m.package_name || '',
     };
 }
 

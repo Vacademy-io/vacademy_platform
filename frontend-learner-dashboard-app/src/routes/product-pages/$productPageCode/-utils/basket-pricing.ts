@@ -34,6 +34,12 @@ export interface BasketPricingGroup {
     label: string;
     /** Level names belonging to this group. */
     levels: string[];
+    /**
+     * Price for taking EVERY level in this group — the "full grade pack".
+     * Exact per group, so it keeps working when a class gains or loses a
+     * subject; `wholeGroupPrices` is the fragile count-keyed fallback.
+     */
+    packPrice?: number;
 }
 
 export interface BasketPricingCombo {
@@ -142,7 +148,11 @@ export const quoteBasket = (
             .map(key);
         if (label && configured.length > 0) {
             const pickedLevels = new Set(picked.map((p) => key(p.levelName)));
-            const packPrice = settings.wholeGroupPrices?.[String(count)];
+            const ownPack = (settings.groups ?? []).find((g) => g.label === label)?.packPrice;
+            const packPrice =
+                typeof ownPack === 'number' && ownPack > 0
+                    ? ownPack
+                    : settings.wholeGroupPrices?.[String(count)];
             if (
                 configured.every((l) => pickedLevels.has(l)) &&
                 typeof packPrice === 'number' &&
@@ -252,4 +262,21 @@ export const nextCourseCost = (
     const fresh = ladderPrice(prices, perExtra, 1);
     if (best === null || fresh < best.amount) best = { amount: fresh, group: null };
     return best;
+};
+
+/**
+ * Which pricing group a course falls in, or '' when it belongs to none.
+ *
+ * Exported so the cart can group what it SHOWS exactly the way the engine
+ * groups what it CHARGES. Two different groupings on one screen is how "why is
+ * this one ₹250 and that one ₹349" starts.
+ */
+export const groupLabelFor = (
+    settings: BasketPricingSettings | undefined,
+    item: BasketItem
+): string => {
+    for (const group of settings?.groups ?? []) {
+        if ((group.levels ?? []).some((l) => key(l) === key(item.levelName))) return group.label;
+    }
+    return '';
 };

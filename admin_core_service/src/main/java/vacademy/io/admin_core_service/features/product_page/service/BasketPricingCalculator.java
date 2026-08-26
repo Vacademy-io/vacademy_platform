@@ -38,8 +38,12 @@ import java.util.Set;
  *                     switch. Full packs and combos stay per-group either way,
  *                     because a "full grade pack" only means something within
  *                     one grade.
- *   wholeGroupPrices  count → price, used only when the selection covers EVERY
- *                     level in its group ("full grade pack").
+ *   groups[].packPrice  price for taking EVERY level in that group — the "full
+ *                     grade pack". Exact per group, so it keeps working when a
+ *                     class gains or loses a subject.
+ *   wholeGroupPrices  count → price, the older fallback for groups with no
+ *                     packPrice of their own. Fragile: a class that gains a
+ *                     subject lands on a different count's price.
  *   combos            a named set of package names at a fixed price, matched
  *                     within a group ("English + Maths + Science = ₹749").
  *                     Matched on package rather than level so one entry covers
@@ -211,10 +215,15 @@ public class BasketPricingCalculator {
             return null;
         }
         Set<String> configured = new LinkedHashSet<>();
+        Double ownPackPrice = null;
         for (JsonNode group : cfg.path("groups")) {
             if (groupLabel.equals(group.path("label").asText(""))) {
                 for (JsonNode level : group.path("levels")) {
                     configured.add(key(level.asText()));
+                }
+                JsonNode own = group.path("packPrice");
+                if (!own.isMissingNode() && own.asDouble(0) > 0) {
+                    ownPackPrice = own.asDouble();
                 }
             }
         }
@@ -227,6 +236,13 @@ public class BasketPricingCalculator {
         }
         if (!pickedLevels.containsAll(configured)) {
             return null;
+        }
+        // A price on the group itself is exact and survives the catalogue
+        // changing shape. The count map is the older, fragile fallback: add one
+        // subject to a class and its count silently lands on another class's
+        // price.
+        if (ownPackPrice != null) {
+            return ownPackPrice;
         }
         JsonNode price = cfg.path("wholeGroupPrices").path(String.valueOf(count));
         return price.isMissingNode() ? null : price.asDouble();

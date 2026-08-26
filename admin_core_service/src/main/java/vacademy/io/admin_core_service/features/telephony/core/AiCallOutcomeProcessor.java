@@ -12,8 +12,10 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
+import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
+import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.audience.service.LeadStatusService;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorAssignmentService;
@@ -72,6 +74,7 @@ public class AiCallOutcomeProcessor {
     private final LeadStatusService leadStatusService;
     private final CounselorAssignmentService counselorAssignmentService;
     private final UserLeadProfileService userLeadProfileService;
+    private final UserLeadProfileRepository userLeadProfileRepository;
     private final AiCallingSettingsService settingsService;
     private final AiCallOutcomeClassifier classifier;
     private final CallLogService callLogService;
@@ -728,6 +731,27 @@ public class AiCallOutcomeProcessor {
     private void assignCounsellor(Lead lead) {
         if (lead.audienceId() == null || lead.userId() == null) {
             log.info("ai-call assign: skipped (no audience/user) for lead {}", lead.userId());
+            return;
+        }
+        // A lead that ALREADY has a counsellor keeps them. The rotation exists to give an
+        // UNOWNED lead an owner, not to move one between people.
+        //
+        // Before CALL_AI could opt out of the already-assigned guard, this could not happen:
+        // automation never dialled an owned lead, so every lead reaching this method was
+        // unowned and the rotation was always the right answer. With ignoreAssignedGuard the
+        // canonical flow is "counsellor rings the lead, marks it DNP, the bot re-calls" — and
+        // without this check that flow ENDS by handing their lead to whoever is next in the
+        // rotation and ringing that person's bell, silently taking it off the counsellor who
+        // is actively working it. assignCounselor() overwrites assigned_counselor_id with no
+        // guard of its own (it is also the manual-reassignment path, so it must not grow one).
+        String currentOwner = userLeadProfileRepository
+                .findByUserIdAndInstituteId(lead.userId(), lead.instituteId())
+                .map(UserLeadProfile::getAssignedCounselorId)
+                .filter(id -> id != null && !id.isBlank())
+                .orElse(null);
+        if (currentOwner != null) {
+            log.info("ai-call assign: lead {} already owned by counsellor {} — keeping them (no rotation)",
+                    lead.userId(), currentOwner);
             return;
         }
         Optional<String> counselorId = counselorAssignmentService.assignCounselorForLead(lead.audienceId());

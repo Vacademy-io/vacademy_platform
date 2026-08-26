@@ -321,10 +321,11 @@ public class LiveSessionProviderService {
         if (request.getScheduleId() != null) {
             scheduleRepository.findById(request.getScheduleId()).ifPresent(schedule -> {
                 schedule.setCustomMeetingLink(response.getJoinUrl()); // learner join URL
-                // Only set linkType if not already set — preserve the frontend-friendly
-                // value (e.g. "bbb") instead of overwriting with enum name ("BBB_MEETING")
-                if (schedule.getLinkType() == null || schedule.getLinkType().isBlank()) {
-                    schedule.setLinkType(providerName);
+                // Set linkType when the row does not already carry a real one — preserving a
+                // frontend-friendly value ("bbb") the wizard already chose, but replacing the
+                // "UNKNOWN" placeholder, which is NOT a choice (see isUnsetLinkType).
+                if (isUnsetLinkType(schedule.getLinkType())) {
+                    schedule.setLinkType(frontendLinkType(providerName));
                 }
                 schedule.setProviderMeetingId(response.getProviderMeetingId());
                 schedule.setProviderHostUrl(response.getHostUrl());
@@ -852,6 +853,51 @@ public class LiveSessionProviderService {
                     schedule.getId(), meetingId, e.getClass().getSimpleName());
             return stored;
         }
+    }
+
+
+    /**
+     * True when a schedule's linkType carries no real provider.
+     *
+     * <p>{@code "UNKNOWN"} is what URL sniffing returns for a schedule created before its meeting
+     * link exists — which is every provider-provisioned occurrence, because the link is minted
+     * right here. It is neither null nor blank, so the old guard mistook it for a deliberate
+     * choice and left it in place permanently. Rows stuck on it are broken at both ends: the
+     * dashboards match linkType against StreamingPlatform literals, so "Start as Host" degrades
+     * to a plain participant link and the teacher never claims host role; and on the server
+     * {@code MeetingProvider.fromString("UNKNOWN")} throws, so strategy resolution fails outright.
+     */
+    static boolean isUnsetLinkType(String linkType) {
+        return linkType == null || linkType.isBlank() || "UNKNOWN".equalsIgnoreCase(linkType);
+    }
+
+    /**
+     * The literal the dashboards actually match on, for a given provider.
+     *
+     * <p>Storing the enum name instead ("GOOGLE_MEET", "ZOOM_MEETING") is the same
+     * case-sensitivity trap: some frontend branches accept the enum name, others only the
+     * StreamingPlatform literal, so the enum name works in one place and silently fails in
+     * another. The backend accepts either — {@code MeetingProvider.fromString} normalises.
+     */
+    static String frontendLinkType(String providerName) {
+        if (providerName == null || providerName.isBlank()) {
+            return providerName;
+        }
+        try {
+            switch (MeetingProvider.fromString(providerName)) {
+                case ZOOM_MEETING:
+                    return "zoom";
+                case GOOGLE_MEET:
+                    return "google meet";
+                case BBB_MEETING:
+                    return "bbb";
+                case ZOHO_MEETING:
+                    return "zoho";
+            }
+        } catch (Exception e) {
+            log.debug("unrecognised provider name {} — storing as-is", providerName);
+        }
+        return providerName;
     }
 
     /** True for both the frontend-friendly "zoom"/"ZOOM" and the enum name "ZOOM_MEETING". */

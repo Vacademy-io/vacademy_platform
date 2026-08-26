@@ -15,8 +15,12 @@ import type {
     PaperQuestionType,
 } from '../../-types/paper';
 
+// Doubles as the type picker's option list (see Object.keys below), so adding an
+// entry here is all it takes to offer a new question type in the plan.
 const TYPE_LABEL: Record<PaperQuestionType, string> = {
     MCQS: 'Multiple choice',
+    MCQM: 'Multiple choice (several answers)',
+    TRUE_FALSE: 'True / false',
     ONE_WORD: 'One word',
     LONG_ANSWER: 'Long answer',
     NUMERIC: 'Numerical',

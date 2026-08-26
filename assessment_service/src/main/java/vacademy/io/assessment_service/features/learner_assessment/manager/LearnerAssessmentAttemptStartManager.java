@@ -278,6 +278,11 @@ public class LearnerAssessmentAttemptStartManager {
         Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(startAssessmentRequest.getAttemptId());
         if (studentAttempt.isEmpty()) throw new VacademyException("Student attempt not found");
 
+        // The attempt id is the only input here, and `user` used to be ignored entirely
+        // — so any authenticated caller could flip another learner's PREVIEW attempt to
+        // LIVE and reset its start time out from under them.
+        LearnerAssessmentAttemptStatusManager.assertOwnershipOrStaff(studentAttempt.get(), user, "start-assessment");
+
         if (!AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus()))
             throw new VacademyException("Assessment already live or in preview");
 

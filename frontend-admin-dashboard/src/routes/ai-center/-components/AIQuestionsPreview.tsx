@@ -18,6 +18,11 @@ import {
     getPPTViewTitle,
     transformResponseDataToMyQuestionsSchema,
 } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    describeMerge,
+    mergeSectionQuestions,
+} from '@/routes/assessment/question-papers/-utils/merge-section-questions';
+import { calculateTotalMarks } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { QuestionType } from '@/constants/dummy-data';
 import { DotsSixVertical } from '@phosphor-icons/react';
 import {
@@ -260,33 +265,51 @@ const AIQuestionsPreview = ({
             if (currentSectionIndex !== undefined) {
                 // Check if index is defined
 
+                const incoming = transformQuestionsData.map((question) => ({
+                    // Spread full question data (options, validAnswers, etc.) so that
+                    // quiz context can read them via getValues. The Zod schema strips
+                    // unknown fields on validation, so the assessment flow is unaffected.
+                    ...question,
+                    questionId: question.questionId,
+                    questionName: question.questionName,
+                    questionType: question.questionType,
+                    questionMark: question.questionMark,
+                    questionPenalty: question.questionPenalty,
+                    ...(question.questionType === 'MCQM' && {
+                        correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
+                            (item) => item.isSelected
+                        ).length,
+                    }),
+                    questionDuration: {
+                        hrs: question.questionDuration.hrs,
+                        min: question.questionDuration.min,
+                    },
+                    parentRichText: question.parentRichTextContent,
+                }));
+
+                // Append rather than replace: running an AI tool on a section that
+                // already had questions used to wipe them without warning.
+                const mergeResult = mergeSectionQuestions(
+                    sectionsForm?.getValues(
+                        `section.${currentSectionIndex}.adaptive_marking_for_each_question`
+                    ) as typeof incoming | undefined,
+                    incoming
+                );
+
                 sectionsForm?.setValue(
                     `section.${currentSectionIndex}.adaptive_marking_for_each_question`,
-                    transformQuestionsData.map((question) => ({
-                        // Spread full question data (options, validAnswers, etc.) so that
-                        // quiz context can read them via getValues. The Zod schema strips
-                        // unknown fields on validation, so the assessment flow is unaffected.
-                        ...question,
-                        questionId: question.questionId,
-                        questionName: question.questionName,
-                        questionType: question.questionType,
-                        questionMark: question.questionMark,
-                        questionPenalty: question.questionPenalty,
-                        ...(question.questionType === 'MCQM' && {
-                            correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
-                                (item) => item.isSelected
-                            ).length,
-                        }),
-                        questionDuration: {
-                            hrs: question.questionDuration.hrs,
-                            min: question.questionDuration.min,
-                        },
-                        parentRichText: question.parentRichTextContent,
-                    }))
+                    mergeResult.merged
+                );
+                // Section total is derived from its questions; nothing else recomputes it
+                // when questions arrive.
+                sectionsForm?.setValue(
+                    `section.${currentSectionIndex}.total_marks`,
+                    String(calculateTotalMarks(mergeResult.merged))
                 );
                 sectionsForm?.trigger(
                     `section.${currentSectionIndex}.adaptive_marking_for_each_question`
                 );
+                toast.success(describeMerge(mergeResult));
                 setIsAIQuestionDialog1(false);
                 setIsAIQuestionDialog2(false);
                 setIsAIQuestionDialog3(false);

@@ -11,7 +11,11 @@ interface QuestionSelectorDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     questions: MyQuestion[];
-    paperId: string;
+    /**
+     * Unused by this component — nothing reads it. Optional so callers are not
+     * forced to invent a value (Step2SectionInfo was passing a hardcoded "").
+     */
+    paperId?: string;
     onConfirm: (selected: MyQuestion[]) => void;
 }
 

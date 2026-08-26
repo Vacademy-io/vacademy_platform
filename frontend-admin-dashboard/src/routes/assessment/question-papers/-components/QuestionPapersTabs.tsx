@@ -1,9 +1,10 @@
-import { Dispatch, SetStateAction, useEffect, useState } from 'react';
+import { Dispatch, SetStateAction, useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { WarningCircle } from '@phosphor-icons/react';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { TabListComponent } from './TabListComponent';
 import { QuestionPapersFilter } from './QuestionPapersFilter';
 import { QuestionPapersSearchComponent } from './QuestionPapersSearchComponent';
-import { QuestionPapersDateRangeComponent } from './QuestionPapersDateRangeComponent';
 import { EmptyQuestionPapers } from '@/svgs';
 import { QuestionPapersList } from './QuestionPapersList';
 import { useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query';
@@ -64,6 +65,19 @@ export const QuestionPapersTabs = ({
     const [questionPaperList, setQuestionPaperList] = useState(null);
     const [questionPaperFavouriteList, setQuestionPaperFavouriteList] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    // A failed fetch used to render the same "No question papers available" screen as a
+    // genuinely empty bank, which reads as "there is nothing here" and sends the user off
+    // to create a duplicate.
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    const reportPaperListError = useCallback((error: unknown) => {
+        console.error(error);
+        const message =
+            (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+            'Could not load question papers. Please try again.';
+        setLoadError(message);
+        toast.error(message);
+    }, []);
     const setHandleRefetchData = useRefetchStore((state) => state.setHandleRefetchData);
 
     const { YearClassFilterData, SubjectFilterData } = useFilterDataForAssesment(instituteDetails);
@@ -94,7 +108,10 @@ export const QuestionPapersTabs = ({
             }
         },
         onError: (error: unknown) => {
-            throw error;
+            // Was `throw error` inside a react-query callback: an unhandled rejection,
+            // no toast, and the list silently rendered its empty state as if the
+            // institute simply had no papers.
+            reportPaperListError(error);
         },
     });
 
@@ -114,7 +131,10 @@ export const QuestionPapersTabs = ({
             setQuestionPaperFavouriteList(data);
         },
         onError: (error: unknown) => {
-            throw error;
+            // Was `throw error` inside a react-query callback: an unhandled rejection,
+            // no toast, and the list silently rendered its empty state as if the
+            // institute simply had no papers.
+            reportPaperListError(error);
         },
     });
 
@@ -134,7 +154,10 @@ export const QuestionPapersTabs = ({
             setQuestionPaperList(data);
         },
         onError: (error: unknown) => {
-            throw error;
+            // Was `throw error` inside a react-query callback: an unhandled rejection,
+            // no toast, and the list silently rendered its empty state as if the
+            // institute simply had no papers.
+            reportPaperListError(error);
         },
     });
 
@@ -236,6 +259,7 @@ export const QuestionPapersTabs = ({
             ...selectedQuestionPaperFilters,
             statuses: [{ id: tabValue, name: tabValue }],
         }).then((data) => {
+            setLoadError(null);
             if (tabValue === 'FAVOURITE') {
                 setQuestionPaperFavouriteList(data);
             } else {
@@ -253,7 +277,7 @@ export const QuestionPapersTabs = ({
         if (!loadedTabs.has(value)) {
             setIsLoading(true);
             fetchTabData(value)
-                .catch((error) => console.error(error))
+                .catch(reportPaperListError)
                 .finally(() => setIsLoading(false));
         }
     };
@@ -262,7 +286,7 @@ export const QuestionPapersTabs = ({
     useEffect(() => {
         setIsLoading(true);
         fetchTabData('ACTIVE')
-            .catch((error) => console.error(error))
+            .catch(reportPaperListError)
             .finally(() => setIsLoading(false));
     }, []);
 
@@ -342,7 +366,10 @@ export const QuestionPapersTabs = ({
                             setSearchText={setSearchText}
                             clearSearch={clearSearch}
                         />
-                        <QuestionPapersDateRangeComponent />
+                        {/* The date-range filter was rendered with no props and its
+                            onSubmit only console.logged, so it never filtered
+                            anything. Removed rather than left as a control that
+                            looks functional and is not. */}
                     </div>
                 </div>
             </div>
@@ -364,9 +391,33 @@ export const QuestionPapersTabs = ({
                         onManualSelectionReady={onManualSelectionReady}
                     />
                 ) : (
-                    <div className="flex h-screen flex-col items-center justify-center">
-                        <EmptyQuestionPapers />
-                        <span className="text-neutral-600">No question papers available</span>
+                    <div className="flex h-screen flex-col items-center justify-center gap-2">
+                        {loadError ? (
+                            <>
+                                <WarningCircle className="size-8 text-danger-600" />
+                                <span className="text-neutral-700">{loadError}</span>
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => {
+                                        setLoadError(null);
+                                        setIsLoading(true);
+                                        fetchTabData(selectedTab)
+                                            .catch(reportPaperListError)
+                                            .finally(() => setIsLoading(false));
+                                    }}
+                                >
+                                    Try again
+                                </MyButton>
+                            </>
+                        ) : (
+                            <>
+                                <EmptyQuestionPapers />
+                                <span className="text-neutral-600">
+                                    No question papers available
+                                </span>
+                            </>
+                        )}
                     </div>
                 )}
             </TabsContent>

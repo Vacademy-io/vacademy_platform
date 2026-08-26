@@ -485,6 +485,10 @@ export const MARK_QUESTION_PAPER_STATUS = `${BASE_URL}/assessment-service/questi
 export const GET_QUESTION_PAPER_BY_ID = `${BASE_URL}/assessment-service/question-paper/view/v1/get-by-id`;
 export const GET_QUESTION_TAGS = `${BASE_URL}/assessment-service/question-paper/view/v1/question-tags`;
 export const ADD_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/add`;
+// Browse INDIVIDUAL questions in the institute's bank (filter by knowledge base,
+// topic, difficulty, type, tag). Distinct from GET_QUESTION_PAPER_FILTERED_DATA
+// above, which lists whole papers.
+export const FILTER_QUESTION_BANK_QUESTIONS = `${BASE_URL}/assessment-service/question-bank/v1/questions/filter`;
 export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/edit`;
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;
 export const STEP2_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/submit`;

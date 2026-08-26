@@ -277,15 +277,20 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             @Param("anchor") java.sql.Timestamp anchor);
 
     /**
-     * Live state of a batch of calls, as {@code [id, status, durationSeconds]}.
+     * Live state of a batch of calls, as {@code [id, status, durationSeconds, toNumber]}.
      *
      * <p>The queue's own row stops at DIALED — that means "handed to the provider" and
      * never changes again, so a call ringing right now and one that ended three hours ago
      * look identical on the queue row alone. This is what tells them apart, resolved in
      * one query per page rather than per row.
+     *
+     * <p>{@code toNumber} rides along because a queued row often has no phone of its
+     * own: the manual click and the CALL_AI node pass only a lead id, and the number is
+     * resolved downstream at dial time. Without this the queue table would show a raw
+     * user UUID where the lead's number belongs.
      */
     @Query("""
-            SELECT t.id, t.status, t.durationSeconds FROM TelephonyCallLog t
+            SELECT t.id, t.status, t.durationSeconds, t.toNumber FROM TelephonyCallLog t
             WHERE t.id IN :ids
             """)
     List<Object[]> findStatusByIds(@Param("ids") java.util.Collection<String> ids);

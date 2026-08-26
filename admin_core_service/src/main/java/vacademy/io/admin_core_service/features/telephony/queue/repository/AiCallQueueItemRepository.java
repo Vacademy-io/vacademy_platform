@@ -261,6 +261,41 @@ public interface AiCallQueueItemRepository extends JpaRepository<AiCallQueueItem
     List<Object[]> findOldestQueuedPerInstitute();
 
     /**
+     * Everything not finished yet: waiting, plus already dialling.
+     *
+     * <p>This is the queue view a person actually wants on arrival. Filtering to
+     * QUEUED alone shows an EMPTY table exactly when calling is working normally —
+     * a manual click dials immediately when a line is free, so it is never "waiting",
+     * and a busy fleet is the only state in which anything sits in QUEUED at all. A
+     * page that is blank during normal operation reads as broken.
+     *
+     * <p>LEFT JOIN, not JOIN: a QUEUED row has no call_log_id yet, and an inner join
+     * would silently drop exactly the rows the queue is named after.
+     */
+    @Query(value = """
+            SELECT q.* FROM ai_call_queue q
+             LEFT JOIN telephony_call_log t ON t.id = q.call_log_id
+             WHERE q.institute_id = :instituteId
+               AND (q.status = 'QUEUED'
+                    OR (q.status = 'DIALED'
+                        AND t.status IN ('INITIATED', 'QUEUED', 'COUNSELLOR_RINGING',
+                                         'COUNSELLOR_ANSWERED', 'IN_PROGRESS')))
+             ORDER BY CASE WHEN q.status = 'DIALED' THEN 0 ELSE 1 END,
+                      q.priority DESC, q.created_at
+            """,
+            countQuery = """
+            SELECT COUNT(*) FROM ai_call_queue q
+             LEFT JOIN telephony_call_log t ON t.id = q.call_log_id
+             WHERE q.institute_id = :instituteId
+               AND (q.status = 'QUEUED'
+                    OR (q.status = 'DIALED'
+                        AND t.status IN ('INITIATED', 'QUEUED', 'COUNSELLOR_RINGING',
+                                         'COUNSELLOR_ANSWERED', 'IN_PROGRESS')))
+            """,
+            nativeQuery = true)
+    Page<AiCallQueueItem> findActive(@Param("instituteId") String instituteId, Pageable pageable);
+
+    /**
      * Calls that are on a line RIGHT NOW.
      *
      * <p>Not expressible as a queue-status filter: the queue row stops at DIALED the

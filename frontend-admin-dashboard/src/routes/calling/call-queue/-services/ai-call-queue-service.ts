@@ -26,12 +26,17 @@ export type QueueStatus = 'QUEUED' | 'DISPATCHING' | 'DIALED' | 'FAILED' | 'EXPI
 /**
  * Filter values the list accepts: any real status, plus LIVE.
  *
- * LIVE is not a queue status. A queue row reads DIALED from the instant the provider
- * accepts the call and never moves again, so "on a line right now" can only be answered
- * by joining the call log — which the backend does for this filter. Without it, "Dialled"
- * mixes a call that is talking now with one that ended this morning.
+ * Two of these are not queue statuses:
+ *
+ * ACTIVE (the default) is waiting + already dialling — what "the queue" means to a
+ * person. Filtering to QUEUED alone shows an empty table exactly when calling is
+ * working normally, because a call only waits when every line is busy.
+ *
+ * LIVE is on a call right now. A queue row reads DIALED from the instant the provider
+ * accepts and never moves again, so liveness can only be answered by joining the call
+ * log — which the backend does for this filter.
  */
-export type QueueFilter = QueueStatus | 'LIVE' | '';
+export type QueueFilter = QueueStatus | 'ACTIVE' | 'LIVE' | 'ALL' | '';
 
 export interface QueueItem {
     id: string;

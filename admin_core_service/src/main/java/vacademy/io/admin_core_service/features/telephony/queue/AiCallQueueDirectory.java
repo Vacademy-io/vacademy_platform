@@ -60,14 +60,20 @@ public class AiCallQueueDirectory {
         for (Object[] row : callLogRepository.findStatusByIds(callLogIds)) {
             String status = (String) row[1];
             Integer duration = row[2] == null ? null : ((Number) row[2]).intValue();
-            out.put((String) row[0],
-                    new CallState(status, duration, !CallStatus.parseOrDefault(status).isTerminal()));
+            String toNumber = row.length > 3 ? (String) row[3] : null;
+            out.put((String) row[0], new CallState(status, duration,
+                    !CallStatus.parseOrDefault(status).isTerminal(), toNumber));
         }
         return out;
     }
 
-    /** What a dialled call is doing right now. */
-    public record CallState(String status, Integer durationSeconds, boolean live) {}
+    /**
+     * What a dialled call is doing right now, plus the number it actually reached —
+     * which is often the only place the lead's phone exists, since a queued row
+     * frequently carries only a lead id.
+     */
+    public record CallState(String status, Integer durationSeconds, boolean live,
+                            String toNumber) {}
 
     /** Names for one page of rows, resolved in as few queries as the page allows. */
     public Names forItems(Collection<AiCallQueueItem> items) {

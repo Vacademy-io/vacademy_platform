@@ -74,6 +74,12 @@ public class AiCallQueueService {
      */
     public static final String LIVE_FILTER = "LIVE";
 
+    /** Waiting plus already dialling — the default view, and what "the queue" means. */
+    public static final String ACTIVE_FILTER = "ACTIVE";
+
+    /** Explicit "show me everything, finished included". */
+    public static final String ALL_FILTER = "ALL";
+
     private final AiCallQueueItemRepository repository;
     private final AiCallLaneRepository laneRepository;
     private final AiCallQueueTxOps txOps;
@@ -332,7 +338,11 @@ public class AiCallQueueService {
         Page<AiCallQueueItem> rows;
         if (LIVE_FILTER.equalsIgnoreCase(status)) {
             rows = repository.findLive(instituteId, pageable);
-        } else if (isBlank(status)) {
+        } else if (isBlank(status) || ACTIVE_FILTER.equalsIgnoreCase(status)) {
+            // Blank means ACTIVE, not "everything": the queue page's job is what has
+            // not finished, and defaulting to the full history buries it.
+            rows = repository.findActive(instituteId, pageable);
+        } else if (ALL_FILTER.equalsIgnoreCase(status)) {
             rows = repository.findByInstituteIdOrderByCreatedAtDesc(instituteId, pageable);
         } else {
             rows = repository.findByInstituteIdAndStatusOrderByCreatedAtDesc(
@@ -445,7 +455,11 @@ public class AiCallQueueService {
                 .statusReason(item.getStatusReason())
                 .responseId(item.getResponseId())
                 .userId(item.getUserId())
-                .phoneNumber(item.getPhoneNumber())
+                // A queued row often has no phone of its own — the number is resolved
+                // downstream at dial time — so fall back to what was actually dialled
+                // rather than leaving the column showing a raw id.
+                .phoneNumber(item.getPhoneNumber() != null ? item.getPhoneNumber()
+                        : (call == null ? null : call.toNumber()))
                 .campaignId(item.getCampaignId())
                 .campaignName(item.getCampaignName())
                 .attempts(item.getAttempts())

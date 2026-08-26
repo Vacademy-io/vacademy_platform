@@ -44,6 +44,10 @@ const REFETCH_MS = 10_000;
 const PAGE_SIZE = 25;
 
 const STATUS_FILTERS: Array<{ key: QueueFilter; label: string }> = [
+    // Default. Waiting + already dialling: a manual call dials the moment a line is
+    // free, so it is never "waiting", and a QUEUED-only default left this table empty
+    // whenever calling was working normally.
+    { key: 'ACTIVE', label: 'Active' },
     { key: 'QUEUED', label: 'Waiting' },
     // Distinct from Dialled on purpose: a queue row reads DIALED from the instant the
     // provider accepts it until the end of time, so "Dialled" alone mixes a call that is
@@ -53,12 +57,12 @@ const STATUS_FILTERS: Array<{ key: QueueFilter; label: string }> = [
     { key: 'FAILED', label: 'Failed' },
     { key: 'EXPIRED', label: 'Expired' },
     { key: 'CANCELLED', label: 'Cancelled' },
-    { key: '', label: 'All' },
+    { key: 'ALL', label: 'All' },
 ];
 
 export default function CallQueuePanel({ instituteId }: { instituteId: string }) {
     const queryClient = useQueryClient();
-    const [status, setStatus] = useState<QueueFilter>('QUEUED');
+    const [status, setStatus] = useState<QueueFilter>('ACTIVE');
     const [page, setPage] = useState(0);
 
     const summaryQuery = useQuery({
@@ -144,7 +148,7 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                 <div className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white p-1">
                     {STATUS_FILTERS.map((f) => (
                         <button
-                            key={f.key || 'ALL'}
+                            key={f.key}
                             type="button"
                             onClick={() => {
                                 setStatus(f.key);
@@ -217,11 +221,13 @@ export default function CallQueuePanel({ instituteId }: { instituteId: string })
                                     colSpan={7}
                                     className="py-10 text-center text-sm text-neutral-500"
                                 >
-                                    {status === 'QUEUED'
-                                        ? 'Nothing is waiting — AI calls are going out as they are requested.'
-                                        : status === 'LIVE'
-                                          ? 'No AI calls are on a line right now.'
-                                          : 'No calls in this state.'}
+                                    {status === 'ACTIVE'
+                                        ? 'Nothing in the queue — no AI calls are waiting or in progress.'
+                                        : status === 'QUEUED'
+                                          ? 'Nothing is waiting — AI calls are going out as they are requested.'
+                                          : status === 'LIVE'
+                                            ? 'No AI calls are on a call right now.'
+                                            : 'No calls in this state.'}
                                 </TableCell>
                             </TableRow>
                         ) : (

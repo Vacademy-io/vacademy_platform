@@ -190,15 +190,19 @@ export default function Evaluation({
                                     e.target.value
                                 )
                             }
+                            // No placeholder: a greyed-out "0" read as an
+                            // already-awarded zero, so evaluators who genuinely
+                            // meant 0 never typed it — leaving Submit disabled
+                            // and the evaluation unsaved. An empty box is honest.
                             className="w-24 text-center"
-                            placeholder="0"
                         />
                         <span className="text-sm text-neutral-500">
                             out of {primaryQuestion.maxMarks}
                         </span>
                     </div>
                     <p className="text-xs text-neutral-400">
-                        Enter the overall score for this submission.
+                        Enter the overall score for this submission. 0 is a valid score — type it in
+                        to submit a zero.
                     </p>
                 </div>
             ) : (

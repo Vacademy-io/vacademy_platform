@@ -219,6 +219,42 @@ public class AdminCoreServiceClient {
         return List.of();
     }
 
+    /**
+     * Display name per batch id, for the batch column in the participant CSV exports.
+     * Missing ids simply stay absent, so callers must fall back to the raw id (or blank)
+     * rather than assuming a hit.
+     *
+     * <p>Reuses admin_core's existing {@code /v1/package-sessions/names} — the same
+     * endpoint notification_service uses to title batch chats — so batch naming stays
+     * consistent across services instead of this one inventing its own format.
+     *
+     * <p>Cached: an export resolves every batch in the sheet at once, and batch names
+     * essentially never change, so this should not be a per-export round trip.
+     */
+    @Cacheable(value = "batchNames", key = "#batchIds", unless = "#result.isEmpty()")
+    public Map<String, String> getBatchNames(List<String> batchIds) {
+        if (batchIds == null || batchIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            // camelCase key: that endpoint binds PackageSessionsRequest.packageSessionIds
+            // with the default naming strategy, not the snake_case one used elsewhere.
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "POST", adminCoreServiceBaseUrl,
+                    "/admin-core-service/v1/package-sessions/names",
+                    Map.of("packageSessionIds", batchIds));
+
+            if (response.getStatusCode() == HttpStatus.OK && StringUtils.hasText(response.getBody())) {
+                return objectMapper.readValue(response.getBody(), new TypeReference<Map<String, String>>() {
+                });
+            }
+            log.warn("Batch-name lookup returned {} for {} batches", response.getStatusCode(), batchIds.size());
+        } catch (Exception e) {
+            log.warn("Failed to resolve names for {} batches: {}", batchIds.size(), e.getMessage());
+        }
+        return Map.of();
+    }
+
     private static final String STUDENT = "STUDENT";
     private static final String LEARNER = "LEARNER";
 

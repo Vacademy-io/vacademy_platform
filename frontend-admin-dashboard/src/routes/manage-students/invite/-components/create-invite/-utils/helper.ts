@@ -515,6 +515,24 @@ export function convertInviteData(
                 const { AVAILABILITY_SETTING: _removedAvail, ...restSetting } = next.setting;
                 next.setting = restSetting;
             }
+            // Team notifications → setting.NOTIFICATION_SETTING.TO_NOTIFY (comma-separated,
+            // same shape as audience.to_notify). The backend mails each address when a
+            // learner fills this invite's form. Removed when the admin clears the list.
+            const notifyEmails = (data.teamNotificationEmails || [])
+                .map((email) => email.trim())
+                .filter(Boolean);
+            if (notifyEmails.length > 0) {
+                next.setting = {
+                    ...(next.setting || existing.setting || {}),
+                    NOTIFICATION_SETTING: {
+                        ENABLED: true,
+                        TO_NOTIFY: notifyEmails.join(', '),
+                    },
+                };
+            } else if (next.setting?.NOTIFICATION_SETTING) {
+                const { NOTIFICATION_SETTING: _removedNotify, ...restSetting } = next.setting;
+                next.setting = restSetting;
+            }
             return JSON.stringify(next);
         })(),
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment

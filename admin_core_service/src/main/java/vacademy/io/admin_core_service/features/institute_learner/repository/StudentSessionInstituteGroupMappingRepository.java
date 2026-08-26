@@ -30,7 +30,7 @@ public interface StudentSessionInstituteGroupMappingRepository
    *       {@code idx_student_batch_lookup (package_session_id, institute_id, user_id,
    *       status) WHERE status = 'ACTIVE'}, so the mapping is read from the index with no
    *       heap access. Adding a column from ssigm outside that index costs heap fetches
-   *       per row.</li>
+   *       per row. (The student columns come from the joined row, not this index.)</li>
    * </ul>
    *
    * <p>DISTINCT ON is needed because a learner can sit in more than one of the requested
@@ -41,7 +41,10 @@ public interface StudentSessionInstituteGroupMappingRepository
       SELECT DISTINCT ON (ssigm.user_id)
              ssigm.user_id AS userId,
              s.full_name AS fullName,
-             ssigm.package_session_id AS packageSessionId
+             ssigm.package_session_id AS packageSessionId,
+             s.email AS email,
+             s.mobile_number AS mobileNumber,
+             s.username AS username
       FROM student_session_institute_group_mapping ssigm
       JOIN student s ON s.user_id = ssigm.user_id
       WHERE ssigm.package_session_id IN (:psIds)

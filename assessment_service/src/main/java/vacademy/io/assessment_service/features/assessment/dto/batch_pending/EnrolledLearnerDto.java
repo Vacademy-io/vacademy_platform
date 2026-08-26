@@ -34,4 +34,27 @@ public class EnrolledLearnerDto {
     @JsonProperty("package_session_id")
     @JsonAlias("packageSessionId")
     private String packageSessionId;
+
+    // Contact details, carried only so the "not attempted" CSV can be used to chase the
+    // learners who never sat the test. Any of them can be blank for a learner imported
+    // without one, so the CSV must tolerate empty cells rather than skipping the row.
+    @JsonProperty("email")
+    private String email;
+
+    @JsonProperty("mobile_number")
+    @JsonAlias("mobileNumber")
+    private String mobileNumber;
+
+    @JsonProperty("username")
+    private String username;
+
+    /**
+     * Identity only, no contact details — for callers (and tests) that care about who is
+     * on the list rather than how to reach them. Kept explicit because widening
+     * {@code @AllArgsConstructor} from three fields to six silently breaks every existing
+     * three-arg call site.
+     */
+    public EnrolledLearnerDto(String userId, String fullName, String packageSessionId) {
+        this(userId, fullName, packageSessionId, null, null, null);
+    }
 }

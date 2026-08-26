@@ -984,6 +984,16 @@ public class LiveSessionNotificationProcessor {
      * Checks LiveSessionNotificationConfig for ATTENDANCE type.
      */
     public void sendAttendanceNotification(String sessionId, String userId, String status) {
+        sendAttendanceNotification(sessionId, userId, status, null);
+    }
+
+    /**
+     * @param reasonDetail plain-language explanation appended to the message, e.g.
+     *                     why a learner fell short of the minimum-attendance rule.
+     *                     Null/blank keeps the original wording.
+     */
+    public void sendAttendanceNotification(String sessionId, String userId, String status,
+                                           String reasonDetail) {
         try {
             Optional<LiveSessionNotificationConfig> configOpt = notificationConfigRepository
                     .findBySessionIdAndNotificationType(sessionId, NotificationTypeEnum.ATTENDANCE.name());
@@ -1001,6 +1011,11 @@ public class LiveSessionNotificationProcessor {
             String sessionTitle = session.getTitle() != null ? session.getTitle() : "Live Class";
             String title = "Attendance Marked: " + status;
             String body = "You have been marked as " + status + " for " + sessionTitle;
+            if (reasonDetail != null && !reasonDetail.isBlank()) {
+                // A learner told they are absent for a class they attended part of
+                // deserves the arithmetic, not just the verdict.
+                body = body + ". " + reasonDetail;
+            }
 
             if (channels.contains("PUSH_NOTIFICATION")) {
                 notificationService.sendPushViaUnified(
@@ -1026,7 +1041,9 @@ public class LiveSessionNotificationProcessor {
                     Map<String, String> placeholders = new HashMap<>();
                     placeholders.put("NAME", student.getFullName() != null ? student.getFullName() : "Student");
                     placeholders.put("SESSION_TITLE", sessionTitle);
-                    placeholders.put("ACTION", "Attendance: " + status);
+                    placeholders.put("ACTION", reasonDetail != null && !reasonDetail.isBlank()
+                            ? "Attendance: " + status + " — " + reasonDetail
+                            : "Attendance: " + status);
                     placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
                     placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
                     placeholders.put("YEAR", getCurrentYear());

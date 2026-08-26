@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSet
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.InviteFormAdminNotificationService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
 import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
@@ -108,6 +109,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private SubOrgService subOrgService;
+
+    @Autowired
+    private InviteFormAdminNotificationService inviteFormAdminNotificationService;
 
     @Autowired
     private PackageSessionRepository packageSessionRepository;
@@ -447,6 +451,17 @@ public class LearnerEnrollRequestService {
                 paymentOption,
                 userPlan,
                 extraData);
+
+        // Invite-form team notification for FREE invites only. The learner FE skips the
+        // /open/v1/enrollment/form-submit step when the invite is FREE, so this is the
+        // only place their submission is observed; every other payment type is notified
+        // from EnrollmentFormService, which keeps it exactly-once either way.
+        if (PaymentOptionType.FREE.name().equals(paymentOption.getType())) {
+            inviteFormAdminNotificationService.notifyAdminsOnFormFill(
+                    enrollInvite,
+                    learnerEnrollRequestDTO.getUser(),
+                    enrollDTO.getCustomFieldValues());
+        }
 
         // B2B: Post-processing for SUB_ORG invite enrollment
         // Creates ROOT_ADMIN mappings, StudentSubOrg entry, and faculty mappings

@@ -572,6 +572,8 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                    sa.id             AS attemptId,
                    aur.participant_name AS studentName,
                    aur.user_email    AS userEmail,
+                   aur.phone_number  AS phoneNumber,
+                   aur.username      AS username,
                    sa.start_time     AS attemptDate,
                    sa.submit_time    AS endTime,
                    sa.total_time_in_seconds AS duration,
@@ -589,9 +591,9 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
               AND sa.status         = 'ENDED'
             ORDER BY sa.result_marks DESC NULLS LAST
             """, nativeQuery = true)
-    List<ParticipantsDetailsDto> findAllEndedParticipantsForResultExport(
-            @Param("assessmentId") String assessmentId,
-            @Param("instituteId") String instituteId);
+    List<vacademy.io.assessment_service.features.assessment.dto.export.ResultExportRowDto>
+            findAllEndedParticipantsForResultExport(@Param("assessmentId") String assessmentId,
+                                                    @Param("instituteId") String instituteId);
 
     // Every registration-form answer given by the participants of an assessment,
     // flattened to (registration, field, answer). The export widens each result

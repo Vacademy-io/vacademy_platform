@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useId, useRef, useMemo } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -75,6 +75,12 @@ export const SortableViewerSlideItem = React.memo(({ slide, onEdit, onDelete, ge
     const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
     const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    /* Radio groups are document-wide: every completed slide renders its quiz
+     * editor at once, so a bare `correct-${qIndex}` made question 1 of slide A
+     * and question 1 of slide B one group — picking an answer in one silently
+     * unchecked the other. Scope the group to this slide's component instance. */
+    const quizGroupId = useId();
 
     // Quiz-related hooks - must be defined unconditionally
     const questionRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -1332,7 +1338,7 @@ export const SortableViewerSlideItem = React.memo(({ slide, onEdit, onDelete, ge
                                                     <div key={optIndex} className="flex items-center gap-2">
                                                         <input
                                                             type="radio"
-                                                            name={`correct-${qIndex}`}
+                                                            name={`correct-${quizGroupId}-${qIndex}`}
                                                             checked={Number(question.correctAnswerIndex ?? 0) === optIndex}
                                                             onChange={() => {
                                                                 updateQuestion(qIndex, 'correctAnswerIndex', optIndex);

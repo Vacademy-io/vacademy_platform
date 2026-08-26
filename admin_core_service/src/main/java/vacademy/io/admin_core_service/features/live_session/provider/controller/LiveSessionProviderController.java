@@ -689,8 +689,17 @@ public class LiveSessionProviderController {
         Optional<LiveSessionLogs> existing = liveSessionLogsRepository
                 .findExistingAttendanceRecord(scheduleId, attendee.getExtUserId());
 
+        // Round, don't floor. The minutes column is what reports, CSV exports and
+        // the workflow query layer read; flooring discarded up to 59 seconds and
+        // always against the learner. Rounding halves the worst case and removes
+        // the bias. The attendance rule itself compares the exact seconds below,
+        // so this value is presentational.
         int durationMinutes = attendee.getDuration() != null
-                ? (int) (attendee.getDuration() / 60) : 0;
+                ? (int) Math.round(attendee.getDuration() / 60.0) : 0;
+        // Keep the exact seconds too — the minutes value above floors away up to
+        // 59 seconds, which decides borderline minimum-attendance verdicts.
+        int durationSeconds = attendee.getDuration() != null
+                ? attendee.getDuration().intValue() : 0;
 
         String engagementJson = buildEngagementJson(attendee.getEngagement());
 
@@ -700,7 +709,19 @@ public class LiveSessionProviderController {
             // Sum duration with existing (for retry/recreate scenario)
             int existingDuration = log.getProviderTotalDurationMinutes() != null
                     ? log.getProviderTotalDurationMinutes() : 0;
-            log.setProviderTotalDurationMinutes(existingDuration + durationMinutes);
+            int existingSeconds = log.getProviderTotalDurationSeconds() != null
+                    ? log.getProviderTotalDurationSeconds() : 0;
+            int totalSeconds = existingSeconds + durationSeconds;
+            log.setProviderTotalDurationSeconds(totalSeconds);
+            // Derive minutes from the seconds total rather than summing a second,
+            // independent series. Two columns holding one fact will drift the
+            // moment a future edit touches only one of them — and summing
+            // per-callback floors compounded the loss: floor(90s)+floor(90s) = 2
+            // minutes for 3 minutes of attendance. floor(total) is both correct
+            // and impossible to disagree with the seconds column.
+            log.setProviderTotalDurationMinutes(
+                    totalSeconds > 0 ? (int) Math.round(totalSeconds / 60.0)
+                                     : existingDuration + durationMinutes);
 
             // Merge engagement data (sum counts)
             log.setEngagementData(mergeEngagementJson(log.getEngagementData(), engagementJson));
@@ -729,6 +750,7 @@ public class LiveSessionProviderController {
                     .details(attendee.getName() + " | role=" + (Boolean.TRUE.equals(attendee.getModerator()) ? "MODERATOR" : "VIEWER"))
                     .providerMeetingId(providerMeetingId)
                     .providerTotalDurationMinutes(durationMinutes)
+                    .providerTotalDurationSeconds(durationSeconds)
                     .engagementData(engagementJson)
                     .createdAt(new Timestamp(System.currentTimeMillis()))
                     .updatedAt(new Timestamp(System.currentTimeMillis()))

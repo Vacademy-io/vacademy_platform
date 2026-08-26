@@ -263,3 +263,20 @@ export const nextCourseCost = (
     if (best === null || fresh < best.amount) best = { amount: fresh, group: null };
     return best;
 };
+
+/**
+ * Which pricing group a course falls in, or '' when it belongs to none.
+ *
+ * Exported so the cart can group what it SHOWS exactly the way the engine
+ * groups what it CHARGES. Two different groupings on one screen is how "why is
+ * this one ₹250 and that one ₹349" starts.
+ */
+export const groupLabelFor = (
+    settings: BasketPricingSettings | undefined,
+    item: BasketItem
+): string => {
+    for (const group of settings?.groups ?? []) {
+        if ((group.levels ?? []).some((l) => key(l) === key(item.levelName))) return group.label;
+    }
+    return '';
+};

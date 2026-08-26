@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import { useProductPageStore } from "../-stores/product-page-store";
 import type {
   ProductPageData,
-  ProductPageMappingResponse,
   ProductPageSettings,
 } from "../-types/product-page-types";
 import {
@@ -19,6 +18,12 @@ import {
   savingsVsSingles,
 } from "../-utils/basket-pricing";
 import { offerStatuses, parseOffers } from "../-utils/offers";
+import {
+  AVATAR_TINTS,
+  currencySymbolFor,
+  getInitials,
+  itemTitle,
+} from "../-utils/cart-item-display";
 
 /**
  * Live order summary that travels with the visitor across every checkout step
@@ -28,43 +33,18 @@ import { offerStatuses, parseOffers } from "../-utils/offers";
  * bills against.
  */
 
-/**
- * Rotating avatar tints. Semantic token families only (each has a 50/600 pair)
- * so the chips stay legible under any institute theme and in dark mode.
- */
-const AVATAR_TINTS = [
-  "bg-primary-50 text-primary-500",
-  "bg-success-50 text-success-600",
-  "bg-info-50 text-info-600",
-  "bg-warning-50 text-warning-600",
-  "bg-danger-50 text-danger-600",
-  "bg-secondary-50 text-secondary-500",
-  "bg-tertiary-50 text-tertiary-500",
-] as const;
-
-function currencySymbolFor(currency: string): string {
-  return currency === "INR" ? "₹" : `${currency} `;
-}
-
-/** "English Olympiad" → "EN"; falls back to the first two letters of one word. */
-function getInitials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
-  return (words[0]![0]! + words[1]![0]!).toUpperCase();
-}
-
-/** Course label, preferring the package/level/session triple over the plan name. */
-function itemTitle(mapping: ProductPageMappingResponse): string {
-  const parts = [mapping.package_name, mapping.level_name, mapping.session_name].filter(Boolean);
-  return parts.join(" · ") || mapping.payment_plan?.name || "Course";
-}
-
 interface OrderSummaryPanelProps {
   pageData: ProductPageData;
   settings: ProductPageSettings;
   /** Sticks to the viewport on desktop. Off for the stacked mobile copy. */
   sticky?: boolean;
+  /**
+   * 'full' lists the items too — the right rail on steps where the cart is not
+   * otherwise on screen. 'totals' drops the list and the offer cards, for the
+   * cart step, whose wide column already shows both. Two editable copies of the
+   * same cart on one screen is a bug report waiting to happen.
+   */
+  variant?: "full" | "totals";
   className?: string;
 }
 
@@ -72,6 +52,7 @@ export const OrderSummaryPanel = ({
   pageData,
   settings,
   sticky = false,
+  variant = "full",
   className,
 }: OrderSummaryPanelProps) => {
   const {
@@ -141,6 +122,9 @@ export const OrderSummaryPanel = ({
 
   return (
     <div
+      /* Scroll target for the mobile action bar. The desktop aside renders a
+         second copy of this panel, so only the non-sticky one claims the id. */
+      id={sticky ? undefined : "order-summary"}
       className={cn(
         "overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm",
         sticky && "lg:sticky lg:top-6",
@@ -172,7 +156,9 @@ export const OrderSummaryPanel = ({
         </div>
       ) : (
         <>
-          {/* Items */}
+          {/* Items — only when this panel is the cart's only appearance. */}
+          {variant === "full" && (
+          <>
           <div className="flex items-center justify-between px-5 pb-1 pt-4">
             <span className="text-caption font-semibold uppercase tracking-wide text-gray-400">
               Selected
@@ -236,16 +222,23 @@ export const OrderSummaryPanel = ({
               );
             })}
           </ul>
+          </>
+          )}
 
           {/* Savings callout — only when there is a real saving to show */}
           {saved > 0 && (
-            <div className="mx-5 mb-4 flex items-start gap-2.5 rounded-xl border border-success-200 bg-success-50 px-3.5 py-3">
+            <div
+              className={cn(
+                "mx-5 mb-4 flex items-start gap-2.5 rounded-xl border border-success-200 bg-success-50 px-3.5 py-3",
+                variant === "totals" && "mt-4",
+              )}
+            >
               <Gift className="mt-0.5 size-4 shrink-0 text-success-600" aria-hidden="true" />
               <div className="min-w-0">
                 <p className="text-caption font-bold text-success-700">
                   You saved {money(saved)}
                 </p>
-                <p className="mt-0.5 text-2xs text-success-600">
+                <p className="mt-0.5 text-caption text-success-600">
                   {quote
                     ? "Against buying each subject on its own."
                     : "Applied from your selected plan pricing."}
@@ -255,7 +248,7 @@ export const OrderSummaryPanel = ({
           )}
 
           {/* Offers — what is on, and what one more step would unlock. */}
-          {offers.length > 0 && (
+          {variant === "full" && offers.length > 0 && (
             <div className="mx-5 mb-4 space-y-1.5 rounded-xl border border-dashed border-primary-200 bg-primary-50/50 p-3">
               <p className="text-2xs font-bold uppercase tracking-wide text-primary-500">
                 Offers
@@ -352,15 +345,15 @@ export const OrderSummaryPanel = ({
             {/* What one more actually costs. On a ladder the next subject is
                 usually cheaper than the last, which IS the offer — vaguer
                 wording ("save more!") tells the parent nothing they can act on. */}
-            {pricedPerGroup && (
-              <p className="text-2xs text-gray-400">
+            {variant === "full" && pricedPerGroup && (
+              <p className="text-caption text-gray-500">
                 Each class is priced on its own, so subjects for different children
                 don&apos;t combine.
               </p>
             )}
 
-            {quote && perNext !== null && perNext.amount > 0 && items.length > 0 && (
-              <div className="flex items-start gap-1.5 rounded-lg bg-primary-50 px-3 py-2 text-2xs font-medium text-primary-500">
+            {variant === "full" && quote && perNext !== null && perNext.amount > 0 && items.length > 0 && (
+              <div className="flex items-start gap-1.5 rounded-lg bg-primary-50 px-3 py-2 text-caption font-medium text-primary-500">
                 <Gift className="mt-px size-3.5 shrink-0" aria-hidden="true" />
                 <span>
                   {perNext.group
@@ -376,7 +369,7 @@ export const OrderSummaryPanel = ({
             <div className="flex items-end justify-between gap-2">
               <div>
                 <p className="text-sm font-bold text-gray-900">Total Payable</p>
-                <p className="text-2xs text-gray-400">Inclusive of all taxes</p>
+                <p className="text-caption text-gray-500">Inclusive of all taxes</p>
               </div>
               <span className="text-h3-semibold font-bold tabular-nums text-gray-900">
                 {total > 0 ? money(total) : "Free"}
@@ -386,7 +379,7 @@ export const OrderSummaryPanel = ({
 
           <div className="flex items-center justify-center gap-1.5 border-t border-gray-100 bg-gray-50 px-5 py-3">
             <Lock className="size-3 text-gray-400" aria-hidden="true" />
-            <span className="text-2xs font-medium text-gray-500">
+            <span className="text-caption font-medium text-gray-500">
               100% secure payment
             </span>
           </div>

@@ -28,7 +28,13 @@ const couponMessage = (code?: string): string => {
 import { PlanTiles } from './PlanTiles';
 import { pushCartViewed, pushCouponApplied } from '@/components/common/enroll-by-invite/-utils/gtm';
 import { useCouponsEnabled } from '@/components/common/coupon/use-coupons-enabled';
-import { Tag, X, ArrowLeft, ArrowRight, CheckCircle, SpinnerGap, ShoppingCartSimple } from "@phosphor-icons/react";
+import { Tag, X, ArrowLeft, ArrowRight, CheckCircle, SpinnerGap } from "@phosphor-icons/react";
+import { cn } from '@/lib/utils';
+import { CartItemList } from './CartItemList';
+import { OffersStrip } from './OffersStrip';
+import { MobileCheckoutBar } from './MobileCheckoutBar';
+import { parseBasketPricing, savingsVsSingles } from '../-utils/basket-pricing';
+import { offerStatuses, parseOffers } from '../-utils/offers';
 import type { ProductPageData, ProductPageSettings, PageJson } from '../-types/product-page-types';
 
 function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
@@ -56,6 +62,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
     const {
         selectedPsOptionIds, couponCode, discountAmount,
         setCouponCode, applyCoupon, clearCoupon, totalPrice, toggleSelection, setSelection, utmParams,
+        finalPrice, basketQuote,
     } = useProductPageStore();
     // Institute-level kill switch (admin Settings → Coupons → "Enable coupon redemption").
     // ANDed with the per-product-page settings.coupon.enabled flag below — both must be on.
@@ -88,6 +95,19 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
 
     const subtotal = totalPrice();
     const isEmpty = selectedPsOptionIds.length === 0;
+    const money = (n: number) => `${currencySymbol}${n.toLocaleString('en-IN')}`;
+
+    // Same chain the server bills on: a basket price replaces the item sum,
+    // then the best offer, then the coupon.
+    const quote = basketQuote();
+    const basketSettings = parseBasketPricing(pageData.settings_json);
+    const saved = quote ? savingsVsSingles(basketSettings, quote) : 0;
+    const total = finalPrice();
+    const offers = offerStatuses(
+        parseOffers(pageData.settings_json),
+        quote ? quote.total : subtotal,
+        selectedPsOptionIds.length
+    );
     // Mirrors PlanTiles' own gate: it only shows when the page sells the same
     // thing several ways, which most pages do not.
     const planChoiceOffered =
@@ -166,29 +186,36 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
             <div className="space-y-6 px-5 py-6 sm:px-6">
 
                 {/* ── Heading ────────────────────────────────────────── */}
-                <div>
-                    <h1 className="text-lg font-bold text-gray-900">Review your cart</h1>
-                    <p className="mt-0.5 text-caption text-gray-500">
-                        {/* PlanTiles renders nothing unless the page offers two or
-                            more genuine alternatives, so promising a plan choice
-                            leaves most pages telling the visitor to do something
-                            that is not on screen. */}
-                        {planChoiceOffered
-                            ? 'Check your selection and pick the plan that suits you before continuing.'
-                            : 'Check your selection before continuing.'}
-                    </p>
-                </div>
-
-                {/* ── Empty state ────────────────────────────────────── */}
-                {isEmpty && (
-                    <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center">
-                        <ShoppingCartSimple className="mx-auto mb-2 size-6 text-gray-400" aria-hidden="true" />
-                        <p className="text-sm font-medium text-gray-700">Nothing in your cart yet</p>
-                        <p className="mt-1 text-caption text-gray-500">
-                            Go back and choose at least one course to continue.
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <div>
+                        <h1 className="text-h3-semibold font-bold text-gray-900">Review your cart</h1>
+                        <p className="mt-0.5 text-sm text-gray-500">
+                            {/* PlanTiles renders nothing unless the page offers two or
+                                more genuine alternatives, so promising a plan choice
+                                leaves most pages telling the visitor to do something
+                                that is not on screen. */}
+                            {planChoiceOffered
+                                ? 'Check your selection and pick the plan that suits you before continuing.'
+                                : 'Check your subjects and remove anything you did not mean to add.'}
                         </p>
                     </div>
-                )}
+                    {!isEmpty && (
+                        <span className="shrink-0 rounded-full bg-gray-100 px-3 py-1 text-caption font-semibold text-gray-600">
+                            {selectedPsOptionIds.length} subject{selectedPsOptionIds.length === 1 ? '' : 's'}
+                        </span>
+                    )}
+                </div>
+
+                {/* ── The cart itself, wide and editable ─────────────── */}
+                <CartItemList
+                    pageData={pageData}
+                    settings={settings}
+                    primaryColor={primaryColor}
+                    onAddMore={settings.disableBackNavigation ? undefined : onBack}
+                />
+
+                {/* ── Offers ─────────────────────────────────────────── */}
+                {!isEmpty && <OffersStrip offers={offers} money={money} />}
 
                 {/* ── Plan tiles — from the page's configured payment plans ─── */}
                 <PlanTiles pageData={pageData} settings={settings} primaryColor={primaryColor} />
@@ -230,13 +257,14 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                             setCouponInput(e.target.value.toUpperCase());
                                             setCouponError('');
                                         }}
-                                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm uppercase placeholder:normal-case focus:border-primary-400 focus:outline-none"
+                                        className="min-h-11 flex-1 rounded-lg border border-gray-200 px-3 font-mono text-sm uppercase placeholder:normal-case focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                                        aria-label="Coupon code"
                                     />
                                     <button
                                         type="button"
                                         disabled={!couponInput.trim() || couponMutation.isPending}
                                         onClick={() => couponMutation.mutate()}
-                                        className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
+                                        className="min-h-11 cursor-pointer rounded-lg bg-gray-900 px-5 text-sm font-semibold text-white transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         {couponMutation.isPending ? <SpinnerGap className="size-4 animate-spin" aria-hidden="true" /> : 'Apply'}
                                     </button>
@@ -315,22 +343,30 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
             </div>
 
             {/* ── Step navigation ────────────────────────────────────── */}
-            <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:px-6">
+            <div
+                className={cn(
+                    'flex items-center justify-between gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:px-6',
+                    // Nothing left to show below lg once Back is off and Continue
+                    // has moved to the sticky bar — an empty grey strip is worse
+                    // than no strip.
+                    settings.disableBackNavigation && 'hidden lg:flex'
+                )}
+            >
                 {!settings.disableBackNavigation ? (
                     <button
                         type="button"
                         onClick={onBack}
-                        className="flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                        className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
                     >
                         <ArrowLeft className="size-4" aria-hidden="true" />
-                        Previous
+                        Back to courses
                     </button>
                 ) : <div />}
                 <button
                     type="button"
                     onClick={onNext}
                     disabled={isEmpty}
-                    className="flex items-center gap-2 rounded-xl px-7 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="hidden min-h-11 cursor-pointer items-center gap-2 rounded-xl px-7 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 lg:flex"
                     // Dynamic: institute page colour, see above.
                     style={{ backgroundColor: primaryColor }}
                 >
@@ -338,6 +374,25 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                     <ArrowRight className="size-4" aria-hidden="true" />
                 </button>
             </div>
+
+            {/* Below lg the total and the CTA would both scroll away behind a
+                cart that runs longer than the screen, so they are pinned. */}
+            <MobileCheckoutBar
+                totalLabel={total > 0 ? money(total) : 'Free'}
+                caption={saved > 0 ? `You save ${money(saved)}` : undefined}
+                ctaLabel="Continue"
+                onContinue={onNext}
+                disabled={isEmpty}
+                primaryColor={primaryColor}
+                onShowSummary={
+                    isEmpty
+                        ? undefined
+                        : () =>
+                              document
+                                  .getElementById('order-summary')
+                                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+            />
         </div>
     );
 };

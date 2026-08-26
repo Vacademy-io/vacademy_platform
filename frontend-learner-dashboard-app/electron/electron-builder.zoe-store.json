@@ -22,11 +22,18 @@
   "nodeGypRebuild": false,
   "buildDependenciesFromSource": false,
   "npmRebuild": false,
+  "_comment_extraMetadata": "ZOE's Windows version line. Without this the AppX inherits electron/package.json version, which is Shiksha Nation's shell version (1.0.12) and moves whenever SN ships. Must stay above whatever this product already has in Partner Center.",
+  "extraMetadata": {
+    "version": "2.5.5"
+  },
   "win": {
     "target": [
       {
         "target": "appx",
-        "arch": ["x64", "ia32"]
+        "arch": [
+          "x64",
+          "ia32"
+        ]
       }
     ],
     "icon": "assets/zoe.ico"
@@ -40,6 +47,8 @@
     "backgroundColor": "#131953",
     "showNameOnTiles": true,
     "setBuildNumber": false,
-    "languages": ["en-US"]
+    "languages": [
+      "en-US"
+    ]
   }
 }

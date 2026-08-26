@@ -34,6 +34,12 @@ export interface BasketPricingGroup {
     label: string;
     /** Level names belonging to this group. */
     levels: string[];
+    /**
+     * Price for taking EVERY level in this group — the "full grade pack".
+     * Exact per group, so it keeps working when a class gains or loses a
+     * subject; `wholeGroupPrices` is the fragile count-keyed fallback.
+     */
+    packPrice?: number;
 }
 
 export interface BasketPricingCombo {
@@ -142,7 +148,11 @@ export const quoteBasket = (
             .map(key);
         if (label && configured.length > 0) {
             const pickedLevels = new Set(picked.map((p) => key(p.levelName)));
-            const packPrice = settings.wholeGroupPrices?.[String(count)];
+            const ownPack = (settings.groups ?? []).find((g) => g.label === label)?.packPrice;
+            const packPrice =
+                typeof ownPack === 'number' && ownPack > 0
+                    ? ownPack
+                    : settings.wholeGroupPrices?.[String(count)];
             if (
                 configured.every((l) => pickedLevels.has(l)) &&
                 typeof packPrice === 'number' &&

@@ -303,6 +303,25 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                                 </button>
                             </div>
 
+                            <div className="mt-1 flex items-center gap-2">
+                                <span className="text-2xs text-neutral-500">Full pack price</span>
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    value={group.packPrice ?? ''}
+                                    placeholder="use the count table"
+                                    onChange={(e) =>
+                                        setGroup(index, {
+                                            packPrice: e.target.value ? num(e.target.value) : undefined,
+                                        })
+                                    }
+                                    className="h-7 w-24"
+                                />
+                                <span className="text-2xs text-neutral-400">
+                                    charged when all {group.levels?.length || 0} are taken
+                                </span>
+                            </div>
+
                             <button
                                 type="button"
                                 onClick={() => setOpenGroup(open ? null : index)}

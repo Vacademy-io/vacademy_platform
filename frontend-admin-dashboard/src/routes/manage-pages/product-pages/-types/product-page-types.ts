@@ -89,6 +89,9 @@ export interface BasketPricingGroup {
     label: string;
     /** Level names in this group — the basket is split and priced per group. */
     levels: string[];
+    /** Price for taking EVERY level in this group. Exact, so it survives the
+     *  class gaining or losing a subject. */
+    packPrice?: number;
 }
 
 export interface BasketPricingCombo {

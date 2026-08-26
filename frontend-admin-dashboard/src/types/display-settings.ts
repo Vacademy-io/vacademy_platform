@@ -162,6 +162,23 @@ export const DEFAULT_ASSESSMENT_ACTION_SETTINGS: AssessmentActionSettings = {
     showDeleteAssessment: true,
 };
 
+// Call Log page toggles.
+//
+// UNLIKE the assessment flags above, these DEFAULT TO FALSE (off). The Queue tab
+// exposes fleet-level facts an institute has no context for until someone explains
+// them — how many lines exist, that its own calls are sharing them with other
+// tenants — so it is opt-in per role rather than something every admin discovers
+// unannounced. Read sites must therefore test `=== true`, never `!== false`.
+export interface CallLogPageSettings {
+    // The "Queue" tab on Leads -> Call Log: AI calls waiting for a free line,
+    // this institute's own only, with cancel.
+    showCallQueueTab?: boolean;
+}
+
+export const DEFAULT_CALL_LOG_PAGE_SETTINGS: CallLogPageSettings = {
+    showCallQueueTab: false,
+};
+
 // Stable identifiers for the student side-view tabs. Used as keys in the
 // settings ordering map and as values for the default-tab selector. These
 // match the `setCategory(...)` strings the side-view component already uses.
@@ -609,6 +626,10 @@ export interface DisplaySettingsData {
     // 10d) Assessment action visibility toggles. See AssessmentActionSettings —
     //      every flag defaults to ON so existing roles are unaffected.
     assessmentPage?: AssessmentActionSettings;
+
+    // 10e) Call Log page toggles. See CallLogPageSettings — these default to OFF,
+    //      the opposite of 10d, so the Queue tab stays hidden until switched on.
+    callLogPage?: CallLogPageSettings;
 
     // 11) Course creation configuration
     courseCreation?: CourseCreationSettings;

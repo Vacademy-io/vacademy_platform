@@ -39,6 +39,7 @@ import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
+import { CallLogPageCard } from './CallLogPageCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -1343,6 +1344,10 @@ export default function AdminDisplaySettings() {
             <AssessmentActionsCard
                 settings={settings.assessmentPage}
                 onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
+            />
+            <CallLogPageCard
+                settings={settings.callLogPage}
+                onChange={(next) => updateSettings((prev) => ({ ...prev, callLogPage: next }))}
             />
             </section>
 

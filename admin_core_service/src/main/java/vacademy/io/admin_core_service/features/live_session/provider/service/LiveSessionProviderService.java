@@ -69,6 +69,7 @@ public class LiveSessionProviderService {
     private final BbbServerRouter bbbServerRouter;
     private final RecordingAutoLinkService recordingAutoLinkService;
     private final vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomRecordingS3Service zoomRecordingS3Service;
+    private final vacademy.io.admin_core_service.features.live_session.provider.manager.ZoomMeetingManager zoomMeetingManager;
 
     private static final List<String> ACTIVE = List.of("ACTIVE");
 
@@ -817,11 +818,45 @@ public class LiveSessionProviderService {
         Map<String, String> links = new java.util.HashMap<>();
         if (schedule.getCustomMeetingLink() != null)
             links.put("joinUrl", schedule.getCustomMeetingLink());
-        if (schedule.getProviderHostUrl() != null)
-            links.put("hostUrl", schedule.getProviderHostUrl());
+        String hostUrl = freshZoomHostUrlOrStored(schedule);
+        if (hostUrl != null)
+            links.put("hostUrl", hostUrl);
         if (schedule.getProviderMeetingId() != null)
             links.put("providerMeetingId", schedule.getProviderMeetingId());
         return links;
+    }
+
+    /**
+     * Returns a host url that actually works.
+     *
+     * <p>{@code provider_host_url} is a Zoom start url captured once, when the occurrence was
+     * provisioned. The ZAK embedded in it lives about two hours, so for every recurring session
+     * the stored link is dead long before the class runs — the host cannot claim host role, the
+     * meeting is never started, and nothing is ever recorded. (The embedded SDK path never hit
+     * this because {@code ZoomSdkController} mints a ZAK per request; only the redirect path
+     * handed out the stale value.) Re-mint on read for Zoom; fall back to the stored url if Zoom
+     * is unreachable, since a stale link still beats no link.
+     */
+    private String freshZoomHostUrlOrStored(SessionSchedule schedule) {
+        String stored = schedule.getProviderHostUrl();
+        String meetingId = schedule.getProviderMeetingId();
+        if (meetingId == null || meetingId.isBlank() || !isZoom(schedule.getLinkType())) {
+            return stored;
+        }
+        try {
+            String fresh = zoomMeetingManager.fetchStartUrl(
+                    zoomMeetingManager.resolveAccountByMeeting(meetingId), meetingId);
+            return fresh != null ? fresh : stored;
+        } catch (Exception e) {
+            log.warn("zoom.host_url.refresh.fail scheduleId={} meetingId={} reason={}",
+                    schedule.getId(), meetingId, e.getClass().getSimpleName());
+            return stored;
+        }
+    }
+
+    /** True for both the frontend-friendly "zoom"/"ZOOM" and the enum name "ZOOM_MEETING". */
+    static boolean isZoom(String linkType) {
+        return linkType != null && linkType.toUpperCase().startsWith("ZOOM");
     }
 
     // -----------------------------------------------------------------------

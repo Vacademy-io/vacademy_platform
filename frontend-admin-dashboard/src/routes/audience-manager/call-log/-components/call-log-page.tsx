@@ -29,7 +29,6 @@ import { TeamPicker } from '@/components/shared/crm/TeamPicker';
 import { fetchCounsellors } from '@/routes/counsellors/-services/counsellor-workbench-services';
 import CallLogTab from './CallLogTab';
 import CallQueueTab from './CallQueueTab';
-import { useCallQueueTabVisible } from '@/lib/display-settings/call-log-page';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import CallIntelligenceTab from '../../reports/-components/call-intelligence-tab';
@@ -74,15 +73,6 @@ export function CallLogPage() {
     const callIntelligenceEnabled = useCallIntelligenceEnabled();
     // 'calls' = what already happened; 'queue' = what has not gone out yet.
     const [view, setView] = useState<'calls' | 'queue'>('calls');
-    // Display Settings -> Call Log. Hidden until switched on for this role.
-    const queueTabVisible = useCallQueueTabVisible();
-    // If an admin turns the tab off while someone is standing on it, fall back to
-    // Calls rather than leaving them on a view whose tab has vanished.
-    useEffect(() => {
-        if (!queueTabVisible && view === 'queue') setView('calls');
-    }, [queueTabVisible, view]);
-    // With the tab hidden the page has one view, so the switcher is noise.
-    const effectiveView = queueTabVisible ? view : 'calls';
 
     const defaults = useMemo(() => computeRange(DEFAULT_DAYS), []);
     const [fromDate, setFromDate] = useState(defaults.from);
@@ -163,18 +153,16 @@ export function CallLogPage() {
                 </div>
             </header>
 
-            {queueTabVisible && (
-                <Tabs value={view} onValueChange={(v) => setView(v as 'calls' | 'queue')}>
-                    <TabsList>
-                        <TabsTrigger value="calls">Calls</TabsTrigger>
-                        <TabsTrigger value="queue">Queue</TabsTrigger>
-                    </TabsList>
-                </Tabs>
-            )}
+            <Tabs value={view} onValueChange={(v) => setView(v as 'calls' | 'queue')}>
+                <TabsList>
+                    <TabsTrigger value="calls">Calls</TabsTrigger>
+                    <TabsTrigger value="queue">Queue</TabsTrigger>
+                </TabsList>
+            </Tabs>
 
             {/* Shared filter bar. Calls only — the queue is "right now", so a date
                 range, a team and a counsellor have nothing to say about it. */}
-            {effectiveView === 'calls' && (
+            {view === 'calls' && (
                 <div className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                     <div className="flex items-center gap-1 self-end rounded-md border border-neutral-200 bg-white p-1">
                         {PRESETS.map((p) => (
@@ -238,7 +226,7 @@ export function CallLogPage() {
                 </div>
             )}
 
-            {effectiveView === 'queue' ? (
+            {view === 'queue' ? (
                 !instituteId ? (
                     <div className="rounded-xl border border-warning-200 bg-warning-50 p-4 text-sm text-warning-700">
                         Pick an institute to view its call queue.
@@ -262,7 +250,7 @@ export function CallLogPage() {
 
             {/* AI Call Intelligence analytics — team quality, outcome/sentiment mix,
                 per-counsellor leaderboard. Only when the institute has it enabled. */}
-            {effectiveView === 'calls' && instituteId && callIntelligenceEnabled && (
+            {view === 'calls' && instituteId && callIntelligenceEnabled && (
                 <div className="flex flex-col gap-3">
                     <h2 className="text-base font-semibold text-neutral-900">Call Intelligence</h2>
                     <CallIntelligenceTab

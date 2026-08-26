@@ -22,7 +22,6 @@ import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { AssessmentActionsCard } from './AssessmentActionsCard';
-import { CallLogPageCard } from './CallLogPageCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import {
@@ -1308,10 +1307,6 @@ export default function CustomRoleDisplaySettings({
             <AssessmentActionsCard
                 settings={settings.assessmentPage}
                 onChange={(next) => updateSettings((prev) => ({ ...prev, assessmentPage: next }))}
-            />
-            <CallLogPageCard
-                settings={settings.callLogPage}
-                onChange={(next) => updateSettings((prev) => ({ ...prev, callLogPage: next }))}
             />
             </section>
 

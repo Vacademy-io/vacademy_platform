@@ -30,8 +30,8 @@ import java.util.Map;
  * capacity changes how hard we drive hardware that leads are talking to.
  *
  * <pre>
- *   GET    /admin-core-service/super-admin/v1/ai-queue/overview      (dashboard: fleet + lanes)
- *   GET    /admin-core-service/super-admin/v1/ai-queue/items         (dashboard: the calls themselves)
+ *   GET    /admin-core-service/super-admin/v1/ai-queue/overview      (fleet + lanes, + optional items)
+ *   GET    /admin-core-service/super-admin/v1/ai-queue/items         (the calls themselves, paged)
  *   GET    /admin-core-service/super-admin/v1/ai-queue/capacity
  *   PUT    /admin-core-service/super-admin/v1/ai-queue/settings/{key}   {"value":"4"}
  *   GET    /admin-core-service/super-admin/v1/ai-queue/boxes
@@ -63,16 +63,24 @@ public class AiCallQueueAdminController {
      *
      * <p>Pass {@code limit} to include the head of the queue too; the default of 0 keeps
      * this light and leaves paging to {@code /items}.
+     *
+     * <p>This is also the feed for the Vacademy Health dashboard. It reads with an
+     * ordinary root JWT rather than a bespoke credential: an earlier {@code /internal/}
+     * variant of this endpoint existed, authenticated by a static shared secret in
+     * {@code client_secret_key}, and was removed — it returned exactly this payload from
+     * exactly this assembler, so all it bought was a second auth path to maintain and a
+     * per-environment DB row to forget.
      */
     @GetMapping("/overview")
     public ResponseEntity<QueueSnapshot> overview(
             @RequestParam(value = "limit", defaultValue = "0") int limit,
+            @RequestParam(value = "instituteId", required = false) String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
-        // Same assembler the health dashboard's feed uses, so the two views can never
-        // drift into disagreeing about the same fleet. limit=0 keeps the landing view
-        // light; the item list is paged separately by /items.
-        return ResponseEntity.ok(snapshotService.snapshot(Math.max(0, limit), null));
+        // limit=0 keeps the landing view light; the item list is paged separately by
+        // /items. instituteId narrows the waiting list only — capacity and lanes stay
+        // fleet-wide, because a lane's share means nothing in isolation.
+        return ResponseEntity.ok(snapshotService.snapshot(Math.max(0, limit), instituteId));
     }
 
     /**

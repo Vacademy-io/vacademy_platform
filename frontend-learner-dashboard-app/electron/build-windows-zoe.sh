@@ -87,7 +87,8 @@ cp "$SCRIPT_DIR/package.json" "$SCRIPT_DIR/package.json.bak"
 node -e "
 const fs = require('fs');
 const pkg = JSON.parse(fs.readFileSync('$SCRIPT_DIR/package.json', 'utf8'));
-pkg.name = 'ZOE_Edtech';
+pkg.name = 'ZOE_Online_School';
+pkg.productName = 'ZOE Online School';
 pkg.description = 'ZOE Global Online School — AI-Powered Learning Platform';
 pkg.author = { name: 'ZOE Global Online School', email: 'support@zoeedtech.com' };
 fs.writeFileSync('$SCRIPT_DIR/package.json', JSON.stringify(pkg, null, 2) + '\n');

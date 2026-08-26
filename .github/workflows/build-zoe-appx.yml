@@ -95,12 +95,13 @@ jobs:
           node -e "
           const fs = require('fs');
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          pkg.name = 'ZOE_Edtech';
+          pkg.name = 'ZOE_Online_School';
+          pkg.productName = 'ZOE Online School';
           pkg.description = 'ZOE Global Online School — AI-Powered Learning Platform';
           pkg.author = { name: 'ZOE Global Online School', email: 'support@zoeedtech.com' };
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
-          node -p "'name=' + require('./package.json').name + ' author=' + require('./package.json').author.name"
+          node -p "'name=' + require('./package.json').name + ' productName=' + require('./package.json').productName + ' author=' + require('./package.json').author.name"
 
       - name: Install electron dependencies
         working-directory: frontend-learner-dashboard-app/electron

@@ -113,7 +113,8 @@ node -e "
 const fs = require('fs');
 const p = '$SCRIPT_DIR/package.json';
 const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-pkg.name = 'ZOE_Edtech';
+pkg.name = 'ZOE_Online_School';
+pkg.productName = 'ZOE Online School';
 pkg.description = 'ZOE Global Online School — AI-Powered Learning Platform';
 pkg.author = { name: 'ZOE Global Online School', email: 'support@zoeedtech.com' };
 fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');

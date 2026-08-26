@@ -3,7 +3,7 @@
   "productName": "Shiksha Nation",
   "directories": {
     "buildResources": "resources",
-    "output": "dist-mas"
+    "output": "dist-mas-dev"
   },
   "files": [
     "assets/**/*",
@@ -71,6 +71,25 @@
   "mac": {
     "category": "public.app-category.education",
     "icon": "assets/shiksha_nation.icns",
+    "minimumSystemVersion": "12.0"
+  },
+  "masDev": {
+    "category": "public.app-category.education",
+    "icon": "assets/shiksha_nation.icns",
+    "target": [
+      {
+        "target": "dir",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
+    "type": "development",
+    "entitlements": "entitlements.mas.plist",
+    "entitlementsInherit": "entitlements.mas.inherit.plist",
+    "provisioningProfile": "embedded-sn-dev.provisionprofile",
+    "hardenedRuntime": false,
+    "identity": "Apple Development: Saurabh Kumar (525UG6QDB6)",
     "minimumSystemVersion": "12.0"
   }
 }

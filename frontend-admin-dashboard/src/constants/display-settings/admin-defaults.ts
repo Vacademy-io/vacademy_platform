@@ -17,6 +17,10 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
     // Display Settings → CRM → Leads.
     'counsellors',
     'sales-dashboard',
+    // AI calls waiting to go out. Off until an institute is actually running enough
+    // AI calling for a queue to mean anything -- on a quiet institute nothing ever
+    // waits, so the page would only ever show an empty table.
+    'calling-call-queue',
 ]);
 
 // Tabs that ship hidden until an institute admin opts them in via the

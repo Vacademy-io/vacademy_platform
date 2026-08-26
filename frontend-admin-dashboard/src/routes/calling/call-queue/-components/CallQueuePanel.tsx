@@ -1,15 +1,18 @@
 /**
- * Call Queue — this institute's own AI calls waiting for a line.
+ * Call Queue — this institute's own AI calls waiting to go out.
  *
- * AI calls are placed by a fleet-wide drainer that carries a fixed number of
- * simultaneous calls, so a bulk campaign or a workflow burst does not dial at once —
- * it queues. This tab is where that becomes visible: how deep the queue is, when it
- * will clear, and what can be called off.
+ * AI calls do not all dial at once: a bulk campaign or a workflow burst queues, and
+ * calls leave the queue as capacity frees up. This page is where that becomes
+ * visible — how many are waiting, roughly how long they will take, which are on a
+ * call right now, and what can be called off.
  *
- * Institute-scoped end to end. Every endpoint behind it validates the caller against
- * the institute server-side, and the fleet-wide view (other tenants' lanes, capacity
- * controls) lives behind separate super-admin routes that are deliberately not
- * reachable from here.
+ * <b>No capacity figures are shown.</b> How many simultaneous lines exist, and how
+ * many this institute may hold, are internal operating facts; the API does not return
+ * them to an institute and this page must not imply them. The wait is expressed as
+ * time, which is the part that concerns the person reading it.
+ *
+ * Institute-scoped end to end — every endpoint behind it validates the caller against
+ * the institute server-side.
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,7 +56,7 @@ const STATUS_FILTERS: Array<{ key: QueueFilter; label: string }> = [
     { key: '', label: 'All' },
 ];
 
-export default function CallQueueTab({ instituteId }: { instituteId: string }) {
+export default function CallQueuePanel({ instituteId }: { instituteId: string }) {
     const queryClient = useQueryClient();
     const [status, setStatus] = useState<QueueFilter>('QUEUED');
     const [page, setPage] = useState(0);
@@ -108,29 +111,24 @@ export default function CallQueueTab({ instituteId }: { instituteId: string }) {
 
     return (
         <div className="flex flex-col gap-4">
-            {/* Depth, capacity and the honest wait. The lane share is the number that
-                explains everything else: it is how many lines THIS institute may hold
-                at once, out of the whole fleet. */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {/* Depth, what is live, and the honest wait. Deliberately no capacity
+                figures and no "x of y" — the size of the calling pool is internal, and
+                a denominator here would disclose it. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <StatCard
                     label="Waiting"
                     value={summary ? String(summary.queued) : '—'}
                     hint="calls queued"
                 />
                 <StatCard
-                    label="On a line now"
-                    value={summary ? `${summary.inFlight} / ${summary.laneCapacity}` : '—'}
-                    hint="your share of the fleet"
-                />
-                <StatCard
-                    label="Fleet in use"
-                    value={summary ? `${summary.fleetInFlight} / ${summary.fleetCapacity}` : '—'}
-                    hint="across all institutes"
+                    label="On a call now"
+                    value={summary ? String(summary.inFlight) : '—'}
+                    hint="calls in progress"
                 />
                 <StatCard
                     label="Clears in"
                     value={summary ? formatEta(summary.etaMinutes) : '—'}
-                    hint="at your current share"
+                    hint="estimated"
                 />
             </div>
 

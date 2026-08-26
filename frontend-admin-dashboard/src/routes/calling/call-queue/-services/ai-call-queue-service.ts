@@ -2,7 +2,7 @@
  * AI call queue data layer — this institute's own queue only.
  *
  * Backed by the institute-scoped queue endpoints (admin-core-service):
- *   GET    /v1/telephony/ai-queue/summary?instituteId=   — depth, in-flight, lane share, ETA
+ *   GET    /v1/telephony/ai-queue/summary?instituteId=   — depth, in-flight, ETA
  *   GET    /v1/telephony/ai-queue?instituteId=&status=   — paged rows (Spring Page envelope)
  *   POST   /v1/telephony/ai-queue/cancel?instituteId=    — cancel everything still waiting
  *   DELETE /v1/telephony/ai-queue/{id}?instituteId=      — cancel one waiting call
@@ -69,15 +69,19 @@ export interface QueueItem {
     live?: boolean;
 }
 
+/**
+ * Depth and wait for this institute.
+ *
+ * Carries no capacity numbers by design — the size of the shared calling pool is an
+ * internal operating fact, so the API does not return it here and the UI has nothing
+ * to accidentally render.
+ */
 export interface QueueSummary {
     instituteId: string;
     queued: number;
+    /** This institute's own calls currently on a line. Not a share of anything. */
     inFlight: number;
-    /** Simultaneous calls this institute may hold right now. */
-    laneCapacity: number;
     paused: boolean;
-    fleetCapacity: number;
-    fleetInFlight: number;
     etaMinutes: number;
     byStatus?: Record<string, number>;
 }

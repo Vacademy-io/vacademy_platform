@@ -1366,6 +1366,31 @@ export function NodeConfigPanel() {
                                 )}
                             </select>
                         </div>
+                        <div className="flex items-start gap-2 rounded-md border border-input p-3">
+                            <input
+                                id="ignore-assigned-guard"
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={data.config.ignoreAssignedGuard === true}
+                                onChange={(e) =>
+                                    handleConfigChange('ignoreAssignedGuard', e.target.checked)
+                                }
+                            />
+                            <div>
+                                <Label
+                                    htmlFor="ignore-assigned-guard"
+                                    className="cursor-pointer text-xs"
+                                >
+                                    Also call leads that already have a counsellor
+                                </Label>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Off by default: the bot skips leads a counsellor already owns.
+                                    Turn this on for workflows that deliberately target owned leads
+                                    — e.g. re-calling a lead a counsellor just marked DNP — or the
+                                    node will stop without dialling. Daily call caps still apply.
+                                </p>
+                            </div>
+                        </div>
                         <div>
                             <Label className="text-xs">Extra metadata for the agent (JSON, optional)</Label>
                             <textarea

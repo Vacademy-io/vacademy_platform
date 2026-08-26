@@ -68,11 +68,12 @@ export const buildBlueprint = async (
 export const startGeneration = async (
     kbId: string,
     payload: { blueprint: Blueprint; grade?: string }
-): Promise<{ task_id: string; planned: number }> => {
-    const { data } = await authenticatedAxiosInstance.post<{ task_id: string; planned: number }>(
-        `${BASE}/bases/${kbId}/paper/generate`,
-        payload
-    );
+): Promise<{ task_id: string; planned: number; generation_id: string | null }> => {
+    const { data } = await authenticatedAxiosInstance.post<{
+        task_id: string;
+        planned: number;
+        generation_id: string | null;
+    }>(`${BASE}/bases/${kbId}/paper/generate`, payload);
     return data;
 };
 

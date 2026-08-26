@@ -41,9 +41,13 @@ import { calculateTotalMarks } from '../../../-utils/helper';
 type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 
 const POLL_MS = 3000;
+/** ~30s of unbroken polling failures before we stop and tell the teacher. */
+const MAX_CONSECUTIVE_POLL_ERRORS = 10;
 
 const QUESTION_TYPE_OPTIONS: Array<{ value: PaperQuestionType; label: string }> = [
-    { value: 'MCQS', label: 'Multiple choice' },
+    { value: 'MCQS', label: 'Multiple choice (one answer)' },
+    { value: 'MCQM', label: 'Multiple choice (several answers)' },
+    { value: 'TRUE_FALSE', label: 'True / false' },
     { value: 'ONE_WORD', label: 'One word' },
     { value: 'LONG_ANSWER', label: 'Long answer' },
     { value: 'NUMERIC', label: 'Numeric' },
@@ -57,7 +61,7 @@ const DIFFICULTY_OPTIONS: Array<{ value: PaperDifficulty; label: string }> = [
 
 const setupSchema = z.object({
     count: z.coerce.number().int().min(1, 'At least 1 question').max(60, 'At most 60 at a time'),
-    questionType: z.enum(['MCQS', 'ONE_WORD', 'LONG_ANSWER', 'NUMERIC']),
+    questionType: z.enum(['MCQS', 'MCQM', 'TRUE_FALSE', 'ONE_WORD', 'LONG_ANSWER', 'NUMERIC']),
     difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']),
 });
 
@@ -177,10 +181,15 @@ const Step2CreateFromKnowledgeBase = ({
     useEffect(() => {
         if (step !== 'generating' || !taskId) return;
         let cancelled = false;
+        // Consecutive failed polls, not total polls: a long generation is normal and
+        // must not time out, but a poll that keeps erroring used to retry forever and
+        // leave this dialog spinning on "Writing questions from …" with no way out.
+        let consecutiveErrors = 0;
         const tick = async () => {
             try {
                 const job = await getPaperJob(taskId);
                 if (cancelled) return;
+                consecutiveErrors = 0;
                 if (job.status === 'COMPLETED' && job.result) {
                     setResult(job.result);
                     setIssues(job.result.issues);
@@ -193,8 +202,20 @@ const Step2CreateFromKnowledgeBase = ({
                     return;
                 }
                 setTimeout(tick, POLL_MS);
-            } catch {
-                if (!cancelled) setTimeout(tick, POLL_MS);
+            } catch (error) {
+                if (cancelled) return;
+                consecutiveErrors += 1;
+                if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+                    toast.error(
+                        errorMessage(
+                            error,
+                            'Lost contact with the generator. It may still be running — check the knowledge base history.'
+                        )
+                    );
+                    setStep('setup');
+                    return;
+                }
+                setTimeout(tick, POLL_MS);
             }
         };
         const handle = setTimeout(tick, POLL_MS);

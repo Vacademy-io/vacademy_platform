@@ -88,6 +88,16 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
 
     const subtotal = totalPrice();
     const isEmpty = selectedPsOptionIds.length === 0;
+    // Mirrors PlanTiles' own gate: it only shows when the page sells the same
+    // thing several ways, which most pages do not.
+    const planChoiceOffered =
+        !!settings.planSelector?.enabled &&
+        new Set(
+            pageData.mappings
+                .filter((m) => selectedPsOptionIds.includes(m.ps_invite_payment_option_id))
+                .map((m) => m.payment_plan?.id)
+                .filter(Boolean)
+        ).size > 1;
 
     useEffect(() => {
         pushCartViewed(
@@ -159,7 +169,13 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                 <div>
                     <h1 className="text-lg font-bold text-gray-900">Review your cart</h1>
                     <p className="mt-0.5 text-caption text-gray-500">
-                        Check your selection and pick the plan that suits you before continuing.
+                        {/* PlanTiles renders nothing unless the page offers two or
+                            more genuine alternatives, so promising a plan choice
+                            leaves most pages telling the visitor to do something
+                            that is not on screen. */}
+                        {planChoiceOffered
+                            ? 'Check your selection and pick the plan that suits you before continuing.'
+                            : 'Check your selection before continuing.'}
                     </p>
                 </div>
 

@@ -697,6 +697,13 @@ public class SlideService {
     // docs/SLIDE_CONTENT_LOSS_INVESTIGATION.md). Plain text/paragraph shrink is NOT guarded
     // here — authors delete text freely. The author overrides with force (confirmed in UI).
     private static final Pattern YOOPTA_BLOCK_MARKER = Pattern.compile("data-yoopta-type=\"([a-zA-Z]+)\"");
+    // Quoted attribute values may legally contain '>' (e.g. alt="a > b"), so the tag
+    // body is matched as "unquoted char | quoted run" rather than [^>]* — otherwise a
+    // tag could be cut short before its src and counted wrong.
+    private static final Pattern IMG_TAG = Pattern.compile("<img\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern IMG_SRC_ATTR = Pattern.compile("\\bsrc\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')",
+            Pattern.CASE_INSENSITIVE);
 
     private static int countOccurrences(String s, String sub) {
         int n = 0, i = 0;
@@ -705,6 +712,33 @@ public class SlideService {
             i += sub.length();
         }
         return n;
+    }
+
+    /**
+     * Images that can actually render. An <img> with an empty/null/undefined src is
+     * an abandoned upload placeholder — the editor's importer drops it and
+     * formatHTMLString strips it on every save, so counting it reported "1 image"
+     * as lost on a save where the author changed nothing. There is no content in
+     * such a tag to protect. Mirrors hasRenderableSrc() in the editor's
+     * serialization.ts; keep the two in step.
+     */
+    private static int countRenderableImages(String html) {
+        Matcher tag = IMG_TAG.matcher(html);
+        int count = 0;
+        while (tag.find()) {
+            Matcher src = IMG_SRC_ATTR.matcher(tag.group());
+            if (!src.find()) {
+                continue;
+            }
+            String value = src.group(1) != null ? src.group(1) : src.group(2);
+            String trimmed = value == null ? "" : value.trim();
+            if (trimmed.isEmpty() || "null".equalsIgnoreCase(trimmed)
+                    || "undefined".equalsIgnoreCase(trimmed)) {
+                continue;
+            }
+            count++;
+        }
+        return count;
     }
 
     private static Map<String, Integer> structuralMarkerCounts(String html) {
@@ -718,7 +752,7 @@ public class SlideService {
         }
         int tables = countOccurrences(html, "<table");
         if (tables > 0) counts.put("table", tables);
-        int imgs = countOccurrences(html, "<img");
+        int imgs = countRenderableImages(html);
         if (imgs > 0) counts.put("image", imgs);
         int media = countOccurrences(html, "<video") + countOccurrences(html, "<iframe");
         if (media > 0) counts.put("video/embed", media);

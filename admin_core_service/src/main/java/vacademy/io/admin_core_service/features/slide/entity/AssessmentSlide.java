@@ -5,6 +5,7 @@ import lombok.*;
 import vacademy.io.admin_core_service.features.slide.dto.AssessmentSlideDTO;
 
 import java.time.LocalDateTime;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "assessment_slide")
@@ -31,7 +32,8 @@ public class AssessmentSlide {
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @UpdateTimestamp
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
     public AssessmentSlide(AssessmentSlideDTO dto) {

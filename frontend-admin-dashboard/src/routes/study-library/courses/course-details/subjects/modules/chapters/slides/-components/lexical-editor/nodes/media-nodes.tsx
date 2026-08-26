@@ -157,7 +157,17 @@ export const EmbedBlock = createBlockNode<EmbedPayload>({
 // ---------- Callout ----------
 export interface CalloutPayload {
     theme: 'default' | 'info' | 'success' | 'warning' | 'error';
-    text: string;
+    /**
+     * Rich HTML, not plaintext. It used to be plaintext (read via textContent,
+     * written via textContent), which FLATTENED anything structural nested in a
+     * callout: a table or an image inside one survived as its bare words, so the
+     * saved HTML lost a `<table`/`<img` the author never touched and the backend's
+     * structural-loss guard correctly 409'd on it ("This will remove 1 table") —
+     * a false alarm the author could not act on, because the words were all still
+     * on screen. Keeping the inner HTML preserves the nested content verbatim.
+     * Legacy plaintext callouts round-trip unchanged (their innerHTML IS the text).
+     */
+    html: string;
 }
 
 export const CALLOUT_THEMES: Record<
@@ -173,14 +183,28 @@ export const CALLOUT_THEMES: Record<
 
 export const CalloutBlock = createBlockNode<CalloutPayload>({
     nodeType: 'docCallout',
-    defaultPayload: { theme: 'info', text: '' },
-    importTags: ['div'],
+    defaultPayload: { theme: 'info', html: '' },
+    // Tag-agnostic on purpose: the callout is the ONE custom block whose markup
+    // gets hand- or AI-authored, so the marker legitimately turns up on <aside>,
+    // <blockquote> or <section>. Matching only <div> meant those imported as a
+    // plain paragraph, the marker never came back on export, and the backend
+    // reported "This will remove 1 callout" for content still visible on screen.
+    // importMatch returns null for a non-callout element, so the extra tags cost
+    // nothing (Lexical falls through to the generic converters).
+    importTags: ['div', 'aside', 'blockquote', 'section'],
     importMatch: (el) => {
         if (el.getAttribute('data-yoopta-type') !== 'callout') return null;
         const theme = (el.getAttribute('data-theme') || 'info') as CalloutPayload['theme'];
+        const inner = el.innerHTML.trim();
         return {
             theme: CALLOUT_THEMES[theme] ? theme : 'info',
-            text: el.textContent?.trim() || '',
+            // Legacy callouts were written with textContent, so a multi-line one holds
+            // literal newlines. Those rendered as line breaks in the old <textarea>
+            // (whitespace-pre-wrap) but collapse in a rich field — and the learner
+            // skips newline→<br> conversion inside [data-yoopta-type] subtrees, so they
+            // collapsed there too. Promote them to <br> on the way in, once, for
+            // markup-free content only.
+            html: el.children.length === 0 ? inner.replace(/\r\n?|\n/g, '<br>') : inner,
         };
     },
     buildExportDom: (p) => {
@@ -195,7 +219,7 @@ export const CalloutBlock = createBlockNode<CalloutPayload>({
                 `background: ${t.bg}; border-left: 4px solid ${t.border}; color: ${t.color}; border-radius: 6px; padding: 12px 16px; margin: 8px 0;`,
             ],
         ]);
-        el.textContent = p.text;
+        el.innerHTML = p.html;
         return el;
     },
     Component: ({ payload, setPayload, readOnly }) => (

@@ -50,15 +50,28 @@ function normalizeCallouts(body: HTMLElement, doc: Document): void {
         div.setAttribute('data-yoopta-type', 'callout');
         div.setAttribute('data-editor-type', 'calloutEditor');
         div.setAttribute('data-theme', theme);
-        // CalloutBlock stores plaintext; textContent preserves the words.
-        div.textContent = dl.textContent || '';
+        // CalloutBlock stores rich HTML, so carry the markup across instead of
+        // flattening to textContent — that dropped bold/links inside a callout,
+        // and any nested table/image with them (which then read as structural
+        // loss to the backend guard on the next save).
+        div.innerHTML = dl.innerHTML;
         dl.replaceWith(div);
     });
 }
 
 /** Promote an <img>/<iframe>/<video>/<a download> out of Yoopta's flex-wrapper
  *  `<div>` so it lands at block level where our decorator importers match it.
- *  Only unwraps when the media element is the wrapper's sole element child. */
+ *  Only unwraps when the media element is the wrapper's sole element child.
+ *
+ *  Two things it must NEVER unwrap, because `replaceWith` deletes the wrapper
+ *  outright — everything the wrapper carried goes with it:
+ *   - a CUSTOM BLOCK's own marker div (a callout holding just an image, and by
+ *     extension any future block shaped that way): the block, its theme and its
+ *     text were replaced by the bare image, so the slide lost a callout the
+ *     author never touched — visible only as a "will remove 1 callout" confirm
+ *     on the next save.
+ *   - a wrapper carrying its own text: Yoopta's media wrapper never does, so
+ *     text here means the div is real content, not a wrapper. */
 function unwrapMediaWrappers(body: HTMLElement): void {
     body.querySelectorAll('img, iframe, video, a[download]').forEach((media) => {
         const parent = media.parentElement;
@@ -67,7 +80,10 @@ function unwrapMediaWrappers(body: HTMLElement): void {
             parent.tagName === 'DIV' &&
             parent !== body &&
             parent.children.length === 1 &&
-            parent.children[0] === media
+            parent.children[0] === media &&
+            !parent.hasAttribute('data-yoopta-type') &&
+            !parent.hasAttribute('data-editor-type') &&
+            (parent.textContent || '').trim() === ''
         ) {
             parent.replaceWith(media);
         }

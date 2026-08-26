@@ -1,6 +1,14 @@
 #!/bin/bash
 
 # Microsoft Store (AppX) Windows build script for ZOE Online School.
+#
+# ZOE's Windows version is pinned by "extraMetadata.version" in
+# electron-builder.zoe-store.json. Without it the AppX Identity Version comes
+# from electron/package.json, which is Shiksha Nation's Electron shell version
+# — so ZOE's Store version would move whenever SN shipped. Keep it above
+# whatever this product already has in Partner Center.
+# (electron-builder 23.6.0 validates its config strictly and rejects unknown
+# keys, so that note cannot live in the JSON as a "_comment" field.)
 # Publishes under the Shiksha Nation Partner Center account (shared publisher
 # identity CN=86D745F8-... in electron-builder.zoe-store.json).
 #

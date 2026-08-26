@@ -5,12 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.RequestEntity;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
@@ -27,13 +25,14 @@ import java.util.Date;
  * exist for this bundle id, what's its latest version, and what review/release state is it in),
  * not a general-purpose ASC SDK.
  *
- * <p>Credentials (issuer id, key id, the .p8 private key) arrive via env vars from the shared
- * {@code vacademy-secrets} k8s secret, already wired into this service's deployment through
- * {@code envFrom} — no new secret plumbing needed. When they're absent (e.g. local dev), every
- * call returns {@code null} rather than throwing, so the caller falls back to the existing
- * "manual action required" response instead of a raw 500.
+ * <p><b>Not a Spring-managed singleton.</b> Different white-label institutes can own separate
+ * Apple Developer accounts — the flat "one shared credential from an env var" design this started
+ * with silently reported every app under any *other* account as "Not Registered", which is
+ * actively wrong, not just unverified (found via Shiksha Nation, which has its own account). So
+ * this is now a plain object built per credential by {@link StoreCredentialResolver}, which picks
+ * the right one — institute-specific, falling back to a shared default — before constructing it.
+ * Each instance caches its own signed JWT; nothing here is process-wide state.
  */
-@Component
 @Slf4j
 public class AppStoreConnectClient {
 
@@ -50,21 +49,22 @@ public class AppStoreConnectClient {
     private volatile String cachedToken;
     private volatile long cachedTokenExpiresAtEpochSeconds;
 
-    public AppStoreConnectClient(
-            @Value("${APP_STORE_CONNECT_ISSUER_ID:}") String issuerId,
-            @Value("${APP_STORE_CONNECT_KEY_ID:}") String keyId,
-            @Value("${APP_STORE_CONNECT_P8:}") String p8) {
+    private AppStoreConnectClient(String issuerId, String keyId, PrivateKey privateKey) {
         this.issuerId = issuerId;
         this.keyId = keyId;
-        this.privateKey = parsePrivateKey(p8);
-        if (!isConfigured()) {
-            log.info("[AppStoreConnect] Not configured (issuer/key/p8 missing) — getAppStatus for iOS/macOS "
-                    + "will fall back to the manual-action response until vacademy-secrets carries these.");
-        }
+        this.privateKey = privateKey;
     }
 
-    public boolean isConfigured() {
-        return StringUtils.hasText(issuerId) && StringUtils.hasText(keyId) && privateKey != null;
+    /**
+     * @return a client for this credential, or null if issuerId/keyId/p8 are missing or the p8
+     *         doesn't parse as an EC private key — callers treat null exactly like "not configured".
+     */
+    public static AppStoreConnectClient of(String issuerId, String keyId, String p8) {
+        if (!StringUtils.hasText(issuerId) || !StringUtils.hasText(keyId) || !StringUtils.hasText(p8)) {
+            return null;
+        }
+        PrivateKey privateKey = parsePrivateKey(p8);
+        return privateKey == null ? null : new AppStoreConnectClient(issuerId, keyId, privateKey);
     }
 
     /** Result of a status lookup, or null if no app is registered in ASC for that bundle id. */
@@ -74,10 +74,12 @@ public class AppStoreConnectClient {
 
     /**
      * @return the latest app-store-version info for {@code bundleId}, or null if ASC has no app
-     *         with that bundle id (not yet registered) or the lookup failed.
+     *         with that bundle id under *this credential's* Apple Developer account, or the
+     *         lookup failed. A null here does not prove the app doesn't exist anywhere — only
+     *         that it isn't visible to this specific account.
      */
     public AppStatus fetchStatus(String bundleId) {
-        if (!isConfigured() || !StringUtils.hasText(bundleId)) {
+        if (!StringUtils.hasText(bundleId)) {
             return null;
         }
         try {
@@ -196,9 +198,6 @@ public class AppStoreConnectClient {
     }
 
     private static PrivateKey parsePrivateKey(String p8) {
-        if (!StringUtils.hasText(p8)) {
-            return null;
-        }
         try {
             String cleaned = p8
                     .replace("-----BEGIN PRIVATE KEY-----", "")
@@ -208,8 +207,7 @@ public class AppStoreConnectClient {
             KeyFactory keyFactory = KeyFactory.getInstance("EC");
             return keyFactory.generatePrivate(new PKCS8EncodedKeySpec(der));
         } catch (Exception e) {
-            log.warn("[AppStoreConnect] Could not parse APP_STORE_CONNECT_P8 as an EC private key: {}",
-                    e.getMessage());
+            log.warn("[AppStoreConnect] Could not parse a p8 value as an EC private key: {}", e.getMessage());
             return null;
         }
     }

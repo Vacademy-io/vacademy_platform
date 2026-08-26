@@ -2370,10 +2370,10 @@
 			baseConfigurationReference = 1EDD97834AF3CF16AC83FE71 /* Pods-ZOE Edtech.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = ZOEIcon;
-				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/ZOE.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
 				INFOPLIST_FILE = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Online School";
@@ -2420,9 +2420,9 @@
 			baseConfigurationReference = 3E3ECE5F6CF7DBF477DD159E /* Pods-ZOE Edtech.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = ZOEIcon;
-				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/ZOE.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
 				INFOPLIST_FILE = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Online School";

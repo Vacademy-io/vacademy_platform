@@ -31,6 +31,12 @@ import java.util.Map;
 @Slf4j
 public class Step1Service {
 
+    /** Frontend StreamingPlatform.ZOOM — must stay lowercase, see getLinkTypeFromUrl. */
+    static final String ZOOM_LINK_TYPE = "zoom";
+    /** Frontend StreamingPlatform.MEET — must stay exactly this, see getLinkTypeFromUrl. */
+    static final String GMEET_LINK_TYPE = "google meet";
+
+
     @Autowired
     private LiveSessionRepository sessionRepository;
 
@@ -456,7 +462,11 @@ public class Step1Service {
             }
         }
 
-        if (dto.getLink() != null) {
+        String incomingLink = dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink();
+        if (wouldStealProviderMeeting(incomingLink, schedule.getProviderMeetingId(), schedule.getLinkType())) {
+            log.info("keeping provider link for scheduleId={} meetingId={} (incoming link is a "
+                    + "different meeting of the same provider)", schedule.getId(), schedule.getProviderMeetingId());
+        } else if (dto.getLink() != null) {
             schedule.setCustomMeetingLink(dto.getLink());
             schedule.setLinkType(resolveScheduleLinkType(dto.getLink(), request.getLinkType()));
         } else if (request.getDefaultMeetLink() != null) {
@@ -760,6 +770,45 @@ public class Step1Service {
         scheduleRepository.save(schedule);
     }
 
+    /**
+     * Detects the provider from a meeting URL.
+     *
+     * <p>Returns the values the FRONTEND matches on ({@code StreamingPlatform}: "zoom",
+     * "google meet"), NOT the enum names. The admin dashboard's recurring-session branch
+     * compares linkType case-sensitively against those literals; anything else — including
+     * {@code LinkType.ZOOM.name()} ("ZOOM") and {@code LinkType.GMEET.name()} ("GMEET") —
+     * falls through to a plain participant link, so the teacher's "Start as Host" silently
+     * joined them as an attendee and the class never actually started. The backend is
+     * unaffected either way: it reads this field through
+     * {@code MeetingProvider.fromString()}, which upper-cases and accepts both spellings.
+     */
+    /**
+     * True when applying {@code incomingLink} would point a provider-managed occurrence at a
+     * DIFFERENT meeting of the SAME provider.
+     *
+     * <p>The edit DTO carries one link per weekday, but each occurrence gets its own provider
+     * meeting. Applying the DTO link blindly re-pointed every later occurrence of that weekday
+     * at the FIRST occurrence's meeting while provider_meeting_id kept its own — host and
+     * learners then joined different rooms and the class recorded where nobody was.
+     *
+     * <p>Deliberately narrow: switching provider (Zoom to YouTube, say), clearing the link, or
+     * supplying a link for this row's own meeting all return false and are applied as before.
+     * Only the same-provider-wrong-meeting case is refused, because that one is never intentional.
+     */
+    static boolean wouldStealProviderMeeting(String incomingLink, String providerMeetingId, String currentLinkType) {
+        if (providerMeetingId == null || providerMeetingId.isBlank()
+                || incomingLink == null || incomingLink.isBlank()
+                || currentLinkType == null || currentLinkType.isBlank()) {
+            return false;
+        }
+        // A link for this very meeting is harmless — same room, so let it through.
+        if (incomingLink.contains(providerMeetingId)) {
+            return false;
+        }
+        // Different provider entirely means a deliberate switch, not the weekday collision.
+        return getLinkTypeFromUrl(incomingLink).equalsIgnoreCase(currentLinkType);
+    }
+
     public static String getLinkTypeFromUrl(String link) {
         if (link == null || link.isEmpty()) {
             return "UNKNOWN";
@@ -768,9 +817,9 @@ public class Step1Service {
         if (lowerLink.contains("youtube.com") || lowerLink.contains("youtu.be")) {
             return LinkType.YOUTUBE.name();
         } else if (lowerLink.contains("zoom.us") || lowerLink.contains("zoom.com")) {
-            return LinkType.ZOOM.name();
+            return ZOOM_LINK_TYPE;
         } else if (lowerLink.contains("meet.google.com")) {
-            return LinkType.GMEET.name();
+            return GMEET_LINK_TYPE;
         } else if (List.of("meeting.zoho.com", "meeting.zoho.in", "meeting.zoho.eu").stream()
                 .anyMatch(lowerLink::contains)) {
             return LinkType.ZOHO_MEETING.name();

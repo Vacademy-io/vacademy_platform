@@ -302,6 +302,11 @@ export const inviteLinkSchema = z.object({
         .transform((val) => val ?? ''),
     inviteeEmail: z.string().default(''),
     inviteeEmails: z.array(z.string()).default([]),
+    // Team members mailed whenever a learner fills this invite's enrollment form.
+    // Mirrors the audience campaign's Team Notifications (audience.to_notify);
+    // serialized to setting_json.setting.NOTIFICATION_SETTING.TO_NOTIFY as a
+    // comma-separated string.
+    teamNotificationEmails: z.array(z.string()).default([]),
     customHtml: z.string().default(''),
     showRelatedCourses: z.boolean().default(false),
     selectedOptionValue: z.string().default('textfield'),

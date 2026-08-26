@@ -58,6 +58,7 @@ export const PropertyPanel = () => {
         reorderComponents,
         updatePageSeo,
         updatePageBackgroundColor,
+        setPageHideSiteChrome,
         copyComponent,
         pasteComponent,
         clipboard,
@@ -323,6 +324,20 @@ export const PropertyPanel = () => {
                         value={page.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor swatch/seed value
                         onChange={(c) => updatePageBackgroundColor(page.id, c)}
                     />
+
+                    <div className="flex items-center justify-between rounded border bg-gray-50 p-3">
+                        <div className="pr-3">
+                            <Label className="text-xs">Hide site header &amp; footer</Label>
+                            <p className="text-caption text-gray-400">
+                                Turn on when the page already includes its own navigation and
+                                footer — otherwise visitors see two of each.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={!!(page as any).hideSiteChrome}
+                            onCheckedChange={(v) => setPageHideSiteChrome(page.id, v)}
+                        />
+                    </div>
 
                     {/* Paste component */}
                     {clipboard && (

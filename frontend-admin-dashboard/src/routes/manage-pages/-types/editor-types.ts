@@ -130,6 +130,11 @@ export interface Page {
     published?: boolean;
     /** Page-level background color override */
     backgroundColor?: string;
+    /** Hide the site header and footer on this page. An imported HTML page
+     *  usually pastes in its own nav and footer, so the site's chrome would
+     *  render a second set. Set automatically when a page is created as an
+     *  HTML page. */
+    hideSiteChrome?: boolean;
     seo?: {
         metaTitle?: string;
         metaDescription?: string;

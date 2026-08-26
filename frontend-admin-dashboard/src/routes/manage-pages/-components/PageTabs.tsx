@@ -77,6 +77,8 @@ export const PageTabs = () => {
             components: newPageIsHtml
                 ? [{ ...getComponentTemplate('htmlPage'), id: `htmlpage-${Date.now()}` }]
                 : [],
+            // A pasted page nearly always brings its own nav and footer.
+            ...(newPageIsHtml ? { hideSiteChrome: true } : {}),
         };
         addPage(newPage);
         setNewPageRoute('');

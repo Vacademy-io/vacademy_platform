@@ -20,12 +20,11 @@ import {
     getAdminParticipants,
     getAttemptsFileStatus,
     handleGetAssessmentTotalMarksData,
-    handleExportResultCSV,
 } from '../-services/assessment-details-services';
 import { getAssessmentDetails } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { MyPagination } from '@/components/design-system/pagination';
 import { MyButton } from '@/components/design-system/button';
-import { ArrowCounterClockwise, Export } from '@phosphor-icons/react';
+import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { AssessmentDetailsSearchComponent } from './SearchComponent';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
@@ -40,11 +39,11 @@ import { BulkActions } from './bulk-actions/bulk-actions';
 import { AssessmentSubmissionsStudentTable } from './AssessmentSubmissionsStudentTable';
 import { SubmissionsSummaryStrip } from './SubmissionsSummaryStrip';
 import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDialog';
+import { AssessmentExportCsvDialog } from './AssessmentExportCsvDialog';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
 import { AssessmentGlobalLevelRevaluateQuestionWise } from './assessment-global-level-revaluate/assessment-global-level-revaluate-question-wise';
 import { AssessmentGlobalLevelReleaseResultAssessment } from './assessment-global-level-revaluate/assessment-global-level-release-result-assessment';
-import Papa from 'papaparse';
 import { useRef } from 'react';
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
 import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/open-student-side-view';
@@ -856,64 +855,42 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         }
     };
 
-    const [isExportingCSV, setIsExportingCSV] = useState(false);
-
-    const handleExportCSV = async () => {
-        setIsExportingCSV(true);
-        try {
-            const data = await handleExportResultCSV(
-                initData?.id,
-                assessmentId,
-                assesssmentType
-            );
-            if (!data) {
-                toast.error('No data returned. Please try again.');
-                return;
-            }
-            const parsed = Papa.parse(data, { header: true, skipEmptyLines: true }).data;
-            const csv = Papa.unparse(parsed);
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute(
-                'download',
-                `results_${assessmentId}_${new Date().toLocaleDateString()}.csv`
-            );
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            toast.success('Results exported successfully.');
-        } catch {
-            toast.error('Failed to export CSV. Please try again.');
-        } finally {
-            setIsExportingCSV(false);
-        }
-    };
-
     useEffect(() => {
         const timer = setTimeout(() => {
             const fetchAllParticipants = async () => {
                 setIsParticipantsLoading(true);
 
                 try {
+                    // Only the Attempted slice is rendered on first paint; the other two
+                    // exist purely to fill their tab badges. So they ask for ONE row and
+                    // read total_elements — the badge was reading content.length, which
+                    // capped every count at the page size (a batch with 27 learners who
+                    // never attempted showed "10"), and fetching 10 unread rows twice per
+                    // mount was wasted work on both services.
+                    const COUNT_ONLY_PAGE_SIZE = 1;
+                    // A badge is not worth the page. These two share a Promise.all with
+                    // the Attempted fetch, so an unhandled rejection in either used to
+                    // take down the whole submissions table — and the Pending count now
+                    // depends on a cross-service call to admin_core, which is exactly the
+                    // kind of thing that can fail on its own. Swallow per call and let the
+                    // badge read 0.
+                    const countOnly = (attemptType: string) =>
+                        getAdminParticipants(assessmentId, instituteId, 0, COUNT_ONLY_PAGE_SIZE, {
+                            ...selectedFilter,
+                            attempt_type: [attemptType],
+                        }).catch(() => null);
+
                     const [attemptedData, ongoingData, pendingData] = await Promise.all([
                         getAdminParticipants(assessmentId, instituteId, page, 10, selectedFilter),
-                        getAdminParticipants(assessmentId, instituteId, page, 10, {
-                            ...selectedFilter,
-                            attempt_type: ['LIVE'],
-                        }),
-                        getAdminParticipants(assessmentId, instituteId, page, 10, {
-                            ...selectedFilter,
-                            attempt_type: ['Pending'],
-                        }),
+                        countOnly('LIVE'),
+                        // 'PENDING' — the backend compares against the enum name, so the
+                        // old 'Pending' never matched and this call always came back empty.
+                        countOnly('PENDING'),
                     ]);
-                    console.log('participants data', attemptedData);
                     setParticipantsData(attemptedData);
-                    setAttemptedCount(attemptedData.content.length);
-                    setOngoingCount(ongoingData.content.length);
-                    setPendingCount(pendingData.content.length);
+                    setAttemptedCount(attemptedData.total_elements ?? attemptedData.content.length);
+                    setOngoingCount(ongoingData?.total_elements ?? 0);
+                    setPendingCount(pendingData?.total_elements ?? 0);
                 } catch (error) {
                     console.log(error);
                 } finally {
@@ -1068,17 +1045,26 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         </TabsTrigger>
                     </TabsList>
                     <div className="mr-4 mt-4 flex items-center gap-2">
-                        <MyButton
-                            type="button"
-                            scale="small"
-                            buttonType="secondary"
-                            className="font-medium"
-                            onClick={handleExportCSV}
-                            disable={isExportingCSV}
-                        >
-                            <Export size={16} />
-                            {isExportingCSV ? 'Exporting…' : 'Export'}
-                        </MyButton>
+                        <AssessmentExportCsvDialog
+                            assessmentId={assessmentId}
+                            instituteId={initData?.id}
+                            assessmentType={assesssmentType}
+                            // On Pending the export is the "never attempted" list, which
+                            // only exists for batch-enrolled learners — Individual and
+                            // External participants already get a real registration row and
+                            // are covered by the result sheet.
+                            notAttempted={
+                                selectedTab === 'Pending' &&
+                                selectedParticipantsTab === 'internal' &&
+                                batchSelectionTab === 'batch'
+                            }
+                            notAttemptedScope={{
+                                batches: (selectedFilter.batches ?? []).map(
+                                    (batch: { id: string }) => batch.id
+                                ),
+                                name: searchText,
+                            }}
+                        />
                         <AssessmentReportZipExportDialog
                             assessmentId={assessmentId}
                             instituteId={instituteId}

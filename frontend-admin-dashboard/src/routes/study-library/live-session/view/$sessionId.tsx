@@ -308,6 +308,18 @@ function ViewLiveSession() {
                 return;
             }
 
+            // The backend refuses a recreate that would strand people: either
+            // someone is already in the room, or it was created moments ago and
+            // only looks "ended" because nobody has connected yet. Surface the
+            // reason and stop — the host should join the existing class instead.
+            if (response.data?.status === 'RECREATE_BLOCKED') {
+                toast.error(
+                    response.data?.message ||
+                        'This class is still active. Please join the existing class instead of starting a new one.'
+                );
+                return;
+            }
+
             const joinUrl = response.data?.joinUrl;
             if (joinUrl) {
                 window.open(joinUrl, '_blank', 'noopener,noreferrer');

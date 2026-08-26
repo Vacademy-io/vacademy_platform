@@ -7,6 +7,7 @@ import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 // Locale helper only (reads the zustand store lazily at request time) — no
 // import cycle: formatters → language store → i18n/locales, none touch axios.
 import { getActiveLocale } from '@/lib/formatters';
+import { recordApiSample } from '@/lib/perf/network-health';
 import {
     getTokenFromCookie,
     isTokenExpired,
@@ -16,6 +17,50 @@ import {
 } from './sessionUtility';
 
 const authenticatedAxiosInstance = axios.create();
+
+/**
+ * Request timing for the "is it us or your connection?" indicator. The start
+ * stamp rides on the config object so the response interceptor can close the
+ * loop. Every call below is wrapped: latency measurement must never be able to
+ * break an actual request, least of all one on the auth path.
+ */
+type TimedRequestConfig = InternalAxiosRequestConfig & { __perfStartedAt?: number };
+
+const stampPerfStart = (request: InternalAxiosRequestConfig) => {
+    try {
+        (request as TimedRequestConfig).__perfStartedAt = performance.now();
+    } catch {
+        // ignore
+    }
+};
+
+const recordPerfSample = (
+    config: TimedRequestConfig | undefined,
+    status: number | undefined,
+    headers: unknown
+) => {
+    try {
+        const startedAt = config?.__perfStartedAt;
+        if (typeof startedAt !== 'number') return;
+        const url = config?.url;
+        if (!url) return;
+
+        // axios lowercases response header keys.
+        const serverTiming =
+            headers && typeof headers === 'object'
+                ? ((headers as Record<string, unknown>)['server-timing'] as string | undefined)
+                : undefined;
+
+        recordApiSample({
+            url,
+            totalMs: performance.now() - startedAt,
+            serverTimingHeader: serverTiming ?? null,
+            status: status ?? 0,
+        });
+    } catch {
+        // ignore
+    }
+};
 
 // Every call below ends in removeCookiesAndLogout() — a destructive logout the
 // user experiences as "the app kicked me out". These must be visible in Sentry
@@ -130,6 +175,8 @@ authenticatedAxiosInstance.interceptors.request.use(
             request.headers['Accept-Language'] = getActiveLocale();
         }
 
+        stampPerfStart(request);
+
         return request;
     },
 
@@ -142,10 +189,20 @@ authenticatedAxiosInstance.interceptors.request.use(
 // Add response interceptor to handle authentication errors
 authenticatedAxiosInstance.interceptors.response.use(
     (response) => {
+        recordPerfSample(response.config as TimedRequestConfig, response.status, response.headers);
         return response;
     },
     async (error) => {
         const { response } = error;
+
+        // Failures are measured too. A timeout or a 500 under load is exactly the
+        // condition the indicator exists to describe, so dropping these samples
+        // would blind it precisely when things are going wrong.
+        recordPerfSample(
+            error?.config as TimedRequestConfig | undefined,
+            response?.status,
+            response?.headers
+        );
 
         // Only log non-403 errors to reduce noise
         if (response?.status !== 403) {

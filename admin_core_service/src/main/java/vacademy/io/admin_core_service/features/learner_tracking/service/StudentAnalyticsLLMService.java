@@ -381,7 +381,23 @@ public class StudentAnalyticsLLMService {
                                                 7. FLASHCARDS: 5-10 cards focusing on concepts from wrong/partial answers.
                                                 8. LEARNING PATH: 3-5 steps ordered by priority (weakest topics first).
 
-                                                CRITICAL: Use the "status" field (CORRECT/INCORRECT/PARTIAL_CORRECT) as the source of truth for correctness.
+                                                CORRECTNESS: The per-question "status" field is the source of truth. Never re-grade a
+                                                question yourself from the options or the answer text.
+                                                  - CORRECT / PARTIAL_CORRECT / INCORRECT: graded, count them as they stand.
+                                                  - SKIPPED: the learner did not answer. Count it as unattempted, not as a wrong answer.
+                                                  - PENDING: not evaluated yet (free text awaiting a teacher, or an assignment not yet
+                                                    marked). Exclude it from accuracy counts entirely and do not assume it was wrong.
+                                                Use "correct_answer" where present when explaining a misconception; do not guess what
+                                                the right answer was when that field is absent.
+
+                                                GROUNDING: Every statement must be supported by the submission data above. Where the data
+                                                cannot support a section, return an empty object or array for it rather than a
+                                                plausible-sounding guess - an assignment submission carries no per-question responses, so
+                                                there is nothing there to classify by Bloom's level, estimate confidence from, or build a
+                                                topic breakdown out of. Never invent a question, topic, score, answer or time that does
+                                                not appear above. A short report grounded in the data is correct; a complete-looking one
+                                                built on assumptions is not.
+
                                                 Return ONLY valid JSON. No markdown outside JSON strings.
                                                 """;
         }

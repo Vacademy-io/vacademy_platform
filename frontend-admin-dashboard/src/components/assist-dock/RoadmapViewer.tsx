@@ -8,10 +8,17 @@ import { RocketLaunch, X } from '@phosphor-icons/react';
 export function RoadmapViewer({
     open,
     html,
+    loading = false,
     onClose,
 }: {
     open: boolean;
     html: string;
+    /**
+     * The body is fetched only once this panel opens, so there is a real gap
+     * between opening and having HTML. Without this the empty branch below would
+     * claim nothing is published while the request is still in flight.
+     */
+    loading?: boolean;
     onClose: () => void;
 }) {
     if (!open) return null;
@@ -54,7 +61,9 @@ export function RoadmapViewer({
                     ) : (
                         <div className="flex h-full items-center justify-center px-6 text-center">
                             <p className="text-caption text-neutral-500">
-                                Nothing published yet — check back soon.
+                                {loading
+                                    ? 'Loading…'
+                                    : 'Nothing published yet — check back soon.'}
                             </p>
                         </div>
                     )}

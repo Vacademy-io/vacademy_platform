@@ -1473,7 +1473,8 @@ public class HtmlBuilderService {
         return formatNumber(Double.valueOf(val));
     }
 
-    private static String formatQuestionType(String type) {
+    /** Public so the v2 report builder ({@link StudentReportHtmlV2Builder}) labels question types identically. */
+    public static String formatQuestionType(String type) {
         if (type == null) return "";
         switch (type) {
             case "MCQS": return "MCQ Single";
@@ -1688,8 +1689,12 @@ public class HtmlBuilderService {
      * (language / verdict / tests / score) followed by the submitted source
      * code in a gray monospace pre block. Falls back gracefully if the JSON
      * is missing fields.
+     *
+     * <p>Public so the v2 report builder ({@link StudentReportHtmlV2Builder})
+     * renders coding submissions exactly the same way — this block is the only
+     * place a learner sees their submitted source in the PDF.
      */
-    private void appendCodingAnswerBlock(StringBuilder html, String responseJson, String correctOptionsJson, String status) {
+    public void appendCodingAnswerBlock(StringBuilder html, String responseJson, String correctOptionsJson, String status) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode root = mapper.readTree(responseJson);

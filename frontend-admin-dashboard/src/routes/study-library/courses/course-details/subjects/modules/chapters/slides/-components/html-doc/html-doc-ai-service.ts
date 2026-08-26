@@ -28,12 +28,12 @@ function requestBody(p: GenerateHtmlParams) {
 
 /** Content sections the page can include, in order. */
 export const HTML_CONTENT_TYPES = [
-    { key: 'notes', label: 'Notes' },
+    { key: 'notes', label: 'Short notes' },
+    { key: 'summary', label: 'Summary' },
     { key: 'flashcards', label: 'Flashcards' },
+    { key: 'quiz', label: 'Quiz' },
     { key: 'practical_examples', label: 'Practical examples' },
     { key: 'interactive_games', label: 'Interactive games' },
-    { key: 'quiz', label: 'Quiz' },
-    { key: 'assignment', label: 'Assignment' },
 ] as const;
 
 export type BrandKit = {

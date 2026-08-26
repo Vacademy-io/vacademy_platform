@@ -710,6 +710,20 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
                         onChange={(v) => togglePrimitive('defaultBbbWebcamsOnlyForModerator', v)}
                     />
                     <Separator />
+                    <SettingRow
+                        title="Participants join in listen-only mode"
+                        description="Participants can hear the class but can't turn their microphone on. Recommended for large lectures and webinars, where open mics are the main source of avoidable server load."
+                        checked={settings.defaultBbbDisableMic}
+                        onChange={(v) => togglePrimitive('defaultBbbDisableMic', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="Participants can't turn on their camera"
+                        description="Only the host's camera can be on. Recommended alongside listen-only mode for lecture-style classes."
+                        checked={settings.defaultBbbDisableCam}
+                        onChange={(v) => togglePrimitive('defaultBbbDisableCam', v)}
+                    />
+                    <Separator />
                     <div className="flex items-start justify-between gap-4 py-3">
                         <div className="flex-1">
                             <div className="text-sm font-medium text-neutral-800">

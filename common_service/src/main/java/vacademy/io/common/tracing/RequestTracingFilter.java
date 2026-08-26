@@ -11,10 +11,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.web.util.OnCommittedResponseWrapper;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A filter that automatically traces all HTTP requests and logs slow APIs.
@@ -35,6 +38,12 @@ import java.util.concurrent.TimeUnit;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestTracingFilter implements Filter {
+
+    /** How many committed responses could not carry Server-Timing (see helper below). */
+    private static final AtomicLong serverTimingSkippedCount = new AtomicLong();
+
+    /** Log the skip counter every Nth occurrence rather than per request. */
+    private static final long SERVER_TIMING_SKIP_LOG_INTERVAL = 500;
 
     @Autowired
     private TracingProperties tracingProperties;
@@ -65,6 +74,10 @@ public class RequestTracingFilter implements Filter {
 
         // Start timing
         long startTime = System.nanoTime();
+        // Start attributing third-party wait separately, so a slow provider does not
+        // read as us being slow. Cleared in the finally below — it is a ThreadLocal on
+        // a pooled thread.
+        ExternalCallTimer.begin();
 
         // Add start breadcrumb to Sentry
         addRequestStartBreadcrumb(method, fullPath, clientIp);
@@ -72,13 +85,34 @@ public class RequestTracingFilter implements Filter {
         // Tag the current Sentry span
         tagCurrentSpan(method, uri, clientIp);
 
+        // Wrap the response so the header can be written at the moment it commits.
+        // Setting it after chain.doFilter() does NOT work: Spring MVC flushes the
+        // message converter's output, which commits the response before the
+        // outermost filter regains control — measured, for a 2-byte body.
+        ServerTimingResponseWrapper timingWrapper = createTimingWrapper(httpResponse, startTime);
+        ServletResponse effectiveResponse = timingWrapper != null ? timingWrapper : response;
+
         try {
             // Execute the actual request
-            chain.doFilter(request, response);
+            chain.doFilter(request, effectiveResponse);
         } finally {
             // Calculate duration
             long durationNanos = System.nanoTime() - startTime;
             long durationMs = TimeUnit.NANOSECONDS.toMillis(durationNanos);
+
+            // Tell the browser how much of the round trip was OUR processing, so the
+            // client can subtract it and attribute the remainder to the network. This
+            // is what lets us say "your connection is slow" instead of guessing when a
+            // client reports "the LMS is slow".
+            //
+            // Normally the wrapper has already written this at commit time. This call
+            // covers the rare response that never commits at all (e.g. an empty body),
+            // and is a no-op if the header was already written.
+            if (timingWrapper != null) {
+                timingWrapper.writeServerTiming();
+            } else {
+                emitServerTimingHeader(httpResponse, uri, durationMs);
+            }
 
             // Get response status
             int status = httpResponse.getStatus();
@@ -88,6 +122,139 @@ public class RequestTracingFilter implements Filter {
 
             // Add completion breadcrumb to Sentry
             addRequestCompleteBreadcrumb(method, fullPath, status, durationMs);
+
+            // Never leave the counter on a pooled thread.
+            ExternalCallTimer.clear();
+        }
+    }
+
+    /**
+     * Build the response wrapper that stamps `Server-Timing` at commit time, or null
+     * if the feature is off (or wrapping fails, which must never break the request).
+     */
+    private ServerTimingResponseWrapper createTimingWrapper(HttpServletResponse response, long startNanos) {
+        try {
+            if (!tracingProperties.isServerTimingHeaderEffectivelyEnabled()) {
+                return null;
+            }
+            return new ServerTimingResponseWrapper(response, startNanos);
+        } catch (Exception e) {
+            log.debug("Could not wrap response for Server-Timing: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Writes `Server-Timing: app;dur=<ms>` at the last possible moment before the
+     * response commits.
+     *
+     * WHY A WRAPPER IS NECESSARY — this was measured, not assumed. Setting the header
+     * after chain.doFilter() returns does not work for ANY normal Spring MVC response,
+     * not merely large ones: the message converter flushes its output, which commits
+     * the response (headers and all) before the outermost filter regains control. A
+     * 2-byte text/plain body was already committed. An earlier version of this filter
+     * set the header in a `finally` block and was, in production, a silent no-op.
+     *
+     * OnCommittedResponseWrapper (Spring Security, already a direct dependency of
+     * common_service) exists for exactly this: it intercepts the operations that would
+     * commit a response — getOutputStream/getWriter writes, flushBuffer, sendError,
+     * sendRedirect, reaching Content-Length — and calls onResponseCommitted() first,
+     * while headers can still be set.
+     *
+     * For a streamed response (SSE, large download) the number recorded is therefore
+     * time-to-first-byte rather than total duration. That is the more useful figure
+     * anyway: the remainder is transfer time, not server work.
+     */
+    private static final class ServerTimingResponseWrapper extends OnCommittedResponseWrapper {
+
+        private final long startNanos;
+        private final AtomicBoolean written = new AtomicBoolean(false);
+
+        private ServerTimingResponseWrapper(HttpServletResponse response, long startNanos) {
+            super(response);
+            this.startNanos = startNanos;
+        }
+
+        @Override
+        protected void onResponseCommitted() {
+            writeServerTiming();
+            // Stop intercepting: the headers are set, and there is nothing further to
+            // do on subsequent writes of a streamed body.
+            disableOnResponseCommitted();
+        }
+
+        /** Idempotent — whichever of commit-time or the filter's finally runs first wins. */
+        private void writeServerTiming() {
+            if (!written.compareAndSet(false, true)) {
+                return;
+            }
+            try {
+                if (isCommitted()) {
+                    serverTimingSkippedCount.incrementAndGet();
+                    return;
+                }
+                long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+                setHeader("Server-Timing", buildServerTimingValue(durationMs));
+                // Required for the value to be readable cross-origin via the Resource
+                // Timing API; reading it off a fetch/axios response additionally needs
+                // Access-Control-Expose-Headers, set in each service's CorsConfig.
+                setHeader("Timing-Allow-Origin", "*");
+            } catch (Exception e) {
+                // Observability must never break the response it is observing.
+            }
+        }
+    }
+
+    /**
+     * Build the header value, splitting our own compute from third-party wait:
+     *
+     *   Server-Timing: app;dur=95, ext;dur=2035
+     *
+     * `app` is what the browser judges us on, so it must exclude time spent waiting
+     * on someone else's API (see {@link ExternalCallTimer}). `ext` is emitted only
+     * when there was such a wait, so endpoints that call nobody keep a single clean
+     * metric. Clamped at zero because the two clocks are read a moment apart and a
+     * tiny negative would otherwise be possible.
+     */
+    private static String buildServerTimingValue(long durationMs) {
+        long externalMs = ExternalCallTimer.elapsedMillis();
+        if (externalMs <= 0) {
+            return "app;dur=" + durationMs;
+        }
+        long appMs = Math.max(0, durationMs - externalMs);
+        return "app;dur=" + appMs + ", ext;dur=" + externalMs;
+    }
+
+    /**
+     * Fallback for when the response could not be wrapped at all. Kept because it is
+     * still correct for an uncommitted response, but note that in practice a normal
+     * Spring MVC response is ALREADY committed by the time this runs — see the wrapper
+     * above. Absence of the header therefore means "could not annotate", never "the
+     * server was fast".
+     */
+    private void emitServerTimingHeader(HttpServletResponse response, String uri, long durationMs) {
+        try {
+            if (!tracingProperties.isServerTimingHeaderEffectivelyEnabled()) {
+                return;
+            }
+
+            // Already committed (large response, SSE stream, streamed download) — the
+            // headers are gone. Count it so the size of the gap is observable.
+            if (response.isCommitted()) {
+                long skipped = serverTimingSkippedCount.incrementAndGet();
+                if (skipped % SERVER_TIMING_SKIP_LOG_INTERVAL == 1) {
+                    log.debug(
+                            "Server-Timing skipped (response already committed) for {} — {} skipped so far",
+                            truncatePath(uri), skipped);
+                }
+                return;
+            }
+
+            response.setHeader("Server-Timing", buildServerTimingValue(durationMs));
+            response.setHeader("Timing-Allow-Origin", "*");
+        } catch (Exception e) {
+            // Observability must never break the response it is observing.
+            log.debug("Failed to set Server-Timing header: {}", e.getMessage());
         }
     }
 

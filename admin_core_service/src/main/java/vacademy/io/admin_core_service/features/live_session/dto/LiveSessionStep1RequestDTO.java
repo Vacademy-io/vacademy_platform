@@ -89,7 +89,11 @@ public class LiveSessionStep1RequestDTO {
         private Boolean muteOnStart;
         private Boolean webcamsOnlyForModerator;
         private String guestPolicy;
-        // Lock settings — restrict viewers (students) only; moderators are unaffected
+        // Lock settings — restrict viewers (students) only; moderators are unaffected.
+        // disableMic forces viewers into listen-only mode, which is what makes
+        // large broadcast-style classes viable; disableCam blocks viewer webcams.
+        private Boolean disableMic;
+        private Boolean disableCam;
         private Boolean disablePrivateChat;
         private Boolean disablePublicChat;
         private Boolean disableSharedNotes;

@@ -100,8 +100,21 @@ public class StudentReportHtmlV2Builder {
      */
     private static final int BAND_W = 690;
 
+    /** Longest question / answer text rendered before truncation, so one essay cannot eat the report. */
+    private static final int MAX_TEXT_CHARS = 1200;
+
     @Autowired
     private ReportBrandingHelper reportBrandingHelper;
+
+    /**
+     * Reused purely for per-question answer content: response/correct-option
+     * extraction (both need OptionRepository to resolve option text) and the
+     * CODING submission block. No layout comes from it — v2 owns the styling.
+     * Safe from a Spring cycle: HtmlBuilderService's dependency graph never
+     * reaches this builder.
+     */
+    @Autowired
+    private HtmlBuilderService htmlBuilderService;
 
     /** Everything the builder needs — assembled by {@link ReportPdfRenderService}. */
     @Getter
@@ -169,6 +182,11 @@ public class StudentReportHtmlV2Builder {
         } else {
             appendAnswerReview(sb, in);
         }
+        // The student's own attempt, question by question. Rendered for MANUAL
+        // too — it self-skips when no per-question rows exist, which is the
+        // usual pen-and-paper case, so the evaluated-sheet note still stands
+        // alone there.
+        appendQuestionDetail(sb, in, manual);
         appendFooter(sb, in, branding);
         sb.append("</div></body></html>");
         return sb.toString();
@@ -211,6 +229,21 @@ public class StudentReportHtmlV2Builder {
                 .append("; padding: 8px 12px; border-radius: 4px; font-size: 11px; }");
         sb.append(".bullet { font-size: 11px; color: ").append(INK).append("; padding: 3px 0; }");
         sb.append(".legend { font-size: 9px; color: ").append(MUTED).append("; margin-top: 6px; }");
+        // Per-question detail cards (question text, response, correct answer)
+        sb.append(".qcard { border: 1px solid ").append(BORDER)
+                .append("; border-radius: 5px; padding: 9px 11px; margin-bottom: 8px; page-break-inside: avoid; }");
+        sb.append(".qhead { width: 100%; margin-bottom: 5px; font-size: 10.5px; }");
+        sb.append(".qnum { font-weight: 700; color: ").append(NAVY).append("; }");
+        sb.append(".qtype { color: ").append(FAINT).append("; font-weight: 400; }");
+        sb.append(".qtext { font-size: 11px; color: ").append(INK).append("; margin: 2px 0 7px 0; }");
+        sb.append(".qrow { font-size: 10.5px; margin-bottom: 3px; }");
+        // 120px matches the label column the CODING block hardcodes inline, so
+        // every "Your Answer:" lines up regardless of question type.
+        sb.append(".qlabel { color: ").append(MUTED)
+                .append("; font-weight: 700; width: 120px; vertical-align: top; padding-right: 6px; }");
+        sb.append(".qfoot { font-size: 9.5px; color: ").append(FAINT).append("; margin-top: 6px; }");
+        sb.append(".qexp { font-size: 10px; color: ").append(MUTED).append("; background-color: #F5F7FA; border-left: 2px solid ")
+                .append(RULE).append("; padding: 5px 8px; margin-top: 6px; }");
         sb.append(".wm { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }");
         sb.append(".wm-text { position: absolute; top: 360pt; left: 100pt; font-size: 60px; font-weight: bold; white-space: nowrap; transform: rotate(-35deg); }");
         sb.append("</style>");
@@ -915,6 +948,171 @@ public class StudentReportHtmlV2Builder {
             sb.append("</table>");
         }
         sb.append("</div>");
+    }
+
+    // ------------------------------- 10b. question-wise detail (responses)
+
+    /**
+     * The student's actual attempt, question by question: question text, the
+     * response they submitted, the correct answer when they missed it, the
+     * coding submission, evaluator/AI feedback and the explanation.
+     *
+     * <p>This is the detail the compact ANSWER REVIEW table above summarizes.
+     * v2 originally shipped with the summary table alone, which silently
+     * dropped every response from the PDF once the download paths moved onto
+     * this builder — restored here in the v2 design language.
+     *
+     * <p>Answer content is extracted by {@link HtmlBuilderService} (option ids
+     * need resolving against OptionRepository, and the CODING block is a
+     * self-contained renderer); the layout is v2's.
+     */
+    private void appendQuestionDetail(StringBuilder sb, Input in, boolean manual) {
+        Map<String, List<StudentReportAnswerReviewDto>> reviews = reviewsBySection(in);
+        if (reviews.isEmpty()) {
+            return;
+        }
+        List<SectionView> sections = orderedSections(in, Collections.emptyMap(), reviews);
+
+        // Build into a scratch buffer first: only emit the page break and the
+        // heading if at least one card actually rendered.
+        StringBuilder body = new StringBuilder(16 * 1024);
+        boolean anyRendered = false;
+        for (SectionView section : sections) {
+            List<StudentReportAnswerReviewDto> rows = reviews.getOrDefault(section.id(), Collections.emptyList());
+            if (rows.isEmpty()) {
+                continue;
+            }
+            List<StudentReportAnswerReviewDto> sorted = new ArrayList<>(rows);
+            sorted.sort(Comparator.comparing(StudentReportAnswerReviewDto::getQuestionOrder,
+                    Comparator.nullsLast(Integer::compareTo)));
+
+            body.append("<div style=\"font-size: 11px; font-weight: 700; color: ").append(INK)
+                    .append("; padding: 10px 0 5px 0;\">").append(esc(sectionName(section))).append("</div>");
+            int fallbackNumber = 1;
+            for (StudentReportAnswerReviewDto row : sorted) {
+                if (row == null) {
+                    continue;
+                }
+                Integer number = row.getQuestionOrder();
+                appendQuestionCard(body, row, number != null ? number : fallbackNumber, manual);
+                fallbackNumber++;
+                anyRendered = true;
+            }
+        }
+        if (!anyRendered) {
+            return;
+        }
+
+        sb.append("<div style=\"page-break-before: always;\"></div>");
+        sb.append("<div>");
+        sb.append("<div class=\"h2\">QUESTION-WISE DETAIL</div>");
+        sb.append(body);
+        sb.append("</div>");
+    }
+
+    private void appendQuestionCard(StringBuilder sb, StudentReportAnswerReviewDto row, int number, boolean manual) {
+        String status = row.getAnswerStatus();
+        String color = statusColor(status);
+
+        sb.append("<div class=\"qcard\" style=\"border-left: 3px solid ").append(color).append(";\">");
+
+        // Header: "Q3. MCQ Single" on the left, status on the right.
+        sb.append("<table class=\"qhead\"><tr><td><span class=\"qnum\">Q").append(number).append(".</span>");
+        String type = HtmlBuilderService.formatQuestionType(row.getQuestionType());
+        if (!type.isEmpty()) {
+            sb.append(" <span class=\"qtype\">").append(esc(type)).append("</span>");
+        }
+        sb.append("</td><td style=\"text-align: right; color: ").append(color).append("; font-weight: 700;\">")
+                .append(dot(color)).append(statusLabel(status)).append("</td></tr></table>");
+
+        String questionText = HtmlBuilderService.stripHtmlTags(row.getQuestionName());
+        if (!questionText.isBlank()) {
+            sb.append("<div class=\"qtext\">").append(esc(truncate(questionText))).append("</div>");
+        }
+
+        appendStudentAnswer(sb, row, status);
+        appendCorrectAnswer(sb, row, status);
+
+        // Evaluator remark / AI copy-check feedback — the same per-question
+        // feedback the learner dashboard's answer review shows.
+        String feedback = row.getEvaluatorFeedback() != null && !row.getEvaluatorFeedback().isBlank()
+                ? row.getEvaluatorFeedback()
+                : row.getAiFeedback();
+        if (feedback != null && !feedback.isBlank()) {
+            appendQuestionRow(sb, "Feedback", HtmlBuilderService.stripHtmlTags(feedback), MUTED);
+        }
+
+        // Marks, and time only where time is meaningful (never on MANUAL).
+        StringBuilder foot = new StringBuilder();
+        boolean scored = QuestionResponseEnum.CORRECT.name().equals(status)
+                || QuestionResponseEnum.PARTIAL_CORRECT.name().equals(status);
+        foot.append(scored && row.getMark() > 0 ? "+" : "").append(fmt(row.getMark())).append(" marks");
+        if (!manual && row.getTimeTakenInSeconds() != null && row.getTimeTakenInSeconds() > 0) {
+            foot.append(" &nbsp;|&nbsp; ").append(HtmlBuilderService.convertToReadableTime(row.getTimeTakenInSeconds()));
+        }
+        sb.append("<div class=\"qfoot\">").append(foot).append("</div>");
+
+        String explanation = HtmlBuilderService.stripHtmlTags(row.getExplanation());
+        if (!explanation.isBlank()) {
+            sb.append("<div class=\"qexp\"><b>Explanation:</b> ").append(esc(truncate(explanation))).append("</div>");
+        }
+
+        sb.append("</div>");
+    }
+
+    /** "Your Answer" — mirrors the legacy branches, including the direct-marks and not-attempted cases. */
+    private void appendStudentAnswer(StringBuilder sb, StudentReportAnswerReviewDto row, String status) {
+        String response = row.getStudentResponseOptions();
+        if (response != null && "CODING".equals(row.getQuestionType())) {
+            // Self-contained renderer: summary line, test-case breakdown,
+            // runtime metrics and the submitted source in a monospace block.
+            htmlBuilderService.appendCodingAnswerBlock(sb, response, row.getCorrectOptions(), status);
+            return;
+        }
+        if (response != null) {
+            List<String> answers = htmlBuilderService.extractResponseContent(response);
+            if (!answers.isEmpty()) {
+                String color = QuestionResponseEnum.CORRECT.name().equals(status) ? GREEN
+                        : (QuestionResponseEnum.INCORRECT.name().equals(status) ? RED : INK);
+                appendQuestionRow(sb, "Your Answer", String.join(", ", answers), color);
+                return;
+            }
+        }
+        if (row.getMark() != 0) {
+            // Direct marks entry — no response JSON, but marks were awarded.
+            appendQuestionRow(sb, "Your Answer", "Marks awarded directly (" + fmt(row.getMark()) + ")",
+                    row.getMark() > 0 ? GREEN : RED);
+            return;
+        }
+        appendQuestionRow(sb, "Your Answer", "Not attempted", FAINT);
+    }
+
+    /** The correct answer, shown only when the student did not get full credit. */
+    private void appendCorrectAnswer(StringBuilder sb, StudentReportAnswerReviewDto row, String status) {
+        if (row.getCorrectOptions() == null || QuestionResponseEnum.CORRECT.name().equals(status)) {
+            return;
+        }
+        List<String> correct = htmlBuilderService.extractContent(row.getCorrectOptions());
+        if (correct.isEmpty()) {
+            return;
+        }
+        appendQuestionRow(sb, "CODING".equals(row.getQuestionType()) ? "Graded On" : "Correct Answer",
+                String.join(", ", correct), GREEN);
+    }
+
+    private void appendQuestionRow(StringBuilder sb, String label, String value, String color) {
+        sb.append("<table class=\"qrow\"><tr><td class=\"qlabel\">").append(label).append(":</td>")
+                .append("<td style=\"color: ").append(color).append(";\">")
+                .append(esc(truncate(value))).append("</td></tr></table>");
+    }
+
+    /** One long essay answer must not push the rest of the report off the page. */
+    private static String truncate(String text) {
+        if (text == null) {
+            return "";
+        }
+        String trimmed = text.trim();
+        return trimmed.length() > MAX_TEXT_CHARS ? trimmed.substring(0, MAX_TEXT_CHARS) + " ..." : trimmed;
     }
 
     // ------------------------------------------- manual: evaluated sheet

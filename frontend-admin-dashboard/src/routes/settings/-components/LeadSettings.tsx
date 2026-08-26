@@ -16,6 +16,7 @@ import LeadSlaSettings from './LeadSlaSettings';
 import LeadReportSettings from './LeadReportSettings';
 import LeadDedupSettings from './LeadDedupSettings';
 import PoolsList from './pools/PoolsList';
+import AudienceFormSettings from './AudienceFormSettings';
 // LOCAL ONLY — these power the Workbench tab where admins pick the leads team
 // and configure the counsellor rating strategy.
 import { CounsellorRatingSettings } from './CounsellorRatingSettings';
@@ -159,6 +160,7 @@ export default function LeadSettings() {
                 <TabsList className="mb-4">
                     <TabsTrigger value="config">Configuration</TabsTrigger>
                     <TabsTrigger value="pools">Pools</TabsTrigger>
+                    <TabsTrigger value="forms">Forms</TabsTrigger>
                     <TabsTrigger value="workbench">Workbench</TabsTrigger>
                 </TabsList>
 
@@ -181,6 +183,13 @@ export default function LeadSettings() {
 
                 <TabsContent value="pools">
                     <PoolsList />
+                </TabsContent>
+
+                {/* Institute-wide defaults for audience-list forms — currently the
+                    post-submit (thank-you / redirect) block that every new campaign
+                    is prefilled with. */}
+                <TabsContent value="forms" className="space-y-6">
+                    <AudienceFormSettings />
                 </TabsContent>
 
                 <TabsContent value="workbench" className="space-y-6">

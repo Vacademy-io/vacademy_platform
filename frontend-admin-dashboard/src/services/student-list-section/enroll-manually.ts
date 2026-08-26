@@ -84,6 +84,13 @@ export const enrollStudent = async ({
                 payment_initiation_request: paymentInitiationRequest,
                 custom_field_values: customFieldValues,
                 start_date: formData.stepThreeData?.start_date || new Date().toISOString(),
+                // Admin-entered override. Sent only when it is a real positive number, so
+                // a blank field falls back to the plan's validity and then the invite's,
+                // rather than being read as "zero days of access".
+                access_days: (() => {
+                    const days = parseInt(formData.stepThreeData?.access_days ?? '', 10);
+                    return Number.isFinite(days) && days > 0 ? days : undefined;
+                })(),
             },
             learner_extra_details: learnerExtraDetails,
             sub_org_id: getSelectedSubOrgId() || undefined,

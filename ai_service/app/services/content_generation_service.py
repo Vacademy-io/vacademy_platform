@@ -78,7 +78,35 @@ class ContentGenerationService:
         
         # Use the same model as outline generation
         self._content_model = "google/gemini-2.5-flash"
+        # DOCUMENT slides are now creative, self-contained HTML (rendered in an
+        # iframe) and benefit from a strong front-end model — same as the manual
+        # "AI document" authoring. gemini-2.5-flash produced visibly lower-craft
+        # pages. Overridable per-slide via todo.metadata.model. Env override:
+        # HTML_DOC_MODEL.
+        import os
+        self._html_doc_model = os.getenv("HTML_DOC_MODEL") or "anthropic/claude-sonnet-5"
+        # The model the user picked when creating the course. Set per run and
+        # used by EVERY content leg; the hardcoded models above are only the
+        # fallback when the user left it on "auto". Kept separate from
+        # _content_model so that stays a known-good retry target.
+        self._course_model: Optional[str] = None
         logger.info("[ContentGenService] ContentGenerationService fully initialized")
+
+    def _model_for(self, todo=None, default: Optional[str] = None) -> str:
+        """Which model generates this slide.
+
+        Precedence: a per-todo override (injected from the wizard's per-family
+        settings) → the model the user chose for the course → the hardcoded
+        default for this kind of content. So a user's pick is honoured
+        everywhere, and the hardcode is only ever the fallback.
+        """
+        if todo is not None:
+            picked = (getattr(todo, "metadata", None) or {}).get("model") or getattr(
+                todo, "model", None
+            )
+            if picked:
+                return picked
+        return self._course_model or default or self._content_model
 
     @staticmethod
     def _video_voice_kwargs(todo: Todo) -> dict:
@@ -123,33 +151,56 @@ class ContentGenerationService:
         Returns (generated_content, usage_info, used_model).
         """
         has_usage = hasattr(self._llm_client, 'generate_outline_with_usage')
-        try:
+
+        async def _call(use_model: str):
             if has_usage:
-                content, usage = await self._llm_client.generate_outline_with_usage(
-                    prompt=prompt, model=model
+                return await self._llm_client.generate_outline_with_usage(
+                    prompt=prompt, model=use_model
                 )
-            else:
-                content = await self._llm_client.generate_outline(prompt=prompt, model=model)
-                usage = {}
+            return await self._llm_client.generate_outline(prompt=prompt, model=use_model), {}
+
+        def _is_empty(text) -> bool:
+            return not (text or "").strip()
+
+        try:
+            content, usage = await _call(model)
+            # An EMPTY completion is a failure, not a result — reasoning models
+            # can spend their whole budget thinking and return nothing. Letting
+            # it through produced assessment slides that crashed the JSON parser
+            # ("argument of type 'NoneType' is not iterable") and shipped as
+            # silently-empty quizzes.
+            #
+            # Retry the SAME model once first: an empty completion is usually
+            # transient, and switching models is a worse outcome than simply
+            # asking again (a different model writes in a different voice, and
+            # for documents it is also the weaker fallback model).
+            if _is_empty(content):
+                logger.warning(
+                    f"Model '{model}' returned empty content; retrying the same model once"
+                )
+                content, usage = await _call(model)
+            if _is_empty(content):
+                raise ValueError(f"'{model}' returned empty content twice")
             return content, usage, model
         except PaymentRequiredError:
             # Out-of-credits is fatal by design — no fallback model will help.
             raise
         except Exception as e:
             if model == self._content_model:
+                # Already the fallback model, and it has had its same-model
+                # retry above — nothing left to try.
                 raise
             logger.warning(
                 f"Model '{model}' failed ({e}); retrying with default '{self._content_model}'"
             )
-            if has_usage:
-                content, usage = await self._llm_client.generate_outline_with_usage(
-                    prompt=prompt, model=self._content_model
+            content, usage = await _call(self._content_model)
+            if _is_empty(content):
+                # Both the chosen model and the fallback came back empty — fail
+                # loudly so the slide is reported as an ERROR rather than saved
+                # blank.
+                raise ValueError(
+                    f"both '{model}' and fallback '{self._content_model}' returned empty content"
                 )
-            else:
-                content = await self._llm_client.generate_outline(
-                    prompt=prompt, model=self._content_model
-                )
-                usage = {}
             return content, usage, self._content_model
 
     async def generate_document_content(
@@ -177,9 +228,10 @@ class ContentGenerationService:
             is_homework_solutions = "homework solutions" in title_lower or "assignment solutions" in title_lower
 
             language = (todo.metadata or {}).get("language", "English")
-            # Honor the model chosen at outline time (same resolution as AI_VIDEO);
-            # fall back to the service default.
-            model = (todo.metadata or {}).get("model") or todo.model or self._content_model
+            # Honor an explicitly-injected model (e.g. the wizard's pick); else
+            # default DOCUMENT slides to the strong HTML model (claude-sonnet-5),
+            # matching the manual "AI document" craft — NOT the fast content model.
+            model = self._model_for(todo, default=self._html_doc_model)
 
             if is_homework_questions:
                 logger.info(f"Using homework (coding/task-focused) prompt for slide: {todo.path}")
@@ -215,6 +267,13 @@ class ContentGenerationService:
                     include_diagrams=include_diagrams,
                     language=language,
                     reference_figures=self._document_figures_by_path.get(todo.path, []),
+                    # Course-wide document content-type selection (Notes/Flashcards/
+                    # Quiz/…), injected onto DOCUMENT todos from the wizard.
+                    content_types=(todo.metadata or {}).get("content_types"),
+                    # What the chapter's OTHER slides teach — repetition control.
+                    sibling_titles=(todo.metadata or {}).get("sibling_titles"),
+                    # Source-figure policy from the wizard (REQUIRE/PREFER/GENERATED_ONLY).
+                    figures_policy=(todo.metadata or {}).get("figures_policy"),
                 )
             
             # Generate content using the enhanced prompt and capture token usage
@@ -311,7 +370,7 @@ class ContentGenerationService:
             
             language = (todo.metadata or {}).get("language", "English")
             # Honor the model chosen at outline time; fall back to the service default.
-            model = (todo.metadata or {}).get("model") or todo.model or self._content_model
+            model = self._model_for(todo)
             # Build assessment prompt using template similar to media-service PROMPT_TO_QUESTIONS
             assessment_prompt = ContentGenerationPrompts.build_assessment_prompt(
                 text_prompt=prompt,
@@ -1011,7 +1070,7 @@ class ContentGenerationService:
 
             code_content = await self._llm_client.generate_outline(
                 prompt=code_prompt,
-                model=self._content_model,
+                model=self._model_for(todo),
             )
 
             # Extract code language from prompt or default to python
@@ -1021,7 +1080,7 @@ class ContentGenerationService:
             layout = self._extract_layout_preference(todo.prompt) or "split-left"
 
             # Parametric per-slide charge, now that both legs succeeded.
-            self._bill_slide(tool_key="course_slide_video", todo=todo, model=self._content_model)
+            self._bill_slide(tool_key="course_slide_video", todo=todo, model=self._model_for(todo))
 
             # Format response
             return {
@@ -1130,7 +1189,7 @@ class ContentGenerationService:
             if hasattr(self._llm_client, 'generate_outline_with_usage'):
                 code_content, usage_info = await self._llm_client.generate_outline_with_usage(
                     prompt=code_prompt,
-                    model=self._content_model,
+                    model=self._model_for(todo),
                 )
                 
                 # Record token usage for content generation
@@ -1138,7 +1197,7 @@ class ContentGenerationService:
                     try:
                         token_service = TokenUsageService(self._db_session)
                         # Determine provider based on model
-                        api_provider = ApiProvider.GEMINI if "gemini" in self._content_model.lower() else ApiProvider.OPENAI
+                        api_provider = ApiProvider.GEMINI if "gemini" in self._model_for(todo).lower() else ApiProvider.OPENAI
                         token_service.record_usage_and_deduct_credits(
                             api_provider=api_provider,
                             prompt_tokens=usage_info.get("prompt_tokens", 0),
@@ -1147,14 +1206,14 @@ class ContentGenerationService:
                             request_type=RequestType.CONTENT,
                             institute_id=self._institute_id,
                             user_id=self._user_id,
-                            model=self._content_model,
+                            model=self._model_for(todo),
                         )
                     except Exception as e:
                         logger.warning(f"Failed to record content generation token usage: {str(e)}")
             else:
                 code_content = await self._llm_client.generate_outline(
                     prompt=code_prompt,
-                    model=self._content_model,
+                    model=self._model_for(todo),
                 )
             
             # Extract code language and layout
@@ -1242,6 +1301,13 @@ class ContentGenerationService:
         Extract JSON from LLM response, handling markdown code blocks and other formatting.
         Matches the pattern from media-service JsonUtils.extractAndSanitizeJson.
         """
+        # Defensive: a None/empty completion used to raise TypeError here
+        # ("argument of type 'NoneType' is not iterable"), which surfaced as an
+        # unhelpful error on the slide. Callers now retry empties upstream; this
+        # keeps the parser itself honest.
+        if not response:
+            raise ValueError("empty LLM response — nothing to parse")
+
         # Remove markdown code blocks if present
         if "```json" in response:
             start = response.find("```json") + 7

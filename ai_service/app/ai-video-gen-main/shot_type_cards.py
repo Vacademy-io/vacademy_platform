@@ -354,6 +354,30 @@ DO_NOT_RULES = (
 # default suggestion instead of a hard requirement.
 # ---------------------------------------------------------------------------
 
+STAGING_KIT = (
+    "\n**DOCUMENTARY STAGING KIT (preferred over flat panels)**:\n"
+    "Reference documentaries do not put text on a background — they STAGE artifacts on a "
+    "surface and let camera movement and annotation do the explaining. These classes are "
+    "pre-injected; compose them:\n"
+    "- GROUND (pick one, never a flat fill): `.stage-paper` (cream + faint grid), "
+    "`.stage-slate` (dark + grid), `.stage-desk` (wood). Add `.stage-grid-patch` in a corner "
+    "as a compositional accent.\n"
+    "- ARTIFACT: wrap an image in `<div class='artifact'>` for a real shadow + slight tilt; "
+    "add `.artifact-laid` so it lies ON the surface in perspective, `.artifact-tilt-r` to "
+    "tilt the other way, `.print-frame` for a photo print, `.aged-edge` for an old document, "
+    "`.film-strip` to frame footage or a still as 35mm.\n"
+    "- ANNOTATION IS A CHARACTER: `<span class='marker-hl'>` draws a marker stroke over the "
+    "exact words the narration is citing; `<hr class='swash-underline'>` is a hand-drawn "
+    "underline. Use `annotate(...)` for circles/arrows. Point AT the evidence.\n"
+    "- CHRONOLOGY: `.spine` (dashed axis) + `.spine-node` (ringed dot) for dated sequences, "
+    "with items alternating sides.\n"
+    "- CAMERA: prefer HOLDING one artifact and pushing in on the detail being narrated "
+    "(`gsap.to(el,{scale:1.18, x:-90, duration:8, ease:'none'})`) over cutting to a new "
+    "invented layout every beat. One artifact studied for 15s beats three panels of text.\n"
+    "- Two or three staged objects with depth and shadow read as film. A centered headline "
+    "over a flat rectangle reads as a slide deck. Choose the former.\n\n"
+)
+
 CORE_PREAMBLE_ASPIRATIONAL = (
     "You are an expert Educational Video Designer creating premium, distinctive visuals for LEARNING VIDEOS.\n"
     "Think: 3Blue1Brown, Vox Explained, Apple keynote inserts, top brand reels — visually rich, memorable, never templated.\n"
@@ -2222,21 +2246,51 @@ def get_cards_for_domain(subject_domain: str) -> List[str]:
     return types
 
 
-def _format_card(card: Dict[str, Any], *, marketing: bool = False) -> str:
+def _format_card(
+    card: Dict[str, Any],
+    *,
+    marketing: bool = False,
+    composition: str = "",
+) -> str:
     """Format a single shot type card as prompt text.
 
     `marketing=True` swaps in the card's MARKETING_EXAMPLES exemplar (when one
     exists) and drops whiteboard-prescribing guideline lines — the example code
     is the strongest signal in the prompt, so in marketing mode it must SHOW
     the premium look rather than the flat educational look.
+
+    `composition` does the same job for the assigned frame. Every card's own
+    exemplar is centre-stacked (`.full-screen-center` > `.layout-hero` > centred
+    h1 + sub + svg), so educational runs were shown the one frame the preamble
+    prose asks them to avoid — and the example won, every time. Passing a
+    composition swaps in an exemplar that BUILDS that frame, and drops the
+    guideline bullets that hard-prescribe centring so the card stops
+    contradicting the contract.
     """
     html = card["html_template"]
     script = card.get("script_block")
+    composition_bans: tuple = ()
     if marketing:
         ex = MARKETING_EXAMPLES.get(card["id"])
         if ex:
             html = ex["html"]
             script = ex["script"]
+    elif composition:
+        try:
+            from composition_kit import (
+                COMPOSITION_GUIDELINE_BANS,
+                exemplar_for,
+            )
+
+            cex = exemplar_for(composition, card.get("id", ""))
+            if cex:
+                html = cex["html"]
+                script = cex["script"]
+                composition_bans = tuple(COMPOSITION_GUIDELINE_BANS)
+        except Exception:
+            # Never fail prompt assembly over an exemplar swap — the card's
+            # own example is a valid fallback.
+            pass
     lines = [
         f"**SHOT TYPE: {card['id']}** — {card['description']}",
         f"USE FOR: {card['use_for']}",
@@ -2252,6 +2306,7 @@ def _format_card(card: Dict[str, Any], *, marketing: bool = False) -> str:
         kept = [
             g for g in card["guidelines"]
             if not (marketing and any(ban in g for ban in _MARKETING_GUIDELINE_BANS))
+            and not any(ban in g for ban in composition_bans)
         ]
         if kept:
             lines.append("Guidelines:")
@@ -2360,6 +2415,7 @@ def build_per_shot_system_prompt(
     aspirational: bool = False,
     cultural_context: Any = None,
     mode: str = "educational",
+    composition: str = "",
 ) -> str:
     """Build a system prompt with only ONE shot type card.
 
@@ -2378,6 +2434,13 @@ def build_per_shot_system_prompt(
     exemplars swapped into the shot card — instead of the old approach of
     stacking a prose override on top of the whiteboard doctrine (which the
     whiteboard example code always beat). See MARKETING_PREAMBLE above.
+
+    `composition` (optional) — the frame composition assigned to THIS shot by
+    the ShotPlanner / `composition_kit.assign_compositions`. When supplied, a
+    COMPOSITION CONTRACT block is injected carrying the concrete skeleton for
+    that frame. This exists because the card exemplars are all centre-stacked
+    and the model copies the example over the prose: the contract has to speak
+    in code to outrank them. See composition_kit for the full rationale.
 
     `cultural_context` (optional `CulturalContext` instance) — when present
     AND has a region, the prompt gets a `<CULTURAL_CONTEXT>` block teaching
@@ -2398,12 +2461,19 @@ def build_per_shot_system_prompt(
         do_not = DO_NOT_RULES_TECHNICAL
         principles = MARKETING_PRINCIPLES
     else:
-        preamble = CORE_PREAMBLE_ASPIRATIONAL if aspirational else CORE_PREAMBLE
+        preamble = (CORE_PREAMBLE_ASPIRATIONAL + STAGING_KIT) if aspirational else CORE_PREAMBLE
         do_not = DO_NOT_RULES_TECHNICAL if aspirational else DO_NOT_RULES
         principles = EDUCATIONAL_PRINCIPLES_ASPIRATIONAL if aspirational else EDUCATIONAL_PRINCIPLES
 
     card_text = (
-        _format_card(card, marketing=is_marketing)
+        # The composition exemplar only applies to aspirational (ultra) runs.
+        # Marketing has its own compiled design language and takes precedence;
+        # standard/premium keep the conservative card example.
+        _format_card(
+            card,
+            marketing=is_marketing,
+            composition=composition if (composition and aspirational) else "",
+        )
         .replace("{canvas_width}", str(width))
         .replace("{canvas_height}", str(height))
         .replace("{aspect_label}", aspect_label)
@@ -2443,6 +2513,20 @@ def build_per_shot_system_prompt(
     cultural_block = build_cultural_context_block(cultural_context)
     if cultural_block:
         parts.append(cultural_block)
+
+    # COMPOSITION CONTRACT — late in the prompt, deliberately: it must be read
+    # AFTER the shot card's (centre-stacked) exemplar, and recency matters.
+    #
+    # Skipped for marketing/bold: that mode is a COMPILED design language whose
+    # whole point is that the prompt makes one coherent argument (see
+    # MARKETING_PREAMBLE). Layering a contract that says "do not reproduce the
+    # card's example layout" on top of exemplars chosen to demonstrate the
+    # premium look is exactly the stacked-override pattern that mode was built
+    # to replace.
+    if composition and not is_marketing:
+        from composition_kit import contract_block as _composition_contract
+
+        parts.append(_composition_contract(composition, shot_type))
 
     # OUTPUT FORMAT — strict JSON envelope. Three JSON parse failures on shots
     # 2/3/4 of the same run were caused by the per-shot prompt never asserting

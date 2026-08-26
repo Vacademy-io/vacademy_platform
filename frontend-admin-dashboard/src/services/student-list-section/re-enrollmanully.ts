@@ -56,6 +56,13 @@ export const reEnrollStudent = async ({ formData }: EnrollStudentRequest): Promi
                 plan_id: formData.stepFourData?.plan_id || undefined,
                 payment_initiation_request: paymentInitiationRequest,
                 learner_extra_details: learnerExtraDetails,
+                // Same override as first-time enrollment — the wizard shares step three,
+                // so the admin sees the Access Days field on re-enrollment too and it has
+                // to mean the same thing here.
+                access_days: (() => {
+                    const days = parseInt(formData.stepThreeData?.access_days ?? '', 10);
+                    return Number.isFinite(days) && days > 0 ? days : undefined;
+                })(),
             },
         };
 

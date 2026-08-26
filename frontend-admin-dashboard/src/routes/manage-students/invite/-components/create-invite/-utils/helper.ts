@@ -427,10 +427,15 @@ export function convertInviteData(
         currency: inviteCurrency,
         tag: '',
         is_bundled: isBundle,
-        learner_access_days:
-            data.selectedPlan?.type?.toLowerCase() === 'subscription'
-                ? data.accessDurationDays
-                : null,
+        // The invite's own access window. The backend reads this for FREE and DONATION
+        // plans (which have no plan-level validity); ONE_TIME and SUBSCRIPTION take their
+        // days from the payment plan instead. It used to be sent *only* for subscription
+        // — the one type that ignores it — so free and donation invites always granted
+        // unlimited access no matter what the admin entered.
+        learner_access_days: (() => {
+            const days = parseInt(data.accessDurationDays ?? '', 10);
+            return Number.isFinite(days) && days > 0 ? days : null;
+        })(),
         web_page_meta_data_json: JSON.stringify(jsonMetaData),
         setting_json: (() => {
             const existing = existingInviteDetails?.setting_json

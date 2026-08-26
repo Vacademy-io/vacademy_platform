@@ -54,6 +54,8 @@ const BookingCustomFields = ({
                       control={control}
                       country={phoneCountry}
                       required={field.is_mandatory}
+                      labelClassName="text-subtitle font-regular"
+                      inputClassName="!text-subtitle placeholder:!text-body"
                     />
                   </FormControl>
                 </FormItem>

@@ -1,4 +1,4 @@
-import { TrashSimple } from "@phosphor-icons/react"
+import { TrashSimple } from "@phosphor-icons/react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -15,39 +15,31 @@ import { Doubt as DoubtType } from "../types/get-doubts-type";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-export const DeleteDoubt = ({doubt, refetch}: {doubt: DoubtType, refetch: () => void}) => {
+export const DeleteDoubt = ({ doubt, refetch }: { doubt: DoubtType; refetch: () => void }) => {
     const { t } = useTranslation("studyContent");
     const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
     const addDoubt = useAddDoubt();
 
     const handleDeleteDoubt = () => {
-        const doubtData: DoubtType = {
-            ...doubt,
-            status: "DELETED",
-        }
-
-        addDoubt.mutate(doubtData, {
-            onSuccess: () => {
-                if (refetch) {
-                    refetch()
-                }
-            },
-            onError: () => {
-                toast.error(t("doubts.errorDeleting"))
+        addDoubt.mutate(
+            { ...doubt, status: "DELETED" },
+            {
+                onSuccess: () => refetch(),
+                onError: () => toast.error(t("doubts.errorDeleting")),
             }
-        })
+        );
         setShowDeleteDialog(false);
-        refetch();
-    }
+    };
 
-    return(
+    return (
         <>
-            <button 
+            <button
+                type="button"
                 onClick={() => setShowDeleteDialog(true)}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200 border border-red-200/60 hover:border-red-300 group"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs font-semibold text-neutral-600 transition-colors hover:bg-danger-50 hover:text-danger-600"
             >
-                <TrashSimple size={16} className="text-red-500 group-hover:text-red-600 transition-colors" />
-                <span className="font-medium">{t("doubts.delete")}</span>
+                <TrashSimple size={12} />
+                {t("doubts.delete")}
             </button>
             <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
                 <AlertDialogContent>
@@ -59,12 +51,15 @@ export const DeleteDoubt = ({doubt, refetch}: {doubt: DoubtType, refetch: () => 
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>{t("doubts.cancel")}</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteDoubt} className="bg-danger-500 text-white">
+                        <AlertDialogAction
+                            onClick={handleDeleteDoubt}
+                            className="bg-danger-500 text-white hover:bg-danger-600"
+                        >
                             {t("doubts.delete")}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
         </>
-    )
-}
+    );
+};

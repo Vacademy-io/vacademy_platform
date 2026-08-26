@@ -7,7 +7,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
+import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationSourceEnum;
 import vacademy.io.admin_core_service.features.learner_operation.service.LearnerOperationService;
+import vacademy.io.admin_core_service.features.slide.enums.SlideTypeEnum;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.VideoActivityLogDTO;
@@ -293,6 +296,94 @@ public class LearnerTrackingService {
             CustomUserDetails userDetails) {
         Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithAudios(userId, slideId, pageable);
         return activityLogs.map(ActivityLog::toActivityLogDTO);
+    }
+
+    /**
+     * Explicit "mark as complete" for one slide — the checkbox every mainstream
+     * course player (Udemy, Coursera, LinkedIn Learning) puts beside a lesson.
+     *
+     * Automatic tracking stays the primary signal. This is the manual override
+     * for what the heuristics cannot see: a one-page PDF read at a glance, a
+     * reading the learner did on paper, a video they had already watched before
+     * enrolling. Writing it through learner_operation means it feeds the exact
+     * same chapter / module / subject / package_session rollups as consumption,
+     * so progress bars, drip unlocks and certificates all agree.
+     *
+     * MARKED_AS_WATCHED records that the 100 came from the learner rather than
+     * from consumption. That is what makes un-marking correct rather than
+     * destructive: on the way back out the stored percentage is recomputed from
+     * the real activity logs instead of being left pinned at 100 or reset to 0.
+     *
+     * Deliberately does NOT reuse the async cascade's
+     * addOrUpdatePercentageOperation helper: that one is monotonic for slides
+     * (it refuses to lower an existing value), which is right for consumption
+     * events and wrong for an explicit un-mark.
+     */
+    @Transactional
+    public boolean markSlideCompletion(String slideId, String slideType, String chapterId, String moduleId,
+            String subjectId, String packageSessionId, boolean completed, CustomUserDetails user) {
+        if (!StringUtils.hasText(slideId)) {
+            throw new InvalidRequestException("slideId is required to mark completion.");
+        }
+        if (!StringUtils.hasText(slideType)) {
+            throw new InvalidRequestException("slideType is required to mark completion.");
+        }
+
+        String userId = user.getUserId();
+        String source = LearnerOperationSourceEnum.SLIDE.name();
+        String percentageOperation = percentageOperationForSlideType(slideType);
+
+        if (completed) {
+            learnerOperationService.addOrUpdateOperation(userId, source, slideId, percentageOperation, "100.0");
+            learnerOperationService.addOrUpdateOperation(userId, source, slideId,
+                    LearnerOperationEnum.MARKED_AS_WATCHED.name(), "true");
+            learnerTrackingAsyncService.updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId,
+                    packageSessionId);
+            return true;
+        }
+
+        learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId, source, slideId,
+                LearnerOperationEnum.MARKED_AS_WATCHED.name());
+        learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId, source, slideId,
+                percentageOperation);
+        // Re-derive the honest percentage from the activity logs and re-run the
+        // rollups, so un-marking a slide the learner HAS partly consumed drops
+        // back to that real figure rather than to zero.
+        learnerTrackingAsyncService.updateLearnerOperationsForSlideTrigger(userId, slideId, slideType, chapterId,
+                moduleId, subjectId, packageSessionId);
+        return false;
+    }
+
+    /**
+     * Which learner_operation carries "how much of this slide is done" for a
+     * given slide type.
+     *
+     * Every type reads a DIFFERENT operation (see SlideRepository's per-type
+     * UNION branches), so this cannot fall back to a default the way the
+     * structural-edit trigger does: writing PERCENTAGE_DOCUMENT_COMPLETED for,
+     * say, a QUIZ would leave the slide showing incomplete — its branch never
+     * reads that row — while still inflating the chapter rollup, which sums
+     * across all of them.
+     *
+     * Graded and self-reporting types are refused outright rather than mapped.
+     * Completion there is earned, not declared: a quiz, question, assignment or
+     * assessment completes by submission and SCORM reports its own status, so a
+     * "mark as complete" button would be claiming a score the learner has not
+     * got. Mainstream players draw the same line — Udemy and Coursera let you
+     * tick a lecture or a reading, never a graded item.
+     */
+    private String percentageOperationForSlideType(String slideType) {
+        if (SlideTypeEnum.VIDEO.name().equals(slideType) || SlideTypeEnum.HTML_VIDEO.name().equals(slideType)) {
+            return LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name();
+        }
+        if (SlideTypeEnum.AUDIO.name().equals(slideType)) {
+            return LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED.name();
+        }
+        if (SlideTypeEnum.DOCUMENT.name().equals(slideType)) {
+            return LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name();
+        }
+        throw new InvalidRequestException(
+                "Slide type " + slideType + " cannot be marked complete by hand; it completes on submission.");
     }
 
 }

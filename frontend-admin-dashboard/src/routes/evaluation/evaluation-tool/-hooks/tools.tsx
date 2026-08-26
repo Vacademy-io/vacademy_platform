@@ -1,5 +1,4 @@
-import { Canvas } from 'fabric';
-import useFabric from './canvas'; // Adjust the import path as necessary
+import useFabric, { EvaluationTool } from './canvas';
 import {
     Check,
     Trash as Trash2,
@@ -11,11 +10,19 @@ import {
     Cursor,
 } from '@phosphor-icons/react';
 
-const useCanvasTools = (fabricCanvas: Canvas | null) => {
-    const canvasUtils = useFabric(fabricCanvas);
-
-    const tools = [
+// Takes the SAME canvasUtils instance the caller already created (rather than
+// building its own via useFabric) so the toolbar's active-tool state and the
+// tool actions below always agree on what's currently armed.
+const useCanvasTools = (canvasUtils: ReturnType<typeof useFabric>) => {
+    const tools: {
+        key: EvaluationTool;
+        icon: typeof Cursor;
+        label: string;
+        color: string;
+        action: () => void;
+    }[] = [
         {
+            key: 'select',
             icon: Cursor,
             label: 'Select',
             color: 'text-neutral-600',
@@ -24,68 +31,69 @@ const useCanvasTools = (fabricCanvas: Canvas | null) => {
             },
         },
         {
+            key: 'pen',
             icon: Pen,
             label: 'Pen',
             color: 'text-green-600',
             action: () => {
-                canvasUtils.addPenTool('green');
+                canvasUtils.addPenTool();
             },
         },
         {
+            key: 'tick',
             icon: Check,
             label: 'Tick',
             color: 'text-green-600',
             action: () => {
-                canvasUtils.disableDrawingMode();
                 canvasUtils.addTick();
             },
         },
         {
+            key: 'cross',
             icon: X,
             label: 'Cross',
             color: 'text-red-600',
             action: () => {
-                canvasUtils.disableDrawingMode();
                 canvasUtils.addCross();
             },
         },
         {
+            key: 'text',
             icon: Type,
             label: 'Text',
             color: 'text-black',
             action: () => {
-                canvasUtils.disableDrawingMode();
                 canvasUtils.addTextBox();
             },
         },
         {
+            key: 'box',
             icon: Rectangle,
             label: 'Box',
             color: 'text-black',
             action: () => {
-                canvasUtils.disableDrawingMode();
                 canvasUtils.addRectangle();
             },
         },
         {
+            key: 'circle',
             icon: Circle,
             label: 'Circle',
             color: 'text-black',
             action: () => {
-                canvasUtils.disableDrawingMode();
                 canvasUtils.addCircle();
             },
         },
-        {
-            icon: Trash2,
-            label: 'Delete',
-            color: 'text-red-600',
-            action: () => {
-                canvasUtils.disableDrawingMode();
-                canvasUtils.deleteSelectedShape();
-            },
-        },
     ];
+
+    const deleteTool = {
+        icon: Trash2,
+        label: 'Delete',
+        color: 'text-red-600',
+        action: () => {
+            canvasUtils.deleteSelectedShape();
+        },
+    };
 
     const numbers = [
         ...Array.from({ length: 10 }, (_, i) => ({
@@ -102,7 +110,7 @@ const useCanvasTools = (fabricCanvas: Canvas | null) => {
         { value: '.', action: () => canvasUtils.addNumber('.') },
     ];
 
-    return { tools, numbers };
+    return { tools, deleteTool, numbers };
 };
 
 export default useCanvasTools;

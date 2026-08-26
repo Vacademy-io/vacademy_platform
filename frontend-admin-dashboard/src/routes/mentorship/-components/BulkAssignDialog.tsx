@@ -5,6 +5,8 @@ import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { cn } from '@/lib/utils';
 import { MenteePicker } from './MenteePicker';
+import { reportApiError } from '@/lib/report-api-error';
+import { assignmentNeedsAttention, assignmentResultMessage } from '../-utils/assignment-result';
 import { useBulkRoundRobin } from '../-hooks/use-mentorship';
 import type { MentorDTO, StudentRow } from '../-types/mentorship-types';
 
@@ -47,11 +49,21 @@ export function BulkAssignDialog({ mentors, instituteId, open, onOpenChange }: B
                 student_user_ids: selectedStudents.map((s) => s.user_id),
                 mentor_ids: selectedMentorIds,
             });
-            toast.success(`Assigned ${res.assigned}${res.skipped ? `, ${res.skipped} skipped` : ''}`);
+            const message = assignmentResultMessage(res, 'bulk');
+            if (assignmentNeedsAttention(res)) toast.warning(message);
+            else toast.success(message);
             reset();
             onOpenChange(false);
-        } catch {
-            toast.error('Failed to distribute assignments');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'bulk-round-robin' },
+                extra: {
+                    mentorCount: selectedMentorIds.length,
+                    studentCount: selectedStudents.length,
+                },
+                fallbackMessage: 'Failed to distribute assignments',
+            });
         } finally {
             setSubmitting(false);
         }

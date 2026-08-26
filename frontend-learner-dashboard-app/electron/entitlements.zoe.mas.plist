@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Mandatory for the Mac App Store. Also what confines the OTA web bundle to
+       the app's own container (see electron/src/ota.ts) — no extra entitlement is
+       needed to write there, and nothing outside it is reachable. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <!-- The app is a web client: it talks to backend-stage.vacademy.io and S3/CloudFront. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Learners save/open course material and offline downloads. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+  <!-- Live classes (BBB) use camera + mic. Drop either key if the Mac build
+       is not meant to join classes — an unused entitlement invites rejection. -->
+  <key>com.apple.security.device.camera</key>
+  <true/>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <!-- Bundle id io.zoeedtech.app on team 7XKD5M7288 (Saurabh Kumar). This is the
+       SAME bundle id as the ZOE Online School iOS app, so the Mac build joins the
+       EXISTING app record (id 6794024192) as its macOS platform. A different id
+       would create a separate listing instead. -->
+  <key>com.apple.application-identifier</key>
+  <string>7XKD5M7288.io.zoeedtech.app</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>7XKD5M7288</string>
+</dict>
+</plist>

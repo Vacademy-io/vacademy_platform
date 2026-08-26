@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.mentorship.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -33,6 +34,22 @@ public class MentorDTO {
     private String googleEmail;      // the connected account's email (for display)
     private String status;
     private Integer assignedStudentCount;
+
+    /** Topics this mentor covers, exploded from the comma-separated column. */
+    private List<String> expertiseTags;
+    /** Max ACTIVE mentees; null = unlimited. */
+    private Integer maxMentees;
+    /** Remaining capacity; null when {@code maxMentees} is null. */
+    private Integer availableSlots;
+    /** True when assignment would exceed {@code maxMentees} — assignment skips this mentor. */
+    private Boolean atCapacity;
+    /** Whether learners can find and request this mentor. */
+    private Boolean isDiscoverable;
+
+    /** Mean of this mentor's session ratings (1 decimal); null when nobody has rated them. */
+    private Double averageRating;
+    /** How many ratings that average is based on. */
+    private Integer ratingCount;
 
     // Auth-hydrated identity (fallbacks when the mentor profile omits its own).
     private String name;

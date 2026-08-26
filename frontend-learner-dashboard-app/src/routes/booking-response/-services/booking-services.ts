@@ -62,7 +62,12 @@ export interface BookingView {
 }
 
 export interface BookRequest {
-  name: string;
+  /**
+   * Required on the public endpoint. Optional on the authenticated one, which fills
+   * name, email and phone in from the caller's own account when they're omitted —
+   * a signed-in learner has already told us who they are.
+   */
+  name?: string;
   email?: string;
   phone?: string;
   start_time: string; // ISO offset datetime

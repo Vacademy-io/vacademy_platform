@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { Calendar } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarBlank } from '@phosphor-icons/react';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { useBulkDeassign } from '@/routes/manage-students/students-list/-services/bulkAssignService';
@@ -200,47 +200,66 @@ export const DeassignCourseDialog = ({
                         <p className="text-[11px] font-medium text-neutral-600">
                             Last access date
                         </p>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    className={cn(
-                                        'flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs transition-colors hover:border-neutral-300',
-                                        accessTillDate ? 'text-neutral-800' : 'text-neutral-500'
-                                    )}
-                                >
-                                    <CalendarBlank className="size-3.5 text-neutral-400" />
-                                    {accessTillDate
-                                        ? format(new Date(accessTillDate), 'dd MMM yyyy')
-                                        : defaultExpiry
-                                          ? `Plan expiry — ${format(defaultExpiry, 'dd MMM yyyy')}`
-                                          : 'Respect plan expiry'}
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start" portal={false}>
-                                <Calendar
-                                    mode="single"
-                                    selected={
-                                        accessTillDate
-                                            ? new Date(accessTillDate)
-                                            : defaultExpiry ?? undefined
-                                    }
-                                    defaultMonth={
-                                        accessTillDate
-                                            ? new Date(accessTillDate)
-                                            : defaultExpiry ?? undefined
-                                    }
-                                    onSelect={(date) => {
-                                        if (date) setAccessTillDate(format(date, 'yyyy-MM-dd'));
-                                    }}
-                                    initialFocus
-                                />
-                            </PopoverContent>
-                        </Popover>
+                        <div className="flex items-center gap-1.5">
+                            {/* Typed entry. yyyy-MM-dd is exactly the shape accessTillDate
+                                holds and the API expects, so the value maps straight through
+                                with no parsing. Also gives the browser's own picker, which
+                                renders natively and can never be clipped by the dialog. */}
+                            <Input
+                                type="date"
+                                aria-label="Last access date"
+                                value={accessTillDate ?? ''}
+                                onChange={(e) => setAccessTillDate(e.target.value || null)}
+                                className="h-8 w-36 text-xs"
+                            />
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <button
+                                        type="button"
+                                        aria-label="Pick last access date from calendar"
+                                        className="flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-600 transition-colors hover:border-neutral-300"
+                                    >
+                                        <CalendarBlank className="size-3.5 text-neutral-400" />
+                                    </button>
+                                </PopoverTrigger>
+                                {/* Portalled (the default) rather than inline: MyDialog wraps its
+                                    body in a vertical scroll area inside a capped-height,
+                                    overflow-hidden shell, so an inline popover gets clipped —
+                                    a 6-row month lost its last week. The popover has no internal
+                                    scrolling, so the reason PopoverContent offers the inline
+                                    escape hatch doesn't apply here. Stacking is left to DOM
+                                    order: the portal mounts after the dialog, so at equal
+                                    z-index it still paints above it. */}
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        // Always render 6 week rows so the height is identical
+                                        // in every month — no reflow, nothing to clip.
+                                        fixedWeeks
+                                        selected={
+                                            accessTillDate
+                                                ? new Date(accessTillDate)
+                                                : defaultExpiry ?? undefined
+                                        }
+                                        defaultMonth={
+                                            accessTillDate
+                                                ? new Date(accessTillDate)
+                                                : defaultExpiry ?? undefined
+                                        }
+                                        onSelect={(date) => {
+                                            if (date) setAccessTillDate(format(date, 'yyyy-MM-dd'));
+                                        }}
+                                        initialFocus
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
                         <p className="text-[10px] text-neutral-400">
                             {accessTillDate
                                 ? 'Access ends on the selected date.'
-                                : 'Leave as-is to keep access until the plan’s own expiry.'}
+                                : defaultExpiry
+                                  ? `Leave empty to keep access until the plan’s own expiry — ${format(defaultExpiry, 'dd MMM yyyy')}.`
+                                  : 'Leave empty to keep access until the plan’s own expiry.'}
                             {accessTillDate && (
                                 <button
                                     type="button"

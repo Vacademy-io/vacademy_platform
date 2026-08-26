@@ -66,6 +66,15 @@ public class AiAgent {
     @Column(name = "tts_model", length = 32)
     private String ttsModel;
 
+    /**
+     * TTS speech-cache tier for this agent: {@code OFF} | {@code FIXED} | {@code FULL}
+     * (V466). Per-agent rather than per-box because the voice bot's env switches are
+     * process-wide, and rolling out to one agent, watching a batch, then widening is
+     * the shape this needs. See docs/crm/TTS_SPEECH_CACHE.md.
+     */
+    @Column(name = "speech_cache_mode", length = 16)
+    private String speechCacheMode;
+
     @Column(name = "opening_line", columnDefinition = "TEXT")
     private String openingLine;
 

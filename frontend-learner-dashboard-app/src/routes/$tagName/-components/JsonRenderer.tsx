@@ -34,6 +34,7 @@ import {
   Check,
 } from "@phosphor-icons/react";
 import { HeaderComponent } from "./components/HeaderComponent";
+import { HtmlPageSection } from './components/HtmlPageSection';
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
 import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
@@ -305,6 +306,20 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             instituteId={instituteId}
             tagName={tagName}
             isPreviewMode={isPreviewMode}
+          />
+        );
+
+      case "htmlPage":
+        // A whole pasted page. Always a page's only component (created by the
+        // Add Page > HTML page flow), so it takes the site stylesheet and
+        // binds the action hooks; htmlBlock below is the SECTION-level hatch.
+        return (
+          <HtmlPageSection
+            key={id}
+            html={props.html as string}
+            css={props.css as string}
+            siteCss={(globalSettings as any)?.customCss as string | undefined}
+            tagName={tagName}
           />
         );
 

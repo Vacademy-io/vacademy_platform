@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: Google brand logo
 import { ArrowRight } from "@phosphor-icons/react";
-import { isIOSNative } from "@/utils/ios-iap-compliance";
+import { isIOSNative, shouldHideThirdPartyLogin } from "@/utils/ios-iap-compliance";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
 import {
   loginWithAppleNative,
@@ -74,6 +74,14 @@ export function ModularDynamicLoginContainer({
     passwordStrategy: "manual" as const,
     passwordDelivery: "none" as const,
   };
+
+  // Apple 4.8 — see shouldHideThirdPartyLogin(). Strip Google/GitHub on Mac App
+  // Store builds before anything reads them; note the fallback above defaults
+  // both to TRUE, which is exactly what a reviewer's fresh install hits.
+  if (shouldHideThirdPartyLogin()) {
+    effectiveSettings.providers.google = false;
+    effectiveSettings.providers.github = false;
+  }
 
   // Get enabled providers
   const enabledProviders = Object.entries(effectiveSettings.providers)

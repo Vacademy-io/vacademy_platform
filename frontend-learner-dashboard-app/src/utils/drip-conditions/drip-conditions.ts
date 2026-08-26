@@ -18,7 +18,12 @@
  * - `chapter`: Chapter-level conditions that affect access to that chapter
  * - `slide`: Slide-level conditions that affect access to that slide
  */
-export type DripConditionLevel = "package" | "chapter" | "slide";
+export type DripConditionLevel =
+  | "package"
+  | "subject"
+  | "module"
+  | "chapter"
+  | "slide";
 
 /**
  * How locked content should behave when conditions are not met
@@ -35,7 +40,7 @@ export type DripConditionBehavior = "lock" | "hide" | "both";
  * - `chapter`: Package condition applies to all chapters
  * - `slide`: Package condition applies to all slides
  */
-export type DripConditionTarget = "chapter" | "slide";
+export type DripConditionTarget = "subject" | "module" | "chapter" | "slide";
 
 // ============================================================================
 // Rule Types
@@ -44,16 +49,29 @@ export type DripConditionTarget = "chapter" | "slide";
 /**
  * Types of rules that can be used to control content unlocking
  *
- * - `date_based`: Unlock content at a specific date and time
+ * - `date_based`: Unlock content at a specific calendar date and time
+ * - `relative_date`: Unlock on day N counted from the learner's own anchor
+ *   (their enrollment, or the batch start). This is what a "30-day course,
+ *   one chapter a day" schedule needs — a fixed calendar date cannot work
+ *   there because every learner starts on a different day.
  * - `completion_based`: Unlock based on performance metrics (average scores)
  * - `prerequisite`: Unlock after completing specific chapters/slides
  * - `sequential`: Unlock after completing the previous item in sequence
  */
 export type DripConditionRuleType =
   | "date_based"
+  | "relative_date"
   | "completion_based"
   | "prerequisite"
   | "sequential";
+
+/**
+ * What a `relative_date` rule counts its days from
+ *
+ * - `enrollment`: the learner's own enrollment date for this course (default)
+ * - `session_start`: the batch/session start date, shared by every learner
+ */
+export type DripAnchor = "enrollment" | "session_start";
 
 /**
  * Metric types for completion-based rules
@@ -74,6 +92,27 @@ export type DripConditionMetric = "average_of_last_n" | "average_of_all";
 export interface DateBasedParams {
   /** ISO 8601 formatted date-time string (e.g., "2024-01-15T10:00:00Z") */
   unlock_date: string;
+}
+
+/**
+ * Parameters for day-wise (relative-date) unlock rules
+ *
+ * Day numbers are 1-based and inclusive of the anchor day, so `unlock_on_day: 1`
+ * is "available immediately" and `unlock_on_day: 30` is the 30th day of access.
+ * This matches how the admin UI phrases it ("Day 1 … Day 30").
+ */
+export interface RelativeDateParams {
+  /** 1-based day this content becomes available. Day 1 = the anchor day. */
+  unlock_on_day: number;
+
+  /** What day 1 is counted from. Defaults to `enrollment`. */
+  anchor?: DripAnchor;
+
+  /**
+   * Local time-of-day the content flips open on its day, as "HH:mm".
+   * Defaults to "00:00" (midnight, i.e. the moment the day starts).
+   */
+  unlock_time?: string;
 }
 
 /**
@@ -139,6 +178,7 @@ export interface SequentialParams {
  */
 export type DripConditionRuleParams =
   | DateBasedParams
+  | RelativeDateParams
   | CompletionBasedParams
   | PrerequisiteParams
   | SequentialParams;
@@ -424,6 +464,15 @@ export function isDateBasedParams(
 }
 
 /**
+ * Type guard to check if params are RelativeDateParams
+ */
+export function isRelativeDateParams(
+  params: DripConditionRuleParams
+): params is RelativeDateParams {
+  return "unlock_on_day" in params;
+}
+
+/**
  * Type guard to check if params are CompletionBasedParams
  */
 export function isCompletionBasedParams(
@@ -463,6 +512,7 @@ export function isSequentialParams(
  */
 export const PACKAGE_RULE_TYPES: readonly DripConditionRuleType[] = [
   "date_based",
+  "relative_date",
   "completion_based",
 ] as const;
 
@@ -472,6 +522,7 @@ export const PACKAGE_RULE_TYPES: readonly DripConditionRuleType[] = [
  */
 export const CONTENT_RULE_TYPES: readonly DripConditionRuleType[] = [
   "date_based",
+  "relative_date",
   "completion_based",
   "prerequisite",
   "sequential",
@@ -491,6 +542,8 @@ export const BEHAVIOR_TYPES: readonly DripConditionBehavior[] = [
  */
 export const LEVEL_TYPES: readonly DripConditionLevel[] = [
   "package",
+  "subject",
+  "module",
   "chapter",
   "slide",
 ] as const;

@@ -31,7 +31,6 @@ import { getInstituteId } from '@/constants/helper';
 import { PaymentPlan, PaymentPlans, PaymentPlanTag, PaymentPlanType } from '@/types/payment';
 import { PaymentPlanCreator } from './PaymentPlanCreator/index';
 import { getCurrencySymbol } from './utils/utils';
-import { DAYS_IN_MONTH } from '../../-constants/terms';
 import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -234,9 +233,19 @@ const PaymentSettings = () => {
                                 features: metadata.features || [],
                                 config: {
                                     ...metadata.config,
+                                    // This branch builds the plan without going through
+                                    // transformApiPlanToLocalFormat, so it has to derive the
+                                    // access option itself. Defaulting to 30 days here (as it
+                                    // used to) re-stamped a window no admin ever chose, since
+                                    // the free config UI was never rendered; deriving it from
+                                    // the saved value keeps a plan on the option it was saved
+                                    // with.
                                     free: {
-                                        validityDays:
-                                            metadata.freeData?.validityDays || DAYS_IN_MONTH,
+                                        accessType:
+                                            metadata.freeData?.validityDays > 0
+                                                ? 'limited'
+                                                : 'unlimited',
+                                        validityDays: metadata.freeData?.validityDays ?? undefined,
                                     },
                                 },
                                 isDefault: false,
@@ -466,7 +475,13 @@ const PaymentSettings = () => {
                     freeData:
                         plan.type === PaymentPlans.FREE
                             ? {
-                                  validityDays: plan.config?.free?.validityDays,
+                                  // plan.validityDays, not config.free.validityDays: the
+                                  // creator/editor already resolved "unlimited" to undefined
+                                  // there. Reading the raw config value would persist a stale
+                                  // number after switching Limited -> Unlimited, leaving this
+                                  // metadata disagreeing with the null validity_in_days that
+                                  // is actually saved.
+                                  validityDays: plan.validityDays,
                               }
                             : undefined,
                 }),

@@ -73,7 +73,7 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
     List<InstituteSearchProjection> searchByQuery(@Param("query") String query);
 
     @Query(value = """
-            SELECT i.* FROM institute i
+            SELECT i.* FROM institutes i
             JOIN student_session_institute_group_mapping ssigm ON ssigm.institute_id = i.id
             WHERE ssigm.user_id = :userId
             AND ssigm.package_session_id = :sessionId ORDER BY created_at DESC LIMIT 1
@@ -235,9 +235,26 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
      * JSON envelope and keeps only those with
      * packageSessionRenewalSchedulerEnabled = true. Returns [id, setting].
      */
-    @Query(value = "SELECT id, setting FROM institutes WHERE setting LIKE '%PAYMENT_SETTING%'",
+    @Query(value = "SELECT id, setting_json FROM institutes WHERE setting_json LIKE '%PAYMENT_SETTING%'",
             nativeQuery = true)
     List<Object[]> findIdAndSettingWithPaymentSetting();
+
+    /**
+     * Candidate scan for the scheduled reporting platform. Cheap LIKE pre-filter on
+     * the raw settings blob; the caller parses each envelope and keeps institutes
+     * whose REPORT_SETTING is enabled with at least one live schedule.
+     *
+     * NOTE the column is `setting_json`, not `setting` — the sibling query above
+     * selects `setting`, which does not exist on this table, so it throws at
+     * runtime. Do not copy it.
+     *
+     * Parsing is per-row and defensive on purpose: at least one institute's blob is
+     * not valid JSON, and one bad row must not stop every other institute's report.
+     * Returns [id, setting_json].
+     */
+    @Query(value = "SELECT id, setting_json FROM institutes WHERE setting_json LIKE '%REPORT_SETTING%'",
+            nativeQuery = true)
+    List<Object[]> findIdAndSettingJsonWithReportSetting();
 
     // ==================== Lead Tag Queries ====================
 
@@ -307,4 +324,19 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
               AND (:leadTag IS NULL OR :leadTag = '' OR i.lead_tag = :leadTag)
             """, nativeQuery = true)
     Long countAllInstitutesFiltered(@Param("search") String search, @Param("leadTag") String leadTag);
+
+    /**
+     * Every custom live-class hostname currently configured, deduplicated.
+     *
+     * Consumed on each BBB pool-server start to rebuild that server's nginx
+     * server_name list and its certificate SAN set, so an institute added here
+     * becomes reachable on the next restore with no manual step.
+     */
+    @Query(value = """
+            SELECT DISTINCT i.live_session_base_url FROM institutes i
+            WHERE i.live_session_base_url IS NOT NULL
+              AND TRIM(i.live_session_base_url) <> ''
+            ORDER BY 1
+            """, nativeQuery = true)
+    List<String> findDistinctLiveSessionBaseUrls();
 }

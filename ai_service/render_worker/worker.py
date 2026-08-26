@@ -1468,8 +1468,12 @@ class RenderWorker:
             return
         media_dir = work_dir / "media_cache"
         media_dir.mkdir(parents=True, exist_ok=True)
+        # video|source AND img: support-visual photos (and stock images)
+        # stream from S3 mid-render otherwise — same nondeterminism the
+        # video prefetch removed. Tag name captured so images skip the
+        # video-only seek re-encode.
         _src_re = _re.compile(
-            r"""(<(?:video|source)\b[^>]*?\bsrc\s*=\s*["'])(https?://[^"']+)(["'])""",
+            r"""(<(video|source|img)\b[^>]*?\bsrc\s*=\s*["'])(https?://[^"']+)(["'])""",
             _re.IGNORECASE | _re.DOTALL,
         )
         cache: "dict[str, str]" = {}
@@ -1477,12 +1481,13 @@ class RenderWorker:
 
         def _swap(m: "_re.Match") -> str:
             nonlocal localized
-            url = m.group(2)
+            tag = (m.group(2) or "").lower()
+            url = m.group(3)
             if url not in cache:
                 key = hashlib.md5(url.encode()).hexdigest()[:12]
                 ext = url.rsplit(".", 1)[-1].split("?")[0].lower()
                 if not ext or len(ext) > 5 or "/" in ext:
-                    ext = "mp4"
+                    ext = "png" if tag == "img" else "mp4"
                 lp = media_dir / f"clip_{key}.{ext}"
                 try:
                     self._download(url, lp)
@@ -1493,7 +1498,8 @@ class RenderWorker:
                     # 14-19s + 36-44s across renders, anchored exactly on the
                     # clips' sparse keyframes). Re-encode such files with a
                     # dense keyframe grid before the render ever sees them.
-                    lp = self._normalize_for_seek(lp)
+                    if tag != "img":
+                        lp = self._normalize_for_seek(lp)
                     cache[url] = lp.resolve().as_uri()
                 except Exception as exc:
                     logger.warning(f"[MEDIA-PREFETCH] {url[:110]}: {exc} — keeping remote")
@@ -1501,14 +1507,14 @@ class RenderWorker:
             out = cache[url]
             if out != url:
                 localized += 1
-            return m.group(1) + out + m.group(3)
+            return m.group(1) + out + m.group(4)
 
         changed = False
         for e in entries:
             if not isinstance(e, dict):
                 continue
             html = e.get("html")
-            if isinstance(html, str) and "<video" in html.lower():
+            if isinstance(html, str) and ("<video" in html.lower() or "<img" in html.lower()):
                 new_html = _src_re.sub(_swap, html)
                 if new_html != html:
                     e["html"] = new_html

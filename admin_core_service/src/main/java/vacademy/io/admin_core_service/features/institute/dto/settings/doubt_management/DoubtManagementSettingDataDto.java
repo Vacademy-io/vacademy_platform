@@ -157,6 +157,20 @@ public class DoubtManagementSettingDataDto {
         private String role;
         /** Explicit handler user ids when {@code source=SPECIFIC_USERS}. */
         private List<String> userIds;
+
+        /**
+         * Role names whose holders are assigned IN ADDITION to whatever {@link #source} resolved —
+         * this is what lets a type route to "subject teacher AND admin". {@code null}/empty ⇒ the
+         * base route alone, i.e. every config written before this field existed behaves unchanged.
+         */
+        private List<String> alsoRoles;
+
+        /**
+         * User ids assigned IN ADDITION to whatever {@link #source} resolved, so a type can keep its
+         * faculty cascade and still always land on a fixed set of handlers. {@code null}/empty ⇒ the
+         * base route alone.
+         */
+        private List<String> alsoUserIds;
     }
 
     @Data

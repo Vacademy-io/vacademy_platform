@@ -9,7 +9,11 @@ import {
   Clock,
 } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { Preferences } from "@capacitor/preferences";
+import {
+  getCurrentDomainInfo,
+  getCachedInstituteBranding,
+  resolveDomainRouting,
+} from "@/services/domain-routing";
 
 export const Route = createFileRoute("/account-deletion/")({
   component: AccountDeletion,
@@ -29,26 +33,50 @@ const SUPPORT_EMAIL = "support@vacademy.io";
 function AccountDeletion() {
   const [appName, setAppName] = useState<string>("");
 
-  // The learner app is multi-tenant: domain routing resolves the institute at
-  // bootstrap and caches it. Name the resolved institute so the page reads as
-  // this app's own policy rather than a generic one.
+  // The learner app is multi-tenant, and Google Play requires this page to name
+  // the entity on the store listing. Resolve the institute from the HOSTNAME,
+  // not from app state: the reviewer opens this link in a plain browser where
+  // there is no Capacitor storage and no bootstrap cache, so anything read from
+  // device state comes back empty and the page renders unbranded — which is
+  // exactly what gets the Data safety form rejected.
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
+      // Cheap first pass: branding the app bootstrap may already have cached.
+      const cached = getCachedInstituteBranding();
+      if (cached?.instituteName && !cancelled) setAppName(cached.instituteName);
+
+      // Authoritative pass. On web getCurrentDomainInfo() derives domain and
+      // subdomain from window.location; on native it comes from flavor.config.
       try {
-        const instituteId =
-          (await Preferences.get({ key: "InstituteId" })).value || "";
-        if (!instituteId) return;
-        const stored = await Preferences.get({
-          key: `LEARNER_${instituteId}`,
-        });
-        if (!stored?.value) return;
-        const parsed = JSON.parse(stored.value);
-        if (parsed?.instituteName) setAppName(parsed.instituteName);
+        const { domain, subdomain } = await getCurrentDomainInfo();
+        if (!domain) return;
+        // Apex white-label domains (two-part hosts) yield an empty subdomain,
+        // but those rows are stored with subdomain '*'.
+        let resolved = await resolveDomainRouting(domain, subdomain || "*");
+        if (!resolved && subdomain) {
+          resolved = await resolveDomainRouting(domain, "*");
+        }
+        if (resolved?.instituteName && !cancelled) {
+          setAppName(resolved.instituteName);
+        }
       } catch {
-        // Fall back to the generic wording below.
+        // Leave whatever name we already have; the page still renders.
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Name the app in the tab title too — reviewers screenshot this.
+  useEffect(() => {
+    document.title = appName
+      ? `Delete your ${appName} account`
+      : "Delete your account";
+  }, [appName]);
 
   const subject = encodeURIComponent("Account deletion request");
 
@@ -120,7 +148,7 @@ function AccountDeletion() {
             <Trash className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-            Delete your account
+            {appName ? `Delete your ${appName} account` : "Delete your account"}
           </h1>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
             {appName

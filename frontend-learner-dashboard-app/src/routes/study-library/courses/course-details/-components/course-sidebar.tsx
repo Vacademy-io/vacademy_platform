@@ -283,7 +283,14 @@ export const CourseSidebar = ({
           {/* Module Stats */}
           {overviewVisible && (
             <div className="space-y-3 pt-2">
-              {moduleStats.totalModules > 0 && (
+              {/* A course below the depth that shows modules/chapters still
+                  has one seeded "DEFAULT" row at each hidden level holding its
+                  slides, so counting those told the learner about a hierarchy
+                  they can't see ("Modules 1, Chapters 1" on a flat course).
+                  Only that single placeholder is suppressed — a course that
+                  genuinely has several keeps its count. */}
+              {(courseStructure >= 4 || moduleStats.totalModules > 1) &&
+                moduleStats.totalModules > 0 && (
                 <div className="flex items-center justify-between text-sm group/item">
                   <div className="flex items-center gap-2 text-muted-foreground group-hover/item:text-foreground transition-colors">
                     <FileText
@@ -305,7 +312,8 @@ export const CourseSidebar = ({
                   </span>
                 </div>
               )}
-              {moduleStats.totalChapters > 0 && (
+              {(courseStructure >= 3 || moduleStats.totalChapters > 1) &&
+                moduleStats.totalChapters > 0 && (
                 <div className="flex items-center justify-between text-sm group/item">
                   <div className="flex items-center gap-2 text-muted-foreground group-hover/item:text-foreground transition-colors">
                     <PresentationChart

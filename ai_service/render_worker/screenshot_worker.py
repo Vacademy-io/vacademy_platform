@@ -181,6 +181,36 @@ class ScreenshotWorker:
             except Exception:
                 pass
 
+            # Wait for <img> subresources (bounded) — support-visual photos
+            # load from S3; capturing before they arrive produced empty gaps
+            # the vision reviewer flagged as layout defects, and best-of-N
+            # judged image-rich candidates on unloaded frames.
+            try:
+                await page.evaluate("""async () => {
+                    const ps = [];
+                    document.querySelectorAll('*').forEach(host => {
+                        const root = host.shadowRoot;
+                        if (!root) return;
+                        root.querySelectorAll('img').forEach(img => {
+                            if (!img.complete) ps.push(new Promise(r => {
+                                img.addEventListener('load', r, {once:true});
+                                img.addEventListener('error', r, {once:true});
+                                setTimeout(r, 2500);
+                            }));
+                        });
+                    });
+                    document.querySelectorAll('img').forEach(img => {
+                        if (!img.complete) ps.push(new Promise(r => {
+                            img.addEventListener('load', r, {once:true});
+                            img.addEventListener('error', r, {once:true});
+                            setTimeout(r, 2500);
+                        }));
+                    });
+                    await Promise.all(ps);
+                }""")
+            except Exception:
+                pass
+
             # Per-timestamp: seek the global timeline + the anime.js registry, wait
             # one paint, then screenshot. Two RAFs match the renderer's seek pattern
             # (line ~2385 of generate_video.py).
@@ -318,6 +348,36 @@ class ScreenshotWorker:
                 logger.debug(f"bbox stylesheet wait failed (non-fatal): {exc}")
             try:
                 await page.evaluate("() => document.fonts.ready")
+            except Exception:
+                pass
+
+            # Wait for <img> subresources (bounded) — support-visual photos
+            # load from S3; capturing before they arrive produced empty gaps
+            # the vision reviewer flagged as layout defects, and best-of-N
+            # judged image-rich candidates on unloaded frames.
+            try:
+                await page.evaluate("""async () => {
+                    const ps = [];
+                    document.querySelectorAll('*').forEach(host => {
+                        const root = host.shadowRoot;
+                        if (!root) return;
+                        root.querySelectorAll('img').forEach(img => {
+                            if (!img.complete) ps.push(new Promise(r => {
+                                img.addEventListener('load', r, {once:true});
+                                img.addEventListener('error', r, {once:true});
+                                setTimeout(r, 2500);
+                            }));
+                        });
+                    });
+                    document.querySelectorAll('img').forEach(img => {
+                        if (!img.complete) ps.push(new Promise(r => {
+                            img.addEventListener('load', r, {once:true});
+                            img.addEventListener('error', r, {once:true});
+                            setTimeout(r, 2500);
+                        }));
+                    });
+                    await Promise.all(ps);
+                }""")
             except Exception:
                 pass
 
@@ -578,6 +638,36 @@ class ScreenshotWorker:
                 logger.debug(f"stylesheet wait failed (non-fatal): {exc}")
             try:
                 await page.evaluate("() => document.fonts.ready")
+            except Exception:
+                pass
+
+            # Wait for <img> subresources (bounded) — support-visual photos
+            # load from S3; capturing before they arrive produced empty gaps
+            # the vision reviewer flagged as layout defects, and best-of-N
+            # judged image-rich candidates on unloaded frames.
+            try:
+                await page.evaluate("""async () => {
+                    const ps = [];
+                    document.querySelectorAll('*').forEach(host => {
+                        const root = host.shadowRoot;
+                        if (!root) return;
+                        root.querySelectorAll('img').forEach(img => {
+                            if (!img.complete) ps.push(new Promise(r => {
+                                img.addEventListener('load', r, {once:true});
+                                img.addEventListener('error', r, {once:true});
+                                setTimeout(r, 2500);
+                            }));
+                        });
+                    });
+                    document.querySelectorAll('img').forEach(img => {
+                        if (!img.complete) ps.push(new Promise(r => {
+                            img.addEventListener('load', r, {once:true});
+                            img.addEventListener('error', r, {once:true});
+                            setTimeout(r, 2500);
+                        }));
+                    });
+                    await Promise.all(ps);
+                }""")
             except Exception:
                 pass
 

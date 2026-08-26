@@ -213,6 +213,14 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         int userCameraCap = intOrDefault(bbbCfg, "user_camera_cap", 3);
         // Lock settings restrict VIEWERS (students) only — moderators keep full
         // access, e.g. a teacher can still private-message a locked student.
+        // disable_mic pins viewers to the listen-only path. Transparent listen-only
+        // (forced on per-meeting in buildJoinUrlForUser) already keeps idle students
+        // off hot FreeSWITCH channels; the lock turns that from a default into a
+        // guarantee — no viewer can take a mic channel, so a large broadcast class
+        // can't be hurt by an unmute stampede. disable_cam likewise guarantees the
+        // presenter is the only camera producer.
+        boolean disableMic = boolOrDefault(bbbCfg, "disable_mic", false);
+        boolean disableCam = boolOrDefault(bbbCfg, "disable_cam", false);
         boolean disablePrivateChat = boolOrDefault(bbbCfg, "disable_private_chat", false);
         boolean disablePublicChat = boolOrDefault(bbbCfg, "disable_public_chat", false);
         boolean disableSharedNotes = boolOrDefault(bbbCfg, "disable_shared_notes", false);
@@ -230,6 +238,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         params.put("meetingCameraCap", String.valueOf(meetingCameraCap));
         params.put("userCameraCap", String.valueOf(userCameraCap));
         params.put("guestPolicy", guestPolicy);
+        params.put("lockSettingsDisableMic", String.valueOf(disableMic));
+        params.put("lockSettingsDisableCam", String.valueOf(disableCam));
         params.put("lockSettingsDisablePrivateChat", String.valueOf(disablePrivateChat));
         params.put("lockSettingsDisablePublicChat", String.valueOf(disablePublicChat));
         params.put("lockSettingsDisableNotes", String.valueOf(disableSharedNotes));
@@ -314,7 +324,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         // the manifest keep it domain-agnostic across the pool. buildQueryString() URL-encodes
         // the JSON value. Toggle off via bbb.plugins.pip.enabled=false.
         if (pipPluginEnabled) {
-            String bbbBaseUrl = apiUrl.replaceAll("/bigbluebutton/api/?$", "");
+            // The participant's BROWSER fetches this manifest, so it has to be on the
+            // host they are actually on. Built from apiUrl it would always be the
+            // canonical domain, which still loads (plugin assets send CORS headers)
+            // but shows meet.vacademy.io in an institute's devtools.
+            String bbbBaseUrl = applyInstituteLiveSessionDomain(apiUrl, instituteId, selectedServer)
+                    .replaceAll("/bigbluebutton/api/?$", "");
             String pipManifestUrl = bbbBaseUrl + "/plugins/picture-in-picture/manifest.json";
             params.put("pluginManifests", "[{\"url\":\"" + pipManifestUrl + "\"}]");
         }
@@ -379,8 +394,13 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         // leaks into a real join, BBB assigns each joiner a unique internal id and they
         // don't eject one another via maxUserConcurrentAccesses. The name stays generic
         // because a stored, shared URL cannot know who is joining.
-        String moderatorJoinUrl = buildJoinUrl(apiUrl, secret, bbbMeetingId, "Moderator", null, "MODERATOR");
-        String attendeeJoinUrl = buildJoinUrl(apiUrl, secret, bbbMeetingId, "Attendee", null, "VIEWER");
+        // These are participant-facing, so they get the institute's custom host when
+        // one is set. Note this is a SEPARATE variable — `apiUrl` itself must stay
+        // canonical, because it is what the create/end/query calls above and below
+        // talk to.
+        String joinApiUrl = applyInstituteLiveSessionDomain(apiUrl, instituteId, selectedServer);
+        String moderatorJoinUrl = buildJoinUrl(joinApiUrl, secret, bbbMeetingId, "Moderator", null, "MODERATOR");
+        String attendeeJoinUrl = buildJoinUrl(joinApiUrl, secret, bbbMeetingId, "Attendee", null, "VIEWER");
 
         Map<String, Object> raw = new HashMap<>();
         raw.put("meetingID", bbbMeetingId);
@@ -442,15 +462,34 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
      */
     public String buildJoinUrlForUser(String meetingId, String fullName,
             String userId, String role, String instituteId, String bbbServerId) {
+        return buildJoinUrlForUser(meetingId, fullName, userId, role, instituteId, bbbServerId, null);
+    }
+
+    /**
+     * Build a personalized join URL.
+     *
+     * @param viewerMicLocked whether this meeting was created with
+     *        {@code lockSettingsDisableMic=true}. When true the audio userdata must
+     *        leave listen-only available, otherwise a viewer has no way to hear the
+     *        class at all. Pass null when the meeting's config isn't known — the
+     *        join URL then keeps the historical auto-join-with-microphone behaviour.
+     */
+    public String buildJoinUrlForUser(String meetingId, String fullName,
+            String userId, String role, String instituteId, String bbbServerId,
+            Boolean viewerMicLocked) {
         String apiUrl;
         String secret;
+        // Kept in scope so the custom-domain rewrite below can tell whether this
+        // meeting is on the primary pool server.
+        BbbServerPool server = null;
         if (bbbServerId != null) {
             try {
-                BbbServerPool server = serverRouter.getServer(bbbServerId);
+                server = serverRouter.getServer(bbbServerId);
                 apiUrl = server.getApiUrl();
                 secret = server.getSecret();
             } catch (Exception e) {
                 log.warn("[BBB] Failed to resolve server {}, falling back to legacy config", bbbServerId);
+                server = null;
                 Map<String, Object> cfg = getConfigMap(instituteId);
                 apiUrl = (String) cfg.get("apiUrl");
                 secret = (String) cfg.get("secret");
@@ -460,6 +499,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             apiUrl = (String) cfg.get("apiUrl");
             secret = (String) cfg.get("secret");
         }
+
+        // This URL is opened by the participant, so it carries the institute's own
+        // live-class host when one is configured. The checksum below is computed
+        // over the query string and secret only — BBB does not sign the hostname —
+        // so swapping the origin here keeps the link valid.
+        apiUrl = applyInstituteLiveSessionDomain(apiUrl, instituteId, server);
 
         // Build base join params
         Map<String, String> params = new LinkedHashMap<>();
@@ -489,7 +534,18 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                     // Skip the "Microphone / Listen only" chooser and echo test
                     params.put("userdata-bbb_auto_join_audio", "true");
                     params.put("userdata-bbb_skip_check_audio", "true");
-                    params.put("userdata-bbb_listen_only_mode", "false");
+                    if (Boolean.TRUE.equals(viewerMicLocked)) {
+                        // The meeting was created with lockSettingsDisableMic=true, so
+                        // viewers may ONLY join listen-only. bbb_listen_only_mode=false
+                        // means "cannot join audio without a microphone" — together they
+                        // leave a viewer with no audio path at all, so it must not be sent
+                        // here. bbb_force_listen_only is the matching client-side setting
+                        // and, per BBB, does not apply to moderators, so the presenter
+                        // still auto-joins with their mic.
+                        params.put("userdata-bbb_force_listen_only", "true");
+                    } else {
+                        params.put("userdata-bbb_listen_only_mode", "false");
+                    }
                     // Transparent listen-only (BBB 3.0): a muted/idle student stays on the
                     // cheap shared-audio path instead of holding a FreeSWITCH mic channel,
                     // yet can unmute instantly. This keeps the no-prompt auto-join UX above
@@ -713,6 +769,64 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         } catch (Exception e) {
             log.warn("[BBB] deleteRecording failed for recordingId={}: {}", recordingId, e.getMessage());
             return false;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Live state (via getMeetingInfo) — used to guard destructive actions
+    // -----------------------------------------------------------------------
+
+    /** Minimal live state of a BBB meeting: who is in it and how old it is. */
+    public record MeetingLiveState(int participantCount, long createTimeMillis) {
+    }
+
+    /**
+     * Participant count and creation time for a meeting, or empty when BBB does
+     * not know it (already ended and cleaned up) or the lookup fails.
+     *
+     * Callers MUST treat empty as "no information — proceed". This exists only to
+     * block a destructive action; failing closed would permanently trap a teacher
+     * whose class really has ended and who needs to start a fresh room.
+     */
+    public Optional<MeetingLiveState> getMeetingLiveState(String providerMeetingId, String bbbServerId) {
+        if (providerMeetingId == null || providerMeetingId.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            String apiUrl;
+            String secret;
+            BbbServerPool server = serverRouter.getServer(bbbServerId);
+            apiUrl = server.getApiUrl();
+            secret = server.getSecret();
+
+            Map<String, String> params = new LinkedHashMap<>();
+            params.put("meetingID", providerMeetingId);
+            String queryString = buildQueryString(params);
+            String checksum = sha256("getMeetingInfo" + queryString + secret);
+            String url = apiUrl + "/getMeetingInfo?" + queryString + "&checksum=" + checksum;
+
+            String xmlResponse = webClientBuilder.build()
+                    .get().uri(URI.create(url))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            Document doc = parseXml(xmlResponse);
+            if (!"SUCCESS".equals(getXmlText(doc, "returncode"))) {
+                // Meeting unknown to BBB — nothing to protect.
+                return Optional.empty();
+            }
+            int participants = parseIntSafe(getXmlText(doc, "participantCount"));
+            long createTime = 0L;
+            try {
+                createTime = Long.parseLong(getXmlText(doc, "createTime").trim());
+            } catch (Exception ignored) {
+                // Age check is skipped when createTime is unusable.
+            }
+            return Optional.of(new MeetingLiveState(participants, createTime));
+        } catch (Exception e) {
+            log.warn("[BBB] getMeetingLiveState failed for meetingId={}: {}", providerMeetingId, e.getMessage());
+            return Optional.empty();
         }
     }
 
@@ -976,6 +1090,90 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             return Integer.parseInt(String.valueOf(val).trim());
         } catch (NumberFormatException e) {
             return defaultValue;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Per-institute live-class domain (white-labelling)
+    // -----------------------------------------------------------------------
+
+    /** Plain hostname: dot-separated labels ending in a 2+ letter TLD. */
+    private static final java.util.regex.Pattern LIVE_SESSION_HOST = java.util.regex.Pattern
+            .compile("^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$");
+
+    /**
+     * Normalise a custom live-class host to a bare hostname, or null when it is
+     * absent or is not a plain hostname.
+     *
+     * This value ends up as the origin of a URL we redirect learners to, so it is
+     * validated rather than trusted: scheme, path and userinfo are stripped, and
+     * anything left carrying a port or not matching a hostname shape is rejected
+     * outright (null) instead of being silently patched into something plausible.
+     *
+     * Accepts "meet.zoeedtech.com", "https://meet.zoeedtech.com" and
+     * "https://meet.zoeedtech.com/" alike; all normalise to the bare host.
+     */
+    public static String normalizeLiveSessionHost(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String host = raw.trim().toLowerCase();
+        if (host.isEmpty()) {
+            return null;
+        }
+        host = host.replaceFirst("^[a-z][a-z0-9+.\\-]*://", ""); // scheme
+        host = host.replaceFirst("/.*$", ""); // path
+        host = host.replaceFirst("^[^@]*@", ""); // userinfo
+        if (host.isEmpty() || host.indexOf(':') >= 0) { // no ports
+            return null;
+        }
+        return LIVE_SESSION_HOST.matcher(host).matches() ? host : null;
+    }
+
+    /**
+     * Swap the origin of a BBB API URL for the institute's own live-class host,
+     * leaving the path intact. Returns {@code apiUrl} unchanged whenever the
+     * rewrite does not apply — this method never throws.
+     *
+     * Call this ONLY for URLs a participant will open. Control-plane calls
+     * (create / isMeetingRunning / getRecordings / getAttendance) must keep using
+     * the pool server's own api_url, so that a broken custom domain costs
+     * branding on a link and never a class.
+     *
+     * @param server the pool server the meeting was placed on, or null when the
+     *        legacy single-server config path was used. The rewrite is skipped for
+     *        any non-primary server: the institute's A record points at the
+     *        primary box, so branding a URL that resolves elsewhere would send the
+     *        learner to a server without their meeting.
+     */
+    private String applyInstituteLiveSessionDomain(String apiUrl, String instituteId,
+            BbbServerPool server) {
+        if (apiUrl == null || instituteId == null) {
+            return apiUrl;
+        }
+        if (server != null && !serverRouter.isPrimary(server)) {
+            log.debug("[BBB] Meeting is on non-primary server {} — keeping canonical join host",
+                    server.getSlug());
+            return apiUrl;
+        }
+        try {
+            Institute institute = instituteRepository.findById(instituteId).orElse(null);
+            if (institute == null) {
+                return apiUrl;
+            }
+            String host = normalizeLiveSessionHost(institute.getLiveSessionBaseUrl());
+            if (host == null) {
+                return apiUrl;
+            }
+            URI uri = URI.create(apiUrl);
+            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+            String rewritten = "https://" + host + path;
+            log.info("[BBB] Join host for institute {}: {} -> {}", instituteId, uri.getHost(), host);
+            return rewritten;
+        } catch (Exception e) {
+            log.warn("[BBB] Could not apply custom live-class domain for institute {}: {}",
+                    instituteId, e.getMessage());
+            return apiUrl;
         }
     }
 

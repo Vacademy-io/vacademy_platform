@@ -82,8 +82,20 @@ public class UserInstituteController {
         return instituteService.updateInstituteDetails(user, instituteId, instituteInfoDTO);
     }
 
+    // Keyed on instituteId alone, deliberately: getInstituteDashboardDetail takes a
+    // CustomUserDetails but never reads it -- every field on the response comes from
+    // an instituteId-scoped count. So the entry is genuinely shared across the
+    // institute's staff and there is nothing user-specific to leak.
+    //
+    // This previously read "#user.id + ':' + #instituteId", which looked user-scoped
+    // but was not: CustomUserDetails assigns its own userId field and never calls
+    // setId(...), so the inherited getId() that SpEL "#user.id" resolves to is null
+    // for every request and the real key was the constant "null:<instituteId>".
+    // Keying on #user.userId would have made it honest but also wrong in the other
+    // direction -- one entry per staff member per institute, so a 40-person institute
+    // would run the six count queries 40x per TTL instead of once.
     @GetMapping("/get-dashboard")
-    @Cacheable(value = "instituteDashboard", key = "#user.id + ':' + #instituteId")
+    @Cacheable(value = "instituteDashboard", key = "#instituteId")
     public ResponseEntity<InstituteDashboardResponse> getInstituteDashboard(
             @RequestAttribute(name = "user") CustomUserDetails user,
             @RequestParam("instituteId") String instituteId) {

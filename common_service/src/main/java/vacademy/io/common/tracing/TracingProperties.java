@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
  * <pre>
  * vacademy.tracing.enabled=true
  * vacademy.tracing.request-filter-enabled=true
+ * vacademy.tracing.server-timing-header-enabled=true
  * vacademy.tracing.slow-query-logger-enabled=true
  * vacademy.tracing.slow-request-threshold-ms=3000
  * vacademy.tracing.critical-request-threshold-ms=30000
@@ -61,6 +62,16 @@ public class TracingProperties {
      * Default: true (ON)
      */
     private boolean tracedAnnotationEnabled = true;
+
+    /**
+     * Toggle for emitting the Server-Timing response header.
+     *
+     * This header is what lets a browser subtract our processing time from the
+     * total round trip and attribute the remainder to the network, so a client
+     * can be told "your connection is slow" instead of "the LMS is slow".
+     * Default: true (ON)
+     */
+    private boolean serverTimingHeaderEnabled = true;
 
     // ============ Request Tracing Thresholds ============
 
@@ -111,5 +122,13 @@ public class TracingProperties {
      */
     public boolean isTracedAnnotationEffectivelyEnabled() {
         return enabled && tracedAnnotationEnabled;
+    }
+
+    /**
+     * Check if the Server-Timing header is effectively enabled (master +
+     * individual toggle).
+     */
+    public boolean isServerTimingHeaderEffectivelyEnabled() {
+        return enabled && serverTimingHeaderEnabled;
     }
 }

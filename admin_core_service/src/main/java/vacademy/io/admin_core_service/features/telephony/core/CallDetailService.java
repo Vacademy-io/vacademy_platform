@@ -137,9 +137,30 @@ public class CallDetailService {
             out.diagHeadline(str(blob.get("headline")))
                .diagHeadlineText(str(blob.get("headlineText")))
                .diagRulesVersion(blob.get("rulesVersion") instanceof Number v ? v.intValue() : null)
+               .ttsCacheActive(ttsCacheActive(blob))
                .diagnostics(canSeeDiagnostics ? blob : null);
         } catch (Exception e) {
             log.warn("call detail: could not load AI diagnostics for callLogId={}", callLogId, e);
+        }
+    }
+
+    /**
+     * Was the speech cache running on this call? Null-safe and total.
+     *
+     * <p>{@code cacheHits} is null exactly when the bot did not measure — the
+     * cache was off for this agent, or the row predates the feature. It is 0 when
+     * the cache ran and served nothing, which is a real reading and SHOULD show
+     * the panel. That distinction is the whole reason the bot writes null rather
+     * than zero, and it would be lost if the UI just tested for truthiness.
+     */
+    @SuppressWarnings("unchecked")
+    private static Boolean ttsCacheActive(Map<String, Object> blob) {
+        try {
+            Object tts = blob.get("tts");
+            if (!(tts instanceof Map)) return null;
+            return ((Map<String, Object>) tts).get("cacheHits") != null ? Boolean.TRUE : null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

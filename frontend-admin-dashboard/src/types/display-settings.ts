@@ -577,6 +577,10 @@ export interface DisplaySettingsData {
         showAddModule?: boolean;
         showAddChapter?: boolean;
         showAddSlide?: boolean;
+        // Show the per-learner "Student Progress" sub-tab inside Reports —
+        // Course Details → Reports and Learning Reports → Batch both read this.
+        // Default (undefined/true) shows it; set false to hide for this role.
+        showLearnerProgressReport?: boolean;
     };
 
     // 10) Slide view action visibility toggles

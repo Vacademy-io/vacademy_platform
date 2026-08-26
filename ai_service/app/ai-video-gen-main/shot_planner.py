@@ -29,6 +29,12 @@ import json
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from composition_kit import (
+    assign_compositions,
+    normalize as normalize_composition,
+    planner_menu_block,
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Enums and constants
@@ -260,6 +266,17 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "narrated shots: narrator sets up → characters play the moment → narrator resolves.\n\n"
 
     "**RULES**:\n"
+    "0. **Support visuals (MANDATORY per shot).** Every non-title shot MUST "
+    "carry `support_visuals`: 2-4 items, each `{\"concept\": <short label of a "
+    "CONCRETE, imageable thing the narration mentions>, \"phrase\": <the exact "
+    "3-6 words of the narration_brief it belongs to>, \"kind\": \"photo\"|"
+    "\"icon\"}`. Use \"photo\" for tangible scenes/objects/people (a patient "
+    "walking, a goniometer on a knee, hands writing notes) and \"icon\" for "
+    "abstract concepts (a step, a goal, a warning, a quiz). The pipeline "
+    "pre-generates these into real imagery revealed AS the narrator speaks "
+    "each phrase — this is what makes the video visual instead of a wall of "
+    "text. Skip for KINETIC_TITLE/KINETIC_TEXT/LOWER_THIRD and DIALOGUE_SCENE "
+    "(acted clips carry their own footage).\n"
     "1. First shot is the hook — pick whichever shot type sells the topic best "
     "(VIDEO_HERO / IMAGE_HERO for real-world openers, KINETIC_TITLE for bold-text hooks, "
     "INFOGRAPHIC_SVG for concept-first openers, PRODUCT_HERO for brand/subject reels).\n"
@@ -369,6 +386,8 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "value is conservative; choose explicitly when a specific treatment serves the shot.\n"
     "NEVER let a per-shot LLM invent its own background hex — every non-media-hero shot honors "
     "`var(--brand-bg)` through this field.\n\n"
+
+    + planner_menu_block() +
 
     "**OPTIONAL — `semantic_accents` (per-shot contrast color)**:\n"
     "When a shot's narration introduces a binary or ternary contrast that color would reinforce "
@@ -948,6 +967,12 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
     if bg not in BACKGROUND_TREATMENTS:
         bg = SHOT_TYPE_BG_TREATMENT_DEFAULT.get(shot_type, "brand_solid")
 
+    # Frame composition — where things sit in the frame. Same contract shape as
+    # background_treatment: planner may declare it, unknown/absent falls back to
+    # a per-shot-type default. Cross-shot variety is enforced later, over the
+    # whole list, by assign_compositions().
+    composition = normalize_composition(raw.get("composition"), shot_type)
+
     audio_policy = str(raw.get("audio_policy") or "").strip().lower()
     if audio_policy not in AUDIO_POLICIES:
         # Defensive: intrinsic-audio-capable types get intrinsic_only IF the
@@ -987,6 +1012,7 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "duration_estimate_s": round(duration, 2),
         # Visual presentation
         "background_treatment": bg,
+        "composition": composition,
         "transition_in": transition_in,
         "overlay": bool(raw.get("overlay", False)),
     }
@@ -1022,6 +1048,9 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "scene_continuity",
         "emotional_beat",
         "time_of_day",
+        # Narration-synced imagery (visual beats) — resolved to real
+        # images/icons by the pipeline pre-pass before HTML generation.
+        "support_visuals",
         "location",
         # Asset-request gate answers (assist): real user assets + figures.
         "user_asset_url",
@@ -1030,6 +1059,15 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
     ):
         if field in raw and raw[field] is not None:
             out[field] = raw[field]
+
+    if "support_visuals" in out:
+        try:
+            from support_visuals import normalize_support_visuals
+            out["support_visuals"] = normalize_support_visuals(out["support_visuals"])
+        except ImportError:
+            pass  # keep raw list; the resolver normalizes defensively too
+        if not out.get("support_visuals"):
+            out.pop("support_visuals", None)
 
     return out
 
@@ -1333,6 +1371,12 @@ def normalize_shot_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
             continue
         normalized.append(_normalize_shot(rs, i))
 
+    # Structural variety pass. The preamble has asked for "a distinct
+    # composition every shot" in prose for months and still produced
+    # centre-stacked frames throughout, so the no-repeat and centred-quota
+    # rules are applied here over the whole list instead of hoped for.
+    assign_compositions(normalized)
+
     _derive_shot_timings(normalized)
 
     audio_mood_raw = str(plan.get("audio_mood") or "").strip().lower()
@@ -1594,7 +1638,40 @@ def plan_shots(
         max_tokens=max_tokens,
         response_format={"type": "json_object"},
     )
-    parsed = _parse_shot_plan(text or "")
+    try:
+        parsed = _parse_shot_plan(text or "")
+    except ShotPlanError as _fmt_err:
+        # Reasoning models sometimes answer with pure analysis prose and no
+        # JSON at all ("Let me analyze this request carefully…"), despite
+        # response_format. Prod: this failed BOTH attempts and dropped the
+        # whole run to the v2 path. A format-corrective turn is far cheaper
+        # (and far more likely to work) than re-running the same prompt,
+        # which just reproduces the same behaviour.
+        print(f"   ⚠️ ShotPlanner returned non-JSON ({_fmt_err}) — retrying with a format-corrective turn")
+        _fix_messages = messages + [
+            {"role": "assistant", "content": (text or "")[:2000]},
+            {"role": "user", "content": (
+                "That response was not valid JSON. Do NOT explain, analyze, or "
+                "add any commentary. Reply with ONE JSON object and nothing "
+                "else — first character '{', last character '}' — containing "
+                "the `shots` array (and the other top-level keys) exactly as "
+                "specified above."
+            )},
+        ]
+        _t2, _u2 = llm_chat(
+            _fix_messages,
+            model=model,
+            temperature=0.1,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        parsed = _parse_shot_plan(_t2 or "")
+        text = _t2 or text
+        for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            try:
+                usage[_k] = int((usage or {}).get(_k, 0) or 0) + int((_u2 or {}).get(_k, 0) or 0)
+            except Exception:
+                pass
 
     # Validation pass — strip any `template_id` the LLM invented despite the
     # whitelist constraint. Catches `image_hero_standard` / `process_3_steps`

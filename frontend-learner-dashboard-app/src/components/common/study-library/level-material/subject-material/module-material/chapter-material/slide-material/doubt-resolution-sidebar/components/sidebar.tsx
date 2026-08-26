@@ -1,38 +1,58 @@
-import { MyButton } from "@/components/design-system/button";
-// Removed Sidebar UI components - using custom divs for full control
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
-import { X, ChatText, Plus, CheckCircle, Clock } from "@phosphor-icons/react";
-import { useState, useRef, useCallback, useEffect } from "react";
+import { X, ChatText } from "@phosphor-icons/react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MainViewQuillEditor } from "@/components/quill/MainViewQuillEditor";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { useSidebar } from "@/components/ui/sidebar";
+import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 import { DoubtFilter, Doubt as DoubtType } from "../types/get-doubts-type";
 import { useGetDoubts } from "../services/GetDoubts";
-import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { AddDoubt } from "./AddDoubt";
 import { useTranslation } from "react-i18next";
 import { DoubtList } from "./doubt-list";
+import { DoubtComposer } from "./DoubtComposer";
 import { TimestampDialog } from "./TimestampDialog";
-import { TimestampChip } from "./TimestampChip";
+import { MyButton } from "@/components/design-system/button";
+import { getUserId } from "@/constants/getUserId";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
+import { collectAuthorIds, useDoubtAuthors } from "../hooks/useDoubtAuthors";
+import { cn } from "@/lib/utils";
+
+type DoubtTab = "ALL" | "ACTIVE" | "RESOLVED";
+
+// Doubts are scoped to one slide, so the window only exists to satisfy the API
+// contract — keep it wide enough that a learner revisiting an old slide still
+// sees the thread (the previous 30-day window silently hid older doubts).
+const HISTORY_WINDOW_DAYS = 3650;
 
 export const DoubtResolutionSidebar = () => {
   const { t } = useTranslation("studyContent");
   const { isOpen: open, closeSidebar } = useDoubtSidebarStore();
   const [showInput, setShowInput] = useState<boolean>(false);
   const [doubt, setDoubt] = useState<string>("");
-  const [showTimestampDialog, setShowTimestampDialog] =
-    useState<boolean>(false);
+  const [showPositionDialog, setShowPositionDialog] = useState<boolean>(false);
   const [timestamp, setTimestamp] = useState<number | undefined>(undefined);
-  const [formattedTime, setFormattedTime] = useState<string | undefined>(
-    undefined
-  );
-  const { activeItem, currentPackageSessionId } = useContentStore();
+  const [tab, setTab] = useState<DoubtTab>("ALL");
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
+  const { activeItem, setActiveItem, currentPackageSessionId } = useContentStore();
+  const { setOpen: setChapterSidebarOpen } = useSidebar();
+  const {
+    currentPdfPage,
+    currentYoutubeTime,
+    currentUploadedVideoTime,
+    navigateToPdfPage,
+  } = useMediaRefsStore();
   const observer = useRef<IntersectionObserver | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+
+  const isVideo = activeItem?.source_type === "VIDEO";
+  const isDocument = activeItem?.source_type === "DOCUMENT";
+  const hasPosition = isVideo || isDocument;
+
   const [filter, setFilter] = useState<DoubtFilter>({
     name: "",
-    start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    start_date: new Date(Date.now() - HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000)
       .toISOString()
       .split("T")[0],
     end_date: new Date(Date.now() + 24 * 60 * 60 * 1000)
@@ -47,6 +67,8 @@ export const DoubtResolutionSidebar = () => {
     ],
     sources: ["SLIDE"],
     source_ids: [activeItem?.id || ""],
+    // Both statuses come down in one query; the tabs filter in memory so
+    // switching them is instant instead of re-fetching and flashing a loader.
     status: ["ACTIVE", "RESOLVED"],
     sort_columns: {
       created_at: "DESC",
@@ -62,12 +84,34 @@ export const DoubtResolutionSidebar = () => {
     hasNextPage,
     isFetchingNextPage,
     refetch,
-    isPending,
-  } = useGetDoubts(filter);
+  } = useGetDoubts(filter, open);
 
-  const [allDoubts, setAllDoubts] = useState<DoubtType[]>(
-    data?.pages.flatMap((page) => page.content) || []
+  const allDoubts: DoubtType[] = useMemo(
+    () => data?.pages.flatMap((page) => page.content) ?? [],
+    [data]
   );
+
+  const counts = useMemo(
+    () => ({
+      all: allDoubts.length,
+      active: allDoubts.filter((item) => item.status !== "RESOLVED").length,
+      resolved: allDoubts.filter((item) => item.status === "RESOLVED").length,
+    }),
+    [allDoubts]
+  );
+
+  const visibleDoubts = useMemo(() => {
+    if (tab === "RESOLVED") return allDoubts.filter((item) => item.status === "RESOLVED");
+    if (tab === "ACTIVE") return allDoubts.filter((item) => item.status !== "RESOLVED");
+    return allDoubts;
+  }, [allDoubts, tab]);
+
+  const authorIds = useMemo(() => collectAuthorIds(allDoubts), [allDoubts]);
+  const authors = useDoubtAuthors(authorIds);
+
+  useEffect(() => {
+    getUserId().then(setViewerUserId);
+  }, []);
 
   // Filter doubts by the course currently being viewed (the route's sessionId,
   // surfaced via the content store). Fall back to the learner's stored default
@@ -87,63 +131,6 @@ export const DoubtResolutionSidebar = () => {
     applyBatchFilter();
   }, [currentPackageSessionId]);
 
-  // Handle click outside sidebar to close it
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        open &&
-        sidebarRef.current &&
-        !sidebarRef.current.contains(event.target as Node)
-      ) {
-        // Check if the click is on the sidebar trigger button
-        const triggerElement = document.querySelector(
-          '[data-sidebar="trigger"]'
-        );
-        if (triggerElement && triggerElement.contains(event.target as Node)) {
-          return; // Don't close if clicking on the trigger
-        }
-
-        // Check if the click is inside an AlertDialog
-        const alertDialogElement = (event.target as Element).closest(
-          '[role="alertdialog"]'
-        );
-        if (alertDialogElement) {
-          return; // Don't close if clicking inside a dialog
-        }
-
-        // Check if the click is inside a Dialog (for timestamp dialog)
-        const dialogElement = (event.target as Element).closest(
-          '[role="dialog"]'
-        );
-        if (dialogElement) {
-          return; // Don't close if clicking inside a dialog
-        }
-
-        closeSidebar();
-      }
-    };
-
-    if (open) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [open, closeSidebar]);
-
-  // Reset the open flag when the sidebar unmounts (e.g. navigating away with
-  // it open) so consumers of the store (chatbot visibility) don't get stuck
-  useEffect(() => {
-    return () => {
-      useDoubtSidebarStore.getState().closeSidebar();
-    };
-  }, []);
-
-  useEffect(() => {
-    setAllDoubts(data?.pages.flatMap((page) => page.content) || []);
-  }, [data]);
-
   useEffect(() => {
     setFilter((prev) => ({
       ...prev,
@@ -156,19 +143,69 @@ export const DoubtResolutionSidebar = () => {
     }));
   }, [activeItem]);
 
+  // Close on outside click / Escape, and lock page scroll behind the panel so a
+  // phone doesn't scroll the slide underneath while the learner reads a thread.
   useEffect(() => {
-    refetch();
-  }, [filter, refetch]);
+    if (!open) return;
 
-  const handleTabChange = (value: string) => {
-    if (value === "RESOLVED") {
-      setFilter((prev) => ({ ...prev, status: ["RESOLVED"] }));
-    } else if (value === "UNRESOLVED") {
-      setFilter((prev) => ({ ...prev, status: ["ACTIVE"] }));
-    } else {
-      setFilter((prev) => ({ ...prev, status: ["ACTIVE", "RESOLVED"] }));
-    }
-  };
+    const handleClickOutside = (event: MouseEvent) => {
+      if (sidebarRef.current?.contains(event.target as Node)) return;
+      const target = event.target as Element;
+      // Trigger button and any Radix dialog (delete confirm / position picker)
+      // live outside the panel — clicking them must not close it.
+      if (target.closest('[data-sidebar="trigger"]')) return;
+      if (target.closest('[role="alertdialog"], [role="dialog"]')) return;
+      closeSidebar();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // Let an open dialog take the Escape first. The panel itself carries
+      // role="dialog", so it must not count as one.
+      const otherDialogOpen = Array.from(
+        document.querySelectorAll('[role="alertdialog"], [role="dialog"]')
+      ).some((element) => element !== sidebarRef.current);
+      if (otherDialogOpen) return;
+      closeSidebar();
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, closeSidebar]);
+
+  // Reset the open flag when the sidebar unmounts (e.g. navigating away with
+  // it open) so consumers of the store (chatbot visibility) don't get stuck
+  useEffect(() => {
+    return () => {
+      useDoubtSidebarStore.getState().closeSidebar();
+    };
+  }, []);
+
+  // The infinite-scroll sentinel rides the last VISIBLE card, so a tab whose
+  // matches all sit on a later page would have nothing to trigger it and would
+  // wrongly read as empty. Pull the next page until this tab has something.
+  useEffect(() => {
+    if (!open) return;
+    if (visibleDoubts.length > 0) return;
+    if (allDoubts.length === 0) return;
+    if (!hasNextPage || isFetchingNextPage) return;
+    fetchNextPage();
+  }, [
+    open,
+    visibleDoubts.length,
+    allDoubts.length,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  ]);
 
   const lastDoubtElementRef = useCallback(
     (node: HTMLDivElement) => {
@@ -184,238 +221,220 @@ export const DoubtResolutionSidebar = () => {
     [isLoading, hasNextPage, isFetchingNextPage, fetchNextPage]
   );
 
-  const handleTimestampSet = (
-    newTimestamp: number,
-    newFormattedTime: string
-  ) => {
-    setTimestamp(newTimestamp);
-    setFormattedTime(newFormattedTime);
-    setShowTimestampDialog(false);
+  /** "1:02" for video, "Page 3" for a document, nothing for other slides. */
+  const formatPosition = useCallback(
+    (rawPosition?: number | null): string | undefined => {
+      if (rawPosition === undefined || rawPosition === null || Number.isNaN(rawPosition)) {
+        return undefined;
+      }
+      if (isVideo) return formatVideoTime(Math.floor(rawPosition / 1000));
+      if (isDocument) return t("doubts.pageNumber", { page: rawPosition + 1 });
+      return undefined;
+    },
+    [isVideo, isDocument, t]
+  );
+
+  const getPositionLabel = useCallback(
+    (item: DoubtType) => formatPosition(parseInt(item.content_position || "0", 10)),
+    [formatPosition]
+  );
+
+  /** Where the learner is right now — the default anchor for a new doubt. */
+  const getCurrentPosition = useCallback((): number | undefined => {
+    if (isDocument) return currentPdfPage;
+    if (isVideo) {
+      const seconds =
+        activeItem?.video_slide?.source_type === "FILE_ID"
+          ? currentUploadedVideoTime
+          : currentYoutubeTime;
+      return Math.floor((seconds || 0) * 1000);
+    }
+    return undefined;
+  }, [
+    isDocument,
+    isVideo,
+    activeItem?.video_slide?.source_type,
+    currentPdfPage,
+    currentUploadedVideoTime,
+    currentYoutubeTime,
+  ]);
+
+  const handleAskDoubtClick = () => {
+    // Pre-fill the position instead of gating the composer behind a dialog —
+    // the learner can still change it from the chip.
+    setTimestamp(getCurrentPosition());
     setShowInput(true);
   };
 
-  const handleTimestampEdit = () => {
-    // Only allow timestamp editing for video slides
-    if (activeItem?.source_type === "VIDEO") {
-      setShowTimestampDialog(true);
-    }
-  };
-
-  const handleAskDoubtClick = () => {
+  const handleCancelComposer = () => {
+    setShowInput(false);
+    setDoubt("");
     setTimestamp(undefined);
-    setFormattedTime(undefined);
-
-    // Only show timestamp dialog for video slides
-    if (activeItem?.source_type === "VIDEO") {
-      setShowTimestampDialog(true);
-    } else {
-      // For non-video slides, directly show the doubt input
-      setShowInput(true);
-    }
   };
 
-  if (isPending) return <DashboardLoader />;
-  if (isError) return <p>{t("doubts.errorFetching")}</p>;
+  const handleTimestampSet = (newTimestamp: number) => {
+    setTimestamp(newTimestamp);
+    setShowPositionDialog(false);
+    setShowInput(true);
+  };
+
+  // A freshly posted doubt is ACTIVE and sorted first — show the learner it
+  // landed even if they were on the Resolved tab or scrolled down the thread.
+  const handleDoubtPosted = () => {
+    setTimestamp(undefined);
+    setTab((current) => (current === "RESOLVED" ? "ALL" : current));
+    threadRef.current?.scrollTo({ top: 0 });
+  };
+
+  const handleJumpToPosition = (position: number) => {
+    if (isDocument) {
+      navigateToPdfPage(position);
+    } else if (activeItem) {
+      setActiveItem({
+        ...activeItem,
+        new_slide: false,
+        percentage_completed: 0,
+        progress_marker: position,
+      });
+    }
+    setChapterSidebarOpen(false);
+    // Get out of the way — the learner asked to look at that moment.
+    closeSidebar();
+  };
 
   return (
     <>
       <div
         ref={sidebarRef}
-        className={`
-            fixed top-0 end-0 h-full z-50
-            transition-transform duration-300 ease-in-out
-            ${open ? "translate-x-0" : "translate-x-full"}
-            w-full sm:w-vw-90 md:w-vw-70 lg:w-vw-60 xl:w-vw-35
-            min-w-reg-280 sm:min-w-reg-320 lg:min-w-reg-400 max-w-reg-500
-            bg-gradient-to-b from-white to-slate-50/30 shadow-2xl border-s border-gray-200/60 backdrop-blur-xl 
-            flex flex-col overflow-hidden
-          `}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("doubts.title")}
+        aria-hidden={!open}
+        className={cn(
+          "fixed inset-y-0 end-0 z-50 flex w-full flex-col border-s border-neutral-200 bg-white shadow-lg",
+          "transition-transform duration-200 ease-out sm:w-vw-60 sm:min-w-reg-350 sm:max-w-reg-420 lg:w-vw-35",
+          open
+            ? "translate-x-0"
+            : "pointer-events-none translate-x-full rtl:-translate-x-full"
+        )}
       >
-        {/* Enhanced Professional Header */}
-        <div className="border-b border-gray-200/80 bg-white/95 backdrop-blur-md p-3 sm:p-4 lg:p-6 flex-shrink-0">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg">
-                <ChatText size={16} className="sm:w-5 sm:h-5 text-white" />
-              </div>
-              <div className="flex flex-col">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">
-                  {t("doubts.title")}
-                </h1>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {activeItem?.source_type === "VIDEO"
-                    ? t("doubts.videoTimestampSupport")
-                    : t("doubts.generalSupport")}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={closeSidebar}
-              className="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 transition-all duration-200 hover:scale-105 group"
-            >
-              <X
-                size={18}
-                className="text-gray-600 group-hover:text-gray-800"
-              />
-            </button>
+        {/* Header */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-neutral-200 px-3 py-2.5 pt-[calc(env(safe-area-inset-top)+10px)]"> {/* design-lint-ignore: safe-area viewport math */}
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-500">
+            <ChatText size={16} weight="fill" className="text-white" />
           </div>
-        </div>
-
-        {/* Enhanced Content Area */}
-        <div className="flex flex-col flex-1 overflow-hidden bg-gradient-to-b from-white to-slate-50/30">
-          <Tabs
-            defaultValue="ALL"
-            onValueChange={(value) => {
-              handleTabChange(value);
-            }}
-            className="flex flex-col h-full"
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-subtitle font-semibold text-neutral-900">
+              {t("doubts.title")}
+            </h2>
+            <p className="truncate text-2xs text-neutral-500">
+              {activeItem?.title || t("doubts.onThisSlide")}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={closeSidebar}
+            aria-label={t("doubts.close")}
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
           >
-            {/* Professional Tab Design */}
-            <div className="px-6 pt-4 pb-2 bg-white/80 backdrop-blur-sm border-b border-gray-100">
-              <TabsList className="w-full bg-gray-50/80 backdrop-blur-sm p-1 rounded-xl border border-gray-200/60">
-                <TabsTrigger
-                  value="ALL"
-                  className="flex-1 flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-primary-600 text-gray-600 font-medium rounded-lg transition-all duration-200 py-2.5"
-                >
-                  <ChatText size={16} />
-                  <span className="hidden sm:inline">{t("doubts.tabAll")}</span>
-                  <span className="sm:hidden">{t("doubts.tabAllShort")}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="RESOLVED"
-                  className="flex-1 flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-green-600 text-gray-600 font-medium rounded-lg transition-all duration-200 py-2.5"
-                >
-                  <CheckCircle size={16} />
-                  <span className="hidden sm:inline">{t("doubts.tabResolved")}</span>
-                  <span className="sm:hidden">{t("doubts.tabResolvedShort")}</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="UNRESOLVED"
-                  className="flex-1 flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-amber-600 text-gray-600 font-medium rounded-lg transition-all duration-200 py-2.5"
-                >
-                  <Clock size={16} />
-                  <span className="hidden sm:inline">{t("doubts.tabPending")}</span>
-                  <span className="sm:hidden">{t("doubts.tabPendingShort")}</span>
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            {/* Enhanced Tab Content */}
-            <TabsContent
-              value="ALL"
-              className="flex-1 overflow-y-auto px-6 py-4 data-[state=inactive]:hidden"
-            >
-              <DoubtList
-                allDoubts={allDoubts}
-                isLoading={isPending || isLoading}
-                lastDoubtElementRef={lastDoubtElementRef}
-                filter={filter}
-                refetch={refetch}
-                isFetchingNextPage={isFetchingNextPage}
-                status="ALL"
-              />
-            </TabsContent>
-            <TabsContent
-              value="RESOLVED"
-              className="flex-1 overflow-y-auto px-6 py-4 data-[state=inactive]:hidden"
-            >
-              <DoubtList
-                allDoubts={allDoubts}
-                isLoading={isPending || isLoading}
-                lastDoubtElementRef={lastDoubtElementRef}
-                filter={filter}
-                refetch={refetch}
-                isFetchingNextPage={isFetchingNextPage}
-                status="RESOLVED"
-              />
-            </TabsContent>
-            <TabsContent
-              value="UNRESOLVED"
-              className="flex-1 overflow-y-auto px-6 py-4 data-[state=inactive]:hidden"
-            >
-              <DoubtList
-                allDoubts={allDoubts}
-                isLoading={isPending || isLoading}
-                lastDoubtElementRef={lastDoubtElementRef}
-                filter={filter}
-                refetch={refetch}
-                isFetchingNextPage={isFetchingNextPage}
-                status="ACTIVE"
-              />
-            </TabsContent>
-          </Tabs>
+            <X size={16} />
+          </button>
         </div>
 
-        {/* Enhanced Footer */}
-        <div className="border-t border-gray-200/80 bg-white/95 backdrop-blur-md p-6 flex-shrink-0">
-          {showInput ? (
-            <div className="flex gap-3 w-full max-h-screen-40">
-              <div className="flex flex-col gap-3 flex-1 min-h-0">
-                {activeItem?.source_type === "VIDEO" &&
-                  timestamp !== undefined &&
-                  formattedTime && (
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <TimestampChip
-                        timestamp={timestamp}
-                        formattedTime={formattedTime}
-                        onEdit={handleTimestampEdit}
-                      />
-                    </div>
+        {/* Filters + thread. TabsContent tracks the active value so exactly one
+            list is mounted and the active trigger's aria-controls resolves. */}
+        <Tabs
+          value={tab}
+          onValueChange={(value) => setTab(value as DoubtTab)}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="shrink-0 border-b border-neutral-200 px-3 py-2">
+            <TabsList className="h-9 w-full gap-0.5 bg-neutral-100 p-0.5">
+              {(
+                [
+                  { value: "ALL", label: t("doubts.tabAllShort"), count: counts.all },
+                  { value: "ACTIVE", label: t("doubts.tabPending"), count: counts.active },
+                  { value: "RESOLVED", label: t("doubts.tabResolved"), count: counts.resolved },
+                ] as const
+              ).map((item) => (
+                <TabsTrigger
+                  key={item.value}
+                  value={item.value}
+                  className="h-8 flex-1 gap-1 px-1.5 text-caption font-semibold text-neutral-600 data-[state=active]:bg-white data-[state=active]:text-neutral-900"
+                >
+                  <span className="truncate">{item.label}</span>
+                  {item.count > 0 && (
+                    <span className="font-semibold text-neutral-400">{item.count}</span>
                   )}
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <MainViewQuillEditor
-                    value={doubt}
-                    onChange={setDoubt}
-                    className="w-full min-h-reg-100 rounded-xl border border-gray-200 focus-within:border-primary-300 transition-colors"
-                    isDoubtResolution={true}
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 items-center justify-end flex-shrink-0">
-                <AddDoubt
-                  doubtText={doubt}
-                  refetch={refetch}
-                  setDoubt={setDoubt}
-                  setShowInput={setShowInput}
-                  timestamp={timestamp}
-                  formattedTime={formattedTime}
-                />
-                <button
-                  onClick={() => setShowInput(false)}
-                  className="flex items-center justify-center w-10 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 transition-all duration-200 hover:scale-105 group"
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+
+          <TabsContent
+            ref={threadRef}
+            value={tab}
+            className="mt-0 min-h-0 flex-1 overflow-y-auto px-3 py-3"
+          >
+            {isError ? (
+              <div className="flex flex-col items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 p-3">
+                <p className="text-caption text-danger-600">{t("doubts.loadError")}</p>
+                <MyButton
+                  buttonType="secondary"
+                  scale="small"
+                  onClick={() => refetch()}
+                  className="min-w-0 px-3"
                 >
-                  <X
-                    size={18}
-                    className="text-gray-600 group-hover:text-gray-800"
-                  />
-                </button>
+                  {t("doubts.retry")}
+                </MyButton>
               </div>
-            </div>
-          ) : (
-            <MyButton
-              scale="large"
-              onClick={handleAskDoubtClick}
-              className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] flex items-center gap-3 justify-center py-4 font-semibold"
-            >
-              <Plus size={20} />
-              {t("doubts.askADoubt")}
-            </MyButton>
-          )}
-        </div>
+            ) : (
+              <DoubtList
+                allDoubts={visibleDoubts}
+                isLoading={isLoading}
+                lastDoubtElementRef={lastDoubtElementRef}
+                refetch={refetch}
+                isFetchingNextPage={isFetchingNextPage}
+                status={tab}
+                authors={authors}
+                viewerUserId={viewerUserId}
+                sourceType={activeItem?.source_type}
+                onJumpToPosition={handleJumpToPosition}
+                getPositionLabel={getPositionLabel}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* Composer */}
+        <DoubtComposer
+          open={showInput}
+          doubt={doubt}
+          setDoubt={setDoubt}
+          onOpen={handleAskDoubtClick}
+          onCancel={handleCancelComposer}
+          refetch={refetch}
+          setShowInput={setShowInput}
+          timestamp={timestamp}
+          positionLabel={hasPosition ? formatPosition(timestamp) : undefined}
+          isDocument={isDocument}
+          onEditPosition={() => setShowPositionDialog(true)}
+          onPosted={handleDoubtPosted}
+        />
       </div>
 
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity duration-300"
+          className="fixed inset-0 z-40 bg-black/30 transition-opacity duration-200"
           onClick={closeSidebar}
         />
       )}
 
-      {activeItem?.source_type === "VIDEO" && (
+      {hasPosition && (
         <TimestampDialog
-          open={showTimestampDialog}
-          onOpenChange={setShowTimestampDialog}
+          open={showPositionDialog}
+          onOpenChange={setShowPositionDialog}
           onTimestampSet={handleTimestampSet}
           initialTimestamp={timestamp}
         />

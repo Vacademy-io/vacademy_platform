@@ -27,4 +27,17 @@ public class RoadmapController {
         }
         return ResponseEntity.ok(service.get());
     }
+
+    /**
+     * updatedAt only. The dock needs nothing else to decide whether to show its
+     * "new" dot, and /current carries a ~1MB body that was being downloaded on every
+     * admin page load just to read this one field.
+     */
+    @GetMapping("/current/meta")
+    public ResponseEntity<RoadmapDto> currentMeta(@RequestAttribute("user") CustomUserDetails user) {
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        return ResponseEntity.ok(service.getMeta());
+    }
 }

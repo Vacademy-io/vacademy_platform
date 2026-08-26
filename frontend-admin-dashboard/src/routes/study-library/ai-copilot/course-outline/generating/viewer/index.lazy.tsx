@@ -1,7 +1,7 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { Helmet } from 'react-helmet';
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useId, useMemo, useCallback, useRef } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import {
     ArrowLeft,
@@ -390,6 +390,12 @@ const SortableSlideItem = React.memo(({ slide, onEdit, onDelete, getSlideIcon, o
     const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
     const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    /* Radio groups are document-wide: every completed slide renders its quiz
+     * editor at once, so a bare `correct-${qIndex}` made question 1 of slide A
+     * and question 1 of slide B one group — picking an answer in one silently
+     * unchecked the other. Scope the group to this slide's component instance. */
+    const quizGroupId = useId();
 
     const {
         attributes,
@@ -1442,7 +1448,7 @@ const SortableSlideItem = React.memo(({ slide, onEdit, onDelete, getSlideIcon, o
                                                     <div key={optIndex} className="flex items-center gap-2">
                                                         <input
                                                             type="radio"
-                                                            name={`correct-${qIndex}`}
+                                                            name={`correct-${quizGroupId}-${qIndex}`}
                                                             checked={Number(question.correctAnswerIndex ?? 0) === optIndex}
                                                             onChange={() => {
                                                                 updateQuestion(qIndex, 'correctAnswerIndex', optIndex);

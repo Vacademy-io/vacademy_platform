@@ -8,6 +8,10 @@
  *                      page is unaffected (still sees all campaigns).
  *  3. AUDIENCE_LIST  — role only sees the explicitly granted audience lists,
  *                      and only those lists' responses on Recent Leads.
+ *                      Optionally (assigned_only) narrowed further to the leads
+ *                      the user owns, with leads they add by hand stamped to
+ *                      them — active only while the institute runs no
+ *                      counsellor pool.
  *
  * Persists into the institute setting key
  * {@code ROLE_DISPLAY_SETTINGS.audienceRoleAccess}, read on the backend by
@@ -34,6 +38,7 @@ import {
     type AudienceAccessMode,
     type RoleAccessConfig,
 } from '@/hooks/use-audience-role-access';
+import { useCounselorPools } from '@/services/counselor-pool';
 
 interface AudienceAccessCardProps {
     /** Uppercase role name as stored in JWT authorities, e.g. "ADMIN", "TEACHER", "COUNSELOR". */
@@ -68,6 +73,13 @@ const buildModeOptions = (
     },
 ];
 
+// Copy for the AUDIENCE_LIST sub-option. Spelled out rather than summarised
+// because both halves surprise admins otherwise: the visibility narrowing is
+// what they asked for, the auto-assign is what keeps a counsellor from losing
+// sight of a lead the moment they save it.
+const buildAssignedOnlyDescription = (roleDisplayName: string) =>
+    `Inside the granted lists, a user with the ${roleDisplayName} role only sees leads they are the assigned counsellor of — unassigned leads and other counsellors' leads are hidden. Any lead they add by hand is automatically assigned to them, so it stays visible. This only applies while the institute has no counsellor pool configured under Leads → Settings → Pools; create a pool and this option goes inert (the role sees every lead in its granted lists again).`;
+
 export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardProps) => {
     const normalizedRole = roleName.toUpperCase();
     const { config, isLoading, saving, save } = useAudienceRoleAccess();
@@ -79,6 +91,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
     // toggle several checkboxes before the auto-save flush.
     const [mode, setMode] = useState<AudienceAccessMode>('DEFAULT');
     const [selectedAudienceIds, setSelectedAudienceIds] = useState<string[]>([]);
+    const [assignedOnly, setAssignedOnly] = useState(false);
     const [dirty, setDirty] = useState(false);
     // Briefly show "Saved" after a successful flush so the admin has feedback
     // even though there's no Save button.
@@ -88,6 +101,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         const existing: RoleAccessConfig | undefined = config.roles?.[normalizedRole];
         setMode(existing?.mode ?? 'DEFAULT');
         setSelectedAudienceIds(existing?.audience_ids ?? []);
+        setAssignedOnly(existing?.assigned_only === true);
         setDirty(false);
     }, [config, normalizedRole]);
 
@@ -112,6 +126,12 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         [audiencesQuery.data]
     );
 
+    // Counsellor pools decide whether the assigned-only option does anything.
+    // The backend enforces the same gate; this read is purely so the admin sees
+    // "configured but inert" instead of a switch that silently does nothing.
+    const poolsQuery = useCounselorPools();
+    const hasCounsellorPool = (poolsQuery.data?.length ?? 0) > 0;
+
     const handleModeChange = (value: string) => {
         setMode(value as AudienceAccessMode);
         setDirty(true);
@@ -119,7 +139,13 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         // silently persist stale ids.
         if (value !== 'AUDIENCE_LIST') {
             setSelectedAudienceIds([]);
+            setAssignedOnly(false);
         }
+    };
+
+    const handleAssignedOnlyChange = (checked: boolean) => {
+        setAssignedOnly(checked);
+        setDirty(true);
     };
 
     const toggleAudience = (id: string, checked: boolean) => {
@@ -135,15 +161,15 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
     // Auto-save with a debounce. Capture the latest mode + selection in a ref
     // so the timer's flush picks up whatever the user clicked last (avoids
     // stale-closure bugs on rapid toggles).
-    const latestRef = useRef({ mode, selectedAudienceIds });
+    const latestRef = useRef({ mode, selectedAudienceIds, assignedOnly });
     useEffect(() => {
-        latestRef.current = { mode, selectedAudienceIds };
-    }, [mode, selectedAudienceIds]);
+        latestRef.current = { mode, selectedAudienceIds, assignedOnly };
+    }, [mode, selectedAudienceIds, assignedOnly]);
 
     useEffect(() => {
         if (!dirty) return;
         const timer = window.setTimeout(async () => {
-            const { mode: m, selectedAudienceIds: ids } = latestRef.current;
+            const { mode: m, selectedAudienceIds: ids, assignedOnly: onlyMine } = latestRef.current;
             const nextRoles = { ...(config.roles ?? {}) };
             if (m === 'DEFAULT') {
                 nextRoles[normalizedRole] = { mode: 'DEFAULT' };
@@ -153,6 +179,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                 nextRoles[normalizedRole] = {
                     mode: 'AUDIENCE_LIST',
                     audience_ids: ids,
+                    assigned_only: onlyMine,
                 };
             }
             try {
@@ -171,7 +198,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         // timer — config/save are stable from React Query and don't need
         // to retrigger flushes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dirty, mode, selectedAudienceIds, normalizedRole]);
+    }, [dirty, mode, selectedAudienceIds, assignedOnly, normalizedRole]);
 
     const showAudienceMultiSelect = mode === 'AUDIENCE_LIST';
     const audienceListEmpty =
@@ -261,6 +288,40 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                             <p className="text-xs text-warning-600">
                                 Saving with zero lists selected will hide all leads from this
                                 role.
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {showAudienceMultiSelect && (
+                    <div className="flex flex-col gap-2 rounded-md border border-neutral-200 p-3">
+                        <label
+                            htmlFor={`audience-assigned-only-${normalizedRole}`}
+                            className="flex cursor-pointer items-start gap-3"
+                        >
+                            <Checkbox
+                                id={`audience-assigned-only-${normalizedRole}`}
+                                checked={assignedOnly}
+                                onCheckedChange={(v) => handleAssignedOnlyChange(v === true)}
+                                className="mt-0.5"
+                            />
+                            <div className="flex flex-col gap-1">
+                                <span className="text-sm font-medium text-neutral-900">
+                                    Only leads assigned to {roleLabel ?? normalizedRole} within
+                                    these lists
+                                </span>
+                                <span className="text-xs text-neutral-600">
+                                    {buildAssignedOnlyDescription(roleLabel ?? normalizedRole)}
+                                </span>
+                            </div>
+                        </label>
+                        {assignedOnly && hasCounsellorPool && (
+                            <p className="text-xs text-warning-600">
+                                This institute has {poolsQuery.data?.length} counsellor{' '}
+                                {poolsQuery.data?.length === 1 ? 'pool' : 'pools'} configured, so
+                                this option is currently inert — the role still sees every lead in
+                                its granted lists. Remove the pools under Leads → Settings → Pools
+                                to activate it.
                             </p>
                         )}
                     </div>

@@ -131,11 +131,28 @@ class ToolManagerService:
     Manages tool definitions and executes tool calls from the LLM.
     """
     
-    def __init__(self, db_session: Session, rag_service=None, analytics_service=None):
+    def __init__(
+        self,
+        db_session: Session,
+        rag_service=None,
+        analytics_service=None,
+        institute_id: str = "",
+        user_id: str = "",
+    ):
         self.db = db_session
         self.learning_progress_service = LearningProgressService(db_session)
         self.rag_service = rag_service
         self.analytics_service = analytics_service
+
+        # Identity/tenant scope comes from the session row, NEVER from the tool
+        # arguments the model produced. `institute_id` in particular is not a
+        # declared parameter on any tool, so reading it out of `args` always
+        # yielded "" and every scoped query silently matched zero rows —
+        # semantic_search_content returned nothing on 571/571 production calls.
+        # Holding it as instance state also means a hallucinated user_id cannot
+        # be used to read another learner's progress.
+        self.institute_id = institute_id or ""
+        self.user_id = user_id or ""
 
         # Map tool names to executor methods
         self.executors: Dict[str, Callable] = {
@@ -187,7 +204,8 @@ class ToolManagerService:
         Get comprehensive learning progress from learner_operation table.
         Returns hierarchical paths, completion percentages, recent activity.
         """
-        user_id = args.get("user_id")
+        # Session identity wins over anything the model supplied.
+        user_id = self.user_id or args.get("user_id")
         source_filter = args.get("source_filter")
         
         if not user_id:
@@ -212,7 +230,8 @@ class ToolManagerService:
         """
         Get student performance feedback from student_analysis_process and user_linked_data.
         """
-        user_id = args.get("user_id")
+        # Session identity wins over anything the model supplied.
+        user_id = self.user_id or args.get("user_id")
         date_range_days = args.get("date_range_days", 30)
         
         if not user_id:
@@ -239,26 +258,43 @@ class ToolManagerService:
                 elif type_val == "weakness":
                     weaknesses.append(f"- {data} ({percentage}%)")
             
-            # Fetch recent analysis reports
-            stmt = text("""
-                SELECT status, report_json, created_at
-                FROM student_analysis_process
-                WHERE user_id = :user_id
-                AND created_at >= NOW() - INTERVAL ':days days'
-                ORDER BY created_at DESC
-                LIMIT 1
-            """)
-            result = self.db.execute(stmt, {"user_id": user_id, "days": date_range_days})
-            analysis_row = result.fetchone()
-            
+            # Fetch recent analysis reports.
+            #
+            # This used to read `INTERVAL ':days days'` — a *quoted literal*, so
+            # the bind never applied and Postgres raised
+            # `invalid input syntax for type interval: ":days days"`. Because that
+            # raise happened inside the same try as the strengths/weaknesses
+            # query above, the whole tool returned "Unable to fetch student
+            # feedback" and threw away data it had already fetched. make_interval
+            # takes a real bind, and the lookup now fails in isolation.
             recent_report = ""
-            if analysis_row and analysis_row[1]:
-                try:
-                    report = json.loads(analysis_row[1]) if isinstance(analysis_row[1], str) else analysis_row[1]
-                    recent_report = f"\nRecent Analysis: {report.get('summary', 'No summary available')}"
-                except:
-                    pass
-            
+            try:
+                stmt = text("""
+                    SELECT status, report_json, created_at
+                    FROM student_analysis_process
+                    WHERE user_id = :user_id
+                    AND created_at >= NOW() - make_interval(days => :days)
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+                result = self.db.execute(
+                    stmt, {"user_id": user_id, "days": int(date_range_days)}
+                )
+                analysis_row = result.fetchone()
+
+                if analysis_row and analysis_row[1]:
+                    report = (
+                        json.loads(analysis_row[1])
+                        if isinstance(analysis_row[1], str)
+                        else analysis_row[1]
+                    )
+                    recent_report = (
+                        f"\nRecent Analysis: "
+                        f"{report.get('summary', 'No summary available')}"
+                    )
+            except Exception as e:
+                logger.warning(f"Recent analysis report lookup failed: {e}")
+
             # Format response
             feedback = f"""
 Student Performance Feedback:
@@ -284,67 +320,136 @@ Use this information to provide personalized guidance to the student.
         """
         topic = args.get("topic")
         resource_type = args.get("resource_type", "all")
-        
+
         if not topic:
             return "Error: topic is required"
-        
+
+        # Both queries below were previously unscoped, so a keyword search ran
+        # across every tenant on the platform: a search for "motion" returned
+        # slides belonging to other institutes (verified in production). Slides
+        # carry no institute_id of their own, so tenancy is resolved through
+        # chapter_to_slides -> chapter_package_session_mapping -> package_session
+        # -> package_institute.
+        if not self.institute_id:
+            logger.error("search_related_resources called with no institute scope")
+            return (
+                "LOOKUP FAILED: resource search is unavailable right now "
+                "(no institute scope). Do not invent slide or question names; "
+                "tell the student you could not search the material."
+            )
+
         try:
             results = []
-            
-            # Search slides
+
+            # Search slides — scoped to this institute
             if resource_type in ["slide", "all"]:
                 stmt = text("""
-                    SELECT id, title, description, source_type
-                    FROM slide
-                    WHERE status != 'DELETED'
+                    SELECT DISTINCT s.id, s.title, s.source_type
+                    FROM slide s
+                    JOIN chapter_to_slides cts
+                        ON cts.slide_id = s.id AND cts.status <> 'DELETED'
+                    JOIN chapter_package_session_mapping cpsm
+                        ON cpsm.chapter_id = cts.chapter_id
+                       AND cpsm.status <> 'DELETED'
+                    JOIN package_session ps ON ps.id = cpsm.package_session_id
+                    JOIN package_institute pi ON pi.package_id = ps.package_id
+                    WHERE s.status != 'DELETED'
+                    AND pi.institute_id = :institute_id
                     AND (
-                        title ILIKE :topic
-                        OR description ILIKE :topic
+                        s.title ILIKE :topic
+                        OR s.description ILIKE :topic
                     )
                     LIMIT 5
                 """)
-                result = self.db.execute(stmt, {"topic": f"%{topic}%"})
+                result = self.db.execute(
+                    stmt,
+                    {"topic": f"%{topic}%", "institute_id": self.institute_id},
+                )
                 slides = result.fetchall()
-                
+
                 if slides:
                     results.append("Related Slides:")
                     for slide in slides:
-                        results.append(f"- {slide[1]} (ID: {slide[0]}, Type: {slide[3]})")
-            
-            # Search questions
+                        results.append(
+                            f"- {slide[1]} (ID: {slide[0]}, Type: {slide[2]})"
+                        )
+
+            # Search questions — scoped to this institute, and actually filtered
+            # by `topic`. This branch used to ignore `topic` entirely and return
+            # three arbitrary question UUIDs with no text, which is unusable to
+            # the model; it was nonetheless the most-requested resource_type
+            # (153 of 283 production calls). The question text lives in
+            # rich_text_data via quiz_slide_question.text_id.
             if resource_type in ["question", "all"]:
                 stmt = text("""
-                    SELECT id, status
-                    FROM quiz_slide_question
-                    WHERE status != 'DELETED'
+                    SELECT DISTINCT q.id,
+                           regexp_replace(rt.content, '<[^>]+>', '', 'g') AS question_text
+                    FROM quiz_slide_question q
+                    JOIN rich_text_data rt ON rt.id = q.text_id
+                    JOIN slide s
+                        ON s.source_id = q.quiz_slide_id AND s.source_type = 'QUIZ'
+                    JOIN chapter_to_slides cts
+                        ON cts.slide_id = s.id AND cts.status <> 'DELETED'
+                    JOIN chapter_package_session_mapping cpsm
+                        ON cpsm.chapter_id = cts.chapter_id
+                       AND cpsm.status <> 'DELETED'
+                    JOIN package_session ps ON ps.id = cpsm.package_session_id
+                    JOIN package_institute pi ON pi.package_id = ps.package_id
+                    WHERE q.status != 'DELETED'
+                    AND s.status != 'DELETED'
+                    AND pi.institute_id = :institute_id
+                    AND rt.content ILIKE :topic
                     LIMIT 3
                 """)
-                result = self.db.execute(stmt)
+                result = self.db.execute(
+                    stmt,
+                    {"topic": f"%{topic}%", "institute_id": self.institute_id},
+                )
                 questions = result.fetchall()
-                
+
                 if questions:
-                    results.append("\nRelated Questions:")
+                    results.append("\nRelated Practice Questions:")
                     for q in questions:
-                        results.append(f"- Question ID: {q[0]}")
-            
+                        q_text = " ".join((q[1] or "").split())[:300]
+                        results.append(f"- {q_text} (ID: {q[0]})")
+
             if not results:
-                return f"No resources found related to '{topic}'"
-            
+                return (
+                    f"No resources found related to '{topic}' in this "
+                    f"institute's material. The search ran successfully — there "
+                    f"is genuinely no matching slide or question."
+                )
+
             return "\n".join(results)
-            
+
         except Exception as e:
             logger.error(f"Error searching resources: {e}")
-            return f"Unable to search resources: {str(e)}"
+            return (
+                f"LOOKUP FAILED: could not search resources ({str(e)}). "
+                f"Tell the student you could not search the material rather "
+                f"than guessing at what exists."
+            )
     
 
     async def _execute_semantic_search(self, args: Dict[str, Any]) -> str:
         """Search course content using semantic similarity via RAG."""
         query = args.get("query")
         top_k = args.get("top_k", 5)
-        institute_id = args.get("institute_id", "")
+        # Tenant scope is server-side state, not a model argument.
+        institute_id = self.institute_id
 
         if not query:
             return "Error: query is required"
+
+        if not institute_id:
+            # Fail loudly rather than running an unscoped search that quietly
+            # matches nothing — the model must be told the lookup did not run.
+            logger.error("semantic_search_content called with no institute scope")
+            return (
+                "LOOKUP FAILED: content search is unavailable right now "
+                "(no institute scope). Do not guess at course content; tell the "
+                "student you could not search the material."
+            )
 
         if not self.rag_service:
             return "Semantic search is not available. Falling back to keyword search."
@@ -385,7 +490,8 @@ Use this information to provide personalized guidance to the student.
 
     async def _execute_get_analytics(self, args: Dict[str, Any]) -> str:
         """Get learning analytics for a student."""
-        user_id = args.get("user_id")
+        # Session identity wins over anything the model supplied.
+        user_id = self.user_id or args.get("user_id")
         if not user_id:
             return "Error: user_id is required"
         if not self.analytics_service:

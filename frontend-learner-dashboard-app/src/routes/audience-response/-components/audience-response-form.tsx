@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -14,6 +14,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { ModernCard, ModernCardHeader, ModernCardTitle } from "@/components/design-system/modern-card";
 import { InstituteBrandingComponent } from "@/components/common/institute-branding";
 import { MyButton } from "@/components/design-system/button";
+import { Check } from "@phosphor-icons/react";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import {
@@ -31,7 +32,17 @@ import type { AudienceCampaignResponse } from "../-services/audience-campaign-se
 import {
   submitAudienceLead,
   handleSubmitAudienceLead,
+  extractRespondentIdentity,
 } from "../-services/audience-campaign-services";
+import {
+  parsePostSubmitConfiguration,
+  applyPostSubmitTokens,
+  sanitizePostSubmitHtml,
+  resolvePostSubmitButtons,
+  isExternalPostSubmitUrl,
+  type PostSubmitTokens,
+} from "../-utils/post-submit-config";
+import { usePostSubmitRedirect } from "../-utils/use-post-submit-redirect";
 import { toast } from "sonner";
 
 interface AudienceResponseFormProps {
@@ -80,6 +91,27 @@ const AudienceResponseForm = ({
   const { setInstituteDetails } = useInstituteDetailsStore();
   const [loading, setLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  // What the visitor typed, kept after the form resets so the thank-you screen
+  // can resolve {{name}} / {{email}} tokens.
+  const [respondent, setRespondent] = useState<PostSubmitTokens>({});
+
+  // Admin-authored thank-you screen / redirect. Falls back to the previous
+  // hardcoded copy for campaigns that predate the feature.
+  const postSubmitConfig = useMemo(
+    () => parsePostSubmitConfiguration(campaignData.setting_json),
+    [campaignData.setting_json]
+  );
+  const postSubmitTokens: PostSubmitTokens = useMemo(
+    () => ({ ...respondent, campaignName: campaignData.campaign_name }),
+    [respondent, campaignData.campaign_name]
+  );
+  const { redirectUrl, secondsLeft } = usePostSubmitRedirect(
+    postSubmitConfig,
+    postSubmitTokens,
+    // Gated on the master switch: a campaign that never enabled this must never
+    // redirect anyone, whatever else is sitting in its setting_json.
+    isSubmitted && postSubmitConfig.enabled
+  );
 
   const { data: instituteData, isLoading: isInstituteLoading } =
     useSuspenseQuery(handleGetPublicInstituteDetails({ instituteId }));
@@ -261,10 +293,18 @@ const AudienceResponseForm = ({
       const response = await submitAudienceLead(payload);
 
       console.log("Audience response submitted successfully:", response);
-      
+
+      // Capture identity BEFORE the reset — the thank-you screen and the
+      // redirect URL both interpolate it.
+      setRespondent(
+        extractRespondentIdentity(
+          values as Record<string, { value: string; id: string }>
+        )
+      );
+
       // Show success state
       setIsSubmitted(true);
-      
+
       // Reset the form after successful submission
       form.reset();
     } catch (error: any) {
@@ -286,6 +326,39 @@ const AudienceResponseForm = ({
 
   // Show success message after submission
   if (isSubmitted) {
+    // Master switch off (the default) → the exact screen this page rendered
+    // before the feature existed.
+    const useCustomScreen = postSubmitConfig.enabled;
+    const successTitle = applyPostSubmitTokens(
+      postSubmitConfig.successTitle,
+      postSubmitTokens
+    );
+    const successMessage = applyPostSubmitTokens(
+      postSubmitConfig.successMessage,
+      postSubmitTokens
+    );
+    // Custom HTML replaces the plain message when the admin supplied one.
+    const successHtml = postSubmitConfig.content.trim()
+      ? sanitizePostSubmitHtml(
+          applyPostSubmitTokens(postSubmitConfig.content, postSubmitTokens)
+        )
+      : "";
+    // Buttons pointing somewhere unsafe are dropped, not rendered dead.
+    const actionButtons = resolvePostSubmitButtons(
+      postSubmitConfig,
+      postSubmitTokens
+    );
+    const showAnother = postSubmitConfig.allowAnotherResponse;
+    const anotherLabel =
+      applyPostSubmitTokens(postSubmitConfig.anotherResponseText, postSubmitTokens) ||
+      "Submit another response";
+
+    const handleAnotherResponse = () => {
+      form.reset(defaultValues);
+      setRespondent({});
+      setIsSubmitted(false);
+    };
+
     return (
       <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
         {/* Navbar Header */}
@@ -328,44 +401,82 @@ const AudienceResponseForm = ({
               className="border border-white/40 bg-white/90 backdrop-blur-md shadow-lg"
             >
               <div className="text-center space-y-6 py-8">
-                {/* Success Icon */}
-                <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-green-100 mb-4">
-                  <svg
-                    className="h-10 w-10 text-green-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+                {/* Success icon — unchanged whether or not the campaign uses a
+                    custom screen; only the copy and actions are configurable. */}
+                <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-success-100">
+                  <Check className="size-10 text-success-600" weight="bold" aria-hidden="true" />
                 </div>
 
-                {/* Success Message */}
+                {/* Success Message — copy, CTA and redirect all come from the
+                    campaign's Post Submit Configuration. */}
                 <div className="space-y-3">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-neutral-800">
-                     Registration Successfully!
-                  </h2>
-                  <p className="text-lg text-neutral-600">
-                    Thank you for your response. Your form has been submitted successfully.
-                  </p>
+                  {(useCustomScreen ? successTitle : "Registration Successful!") && (
+                    <h2 className="text-2xl sm:text-3xl font-bold text-neutral-800">
+                      {useCustomScreen ? successTitle : "Registration Successful!"}
+                    </h2>
+                  )}
+                  {useCustomScreen && successHtml ? (
+                    <div
+                      className="text-lg text-neutral-600 [&_a]:text-primary-500 [&_a]:underline [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-bold [&_h3]:text-lg [&_h3]:font-semibold [&_img]:mx-auto [&_img]:max-w-full [&_li]:list-inside [&_ol]:list-decimal [&_ul]:list-disc"
+                      dangerouslySetInnerHTML={{ __html: successHtml }}
+                    />
+                  ) : (
+                    (useCustomScreen
+                      ? successMessage
+                      : "Thank you for your response. Your form has been submitted successfully.") && (
+                      <p className="text-lg text-neutral-600 whitespace-pre-line">
+                        {useCustomScreen
+                          ? successMessage
+                          : "Thank you for your response. Your form has been submitted successfully."}
+                      </p>
+                    )
+                  )}
                   {campaignData.send_respondent_email && (
                     <p className="text-sm text-neutral-500">
                       A confirmation email will be sent to you shortly.
                     </p>
                   )}
+                  {redirectUrl && secondsLeft !== null && (
+                    <p className="text-sm text-neutral-500">
+                      Redirecting in {secondsLeft}
+                      {secondsLeft === 1 ? " second" : " seconds"}…
+                    </p>
+                  )}
                 </div>
 
-                {/* Campaign Info */}
-                <div className="mt-8 pt-6 border-t border-neutral-200">
-                  <p className="text-sm text-neutral-600">
-                    <span className="font-semibold">Campaign:</span> {campaignData.campaign_name}
-                  </p>
-                </div>
+                {useCustomScreen && (actionButtons.length > 0 || showAnother) && (
+                  <div className="flex flex-col flex-wrap items-center justify-center gap-3 sm:flex-row">
+                    {actionButtons.map((button) => (
+                      // Anchors, not buttons: middle-click / "open in new tab"
+                      // is what people expect from a link on a thank-you page.
+                      <a
+                        key={button.id}
+                        href={button.href}
+                        {...(isExternalPostSubmitUrl(button.href)
+                          ? { target: "_blank", rel: "noopener noreferrer" }
+                          : {})}
+                        className={
+                          button.variant === "primary"
+                            ? "inline-flex items-center justify-center rounded-lg bg-primary-500 px-6 py-2.5 text-subtitle font-semibold text-white transition-colors hover:bg-primary-600"
+                            : "inline-flex items-center justify-center rounded-lg border border-neutral-300 px-6 py-2.5 text-subtitle font-semibold text-neutral-600 transition-colors hover:border-neutral-400"
+                        }
+                      >
+                        {button.text}
+                      </a>
+                    ))}
+                    {showAnother && (
+                      <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="large"
+                        layoutVariant="default"
+                        onClick={handleAnotherResponse}
+                      >
+                        {anotherLabel}
+                      </MyButton>
+                    )}
+                  </div>
+                )}
               </div>
             </ModernCard>
           </div>
@@ -561,6 +672,8 @@ const AudienceResponseForm = ({
                                     control={form.control}
                                     country={phoneCountryCode}
                                     required={value.is_mandatory}
+                                    labelClassName="text-subtitle font-regular"
+                                    inputClassName="!text-subtitle placeholder:!text-body"
                                   />
                                 </FormControl>
                               </FormItem>

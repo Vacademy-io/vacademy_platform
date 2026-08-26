@@ -161,6 +161,11 @@ export async function createCourseWithContent(
     const coursePayload = {
         id: '',
         new_course: true, // Required by backend - indicates this is a new course
+        // AI course names are deterministic (derived from the source material),
+        // so without this the backend would find the previous run's same-named
+        // course and silently append the new chapters into it. TRUE = always
+        // create a fresh course, uniquifying the name with " (n)" if taken.
+        force_new_course: true,
         course_name: courseName,
         // Only use UUID for thumbnail_file_id as it strictly expects a file ID
         thumbnail_file_id: isUuid(previewImage) ? previewImage : '',
@@ -495,6 +500,7 @@ export async function createCourseWithContent(
                             packageSessionIds,
                             instituteId: INSTITUTE_ID || '',
                             slideOrder: slideIndex,
+                            topicTag: `${session.sessionTitle} > ${slide.slideTitle} > ${slideKindLabel(slide.slideType)}`,
                         })
                             .then(() => {
                                 console.log(
@@ -560,6 +566,32 @@ interface CreateSlideParams {
     packageSessionIds: string;
     instituteId: string;
     slideOrder: number;
+    // Breadcrumb tag ("Chapter > Topic > Asset kind") persisted into
+    // slide.description so generated assets stay traceable to their source
+    // topic (client round-2 ask). For KB courses the chapter/slide titles are
+    // the source material's own topic/subtopic names.
+    topicTag?: string;
+}
+
+// Human label for the asset kind, for the topic-tag breadcrumb.
+function slideKindLabel(slideType: string): string {
+    switch (slideType) {
+        case 'quiz':
+        case 'assessment':
+            return 'Quiz';
+        case 'video':
+        case 'video-code':
+            return 'Video';
+        case 'ai-video':
+        case 'ai-video-code':
+            return 'AI Video';
+        case 'ai-slides':
+            return 'AI Slides';
+        case 'ai-storybook':
+            return 'Storybook';
+        default:
+            return 'Notes';
+    }
 }
 
 /**
@@ -691,7 +723,8 @@ async function createDocumentSlide(params: CreateSlideParams): Promise<void> {
         id: crypto.randomUUID(),
         title: slide.slideTitle,
         image_file_id: '',
-        description: null,
+        // Topic breadcrumb — slide.description was unused (null) on this path.
+        description: params.topicTag || null,
         slide_order: slideOrder,
         document_slide: {
             id: crypto.randomUUID(),

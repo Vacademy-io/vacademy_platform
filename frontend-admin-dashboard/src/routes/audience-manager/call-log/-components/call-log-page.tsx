@@ -21,14 +21,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { TeamPicker } from '@/components/shared/crm/TeamPicker';
-import {
-    fetchCounsellors,
-} from '@/routes/counsellors/-services/counsellor-workbench-services';
+import { fetchCounsellors } from '@/routes/counsellors/-services/counsellor-workbench-services';
 import CallLogTab from './CallLogTab';
+import CallQueueTab from './CallQueueTab';
 import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
 import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import CallIntelligenceTab from '../../reports/-components/call-intelligence-tab';
@@ -71,6 +71,8 @@ export function CallLogPage() {
     const queryClient = useQueryClient();
     // Call Intelligence analytics show here only when the institute has the feature on.
     const callIntelligenceEnabled = useCallIntelligenceEnabled();
+    // 'calls' = what already happened; 'queue' = what has not gone out yet.
+    const [view, setView] = useState<'calls' | 'queue'>('calls');
 
     const defaults = useMemo(() => computeRange(DEFAULT_DAYS), []);
     const [fromDate, setFromDate] = useState(defaults.from);
@@ -151,70 +153,88 @@ export function CallLogPage() {
                 </div>
             </header>
 
-            {/* Shared filter bar */}
-            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-1 self-end rounded-md border border-neutral-200 bg-white p-1">
-                    {PRESETS.map((p) => (
-                        <button
-                            key={p.key}
-                            type="button"
-                            onClick={() => applyPreset(p.days)}
-                            className={cn(
-                                'rounded px-2.5 py-1 text-xs',
-                                activePreset === p.key
-                                    ? 'bg-primary-500 text-white'
-                                    : 'text-neutral-600 hover:bg-neutral-50'
-                            )}
-                        >
-                            {p.label}
-                        </button>
-                    ))}
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="cl-from" className="text-xs text-neutral-600">
-                        From
-                    </Label>
-                    <Input
-                        id="cl-from"
-                        type="date"
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                        className="w-40"
-                    />
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="cl-to" className="text-xs text-neutral-600">
-                        To
-                    </Label>
-                    <Input
-                        id="cl-to"
-                        type="date"
-                        value={toDate}
-                        onChange={(e) => setToDate(e.target.value)}
-                        className="w-40"
-                    />
-                </div>
-                <Button onClick={apply} size="sm" disabled={!instituteId}>
-                    Apply
-                </Button>
-                <Button onClick={reset} size="sm" variant="ghost">
-                    Reset
-                </Button>
-                <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <TeamPicker
-                        instituteId={instituteId}
-                        value={teamId}
-                        onChange={handleTeamChange}
-                    />
-                    <CounsellorScopePicker
-                        instituteId={instituteId}
-                        value={counsellorUserId}
-                        onChange={setCounsellorUserId}
-                    />
-                </div>
-            </div>
+            <Tabs value={view} onValueChange={(v) => setView(v as 'calls' | 'queue')}>
+                <TabsList>
+                    <TabsTrigger value="calls">Calls</TabsTrigger>
+                    <TabsTrigger value="queue">Queue</TabsTrigger>
+                </TabsList>
+            </Tabs>
 
-            {!instituteId ? (
+            {/* Shared filter bar. Calls only — the queue is "right now", so a date
+                range, a team and a counsellor have nothing to say about it. */}
+            {view === 'calls' && (
+                <div className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-center gap-1 self-end rounded-md border border-neutral-200 bg-white p-1">
+                        {PRESETS.map((p) => (
+                            <button
+                                key={p.key}
+                                type="button"
+                                onClick={() => applyPreset(p.days)}
+                                className={cn(
+                                    'rounded px-2.5 py-1 text-xs',
+                                    activePreset === p.key
+                                        ? 'bg-primary-500 text-white'
+                                        : 'text-neutral-600 hover:bg-neutral-50'
+                                )}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="cl-from" className="text-xs text-neutral-600">
+                            From
+                        </Label>
+                        <Input
+                            id="cl-from"
+                            type="date"
+                            value={fromDate}
+                            onChange={(e) => setFromDate(e.target.value)}
+                            className="w-40"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="cl-to" className="text-xs text-neutral-600">
+                            To
+                        </Label>
+                        <Input
+                            id="cl-to"
+                            type="date"
+                            value={toDate}
+                            onChange={(e) => setToDate(e.target.value)}
+                            className="w-40"
+                        />
+                    </div>
+                    <Button onClick={apply} size="sm" disabled={!instituteId}>
+                        Apply
+                    </Button>
+                    <Button onClick={reset} size="sm" variant="ghost">
+                        Reset
+                    </Button>
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                        <TeamPicker
+                            instituteId={instituteId}
+                            value={teamId}
+                            onChange={handleTeamChange}
+                        />
+                        <CounsellorScopePicker
+                            instituteId={instituteId}
+                            value={counsellorUserId}
+                            onChange={setCounsellorUserId}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'queue' ? (
+                !instituteId ? (
+                    <div className="rounded-xl border border-warning-200 bg-warning-50 p-4 text-sm text-warning-700">
+                        Pick an institute to view its call queue.
+                    </div>
+                ) : (
+                    <CallQueueTab instituteId={instituteId} />
+                )
+            ) : !instituteId ? (
                 <div className="rounded-xl border border-warning-200 bg-warning-50 p-4 text-sm text-warning-700">
                     Pick an institute to view the call log.
                 </div>
@@ -230,7 +250,7 @@ export function CallLogPage() {
 
             {/* AI Call Intelligence analytics — team quality, outcome/sentiment mix,
                 per-counsellor leaderboard. Only when the institute has it enabled. */}
-            {instituteId && callIntelligenceEnabled && (
+            {view === 'calls' && instituteId && callIntelligenceEnabled && (
                 <div className="flex flex-col gap-3">
                     <h2 className="text-base font-semibold text-neutral-900">Call Intelligence</h2>
                     <CallIntelligenceTab

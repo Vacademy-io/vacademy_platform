@@ -129,6 +129,15 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             """, nativeQuery = true)
     Long countAllInstitutes(@Param("search") String search);
 
+    /**
+     * Bulk id -> display name, for screens that list institutes they do not otherwise
+     * need to load. Deliberately a two-column projection: {@code institutes} carries
+     * {@code setting_json}, which is large, and fetching whole entities to read a name
+     * pulls every institute's settings blob across with it.
+     */
+    @Query(value = "SELECT i.id, i.name FROM institutes i WHERE i.id IN (:ids)", nativeQuery = true)
+    List<Object[]> findIdAndNameByIds(@Param("ids") java.util.Collection<String> ids);
+
     @Query(value = "SELECT COUNT(*) FROM institutes", nativeQuery = true)
     Long countTotalInstitutes();
 

@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfi
 import vacademy.io.admin_core_service.features.telephony.core.AiCallNodeDispatcher;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallOutcomeProcessor;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallingSettingsService;
+import vacademy.io.admin_core_service.features.telephony.core.CallingWindowUtil;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
@@ -27,7 +28,6 @@ import java.util.Collection;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
@@ -443,66 +443,33 @@ public class CallAiNodeHandler implements NodeHandler {
                 .isPresent();
     }
 
+    // The four shift helpers below moved to CallingWindowUtil unchanged, so the AI call
+    // queue's drainer can apply the SAME window rule when it dispatches an item that has
+    // been waiting (dialing used to be immediate, so only this node could ever land
+    // outside a shift). These remain as thin delegates: every call site in this file, and
+    // its behaviour, is untouched.
+
     /** Inside any [start,end] shift (institute tz); handles windows wrapping midnight. */
     private boolean withinAnyShift(Instant now, List<AiCallingSettingsPojo.Shift> shifts, ZoneId tz) {
-        if (shifts == null || shifts.isEmpty()) return true;
-        LocalTime t = LocalTime.ofInstant(now, tz);
-        for (AiCallingSettingsPojo.Shift sh : shifts) {
-            LocalTime start = parseTime(sh.getStart());
-            LocalTime end = parseTime(sh.getEnd());
-            if (start == null || end == null) continue;
-            if (start.equals(end)) return true; // 24h
-            boolean within = start.isBefore(end)
-                    ? (!t.isBefore(start) && !t.isAfter(end))
-                    : (!t.isBefore(start) || !t.isAfter(end));
-            if (within) return true;
-        }
-        return false;
+        return CallingWindowUtil.withinAnyShift(now, shifts, tz);
     }
 
     /**
      * Earliest upcoming shift-open instant in the institute tz: the smallest shift
      * start that is still ahead of {@code now} today; if none remain today, the
      * smallest shift start tomorrow. Returns null if no usable shift starts (caller
-     * falls back to the recheck time). Uses the same parse/tz helpers as
-     * {@link #withinAnyShift}.
+     * falls back to the recheck time).
      */
     private Instant nextShiftOpen(Instant now, List<AiCallingSettingsPojo.Shift> shifts, ZoneId tz) {
-        if (shifts == null || shifts.isEmpty()) return null;
-        LocalDate today = LocalDate.now(tz);
-        LocalTime nowT = LocalTime.ofInstant(now, tz);
-
-        LocalTime earliestToday = null; // smallest start still ahead today
-        LocalTime earliestOverall = null; // smallest start of the day (for tomorrow)
-        for (AiCallingSettingsPojo.Shift sh : shifts) {
-            LocalTime start = parseTime(sh.getStart());
-            if (start == null) continue;
-            if (earliestOverall == null || start.isBefore(earliestOverall)) earliestOverall = start;
-            if (start.isAfter(nowT) && (earliestToday == null || start.isBefore(earliestToday))) {
-                earliestToday = start;
-            }
-        }
-        if (earliestToday != null) return today.atTime(earliestToday).atZone(tz).toInstant();
-        if (earliestOverall != null) return today.plusDays(1).atTime(earliestOverall).atZone(tz).toInstant();
-        return null;
+        return CallingWindowUtil.nextShiftOpen(now, shifts, tz);
     }
 
     private LocalTime parseTime(String hhmm) {
-        if (isBlank(hhmm)) return null;
-        try {
-            return LocalTime.parse(hhmm.trim());
-        } catch (DateTimeParseException e) {
-            return null;
-        }
+        return CallingWindowUtil.parseTime(hhmm);
     }
 
     private ZoneId resolveZone(String tz) {
-        if (isBlank(tz)) return IST;
-        try {
-            return ZoneId.of(tz.trim());
-        } catch (Exception e) {
-            return IST;
-        }
+        return CallingWindowUtil.resolveZone(tz);
     }
 
     private boolean isBlank(String s) {

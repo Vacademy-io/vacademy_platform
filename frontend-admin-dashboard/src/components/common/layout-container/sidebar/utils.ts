@@ -568,6 +568,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'calling-call-log',
             },
             {
+                subItem: 'Call Queue',
+                subItemLink: '/calling/call-queue',
+                subItemId: 'calling-call-queue',
+            },
+            {
                 subItem: 'AI Agents',
                 subItemLink: '/calling/ai-agents',
                 subItemId: 'calling-ai-agents',

@@ -121,6 +121,7 @@ import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
 import { Route as CallingAiAgentsIndexRouteImport } from "./routes/calling/ai-agents/index"
+import { Route as CallingCallQueueIndexRouteImport } from "./routes/calling/call-queue/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
@@ -1062,6 +1063,13 @@ const CallingAiAgentsIndexRoute = CallingAiAgentsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/calling/ai-agents/index.lazy").then((d) => d.Route),
 )
+const CallingCallQueueIndexRoute = CallingCallQueueIndexRouteImport.update({
+  id: "/calling/call-queue/",
+  path: "/calling/call-queue/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/calling/call-queue/index.lazy").then((d) => d.Route),
+)
 const AutomationChatbotFlowsIndexRoute =
   AutomationChatbotFlowsIndexRouteImport.update({
     id: "/automation/chatbot-flows/",
@@ -1945,6 +1953,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
+  "/calling/call-queue/": typeof CallingCallQueueIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
@@ -2155,6 +2164,7 @@ export interface FileRoutesByTo {
   "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/calling/ai-agents": typeof CallingAiAgentsIndexRoute
+  "/calling/call-queue": typeof CallingCallQueueIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub": typeof CommunicationNotificationHubIndexRoute
@@ -2367,6 +2377,7 @@ export interface FileRoutesById {
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
+  "/calling/call-queue/": typeof CallingCallQueueIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
@@ -3212,6 +3223,7 @@ export interface RootRouteChildren {
   AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CallingAiAgentsIndexRoute: typeof CallingAiAgentsIndexRoute
+  CallingCallQueueIndexRoute: typeof CallingCallQueueIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
   CommunicationNotificationHubIndexRoute: typeof CommunicationNotificationHubIndexRoute
@@ -4128,6 +4140,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CallingAiAgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/calling/call-queue/": {
+      id: "/calling/call-queue/"
+      path: "/calling/call-queue"
+      fullPath: "/calling/call-queue/"
+      preLoaderRoute: typeof CallingCallQueueIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/automation/chatbot-flows/": {
       id: "/automation/chatbot-flows/"
       path: "/automation/chatbot-flows"
@@ -4907,6 +4926,7 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
   CallingAiAgentsIndexRoute: CallingAiAgentsIndexRoute,
+  CallingCallQueueIndexRoute: CallingCallQueueIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
   CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,

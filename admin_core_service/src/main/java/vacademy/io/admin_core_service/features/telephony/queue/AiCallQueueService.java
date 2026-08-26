@@ -315,10 +315,10 @@ public class AiCallQueueService {
                 .instituteId(instituteId)
                 .queued(queued)
                 .inFlight(snap.inFlightForLane(instituteId))
-                .laneCapacity(snap.laneCapacityFor(instituteId, provider))
                 .paused(snap.isPaused(instituteId))
-                .fleetCapacity(snap.capacityFor(provider))
-                .fleetInFlight(snap.inFlightFor(provider))
+                // The lane capacity still drives this number, it is just never handed
+                // out on its own -- a wait in minutes says what an institute needs to
+                // know without disclosing the size of the pool behind it.
                 .etaMinutes(etaMinutes(snap, instituteId, provider, queued))
                 .byStatus(byStatus)
                 .build();

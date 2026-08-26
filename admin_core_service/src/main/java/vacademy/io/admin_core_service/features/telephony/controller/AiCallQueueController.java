@@ -7,7 +7,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.telephony.queue.AiCallQueueService;
-import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.LaneView;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueItemView;
 import vacademy.io.admin_core_service.features.telephony.queue.dto.AiCallQueueDTOs.QueueSummary;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -18,9 +17,10 @@ import java.util.Map;
  * An institute's own view of the AI call queue: what is waiting, how long it will take,
  * and the ability to call it off.
  *
- * <p>Read and cancel only. The knobs that decide how many lines exist and how many of
- * them this institute may hold are server-wide and live on the super-admin controller —
- * an institute raising its own lane cap would be taking slots from the others.
+ * <p>Read and cancel only, and it discloses no capacity figures. How many lines the
+ * fleet has, and how many an institute may hold, are internal operating facts that live
+ * on the super-admin and internal endpoints — an institute does not need to know it is
+ * sharing a small pool, only how long its own calls will wait.
  */
 @RestController
 @RequestMapping("/admin-core-service/v1/telephony/ai-queue")
@@ -49,15 +49,6 @@ public class AiCallQueueController {
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
         return ResponseEntity.ok(queueService.summary(instituteId));
-    }
-
-    /** This institute's lane settings, read-only. */
-    @GetMapping("/lane")
-    public ResponseEntity<LaneView> lane(
-            @RequestParam String instituteId,
-            @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        return ResponseEntity.ok(queueService.laneView(instituteId));
     }
 
     /** Queue-side counts for one bulk run, for the campaign progress dialog. */

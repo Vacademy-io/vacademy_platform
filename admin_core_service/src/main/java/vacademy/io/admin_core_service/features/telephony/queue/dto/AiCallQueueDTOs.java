@@ -77,7 +77,16 @@ public final class AiCallQueueDTOs {
         private boolean live;
     }
 
-    /** Institute-facing summary: "how deep is my queue and when will it clear?". */
+    /**
+     * Institute-facing summary: "how deep is my queue and when will it clear?".
+     *
+     * <p>Deliberately carries NO capacity numbers. How many lines the fleet has, and
+     * how many of them this institute may hold, are internal operating facts — an
+     * institute seeing "2 of 3" learns that it shares a small pool with other tenants,
+     * which is not its business and invites the wrong conversation. The wait is
+     * expressed as time ({@link #etaMinutes}), which is the part that actually concerns
+     * them. The capacity figures stay on the super-admin and internal endpoints.
+     */
     @Data
     @Builder
     @NoArgsConstructor
@@ -85,12 +94,9 @@ public final class AiCallQueueDTOs {
     public static class QueueSummary {
         private String instituteId;
         private long queued;
+        /** This institute's own calls currently on a line. Not a share of anything. */
         private long inFlight;
-        /** Slots this institute may occupy at once right now (override, or the dynamic default). */
-        private int laneCapacity;
         private boolean paused;
-        private int fleetCapacity;
-        private int fleetInFlight;
         private long etaMinutes;
         private Map<String, Long> byStatus;
     }

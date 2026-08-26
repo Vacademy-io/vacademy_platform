@@ -85,14 +85,15 @@ public final class NotAttemptedParticipants {
     public static List<ParticipantsDetailsDto> toRows(List<EnrolledLearnerDto> learners) {
         return learners.stream()
                 .<ParticipantsDetailsDto>map(learner -> new NotAttemptedParticipantDto(
-                        learner.getUserId(), learner.getFullName(), learner.getPackageSessionId()))
+                        learner.getUserId(), learner.getFullName(), learner.getPackageSessionId(),
+                        learner.getEmail(), learner.getMobileNumber(), learner.getUsername()))
                 .toList();
     }
 
     /**
      * The learners who have not attempted, name-filtered and ordered. Returns the learner
-     * records rather than table rows because the CSV export needs their contact details,
-     * which the row shape deliberately does not carry.
+     * records rather than table rows because the CSV export writes its own header order and
+     * batch-name lookup, which the row shape does not carry.
      */
     public static List<EnrolledLearnerDto> filterAndSortLearners(List<EnrolledLearnerDto> enrolled,
                                                                  Set<String> attemptedUserIds,

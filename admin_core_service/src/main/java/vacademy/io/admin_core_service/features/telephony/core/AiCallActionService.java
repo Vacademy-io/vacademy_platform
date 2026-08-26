@@ -338,7 +338,20 @@ public class AiCallActionService {
             Map<String, String> vars = variablesFor(responseId, leadName, phone, email, report);
             int made = 0;
             for (AiCallActionRule rule : rules) {
-                if (!TIMING_POST_CALL.equalsIgnoreCase(timingOf(rule))) continue;
+                // A MID_CALL rule is evaluated HERE TOO, as a safety net. It is not a
+                // second send: source_ref is '<callLogId>:<ruleId>' either way, so if the
+                // marker already fired this insert loses the unique-index race and is
+                // swallowed, exactly like a re-delivered webhook.
+                //
+                // Why it is needed: a mid-call send depends on the model emitting
+                // <<SEND:key>> after hearing agreement, and ANSWER_DELETED fired on five
+                // of the last six substantive calls on this institute - the aggregator
+                // drops caller turns, so the "haan" that authorises the send can never
+                // reach the model. Live evidence: call b96d9f77 was dispositioned
+                // Quiz_Link_Sent with no action row at all, and six calls on 2026-08-24
+                // produced none between them. The post-call analyser reads the WHOLE
+                // transcript and has its own acceptance-evidence guard (_sanitize_sends),
+                // so it catches what the live marker missed.
                 if (ACTION_BOOK_MEETING.equalsIgnoreCase(rule.getActionType())) continue;
                 if (!matches(rule, v)) continue;
                 try {

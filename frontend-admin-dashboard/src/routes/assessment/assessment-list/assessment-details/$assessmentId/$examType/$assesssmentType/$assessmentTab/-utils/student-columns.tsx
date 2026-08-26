@@ -250,6 +250,24 @@ export const assessmentStatusStudentAttemptedColumnsInternal: ColumnDef<StudentT
         },
     },
 
+    // Contact columns, mirroring what this tab's own CSV export already carries. Appended
+    // rather than placed next to the name so Score and the status chips stay where people
+    // are used to scanning for them.
+    {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="email" />,
+    },
+    {
+        accessorKey: 'mobile_number',
+        header: 'Phone Number',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="mobile_number" />,
+    },
+    {
+        accessorKey: 'username',
+        header: 'Username',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="username" />,
+    },
     {
         id: 'options',
         header: '',
@@ -312,6 +330,24 @@ export const assessmentStatusStudentOngoingColumnsInternal: ColumnDef<StudentTab
         header: 'Start Time',
         cell: ({ row }) => <CreateClickableCell row={row} columnId="start_time" />,
     },
+    // Contact columns, mirroring what this tab's own CSV export already carries. Appended
+    // rather than placed next to the name so Score and the status chips stay where people
+    // are used to scanning for them.
+    {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="email" />,
+    },
+    {
+        accessorKey: 'mobile_number',
+        header: 'Phone Number',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="mobile_number" />,
+    },
+    {
+        accessorKey: 'username',
+        header: 'Username',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="username" />,
+    },
     {
         id: 'options',
         header: '',
@@ -366,6 +402,111 @@ export const assessmentStatusStudentPendingColumnsInternal: ColumnDef<StudentTab
             );
         },
         cell: ({ row }) => <CreateClickableCell row={row} columnId="full_name" />,
+    },
+    // Contact columns, mirroring what this tab's own CSV export already carries. Appended
+    // rather than placed next to the name so Score and the status chips stay where people
+    // are used to scanning for them.
+    {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="email" />,
+    },
+    {
+        accessorKey: 'mobile_number',
+        header: 'Phone Number',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="mobile_number" />,
+    },
+    {
+        accessorKey: 'username',
+        header: 'Username',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="username" />,
+    },
+    {
+        id: 'options',
+        header: '',
+        cell: ({ row }) => <AssessmentStatusOptions student={row.original} studentType="Pending" />,
+    },
+];
+
+/**
+ * Pending for BATCH selection — the learners enrolled in an assigned batch who never
+ * attempted. Unlike the other Pending lists (Individual Selection, External), these rows
+ * come from their batch enrollment rather than an assessment registration, so they carry
+ * batch and contact details. Those are the whole point of the list: it exists to chase
+ * people who have not sat the test, and a bare column of names cannot do that.
+ *
+ * Deliberately NOT merged into the two sets above — their rows have no contact details to
+ * show, and empty columns read as missing data rather than as "not applicable here".
+ */
+export const assessmentStatusStudentNotAttemptedColumns: ColumnDef<StudentTable>[] = [
+    {
+        id: 'checkbox',
+        header: ({ table }) => (
+            <Checkbox
+                checked={table.getIsAllRowsSelected()}
+                onCheckedChange={(value) => table.toggleAllRowsSelected(!!value)}
+                className="border-neutral-400 bg-white text-neutral-600"
+            />
+        ),
+        cell: ({ row }) => (
+            <Checkbox
+                checked={row.getIsSelected()}
+                onCheckedChange={(value) => row.toggleSelected(!!value)}
+                className="flex size-4 items-center justify-center border-neutral-400 text-neutral-600 shadow-none"
+            />
+        ),
+    },
+    {
+        id: 'details',
+        header: 'Details',
+        cell: ({ row }) => <DetailsCell row={row} />,
+    },
+    {
+        accessorKey: 'full_name',
+        header: (props) => {
+            const meta = props.table.options.meta as CustomTableMeta;
+            return (
+                <div className="relative">
+                    <MyDropdown
+                        dropdownList={['ASC', 'DESC']}
+                        onSelect={(value) => {
+                            meta.onSort?.('full_name', value);
+                        }}
+                    >
+                        <button className="flex w-full cursor-pointer items-center justify-between">
+                            <div>Name</div>
+                            <div>
+                                <CaretUp />
+                                <CaretDown />
+                            </div>
+                        </button>
+                    </MyDropdown>
+                </div>
+            );
+        },
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="full_name" />,
+    },
+    // Same columns, in the same order, as the "not attempted" CSV export — the tab and
+    // its export answer one question and must not look like they disagree.
+    {
+        accessorKey: 'package_session_id',
+        header: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="package_session_id" />,
+    },
+    {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="email" />,
+    },
+    {
+        accessorKey: 'mobile_number',
+        header: 'Phone Number',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="mobile_number" />,
+    },
+    {
+        accessorKey: 'username',
+        header: 'Username',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="username" />,
     },
     {
         id: 'options',
@@ -471,6 +612,24 @@ export const assessmentStatusStudentAttemptedColumnsExternal: ColumnDef<StudentT
         },
     },
 
+    // Contact columns, mirroring what this tab's own CSV export already carries. Appended
+    // rather than placed next to the name so Score and the status chips stay where people
+    // are used to scanning for them.
+    {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="email" />,
+    },
+    {
+        accessorKey: 'mobile_number',
+        header: 'Phone Number',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="mobile_number" />,
+    },
+    {
+        accessorKey: 'username',
+        header: 'Username',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="username" />,
+    },
     {
         id: 'options',
         header: '',
@@ -533,6 +692,24 @@ export const assessmentStatusStudentOngoingColumnsExternal: ColumnDef<StudentTab
         header: 'Start Time',
         cell: ({ row }) => <CreateClickableCell row={row} columnId="start_time" />,
     },
+    // Contact columns, mirroring what this tab's own CSV export already carries. Appended
+    // rather than placed next to the name so Score and the status chips stay where people
+    // are used to scanning for them.
+    {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="email" />,
+    },
+    {
+        accessorKey: 'mobile_number',
+        header: 'Phone Number',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="mobile_number" />,
+    },
+    {
+        accessorKey: 'username',
+        header: 'Username',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="username" />,
+    },
     {
         id: 'options',
         header: '',
@@ -587,6 +764,24 @@ export const assessmentStatusStudentPendingColumnsExternal: ColumnDef<StudentTab
             );
         },
         cell: ({ row }) => <CreateClickableCell row={row} columnId="full_name" />,
+    },
+    // Contact columns, mirroring what this tab's own CSV export already carries. Appended
+    // rather than placed next to the name so Score and the status chips stay where people
+    // are used to scanning for them.
+    {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="email" />,
+    },
+    {
+        accessorKey: 'mobile_number',
+        header: 'Phone Number',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="mobile_number" />,
+    },
+    {
+        accessorKey: 'username',
+        header: 'Username',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="username" />,
     },
     {
         id: 'options',

@@ -41,6 +41,7 @@ import axios from 'axios';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
 
@@ -477,6 +478,313 @@ const GlobalLayoutEditor = ({
 };
 
 // Global Settings Editor Component
+/**
+ * Level grouping for the Course Finder's first step.
+ *
+ * The wizard lists whatever this catalogue's courses call their levels. On an
+ * institute that names a level per subject — "English - Class 6",
+ * "Mathematics - Class 6", "Cyber AI- Class 6" — that step turns into fifty
+ * rows for a visitor who only ever wanted to say "Class 6". A group folds them
+ * into one option; picking it selects every level inside it.
+ *
+ * Stored as `courseFinder.levelGroups`: { 'Class 6': ['English - Class 6', …] }.
+ * Key order IS display order — the wizard renders Object.keys() unsorted — so
+ * every edit rebuilds the object in order instead of mutating a key in place.
+ *
+ * Level names are offered from the institute's product pages, the same source
+ * the catalogue's course blocks read: a group whose names match no real level
+ * matches no courses either, and does so silently.
+ */
+const CourseFinderLevelGroups = ({
+    groups,
+    onChange,
+}: {
+    groups: Record<string, string[]>;
+    onChange: (next: Record<string, string[]>) => void;
+}) => {
+    const instituteId = getCurrentInstituteId();
+    const { getAllLevels } = useInstituteDetailsStore();
+    const [openIndex, setOpenIndex] = useState<number | null>(null);
+    const [search, setSearch] = useState('');
+    const [manualName, setManualName] = useState('');
+    const [renameError, setRenameError] = useState<string | null>(null);
+
+    // Same query key as the Product Page Offer editor, so opening both panels
+    // costs one request.
+    const { data: pages, isLoading } = useQuery({
+        queryKey: ['PRODUCT_PAGES_FOR_CATALOGUE', instituteId],
+        queryFn: () => getAllProductPages(instituteId!),
+        enabled: !!instituteId,
+        staleTime: 60_000,
+    });
+
+    // Two sources, because a catalogue can take its courses from either: a
+    // `productPageOffer` block sells one product page's courses, while
+    // `courseCatalog` lists the whole institute. Offering only one source would
+    // leave the other kind of catalogue with an empty picker.
+    const knownLevels: string[] = Array.from(
+        new Set([
+            ...((pages || []) as any[])
+                .flatMap((p: any) => p.mappings || [])
+                .map((m: any) => m.level_name),
+            ...getAllLevels().map((l) => l.level_name),
+        ].filter((v: any): v is string => typeof v === 'string' && v.trim() !== ''))
+    ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+    const entries = Object.entries(groups) as [string, string[]][];
+    const commit = (next: [string, string[]][]) => onChange(Object.fromEntries(next));
+
+    const addGroup = () => {
+        // Numbered rather than blank so two "Add" clicks cannot collide on the
+        // same empty key and silently become one group.
+        let n = entries.length + 1;
+        while (entries.some(([label]) => label === `Group ${n}`)) n += 1;
+        commit([...entries, [`Group ${n}`, []] as [string, string[]]]);
+        setOpenIndex(entries.length);
+    };
+
+    const rename = (index: number, label: string) => {
+        const trimmed = label.trim();
+        const current = entries[index]?.[0];
+        if (!trimmed || trimmed === current) return;
+        if (entries.some(([existing], i) => i !== index && existing === trimmed)) {
+            setRenameError(`There is already a group called “${trimmed}”.`);
+            return;
+        }
+        setRenameError(null);
+        commit(entries.map((e, i) => (i === index ? ([trimmed, e[1]] as [string, string[]]) : e)));
+    };
+
+    const move = (index: number, delta: number) => {
+        const target = index + delta;
+        if (target < 0 || target >= entries.length) return;
+        const next = [...entries];
+        const [row] = next.splice(index, 1);
+        next.splice(target, 0, row!);
+        commit(next);
+        setOpenIndex(target);
+    };
+
+    const setLevels = (index: number, levels: string[]) =>
+        commit(entries.map((e, i) => (i === index ? ([e[0], levels] as [string, string[]]) : e)));
+
+    const addManual = (index: number, levels: string[]) => {
+        const name = manualName.trim();
+        if (!name || levels.includes(name)) return;
+        setLevels(index, [...levels, name]);
+        setManualName('');
+    };
+
+    return (
+        <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+            <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs">Group the options</Label>
+                <Button variant="outline" size="sm" onClick={addGroup} className="h-7 gap-1 px-2">
+                    <Plus className="size-3.5" /> Add group
+                </Button>
+            </div>
+            <p className="text-2xs text-gray-400">
+                Optional. Ask &ldquo;Class 6&rdquo; once instead of listing every subject&apos;s own
+                level name. Visitors see the group names, in this order; picking one matches every
+                level inside it.
+            </p>
+
+            {renameError && <p className="text-2xs text-danger-600">{renameError}</p>}
+
+            {entries.length === 0 && (
+                <p className="rounded bg-gray-50 p-2 text-2xs text-gray-500">
+                    No groups — the wizard lists each level name on its own.
+                </p>
+            )}
+
+            {entries.map(([label, levels], index) => {
+                const open = openIndex === index;
+                // Names that no course on any product page actually uses. They
+                // match nothing, so they are worth calling out rather than
+                // leaving to be discovered as an empty result page.
+                const unknown = levels.filter((l) => !knownLevels.includes(l));
+                const suggestion = knownLevels.filter(
+                    (l) => !levels.includes(l) && l.toLowerCase().includes(label.trim().toLowerCase())
+                );
+                const visibleLevels = search.trim()
+                    ? knownLevels.filter((l) => l.toLowerCase().includes(search.trim().toLowerCase()))
+                    : knownLevels;
+
+                return (
+                    <div key={`${index}-${label}`} className="rounded border bg-white p-2">
+                        <div className="flex items-center gap-1">
+                            <Input
+                                defaultValue={label}
+                                onBlur={(e) => rename(index, e.target.value)}
+                                className="h-7"
+                            />
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => move(index, -1)}
+                                disabled={index === 0}
+                                className="size-7 shrink-0 p-0"
+                                aria-label="Move group up"
+                            >
+                                <ArrowUp className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => move(index, 1)}
+                                disabled={index === entries.length - 1}
+                                className="size-7 shrink-0 p-0"
+                                aria-label="Move group down"
+                            >
+                                <ArrowDown className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => commit(entries.filter((_, i) => i !== index))}
+                                className="size-7 shrink-0 p-0 text-danger-600"
+                                aria-label={`Delete group ${label}`}
+                            >
+                                <Trash2 className="size-3.5" />
+                            </Button>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setOpenIndex(open ? null : index);
+                                setSearch('');
+                                setManualName('');
+                            }}
+                            className="mt-1 flex w-full items-center justify-between gap-2 text-start text-2xs text-gray-500"
+                        >
+                            <span>
+                                {levels.length === 0
+                                    ? 'No levels yet — this option would match nothing'
+                                    : `${levels.length} level${levels.length === 1 ? '' : 's'}`}
+                                {unknown.length > 0 && ` · ${unknown.length} not found`}
+                            </span>
+                            {open ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                        </button>
+
+                        {levels.length === 0 && (
+                            <p className="text-2xs text-warning-600">
+                                Add at least one level, or delete the group.
+                            </p>
+                        )}
+                        {unknown.length > 0 && (
+                            <p className="text-2xs text-warning-600">
+                                No course uses {unknown.map((u) => `“${u}”`).join(', ')} — check the
+                                spelling against the list below.
+                            </p>
+                        )}
+
+                        {open && (
+                            <div className="mt-2 space-y-2 border-t pt-2">
+                                {suggestion.length > 0 && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setLevels(index, [...levels, ...suggestion])}
+                                        className="h-7 w-full gap-1 px-2 text-2xs"
+                                    >
+                                        <Plus className="size-3.5" />
+                                        Add the {suggestion.length} level
+                                        {suggestion.length === 1 ? '' : 's'} containing “{label.trim()}”
+                                    </Button>
+                                )}
+
+                                <Input
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Search levels"
+                                    className="h-7"
+                                />
+
+                                {/* Escape hatch. An institute whose levels this
+                                    panel cannot see — courses not on a product
+                                    page, details not loaded — can still name one
+                                    by hand; it is flagged as "not found" below
+                                    until a course actually uses it. */}
+                                <div className="flex items-center gap-1">
+                                    <Input
+                                        value={manualName}
+                                        onChange={(e) => setManualName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                addManual(index, levels);
+                                            }
+                                        }}
+                                        placeholder="Or type a level name"
+                                        className="h-7"
+                                    />
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => addManual(index, levels)}
+                                        disabled={!manualName.trim() || levels.includes(manualName.trim())}
+                                        className="h-7 shrink-0 px-2 text-2xs"
+                                    >
+                                        Add
+                                    </Button>
+                                </div>
+
+                                <div className="max-h-48 space-y-1 overflow-y-auto pe-1">
+                                    {isLoading && <p className="text-2xs text-gray-400">Loading levels…</p>}
+                                    {!isLoading && knownLevels.length === 0 && (
+                                        <p className="text-2xs text-gray-400">
+                                            No levels found. They are read from this
+                                            institute&apos;s courses and product pages — set one up
+                                            first, or type the name into a group by hand.
+                                        </p>
+                                    )}
+                                    {visibleLevels.map((level) => (
+                                        <label
+                                            key={level}
+                                            className="flex items-center gap-2 text-2xs text-gray-700"
+                                        >
+                                            <Checkbox
+                                                checked={levels.includes(level)}
+                                                onCheckedChange={() =>
+                                                    setLevels(
+                                                        index,
+                                                        levels.includes(level)
+                                                            ? levels.filter((l) => l !== level)
+                                                            : [...levels, level]
+                                                    )
+                                                }
+                                            />
+                                            {level}
+                                        </label>
+                                    ))}
+                                    {/* Kept selectable even though no course uses them: they may
+                                        be a typo the admin wants to uncheck, or a level on a page
+                                        that is not ACTIVE yet. */}
+                                    {unknown.map((level) => (
+                                        <label
+                                            key={level}
+                                            className="flex items-center gap-2 text-2xs text-warning-600"
+                                        >
+                                            <Checkbox
+                                                checked
+                                                onCheckedChange={() =>
+                                                    setLevels(index, levels.filter((l) => l !== level))
+                                                }
+                                            />
+                                            {level}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
 const GlobalSettingsEditor = ({
     config,
     updateGlobalSettings,
@@ -1047,6 +1355,46 @@ const GlobalSettingsEditor = ({
                                 onCheckedChange={(c) => updateField('courseFinder.mandatory', c)}
                             />
                         </div>
+
+                        {/* Step titles. The wizard otherwise asks "Choose your
+                            Level", which is platform vocabulary — a parent is
+                            looking for a Class, a college for a Semester. */}
+                        <div className="space-y-2">
+                            <Label className="text-xs">What each step is called</Label>
+                            {(
+                                [
+                                    ['level', ContentTerms.Level, SystemTerms.Level, 'Class'],
+                                    ['session', ContentTerms.Session, SystemTerms.Session, 'Batch'],
+                                    ['tag', ContentTerms.PopularTag, SystemTerms.PopularTag, 'Board'],
+                                ] as const
+                            )
+                                .filter(([key]) => (gs.courseFinder?.steps || []).includes(key))
+                                .map(([key, contentTerm, systemTerm, example]) => (
+                                    <div key={key} className="flex items-center gap-2">
+                                        <span className="w-20 shrink-0 text-caption text-gray-500">
+                                            {getTerminology(contentTerm, systemTerm)}
+                                        </span>
+                                        <Input
+                                            value={gs.courseFinder?.stepLabels?.[key] || ''}
+                                            onChange={(e) =>
+                                                updateField(`courseFinder.stepLabels.${key}`, e.target.value)
+                                            }
+                                            placeholder={`e.g. ${example}`}
+                                        />
+                                    </div>
+                                ))}
+                            <p className="text-2xs text-gray-400">
+                                Leave blank to use the platform wording. Only the steps you ticked
+                                above are asked, so only those are listed here.
+                            </p>
+                        </div>
+
+                        {(gs.courseFinder?.steps || []).includes('level') && (
+                            <CourseFinderLevelGroups
+                                groups={gs.courseFinder?.levelGroups || {}}
+                                onChange={(next) => updateField('courseFinder.levelGroups', next)}
+                            />
+                        )}
                     </>
                 )}
             </div>
@@ -3994,9 +4342,60 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                 <Label className="text-xs">Subtitle</Label>
                 <Textarea className="mt-1" rows={2} value={props.subtitle || ''} onChange={(e) => updateProp('subtitle', e.target.value)} placeholder="Pick a program and enrol in minutes." />
             </div>
-            <div>
-                <Label className="text-xs">Button label</Label>
-                <Input className="mt-1" value={props.ctaLabel || ''} onChange={(e) => updateProp('ctaLabel', e.target.value)} placeholder="Enrol now" />
+            {/* Checkout mode. This is the one setting that changes what the
+                card's main button DOES, so it sits above the label fields that
+                depend on it rather than in the cosmetic groups further down. */}
+            <div className="space-y-3 rounded border border-dashed border-gray-200 p-2">
+                <p className="text-caption font-medium text-gray-500">Checkout</p>
+
+                <div className="flex items-center justify-between gap-3">
+                    <Label className="text-xs">Let visitors pick several courses</Label>
+                    <Switch
+                        checked={!!props.enableCart}
+                        onCheckedChange={(c) => updateProp('enableCart', c)}
+                    />
+                </div>
+                <p className="-mt-1 text-caption text-gray-400">
+                    {props.enableCart
+                        ? 'Each card adds to a basket and a bar at the foot of the page takes the whole selection to checkout together. Use this when a visitor normally buys more than one — a class’s set of subjects, say.'
+                        : 'Each card goes straight into checkout with that one course. Turn this on to let a visitor collect several first.'}
+                </p>
+
+                {props.enableCart ? (
+                    <>
+                        <div>
+                            <Label className="text-xs">Add-to-basket label</Label>
+                            <Input
+                                className="mt-1"
+                                value={props.cartCtaLabel || ''}
+                                onChange={(e) => updateProp('cartCtaLabel', e.target.value)}
+                                placeholder="Add to Cart"
+                            />
+                        </div>
+                        <div>
+                            <Label className="text-xs">Checkout button label</Label>
+                            <Input
+                                className="mt-1"
+                                value={props.checkoutCtaLabel || ''}
+                                onChange={(e) => updateProp('checkoutCtaLabel', e.target.value)}
+                                placeholder="Proceed to checkout"
+                            />
+                            <p className="mt-1 text-caption text-gray-400">
+                                Shown on the basket bar, not on the cards.
+                            </p>
+                        </div>
+                    </>
+                ) : (
+                    <div>
+                        <Label className="text-xs">Button label</Label>
+                        <Input
+                            className="mt-1"
+                            value={props.ctaLabel || ''}
+                            onChange={(e) => updateProp('ctaLabel', e.target.value)}
+                            placeholder="Enrol now"
+                        />
+                    </div>
+                )}
             </div>
 
             <div className="flex items-center justify-between">

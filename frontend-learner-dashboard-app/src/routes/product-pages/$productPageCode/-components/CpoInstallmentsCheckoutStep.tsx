@@ -11,9 +11,10 @@ import {
 import { CpoInstallmentSelectionStep } from '@/components/common/enroll-by-invite/-components';
 import { RazorpayCheckoutForm } from '@/components/common/enroll-by-invite/-components/razorpay-checkout-form';
 import type { RazorpayCheckoutFormRef } from '@/components/common/enroll-by-invite/-components/razorpay-checkout-form';
-import { ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, SpinnerGap, ShieldCheck } from '@phosphor-icons/react';
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
 import type { FieldValue } from '../-types/product-page-types';
+import { resolveLearnerIdentity } from '../-utils/learner-identity';
 
 interface CpoInstallmentsCheckoutStepProps {
     pageData: ProductPageData;
@@ -28,7 +29,7 @@ export const CpoInstallmentsCheckoutStep = ({
     pageData,
     settings,
     vendor,
-    primaryColor = '#2563eb',
+    primaryColor = '#2563eb', // design-lint-ignore: page-builder default color
     onBack,
     onSuccess,
 }: CpoInstallmentsCheckoutStepProps) => {
@@ -63,15 +64,12 @@ export const CpoInstallmentsCheckoutStep = ({
             m.payment_option_type?.toUpperCase() === 'CPO'
     );
 
-    const emailEntry = Object.values(registrationData as Record<string, FieldValue>).find(
-        (f) => f.type?.toLowerCase().includes('email') || f.name?.toLowerCase().includes('email')
+    // Same resolver the submit calls use — a label search for "name" also
+    // matches "School Name", and the first MATCH is not necessarily the first
+    // ANSWER. See learner-identity.
+    const { email: userEmail, name: userName } = resolveLearnerIdentity(
+        Object.values(registrationData as Record<string, FieldValue>)
     );
-    const userEmail = emailEntry?.value || '';
-
-    const nameEntry = Object.values(registrationData as Record<string, FieldValue>).find(
-        (f) => f.name?.toLowerCase().includes('name') || f.type?.toLowerCase().includes('name')
-    );
-    const userName = nameEntry?.value || '';
 
     const payAmount = cpoCustomAmount !== undefined ? cpoCustomAmount : cpoSelectedTotal;
 
@@ -254,9 +252,9 @@ export const CpoInstallmentsCheckoutStep = ({
 
     if (loadingSchedule) {
         return (
-            <div className="flex min-h-[300px] items-center justify-center">
+            <div className="flex min-h-reg-300 items-center justify-center">
                 <div className="text-center space-y-3">
-                    <Loader2 className="size-8 animate-spin text-blue-500 mx-auto" />
+                    <SpinnerGap className="size-8 animate-spin text-primary-500 mx-auto" aria-hidden="true" />
                     <p className="text-sm text-gray-500">Loading installment schedule...</p>
                 </div>
             </div>
@@ -265,7 +263,7 @@ export const CpoInstallmentsCheckoutStep = ({
 
     if (scheduleError) {
         return (
-            <div className="mx-auto max-w-xl px-4 py-8">
+            <div className="px-5 py-6 sm:px-6">
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
                     {scheduleError}
                 </div>
@@ -284,7 +282,7 @@ export const CpoInstallmentsCheckoutStep = ({
     }
 
     return (
-        <div className="mx-auto max-w-xl px-4 py-8 space-y-6">
+        <div className="px-5 py-6 sm:px-6 space-y-6">
             <div>
                 <h1 className="text-xl font-bold text-gray-900">Select Installments</h1>
                 <p className="mt-1 text-sm text-gray-500">
@@ -334,7 +332,7 @@ export const CpoInstallmentsCheckoutStep = ({
                                 style={{ backgroundColor: primaryColor }}
                             >
                                 {isProcessing ? (
-                                    <><Loader2 className="size-4 animate-spin" /> Processing...</>
+                                    <><SpinnerGap className="size-4 animate-spin" aria-hidden="true" /> Processing...</>
                                 ) : (
                                     <>Pay {currency} {payAmount.toLocaleString()}</>
                                 )}
@@ -349,7 +347,7 @@ export const CpoInstallmentsCheckoutStep = ({
                             style={{ backgroundColor: primaryColor }}
                         >
                             {isProcessing ? (
-                                <><Loader2 className="size-4 animate-spin" /> Processing...</>
+                                <><SpinnerGap className="size-4 animate-spin" aria-hidden="true" /> Processing...</>
                             ) : (
                                 <>Pay {currency} {payAmount.toLocaleString()}</>
                             )}

@@ -3,22 +3,29 @@ import {
     BookOpen,
     ShoppingCart,
     CreditCard,
-    ChevronRight,
-    CheckCircle2,
+    CaretRight as ChevronRight,
+    CheckCircle as CheckCircle2,
     FileText,
-    Mail,
-    MessageCircle,
+    Envelope as Mail,
+    ChatCircle as MessageCircle,
     Receipt,
-    Sparkles,
-    ArrowLeftRight,
+    Sparkle as Sparkles,
+    ArrowsLeftRight as ArrowLeftRight,
     Tag,
-    ExternalLink,
-} from 'lucide-react';
-import type { ProductPageSettings } from '../-types/product-page-types';
+    Percent,
+    Plus,
+    Trash as Trash2,
+    ArrowSquareOut as ExternalLink,
+} from '@phosphor-icons/react';
+import type { MappingRow, ProductPageSettings } from '../-types/product-page-types';
+import { BasketPricingEditor } from './BasketPricingEditor';
+import { OffersEditor } from './OffersEditor';
 
 interface ProductPageSettingsCardProps {
     settings: ProductPageSettings;
     onChange: (updated: ProductPageSettings) => void;
+    /** The page's courses — the source of real level / course names to pick from. */
+    courses?: MappingRow[];
 }
 
 const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
@@ -137,7 +144,11 @@ const STEPS = [
 
 // ─── Settings card ────────────────────────────────────────────────────────────
 
-export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSettingsCardProps) => {
+export const ProductPageSettingsCard = ({
+    settings,
+    onChange,
+    courses = [],
+}: ProductPageSettingsCardProps) => {
     const update = (patch: Partial<ProductPageSettings>) => onChange({ ...settings, ...patch });
     const selectedStepIndex = STEPS.findIndex((s) => s.id === settings.defaultStep);
 
@@ -274,6 +285,65 @@ export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSetti
                         onChange: () => update({ coupon: { enabled: !(settings.coupon?.enabled ?? false) } }),
                     },
                     {
+                        icon: Tag,
+                        color: 'text-rose-500 bg-rose-50',
+                        label: 'Offers',
+                        description: '“₹99 off above ₹500” — no code, applied automatically',
+                        checked: settings.offers?.enabled ?? false,
+                        panel: settings.offers ? (
+                            <OffersEditor
+                                value={settings.offers}
+                                onChange={(offers) => update({ offers })}
+                            />
+                        ) : null,
+                        onChange: () =>
+                            update({
+                                offers: {
+                                    rules: settings.offers?.rules?.length
+                                        ? settings.offers.rules
+                                        : [
+                                              {
+                                                  id: 'offer-default-1',
+                                                  label: '',
+                                                  minAmount: 500,
+                                                  discountType: 'FIXED',
+                                                  discountValue: 99,
+                                              },
+                                          ],
+                                    enabled: !(settings.offers?.enabled ?? false),
+                                },
+                            }),
+                    },
+                    {
+                        icon: Percent,
+                        color: 'text-pink-500 bg-pink-50',
+                        label: 'Basket Pricing',
+                        description: 'Price by how many courses they pick, not per course',
+                        checked: settings.basketPricing?.enabled ?? false,
+                        panel: settings.basketPricing ? (
+                            <BasketPricingEditor
+                                value={settings.basketPricing}
+                                courses={courses}
+                                onChange={(basketPricing) => update({ basketPricing })}
+                            />
+                        ) : null,
+                        onChange: () =>
+                            update({
+                                basketPricing: {
+                                    // Seeded so the panel has something real to edit
+                                    // the first time it is opened.
+                                    ladder: settings.basketPricing?.ladder ?? {
+                                        prices: [349, 599, 799],
+                                        perExtra: 150,
+                                    },
+                                    groups: settings.basketPricing?.groups ?? [],
+                                    wholeGroupPrices: settings.basketPricing?.wholeGroupPrices ?? {},
+                                    combos: settings.basketPricing?.combos ?? [],
+                                    enabled: !(settings.basketPricing?.enabled ?? false),
+                                },
+                            }),
+                    },
+                    {
                         icon: Receipt,
                         color: 'text-emerald-500 bg-emerald-50',
                         label: 'Invoice / Receipt',
@@ -281,16 +351,19 @@ export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSetti
                         checked: settings.invoice.enabled,
                         onChange: () => update({ invoice: { ...settings.invoice, enabled: !settings.invoice.enabled } }),
                     },
-                ].map(({ icon: Icon, color, label, description, checked, onChange }) => (
-                    <div key={label} className="flex items-center gap-4 px-5 py-4">
-                        <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${checked ? color : 'bg-neutral-100 text-neutral-400'}`}>
-                            <Icon className="size-4" />
+                ].map(({ icon: Icon, color, label, description, checked, onChange, panel }) => (
+                    <div key={label}>
+                        <div className="flex items-center gap-4 px-5 py-4">
+                            <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${checked ? color : 'bg-neutral-100 text-neutral-400'}`}>
+                                <Icon className="size-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-neutral-800">{label}</p>
+                                <p className="text-xs text-neutral-400">{description}</p>
+                            </div>
+                            <Toggle checked={checked} onChange={onChange} />
                         </div>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-neutral-800">{label}</p>
-                            <p className="text-xs text-neutral-400">{description}</p>
-                        </div>
-                        <Toggle checked={checked} onChange={onChange} />
+                        {checked && panel}
                     </div>
                 ))}
 

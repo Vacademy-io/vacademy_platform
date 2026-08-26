@@ -76,8 +76,41 @@ export interface ProductPageSettings {
         showOn?: 'CART' | 'FORM' | 'BOTH';
     };
     disableBackNavigation?: boolean;
+    /**
+     * "Choose a Plan" tiles on the cart step, one per distinct payment plan
+     * configured on this page's mappings (see PlanTiles). Off by default:
+     * where every course carries its own plan the tiles only restate the
+     * course grid, so this is for pages selling the same thing several ways
+     * — single subject vs. combo vs. full pack.
+     */
+    planSelector?: {
+        enabled: boolean;
+        heading?: string;
+        subheading?: string;
+        /**
+         * EXCLUSIVE (default) — picking a tile clears the other tiles' items,
+         * leaving anything added from the course grid alone.
+         * ADDITIVE — tiles stack, each one toggling its own items.
+         */
+        mode?: 'EXCLUSIVE' | 'ADDITIVE';
+    };
     coupon?: {
         enabled: boolean;
+    };
+    /**
+     * "Buy more, pay less": a discount that grows with how many courses the
+     * basket holds. Tiers name the smallest basket they apply to and the
+     * highest one reached wins. The server recomputes this at checkout
+     * (BundleDiscountCalculator) — see bundle-discount.ts.
+     */
+    bundleDiscount?: {
+        enabled: boolean;
+        tiers: Array<{
+            minCourses: number;
+            discountType: 'PERCENTAGE' | 'FIXED';
+            discountValue: number;
+        }>;
+        showNudge?: boolean;
     };
     afterPaymentRedirectUrl?: string;
     showLoginButton?: boolean;
@@ -197,6 +230,11 @@ export interface PageJson {
 // Per-field value in the registration form
 export interface FieldValue {
     id: string;        // custom_field_id
+    /** field_key — the stable storage key. Prefer this over `name` when looking
+     *  for the learner's own email/phone/name: labels are admin-authored and a
+     *  school's "School Name" matches a search for "name" just as well as the
+     *  learner's own. Optional only because older stored payloads predate it. */
+    key?: string;
     name: string;      // field_name
     value: string;
     is_mandatory: boolean;

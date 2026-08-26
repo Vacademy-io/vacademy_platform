@@ -136,7 +136,51 @@ export interface CustomFieldFullConfig {
   // Short hint rendered under the input, set by the admin in the custom-field
   // dialog. Distinct from `description`, which is the checkbox consent body.
   helpText?: string;
+  // Proof-of-ownership gate: the visitor must receive a one-time code on the
+  // value they typed and enter it back before the form can be submitted.
+  // Authored per field in the admin, so any field can be made verifiable —
+  // nothing here is specific to phone numbers or to one institute.
+  verification?: FieldVerificationConfig;
 }
+
+/** Channels a one-time code can be delivered over. */
+export type VerificationChannel = "WHATSAPP";
+
+export interface FieldVerificationConfig {
+  /** Off unless explicitly enabled — an unverifiable field must never block a form. */
+  required?: boolean;
+  channel?: VerificationChannel;
+  /**
+   * WhatsApp template to send. Naming one here skips the institute's
+   * OTP_REQUEST notification config entirely, so an institute with an approved
+   * template but no config wired up can still verify. Blank falls back to that
+   * config.
+   */
+  templateName?: string;
+  /**
+   * Language the named template is approved in. Meta registers a template per
+   * language, so one approved only as "en_US" must say so or the send is
+   * rejected. Ignored unless templateName is set; blank means English.
+   */
+  languageCode?: string;
+}
+
+/**
+ * The verification a field asks for, or null when it asks for none.
+ *
+ * Deliberately strict: a config that names a channel this build cannot deliver
+ * returns null rather than a gate nobody can pass. A form that cannot be
+ * submitted is a worse failure than one that skips a check.
+ */
+export const getFieldVerification = (
+  config?: string | null
+): Required<Pick<FieldVerificationConfig, "channel">> & FieldVerificationConfig | null => {
+  const parsed = parseFieldConfig(config)?.verification;
+  if (!parsed?.required) return null;
+  const channel = parsed.channel ?? "WHATSAPP";
+  if (channel !== "WHATSAPP") return null;
+  return { ...parsed, channel };
+};
 
 // Sentinel value for the admin's "All Files" option — equivalent to no
 // restriction at all, including formats outside the fixed category list

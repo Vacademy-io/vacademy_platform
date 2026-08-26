@@ -19,11 +19,31 @@ public class NotAttemptedParticipantDto implements ParticipantsDetailsDto {
     private final String userId;
     private final String studentName;
     private final String batchId;
+    // Contact details, so the Pending tab can show the same "how do I reach this learner"
+    // columns its own CSV export already carries. The tab and the export answer the same
+    // question and must not disagree about what they know. Any of these can be null for a
+    // learner imported without one — that is a blank cell, not a missing row.
+    private final String userEmail;
+    private final String phoneNumber;
+    private final String username;
 
-    public NotAttemptedParticipantDto(String userId, String studentName, String batchId) {
+    public NotAttemptedParticipantDto(String userId, String studentName, String batchId,
+                                      String userEmail, String phoneNumber, String username) {
         this.userId = userId;
         this.studentName = studentName;
         this.batchId = batchId;
+        this.userEmail = userEmail;
+        this.phoneNumber = phoneNumber;
+        this.username = username;
+    }
+
+    /**
+     * Identity only, no contact details — for callers (and tests) that care about who is on
+     * the list rather than how to reach them. Kept explicit so widening the constructor
+     * doesn't silently break every existing three-arg call site.
+     */
+    public NotAttemptedParticipantDto(String userId, String studentName, String batchId) {
+        this(userId, studentName, batchId, null, null, null);
     }
 
     @Override
@@ -39,6 +59,21 @@ public class NotAttemptedParticipantDto implements ParticipantsDetailsDto {
     @Override
     public String getBatchId() {
         return batchId;
+    }
+
+    @Override
+    public String getUserEmail() {
+        return userEmail;
+    }
+
+    @Override
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    @Override
+    public String getUsername() {
+        return username;
     }
 
     // --- No attempt exists, so nothing attempt-derived can be reported. ---
@@ -85,11 +120,6 @@ public class NotAttemptedParticipantDto implements ParticipantsDetailsDto {
 
     @Override
     public Date getLastReportReleaseDate() {
-        return null;
-    }
-
-    @Override
-    public String getUserEmail() {
         return null;
     }
 }

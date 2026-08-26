@@ -565,6 +565,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             // The dialog only returns options for choice types, so switching away from one
             // clears them instead of leaving stale values to reappear.
             options: options?.map((opt, i) => ({ id: String(i), value: opt.value })),
+            // Always an object once the dialog has run, so "edited to nothing"
+            // is distinguishable from "never touched" on save.
+            config: config ?? {},
         });
 
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
@@ -679,7 +682,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             name,
             oldKey,
             ...(resolvedOptions && { options: resolvedOptions }),
-            isRequired: true,
+            // Carried through so help text, file limits and the verification gate
+            // survive the save — the dialog collected them, this dropped them.
+            config: config ?? {},
+            isRequired: (config?.isRequired as boolean | undefined) ?? true,
             key: '',
             order: customFields.length,
         };

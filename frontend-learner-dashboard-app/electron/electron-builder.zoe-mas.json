@@ -26,7 +26,13 @@
         "!**/*.map",
         "!**/test/**",
         "!**/tests/**",
-        "!**/.bin/**"
+        "!**/.bin/**",
+        "!app-builder-bin/**/*",
+        "!7zip-bin/**/*",
+        "!lzma-native/**/*",
+        "!iconv-corefoundation/**/*",
+        "!node-notifier/vendor/notifu/**/*",
+        "!node-notifier/vendor/snoreToast/**/*"
       ]
     }
   ],

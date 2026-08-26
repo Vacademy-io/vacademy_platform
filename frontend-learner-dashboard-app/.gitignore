@@ -39,3 +39,5 @@ electron/embedded-sn-dev.provisionprofile
 electron/dist-mas
 electron/dist-mas-zoe
 electron/dist-mas-dev
+electron/dist-unsigned
+electron/dist-store

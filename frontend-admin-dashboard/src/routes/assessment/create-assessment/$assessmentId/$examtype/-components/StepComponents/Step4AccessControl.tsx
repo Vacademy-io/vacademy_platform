@@ -1,5 +1,5 @@
 import { StepContentProps } from '@/types/assessments/step-content-props';
-import React, { Dispatch, SetStateAction, useEffect, useState } from 'react';
+import React, { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import { FormProvider, useForm, UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import { AccessControlFormSchema } from '../../-utils/access-control-form-schema';
@@ -78,6 +78,9 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
         })
     );
     const [isAdminLoading, setIsAdminLoading] = useState(false);
+    // A ref, not state: the step-4 save's onSuccess reads this synchronously during the
+    // same tick the publish flow sets it, which a state update would not guarantee.
+    const isPublishingRef = useRef(false);
     const [existingInstituteUsersData, setExistingInstituteUsersData] = useState<
         InvitedUsersInterface[]
     >([]);
@@ -108,6 +111,10 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
         }) => handlePostStep4Data(data, assessmentId, instituteId, type),
         onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ['GET_QUESTIONS_DATA_FOR_SECTIONS'] });
+            // Publishing runs this same save first. Let the publish mutation own the
+            // toast, the store reset and the navigation, so the two do not both fire
+            // and the user does not see "saved" flash past on the way to "published".
+            if (isPublishingRef.current) return;
             if (assessmentId !== 'defaultId') {
                 useAccessControlStore.getState().reset();
                 window.history.back();
@@ -203,29 +210,49 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
         },
     });
 
+    /**
+     * Save the access-control step, THEN publish.
+     *
+     * This used to wrap the fire-and-forget `onSubmit(formData)` in a promise that
+     * resolved immediately, so publish was dispatched while the step-4 save was still
+     * in flight — the assessment could go live before its access rules had landed, and
+     * whichever mutation finished second re-ran the toast/reset/navigate.
+     */
     const handlePublishAssessment = async () => {
+        if (isPublishingRef.current) return;
+        isPublishingRef.current = true;
         try {
-            // Get the form values using form.getValues() or whatever method is appropriate
-            const formData = form.getValues(); // or form.data, if applicable
-
-            // Trigger the onSubmit first with the correct form data
-            await new Promise<void>((resolve) => {
-                onSubmit(formData); // pass the form data here
-                resolve();
+            await handleSubmitStep4Form.mutateAsync({
+                data: form.getValues(),
+                assessmentId: assessmentId !== 'defaultId' ? assessmentId : savedAssessmentId,
+                instituteId: instituteDetails?.id,
+                type: examType,
             });
 
-            // After successful form submission, trigger the publish mutation
-            handlePublishAssessmentMutation.mutate({
+            await handlePublishAssessmentMutation.mutateAsync({
                 assessmentId: assessmentId !== 'defaultId' ? assessmentId : savedAssessmentId,
                 instituteId: instituteDetails?.id,
                 type: examType,
             });
         } catch (error) {
-            // Handle error silently
+            // Both mutations report through reportApiError in their own onError; nothing
+            // to add here beyond not publishing when the save failed.
+        } finally {
+            isPublishingRef.current = false;
         }
     };
-    const onInvalid = (err: unknown) => {
-        // Handle validation errors
+    const onInvalid = (errors: unknown) => {
+        // Surface the first problem instead of leaving the button looking dead.
+        const firstField = Object.keys((errors as Record<string, unknown>) ?? {})[0];
+        toast.error('Please fix the highlighted fields before continuing.', {
+            className: 'error-toast',
+            duration: 3000,
+        });
+        if (firstField) {
+            document
+                .querySelector(`[name="${firstField}"]`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     };
 
     useEffect(() => {
@@ -310,7 +337,16 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
 
     if (isLoading) return <DashboardLoader />;
 
-    if (isLoading || handleSubmitStep4Form.status === 'pending' || isAdminLoading)
+    // Publishing now shows the loader too. Previously only the step-4 save did, so the
+    // page stayed interactive during a publish and the button could be clicked again.
+    // This unmounts both buttons for the whole publish, which — together with the
+    // isPublishingRef re-entry guard — is what makes a double-click a no-op.
+    if (
+        isLoading ||
+        handleSubmitStep4Form.status === 'pending' ||
+        handlePublishAssessmentMutation.status === 'pending' ||
+        isAdminLoading
+    )
         return <DashboardLoader />;
 
     return (

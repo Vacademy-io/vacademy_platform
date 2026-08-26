@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from ..schemas.question_paper import AutoQuestionPaperResponse
@@ -57,6 +58,49 @@ def _canonical_level(level: Optional[str]) -> Optional[str]:
         return None
     v = level.strip().lower()
     return {"easy": "EASY", "medium": "MEDIUM", "hard": "HARD"}.get(v)
+
+
+def _metadata(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Tags + difficulty, under BOTH spellings.
+
+    `tags` / `level` are what the KB review board and the AI-center preview read.
+    `ai_tags` / `ai_difficulty_level` are what Java's QuestionDTO actually binds —
+    it declares `aiTags` and `aiDifficultyLevel` under a SnakeCaseStrategy and is
+    @JsonIgnoreProperties(ignoreUnknown=true), so the `tags`/`level` keys alone were
+    silently dropped on save and every AI-generated tag and difficulty was lost.
+
+    Emitting both keeps the existing readers working and starts persisting the data.
+    """
+    tags = q.get("tags")
+    level = _canonical_level(q.get("level"))
+    meta: Dict[str, Any] = {"tags": tags, "level": level}
+    if tags:
+        meta["ai_tags"] = tags
+    if level:
+        meta["ai_difficulty_level"] = level
+    return meta
+
+
+def _numeric_answers(q: Dict[str, Any]) -> List[float]:
+    """Every accepted numeric answer, from an explicit list or parsed out of `ans`."""
+    raw = q.get("valid_answers")
+    if not isinstance(raw, list) or not raw:
+        raw = [q.get("ans")]
+    answers: List[float] = []
+    for candidate in raw:
+        if candidate is None:
+            continue
+        if isinstance(candidate, (int, float)) and not isinstance(candidate, bool):
+            value = float(candidate)
+            if value not in answers:
+                answers.append(value)
+            continue
+        # A generator writing prose ("42.5 m/s", "3 or 4") still carries the number.
+        for token in re.findall(r"-?\d+(?:\.\d+)?", str(candidate)):
+            value = float(token)
+            if value not in answers:
+                answers.append(value)
+    return answers
 
 
 def normalize_correct_option_ids(raw: Optional[List[str]], preview_ids: List[str]) -> List[str]:
@@ -110,6 +154,7 @@ def _build_options(q: Dict[str, Any]) -> tuple[List[Dict[str, Any]], List[str]]:
 
 def _handle_mcq(q: Dict[str, Any], qtype: str) -> Dict[str, Any]:
     options_out, preview_ids = _build_options(q)
+    correct = normalize_correct_option_ids(q.get("correct_options"), preview_ids)
     dto: Dict[str, Any] = {
         "access_level": "PUBLIC",
         "question_response_type": "OPTION",
@@ -117,18 +162,61 @@ def _handle_mcq(q: Dict[str, Any], qtype: str) -> Dict[str, Any]:
         "explanation_text": _rich(q.get("exp")),
         "text": _rich(q.get("question", {}).get("content")),
         "options": options_out,
+        # Both spellings. Java's MCQEvaluationDTO.MCQData binds `correctOptionIds`
+        # (the nested class does not inherit the outer SnakeCaseStrategy); the AI-center
+        # preview reader reads `correct_option_ids`.
         "auto_evaluation_json": _eval_json(
-            {"type": qtype, "data": {"correct_option_ids": normalize_correct_option_ids(q.get("correct_options"), preview_ids)}}
+            {"type": qtype, "data": {"correct_option_ids": correct, "correctOptionIds": correct}}
         ),
     }
-    if qtype == "MCQS":  # only MCQS sets tags + level (matches Java handlers)
-        dto["tags"] = q.get("tags")
-        dto["level"] = _canonical_level(q.get("level"))
+    dto.update(_metadata(q))
+    return dto
+
+
+def _handle_true_false(q: Dict[str, Any]) -> Dict[str, Any]:
+    """TRUE_FALSE is an MCQS with two fixed options as far as storage is concerned.
+
+    Java routes TRUE_FALSE through the same createOptions/handleMCQQuestion branch as
+    MCQS, so the shape is identical — only `question_type` differs.
+    """
+    if not (q.get("options") or []):
+        q = {**q, "options": [
+            {"preview_id": "1", "content": "True"},
+            {"preview_id": "2", "content": "False"},
+        ]}
+    dto = _handle_mcq(q, "TRUE_FALSE")
+    return dto
+
+
+def _handle_numeric(q: Dict[str, Any]) -> Dict[str, Any]:
+    """A numeric question with one or more accepted answers.
+
+    Previously there was NO numeric branch here at all: `format_questions` fell to its
+    else-clause and SKIPPED the question outright, which is why kb/paper.py stored
+    numericals as ONE_WORD rather than emitting a type that would be dropped.
+    """
+    answers = _numeric_answers(q)
+    # INTEGER unless an answer actually needs a decimal part — Java defaults to INTEGER
+    # when this is absent, so being explicit is what makes decimals survive.
+    response_type = "INTEGER" if all(float(a).is_integer() for a in answers) else "DECIMAL"
+    dto: Dict[str, Any] = {
+        "access_level": "PUBLIC",
+        "question_response_type": response_type,
+        "question_type": "NUMERIC",
+        "explanation_text": _rich(q.get("exp")),
+        "text": _rich(q.get("question", {}).get("content")),
+        # NumericalEvaluationDto.NumericalData binds `validAnswers`; the snake key is
+        # kept for the preview readers, exactly as with MCQ above.
+        "auto_evaluation_json": _eval_json(
+            {"type": "NUMERIC", "data": {"valid_answers": answers, "validAnswers": answers}}
+        ),
+    }
+    dto.update(_metadata(q))
     return dto
 
 
 def _handle_one_word(q: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    dto = {
         "access_level": "PUBLIC",
         "question_response_type": "ONE_WORD",
         "question_type": "ONE_WORD",
@@ -136,10 +224,12 @@ def _handle_one_word(q: Dict[str, Any]) -> Dict[str, Any]:
         "text": _rich(q.get("question", {}).get("content")),
         "auto_evaluation_json": _eval_json({"type": "ONE_WORD", "data": {"answer": q.get("ans")}}),
     }
+    dto.update(_metadata(q))
+    return dto
 
 
 def _handle_long_answer(q: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    dto = {
         "access_level": "PUBLIC",
         "question_response_type": "LONG_ANSWER",
         "question_type": "LONG_ANSWER",
@@ -147,6 +237,8 @@ def _handle_long_answer(q: Dict[str, Any]) -> Dict[str, Any]:
         "text": _rich(q.get("question", {}).get("content")),
         "auto_evaluation_json": _eval_json({"type": "LONG_ANSWER", "data": {"answer": _rich(q.get("ans"))}}),
     }
+    dto.update(_metadata(q))
+    return dto
 
 
 def format_questions(questions: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
@@ -169,6 +261,10 @@ def format_questions(questions: Optional[List[Dict[str, Any]]]) -> List[Dict[str
                 out.append(_handle_mcq(q, "MCQS"))
             elif qt == "MCQM":
                 out.append(_handle_mcq(q, "MCQM"))
+            elif qt == "TRUE_FALSE":
+                out.append(_handle_true_false(q))
+            elif qt == "NUMERIC":
+                out.append(_handle_numeric(q))
             elif qt == "ONE_WORD":
                 out.append(_handle_one_word(q))
             elif qt == "LONG_ANSWER":

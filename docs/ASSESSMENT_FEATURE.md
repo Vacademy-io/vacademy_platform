@@ -144,6 +144,13 @@ All correct answers live in `Question.autoEvaluationJson`. Service: [QuestionEva
 | ONE_WORD | `OneWordEvaluationDTO` | `{ "type":"ONE_WORD", "data":{ "answer":"photosynthesis" } }` |
 | LONG_ANSWER | `LongAnswerEvaluationDTO` | `{ "type":"LONG_ANSWER", "data":{ "answer":{ "html":"…", "plainText":"…" } } }` |
 
+> **Casing trap.** The nested `data` classes (`MCQData`, `NumericalData`) do **not**
+> inherit the outer class's `SnakeCaseStrategy` — Jackson does not propagate
+> `@JsonNaming` to nested static classes. A generator emitting `correct_option_ids`
+> therefore bound to nothing and left the list `null`, which grading then dereferenced.
+> Both now carry `@JsonAlias` for the snake_case spelling; **serialization is still
+> camelCase**, so stored rows and the learner report renderer are unaffected.
+
 Auto-graded: MCQS, MCQM, TRUE_FALSE, NUMERIC, ONE_WORD.
 Manual-graded: LONG_ANSWER (and others when `evaluationType = MANUAL`).
 
@@ -456,7 +463,75 @@ Publish      ─────POST publish/v1/{id}───────▶  Status
 
 ---
 
-## 6. Key File Index
+## 6. Knowledge Base as a question source
+
+Questions can be generated from an institute's own books and notes. The knowledge base
+itself (ingestion, chunking, embedding, topic tree, marketplace) lives in **`ai_service`**
+(`app/services/kb/`) with its schema in **admin_core_service** Flyway
+(V435 / V441 / V443 / V445 / V446); there is no Java KB code. `assessment_service` only
+sees the finished questions.
+
+### 6.1 The three entry points in Step 2
+
+| Where | Component | What it does |
+|---|---|---|
+| Beside **Add Section** | `Step2CreateAssessmentFromKnowledgeBase.tsx` | Plans and generates a **whole assessment**: blueprint → edit the plan → generate → review → each blueprint row becomes a section |
+| Inside a section | `Step2CreateFromKnowledgeBase.tsx` | Fills **one section** with N questions of one type |
+| Inside a section | `Step2PickFromQuestionBank.tsx` | **Reuses** questions already in the bank — no generation, no credits |
+
+All three **append**. None replaces what the section already holds.
+
+### 6.2 Generation pipeline
+
+```
+POST /ai-service/knowledge-base/v1/bases/{kb}/paper/blueprint   plan (cheap, iterate)
+POST /ai-service/knowledge-base/v1/bases/{kb}/paper/generate    whole paper  (202, async)
+POST /ai-service/knowledge-base/v1/bases/{kb}/paper/section     one section  (202, async)
+GET  /ai-service/knowledge-base/v1/paper-jobs/{taskId}          poll
+POST /ai-service/knowledge-base/v1/bases/{kb}/paper/regenerate  redo ONE question
+POST /ai-service/knowledge-base/v1/bases/{kb}/paper/validate    structural checks
+     -> POST /assessment-service/question-paper/manage/v1/add   save to the bank
+```
+
+Generated questions pass through `ai_service/app/services/question_format.py`, the shared
+converter **every** AI question source uses (KB, vsmart-upload, -audio, -prompt, -extract,
+-image). It emits the exact `QuestionDTO` shape the question bank consumes.
+
+Supported types: `MCQS`, `MCQM`, `TRUE_FALSE`, `ONE_WORD`, `LONG_ANSWER`, `NUMERIC`.
+
+> NUMERIC and TRUE_FALSE were previously **skipped outright** by `format_questions`, which
+> is why `kb/paper.py` used to store numericals as `ONE_WORD` (`STORAGE_QUESTION_TYPE`).
+> Both now have handlers and are stored as themselves. **Questions saved before that
+> change remain `ONE_WORD` and grade exactly as they always did.**
+
+### 6.3 Provenance (assessment_service V42)
+
+`question` carries three columns, all nullable:
+
+| Column | Meaning |
+|---|---|
+| `institute_id` | Owning institute, denormalised from `institute_question_paper`. Backfilled by V42. Lets a question be scoped without walking question → mapping → paper → institute |
+| `source_type` | `MANUAL` \| `UPLOAD` \| `AI` \| `KNOWLEDGE_BASE` |
+| `source_meta` | JSONB: `kb_id`, `generation_id`, `topic`, `section`, `node_ids`, `source_page`, `figures`, `planned_type` |
+
+Written by `kb/paper.py::pair_with_formatted`, carried on `QuestionDTO.sourceType` /
+`sourceMeta`, persisted in `AddQuestionPaperFromImportManager.initializeQuestion`.
+
+### 6.4 Browsing individual questions
+
+`POST /assessment-service/question-bank/v1/questions/filter?instituteId=&pageNo=&pageSize=`
+
+Body (`QuestionBankFilter`, snake_case): `name`, `kb_ids`, `kb_node_ids`, `source_types`,
+`question_types`, `difficulties`, `tag_ids`, `statuses`, `exclude_question_ids`.
+Returns `Page<QuestionDTO>`.
+
+This is the only question-**level** query in the service; `question-paper/view/v1/get-with-filters`
+remains the paper-level one and is unchanged. KB filters use jsonb containment against the
+GIN index on `source_meta`.
+
+---
+
+## 7. Key File Index
 
 ### Backend
 - `assessment_service/src/main/java/vacademy/io/assessment_service/features/assessment/entity/` — `Assessment`, `Section`, `QuestionAssessmentSectionMapping`, `StudentAttempt`, `AssessmentUserRegistration`
@@ -469,6 +544,14 @@ Publish      ─────POST publish/v1/{id}───────▶  Status
 - `…/learner_assessment/manager/` — `LearnerAssessmentAttemptStartManager`, `LearnerAssessmentAttemptStatusManager`
 - `…/evaluation/service/QuestionEvaluationService.java`
 - `…/assessment/service/StudentAttemptService.java`
+- `…/question_bank/controller/GetQuestionBankController.java`, `…/manager/GetQuestionBankManager.java`, `…/dto/QuestionBankFilter.java` — question-level browse
+- `…/question_core/repository/QuestionRepository.findQuestionsByFilters`
+- `src/main/resources/db/migration/V42__question_source_and_institute.sql`
+
+### ai_service (knowledge base)
+- `ai_service/app/services/kb/` — `paper.py` (blueprint + generation + validation), `repository.py`, `retrieval.py`, `topics.py`, `ingest.py`, `generations.py`
+- `ai_service/app/routers/kb_paper.py`, `knowledge_base.py`, `kb_library.py`
+- `ai_service/app/services/question_format.py` — shared converter for **all** AI question sources
 
 ### Admin frontend
 - `frontend-admin-dashboard/src/routes/assessment/create-assessment/$assessmentId/$examtype/`
@@ -478,6 +561,12 @@ Publish      ─────POST publish/v1/{id}───────▶  Status
   - `-components/StepComponents/Step3AddingParticipants.tsx`
   - `-components/StepComponents/Step4AccessControl.tsx`
   - `-services/assessment-services.ts`, `-utils/*-schema.ts`, `-utils/zustand-global-states/*`
+  - `-components/StepComponents/-components/Step2CreateAssessmentFromKnowledgeBase.tsx` — whole assessment from a KB
+  - `-components/StepComponents/-components/Step2CreateFromKnowledgeBase.tsx` — one section from a KB
+  - `-components/StepComponents/-components/Step2PickFromQuestionBank.tsx` — reuse existing questions
+- `frontend-admin-dashboard/src/routes/knowledge-base/` — the KB module itself (`-components/paper/BlueprintTable.tsx`, `ReviewBoard.tsx`, `TopicPicker.tsx`, `-services/paper-service.ts`)
+- `frontend-admin-dashboard/src/routes/assessment/question-papers/-utils/merge-section-questions.ts` — append-don't-replace helper shared by every question-insert path
+- `frontend-admin-dashboard/src/routes/assessment/question-papers/-utils/question-bank-services.ts`
 - `frontend-admin-dashboard/src/routes/assessment/question-papers/-components/`
   - `QuestionPaperUpload.tsx`, `QuestionPaperTemplate.tsx`
   - `QuestionPaperTemplatesTypes/MainViewComponentFactory.tsx`
@@ -494,3 +583,32 @@ Publish      ─────POST publish/v1/{id}───────▶  Status
 - `frontend-learner-dashboard-app/src/routes/assessment/reports/student-report/`
 - `frontend-learner-dashboard-app/src/components/common/student-test-records/test-report-dialog.tsx`
 - `frontend-learner-dashboard-app/src/components/common/student-test-records/question-response-renderer.tsx`
+
+---
+
+## 8. Known issues, deliberately not fixed
+
+An audit of `assessment_service` and both frontends (2026-08) found these. They are real,
+and each was left alone because fixing it would change behaviour that currently works —
+so each needs its own pass, with a read-only preflight query against prod first. Recorded
+here so they are not rediscovered from scratch.
+
+| # | Issue | Why it was deferred |
+|---|---|---|
+| 1 | `negativeMarkingPercentage` is read and discarded in MCQM/MCQS/ONE_WORD while NUMERIC applies it, so the same configured scheme penalises differently per type | Applying it changes live penalties for any institute that set a non-zero percentage |
+| 2 | `NUMERICQuestionTypeBasedStrategy` compares with exact `Double` equality; no RANGE/tolerance despite `NumericQuestionTypes` existing | Changes scores, and the tolerance should be a per-question setting rather than a constant |
+| 3 | Grading and preview queries in `QuestionAssessmentSectionMappingRepository` filter neither `qasm.status` nor `q.status`; the `activeSections` Hibernate filter is inert (enabled on a different session, and `Assessment` names a column that does not exist) | Adding a filter can only REMOVE questions from live papers, and legacy rows have NULL status — needs a prod count first, and must land with #7 |
+| 4 | `StudentAttemptService.calculateTotalMarks` catches everything and returns 0 for the whole attempt, which is then written as `COMPLETED` and may be auto-released | The fix is right but changes what admins see (attempts held rather than released) and touches release/workflow side effects |
+| 5 | The live grading path picks its marking strategy from `responseData.type` inside the learner's own submitted JSON; the revaluation path correctly uses `questionAsked.getQuestionType()` | Legacy attempts may depend on the submitted value where the stored type is null |
+| 6 | Reattempt count is enforced nowhere — `registration.reattemptCount` is written but never gates a new attempt; submit is non-idempotent and enforces no time limit | Enforcing either would start blocking learners who can currently do it. The learner client retries submit 3x, so re-submit must return the existing result, not a 4xx |
+| 7 | `AssessmentLinkQuestionsManager.softDeleteMappingsByQuestionIdsAndSectionId` runs a native hard `DELETE`; Hibernate-internal enums are used as domain status strings; `section.totalMarks` is trusted from the client | Hard-delete → soft-delete changes which rows the (unfiltered, #3) grading queries return |
+| 8 | Publish validates nothing (`// Todo: Verify Assessment Details based on type`) — an assessment with no sections and no questions can be published and started | Any rule added could reject assessments that are already live; likely lands as warnings first |
+| 9 | Editing a question paper orphans `option` and `assessment_rich_text_data` rows; `setQuestionMetadata` nulls media/explanation on a partial edit | Needs an `option.status` column plus a read filter on every option query |
+| 10 | Deleting a question from one paper sets `question.status = DELETED` globally, across every other paper and assessment using it | Changes what admins currently experience as "delete" |
+| 11 | Learner reports are readable before release, and the release filter on the list endpoint is client-supplied | Enforcing it hides results learners can currently see |
+| 12 | `totalTimeInSeconds` is taken from the learner's own JSON and feeds leaderboards | Server-side timing changes existing leaderboard values |
+| 13 | Restart grants a fresh full duration with no counter or cap | Capping it takes time away from learners mid-exam |
+| 14 | Step-2 re-submit can duplicate sections (server ids are never written back into the form); Step-1 re-submit orphans the draft | The fixes flip create-vs-update decisions in the wizard |
+| 15 | `sectionDetailsSchema` validates nothing, and the real submit gate is disabled entirely in edit mode | Turning validation on could block admins who currently save partial edits; pair with #8 |
+| 16 | `AssessmentParticipantsManager` is not transactional; registration dates are dropped unless instructions HTML is also sent; removing participants hard-deletes rows `StudentAttempt` has FKs to | Its own area with its own blast radius |
+| 17 | `AssessmentAccessManager.updateAccessToAssessment` ignores its current-access parameters; `deleteAccessToAssessment` is never called; a missing institute mapping returns 200 having done nothing | Access-control semantics need a product decision |

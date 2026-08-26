@@ -2,6 +2,7 @@ import { createFileRoute, useRouter, redirect } from "@tanstack/react-router";
 import { z } from "zod";
 import EnrollByInvite from "@/components/common/enroll-by-invite/enroll-form";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
+import { hasActiveLearnerSession } from "@/lib/auth/sessionUtility";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleGetEnrollInviteData } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { PaymentGatewayWrapper } from "@/components/common/enroll-by-invite/-components/payment-gateway-wrapper";
@@ -187,9 +188,15 @@ export const Route = createFileRoute("/learner-invitation-response/")({
   // flow contains paid plan selection + external payment gateways + "Upgrade
   // Now" redirects across many sub-steps. Block the whole route so none of it
   // can render (Apple 3.1.1). Mirrors the $tagName marketplace guards.
-  beforeLoad: () => {
+  beforeLoad: async () => {
     if (shouldHidePaidPurchaseUI()) {
-      throw redirect({ to: "/dashboard" });
+      // /dashboard is auth-only: sending a logged-OUT learner there bounces
+      // back to the institute landing route, which is reader-blocked again —
+      // an infinite loop that hangs the app on the boot splash. See
+      // hasActiveLearnerSession().
+      throw redirect({
+        to: (await hasActiveLearnerSession()) ? "/dashboard" : "/login",
+      });
     }
   },
   component: RouteComponent,

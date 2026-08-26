@@ -21,11 +21,13 @@ const ScheduleTestTabList = ({
         return tabData?.data?.content?.length ? tabData?.data?.total_elements ?? 0 : 0;
     };
 
+    // The tab strip scrolls instead of overflowing: four tabs at the desktop px-12 are far
+    // wider than a phone, which cut "Previous" and "Drafts" off the screen entirely.
     return (
-        <TabsList className="inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
+        <TabsList className="no-scrollbar flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b !bg-transparent p-0 sm:gap-4">
             <TabsTrigger
                 value="liveTests"
-                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                className={`flex shrink-0 gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-8 lg:px-12 ${
                     selectedTab === 'liveTests'
                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                         : 'border-none bg-transparent'
@@ -43,7 +45,7 @@ const ScheduleTestTabList = ({
             </TabsTrigger>
             <TabsTrigger
                 value="upcomingTests"
-                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                className={`flex shrink-0 gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-8 lg:px-12 ${
                     selectedTab === 'upcomingTests'
                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                         : 'border-none bg-transparent'
@@ -61,7 +63,7 @@ const ScheduleTestTabList = ({
             </TabsTrigger>
             <TabsTrigger
                 value="previousTests"
-                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                className={`flex shrink-0 gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-8 lg:px-12 ${
                     selectedTab === 'previousTests'
                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                         : 'border-none bg-transparent'
@@ -79,7 +81,7 @@ const ScheduleTestTabList = ({
             </TabsTrigger>
             <TabsTrigger
                 value="draftTests"
-                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${
+                className={`flex shrink-0 gap-1.5 whitespace-nowrap rounded-none px-4 py-2 !shadow-none sm:px-8 lg:px-12 ${
                     selectedTab === 'draftTests'
                         ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
                         : 'border-none bg-transparent'

@@ -163,7 +163,14 @@ function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex 
     }, []);
     const ratioClass = FC_RATIO_CLASS[aspectRatio || 'original'] || '';
     // Always bound flashcard images (fc-card-img); add the chosen ratio on top.
-    const imgWrapClass = `fc-card-img ${ratioClass}`.trim();
+    // `fc-face` is the hook for the face-content reset below.
+    const imgWrapClass = `fc-face fc-card-img ${ratioClass}`.trim();
+    // Legacy flashcards store plain text and lean on pre-wrap to keep their
+    // line breaks. Rich content brings its own block spacing, and there pre-wrap
+    // would *also* render the newlines sitting between `</p>` and `<p>` as blank
+    // lines inside the card — so choose the mode per face.
+    const faceWhiteSpace = (h: string) =>
+        /<(p|div|ul|ol|h[1-6]|table|blockquote)\b/i.test(h || '') ? 'normal' : 'pre-wrap';
 
     // Plain text (entities decoded) for activity analytics — the stored HTML
     // would otherwise pollute the admin activity log.
@@ -230,7 +237,7 @@ function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex 
                     }}
                 >
                     <div style={{ fontSize: '10px', color: '#007acc', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>Front</div> {/* design-lint-ignore: flashcard UI state — style prop */}
-                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#333', textAlign: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: front || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
+                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#333', textAlign: 'center', maxWidth: '100%', whiteSpace: faceWhiteSpace(front) }} dangerouslySetInnerHTML={{ __html: front || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
                     <div style={{ fontSize: '11px', color: '#999', position: 'absolute', bottom: '8px' }}>Click to flip</div> {/* design-lint-ignore: flashcard UI state — style prop */}
                 </div>
                 {/* Back */}
@@ -253,7 +260,7 @@ function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex 
                     }}
                 >
                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>Back</div>
-                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#fff', textAlign: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: back || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
+                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#fff', textAlign: 'center', maxWidth: '100%', whiteSpace: faceWhiteSpace(back) }} dangerouslySetInnerHTML={{ __html: back || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
                     <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', position: 'absolute', bottom: '8px' }}>Click to flip back</div>
                 </div>
             </div>
@@ -675,16 +682,50 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             };
             continueOrderedNumbering(tempDiv);
 
-            // Yoopta serializes a checkbox/todo item as `<li>[ ] text</li>` (or
-            // `[x]` when checked) — a literal bracket marker, not a real checkbox.
-            // The admin editor re-parses that marker into an interactive checkbox,
-            // but rendered as raw HTML it shows as a bullet + literal "[ ]". Strip
-            // the marker and tag the <li> so the scoped CSS below renders a real
-            // checkbox (read-only, reflecting the saved checked state) like admin.
+            // A checkbox/todo item reaches us in one of two serialized shapes,
+            // depending on which admin editor authored the slide:
+            //  - Yoopta (legacy): `<li>[ ] text</li>` / `[x] text` — a literal
+            //    bracket marker, no checkbox markup at all.
+            //  - Lexical (the "New editor"): `<ul __lexicallisttype="check">` with
+            //    `<li role="checkbox" aria-checked="true|false" class="… lex-check-item">`
+            //    — real state, but the box itself is drawn by CSS that only exists
+            //    inside the admin editor shell.
+            // Rendered as raw HTML both collapse to a plain bullet (plus a literal
+            // "[ ]" for the Yoopta shape). Normalise both onto `todo-item` so the
+            // scoped CSS below draws a real checkbox like admin, and the effect
+            // below can make it tickable.
             const convertTodoListsToCheckboxes = (root: Element) => {
                 const TODO_RE = /^\s*\[([ xX])\]\s?/;
                 let todoIndex = 0;
+                const markTodoItem = (li: Element, checked: boolean) => {
+                    li.classList.add('todo-item');
+                    if (checked) li.classList.add('todo-item--checked');
+                    // Stable document-order index so the learner's saved tick state
+                    // (persisted per slide) can be mapped back onto each item.
+                    li.setAttribute('data-todo-index', String(todoIndex));
+                    todoIndex++;
+                };
+                // querySelectorAll walks in document order, so the two shapes share
+                // one index sequence even in a document that mixes them.
                 root.querySelectorAll('ul > li').forEach((li) => {
+                    // Lexical check list. Lexical only puts role/aria-checked on
+                    // LEAF items, so an <li> that merely wraps a nested list is
+                    // skipped here — which is what we want.
+                    const ariaChecked = li.getAttribute('aria-checked');
+                    if (
+                        li.getAttribute('role') === 'checkbox' ||
+                        ariaChecked !== null ||
+                        li.classList.contains('lex-check-item')
+                    ) {
+                        markTodoItem(
+                            li,
+                            ariaChecked === 'true' ||
+                                li.classList.contains('lex-check-item--checked')
+                        );
+                        return;
+                    }
+
+                    // Yoopta bracket marker.
                     const m = (li.textContent || '').match(TODO_RE);
                     if (!m) return;
                     const checked = m[1]!.toLowerCase() === 'x';
@@ -696,15 +737,26 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     if (node && node.nodeValue) {
                         node.nodeValue = node.nodeValue.replace(TODO_RE, '');
                     }
-                    li.classList.add('todo-item');
-                    if (checked) li.classList.add('todo-item--checked');
-                    // Stable document-order index so the learner's saved tick state
-                    // (persisted per slide) can be mapped back onto each item.
-                    li.setAttribute('data-todo-index', String(todoIndex));
-                    todoIndex++;
+                    markTodoItem(li, checked);
                 });
             };
             convertTodoListsToCheckboxes(tempDiv);
+
+            // Accordion bodies are serialized by the admin as
+            // `<div style="padding: 4px 0;">`. That inline shorthand outranks the
+            // scoped `details > *:not(summary)` rule below, collapsing the
+            // horizontal padding to 0 — so body text hugged the theme accent bar
+            // while the summary above it stayed inset. Drop just the padding
+            // declaration (any other inline styles survive) and let the
+            // stylesheet own accordion spacing.
+            const relaxAccordionBodyPadding = (root: Element) => {
+                root.querySelectorAll('details > div[style*="padding"]').forEach((el) => {
+                    const body = el as HTMLElement;
+                    body.style.removeProperty('padding');
+                    if (!body.getAttribute('style')) body.removeAttribute('style');
+                });
+            };
+            relaxAccordionBodyPadding(tempDiv);
 
             // Build a live outline for any Table of Contents block. The admin TOC
             // can't read the document at serialize time, so it ships a static
@@ -1116,6 +1168,14 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
         if (items.length === 0) return;
 
         const indexOf = (li: HTMLElement) => Number(li.getAttribute('data-todo-index'));
+        // Lexical-authored items carry role="checkbox", so aria-checked has to
+        // track the learner's tick, not the state the author saved.
+        const applyChecked = (li: HTMLElement, checked: boolean) => {
+            li.classList.toggle('todo-item--checked', checked);
+            if (li.getAttribute('role') === 'checkbox') {
+                li.setAttribute('aria-checked', checked ? 'true' : 'false');
+            }
+        };
         items.forEach((li) => {
             li.style.cursor = 'pointer';
         });
@@ -1143,7 +1203,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             checkedSet.clear();
             saved.checked.forEach((i) => checkedSet.add(i));
             items.forEach((li) => {
-                li.classList.toggle('todo-item--checked', checkedSet.has(indexOf(li)));
+                applyChecked(li, checkedSet.has(indexOf(li)));
             });
         });
 
@@ -1154,7 +1214,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             if (!li || !container.contains(li)) return;
             const idx = indexOf(li);
             const nowChecked = !li.classList.contains('todo-item--checked');
-            li.classList.toggle('todo-item--checked', nowChecked);
+            applyChecked(li, nowChecked);
             if (nowChecked) checkedSet.add(idx);
             else checkedSet.delete(idx);
             if (saveTimer) clearTimeout(saveTimer);
@@ -1378,7 +1438,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     list-style: none;
                     cursor: pointer;
                     position: relative;
-                    padding: 1rem 3.5rem 1rem 1.25rem;
+                    padding: 1rem 3.5rem 1rem 1.5rem;
                     font-weight: 600;
                     font-size: 1.0625rem;
                     line-height: 1.5;
@@ -1437,7 +1497,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 /* Accordion body — content paragraph(s), with a gentle reveal. */
                 .document-with-mermaid details > *:not(summary) {
                     margin: 0;
-                    padding: 0.875rem 1.25rem 1.125rem;
+                    padding: 1.125rem 1.5rem 1.25rem;
                     font-size: 1.0625rem;
                     color: #374151; /* design-lint-ignore: CSS-in-JS document theme */
                 }
@@ -1461,6 +1521,36 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 .document-with-mermaid .inline-quiz p:last-child {
                     margin-bottom: 0;
                 }
+
+                /* Flashcard faces: same problem as .inline-quiz. Authored rich text
+                   arrives wrapped in <p>, which would otherwise take the document's
+                   paragraph colour — dark grey on the blue BACK face reads at about
+                   2.3:1 — plus 1.5rem of dead space inside a card that has none to
+                   spare. Inherit the face's own colour/size instead. */
+                .document-with-mermaid .fc-face p,
+                .document-with-mermaid .fc-face li {
+                    margin: 0 0 0.35rem;
+                    font-size: inherit;
+                    color: inherit;
+                    line-height: 1.5;
+                }
+                .document-with-mermaid .fc-face p:last-child,
+                .document-with-mermaid .fc-face li:last-child {
+                    margin-bottom: 0;
+                }
+                /* An empty trailing <p> (common in pasted content) would still take
+                   up a line box. */
+                .document-with-mermaid .fc-face p:empty {
+                    display: none;
+                }
+                .document-with-mermaid .fc-face ul,
+                .document-with-mermaid .fc-face ol {
+                    margin: 0.25rem 0;
+                    padding-left: 1.4rem;
+                    text-align: left;
+                }
+                .document-with-mermaid .fc-face ul { list-style: disc outside; }
+                .document-with-mermaid .fc-face ol { list-style: decimal outside; }
                 .document-with-mermaid .inline-quiz ul {
                     list-style: disc outside;
                     margin: 0.25rem 0;

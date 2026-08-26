@@ -6,9 +6,17 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.booking.dto.BookingPageDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MenteeDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorDirectoryDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorFeedbackDTOs;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorRequestCreateDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorRequestDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorSessionDTOs;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorAvailabilityRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorAssignmentService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorDiscoveryService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorFeedbackService;
+import vacademy.io.admin_core_service.features.mentorship.service.MentorSessionService;
 import vacademy.io.admin_core_service.features.mentorship.service.MentorService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -29,6 +37,9 @@ public class MyMentorshipController {
 
     private final MentorAssignmentService assignmentService;
     private final MentorService mentorService;
+    private final MentorDiscoveryService discoveryService;
+    private final MentorFeedbackService feedbackService;
+    private final MentorSessionService sessionService;
     private final InstituteAccessValidator instituteAccessValidator;
 
     /**
@@ -56,6 +67,173 @@ public class MyMentorshipController {
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
         return ResponseEntity.ok(assignmentService.mentorsForStudent(instituteId, user.getUserId()));
+    }
+
+    // ==================== FIND A MENTOR (learner-initiated) ====================
+
+    /**
+     * The Find-a-mentor directory: mentors this institute opted into discovery.
+     * Deliberately returns a narrower DTO than the admin mentor list (no email,
+     * phone or user id) — it is the one mentorship read a plain learner can make
+     * about mentors who aren't theirs.
+     */
+    @GetMapping("/directory")
+    public ResponseEntity<List<MentorDirectoryDTO>> directory(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.directory(instituteId, user.getUserId(), search));
+    }
+
+    /** The learner asks for a mentor. Omitting {@code mentor_id} means "any available mentor". */
+    @PostMapping("/my-requests")
+    public ResponseEntity<MentorRequestDTO> createRequest(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorRequestCreateDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.createRequest(instituteId, user, request));
+    }
+
+    /** The caller's own mentor requests, newest first. */
+    @GetMapping("/my-requests")
+    public ResponseEntity<List<MentorRequestDTO>> myRequests(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(discoveryService.myRequests(instituteId, user.getUserId()));
+    }
+
+    /** The learner withdraws their own pending request. */
+    @DeleteMapping("/my-requests/{id}")
+    public ResponseEntity<String> cancelRequest(
+            @PathVariable("id") String id,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        discoveryService.cancelRequest(id, instituteId, user.getUserId());
+        return ResponseEntity.ok("Request cancelled");
+    }
+
+    // ==================== SESSION FEEDBACK ====================
+
+    /**
+     * Mentor sessions the caller attended but hasn't rated yet. Drives the
+     * "rate your session" prompt; empty for learners with nothing outstanding.
+     */
+    @GetMapping("/my-pending-feedback")
+    public ResponseEntity<List<MentorFeedbackDTOs.PendingFeedbackDTO>> myPendingFeedback(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(feedbackService.pendingForStudent(instituteId, user.getUserId()));
+    }
+
+    /** Rate a session the caller attended. Re-submitting revises their existing rating. */
+    @PostMapping("/my-feedback")
+    public ResponseEntity<MentorFeedbackDTOs.FeedbackDTO> submitFeedback(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorFeedbackDTOs.SubmitFeedbackRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(feedbackService.submit(instituteId, user, request));
+    }
+
+    // ==================== SESSION OUTCOMES ====================
+
+    /** Sessions the calling mentor has held but not yet recorded an outcome for. */
+    @GetMapping("/my-sessions/awaiting-review")
+    public ResponseEntity<List<MentorSessionDTOs.MentorSessionDTO>> myAwaitingReview(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.myAwaitingReview(instituteId, user));
+    }
+
+    /** The mentor records what happened: COMPLETED or NO_SHOW, plus topic and notes. */
+    @PostMapping("/my-sessions/record")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> recordSession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.RecordSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.record(instituteId, user, request));
+    }
+
+    /** The mentor cancels one of their OWN sessions. */
+    @PostMapping("/my-sessions/cancel")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> cancelMySession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.CancelSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        // asAdmin=false: the service refuses any session this mentor doesn't host.
+        return ResponseEntity.ok(sessionService.cancelSession(instituteId, user,
+                request.getBookingInstanceId(), request.getReason(), false));
+    }
+
+    /** The mentor moves one of their OWN sessions to a new time. */
+    @PostMapping("/my-sessions/reschedule")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> rescheduleMySession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.RescheduleSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.rescheduleSession(instituteId, user,
+                request.getBookingInstanceId(), request.getStartTime(),
+                request.getInviteeTimezone(), false));
+    }
+
+    /** The mentor schedules a 1:1 with one of their OWN mentees, on their own booking page. */
+    @PostMapping("/my-sessions/schedule")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> scheduleMySession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.ScheduleSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.scheduleSession(instituteId, user, request,
+                MentorSessionService.SessionActor.MENTOR));
+    }
+
+    // ==================== LEARNER: MY 1:1 SESSIONS ====================
+
+    /**
+     * The caller's own mentor sessions as a learner — upcoming and past, newest first.
+     * Separate from {@code /my-sessions/*} (which is the mentor's side of the same
+     * feature) because the two audiences see different rows and different fields.
+     */
+    @GetMapping("/my-mentor-sessions")
+    public ResponseEntity<List<MentorSessionDTOs.MentorSessionDTO>> myMentorSessions(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "lifecycle", required = false) String lifecycle,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.sessionsForStudent(instituteId, user.getUserId(), lifecycle));
+    }
+
+    /** The learner cancels a session booked for them. */
+    @PostMapping("/my-mentor-sessions/cancel")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> cancelMyMentorSession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.CancelSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.cancelSession(instituteId, user,
+                request.getBookingInstanceId(), request.getReason(),
+                MentorSessionService.SessionActor.STUDENT));
+    }
+
+    /** The learner moves a session booked for them to another free slot. */
+    @PostMapping("/my-mentor-sessions/reschedule")
+    public ResponseEntity<MentorSessionDTOs.MentorSessionDTO> rescheduleMyMentorSession(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody MentorSessionDTOs.RescheduleSessionRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(sessionService.rescheduleSession(instituteId, user,
+                request.getBookingInstanceId(), request.getStartTime(),
+                request.getInviteeTimezone(), MentorSessionService.SessionActor.STUDENT));
     }
 
     /** The caller's own mentor profile (incl. Google-connected status) — for the Connect Google card. */

@@ -63,17 +63,32 @@ async function resolvePublicUrl(fileId, backendBase) {
   return "";
 }
 
-async function fetchBranding(domain, subdomain, backendBase) {
+async function fetchBrandingOnce(domain, subdomain, backendBase) {
   try {
     const url = `${getDomainRoutingUrl(backendBase)}?domain=${encodeURIComponent(
       domain
     )}&subdomain=${encodeURIComponent(subdomain)}`;
-    const res = await fetch(url, { headers: { accept: "application/json" } });
+    const res = await fetch(url, {
+      headers: { accept: "application/json" },
+      cf: { cacheTtl: 300, cacheEverything: true },
+    });
     if (res.ok) {
       return await res.json();
     }
   } catch {
     // fall through
+  }
+  return null;
+}
+
+async function fetchBranding(domain, subdomain, backendBase) {
+  const direct = await fetchBrandingOnce(domain, subdomain, backendBase);
+  if (direct) return direct;
+  // Apex domains (no subdomain) are stored with the wildcard subdomain "*" —
+  // that is what the app itself sends. Without this retry every two-part
+  // white-label host resolved to nothing and fell back to Vacademy branding.
+  if (!subdomain) {
+    return await fetchBrandingOnce(domain, "*", backendBase);
   }
   return null;
 }

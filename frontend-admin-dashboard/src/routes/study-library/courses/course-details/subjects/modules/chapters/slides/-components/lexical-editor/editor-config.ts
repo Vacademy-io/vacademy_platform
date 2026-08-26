@@ -28,8 +28,14 @@ export const editorNodes: Array<Klass<LexicalNode>> = [
 ];
 
 /** Theme: Tailwind token classes only (design-system rule — no raw values).
- *  These class names are what the editor DOM renders with; they do NOT leak
- *  into the serialized HTML ($generateHtmlFromNodes emits clean tags). */
+ *  These class names DO reach the serialized HTML: Lexical's exportDOM builds
+ *  the export element via createDOM, so the stored slide carries them (e.g. a
+ *  check list saves as `<ul class="list-disc pl-6 mb-2" __lexicallisttype="check">`
+ *  with `<li role="checkbox" aria-checked="…" class="mb-1 lex-check-item">`).
+ *  Anything that renders stored slide HTML outside this editor shell — the
+ *  learner app above all — must therefore key off the exported attributes
+ *  (role/aria-checked), never off these classes, whose CSS is scoped to
+ *  `.lexical-doc-editor`. */
 export const editorTheme: InitialConfigType['theme'] = {
     paragraph: 'mb-2 leading-relaxed',
     heading: {

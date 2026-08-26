@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 import java.sql.Timestamp;
@@ -300,6 +302,323 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * bumps the attempt counter + timestamp in the same atomic write so the
          * claim and dunning bookkeeping can't diverge.
          */
+        /**
+         * Billing summary for the Total / Collected / Due cards.
+         *
+         * Due is what learners still owe — what their enrolments were billed at, minus what they
+         * have actually paid — NOT a count of unpaid payment rows. A ₹35,000 course paid in one
+         * ₹10,000 instalment leaves a single PAID row and no trace of the ₹25,000 outstanding, and
+         * an enrolment that has never paid has no payment rows at all, so summing payment_log
+         * reports institutes as fully collected while lakhs are owed.
+         *
+         * Matching is per LEARNER, not per plan. Money reaches an institute two ways — against an
+         * enrolment, or against an admin-raised invoice, which carries no user_plan and hangs off
+         * the institute directly. Crediting only plan-linked payments left learners who paid by
+         * invoice showing their whole course fee as due while the table below listed the very
+         * payment that settled part of it.
+         *
+         * GREATEST(billed - paid, 0) per learner keeps an over-payment, a free enrolment or a CPO
+         * plan priced elsewhere from pushing due negative, and total is returned as collected + due
+         * so the three cards always reconcile. The PAID totals are pre-aggregated and joined rather
+         * than looked up per plan: as a correlated subquery this took 33 s on an institute with
+         * 8,380 live plans, and 172 ms this way.
+         */
+        @Query(value = """
+                WITH billed_plans AS (
+                  SELECT up.user_id AS user_id,
+                         SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS price,
+                         COUNT(*) AS plans,
+                         MAX(UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
+                                            NULLIF(TRIM(ei.currency), '')))) AS cur
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                    -- Net obligation for plans that carry a fee schedule. amount_expected is
+                    -- post-discount, so a discounted plan is billed at what the learner actually
+                    -- owes. pp.actual_price is the undiscounted list price and would report the
+                    -- discount itself as an outstanding due. Pre-aggregated rather than
+                    -- correlated for the same reason the paid CTE is — see the note above.
+                    LEFT JOIN (
+                      SELECT user_plan_id, SUM(amount_expected) AS expected
+                        FROM student_fee_payment
+                       GROUP BY user_plan_id
+                    ) sfp_tot ON sfp_tot.user_plan_id = up.id
+                   WHERE ei.institute_id = :instituteId
+                     AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
+                     AND up.created_at >= :startDate
+                     AND up.created_at <= :endDate
+                     AND (:noPackageSessions = true OR EXISTS (
+                           SELECT 1
+                             FROM package_session_learner_invitation_to_payment_option psli
+                            WHERE psli.enroll_invite_id = ei.id
+                              AND psli.status = 'ACTIVE'
+                              AND psli.package_session_id IN (:packageSessionIds)))
+                   GROUP BY up.user_id
+                ), billed_invoices AS (
+                  -- Invoices raised against the institute directly. These carry no user_plan, so
+                  -- without this arm an invoice an admin raised was owed by nobody as far as this
+                  -- card was concerned — it appeared in neither Total nor Due.
+                  --
+                  -- Scoped to invoices with no payment_log at all, which is exactly the set the
+                  -- listing now surfaces as its own rows, so the table and these totals describe
+                  -- the same money. REJECTED is excluded: a voided invoice stays visible in the
+                  -- table (struck through) but is neither collected nor owed.
+                  --
+                  -- plans = 0 so the "N enrolments billed" caption keeps counting enrolments.
+                  SELECT inv.user_id AS user_id,
+                         SUM(COALESCE(inv.total_amount, 0)) AS price,
+                         0 AS plans,
+                         MAX(UPPER(NULLIF(TRIM(inv.currency), ''))) AS cur
+                    FROM invoice inv
+                   WHERE inv.institute_id = :instituteId
+                     AND inv.created_at >= :startDate
+                     AND inv.created_at <= :endDate
+                     AND inv.status <> 'REJECTED'
+                     -- An invoice has no package session, so it is counted only for the whole
+                     -- institute, never leaked into a course-filtered view (mirrors `paid`).
+                     AND :noPackageSessions = true
+                     AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um
+                                      WHERE um.invoice_id = inv.id)
+                   GROUP BY inv.user_id
+                ), billed AS (
+                  SELECT user_id, SUM(price) AS price, SUM(plans) AS plans, MAX(cur) AS cur
+                    FROM (SELECT * FROM billed_plans
+                          UNION ALL
+                          SELECT * FROM billed_invoices) all_billed
+                   GROUP BY user_id
+                ), paid AS (
+                  SELECT COALESCE(up.user_id, inv.user_id) AS user_id,
+                         SUM(pl.payment_amount) AS amt,
+                         COUNT(*) AS cnt
+                    FROM payment_log pl
+                    LEFT JOIN user_plan up ON up.id = pl.user_plan_id
+                    LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
+                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                   WHERE pl.payment_status = 'PAID'
+                     AND pl.created_at >= :startDate
+                     AND pl.created_at <= :endDate
+                     AND ((ei.institute_id = :instituteId
+                           AND (:noPackageSessions = true OR EXISTS (
+                                 SELECT 1
+                                   FROM package_session_learner_invitation_to_payment_option psli
+                                  WHERE psli.enroll_invite_id = ei.id
+                                    AND psli.status = 'ACTIVE'
+                                    AND psli.package_session_id IN (:packageSessionIds))))
+                       -- An invoice carries no package session, so it is counted only for the
+                       -- whole institute, never leaked into a course-filtered view.
+                       OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
+                   GROUP BY COALESCE(up.user_id, inv.user_id)
+                )
+                SELECT COALESCE(SUM(p.amt), 0) AS collected,
+                       COALESCE(SUM(GREATEST(COALESCE(b.price, 0) - COALESCE(p.amt, 0), 0)), 0) AS due,
+                       COALESCE(SUM(p.amt), 0)
+                         + COALESCE(SUM(GREATEST(COALESCE(b.price, 0) - COALESCE(p.amt, 0), 0)), 0)
+                         AS totalBilled,
+                       COALESCE(SUM(b.plans), 0) AS planCount,
+                       COUNT(*) FILTER (WHERE COALESCE(b.price, 0) > 0
+                                          AND COALESCE(p.amt, 0) >= b.price) AS settledPlanCount,
+                       (SELECT cur FROM billed WHERE cur IS NOT NULL
+                         GROUP BY cur ORDER BY COUNT(*) DESC LIMIT 1) AS currency
+                  FROM billed b
+                  FULL JOIN paid p ON p.user_id = b.user_id
+                """, nativeQuery = true)
+        BillingSummaryProjection getBillingSummary(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds);
+
+        /**
+         * The learners behind the "Due payment" card: who owes money, how much, and how their fee
+         * is structured. Same billing rules as {@link #getBillingSummary} — billed is the plan
+         * price, paid counts both enrolment and invoice payments, and the balance is per learner —
+         * so the rows here always add up to the card above them.
+         *
+         * CPO learners additionally get their instalment position (how many instalments are still
+         * unpaid and when the next one is due), read from student_fee_payment, which is the only
+         * place a custom instalment schedule exists per learner.
+         */
+        @Query(value = """
+                WITH billed_plans AS (
+                  SELECT up.user_id AS user_id,
+                         SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS billed,
+                         COUNT(*) AS plan_count,
+                         MIN(ei.name) AS course_name,
+                         MIN(up.status) AS plan_status,
+                         MIN(CASE WHEN po.type = 'CPO' THEN 'Custom Installment'
+                                  WHEN ei.tag = 'SUB_ORG' THEN 'Sub-Org Admin'
+                                  WHEN ei.tag = 'SUBORG_LEARNER' THEN 'Sub-Org Learner'
+                                  WHEN po.source = 'LIVE_SESSION' THEN 'Live Class'
+                                  WHEN po.source = 'PACKAGE_SESSION' THEN 'Course / Package'
+                                  ELSE 'Enroll Invite' END) AS payment_type,
+                         MAX(UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
+                                            NULLIF(TRIM(ei.currency), '')))) AS currency
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                    -- Net obligation for plans that carry a fee schedule. amount_expected is
+                    -- post-discount, so a discounted plan is billed at what the learner actually
+                    -- owes. pp.actual_price is the undiscounted list price and would report the
+                    -- discount itself as an outstanding due. Pre-aggregated rather than
+                    -- correlated for the same reason the paid CTE is — see the note above.
+                    LEFT JOIN (
+                      SELECT user_plan_id, SUM(amount_expected) AS expected
+                        FROM student_fee_payment
+                       GROUP BY user_plan_id
+                    ) sfp_tot ON sfp_tot.user_plan_id = up.id
+                    LEFT JOIN payment_option po ON po.id = up.payment_option_id
+                   WHERE ei.institute_id = :instituteId
+                     AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
+                     AND up.created_at >= :startDate
+                     AND up.created_at <= :endDate
+                     AND (:noPackageSessions = true OR EXISTS (
+                           SELECT 1
+                             FROM package_session_learner_invitation_to_payment_option psli
+                            WHERE psli.enroll_invite_id = ei.id
+                              AND psli.status = 'ACTIVE'
+                              AND psli.package_session_id IN (:packageSessionIds)))
+                   GROUP BY up.user_id
+                ), billed_invoices AS (
+                  -- Mirrors billed_invoices in getBillingSummary. Without it the Due CARD would
+                  -- include invoice obligations while this LIST did not, and the rows would stop
+                  -- adding up to the card above them.
+                  SELECT inv.user_id AS user_id,
+                         SUM(COALESCE(inv.total_amount, 0)) AS billed,
+                         0 AS plan_count,
+                         MIN('Invoice') AS course_name,
+                         MIN('PENDING_PAYMENT') AS plan_status,
+                         MIN('User Invoice') AS payment_type,
+                         MAX(UPPER(NULLIF(TRIM(inv.currency), ''))) AS currency
+                    FROM invoice inv
+                   WHERE inv.institute_id = :instituteId
+                     AND inv.created_at >= :startDate
+                     AND inv.created_at <= :endDate
+                     AND inv.status <> 'REJECTED'
+                     AND :noPackageSessions = true
+                     AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um
+                                      WHERE um.invoice_id = inv.id)
+                   GROUP BY inv.user_id
+                ), billed AS (
+                  SELECT user_id, SUM(billed) AS billed, SUM(plan_count) AS plan_count,
+                         MIN(course_name) AS course_name, MIN(plan_status) AS plan_status,
+                         MIN(payment_type) AS payment_type, MAX(currency) AS currency
+                    FROM (SELECT * FROM billed_plans
+                          UNION ALL
+                          SELECT * FROM billed_invoices) all_billed
+                   GROUP BY user_id
+                ), paid AS (
+                  SELECT COALESCE(up.user_id, inv.user_id) AS user_id, SUM(pl.payment_amount) AS paid
+                    FROM payment_log pl
+                    LEFT JOIN user_plan up ON up.id = pl.user_plan_id
+                    LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
+                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                   WHERE pl.payment_status = 'PAID'
+                     AND pl.created_at >= :startDate
+                     AND pl.created_at <= :endDate
+                     AND (ei.institute_id = :instituteId
+                       OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
+                   GROUP BY COALESCE(up.user_id, inv.user_id)
+                ), fee AS (
+                  SELECT sfp.user_id AS user_id,
+                         COUNT(*) FILTER (WHERE COALESCE(sfp.amount_paid, 0) < sfp.amount_expected)
+                           AS pending_installments,
+                         MIN(sfp.due_date) FILTER (WHERE COALESCE(sfp.amount_paid, 0) < sfp.amount_expected)
+                           AS next_due_date
+                    FROM student_fee_payment sfp
+                   WHERE sfp.institute_id = :instituteId
+                   GROUP BY sfp.user_id
+                )
+                SELECT b.user_id AS userId,
+                       b.course_name AS courseName,
+                       b.payment_type AS paymentType,
+                       b.plan_status AS planStatus,
+                       b.billed AS billed,
+                       COALESCE(p.paid, 0) AS paid,
+                       GREATEST(b.billed - COALESCE(p.paid, 0), 0) AS due,
+                       b.plan_count AS planCount,
+                       COALESCE(f.pending_installments, 0) AS pendingInstallments,
+                       f.next_due_date AS nextDueDate,
+                       b.currency AS currency
+                  FROM billed b
+                  LEFT JOIN paid p ON p.user_id = b.user_id
+                  LEFT JOIN fee f ON f.user_id = b.user_id
+                 WHERE GREATEST(b.billed - COALESCE(p.paid, 0), 0) > 0
+                 ORDER BY due DESC
+                """, countQuery = """
+                WITH billed_plans AS (
+                  SELECT up.user_id AS user_id, SUM(COALESCE(sfp_tot.expected, pp.actual_price, 0)) AS billed
+                    FROM user_plan up
+                    JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                    -- Net obligation for plans that carry a fee schedule. amount_expected is
+                    -- post-discount, so a discounted plan is billed at what the learner actually
+                    -- owes. pp.actual_price is the undiscounted list price and would report the
+                    -- discount itself as an outstanding due. Pre-aggregated rather than
+                    -- correlated for the same reason the paid CTE is — see the note above.
+                    LEFT JOIN (
+                      SELECT user_plan_id, SUM(amount_expected) AS expected
+                        FROM student_fee_payment
+                       GROUP BY user_plan_id
+                    ) sfp_tot ON sfp_tot.user_plan_id = up.id
+                   WHERE ei.institute_id = :instituteId
+                     AND up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')
+                     AND up.created_at >= :startDate
+                     AND up.created_at <= :endDate
+                     AND (:noPackageSessions = true OR EXISTS (
+                           SELECT 1
+                             FROM package_session_learner_invitation_to_payment_option psli
+                            WHERE psli.enroll_invite_id = ei.id
+                              AND psli.status = 'ACTIVE'
+                              AND psli.package_session_id IN (:packageSessionIds)))
+                   GROUP BY up.user_id
+                ), billed_invoices AS (
+                  -- Mirrors the main query so the page count matches the rows it pages over.
+                  SELECT inv.user_id AS user_id, SUM(COALESCE(inv.total_amount, 0)) AS billed
+                    FROM invoice inv
+                   WHERE inv.institute_id = :instituteId
+                     AND inv.created_at >= :startDate
+                     AND inv.created_at <= :endDate
+                     AND inv.status <> 'REJECTED'
+                     AND :noPackageSessions = true
+                     AND NOT EXISTS (SELECT 1 FROM invoice_payment_log_mapping um
+                                      WHERE um.invoice_id = inv.id)
+                   GROUP BY inv.user_id
+                ), billed AS (
+                  SELECT user_id, SUM(billed) AS billed
+                    FROM (SELECT * FROM billed_plans
+                          UNION ALL
+                          SELECT * FROM billed_invoices) all_billed
+                   GROUP BY user_id
+                ), paid AS (
+                  SELECT COALESCE(up.user_id, inv.user_id) AS user_id, SUM(pl.payment_amount) AS paid
+                    FROM payment_log pl
+                    LEFT JOIN user_plan up ON up.id = pl.user_plan_id
+                    LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
+                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                   WHERE pl.payment_status = 'PAID'
+                     AND pl.created_at >= :startDate
+                     AND pl.created_at <= :endDate
+                     AND (ei.institute_id = :instituteId
+                       OR (:noPackageSessions = true AND inv.institute_id = :instituteId))
+                   GROUP BY COALESCE(up.user_id, inv.user_id)
+                )
+                SELECT COUNT(*)
+                  FROM billed b
+                  LEFT JOIN paid p ON p.user_id = b.user_id
+                 WHERE GREATEST(b.billed - COALESCE(p.paid, 0), 0) > 0
+                """, nativeQuery = true)
+        Page<OutstandingLearnerProjection> findOutstandingLearners(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        Pageable pageable);
+
         @org.springframework.transaction.annotation.Transactional
         @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
         @Query("""

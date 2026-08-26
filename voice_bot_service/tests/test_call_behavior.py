@@ -1273,7 +1273,15 @@ def test_engine_detection_covers_every_stored_form():
     cases = {
         "google": "google", "GOOGLE": "google", "chirp3-hd": "google",
         "smallest": "smallest", "lightning_v3.1": "smallest",
-        "smallest:v3.1_pro": "smallest",
+        # v3.1_pro is a DIFFERENT engine, not a variant: its voice palette is
+        # disjoint from standard v3.1, so the pro MODEL must resolve to the pro
+        # PALETTE. Mapping any pro form to "smallest" (as this expected before the
+        # palettes were split) validates pro voices against the standard list,
+        # drops them, and sends a standard voice to the pro model — which the
+        # vendor rejects outright: a silent call.
+        "smallest:v3.1_pro": "smallest_pro",
+        "smallest_pro": "smallest_pro", "lightning_v3.1_pro": "smallest_pro",
+        "deepgram": "deepgram", "aura-2-asteria-en": "deepgram",
         "rumik": "rumik", "silk-mulberry": "rumik",
         "sarvam": "sarvam", "": "sarvam", "bulbul:v3": "sarvam",
     }
@@ -1302,6 +1310,14 @@ def test_voice_palettes_do_not_leak_across_engines():
     assert b._agent_voice({"tts_model": "google", "voice": "devansh"}) is None
     assert b._agent_voice({"tts_model": "smallest", "voice": "devansh"}) == "devansh"
     assert b._agent_voice({"tts_model": "smallest", "voice": "ira"}) is None
+    # The two Smallest models reject each other's names, so they must not leak
+    # into one another any more than they leak into Rumik.
+    assert b._agent_voice({"tts_model": "smallest_pro", "voice": "mandar"}) == "mandar"
+    assert b._agent_voice({"tts_model": "smallest_pro", "voice": "devansh"}) is None
+    assert b._agent_voice({"tts_model": "smallest", "voice": "mandar"}) is None
+    assert b._agent_voice({"tts_model": "deepgram", "voice": "aura-2-asteria-en"}) \
+        == "aura-2-asteria-en"
+    assert b._agent_voice({"tts_model": "deepgram", "voice": "devansh"}) is None
     assert b._agent_voice({"tts_model": "sarvam", "voice": "hi-IN-Neural2-B"}) is None
     assert b._agent_voice({"tts_model": "sarvam", "voice": "shubh"}) == "shubh"
 
@@ -1312,6 +1328,8 @@ def test_engine_defaults_are_real_voices_in_their_own_palette():
     a male-configured agent speak in a female voice."""
     assert b._default_voice_for({"tts_model": "google"}).lower() in b.GOOGLE_VOICES
     assert b._default_voice_for({"tts_model": "smallest"}).lower() in b.SMALLEST_VOICES
+    assert b._default_voice_for({"tts_model": "smallest_pro"}).lower() in b.SMALLEST_PRO_VOICES
+    assert b._default_voice_for({"tts_model": "deepgram"}).lower() in b.DEEPGRAM_VOICES
     assert b._default_voice_for({"tts_model": "rumik"}).lower() in b.RUMIK_VOICES
     assert b._default_voice_for({"tts_model": "sarvam"}) == "priya"
 

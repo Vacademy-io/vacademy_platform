@@ -19,6 +19,7 @@ import {
   getMessages,
   sendMessage,
   deleteMessage,
+  editMessage,
   markRead,
   openCommunityConversation,
   getRules,
@@ -407,9 +408,28 @@ export function ChatScreen({
       .catch(() => undefined);
   }, [refetchConversations]);
 
+  // ── SSE: an existing message changed in place (edited / deleted) ───────────
+  // Deliberately NOT handleIncoming: that path treats the payload as a new arrival — it bumps the
+  // unread badge, rewrites the conversation-list preview and floats the thread to the top, none of
+  // which is right for a message the list already knows about.
+  const handleMessageUpdated = useCallback((payload: ChatMessagePayload) => {
+    const msg = payload.message;
+    const convId = payload.conversationId;
+    if (!msg || !convId) return;
+    setThreads((prev) => {
+      const existing = prev[convId];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [convId]: existing.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)),
+      };
+    });
+  }, []);
+
   useChatStream({
     enabled: currentUserId.length > 0,
     onMessage: handleIncoming,
+    onMessageUpdated: handleMessageUpdated,
     onRead: handleRead,
     onReconnect: handleReconnect,
   });
@@ -591,6 +611,27 @@ export function ChatScreen({
       toast.error("Couldn't delete the message. Please try again.");
     }
   }, []);
+
+  const handleEdit = useCallback(
+    async (row: UiChatMessage, text: string) => {
+      const convId = row.conversationId;
+      try {
+        const updated = await editMessage(convId, row.id, { text });
+        setThreads((prev) => ({
+          ...prev,
+          [convId]: (prev[convId] ?? []).map((m) =>
+            m.id === updated.id ? { ...m, ...updated } : m,
+          ),
+        }));
+      } catch (err) {
+        console.error("Failed to edit message:", err);
+        toast.error("Couldn't save the edit. Please try again.");
+        // Rethrow so the dialog stays open on the text the user is still trying to save.
+        throw err;
+      }
+    },
+    [],
+  );
 
   // ── Community acknowledgement ──────────────────────────────────────────────
   const handleAcknowledge = useCallback(async () => {
@@ -801,6 +842,7 @@ export function ChatScreen({
               onRetry={handleRetry}
               onDismissFailed={handleDismissFailed}
               onDelete={handleDelete}
+              onEdit={handleEdit}
             />
 
             <MessageComposer

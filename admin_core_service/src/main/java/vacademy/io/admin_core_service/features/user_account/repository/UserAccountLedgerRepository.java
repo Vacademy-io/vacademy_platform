@@ -70,4 +70,19 @@ public interface UserAccountLedgerRepository extends JpaRepository<UserAccountLe
      * without this a single payment would be credited twice.
      */
     boolean existsByReferenceIdAndEventType(String referenceId, String eventType);
+
+    /**
+     * Total already booked for one (sourceType, sourceId, eventType) triple. Used by the CPO
+     * discount sync to work out the DELTA it still owes the ledger: the discount recompute
+     * runs from scratch on every edit, so posting the full discount each time would stack
+     * duplicate reversals on an append-only table.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(l.amount), 0)
+            FROM UserAccountLedger l
+            WHERE l.sourceType = :sourceType AND l.sourceId = :sourceId AND l.eventType = :eventType
+            """)
+    BigDecimal sumBySourceAndEventType(@Param("sourceType") String sourceType,
+                                      @Param("sourceId") String sourceId,
+                                      @Param("eventType") String eventType);
 }

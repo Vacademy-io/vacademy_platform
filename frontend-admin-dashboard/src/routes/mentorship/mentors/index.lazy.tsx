@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
-import { createLazyFileRoute } from '@tanstack/react-router';
+import { useEffect, useMemo, useState } from 'react';
+import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import {
     ArrowSquareOut,
     CalendarCheck,
     CalendarPlus,
     Copy,
     DotsThreeVertical,
-    GraduationCap,
-    Handshake,
+    Eye,
+    MagnifyingGlass,
+    NotePencil,
     Plus,
+    Star,
     Trash,
     UsersThree,
     WarningCircle,
@@ -40,17 +42,50 @@ import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import {
     useDeleteMentor,
     useMentorDashboard,
+    useMentorSessions,
     useMentorsPaged,
     useProvisionBookingPage,
 } from '../-hooks/use-mentorship';
 import { MyPagination } from '@/components/design-system/pagination';
+import { MyTable } from '@/components/design-system/table';
+import { StatusChips } from '@/components/design-system/chips';
+import type { ColumnDef } from '@tanstack/react-table';
+import { reportApiError } from '@/lib/report-api-error';
 
 const MENTORS_PAGE_SIZE = 20;
+
+// Empty selection means "all", so no 'any' member is needed — see MentorFilters.
+const STATUS_OPTIONS = [
+    { label: 'Active', value: 'active' },
+    { label: 'Inactive', value: 'inactive' },
+];
+const DISCOVERABLE_OPTIONS = [
+    { label: 'Listed to learners', value: 'listed' },
+    { label: 'Hidden from learners', value: 'hidden' },
+];
+const CAPACITY_OPTIONS = [
+    { label: 'Has room', value: 'available' },
+    { label: 'At their limit', value: 'full' },
+    { label: 'No booking page', value: 'no-booking' },
+];
 import type { MentorDTO } from '../-types/mentorship-types';
 import { AddMentorDialog } from '../-components/AddMentorDialog';
 import { AssignMenteesDialog } from '../-components/AssignMenteesDialog';
 import { BulkAssignDialog } from '../-components/BulkAssignDialog';
 import { MentorAvatar } from '../-components/MentorAvatar';
+import { EditMentorDialog } from '../-components/EditMentorDialog';
+import { MentorFeedbackDialog } from '../-components/MentorFeedbackDialog';
+import { MentorshipPageHeader } from '../-components/MentorshipPageHeader';
+import { CapacityChip, CapacityMeter, RatingChip } from '../-components/MentorChips';
+import { MyInput } from '@/components/design-system/input';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import {
+    applyMentorFilters,
+    DEFAULT_MENTOR_FILTERS,
+    isDefaultMentorFilters,
+    type MentorFilters,
+} from '../-utils/filter-mentors';
+import { ScheduleSessionDialog } from '../-components/ScheduleSessionDialog';
 
 export const Route = createLazyFileRoute('/mentorship/mentors/')({
     component: MentorsRoute,
@@ -79,7 +114,22 @@ function MentorsPage() {
     const deleteMentor = useDeleteMentor();
     const provisionBooking = useProvisionBookingPage();
 
+    const navigate = useNavigate();
+    /** One mentor gets their own URL, so a detail view is shareable and the back button works. */
+    const openMentor = (m: MentorDTO) =>
+        navigate({ to: '/mentorship/mentors/$mentorId', params: { mentorId: m.id } });
+
     const [addOpen, setAddOpen] = useState(false);
+    const [filters, setFilters] = useState<MentorFilters>(DEFAULT_MENTOR_FILTERS);
+    const [scheduleMentor, setScheduleMentor] = useState<MentorDTO | null>(null);
+    const [scheduleOpen, setScheduleOpen] = useState(false);
+    const search = filters.search;
+    const setFilter = <K extends keyof MentorFilters>(key: K, value: MentorFilters[K]) =>
+        // Any filter change starts the list over: staying on page 4 of an unfiltered
+        // list after narrowing to two mentors shows an empty table.
+        setFilters((f) => ({ ...f, [key]: value }));
+    const [editMentor, setEditMentor] = useState<MentorDTO | null>(null);
+    const [feedbackMentor, setFeedbackMentor] = useState<MentorDTO | null>(null);
     const [bulkOpen, setBulkOpen] = useState(false);
     const [assignMentor, setAssignMentor] = useState<MentorDTO | null>(null);
     const [bookingId, setBookingId] = useState<string | null>(null);
@@ -87,13 +137,36 @@ function MentorsPage() {
 
     const mentors = data?.mentors ?? [];
 
+    // Any active filter switches from the server-paginated page to a filter over the
+    // full mentor list the dashboard already loaded — a page-local filter would
+    // silently hide matches sitting on other pages.
+    const searching = !isDefaultMentorFilters(filters);
+    const visibleMentors = searching ? applyMentorFilters(mentors, filters) : pagedMentors;
+
+    // Upcoming load per mentor, from the sessions endpoint the dashboard already
+    // uses. The mentor row is where an admin decides who to assign next, so "how
+    // busy are they" belongs here and not one click away.
+    const upcomingSessions = useMentorSessions(instituteId, { lifecycle: 'UPCOMING' });
+    const upcomingByMentor = useMemo(() => {
+        const acc: Record<string, number> = {};
+        for (const s of upcomingSessions.data ?? []) {
+            if (s.mentor_id) acc[s.mentor_id] = (acc[s.mentor_id] ?? 0) + 1;
+        }
+        return acc;
+    }, [upcomingSessions.data]);
+
     const remove = async (m: MentorDTO) => {
         if (!instituteId) return;
         try {
             await deleteMentor.mutateAsync({ id: m.id, instituteId });
             toast.success('Mentor removed');
-        } catch {
-            toast.error('Failed to remove mentor');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'remove-mentor' },
+                extra: { mentorId: m.id, assignedStudents: m.assigned_student_count },
+                fallbackMessage: 'Failed to remove mentor',
+            });
         }
     };
 
@@ -103,12 +176,26 @@ function MentorsPage() {
         try {
             await provisionBooking.mutateAsync({ id: m.id, instituteId });
             toast.success('Booking page set up');
-        } catch {
-            toast.error('Failed to set up booking page');
+        } catch (error) {
+            reportApiError(error, {
+                feature: 'mentorship',
+                tags: { 'mentorship.action': 'provision-booking-page' },
+                extra: { mentorId: m.id },
+                fallbackMessage: 'Failed to set up booking page',
+            });
         } finally {
             setBookingId(null);
         }
     };
+
+    const totalCount = searching
+        ? visibleMentors.length
+        : mentorsPage.data?.total_elements ?? visibleMentors.length;
+    const rangeStart =
+        visibleMentors.length === 0 ? 0 : searching ? 1 : page * MENTORS_PAGE_SIZE + 1;
+    const rangeEnd = searching
+        ? visibleMentors.length
+        : page * MENTORS_PAGE_SIZE + visibleMentors.length;
 
     /** Public 1:1 booking link an admin can share for this mentor. */
     const bookingUrl = (m: MentorDTO): string =>
@@ -123,62 +210,325 @@ function MentorsPage() {
         }
     };
 
-    return (
-        <div className="flex flex-col gap-6 p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-col">
-                    <h2 className="text-title font-semibold text-neutral-700">Mentors</h2>
-                    <p className="text-body text-neutral-500">
-                        Add mentors and assign students to them.
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="medium"
-                        onClick={() => setBulkOpen(true)}
-                        disable={mentors.length === 0}
-                        title={
-                            mentors.length === 0
-                                ? 'Add a mentor first to bulk-assign students'
-                                : 'Spread many students across mentors at once'
+    const columns = useMemo<ColumnDef<MentorDTO>[]>(
+        () => [
+            {
+                id: 'mentor',
+                header: 'Mentor',
+                size: 230,
+                cell: ({ row }) => {
+                    const m = row.original;
+                    return (
+                        <div className="flex min-w-0 items-center gap-3">
+                            <MentorAvatar
+                                fileId={m.profile_image_file_id}
+                                name={m.display_name || m.name}
+                                className="size-9 shrink-0 text-caption"
+                            />
+                            <div className="flex min-w-0 flex-col">
+                                <button
+                                    type="button"
+                                    onClick={() => openMentor(m)}
+                                    className="truncate text-left text-body font-medium text-neutral-700 hover:text-primary-600 hover:underline"
+                                    title="Open this mentor's profile, students, availability and sessions"
+                                >
+                                    {m.display_name || m.name || 'Mentor'}
+                                </button>
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                    <span className="truncate text-caption text-neutral-400">
+                                        {m.title || m.email || ''}
+                                    </span>
+                                    <RatingChip mentor={m} onClick={() => setFeedbackMentor(m)} />
+                                </span>
+                            </div>
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'expertise',
+                header: 'Expertise',
+                size: 150,
+                cell: ({ row }) => {
+                    const tags = row.original.expertise_tags ?? [];
+                    if (tags.length === 0) {
+                        return <span className="text-caption text-neutral-300">—</span>;
+                    }
+                    return (
+                        <span
+                            className="line-clamp-2 text-caption text-neutral-600"
+                            title={tags.join(', ')}
+                        >
+                            {tags.join(', ')}
+                        </span>
+                    );
+                },
+            },
+            {
+                id: 'assigned',
+                header: 'Assigned students',
+                size: 130,
+                cell: ({ row }) => <CapacityChip mentor={row.original} />,
+            },
+            {
+                id: 'upcoming',
+                header: 'Upcoming sessions',
+                size: 140,
+                cell: ({ row }) => (
+                    <span className="text-body tabular-nums text-neutral-700">
+                        {upcomingByMentor[row.original.id] ?? 0}
+                    </span>
+                ),
+            },
+            {
+                id: 'capacity',
+                header: 'Capacity',
+                size: 130,
+                cell: ({ row }) => <CapacityMeter mentor={row.original} />,
+            },
+            {
+                id: 'status',
+                header: 'Status',
+                size: 100,
+                cell: ({ row }) => (
+                    <StatusChips
+                        status={
+                            (row.original.status || 'ACTIVE').toUpperCase() === 'ACTIVE'
+                                ? 'ACTIVE'
+                                : 'INACTIVE'
                         }
                     >
-                        <UsersThree size={18} /> Bulk assign
-                    </MyButton>
-                    <MyButton type="button" buttonType="primary" scale="medium" onClick={() => setAddOpen(true)}>
-                        <Plus size={18} /> Add mentor
-                    </MyButton>
+                        {(row.original.status || 'ACTIVE').toLowerCase()}
+                    </StatusChips>
+                ),
+            },
+            {
+                id: 'actions',
+                header: 'Actions',
+                size: 130,
+                cell: ({ row }) => {
+                    const m = row.original;
+                    const label = m.display_name || m.name || 'mentor';
+                    return (
+                        <div className="flex items-center gap-1">
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => openMentor(m)}
+                                aria-label={`View ${label}`}
+                                title="View profile, students, availability and sessions"
+                            >
+                                <Eye size={18} />
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => setAssignMentor(m)}
+                                aria-label={`Assign students to ${label}`}
+                                title="Assign students to this mentor"
+                            >
+                                <UsersThree size={18} />
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="text"
+                                scale="small"
+                                layoutVariant="icon"
+                                onClick={() => {
+                                    setScheduleMentor(m);
+                                    setScheduleOpen(true);
+                                }}
+                                aria-label={`Schedule a 1:1 with ${label}`}
+                                title="Book a 1:1 between this mentor and a student"
+                            >
+                                <CalendarPlus size={18} />
+                            </MyButton>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <MyButton
+                                        type="button"
+                                        buttonType="text"
+                                        scale="small"
+                                        layoutVariant="icon"
+                                        aria-label={`More actions for ${label}`}
+                                    >
+                                        <DotsThreeVertical size={18} weight="bold" />
+                                    </MyButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56">
+                                    <DropdownMenuItem
+                                        className="gap-2"
+                                        onClick={() => setEditMentor(m)}
+                                    >
+                                        <NotePencil size={16} /> Edit profile
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        className="gap-2"
+                                        onClick={() => setFeedbackMentor(m)}
+                                    >
+                                        <Star size={16} /> Session feedback
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    {m.booking_page_slug ? (
+                                        <>
+                                            <DropdownMenuItem
+                                                className="gap-2"
+                                                onClick={() => copyBookingLink(m)}
+                                            >
+                                                <Copy size={16} /> Copy booking link
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                className="gap-2"
+                                                onClick={() =>
+                                                    window.open(
+                                                        bookingUrl(m),
+                                                        '_blank',
+                                                        'noopener,noreferrer'
+                                                    )
+                                                }
+                                            >
+                                                <ArrowSquareOut size={16} /> Open booking page
+                                            </DropdownMenuItem>
+                                        </>
+                                    ) : (
+                                        <DropdownMenuItem
+                                            className="gap-2"
+                                            disabled={bookingId === m.id}
+                                            onClick={() => enableBooking(m)}
+                                        >
+                                            <CalendarCheck size={16} /> Enable booking
+                                        </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        className="gap-2 text-danger-600 focus:text-danger-600"
+                                        onClick={() => setConfirmRemove(m)}
+                                    >
+                                        <Trash size={16} /> Remove mentor
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    );
+                },
+            },
+        ],
+        // The cells close over setState setters and `navigate`, all of which are
+        // stable; the values that actually change what a cell renders are listed.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [upcomingByMentor, bookingId, instituteId]
+    );
+
+    return (
+        <div className="flex flex-col gap-6 p-6">
+            <MentorshipPageHeader
+                title="Mentors"
+                subtitle="Manage your mentors and their availability"
+            >
+                <MyButton
+                    type="button"
+                    buttonType="secondary"
+                    scale="medium"
+                    onClick={() => setBulkOpen(true)}
+                    disable={mentors.length === 0}
+                    title={
+                        mentors.length === 0
+                            ? 'Add a mentor first to bulk-assign students'
+                            : 'Spread many students across mentors at once'
+                    }
+                >
+                    <UsersThree size={18} /> Bulk assign
+                </MyButton>
+                <MyButton
+                    type="button"
+                    buttonType="secondary"
+                    scale="medium"
+                    onClick={() => {
+                        setScheduleMentor(null);
+                        setScheduleOpen(true);
+                    }}
+                    disable={mentors.length === 0}
+                    title={
+                        mentors.length === 0
+                            ? 'Add a mentor first to schedule a 1:1'
+                            : 'Book a 1:1 between a mentor and a student'
+                    }
+                >
+                    <CalendarPlus size={18} /> Schedule 1:1
+                </MyButton>
+                <MyButton
+                    type="button"
+                    buttonType="primary"
+                    scale="medium"
+                    onClick={() => setAddOpen(true)}
+                >
+                    <Plus size={18} /> Add mentor
+                </MyButton>
+            </MentorshipPageHeader>
+
+            <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="relative w-full sm:w-80">
+                        <MagnifyingGlass
+                            size={16}
+                            className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-neutral-400"
+                        />
+                        <MyInput
+                            input={search}
+                            onChangeFunction={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                setFilter('search', e.target.value);
+                                setPage(0);
+                            }}
+                            inputType="text"
+                            inputPlaceholder="Search mentors by name, title or expertise"
+                            className="pl-9 sm:w-full"
+                        />
+                    </div>
+                    <MultiSelectFilter
+                        label="Status"
+                        options={STATUS_OPTIONS}
+                        selected={filters.status}
+                        onChange={(v) => {
+                            setFilter('status', v);
+                            setPage(0);
+                        }}
+                    />
+                    <MultiSelectFilter
+                        label="Visibility"
+                        options={DISCOVERABLE_OPTIONS}
+                        selected={filters.discoverable}
+                        onChange={(v) => {
+                            setFilter('discoverable', v);
+                            setPage(0);
+                        }}
+                    />
+                    <MultiSelectFilter
+                        label="Capacity"
+                        options={CAPACITY_OPTIONS}
+                        selected={filters.capacity}
+                        onChange={(v) => {
+                            setFilter('capacity', v);
+                            setPage(0);
+                        }}
+                    />
                 </div>
-            </div>
-
-            {/* The flow in one glance — clears up "what do I do here?" for new admins. */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
-                <HowStep n={1} text="Add a mentor from your team" />
-                <HowStep n={2} text="Assign students to them" />
-                <HowStep n={3} text="Learners book 1:1s & message them from their app" />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Stat
-                    icon={<UsersThree size={20} weight="duotone" />}
-                    label="Mentors"
-                    value={data?.total_mentors ?? 0}
-                    hint="Team members mentoring students"
-                />
-                <Stat
-                    icon={<Handshake size={20} weight="duotone" />}
-                    label="Active assignments"
-                    value={data?.total_active_assignments ?? 0}
-                    hint="Mentor–student pairs right now"
-                />
-                <Stat
-                    icon={<GraduationCap size={20} weight="duotone" />}
-                    label="Students mentored"
-                    value={data?.distinct_mentees ?? 0}
-                    hint="Students with at least one mentor"
-                />
+                {searching && (
+                    <span className="text-caption text-neutral-500">
+                        {visibleMentors.length} of {mentors.length} mentors match
+                        {' · '}
+                        <button
+                            type="button"
+                            className="font-medium text-primary-500 hover:text-primary-600"
+                            onClick={() => setFilters(DEFAULT_MENTOR_FILTERS)}
+                        >
+                            Clear filters
+                        </button>
+                    </span>
+                )}
             </div>
 
             {isLoading || mentorsPage.isLoading ? (
@@ -217,127 +567,78 @@ function MentorsPage() {
                         Retry
                     </MyButton>
                 </div>
-            ) : (mentorsPage.data?.total_elements ?? 0) === 0 ? (
+            ) : pagedMentors.length === 0 && mentors.length === 0 ? (
                 <EmptyMentors onAdd={() => setAddOpen(true)} />
+            ) : visibleMentors.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
+                    <MagnifyingGlass size={32} className="text-neutral-300" />
+                    <p className="text-body font-medium text-neutral-700">
+                        No mentors match &ldquo;{search.trim()}&rdquo;
+                    </p>
+                    <p className="text-caption text-neutral-500">
+                        Try a name, title or an expertise topic.
+                    </p>
+                </div>
             ) : (
                 <div className="flex flex-col gap-3">
-                    {pagedMentors.map((m) => (
-                        <div
-                            key={m.id}
-                            className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4"
-                        >
-                            <div className="flex min-w-0 items-center gap-3">
-                                <MentorAvatar
-                                    fileId={m.profile_image_file_id}
-                                    name={m.display_name || m.name}
-                                    className="size-10 text-body"
-                                />
-                                <div className="flex min-w-0 flex-col">
-                                    <span className="truncate text-body font-medium text-neutral-700">
-                                        {m.display_name || m.name || 'Mentor'}
-                                    </span>
-                                    <span className="truncate text-caption text-neutral-400">{m.title || m.email || ''}</span>
-                                </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                    className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-500"
-                                    title="Students currently assigned to this mentor"
-                                >
-                                    {m.assigned_student_count ?? 0} students
-                                </span>
-                                {m.booking_page_slug ? (
-                                    <span
-                                        className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600"
-                                        title="Learners can book 1:1 sessions with this mentor"
-                                    >
-                                        <CalendarCheck size={14} weight="bold" /> Booking enabled
-                                    </span>
-                                ) : (
-                                    <span
-                                        className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-400"
-                                        title="No 1:1 booking page yet — enable it from the ⋯ menu"
-                                    >
-                                        Booking off
-                                    </span>
-                                )}
-                                <MyButton
-                                    type="button"
-                                    buttonType="secondary"
-                                    scale="small"
-                                    onClick={() => setAssignMentor(m)}
-                                    title="Assign students to this mentor"
-                                >
-                                    <CalendarPlus size={16} /> Assign students
-                                </MyButton>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <MyButton
-                                            type="button"
-                                            buttonType="secondary"
-                                            scale="small"
-                                            layoutVariant="icon"
-                                            aria-label={`More actions for ${m.display_name || m.name || 'mentor'}`}
-                                        >
-                                            <DotsThreeVertical size={18} weight="bold" />
-                                        </MyButton>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-56">
-                                        {m.booking_page_slug ? (
-                                            <>
-                                                <DropdownMenuItem
-                                                    className="gap-2"
-                                                    onClick={() => copyBookingLink(m)}
-                                                >
-                                                    <Copy size={16} /> Copy booking link
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem
-                                                    className="gap-2"
-                                                    onClick={() =>
-                                                        window.open(
-                                                            bookingUrl(m),
-                                                            '_blank',
-                                                            'noopener,noreferrer'
-                                                        )
-                                                    }
-                                                >
-                                                    <ArrowSquareOut size={16} /> Open booking page
-                                                </DropdownMenuItem>
-                                            </>
-                                        ) : (
-                                            <DropdownMenuItem
-                                                className="gap-2"
-                                                disabled={bookingId === m.id}
-                                                onClick={() => enableBooking(m)}
-                                            >
-                                                <CalendarCheck size={16} /> Enable booking
-                                            </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                            className="gap-2 text-danger-600 focus:text-danger-600"
-                                            onClick={() => setConfirmRemove(m)}
-                                        >
-                                            <Trash size={16} /> Remove mentor
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        </div>
-                    ))}
-                    {(mentorsPage.data?.total_pages ?? 0) > 1 && (
-                        <MyPagination
-                            currentPage={page}
-                            totalPages={mentorsPage.data?.total_pages ?? 1}
-                            onPageChange={setPage}
+                    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                        <MyTable<MentorDTO>
+                            data={{
+                                content: visibleMentors,
+                                total_pages: searching ? 1 : mentorsPage.data?.total_pages ?? 1,
+                                page_no: searching ? 0 : page,
+                                page_size: MENTORS_PAGE_SIZE,
+                                total_elements: totalCount,
+                                last: searching ? true : mentorsPage.data?.last ?? true,
+                            }}
+                            columns={columns}
+                            isLoading={false}
+                            error={null}
+                            currentPage={searching ? 0 : page}
+                            scrollable
                         />
-                    )}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-caption text-neutral-500">
+                            Showing {rangeStart} to {rangeEnd} of {totalCount}{' '}
+                            {totalCount === 1 ? 'result' : 'results'}
+                        </span>
+                        {!searching && (mentorsPage.data?.total_pages ?? 0) > 1 && (
+                            <MyPagination
+                                currentPage={page}
+                                totalPages={mentorsPage.data?.total_pages ?? 1}
+                                onPageChange={setPage}
+                            />
+                        )}
+                    </div>
                 </div>
             )}
 
             {instituteId && (
-                <AddMentorDialog instituteId={instituteId} open={addOpen} onOpenChange={setAddOpen} />
+                <AddMentorDialog
+                    instituteId={instituteId}
+                    open={addOpen}
+                    onOpenChange={setAddOpen}
+                />
             )}
+            {instituteId && (
+                <EditMentorDialog
+                    instituteId={instituteId}
+                    mentor={editMentor}
+                    open={!!editMentor}
+                    onOpenChange={(o) => {
+                        if (!o) setEditMentor(null);
+                    }}
+                />
+            )}
+            <MentorFeedbackDialog
+                mentor={feedbackMentor}
+                instituteId={instituteId}
+                open={!!feedbackMentor}
+                onOpenChange={(o) => {
+                    if (!o) setFeedbackMentor(null);
+                }}
+            />
             {instituteId && (
                 <BulkAssignDialog
                     instituteId={instituteId}
@@ -357,6 +658,16 @@ function MentorsPage() {
                 />
             )}
 
+            <ScheduleSessionDialog
+                instituteId={instituteId}
+                open={scheduleOpen}
+                onOpenChange={(o) => {
+                    setScheduleOpen(o);
+                    if (!o) setScheduleMentor(null);
+                }}
+                mentor={scheduleMentor}
+            />
+
             <AlertDialog
                 open={!!confirmRemove}
                 onOpenChange={(o) => {
@@ -366,13 +677,15 @@ function MentorsPage() {
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>
-                            Remove {confirmRemove?.display_name || confirmRemove?.name || 'this mentor'}?
+                            Remove{' '}
+                            {confirmRemove?.display_name || confirmRemove?.name || 'this mentor'}?
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                             {confirmRemove?.assigned_student_count
                                 ? `Their ${confirmRemove.assigned_student_count} assigned student${confirmRemove.assigned_student_count === 1 ? '' : 's'} will be unassigned. `
                                 : ''}
-                            Their account stays untouched.
+                            Any learner requests waiting on them are released, so those learners can
+                            ask someone else. Their account stays untouched.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -389,44 +702,6 @@ function MentorsPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </div>
-    );
-}
-
-function HowStep({ n, text }: { n: number; text: string }) {
-    return (
-        <span className="flex items-center gap-2 text-caption text-neutral-500">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-50 text-caption font-semibold text-primary-600">
-                {n}
-            </span>
-            {text}
-        </span>
-    );
-}
-
-function Stat({
-    icon,
-    label,
-    value,
-    hint,
-}: {
-    icon: React.ReactNode;
-    label: string;
-    value: number;
-    hint: string;
-}) {
-    return (
-        <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-4">
-            <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                {icon}
-            </span>
-            <div className="flex min-w-0 flex-col">
-                <span className="text-h2 font-semibold leading-tight text-neutral-700">{value}</span>
-                <span className="text-caption font-medium text-neutral-600">{label}</span>
-                <span className="truncate text-caption text-neutral-400" title={hint}>
-                    {hint}
-                </span>
-            </div>
         </div>
     );
 }

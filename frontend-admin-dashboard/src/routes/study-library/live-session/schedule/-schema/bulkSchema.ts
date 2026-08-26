@@ -142,6 +142,13 @@ export const bulkSharedOptionsSchema = z.object({
     guestPolicy: z
         .enum(['ALWAYS_ACCEPT', 'ASK_MODERATOR', 'ALWAYS_DENY'])
         .default('ALWAYS_ACCEPT'),
+    /**
+     * Students join listen-only and cannot unmute, so no participant can take an
+     * individual mic channel. Use for broadcast-style classes.
+     */
+    disableMic: z.boolean().default(false),
+    /** Students cannot share their camera at all. */
+    disableCam: z.boolean().default(false),
     /** Students cannot start private chats (the host still can message them). */
     disablePrivateChat: z.boolean().default(false),
     /** Students cannot type in the public chat. */

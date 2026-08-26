@@ -26,6 +26,7 @@ import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { ContentOnlyCourseDetailsSkeleton } from "./course-details-skeleton";
 import { CourseHeader } from "./course-header";
 import { CourseSubscriptionCancel } from "./CourseSubscriptionCancel";
 import { CertificateCompletionBanner } from "./certificate-completion-banner.tsx";
@@ -395,6 +396,9 @@ export const CourseDetailsPage = () => {
     overviewVisible,
     hideAuthorName,
     showInstructors,
+    enrolledLayout,
+    chapterOpensFirstSlide: chapterOpensFirstSlideSetting,
+    contentCardImageFit,
   } = useCourseDisplaySettings();
 
   const {
@@ -422,7 +426,28 @@ export const CourseDetailsPage = () => {
     paymentType,
   });
 
-  const hasRightSidebar = true;
+  // "contentOnly" strips this page down to the Content Structure card: no
+  // right-hand overview card, no description/tags/media, no highlights or
+  // enrollment configuration.
+  //
+  // This does NOT need a second `isEnrolledInCourse` check. THIS route is the
+  // post-enrollment surface — the shopper-facing page is /courses/course-details
+  // plus the catalogue, which are different components this setting never
+  // touches. Gating on enrollment here only added a way for the setting to look
+  // broken: enrolledSessions is merged from a Capacitor Preferences snapshot
+  // and a learner-packages search, and legitimately comes back empty (or with a
+  // package_dto.id that doesn't match) often enough that admins would flip the
+  // toggle and see no change. Knowing the layout without waiting on that fetch
+  // also lets the loading skeleton below match the layout it's loading into.
+  const contentOnly = enrolledLayout === "contentOnly";
+
+  // Opening a chapter straight into the viewer is its own preference, not a
+  // fact about the layout — a full-page institute may still want the shortcut,
+  // and a content-only one may still want the slide list. Unset follows the
+  // layout so today's behaviour is unchanged either way.
+  const chapterOpensFirstSlide = chapterOpensFirstSlideSetting ?? contentOnly;
+
+  const hasRightSidebar = !contentOnly;
 
   const primaryInstructorName = derivePrimaryInstructorName({
     formInstructors: form.getValues("courseData").instructors as unknown as
@@ -434,7 +459,14 @@ export const CourseDetailsPage = () => {
 
   // Show loading until essential data is ready; defer packageSessionId-dependent UI below
   if (isLoading || !instituteId || !courseDetailsData) {
-    return <DashboardLoader />;
+    // Match the skeleton to the layout it resolves into — a full-page branded
+    // spinner ahead of a title-plus-one-card page reads as a much heavier load
+    // than it is, and makes the content visibly jump when it lands.
+    return contentOnly ? (
+      <ContentOnlyCourseDetailsSkeleton />
+    ) : (
+      <DashboardLoader />
+    );
   }
 
   return (
@@ -478,6 +510,7 @@ export const CourseDetailsPage = () => {
         <CourseHeader
           courseData={form.getValues("courseData")}
           showConfetti={showConfetti}
+          minimal={contentOnly}
         />
 
         {/* Main Content Container */}
@@ -520,10 +553,13 @@ export const CourseDetailsPage = () => {
                   />
                 );
 
-                // Course Enrollment Configuration
+                // Course Enrollment Configuration. In the content-only
+                // layout the same card renders as the Class/Section picker
+                // alone, and hides itself when there is only one batch.
                 const enrollmentBlock = (
                   <CourseEnrollment
                     showCourseConfiguration={showCourseConfiguration}
+                    batchPickerOnly={contentOnly}
                     selectedTab={selectedTab}
                     sessionOptions={sessionOptions || []}
                     levelOptions={levelOptions || []}
@@ -564,12 +600,37 @@ export const CourseDetailsPage = () => {
                       selectedTab={selectedTab}
                       updateModuleStats={updateModuleStats}
                       isEnrolledInCourse={isEnrolledInCourse}
+                      contentOnly={contentOnly}
+                      chapterOpensFirstSlide={chapterOpensFirstSlide}
+                      contentCardImageFit={contentCardImageFit}
                       onLoadingChange={handleModulesLoadingChange}
                       courseInitSubjects={courseInitSubjectsFromCourseInit}
                       {...(paymentType && { paymentType })}
                     />
                   </div>
                 );
+
+                // Content-only: the structure card is the whole page. The
+                // autopay-cancel block stays — it self-hides unless this course
+                // has a live mandate, and burying a cancel control behind a
+                // display preference is not a layout decision to make for the
+                // learner.
+                if (contentOnly) {
+                  return (
+                    <>
+                      {enrollmentBlock}
+                      {structureBlock}
+                      {!shouldHidePaidPurchaseUI() && (
+                        <CourseSubscriptionCancel
+                          instituteId={instituteId || ""}
+                          packageSessionId={
+                            packageSessionIdForCurrentLevel || undefined
+                          }
+                        />
+                      )}
+                    </>
+                  );
+                }
 
                 return isEnrolledInCourse ? (
                   <>
@@ -598,50 +659,61 @@ export const CourseDetailsPage = () => {
               })()}
             </div>
 
-            {/* Right Column - Course Stats Sidebar (1/4) */}
-            <div className="lg:col-span-1">
-              <div className="sticky top-24 self-start">
-                <CourseSidebar
-                  hasRightSidebar={hasRightSidebar}
-                  levelOptions={levelOptions}
-                  selectedLevel={selectedLevel}
-                  slideCountQuery={slideCountQuery}
-                  overviewVisible={overviewVisible}
-                  hideAuthorName={hideAuthorName}
-                  processedSlideCounts={processedSlideCounts}
-                  moduleStats={moduleStats}
-                  currentSubjects={getSubjectDetails(
-                    form.getValues(),
-                    selectedSession,
-                    selectedLevel,
-                  )}
-                  courseStructure={form.getValues(
-                    "courseData.courseStructure",
-                  )}
-                  instructorsCount={
-                    form.getValues("courseData").instructors.length
-                  }
-                  primaryInstructorName={primaryInstructorName}
-                  backendReadTimeMinutes={backendReadTimeMinutes || undefined}
-                  selectedTab={selectedTab}
-                  selectedSession={selectedSession}
-                  enrolledSessions={enrolledSessions || []}
-                  courseId={searchParams.courseId || ""}
-                  paymentType={paymentType}
-                  packageSessionIdForCurrentLevel={
-                    packageSessionIdForCurrentLevel
-                  }
-                  percentageCompleted={completionPercentage}
-                  certificatesEnabled={certificatesEnabled}
-                  onEnrollmentClick={onEnrollmentClick}
-                  onRatingsLoadingChange={handleRatingsLoadingChange}
-                />
+            {/* Right Column - Course Stats Sidebar (1/4). Dropped entirely in
+                the content-only layout — that card is what "hide the author and
+                the right-side details" refers to. */}
+            {hasRightSidebar && (
+              <div className="lg:col-span-1">
+                <div className="sticky top-24 self-start">
+                  <CourseSidebar
+                    hasRightSidebar={hasRightSidebar}
+                    levelOptions={levelOptions}
+                    selectedLevel={selectedLevel}
+                    slideCountQuery={slideCountQuery}
+                    overviewVisible={overviewVisible}
+                    hideAuthorName={hideAuthorName}
+                    processedSlideCounts={processedSlideCounts}
+                    moduleStats={moduleStats}
+                    currentSubjects={getSubjectDetails(
+                      form.getValues(),
+                      selectedSession,
+                      selectedLevel,
+                    )}
+                    // Same resolution as the structure block below: the form's
+                    // courseStructure is still its placeholder until the reset
+                    // lands, and the sidebar now hides level counts by depth.
+                    courseStructure={
+                      courseStructureFromApi ??
+                      stableCourseData?.courseData?.courseStructure ??
+                      5
+                    }
+                    instructorsCount={
+                      form.getValues("courseData").instructors.length
+                    }
+                    primaryInstructorName={primaryInstructorName}
+                    backendReadTimeMinutes={backendReadTimeMinutes || undefined}
+                    selectedTab={selectedTab}
+                    selectedSession={selectedSession}
+                    enrolledSessions={enrolledSessions || []}
+                    courseId={searchParams.courseId || ""}
+                    paymentType={paymentType}
+                    packageSessionIdForCurrentLevel={
+                      packageSessionIdForCurrentLevel
+                    }
+                    percentageCompleted={completionPercentage}
+                    certificatesEnabled={certificatesEnabled}
+                    onEnrollmentClick={onEnrollmentClick}
+                    onRatingsLoadingChange={handleRatingsLoadingChange}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Ratings Component */}
-          {!hasRightSidebar && packageSessionIdForCurrentLevel && (
+          {/* Ratings Component — the single-column fallback for layouts with no
+              right-hand card. The content-only layout also has no right card
+              but deliberately wants nothing but the structure, so it opts out. */}
+          {!hasRightSidebar && !contentOnly && packageSessionIdForCurrentLevel && (
             <div
               className="mt-6 lg:mt-8 animate-fade-in-up"
               style={{ animationDelay: "0.8s" }}

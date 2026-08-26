@@ -418,6 +418,10 @@ module.exports = {
         "struct-module": "calc(16px + 0.5rem + 16px + 0.5rem + 1.5rem)",
         "struct-base": "calc(18px + 0.5rem + 18px + 0.5rem)",
         "struct-chapter": "calc(16px + 0.5rem + 16px + 0.5rem + 1.5rem + 1.5rem)",
+        // Clearance under the live test's docked tool panel (scientific
+        // calculator is the tallest at ~470px) so the last option can always be
+        // scrolled out from behind it.
+        "tool-dock": "31rem",
       },
       borderRadius: {
         // Catalogue radius bridge — honours data-catalogue-radius

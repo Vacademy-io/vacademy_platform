@@ -473,6 +473,22 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     domainRouting.instituteName ? ` at ${domainRouting.instituteName}` : ""
   }.`;
 
+  /** Which page this URL resolves to. Shared by the chrome check and the
+   *  render so the two can never disagree about what is on screen. */
+  const matchesActivePage = (page: { id?: string; route?: string }) =>
+    pageSlug
+      ? page.route === pageSlug || page.route === `/${pageSlug}`
+      : page.id === "home" ||
+        page.route === "homepage" ||
+        page.route === "/" ||
+        page.route === "";
+
+  /** An imported HTML page normally pastes in its own nav and footer, so the
+   *  site's chrome would render a second set. Opt-out lives on the page. */
+  const hidesSiteChrome = !!(
+    catalogueData.pages.find(matchesActivePage) as { hideSiteChrome?: boolean } | undefined
+  )?.hideSiteChrome;
+
   return (
     <div
       ref={wrapperRef}
@@ -514,8 +530,11 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           <a href="#catalogue-main" className="catalogue-skip-link">
             Skip to main content
           </a>
-          {/* Header from JSON globalSettings */}
-          {(catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
+          {/* Header from JSON globalSettings.
+              Suppressed when the active page asks for it: an imported HTML
+              page usually pastes in its own nav and footer, so rendering the
+              site's chrome as well gives the visitor two of each. */}
+          {!hidesSiteChrome && (catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
             <div className={(catalogueData.globalSettings as any).stickyHeader !== false ? 'sticky top-0 z-50' : ''}>
               <JsonRenderer
                 page={{
@@ -538,16 +557,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           {/* Legacy page title banner — removed in v2. Page titles are now handled by hero/textBlock components. */}
           {/* Render the matching page (home page by default, or specific slug) */}
           {catalogueData.pages
-            .filter(page => {
-              if (pageSlug) {
-                // Match custom page by route slug
-                return page.route === pageSlug || page.route === `/${pageSlug}`;
-              }
-              // Default: home / root page
-              return page.id === "home" || page.route === "homepage" || page.route === "/" || page.route === "";
-            })
+            .filter(matchesActivePage)
             .map((page) => (
-              <main id="catalogue-main" tabIndex={-1} key={page.id} className="pt-16 md:pt-20" style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
+              <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : 'pt-16 md:pt-20'} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
                 <JsonRenderer
                   page={page}
                   globalSettings={catalogueData.globalSettings}
@@ -561,7 +573,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             ))}
 
           {/* Footer from JSON globalSettings */}
-          {(catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (
+          {!hidesSiteChrome && (catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (
             <JsonRenderer
               page={{
                 id: "footer",

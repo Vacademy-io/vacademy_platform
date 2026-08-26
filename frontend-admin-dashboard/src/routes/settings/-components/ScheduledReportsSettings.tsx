@@ -1,0 +1,834 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { SettingsPageShell, SettingToggleRow } from '@/components/settings/shell';
+import { MyButton } from '@/components/design-system/button';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { MyInput } from '@/components/design-system/input';
+import { MyTable } from '@/components/design-system/table';
+import { MyDialog } from '@/components/design-system/dialog';
+import type { ColumnDef } from '@tanstack/react-table';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { ScopePicker, RecipientPicker } from './ReportPickers';
+import {
+    EMPTY_REPORT_SETTING,
+    fetchReportSetting,
+    fetchRunRecipients,
+    fetchRuns,
+    fetchSections,
+    newSchedule,
+    previewReport,
+    previewScope,
+    runReportNow,
+    saveReportSetting,
+    type ReportSchedule,
+    type ReportSettingConfig,
+    type PreviewResult,
+    type ReportRun,
+    type ReportRunRecipient,
+    type ScopePreview,
+} from '../-services/scheduled-reports-service';
+
+/** Names this screen generates itself, and may therefore replace. */
+const DEFAULT_NAMES = ['Daily digest', 'Weekly digest', 'Monthly digest'];
+
+function defaultNameFor(frequency: ReportSchedule['frequency']) {
+    return frequency === 'daily'
+        ? 'Daily digest'
+        : frequency === 'monthly'
+          ? 'Monthly digest'
+          : 'Weekly digest';
+}
+
+function isDefaultName(name: string) {
+    return DEFAULT_NAMES.includes((name ?? '').trim());
+}
+
+/**
+ * Hand the rendered report to the browser as a file.
+ *
+ * The preview iframe is `sandbox=""`, which blocks downloads started inside it —
+ * so the blob is built and clicked here in the parent document instead. The URL is
+ * revoked on a later tick because revoking it synchronously can cancel the
+ * download before the browser has read it.
+ */
+function downloadPreview(html: string | null) {
+    if (!html) return;
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `report-preview-${new Date().toISOString().slice(0, 10)}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Full-size view, for a report too tall to read in a dialog. */
+function openPreviewInTab(html: string | null) {
+    if (!html) return;
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const opened = window.open(url, '_blank', 'noopener');
+    if (!opened) toast.error('Allow pop-ups to open the preview in a new tab.');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * Scheduled Reports — push reporting configuration.
+ *
+ * Two things here are load-bearing rather than decorative:
+ *
+ * 1. **Sections are offered only when the institute has data for them.**
+ *    Institutes differ wildly in shape — one runs 1,500 live sessions and no
+ *    chatbot, another has 67,000 progress rows and one live session. Letting an
+ *    admin tick a section that can only ever render empty is a bad first run, so
+ *    availability comes from the server and unavailable sections are disabled.
+ *
+ * 2. **Fan-out is previewed before saving.** Scope multiplies everything: at a
+ *    real institute "every batch" resolves to 661 documents per run, and daily
+ *    that is ~20,000 generations a month — each of which bills. The admin is
+ *    shown that number before they commit to it, not afterwards on the ledger.
+ */
+
+const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+const SCOPES = [
+    { v: 'INSTITUTE', label: 'Whole institute' },
+    { v: 'BATCH', label: 'Per batch' },
+    { v: 'SUBJECT', label: 'Per subject' },
+    { v: 'FACULTY', label: 'Per faculty' },
+];
+const ROLES = ['ADMIN', 'TEACHER', 'EVALUATOR'];
+
+/**
+ * Delivery history columns. Read-only — the audit view, not an editing surface.
+ *
+ * A factory rather than a const because the last column opens the per-recipient
+ * detail, and "who actually received this, and did it land" is the half of the
+ * audit that matters when someone asks why they did not get their report.
+ */
+const makeRunColumns = (onInspect: (run: ReportRun) => void): ColumnDef<ReportRun>[] => [
+    {
+        accessorKey: 'createdAt',
+        header: 'When',
+        cell: ({ row }) => new Date(row.original.createdAt).toLocaleString(),
+    },
+    { accessorKey: 'scopeLabel', header: 'Report' },
+    {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) =>
+            row.original.skipReason
+                ? `${row.original.status} — ${row.original.skipReason}`
+                : row.original.status,
+    },
+    { accessorKey: 'recipientCount', header: 'Recipients' },
+    { accessorKey: 'namedLearners', header: 'Learners named' },
+    {
+        id: 'detail',
+        header: '',
+        cell: ({ row }) => (
+            <MyButton buttonType="text" onClick={() => onInspect(row.original)}>
+                Who received it
+            </MyButton>
+        ),
+    },
+];
+/** Mirrors ReportingScopeResolver.MAX_DOCUMENTS_PER_RUN — the server refuses above this. */
+const MAX_DOCS_PER_RUN = 50;
+
+export default function ScheduledReportsSettings() {
+    const [config, setConfig] = useState<ReportSettingConfig>(EMPTY_REPORT_SETTING);
+    const [saving, setSaving] = useState(false);
+    const [preview, setPreview] = useState<Record<string, ScopePreview | null>>({});
+    const [inspecting, setInspecting] = useState<ReportRun | null>(null);
+    const [recipients, setRecipients] = useState<ReportRunRecipient[] | null>(null);
+    const [recipientsError, setRecipientsError] = useState<string | null>(null);
+
+    const inspectRun = async (run: ReportRun) => {
+        setInspecting(run);
+        setRecipients(null);
+        setRecipientsError(null);
+        try {
+            setRecipients(await fetchRunRecipients(run.id));
+        } catch {
+            // Distinguish "failed to load" from "nobody received it" — a run that
+            // legitimately reached zero people looks identical otherwise.
+            setRecipientsError('Could not load the recipient list for this run.');
+        }
+    };
+    const [rendered, setRendered] = useState<PreviewResult | null>(null);
+    const [busyId, setBusyId] = useState<string | null>(null);
+
+    const { data: stored, isLoading } = useQuery({
+        queryKey: ['report-setting'],
+        queryFn: fetchReportSetting,
+    });
+    const {
+        data: sections = [],
+        isLoading: sectionsLoading,
+        error: sectionsError,
+    } = useQuery({
+        queryKey: ['report-sections'],
+        queryFn: fetchSections,
+    });
+    const {
+        data: runs = [],
+        refetch: refetchRuns,
+        isLoading: runsLoading,
+        error: runsError,
+    } = useQuery({
+        queryKey: ['report-runs'],
+        queryFn: fetchRuns,
+    });
+
+    useEffect(() => {
+        if (stored) setConfig(stored);
+    }, [stored]);
+
+    const availableSections = useMemo(() => sections.filter((s) => s.available), [sections]);
+
+    function patchSchedule(id: string, patch: Partial<ReportSchedule>) {
+        setConfig((c) => ({
+            ...c,
+            schedules: c.schedules.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+        }));
+        // Any change to scope or frequency invalidates the fan-out estimate.
+        setPreview((p) => ({ ...p, [id]: null }));
+    }
+
+    async function runPreview(schedule: ReportSchedule) {
+        try {
+            const p = await previewScope(schedule);
+            setPreview((prev) => ({ ...prev, [schedule.id]: p }));
+        } catch {
+            toast.error('Could not work out how many reports this would create');
+        }
+    }
+
+    async function handlePreview(schedule: ReportSchedule) {
+        setBusyId(schedule.id);
+        try {
+            setRendered(await previewReport(schedule));
+        } catch {
+            toast.error('Could not build the preview');
+        } finally {
+            setBusyId(null);
+        }
+    }
+
+    async function handleRunNow(schedule: ReportSchedule) {
+        // Real emails to real people — make the blast radius explicit before it
+        // happens, not afterwards in the audit log.
+        const who =
+            schedule.recipients.roles.length > 0
+                ? `everyone with the ${schedule.recipients.roles.join('/')} role`
+                : `${schedule.recipients.userIds.length} selected recipient(s)`;
+        if (
+            !window.confirm(
+                `Send "${schedule.name}" now to ${who}?\n\n` +
+                    `This sends real email, charges credits, and cannot be recalled. ` +
+                    `Use Preview if you only want to see it.`
+            )
+        ) {
+            return;
+        }
+        setBusyId(schedule.id);
+        try {
+            toast.success(await runReportNow(schedule));
+            refetchRuns();
+        } catch {
+            toast.error('Could not send the report');
+        } finally {
+            setBusyId(null);
+        }
+    }
+
+    async function handleSave() {
+        // Refuse to save a schedule that would fan out past the server cap —
+        // saving it would simply fail every run, silently, forever.
+        for (const s of config.schedules) {
+            const p = preview[s.id];
+            if (p?.exceedsCap) {
+                toast.error(
+                    `"${s.name}" would create ${p.documentsPerRun} reports per run, above the ${MAX_DOCS_PER_RUN} limit. Narrow the scope first.`
+                );
+                return;
+            }
+            if (s.sections.length === 0) {
+                toast.error(`"${s.name}" has no sections selected.`);
+                return;
+            }
+            if (s.recipients.roles.length === 0 && s.recipients.userIds.length === 0) {
+                toast.error(`"${s.name}" has no recipients.`);
+                return;
+            }
+        }
+        setSaving(true);
+        try {
+            await saveReportSetting(config);
+            toast.success('Scheduled reports saved');
+            refetchRuns();
+        } catch {
+            toast.error('Could not save scheduled reports');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <SettingsPageShell
+            title="Scheduled Reports"
+            description="Send institute activity to your team on a schedule, instead of waiting for someone to come and look."
+            maxWidth="max-w-5xl"
+            actions={
+                <MyButton onClick={handleSave} disabled={saving || isLoading}>
+                    {saving ? 'Saving…' : 'Save'}
+                </MyButton>
+            }
+        >
+            <div className="flex flex-col gap-6">
+                <SettingToggleRow
+                    label="Enable scheduled reports"
+                    description="When off, nothing is generated and nothing is charged."
+                    control={
+                        <Switch
+                            checked={config.enabled}
+                            onCheckedChange={(v) => setConfig((c) => ({ ...c, enabled: v }))}
+                        />
+                    }
+                />
+
+                <SettingToggleRow
+                    label="Timezone"
+                    description="Report days and windows are worked out in this timezone."
+                    control={
+                        <MyInput
+                            inputType="text"
+                            className="w-56"
+                            input={config.timezone}
+                            onChangeFunction={(e) =>
+                                setConfig((c) => ({ ...c, timezone: e.target.value }))
+                            }
+                        />
+                    }
+                />
+
+                {config.schedules.map((s) => {
+                    const p = preview[s.id];
+                    return (
+                        <div key={s.id} className="rounded-md border border-border p-4">
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                                <MyInput
+                                    inputType="text"
+                                    className="max-w-xs font-medium"
+                                    input={s.name}
+                                    onChangeFunction={(e) =>
+                                        patchSchedule(s.id, { name: e.target.value })
+                                    }
+                                />
+                                <div className="flex items-center gap-3">
+                                    <Switch
+                                        checked={s.enabled}
+                                        onCheckedChange={(v) => patchSchedule(s.id, { enabled: v })}
+                                    />
+                                    <MyButton
+                                        buttonType="text"
+                                        onClick={() =>
+                                            setConfig((c) => ({
+                                                ...c,
+                                                schedules: c.schedules.filter((x) => x.id !== s.id),
+                                            }))
+                                        }
+                                    >
+                                        Remove
+                                    </MyButton>
+                                </div>
+                            </div>
+
+                            {/* ── What goes in it ── */}
+                            <p className="mb-2 text-caption font-medium text-neutral-600">
+                                Sections
+                            </p>
+                            <div className="mb-4 flex flex-col gap-2">
+                                {sections.map((sec) => (
+                                    <label
+                                        key={sec.key}
+                                        className={`flex items-start gap-2 text-body ${
+                                            sec.available ? '' : 'opacity-50'
+                                        }`}
+                                    >
+                                        <Checkbox
+                                            className="mt-1"
+                                            disabled={!sec.available}
+                                            checked={s.sections.includes(sec.key)}
+                                            onCheckedChange={(v) =>
+                                                patchSchedule(s.id, {
+                                                    sections: v
+                                                        ? [...s.sections, sec.key]
+                                                        : s.sections.filter((k) => k !== sec.key),
+                                                })
+                                            }
+                                        />
+                                        <span>
+                                            {sec.title}
+                                            {sec.identifying && (
+                                                <Badge className="ml-2" variant="outline">
+                                                    names learners
+                                                </Badge>
+                                            )}
+                                            {!sec.available && (
+                                                <span className="ml-2 text-caption text-neutral-500">
+                                                    no data in the last 30 days
+                                                </span>
+                                            )}
+                                            <span className="block text-caption text-neutral-500">
+                                                {sec.description}
+                                            </span>
+                                        </span>
+                                    </label>
+                                ))}
+                                {/* "The list is empty" and "the list failed to
+                                    load" must not read the same. Saying no
+                                    section has data when the request actually
+                                    failed sends an admin looking for a data
+                                    problem that does not exist. */}
+                                {sectionsError ? (
+                                    <p className="text-caption text-danger-600">
+                                        Could not load the available sections. Refresh to try
+                                        again — this is not the same as having no data.
+                                    </p>
+                                ) : sectionsLoading ? (
+                                    <p className="text-caption text-neutral-500">
+                                        Checking which sections have data…
+                                    </p>
+                                ) : (
+                                    sections.length === 0 && (
+                                        <p className="text-caption text-neutral-500">
+                                            No section has data for this institute yet.
+                                        </p>
+                                    )
+                                )}
+                            </div>
+
+                            {/* ── When ── */}
+                            <div className="mb-4 flex flex-wrap items-center gap-3">
+                                <Select
+                                    value={s.frequency}
+                                    onValueChange={(v) =>
+                                        patchSchedule(s.id, {
+                                            frequency: v as ReportSchedule['frequency'],
+                                            // The name is the document's heading, so a
+                                            // schedule created as "Weekly digest" and
+                                            // switched to daily would arrive contradicting
+                                            // itself. Carry the default across, but never
+                                            // clobber a name the admin actually chose.
+                                            ...(isDefaultName(s.name)
+                                                ? {
+                                                      name: defaultNameFor(
+                                                          v as ReportSchedule['frequency']
+                                                      ),
+                                                  }
+                                                : {}),
+                                        })
+                                    }
+                                >
+                                    <SelectTrigger className="w-40">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="daily">Daily</SelectItem>
+                                        <SelectItem value="weekly">Weekly</SelectItem>
+                                        <SelectItem value="monthly">Monthly</SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                {s.frequency === 'weekly' && (
+                                    <Select
+                                        value={s.dayOfWeek}
+                                        onValueChange={(v) => patchSchedule(s.id, { dayOfWeek: v })}
+                                    >
+                                        <SelectTrigger className="w-32">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {DAYS.map((d) => (
+                                                <SelectItem key={d} value={d}>
+                                                    {d}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+
+                                <MyInput
+                                    inputType="number"
+                                    className="w-24"
+                                    input={String(s.hour)}
+                                    onChangeFunction={(e) =>
+                                        patchSchedule(s.id, {
+                                            hour: Math.min(23, Math.max(0, Number(e.target.value))),
+                                        })
+                                    }
+                                />
+                                <span className="text-caption text-neutral-500">
+                                    hour ({config.timezone})
+                                </span>
+                            </div>
+
+                            {/* ── Scope, and the fan-out guard ── */}
+                            <div className="mb-3 flex flex-wrap items-center gap-3">
+                                <Select
+                                    value={s.scopeType}
+                                    onValueChange={(v) =>
+                                        patchSchedule(s.id, {
+                                            scopeType: v as ReportSchedule['scopeType'],
+                                        })
+                                    }
+                                >
+                                    <SelectTrigger className="w-48">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {SCOPES.map((sc) => (
+                                            <SelectItem key={sc.v} value={sc.v}>
+                                                {sc.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <MyButton buttonType="secondary" onClick={() => runPreview(s)}>
+                                    Check how many reports
+                                </MyButton>
+                                <MyButton
+                                    buttonType="secondary"
+                                    disabled={busyId === s.id || s.sections.length === 0}
+                                    onClick={() => handlePreview(s)}
+                                >
+                                    {busyId === s.id ? 'Building…' : 'Preview'}
+                                </MyButton>
+                                <MyButton
+                                    buttonType="text"
+                                    disabled={busyId === s.id || s.sections.length === 0}
+                                    onClick={() => handleRunNow(s)}
+                                >
+                                    Send now
+                                </MyButton>
+                            </div>
+
+                            <ScopePicker
+                                scopeType={s.scopeType}
+                                selected={s.scopeIds}
+                                onChange={(ids) => patchSchedule(s.id, { scopeIds: ids })}
+                            />
+
+                            {p && (
+                                <div
+                                    className={`mb-4 rounded-md border p-3 text-body ${
+                                        p.exceedsCap
+                                            ? 'border-danger-500 bg-danger-50 text-danger-700'
+                                            : 'border-border bg-neutral-50'
+                                    }`}
+                                >
+                                    <b>{p.documentsPerRun}</b> report
+                                    {p.documentsPerRun === 1 ? '' : 's'} per run ×{' '}
+                                    <b>{p.runsPerMonth}</b> runs = <b>{p.documentsPerMonth}</b> a
+                                    month.
+                                    {p.exceedsCap && (
+                                        <span className="block">
+                                            That is above the {MAX_DOCS_PER_RUN}-per-run limit and
+                                            will not run. Narrow the scope.
+                                        </span>
+                                    )}
+                                    <span className="block">
+                                        {p.creditsPerDocument === 0 ? (
+                                            <>Free — no AI analysis on this schedule.</>
+                                        ) : (
+                                            <>
+                                                <b>{p.creditsPerDocument}</b> credits per report
+                                                {' → '}
+                                                <b>{p.creditsPerRun}</b> per run,{' '}
+                                                <b>{p.creditsPerMonth}</b> a month for the AI
+                                                analysis. The report itself is free; recipients
+                                                are free; scope is what multiplies.
+                                            </>
+                                        )}
+                                    </span>
+                                    {p.sampleLabels?.length > 1 && (
+                                        <span className="block text-caption text-neutral-500">
+                                            e.g. {p.sampleLabels.slice(0, 3).join(', ')}…
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── Who ── */}
+                            <p className="mb-2 text-caption font-medium text-neutral-600">
+                                Send to
+                            </p>
+                            <div className="mb-2 flex flex-wrap gap-4">
+                                {ROLES.map((r) => (
+                                    <label key={r} className="flex items-center gap-2 text-body">
+                                        <Checkbox
+                                            checked={s.recipients.roles.includes(r)}
+                                            onCheckedChange={(v) =>
+                                                patchSchedule(s.id, {
+                                                    recipients: {
+                                                        ...s.recipients,
+                                                        roles: v
+                                                            ? [...s.recipients.roles, r]
+                                                            : s.recipients.roles.filter(
+                                                                  (x) => x !== r
+                                                              ),
+                                                    },
+                                                })
+                                            }
+                                        />
+                                        {r}
+                                    </label>
+                                ))}
+                            </div>
+                            {/* The one billable choice on this screen. */}
+                            <div className="mb-3 rounded-md border border-border p-3">
+                                <label className="flex items-start gap-2 text-body">
+                                    <Checkbox
+                                        checked={s.ai?.enabled ?? false}
+                                        onCheckedChange={(v) =>
+                                            patchSchedule(s.id, { ai: { enabled: Boolean(v) } })
+                                        }
+                                    />
+                                    <span>
+                                        Add AI analysis
+                                        <Badge className="ml-2" variant="secondary">
+                                            2 credits per report
+                                        </Badge>
+                                        <span className="block text-caption text-neutral-500">
+                                            Reads the figures below and writes what to do about
+                                            them — what to fix, who to reach, what learners are
+                                            asking for. The report itself is free; only this is
+                                            charged, and only when an analysis is actually
+                                            produced.
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+
+                            {/* The server refuses a run above this, BEFORE sending —
+                                the only point at which refusing is still free. */}
+                            <div className="mb-3 flex flex-wrap items-center gap-2">
+                                <span className="text-caption text-neutral-600">
+                                    Refuse a run costing more than
+                                </span>
+                                <MyInput
+                                    inputType="number"
+                                    input={
+                                        s.creditCapPerRun === null ||
+                                        s.creditCapPerRun === undefined
+                                            ? ''
+                                            : String(s.creditCapPerRun)
+                                    }
+                                    onChangeFunction={(e) => {
+                                        const raw = e.target.value.trim();
+                                        const n = Number(raw);
+                                        patchSchedule(s.id, {
+                                            creditCapPerRun:
+                                                raw === '' || Number.isNaN(n) || n <= 0
+                                                    ? null
+                                                    : Math.floor(n),
+                                        });
+                                    }}
+                                    inputPlaceholder="no cap"
+                                    className="w-28"
+                                />
+                                <span className="text-caption text-neutral-600">credits</span>
+                            </div>
+
+                            <RecipientPicker
+                                selected={s.recipients.userIds}
+                                onChange={(ids) =>
+                                    patchSchedule(s.id, {
+                                        recipients: { ...s.recipients, userIds: ids },
+                                    })
+                                }
+                            />
+                            <p className="mb-4 text-caption text-neutral-500">
+                                Only people with an account can receive these — reports can name
+                                learners, so there is no free-text email option. Teachers are
+                                automatically limited to their own batches.
+                            </p>
+
+                            <SettingToggleRow
+                                label="Skip when there is nothing to report"
+                                description="Recommended. Otherwise a quiet week still sends an empty report."
+                                control={
+                                    <Switch
+                                        checked={s.skipIfNoData}
+                                        onCheckedChange={(v) =>
+                                            patchSchedule(s.id, { skipIfNoData: v })
+                                        }
+                                    />
+                                }
+                            />
+                        </div>
+                    );
+                })}
+
+                <MyButton
+                    buttonType="secondary"
+                    onClick={() =>
+                        setConfig((c) => ({ ...c, schedules: [...c.schedules, newSchedule()] }))
+                    }
+                >
+                    Add a schedule
+                </MyButton>
+
+                {/* ── Delivery history / audit ── */}
+                <div>
+                    <p className="mb-2 text-subtitle font-medium">Recent reports</p>
+                    {runsError ? (
+                        <p className="text-caption text-danger-600">
+                            Could not load delivery history.
+                        </p>
+                    ) : runs.length === 0 && !runsLoading ? (
+                        <p className="text-caption text-neutral-500">
+                            Nothing sent yet. Reports appear here once a schedule runs.
+                        </p>
+                    ) : (
+                        <MyTable<ReportRun>
+                            data={{
+                                content: runs,
+                                total_pages: 1,
+                                page_no: 0,
+                                page_size: runs.length,
+                                total_elements: runs.length,
+                                last: true,
+                            }}
+                            columns={makeRunColumns(inspectRun)}
+                            isLoading={runsLoading}
+                            error={runsError}
+                            currentPage={0}
+                        />
+                    )}
+                </div>
+            </div>
+
+            {inspecting && (
+                <MyDialog
+                    heading="Who received it"
+                    open={true}
+                    onOpenChange={() => setInspecting(null)}
+                    dialogWidth="max-w-3xl"
+                >
+                    <div className="flex flex-col gap-3">
+                        <p className="text-caption text-neutral-500">
+                            {inspecting.scopeLabel || 'Institute report'} ·{' '}
+                            {new Date(inspecting.createdAt).toLocaleString()}
+                            {inspecting.skipReason ? ` · ${inspecting.skipReason}` : ''}
+                        </p>
+                        {recipientsError && (
+                            <p className="text-caption text-danger-600">{recipientsError}</p>
+                        )}
+                        {!recipientsError && recipients === null && (
+                            <p className="text-caption text-neutral-500">Loading…</p>
+                        )}
+                        {recipients?.length === 0 && (
+                            <p className="text-body">
+                                Nobody received this run. If it was skipped, the reason is above.
+                            </p>
+                        )}
+                        {recipients && recipients.length > 0 && (
+                            <div className="max-h-96 overflow-y-auto">
+                                {recipients.map((r) => (
+                                    <div
+                                        key={r.id}
+                                        className="flex flex-wrap items-center gap-2 border-b border-border py-2 text-body"
+                                    >
+                                        <span className="min-w-48 truncate">
+                                            {r.email || '(no email on file)'}
+                                        </span>
+                                        <Badge variant="secondary">{r.role || 'unknown role'}</Badge>
+                                        <Badge
+                                            variant={r.delivered ? 'secondary' : 'destructive'}
+                                        >
+                                            {r.delivered ? 'delivered' : 'not delivered'}
+                                        </Badge>
+                                        {r.namedLearners ? (
+                                            <span className="text-caption text-neutral-500">
+                                                {r.namedLearners} learner
+                                                {r.namedLearners === 1 ? '' : 's'} named
+                                            </span>
+                                        ) : null}
+                                        {r.sectionsSent && (
+                                            <span className="text-caption text-neutral-500">
+                                                {r.sectionsSent}
+                                            </span>
+                                        )}
+                                        {r.errorMessage && (
+                                            <span className="text-caption text-danger-600">
+                                                {r.errorMessage}
+                                            </span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </MyDialog>
+            )}
+
+            {rendered && (
+                <MyDialog
+                    heading="Report preview"
+                    open={true}
+                    onOpenChange={() => setRendered(null)}
+                    dialogWidth="max-w-3xl"
+                >
+                    <div className="flex flex-col gap-3">
+                        <p className="text-caption text-neutral-500">
+                            Exactly what you would receive. Nothing has been sent and nothing has
+                            been charged.
+                        </p>
+                        {rendered.note && (
+                            <p className="rounded-md border border-warning-500 bg-warning-50 p-2 text-caption text-warning-700">
+                                {rendered.note}
+                            </p>
+                        )}
+                        {rendered.html ? (
+                            <>
+                                <iframe
+                                    title="Report preview"
+                                    className="h-96 w-full rounded-md border border-border bg-white"
+                                    sandbox=""
+                                    srcDoc={rendered.html}
+                                />
+                                <div className="flex justify-end gap-2">
+                                    <MyButton
+                                        buttonType="secondary"
+                                        onClick={() => openPreviewInTab(rendered.html)}
+                                    >
+                                        Open in new tab
+                                    </MyButton>
+                                    <MyButton
+                                        buttonType="secondary"
+                                        onClick={() => downloadPreview(rendered.html)}
+                                    >
+                                        Download HTML
+                                    </MyButton>
+                                </div>
+                            </>
+                        ) : (
+                            <p className="text-body">Nothing would be sent for this schedule.</p>
+                        )}
+                    </div>
+                </MyDialog>
+            )}
+        </SettingsPageShell>
+    );
+}

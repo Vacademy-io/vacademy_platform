@@ -15,6 +15,7 @@ the repo cannot tell you what production is actually running.
 - [`VACADEMY_VOICE_INTEGRATION.md`](./VACADEMY_VOICE_INTEGRATION.md) — Plivo telephony + IVR.
 - [`AAVTAAR_AI_CALLING.md`](./AAVTAAR_AI_CALLING.md) — the third-party AI provider that shares this pipeline.
 - [`CALL_INTELLIGENCE.md`](./CALL_INTELLIGENCE.md) — recording-based analysis of **human** calls (also covered in §9 here).
+- [`TTS_SPEECH_CACHE.md`](./TTS_SPEECH_CACHE.md) — replaying already-paid-for TTS audio on an exact sentence match (§6 is the engine list it keys on; both switches default OFF).
 
 ---
 

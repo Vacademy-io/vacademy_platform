@@ -72,6 +72,19 @@ public final class TtsVoiceCatalog {
     public static final String MODEL_SMALLEST = "smallest";
 
     /**
+     * Smallest.ai Lightning v3.1 <b>Pro</b> — a SEPARATE engine id on purpose, not a
+     * variant of {@link #MODEL_SMALLEST}. The two share no voices: the API hard-rejects
+     * a cross-model name ("Voice 'devansh' is not available on the lightning_v3.1_pro
+     * model"), which on a live call is silence. Collapsing them into one id would put
+     * both palettes behind one picker entry and make that silent call reachable in two
+     * clicks, so they stay distinct all the way down to bot.py's _engine_palette.
+     *
+     * <p>Cost is $0.195/10K chars (~Rs 1.34/call-min) against standard's $0.175
+     * (~Rs 1.20) — both well under Google's Rs 2.06, so neither carries a surcharge.
+     */
+    public static final String MODEL_SMALLEST_PRO = "smallest_pro";
+
+    /**
      * Deepgram Aura-2 — <b>ENGLISH ONLY</b>. Verified against the live
      * {@code /v1/models} catalog on 2026-08-13: 102 TTS models across
      * en/es/de/fr/nl/it/ja and <b>no Hindi at any tier</b>, nor any announced.
@@ -236,13 +249,39 @@ public final class TtsVoiceCatalog {
             v("aura-2-harmonia-en", "female", MODEL_DEEPGRAM),
             v("aura-2-electra-en", "female", MODEL_DEEPGRAM));
 
-    private static final Map<String, List<Map<String, String>>> BY_MODEL = Map.of(
-            MODEL_SARVAM, SARVAM_VOICES,
-            MODEL_RUMIK, RUMIK_VOICES,
-            MODEL_GOOGLE, GOOGLE_VOICES,
-            MODEL_SMALLEST, SMALLEST_VOICES,
-            MODEL_EDGE, EDGE_VOICES,
-            MODEL_DEEPGRAM, DEEPGRAM_VOICES);
+    /**
+     * Lightning v3.1 <b>Pro</b> voices. Disjoint from the standard palette above —
+     * see {@link #MODEL_SMALLEST_PRO}. Must stay in lockstep with bot.py's
+     * _SMALLEST_PRO_MALE / _SMALLEST_PRO_FEMALE.
+     */
+    private static final List<Map<String, String>> SMALLEST_PRO_VOICES = List.of(
+            v("mandar", "male", MODEL_SMALLEST_PRO),
+            v("mathan", "male", MODEL_SMALLEST_PRO),
+            v("barath", "male", MODEL_SMALLEST_PRO),
+            v("manasi", "female", MODEL_SMALLEST_PRO),
+            v("mrunal", "female", MODEL_SMALLEST_PRO),
+            v("ketaki", "female", MODEL_SMALLEST_PRO),
+            v("meher", "female", MODEL_SMALLEST_PRO));
+
+    /**
+     * The ONE place every palette is registered. Ordered (LinkedHashMap) because
+     * {@link #all()} flattens it and the picker shows voices in this order.
+     *
+     * <p>Adding an engine means adding it HERE and nowhere else: all(), models(),
+     * IDS_BY_MODEL and isVoiceOf() all derive from this map. all() used to keep its
+     * own hand-written list of palettes and silently omitted smallest_pro and
+     * deepgram — their engines showed in the picker with an EMPTY voice dropdown.
+     */
+    private static final Map<String, List<Map<String, String>>> BY_MODEL = new LinkedHashMap<>();
+    static {
+        BY_MODEL.put(MODEL_GOOGLE, GOOGLE_VOICES);
+        BY_MODEL.put(MODEL_EDGE, EDGE_VOICES);
+        BY_MODEL.put(MODEL_SMALLEST, SMALLEST_VOICES);
+        BY_MODEL.put(MODEL_SMALLEST_PRO, SMALLEST_PRO_VOICES);
+        BY_MODEL.put(MODEL_DEEPGRAM, DEEPGRAM_VOICES);
+        BY_MODEL.put(MODEL_RUMIK, RUMIK_VOICES);
+        BY_MODEL.put(MODEL_SARVAM, SARVAM_VOICES);
+    }
 
     private static final Map<String, Set<String>> IDS_BY_MODEL = new LinkedHashMap<>();
     static {
@@ -259,8 +298,9 @@ public final class TtsVoiceCatalog {
 
     /** Every voice, model-tagged. The frontend groups by {@code model}. */
     public static List<Map<String, String>> all() {
-        return java.util.stream.Stream.of(GOOGLE_VOICES, EDGE_VOICES, SMALLEST_VOICES,
-                RUMIK_VOICES, SARVAM_VOICES).flatMap(List::stream).toList();
+        // Derived from BY_MODEL on purpose — a hand-written palette list here is
+        // exactly what shipped smallest_pro and deepgram with empty dropdowns.
+        return BY_MODEL.values().stream().flatMap(List::stream).toList();
     }
 
     public static List<Map<String, String>> forModel(String model) {
@@ -276,6 +316,9 @@ public final class TtsVoiceCatalog {
         if (MODEL_EDGE.equals(m)) return "hi-IN-SwaraNeural";
         if (MODEL_GOOGLE.equals(m)) return "hi-IN-Chirp3-HD-Achird";
         if (MODEL_SMALLEST.equals(m)) return "devansh";
+        if (MODEL_SMALLEST_PRO.equals(m)) return "mandar";
+        // English-only engine; Asteria is its clear/confident female voice.
+        if (MODEL_DEEPGRAM.equals(m)) return "aura-2-asteria-en";
         return "priya";
     }
 
@@ -332,6 +375,14 @@ public final class TtsVoiceCatalog {
         if (m.equals(MODEL_SARVAM) || m.startsWith("sarvam") || m.startsWith("bulbul")) return MODEL_SARVAM;
         if (m.equals(MODEL_EDGE) || m.startsWith("edge") || m.startsWith("microsoft")) return MODEL_EDGE;
         if (m.equals(MODEL_GOOGLE) || m.startsWith("google") || m.startsWith("chirp")) return MODEL_GOOGLE;
+        if (m.equals(MODEL_DEEPGRAM) || m.startsWith("deepgram") || m.startsWith("aura")) {
+            return MODEL_DEEPGRAM;
+        }
+        // Pro FIRST: "smallest_pro" also startsWith("smallest"), so the generic test
+        // below would swallow it and run pro voices on the standard model = silence.
+        if (m.contains("pro") && (m.startsWith("smallest") || m.startsWith("lightning"))) {
+            return MODEL_SMALLEST_PRO;
+        }
         if (m.equals(MODEL_SMALLEST) || m.startsWith("smallest") || m.startsWith("lightning")) {
             return MODEL_SMALLEST;
         }
@@ -347,6 +398,10 @@ public final class TtsVoiceCatalog {
                 "No vendor cost — billed at a cheaper per-minute rate. Slightly slower to start."));
         out.add(model(MODEL_SMALLEST, "Smallest.ai Lightning v3.1",
                 "Indian-language specialist"));
+        out.add(model(MODEL_SMALLEST_PRO, "Smallest.ai Lightning v3.1 Pro",
+                "Higher-quality Indian voices. Different voice list from v3.1."));
+        out.add(model(MODEL_DEEPGRAM, "Deepgram Aura-2 (English only)",
+                "English-only \u2014 no Hindi voice exists. Do not use for a Hinglish agent."));
         out.add(model(MODEL_RUMIK, "Rumik Silk Mulberry 1.5",
                 "Cheapest, but mispronounces some Hindi words on the phone"));
         out.add(model(MODEL_SARVAM, "Sarvam Bulbul v3", "+4 credits per minute"));

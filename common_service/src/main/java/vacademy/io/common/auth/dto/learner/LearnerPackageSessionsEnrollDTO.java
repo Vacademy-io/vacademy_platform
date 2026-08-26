@@ -26,4 +26,16 @@ public class LearnerPackageSessionsEnrollDTO {
      * decrements usage_limit at UserPlan creation. Null/blank = no coupon.
      */
     private String couponCode;
+
+    /**
+     * Optional. Days of course access this enrollment grants, counted from
+     * {@link #startDate} (or now when that is absent).
+     *
+     * <p>Takes priority over the payment plan's {@code validity_in_days} and the
+     * invite's {@code learner_access_days} — an admin who types a number on the
+     * enrollment form means that number, not the plan's default. Null falls back to
+     * plan, then invite, then unlimited: the same precedence
+     * {@code DefaultInviteResolver.resolveAccessDays} already uses for bulk assignment.
+     */
+    private Integer accessDays;
 }

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallRequestDTO;
+import vacademy.io.admin_core_service.features.telephony.enums.CallTrigger;
 
 import java.util.concurrent.Executor;
 
@@ -45,9 +46,21 @@ public class AiCallNodeDispatcher {
 
     /** Place this AI call on the paced background worker; returns immediately. */
     public void enqueue(AiCallRequestDTO req) {
+        enqueue(req, CallTrigger.AUTOMATION);
+    }
+
+    /**
+     * As {@link #enqueue(AiCallRequestDTO)}, but with the caller declaring WHICH
+     * throttle profile applies. The trigger is chosen by the calling code from the
+     * node's authored config — never read off the request body — so a workflow can
+     * opt out of the already-assigned guard only when an admin explicitly built it
+     * that way. Everything else still enqueues as {@link CallTrigger#AUTOMATION}.
+     */
+    public void enqueue(AiCallRequestDTO req, CallTrigger trigger) {
+        CallTrigger effective = trigger == null ? CallTrigger.AUTOMATION : trigger;
         executor.execute(() -> {
             try {
-                aiCallService.placeCall(req, null);
+                aiCallService.placeCall(req, null, effective);
             } catch (Exception e) {
                 log.warn("ai-call queue: failed to place call for lead {} (response {}): {}",
                         req.getUserId(), req.getResponseId(), e.getMessage());

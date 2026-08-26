@@ -16,4 +16,6 @@ import lombok.NoArgsConstructor;
 public class AssignmentResultDTO {
     private Integer assigned;
     private Integer skipped;
+    /** Students left unassigned because every candidate mentor was at capacity. */
+    private Integer capacityFull;
 }

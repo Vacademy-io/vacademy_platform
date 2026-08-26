@@ -1,6 +1,80 @@
 from __future__ import annotations
 
 
+_DOC_CONTENT_TYPE_SPECS = {
+    "notes": "SHORT NOTES: concise, scannable teaching notes with headings, tight bullets, and concrete examples.",
+    "summary": "SUMMARY: a short, scannable recap / TL;DR of the key points as a compact card or bullet list — for quick revision.",
+    "flashcards": (
+        "FLASHCARDS: an INTERACTIVE flashcard deck — cards the learner clicks/taps to flip (question → answer), built with inline JS/CSS. Include the handful of most important cards. FLIP MECHANISM (mandatory): toggle a `.flipped` class that SWAPS FACE VISIBILITY with `display` — `.back{display:none}`, `.flipped .front{display:none}`, `.flipped .back{display:flex}`. Do NOT use 3D transforms (`rotateY`, `backface-visibility`, `transform-style:preserve-3d`) — some render contexts drop transforms, which leaves the rotated answer face permanently visible on top of the question (this has shipped). LAYOUT RULES: faces live in NORMAL FLOW (no `position:absolute`) so the card grows with its text; the card has `width:100%` and a `min-height` (≈170px); deck uses `grid-template-columns:repeat(auto-fit,minmax(240px,1fr))` — NEVER an `auto` track (collapses to zero width, one word per line); wrappers/faces must be block/flex elements, never bare `<span>`s (width is IGNORED on inline elements — text has shipped ONE LETTER PER LINE); any Question/Answer label sits in flow above the text, never absolutely positioned over it; prev/next controls on their OWN row; face text gets `overflow-wrap:break-word`."
+    ),
+    "practical_examples": "PRACTICAL EXAMPLES: worked, real-world examples/applications showing the concept in action, step by step.",
+    "why_it_matters": "WHY IT MATTERS: a short opening hook — what this topic is and why the learner should care, grounded in the material's own framing (2-4 sentences, before the notes).",
+    "high_yield": "HIGH-YIELD POINT: one visually prominent callout card with THE most exam-relevant fact/distinction of this topic, quoted faithfully from the material.",
+    "visual_process": "VISUAL / PROCESS: one clear diagram of this topic's core process or relationships — inline SVG or styled HTML, adapted from the material's own figures/flow where they exist (never a decorative stock-style image).",
+    "application": "APPLICATION: one short applied scenario or worked case that uses this topic's content (from the material; no invented statistics or named instruments).",
+    "interactive_games": (
+        "INTERACTIVE GAME (REQUIRED when listed — never omit it): one small, genuinely playable "
+        "learning game built from THIS material's own terms. Pick the form that fits the content: "
+        "match each term to its definition, put the steps of a process in the right order, sort "
+        "items into their correct categories, or a click-to-reveal/timed recall challenge. "
+        "Implement it in inline JS with real state, scoring and per-answer feedback (correct/"
+        "incorrect + a short 'why'), and a Reset control. It must work with mouse AND touch — if "
+        "you use drag-and-drop, also support tap-to-select-then-tap-to-place, or prefer "
+        "click/tap-based interaction outright."
+    ),
+    "quiz": "QUIZ: an INTERACTIVE multiple-choice quiz — the learner selects answers and gets instant feedback + a score (inline JS), 3-5 questions each with a short explanation. When the learner finishes, report the result with `window.parent.postMessage({type:'vacademy:complete', score:<n>, maxScore:<n>, wrong:<n>, timesSec:[<seconds per question>]}, '*')`.",
+}
+
+
+def _doc_content_types_block(content_types: "list | None") -> str:
+    if not content_types:
+        return ""
+    specs = [
+        f"  {i}. {_DOC_CONTENT_TYPE_SPECS[t]}"
+        for i, t in enumerate((c for c in content_types if c in _DOC_CONTENT_TYPE_SPECS), start=1)
+    ]
+    if not specs:
+        return ""
+    return (
+        "\n\n**Also build these sections into the page** (part of ONE cohesive design, not "
+        "disconnected blocks; any interactive part uses inline JS and must actually work; all "
+        "content visible on load — no scroll-reveal):\n"
+        + "\n".join(specs)
+        + "\n\nIMPORTANT — these are PRESENTATION FORMATS, not new subject matter. Any "
+        "source-fidelity rule above restricts the FACTS you may state; it does NOT excuse you "
+        "from building these sections. Build every one of them USING the material's own "
+        "content: the flashcards, quiz questions and game items must all be drawn from the "
+        "definitions, lists, steps and classifications in the passages — inventing the "
+        "interaction is required, inventing facts is not allowed. Do not skip a requested "
+        "section because the material 'does not contain a game/quiz' — it never will; that is "
+        "your job to construct from what the material says."
+    )
+
+
+
+_DESIGN_SAFETY_RULES = """**Rendering safety — every rule below exists because generated pages have ACTUALLY shipped broken this way**:
+- CONTRAST, per surface: set the text colour explicitly on EVERY surface (hero, card, band) for ALL its descendants. Dark surfaces set light text — and a LIGHT panel nested inside a dark surface must re-set its own DARK text (white-on-pale-mint has shipped invisible). Never use muted/grey text on a coloured or gradient background — text there must be white/near-white. Inline emphasis (`strong`,`b`,`em`,`mark`,`span`) always INHERITS its container's colour — never give it a fixed colour; emphasise with weight or background instead.
+- LAYOUT, no overlap: sections and cards stack in NORMAL document flow (block/flex/grid). NEVER absolutely position text, labels or footers over other content; never use negative margins to pull elements onto each other; never pin a caption with `position:absolute; bottom:0` inside a card whose content flows (labels have shipped printed across paragraphs). No fixed heights that clip or force overlap — cards grow with their content.
+- VISIBILITY: the page renders at FULL height with NO internal scrolling — never hide content behind scroll-triggered reveals (IntersectionObserver / scroll listeners starting sections at opacity:0); everything is visible on load and entrance animations play on load. Any animation touching opacity must END at opacity:1 — text frozen at partial opacity has shipped as unreadable ghost text. Honor `@media (prefers-reduced-motion: reduce)`.
+- SVG DIAGRAMS: `<text>` NEVER wraps — size every box to its LONGEST label plus padding, or split the label across multiple `<text>`/`<tspan>` lines; a label wider than its rect has shipped overflowing the diagram. Never write a global `svg text{fill:...}` rule — it OVERRIDES per-element `fill="..."` attributes (CSS beats presentation attributes) and has shipped dark text on dark boxes; set fill per element or per class.
+- SURFACE-MATCHED CHILDREN: style a child card for the surface it ACTUALLY sits on — translucent-white backgrounds with near-white text belong only inside dark surfaces; placed in a white panel they have shipped INVISIBLE. Do not rely on transforms or 3D effects for showing/hiding content anywhere — some render contexts drop transforms; use `display`/class toggles."""
+
+
+def _fig_field(fig, *names) -> str:
+    """First non-empty of the named fields, whether the figure is an object
+    (PDF-ingest path: .url/.caption) or a dict (KB path: image_url/alt_text).
+    getattr on a dict silently returns the default — that bug dropped EVERY
+    knowledge-base figure from the manifest, so no source figure was ever
+    offered to a KB course's slides."""
+    for name in names:
+        value = getattr(fig, name, None)
+        if value is None and isinstance(fig, dict):
+            value = fig.get(name)
+        if value:
+            return str(value)
+    return ""
+
+
 class ContentGenerationPrompts:
     """
     Prompt templates for content generation (documents and assessments).
@@ -14,6 +88,9 @@ class ContentGenerationPrompts:
         include_diagrams: bool = False,
         language: str = "English",
         reference_figures: "list | None" = None,
+        content_types: "list | None" = None,
+        sibling_titles: "list | None" = None,
+        figures_policy: "str | None" = None,
     ) -> str:
         """
         Build document generation prompt. Always produces HTML (the only format
@@ -38,16 +115,20 @@ class ContentGenerationPrompts:
             else "Include a Mermaid diagram ONLY where it genuinely aids understanding; skip it otherwise."
         )
 
+        # figures_policy: REQUIRE = must embed every relevant source figure;
+        # PREFER (default) = advisory; GENERATED_ONLY = ignore source figures.
+        if figures_policy == "GENERATED_ONLY":
+            reference_figures = None
         figures_block = ""
         if reference_figures:
             manifest = "\n".join(
-                f"  - url={getattr(f, 'url', '')}"
-                + (f" — {getattr(f, 'caption', '')}" if getattr(f, "caption", "") else "")
+                f"  - url={_fig_field(f, 'url', 'image_url')}"
+                + (f" — {_fig_field(f, 'caption', 'alt_text')}" if _fig_field(f, 'caption', 'alt_text') else "")
                 for f in reference_figures
-                if getattr(f, "url", "")
+                if _fig_field(f, "url", "image_url")
             )
             if manifest:
-                figures_block = f"""**Source figures (from the uploaded document — PREFER these over generated images)**:
+                figures_block = f"""**Source figures (from the uploaded document{" — you MUST embed every figure relevant to this slide" if figures_policy == "REQUIRE" else " — PREFER these over generated images"})**:
 The uploaded source document provides these REAL figures/diagrams/tables. When this slide's topic matches one, embed it VERBATIM:
 {manifest}
 - Embed as: `<img src="EXACT_URL_FROM_THE_LIST_ABOVE" alt="short caption" style="max-width:100%;border-radius:8px;margin:12px 0;">`
@@ -57,6 +138,21 @@ The uploaded source document provides these REAL figures/diagrams/tables. When t
 
 """
 
+        content_types_block = _doc_content_types_block(content_types)
+
+        # Repetition control: this slide's chapter siblings. Slides generate
+        # independently, so without this the same definitions (and near-
+        # identical quiz questions) repeat across a chapter.
+        siblings_block = ""
+        titles = [t for t in (sibling_titles or []) if t]
+        if titles:
+            listing = "\n".join(f"  - {t}" for t in titles)
+            siblings_block = f"""
+
+**This chapter's OTHER slides (do not re-teach their subjects)**:
+{listing}
+Stay strictly on THIS slide's own subject. Do not re-explain a sibling's topic — mention it in one clause at most ("covered in '{titles[0]}'"). Define each core term fully only on the slide named for it, and make flashcards/quiz questions test THIS slide's content, not a sibling's."""
+
         return f"""You are a world-class front-end designer AND an instructional designer. You craft ONE complete, self-contained, visually STUNNING HTML document that teaches its topic — a mini web page a student can learn from with no other material. It renders inside a sandboxed iframe, so it must be a full standalone document.
 
 **Language**: Write ALL student-facing content in {language}. Do NOT use English if a different language is specified.
@@ -65,6 +161,7 @@ The uploaded source document provides these REAL figures/diagrams/tables. When t
 
 **Content Requirements** (from the course planner):
 {text_prompt}
+{content_types_block}{siblings_block}
 
 **Depth & quality bar**:
 - Real, substantive teaching content — roughly 300-600 words (more if the topic demands it). Never thin, never filler, never lorem ipsum.
@@ -74,9 +171,11 @@ The uploaded source document provides these REAL figures/diagrams/tables. When t
 **Design & creativity (this is the point — make it beautiful and memorable)**:
 - Return a SINGLE full document: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"> <style>…ALL your CSS…</style></head><body>…</body></html>`.
 - Put ALL styling in one inline `<style>`. Design a cohesive visual system: a considered color palette, strong typography, generous spacing, cards/sections, clear hierarchy. Dark text on light surfaces by default; strong contrast.
-- Use tasteful MOTION: CSS `@keyframes`/transitions, hover states, and small vanilla JS (one inline `<script>` at the end of `<body>`) for counters, tabs, interactive diagrams, or canvas/SVG. Motion must be smooth and purposeful — wrap non-essential motion in `@media (prefers-reduced-motion: reduce)` to disable it. CRITICAL: the page renders at FULL height with NO internal scrolling, so NEVER hide content behind scroll-triggered reveals (IntersectionObserver / scroll listeners that start sections at opacity:0 and reveal on scroll) — that content would stay INVISIBLE. All content must be visible on load; entrance animations play on load, not on scroll.
+- Use tasteful MOTION: CSS `@keyframes`/transitions, hover states, and small vanilla JS (one inline `<script>` at the end of `<body>`) for counters, tabs, interactive diagrams, or canvas/SVG. Motion must be smooth and purposeful — wrap non-essential motion in `@media (prefers-reduced-motion: reduce)` to disable it.
 - Responsive (mobile → desktop) and accessible (semantic tags, alt text, keyboard-friendly).
 - You MAY load Google Fonts via `<link>` and a reputable CDN library via `<script src>` if it genuinely elevates the page. Prefer inline SVG for diagrams. NEVER reference private/local URLs, analytics or trackers, and don't rely on cookies/localStorage/parent-window access.
+
+{_DESIGN_SAFETY_RULES}
 
 **Diagrams** — {diagram_emphasis} Prefer hand-crafted inline SVG or styled HTML/CSS diagrams (they always render and match your design). Use Mermaid ONLY if you also include the mermaid CDN `<script>` and initialize it; otherwise avoid it. Precede each diagram with a short sentence explaining what it shows.
 
@@ -237,134 +336,63 @@ Explanation of the code output or key concepts.
 
     @staticmethod
     def build_homework_prompt(text_prompt: str, title: str, language: str = "English") -> str:
-        """
-<<<<<<< Updated upstream
-        Build prompt for homework slides. Hands-on and applied — the task type
-        adapts to the chapter's subject (coding ONLY for technical chapters).
-        """
-        return f"""**Task**: Generate the ASSIGNMENT (homework) for a chapter. It must be hands-on and applied — something the student actively DOES, not recall-style Q&A.
-=======
-        Build prompt for homework slides. Content should be hands-on and task-oriented,
-        adapting to the subject matter (coding tasks for programming topics, analytical/practical
-        tasks for other subjects).
-        """
-        return f"""**Task**: Generate HOMEWORK for a chapter. The homework must be hands-on and task-oriented, NOT simple Q&A.
->>>>>>> Stashed changes
+        """Assignment (homework) slide as a creative, self-contained HTML document
+        (rendered in a sandboxed iframe like the other HTML slides). Hands-on and
+        applied — a real task the student DOES; adapts to the subject (coding ONLY
+        for technical chapters)."""
+        return f"""You are a world-class instructional designer AND front-end designer. Produce ONE complete, self-contained, visually polished HTML document presenting a single hands-on ASSIGNMENT for the chapter below. It renders inside a sandboxed iframe at full height with NO internal scroll.
 
-**Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
+**Language**: Write ALL student-facing content in {language}. Do NOT use English if a different language is specified.
 
-**Topic / Chapter**: {title}
+**Chapter**: {title}
 
-**Context**:
+**Context (what the chapter covered)**:
 {text_prompt}
 
-**FIRST, choose the task type from the chapter's subject matter**:
-- If (and ONLY if) the chapter teaches programming, software tools, or another code-based technical skill → create ONE coding task: a mini project, an implementation task, a setup/configuration task, or a debugging task.
-- For every other subject (humanities, sciences, business, language, academic skills, arts, etc.) → create ONE practical non-coding task, for example:
-  - Analyze a realistic case, document, or dataset provided inside the assignment
-  - Create a deliverable (e.g. a properly formatted reference list, an essay outline, a lesson plan, a labeled diagram, a comparison sheet)
-  - Perform a structured exercise on provided materials (e.g. "correct the errors in these 5 examples", "classify the following items and justify each")
-  - Solve realistic scenario problems step by step
-- NEVER force a coding task onto a non-technical chapter, and never invent a programming angle for a non-programming topic.
+**Design the assignment**:
+- Choose the task type from the subject: ONLY if the chapter teaches programming / software / a code-based skill -> ONE coding task (mini-project, implementation, setup, or debugging). For EVERY other subject -> ONE practical non-coding task (analyze a realistic case/dataset embedded in the assignment, produce a deliverable, correct/classify provided examples, or solve a scenario step by step). NEVER force a coding task onto a non-technical topic.
+- Exactly ONE CONCRETE task — never generic, never a template, never bracketed placeholders like [Topic] or "e.g.". Invent real specifics for THIS chapter: a real scenario, real sample materials embedded in the page, real numbers/names.
+- Present clearly: an Objective, a Scenario / your-mission, numbered Steps, the materials to work on (embedded in the page), and the Deliverable + acceptance criteria. Doable using only what this chapter covered.
 
-**Content requirements**:
-- Do NOT create simple "what is X?" or short-answer conceptual questions.
-<<<<<<< Updated upstream
-- Exactly ONE task, with: a clear title, brief context, concrete instructions, the materials to work on (embed them in the assignment — e.g. the sample text, data, or starter code), and the expected outcome or acceptance criteria.
-- The task must be doable using ONLY what this chapter covered.
+**HTML & design (CRITICAL)**:
+- Return a SINGLE full document: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>...ALL your CSS...</style></head><body>...</body></html>`. Put ALL styling in one inline `<style>` — cohesive palette, strong typography, cards/sections, generous spacing, dark text on light surfaces, strong contrast, responsive.
 
-**Output format (STRICT — this HTML is parsed by a block editor)**:
-- HTML only. No markdown syntax anywhere, no commentary outside the HTML.
-- The content MUST start with the main heading `<h1>Assignment</h1>`.
-- Use `<h2>` for the task title, `<p>` for instructions, `<ul>`/`<ol>` for steps and criteria, `<blockquote>` for provided materials or examples.
+{_DESIGN_SAFETY_RULES}
+- Code (ONLY when the task is a coding task): `<pre data-language="python"><code class="language-python">...</code></pre>` (correct language); escape & as &amp;, < as &lt;, > as &gt;; preserve real indentation; starter code complete and valid with a clear `# TODO: implement this` for student sections.
 
-**Code formatting (ONLY when the task is a coding task)**:
-- Emit code EXACTLY as: `<pre data-language="python"><code class="language-python">...code...</code></pre>` (use the correct language name).
-- Inside code, escape `&` as `&amp;`, `<` as `&lt;`, `>` as `&gt;`.
-- Preserve correct indentation with spaces, exactly as in an IDE; never flatten or minify.
-- Include ALL necessary imports; starter code must be syntactically valid — mark student sections with a clear `# TODO: implement this` comment.
-=======
-- **Adaptive Assignment Type** (Select the appropriate type based on the topic/subject):
-  - **For Coding / Programming / IT topics**: Create a hands-on coding task (e.g., write a function/script to solve a problem, debug existing code, set up a development environment, or complete a mini-project).
-  - **For Non-Coding topics (e.g., Biology, Chemistry, Literature, History, Business)**: Create a hands-on practical or analytical task relevant to the subject (e.g., design an experiment, analyze a case study, interpret a data set, label/explain a biological diagram or process, or draft a field-specific report/proposal). Do NOT ask the student to write code or scripts.
-- Include exactly ONE task per chapter (one mini-project, experiment design, case study, or implementation task—not multiple).
-- The single task should have: clear title, brief context, concrete instructions, and expected outcome or acceptance criteria.
-- Use proper formatting: use code blocks for programming tasks, or structured lists/paragraphs for non-programming tasks.
-
-**Output format**:
-- HTML only.
-- **Heading Rule**: The content MUST start with the main heading `<h1>Assignment</h1>`.
-- Use <h2> for the single task title, <p> for instructions, <pre><code class="language-xxx"> for code snippets or starter code (if coding-related).
-- Structure: Main heading ("Assignment"), task title, short introduction paragraph, then one section for the single homework task.
-
-**Code/Data Formatting (CRITICAL)**:
-- If code or structured data is included inside <pre><code>, it MUST have correct indentation — use spaces (not tabs) exactly as it would appear in an IDE/editor.
-- Do NOT flatten or minify the content.
->>>>>>> Stashed changes
-
-**Important**: Return ONLY the HTML content. Start with <h1>Assignment</h1>."""
+**Important**: Return ONLY the raw HTML document. No markdown, no ``` fences, no commentary. Start with `<!DOCTYPE html>`."""
 
     @staticmethod
     def build_solution_prompt(text_prompt: str, title: str, homework_content: str | None = None, language: str = "English") -> str:
-        """
-        Build prompt for solution slides. For the homework: provide HINT first, then Solution.
-        If homework_content is provided, the solution must match this exact homework task.
-        """
+        """Solution slide as a creative, self-contained HTML document: HINT first,
+        then the full worked SOLUTION for the previous slide's assignment."""
         if homework_content:
-            context_block = f"""**The exact homework task from the previous slide (you MUST solve this and only this):**
+            context_block = f"""**The EXACT assignment from the previous slide (solve THIS, and only this)**:
 {homework_content}
 
-**Chapter context** (for reference): {text_prompt}
-"""
+**Chapter context** (for reference): {text_prompt}"""
         else:
-            context_block = f"""**Context** (homework was based on this):
-{text_prompt}
-"""
-        return f"""**Task**: Generate the SOLUTION for the homework from the previous slide. The solution MUST have two parts: (1) HINT first, (2) Solution after.
+            context_block = f"""**Context** (the assignment was based on this): {text_prompt}"""
+        return f"""You are a world-class instructional designer AND front-end designer. Produce ONE complete, self-contained, visually polished HTML document containing the SOLUTION to the previous slide's assignment. It renders inside a sandboxed iframe at full height with NO internal scroll.
 
-**Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
+**Language**: Write ALL student-facing content in {language}. Do NOT use English if a different language is specified.
 
-**Topic / Chapter**: {title}
+**Chapter**: {title}
 
 {context_block}
 
-**Structure** (exactly one homework task per chapter):
-1. **Hint** (first):
-   - One or more hints that guide the student without giving the full answer (e.g. "Start by identifying the author and year.", "Check the order of arguments in the API.")
-   - Keep hints short and actionable.
-2. **Solution** (after the hint):
-<<<<<<< Updated upstream
-   - Full, correct solution matching the task type: complete code (ONLY if the homework was a coding task), a complete worked deliverable (for creation/analysis tasks), or full step-by-step working (for exercises and scenario problems).
-   - For non-coding tasks show the finished result the student should have produced (e.g. the corrected examples, the completed reference list, the full analysis) — not just a description of it.
-   - For coding or setup tasks, include any necessary files/commands and expected output or verification steps.
-=======
-   - Full, correct solution: complete code (if coding), step-by-step commands (if setup), or full explanation (if implementation/case study/experiment).
-   - Code must be complete, runnable, and formatted in code blocks (if coding-related).
-   - For mini projects or setup tasks, include any necessary files/commands and expected output or verification steps.
->>>>>>> Stashed changes
+**Content — two clearly separated sections**:
+1. **Hint** (first): a few short, actionable hints that guide the student without giving the full answer away.
+2. **Solution** (after): the full, correct, CONCRETE solution to THAT exact task — complete runnable code (only if it was a coding task), or the finished deliverable / full step-by-step working for non-coding tasks (show the actual finished result the student should produce, not a description of it). No placeholders like `pass` or `...`.
 
-**Output format (STRICT — this HTML is parsed by a block editor)**:
-- HTML only. No markdown syntax anywhere, no commentary outside the HTML.
-- The content MUST start with the main heading `<h1>Assignment Solutions</h1>`.
-- Use exactly two subsection headings: "Hint" (first), then "Solution" (second). Do not use "Exact solution" or "Exact Solution"—use "Solution" only.
-<<<<<<< Updated upstream
-- Use `<ol>` or `<p>` for step-by-step working, `<blockquote>` for the worked deliverable where it reads better.
+**HTML & design (CRITICAL)**:
+- Return a SINGLE full document: `<!DOCTYPE html><html><head>...<style>...ALL your CSS...</style></head><body>...</body></html>`. All CSS inline — cohesive palette, strong typography, cards/sections, dark text on light surfaces, responsive.
 
-**Code formatting (ONLY when the homework was a coding task)**:
-- Emit code EXACTLY as: `<pre data-language="python"><code class="language-python">...code...</code></pre>` (use the correct language name).
-- Inside code, escape `&` as `&amp;`, `<` as `&lt;`, `>` as `&gt;`.
-- Preserve correct indentation with spaces, exactly as in an IDE; never flatten or minify.
-- Solution code must be **complete and runnable** — all imports, a main entry point, and expected output as a comment; no `pass` or `...` placeholders.
-=======
-- Use <pre><code class="language-xxx"> for all code (if coding-related). Use <ol> or <p> for step-by-step instructions where appropriate.
+{_DESIGN_SAFETY_RULES}
+- Use exactly two section headings: "Hint" (first), then "Solution" (second) — never "Exact Solution".
+- Code (ONLY when the homework was a coding task): `<pre data-language="python"><code class="language-python">...</code></pre>`; escape & < >; preserve indentation; complete and runnable.
 
-**Code/Text Formatting (CRITICAL)**:
-- If code is included inside <pre><code>, it MUST have correct indentation — use spaces (not tabs) exactly as the code would appear in an IDE.
-- Do NOT flatten or minify the code. Solution code must be complete and runnable.
-- Do NOT use placeholder code like `pass` or `...` in the solution.
->>>>>>> Stashed changes
-
-**Important**: Return ONLY the HTML content. Always put the HINT before the Solution. Use the heading "Solution", not "Exact Solution". Start with <h1>Assignment Solutions</h1>."""
+**Important**: Return ONLY the raw HTML document. Put the HINT before the Solution. No markdown, no ``` fences, no commentary. Start with `<!DOCTYPE html>`."""
 
 
 __all__ = ["ContentGenerationPrompts"]

@@ -11,9 +11,16 @@ import {
   FilePdf,
   Paperclip,
   ArrowSquareOut,
+  ShieldCheck,
+  ArrowsClockwise,
+  SquaresFour,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import SimplePDFViewer from "@/components/common/simple-pdf-viewer";
+import {
+  DEFAULT_EXAM_EXPERIENCE,
+  type ExamExperienceSettings,
+} from "@/types/assessment-experience";
 
 interface AssessmentInstructionsProps {
   instructions: string;
@@ -21,6 +28,13 @@ interface AssessmentInstructionsProps {
   preview: boolean;
   canSwitchSections: boolean;
   assessmentInfo: Assessment;
+  /**
+   * Optional so a caller that forgets it degrades to the documented defaults
+   * instead of throwing. This is rendered inside the live exam's React tree, and
+   * an unguarded `examExperience.calculator` on `undefined` blanked a paper
+   * mid-attempt when the help dialog opened it without the prop.
+   */
+  examExperience?: ExamExperienceSettings;
 }
 
 interface InstructionAttachment {
@@ -93,27 +107,41 @@ const getAttemptInfo = (assessmentInfo: Assessment) => {
   return { used: usedAttempts, max: maxAttempts };
 };
 
-interface MetaCardProps {
-  icon: ReactNode;
+interface StatCardProps {
   label: string;
   value: string;
-  highlight?: boolean;
 }
 
-const MetaCard = ({ icon, label, value, highlight }: MetaCardProps) => (
+const StatCard = ({ label, value }: StatCardProps) => (
+  <div className="rounded-xl border border-neutral-200 bg-white px-3 py-3 sm:px-4">
+    <p className="mb-1.5 text-3xs font-bold uppercase tracking-wide text-neutral-400">
+      {label}
+    </p>
+    <p className="text-title font-bold text-neutral-900 sm:text-h3">{value}</p>
+  </div>
+);
+
+interface RuleRowProps {
+  icon: ReactNode;
+  title: string;
+  body: string;
+  isFirst?: boolean;
+}
+
+const RuleRow = ({ icon, title, body, isFirst }: RuleRowProps) => (
   <div
     className={cn(
-      "flex flex-col items-center gap-1.5 rounded-2xl border px-4 py-3 text-center",
-      highlight
-        ? "border-primary-200 bg-primary-50"
-        : "border-neutral-100 bg-white"
+      "flex gap-3.5 px-4 py-4 sm:px-5",
+      !isFirst && "border-t border-neutral-100"
     )}
   >
-    <div className="text-primary-400">{icon}</div>
-    <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-      {label}
+    <span className="grid size-8 flex-none place-items-center rounded-lg bg-neutral-100 text-neutral-600">
+      {icon}
     </span>
-    <span className="text-sm font-bold text-neutral-800">{value}</span>
+    <div className="min-w-0">
+      <p className="mb-1 text-body font-semibold text-neutral-900">{title}</p>
+      <p className="text-caption leading-relaxed text-neutral-500">{body}</p>
+    </div>
   </div>
 );
 
@@ -123,6 +151,7 @@ export const AssessmentInstructions = ({
   preview,
   canSwitchSections,
   assessmentInfo,
+  examExperience = DEFAULT_EXAM_EXPERIENCE,
 }: AssessmentInstructionsProps) => {
   const { used, max } = getAttemptInfo(assessmentInfo);
   const showAttempts =
@@ -137,70 +166,121 @@ export const AssessmentInstructions = ({
   const pdfAttachments = attachments.filter((a) => a.isPdf);
   const fileAttachments = attachments.filter((a) => !a.isPdf);
 
+  // "How this test works" is generated from the real attempt configuration and
+  // the institute's live-test settings, not authored copy — so it can never
+  // promise a learner a tool the exam shell will not actually show them.
+  const tools = [
+    examExperience.calculator.enabled &&
+      (examExperience.calculator.mode === "scientific"
+        ? "a scientific calculator"
+        : "a calculator"),
+    examExperience.scratchpad.enabled && "a scratchpad for rough work",
+  ].filter(Boolean) as string[];
+
   return (
     <div className="w-full space-y-5">
-      {/* Attempt badge */}
-      {showAttempts && (
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-600">
+      {/* Title block */}
+      <div>
+        {showAttempts && (
+          <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-2xs font-semibold text-primary-500">
             <ListChecks size={13} weight="bold" />
             Attempt {used + 1} of {max}
           </span>
-          {used > 0 && (
-            <span className="text-xs text-neutral-400">
-              ({used} previous {used === 1 ? "attempt" : "attempts"})
-            </span>
-          )}
-        </div>
-      )}
+        )}
+        <h1 className="text-h2 font-bold leading-tight text-neutral-900 sm:text-h1">
+          {assessmentInfo.name}
+        </h1>
+        <p className="mt-2 text-body text-neutral-500">
+          Read these before you begin. The timer starts the moment you enter the
+          test.
+        </p>
+      </div>
 
-      {/* Meta cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MetaCard
-          icon={<Clock size={20} weight="duotone" />}
-          label="Duration"
-          value={formatDuration(duration * 60)}
+      {/* Headline numbers. Labels are kept to one word so all three cards stay
+          the same height on a 360px phone. */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <StatCard label="Duration" value={formatDuration(duration * 60)} />
+        <StatCard label="Preview" value={preview ? "Yes" : "No"} />
+        {/* Terse on purpose — the rule row below spells out what section
+            switching actually means for this paper. */}
+        <StatCard label="Switching" value={canSwitchSections ? "Yes" : "No"} />
+      </div>
+
+      {/* How this test works */}
+      <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+        <RuleRow
+          isFirst
+          icon={<Clock size={17} weight="duotone" />}
+          title={`${formatDuration(duration * 60)} on the clock`}
+          body={
+            canSwitchSections
+              ? "You may move between sections freely until the overall timer ends."
+              : "Sections open in order. Once a section's time ends you cannot return to it."
+          }
         />
-        <MetaCard
-          icon={<Eye size={20} weight="duotone" />}
-          label="Preview"
-          value={preview ? "Yes" : "No"}
-          highlight={preview}
+        <RuleRow
+          icon={<ShieldCheck size={17} weight="duotone" />}
+          title="Stay in full screen"
+          body="The test runs in full screen. Leaving it, switching tabs, or opening another window is recorded. Three warnings will auto-submit your paper."
         />
-        <MetaCard
-          icon={<ArrowsLeftRight size={20} weight="duotone" />}
-          label="Switch Sections"
-          value={canSwitchSections ? "Yes" : "No"}
-          highlight={canSwitchSections}
+        <RuleRow
+          icon={<ArrowsClockwise size={17} weight="duotone" />}
+          title="Your answers save automatically"
+          body="Every response syncs as you go. If your connection drops, answers are held on this device and re-sent when you are back online."
         />
+        {examExperience.questionPalette.enabled && (
+          <RuleRow
+            icon={<SquaresFour size={17} weight="duotone" />}
+            title="Use the question palette"
+            body="The palette shows what is answered, skipped or marked for review. Marking a question for review still submits any answer you selected."
+          />
+        )}
+        {tools.length > 0 && (
+          <RuleRow
+            icon={<ArrowsLeftRight size={17} weight="duotone" />}
+            title="Tools you can use"
+            body={`This test gives you ${tools.join(" and ")}. Open them from the toolbar during the test.`}
+          />
+        )}
         {showAttempts && (
-          <MetaCard
-            icon={<ListChecks size={20} weight="duotone" />}
-            label="Max Attempts"
-            value={String(max)}
+          <RuleRow
+            icon={<ListChecks size={17} weight="duotone" />}
+            title={`Attempt ${used + 1} of ${max}`}
+            body={
+              used > 0
+                ? `You have already used ${used} ${used === 1 ? "attempt" : "attempts"} on this paper.`
+                : "This is your first attempt on this paper."
+            }
+          />
+        )}
+        {preview && (
+          <RuleRow
+            icon={<Eye size={17} weight="duotone" />}
+            title="Preview before you start"
+            body="You get a read-only look at the paper before the answering time begins."
           />
         )}
       </div>
 
-      {/* Instructions */}
+      {/* Institute-authored instructions */}
       {(hasInstructionText ||
         fileAttachments.length > 0 ||
         attachments.length === 0) && (
-        <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2">
-            <Info size={16} weight="duotone" className="text-primary-400" />
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-              Assessment Instructions
+            <Info size={16} weight="duotone" className="text-neutral-400" />
+            <h2 className="text-caption font-bold uppercase tracking-wide text-neutral-500">
+              Instructions from your institute
             </h2>
           </div>
           {hasInstructionText ? (
             <div
-              className="richtext-content text-sm"
+              className="richtext-content text-body text-neutral-700"
               dangerouslySetInnerHTML={{ __html: cleanHtml }}
             />
           ) : attachments.length === 0 ? (
-            <p className="text-sm text-neutral-400 italic">
-              No instructions provided for this assessment.
+            <p className="text-body italic text-neutral-400">
+              No additional instructions were provided for this assessment.
             </p>
           ) : null}
 
@@ -213,7 +293,7 @@ export const AssessmentInstructions = ({
                   href={att.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700 transition-colors hover:border-primary-200 hover:bg-primary-50"
+                  className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-body text-neutral-700 transition-colors hover:border-primary-200 hover:bg-primary-50"
                 >
                   <Paperclip
                     size={16}
@@ -236,12 +316,12 @@ export const AssessmentInstructions = ({
       {pdfAttachments.map((att) => (
         <div
           key={att.url}
-          className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-sm"
+          className="overflow-hidden rounded-2xl border border-neutral-200 bg-white"
         >
           <div className="flex items-center gap-2 border-b border-neutral-100 p-4">
             <FilePdf size={16} weight="duotone" className="text-danger-500" />
             <h2
-              className="truncate text-sm font-semibold uppercase tracking-wide text-neutral-600"
+              className="truncate text-caption font-bold uppercase tracking-wide text-neutral-500"
               title={att.fileName}
             >
               {att.fileName}

@@ -13,7 +13,7 @@ import {
     transformBatchDataEdit,
 } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { getBatchDetails } from '../-utils/helper';
-import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+import { getAssessmentJoinUrl } from '@/lib/learner-portal-url';
 import { AssessmentParticipantsList } from './AssessmentParticipantsList';
 import { AssessmentParticipantsIndividualList } from './AssessmentParticipantsIndividualList';
 
@@ -28,6 +28,11 @@ const AssessmentParticipantsTab = () => {
             instituteId: instituteDetails?.id,
             type: examType,
         })
+    );
+    // Institute's own learner domain — see @/lib/learner-portal-url.
+    const joinUrl = getAssessmentJoinUrl(
+        assessmentDetails[0]?.saved_data.assessment_url,
+        instituteDetails?.learner_portal_base_url
     );
 
     const assignedBatchDetails = getBatchDetails(
@@ -76,19 +81,14 @@ const AssessmentParticipantsTab = () => {
                         <div className="flex items-center gap-8">
                             <div className="flex items-center gap-4">
                                 <span className="rounded-md border px-3 py-2 text-sm">
-                                    {`${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}`}
+                                    {joinUrl}
                                 </span>
                                 <MyButton
                                     type="button"
                                     scale="small"
                                     buttonType="secondary"
                                     className="h-9 min-w-10"
-                                    onClick={() =>
-                                        copyToClipboard(
-                                            `${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}` ||
-                                                ''
-                                        )
-                                    }
+                                    onClick={() => copyToClipboard(joinUrl)}
                                 >
                                     <Copy size={32} />
                                 </MyButton>
@@ -100,10 +100,7 @@ const AssessmentParticipantsTab = () => {
                         <div className="flex items-center gap-8">
                             <div className="flex items-start gap-4">
                                 <QRCode
-                                    value={
-                                        `${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}` ||
-                                        ''
-                                    }
+                                    value={joinUrl}
                                     className="size-16"
                                     id={`qr-code-svg-participants`}
                                 />

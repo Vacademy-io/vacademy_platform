@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.mentorship.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -15,11 +16,15 @@ import vacademy.io.admin_core_service.features.mentorship.dto.CreateMentorReques
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorAvailabilityRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDashboardDTO;
+import vacademy.io.admin_core_service.features.mentorship.dto.MentorSessionDTOs;
 import vacademy.io.admin_core_service.features.mentorship.dto.UpdateMentorRequest;
 import vacademy.io.admin_core_service.features.mentorship.entity.Mentor;
+import vacademy.io.admin_core_service.features.mentorship.entity.MentorRequest;
 import vacademy.io.admin_core_service.features.mentorship.entity.MentorStudentAssignment;
+import vacademy.io.admin_core_service.features.mentorship.enums.MentorRequestStatus;
 import vacademy.io.admin_core_service.features.mentorship.enums.MentorStatus;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorRepository;
+import vacademy.io.admin_core_service.features.mentorship.repository.MentorRequestRepository;
 import vacademy.io.admin_core_service.features.mentorship.repository.MentorStudentAssignmentRepository;
 import vacademy.io.admin_core_service.features.audience.entity.OAuthConnectState;
 import vacademy.io.admin_core_service.features.audience.repository.OAuthConnectStateRepository;
@@ -57,6 +62,9 @@ public class MentorService {
     private final OAuthConnectStateRepository oAuthConnectStateRepository;
     private final GoogleAccountStore googleAccountStore;
     private final AuthService authService;
+    private final MentorRequestRepository mentorRequestRepository;
+    private final MentorFeedbackService mentorFeedbackService;
+    private final MentorSessionService mentorSessionService;
 
     @Transactional
     public MentorDTO create(CreateMentorRequest req, CustomUserDetails user) {
@@ -81,6 +89,9 @@ public class MentorService {
                 .profileImageFileId(req.getProfileImageFileId())
                 .bio(req.getBio())
                 .subOrgId(req.getSubOrgId())
+                .expertiseTags(joinTags(req.getExpertiseTags()))
+                .maxMentees(normalizeCapacity(req.getMaxMentees()))
+                .isDiscoverable(Boolean.TRUE.equals(req.getIsDiscoverable()))
                 .status(MentorStatus.ACTIVE.name())
                 .createdByUserId(user != null ? user.getUserId() : null)
                 .build();
@@ -97,6 +108,10 @@ public class MentorService {
         if (req.getProfileImageFileId() != null) mentor.setProfileImageFileId(req.getProfileImageFileId());
         if (req.getBio() != null) mentor.setBio(req.getBio());
         if (req.getBookingPageId() != null) mentor.setBookingPageId(req.getBookingPageId());
+        // Tags replace wholesale (an empty list clears them); capacity 0 means "no cap".
+        if (req.getExpertiseTags() != null) mentor.setExpertiseTags(joinTags(req.getExpertiseTags()));
+        if (req.getMaxMentees() != null) mentor.setMaxMentees(normalizeCapacity(req.getMaxMentees()));
+        if (req.getIsDiscoverable() != null) mentor.setIsDiscoverable(req.getIsDiscoverable());
         if (req.getStatus() != null && !req.getStatus().isBlank()
                 && !MentorStatus.DELETED.name().equalsIgnoreCase(req.getStatus())) {
             mentor.setStatus(req.getStatus().toUpperCase());
@@ -112,9 +127,11 @@ public class MentorService {
 
         Map<String, UserDTO> users = hydrate(mentors.stream().map(Mentor::getUserId).collect(Collectors.toList()));
         Map<String, Integer> counts = activeCountsByMentorId(instituteId);
+        Map<String, MentorFeedbackService.RatingSummary> ratings = ratingsFor(instituteId);
 
         return mentors.stream()
-                .map(m -> toDTO(m, counts.getOrDefault(m.getId(), 0), users.get(m.getUserId())))
+                .map(m -> withRating(toDTO(m, counts.getOrDefault(m.getId(), 0), users.get(m.getUserId())),
+                        ratings.get(m.getId())))
                 .collect(Collectors.toList());
     }
 
@@ -128,13 +145,16 @@ public class MentorService {
         Map<String, UserDTO> users = hydrate(
                 page.getContent().stream().map(Mentor::getUserId).collect(Collectors.toList()));
         Map<String, Integer> counts = activeCountsByMentorId(instituteId);
-        return page.map(m -> toDTO(m, counts.getOrDefault(m.getId(), 0), users.get(m.getUserId())));
+        Map<String, MentorFeedbackService.RatingSummary> ratings = ratingsFor(instituteId);
+        return page.map(m -> withRating(toDTO(m, counts.getOrDefault(m.getId(), 0), users.get(m.getUserId())),
+                ratings.get(m.getId())));
     }
 
     public MentorDTO getById(String mentorId, String instituteId) {
         Mentor mentor = getActiveMentorOrThrow(mentorId, instituteId);
         int count = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
-        return toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+        return withRating(toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId())),
+                ratingsFor(instituteId).get(mentor.getId()));
     }
 
     @Transactional
@@ -147,6 +167,21 @@ public class MentorService {
                 assignmentRepository.findByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
         active.forEach(a -> a.setStatus(MentorStatus.DELETED.name()));
         if (!active.isEmpty()) assignmentRepository.saveAll(active);
+
+        // Any learner still waiting on this mentor can never be approved onto them, so
+        // release those requests instead of leaving them pending against a removed
+        // mentor. CANCELLED (not DECLINED) because this isn't a judgement on the
+        // learner — and it frees them to request someone else, since the partial
+        // unique index only blocks a second PENDING row.
+        List<MentorRequest> pending = mentorRequestRepository.findByMentorIdAndStatus(
+                mentor.getId(), MentorRequestStatus.PENDING.name());
+        if (!pending.isEmpty()) {
+            pending.forEach(r -> {
+                r.setStatus(MentorRequestStatus.CANCELLED.name());
+                r.setDecisionNote("This mentor is no longer available.");
+            });
+            mentorRequestRepository.saveAll(pending);
+        }
         // Auth MENTOR role is intentionally NOT revoked here: role removal in auth
         // is not institute-scoped, so it could strip the role in other institutes.
     }
@@ -194,9 +229,7 @@ public class MentorService {
 
     /** Mentor self-connects their OWN Google account — returns the consent URL (state carries the mentor id). */
     public Map<String, String> initiateGoogleConnect(String instituteId, CustomUserDetails user) {
-        Mentor mentor = mentorRepository
-                .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
-                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+        Mentor mentor = getMyMentorOrThrow(instituteId, user);
         OAuthConnectState state = oAuthConnectStateRepository.save(OAuthConnectState.builder()
                 .instituteId(instituteId)
                 .vendor("GOOGLE_OAUTH")
@@ -250,10 +283,30 @@ public class MentorService {
         return bookingPageService.update(mentor.getBookingPageId(), instituteId, dto, user);
     }
 
+    /**
+     * A mentor's availability for the admin detail view. Unlike the mentor's own read
+     * this never provisions a page — an admin looking at a mentor who hasn't set up
+     * booking should see "not set up", not silently create one for them.
+     */
+    public BookingPageDTO getAvailabilityForAdmin(String mentorId, String instituteId) {
+        Mentor mentor = getActiveMentorOrThrow(mentorId, instituteId);
+        if (mentor.getBookingPageId() == null || mentor.getBookingPageId().isBlank()) {
+            throw new VacademyException("This mentor hasn't set up booking yet");
+        }
+        return bookingPageService.getById(mentor.getBookingPageId(), instituteId);
+    }
+
+    /**
+     * NOT_FOUND on purpose. "You are not a mentor" is a normal answer, not a server fault — the
+     * sidebar asks this question about ordinary admins. The no-status VacademyException constructor
+     * defaults to NOT_EXTENDED (510), which made every such answer look like a server error in the
+     * client's network tab and log an ERROR with a stack trace in GlobalExceptionHandler.
+     */
     private Mentor getMyMentorOrThrow(String instituteId, CustomUserDetails user) {
         return mentorRepository
                 .findByInstituteIdAndUserIdAndStatusNot(instituteId, user.getUserId(), MentorStatus.DELETED.name())
-                .orElseThrow(() -> new VacademyException("You are not a mentor in this institute"));
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
+                        "You are not a mentor in this institute"));
     }
 
     /** Resolve the caller's mentor row, provisioning a booking page if they don't have one yet. */
@@ -293,10 +346,21 @@ public class MentorService {
                     java.sql.Timestamp.from(now.plus(java.time.Duration.ofDays(7))));
         }
 
+        // Outcome counts come from the session layer; best-effort like the other
+        // additive numbers so the dashboard can't start failing because of them.
+        MentorSessionDTOs.SessionStatsDTO sessionStats = sessionStats(instituteId);
+
         return MentorDashboardDTO.builder()
                 .totalMentors(mentors.size())
                 .totalActiveAssignments(active.size())
                 .distinctMentees(distinctMentees)
+                .pendingRequests(pendingRequestCount(instituteId))
+                .completedSessions(sessionStats.getCompleted())
+                .cancelledSessions(sessionStats.getCancelled())
+                .noShowSessions(sessionStats.getNoShow())
+                .sessionsAwaitingReview(sessionStats.getAwaitingReview())
+                .discoverableMentors((int) mentors.stream()
+                        .filter(m -> Boolean.TRUE.equals(m.getIsDiscoverable())).count())
                 .todaySessions(todaySessions)
                 .upcomingSessions(upcomingSessions)
                 .mentors(mentors)
@@ -350,6 +414,9 @@ public class MentorService {
             }
             return map;
         } catch (Exception e) {
+            // Names/emails simply go missing rather than the screen failing, so this
+            // is invisible without reporting it.
+            MentorshipErrorReporter.report(e, "hydrate-users", null);
             return Map.of();
         }
     }
@@ -370,10 +437,100 @@ public class MentorService {
                 .googleEmail(googleEmailFor(m.getGoogleAccountId()))
                 .status(m.getStatus())
                 .assignedStudentCount(assignedCount)
+                .expertiseTags(splitTags(m.getExpertiseTags()))
+                .maxMentees(m.getMaxMentees())
+                .availableSlots(availableSlots(m.getMaxMentees(), assignedCount))
+                .atCapacity(atCapacity(m.getMaxMentees(), assignedCount))
+                .isDiscoverable(Boolean.TRUE.equals(m.getIsDiscoverable()))
                 .name(u != null ? u.getFullName() : null)
                 .email(u != null ? u.getEmail() : null)
                 .mobileNumber(u != null ? u.getMobileNumber() : null)
                 .profilePicFileId(u != null ? u.getProfilePicFileId() : null)
                 .build();
+    }
+
+    /** Session outcome counts, defaulting to zeros if the session layer fails. */
+    private MentorSessionDTOs.SessionStatsDTO sessionStats(String instituteId) {
+        try {
+            return mentorSessionService.stats(instituteId);
+        } catch (Exception e) {
+            return MentorSessionDTOs.SessionStatsDTO.builder()
+                    .today(0).upcoming(0).completed(0).cancelled(0).noShow(0).awaitingReview(0).build();
+        }
+    }
+
+    /**
+     * Pending mentor-request count. Best-effort for the same reason as the rating
+     * aggregate: the dashboard existed before requests did, and must not start
+     * failing because of a number that's additive to it.
+     */
+    private int pendingRequestCount(String instituteId) {
+        try {
+            return (int) mentorRequestRepository.countByInstituteIdAndStatus(
+                    instituteId, MentorRequestStatus.PENDING.name());
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Per-mentor rating aggregate, resolved once per read. Best-effort: mentorship
+     * management must not break because the feedback aggregate failed.
+     */
+    private Map<String, MentorFeedbackService.RatingSummary> ratingsFor(String instituteId) {
+        try {
+            return mentorFeedbackService.summaryByMentor(instituteId);
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    /** Attach a mentor's derived rating; leaves both fields null when unrated. */
+    private static MentorDTO withRating(MentorDTO dto, MentorFeedbackService.RatingSummary summary) {
+        if (summary != null) {
+            dto.setAverageRating(summary.average());
+            dto.setRatingCount(summary.count());
+        }
+        return dto;
+    }
+
+    // ---------- expertise + capacity helpers (shared with assignment/request services) ----------
+
+    /** Explode the comma-separated column into trimmed, non-blank tags. Never null. */
+    static List<String> splitTags(String tags) {
+        if (tags == null || tags.isBlank()) return List.of();
+        return java.util.Arrays.stream(tags.split(","))
+                .map(String::trim)
+                .filter(t -> !t.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    /** Collapse a tag list back to the stored form; null when empty so the column stays clean. */
+    static String joinTags(List<String> tags) {
+        if (tags == null) return null;
+        String joined = tags.stream()
+                .filter(t -> t != null && !t.isBlank())
+                .map(String::trim)
+                .distinct()
+                .collect(Collectors.joining(","));
+        return joined.isBlank() ? null : joined;
+    }
+
+    /** 0 or negative means "no cap" — stored as null so the column reads as unlimited. */
+    static Integer normalizeCapacity(Integer maxMentees) {
+        return maxMentees == null || maxMentees <= 0 ? null : maxMentees;
+    }
+
+    /** Remaining capacity, floored at 0; null when the mentor has no cap. */
+    static Integer availableSlots(Integer maxMentees, Integer assignedCount) {
+        if (maxMentees == null || maxMentees <= 0) return null;
+        return Math.max(0, maxMentees - (assignedCount == null ? 0 : assignedCount));
+    }
+
+    /** True when a mentor with a cap has already reached it. Uncapped mentors are never full. */
+    static boolean atCapacity(Integer maxMentees, Integer assignedCount) {
+        if (maxMentees == null || maxMentees <= 0) return false;
+        return (assignedCount == null ? 0 : assignedCount) >= maxMentees;
     }
 }

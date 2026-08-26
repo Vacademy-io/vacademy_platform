@@ -6,6 +6,7 @@ import {
     CourseSettingsRequest,
     CourseSettingsResponse,
     DEFAULT_COURSE_SETTINGS,
+    DEFAULT_DRIP_SCHEDULE,
 } from '@/types/course-settings';
 
 const COURSE_SETTINGS_KEY = 'COURSE_SETTING';
@@ -300,6 +301,13 @@ export const mergeWithDefaults = (settings: Partial<CourseSettingsData>): Course
             ...DEFAULT_COURSE_SETTINGS.dripConditions,
             ...settings.dripConditions,
             conditions: settings.dripConditions?.conditions || [],
+            // `=== true`, never `?? true`: an institute that has never seen
+            // this field has not opted in.
+            applyConfiguredRules: settings.dripConditions?.applyConfiguredRules === true,
+            scheduleDefaults: {
+                ...DEFAULT_DRIP_SCHEDULE,
+                ...settings.dripConditions?.scheduleDefaults,
+            },
         },
         offerPricing: {
             enabled: settings.offerPricing?.enabled ?? false,

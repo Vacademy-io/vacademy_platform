@@ -40,6 +40,46 @@ import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import VideoQuestionOverlay from "./video-question-overlay";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 
+/**
+ * Force subtitles off on a YouTube player.
+ *
+ * There is no playerVar for this: cc_load_policy only accepts 1 ("force captions
+ * ON") and its default is to follow the VIEWER's own preference — a Google
+ * account set to "always show captions", or an OS-level subtitle toggle. That is
+ * why one learner sees subtitles on a class everyone else sees clean.
+ *
+ * Three calls because no single one is reliable across player builds:
+ *   unloadModule("captions") — HTML5 player
+ *   unloadModule("cc")       — legacy player, which names the module differently
+ *   setOption("captions", "track", {}) — selects "no track"; this is the one that
+ *                              sticks when the module has already been loaded
+ *
+ * Must be re-applied when playback starts: the captions module is frequently
+ * loaded at PLAYING, after onReady has already run, which is why suppressing it
+ * only once on ready was not enough.
+ *
+ * Entirely best-effort — every call is swallowed. A learner seeing subtitles is a
+ * blemish; a thrown error here would break their class.
+ */
+const suppressCaptions = (target: unknown) => {
+  const p = target as {
+    unloadModule?: (m: string) => void;
+    setOption?: (module: string, option: string, value: unknown) => void;
+  };
+  for (const moduleName of ["captions", "cc"]) {
+    try {
+      p?.unloadModule?.(moduleName);
+    } catch {
+      /* module absent on this build */
+    }
+    try {
+      p?.setOption?.(moduleName, "track", {});
+    } catch {
+      /* option unsupported on this build */
+    }
+  }
+};
+
 // Add the YouTube PlayerState enum to avoid window.YT references
 enum PlayerState {
   UNSTARTED = -1,
@@ -186,6 +226,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Volume control state
   const [volume, setVolume] = useState(100); // 0 - 100
   const shouldAutoPlayAfterSeekRef = useRef(false);
+  /**
+   * True once the video has played to its end.
+   *
+   * playVideo() on a finished video does not resume it — it starts it over. The
+   * player has several paths that resume playback on their own (the isPlayed
+   * sync, resume-after-seek, tab-focus resume, initial autoplay), and any of them
+   * firing after the end restarts the class. That is the auto-restart: a 40-minute
+   * video in a 50-minute slot reaching its end and beginning again.
+   *
+   * Automatic resumes check this flag. Deliberate ones — the learner pressing play,
+   * or seeking somewhere — clear it, so replaying on purpose still works.
+   */
+  const hasEndedRef = useRef(false);
   // UI control states
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -835,6 +888,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           visibilityResumeTimeoutRef.current = setTimeout(async () => {
             visibilityResumeTimeoutRef.current = null;
             if (!isMountedRef.current) return;
+            if (hasEndedRef.current) return;
             const ok = await safePlayerOperation(
               () => player?.playVideo(),
               "visibilityResume"
@@ -1036,7 +1090,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       rel: 0, // Don't show related videos
       // showinfo: 0, // Hide video title and uploader
       autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
-      // cc_load_policy: 0, // Hide closed captions
+      // NOTE: there is deliberately no cc_load_policy here. The API only accepts
+      // cc_load_policy=1, which FORCES captions on; there is no value that turns
+      // them off, because the default is "whatever the viewer prefers". Captions
+      // are suppressed in onPlayerReady via unloadModule instead.
       origin: getPlayerOrigin(), // Use localhost for Electron, actual origin for web
       enablejsapi: 1, // Enable JavaScript API
       playsinline: 1, // Play inline on iOS
@@ -1082,6 +1139,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   const togglePlay = async () => {
+    // A deliberate press is a request to watch again; let it through.
+    hasEndedRef.current = false;
     setIsPlayed(true);
 
     await safePlayerOperation(async () => {
@@ -1103,6 +1162,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     playerRef.current = event.target;
     setPlayer(event.target);
     setPlayerReady(true);
+
+    suppressCaptions(event.target);
+
     try {
       const vol = await event.target.getVolume();
       setVolume(typeof vol === "number" ? vol : 100);
@@ -1139,6 +1201,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Handler for manual play button (for iOS/browsers that block autoplay)
   const handleManualPlay = async () => {
     if (!player || !playerReady) return;
+    // Deliberate, like togglePlay — replaying a finished class on purpose is fine.
+    hasEndedRef.current = false;
 
     const success = await safePlayerOperation(async () => {
       const p = playerRef.current;
@@ -1181,6 +1245,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         const success = await safePlayerOperation(async () => {
           const p = playerRef.current;
           if (!p) return;
+          if (hasEndedRef.current) return;
           try {
             await p.unMute(); // Unmute for autoplay
           } catch (e) {
@@ -1281,6 +1346,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         const p = playerRef.current;
         if (!p) return;
         if (isPlayed) {
+          // Re-runs whenever its deps change, so without this it restarts a
+          // finished class every time it fires.
+          if (hasEndedRef.current) return;
           await p.playVideo();
           startProgressTracking();
         } else {
@@ -1325,6 +1393,21 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     if (!isMountedRef.current) return;
     if (!player || !playerRef.current) return;
 
+    // Re-assert "no subtitles" the moment playback starts. YouTube commonly loads
+    // the captions module at PLAYING rather than at ready, so suppressing it only
+    // in onPlayerReady leaves captions to reappear for viewers whose account
+    // forces them on — which is exactly what was reported.
+    if (event.data === PlayerState.PLAYING) suppressCaptions(event.target);
+
+    // Hold the last frame once the class finishes rather than letting the embed
+    // roll back to the start. A learner who leaves the tab open through the tail
+    // of the slot should see a finished class, not one that quietly began again.
+    if (event.data === PlayerState.ENDED) {
+      safePlayerOperation(async () => {
+        await playerRef.current?.pauseVideo();
+      }, "holdAtEnd");
+    }
+
     // Auto-play after seek completes (event-driven approach)
     if (shouldAutoPlayAfterSeekRef.current) {
       const state = event.data;
@@ -1336,6 +1419,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         await safePlayerOperation(async () => {
           const p = playerRef.current;
           if (!p) return;
+          if (hasEndedRef.current) return;
           await p.playVideo();
           if (isMountedRef.current) setIsPlayed(true);
         }, "autoPlayAfterSeek");
@@ -1394,8 +1478,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       currentStartTimeRef.current = formatVideoTime(currentTime);
       currentStartTimeInEpochRef.current =
         convertTimeToSeconds(currentStartTimeRef.current) * 1000;
+      // Actually playing again, so it is no longer "finished".
+      hasEndedRef.current = false;
       setIsPlayed(true);
     } else if (event.data === PAUSED_STATE || event.data === ENDED_STATE) {
+      if (event.data === ENDED_STATE) hasEndedRef.current = true;
       stopTimer();
       stopProgressTracking();
       videoEndTime.current = now;
@@ -1491,14 +1578,33 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
 
     try {
-      const videoDuration = await safeGetNumber(player.getDuration());
+      // A player that has not finished loading metadata reports a duration of 0,
+      // and briefly does so right after onReady. Clamping against that turned
+      // EVERY seek into a seek to 0 — which is how a live class that had already
+      // run its course appeared to start itself over. Wait for a real duration
+      // instead of trusting the first answer.
+      let videoDuration = await safeGetNumber(player.getDuration());
+      for (let i = 0; i < 10 && !(videoDuration > 0); i++) {
+        await new Promise((r) => setTimeout(r, 300));
+        if (!isMountedRef.current) return false;
+        videoDuration = await safeGetNumber(player.getDuration());
+      }
+      if (!(videoDuration > 0)) {
+        // Still unknown. There is nothing safe to clamp against, and seeking to 0
+        // would restart the class, so leave the player where it is.
+        console.warn("Seek skipped: video duration unavailable");
+        return false;
+      }
 
       let finalSeekTime = totalSecondsToSeek;
       // Ensure timestamp is within valid range
       if (finalSeekTime <= 0) {
         finalSeekTime = 0;
       } else if (finalSeekTime >= videoDuration) {
-        finalSeekTime = videoDuration;
+        // Land just short of the end rather than exactly on it: seeking to the
+        // duration itself fires ENDED, and the replay that follows is the same
+        // restart under a different name.
+        finalSeekTime = Math.max(0, videoDuration - 1);
       }
 
       const success = await safePlayerOperation(
@@ -1532,6 +1638,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   useEffect(() => {
     if (videoId !== lastVideoIdForSeekRef.current) {
       hasPerformedInitialSeekRef.current = false;
+      // A different video is a different class — whatever ended, this has not,
+      // so it must not inherit the previous one's finished state and refuse to
+      // start. Matters where the player is reused rather than remounted.
+      hasEndedRef.current = false;
       lastVideoIdForSeekRef.current = videoId;
     }
   }, [videoId]);
@@ -1619,7 +1729,40 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         // Only sync if elapsed time is positive (class has started)
         if (elapsedSeconds > 0) {
           // Add a small delay to ensure the player iframe is fully initialized
-          setTimeout(() => {
+          setTimeout(async () => {
+            // The scheduled slot is routinely longer than the video — a 60-minute
+            // class carrying a 57-minute recording leaves three minutes where
+            // "elapsed since start" points PAST the end. Seeking there does not
+            // land at the end: YouTube treats an out-of-range seek as a seek to
+            // zero, so the class appears to restart itself just as it finishes.
+            // Past the end there is nothing left to sync to, so leave the player
+            // where it is and let it finish.
+            // Same trap as in seekToTimestamp: a duration of 0 means "not loaded
+            // yet", not "zero-length". Waiting for it is what makes the check below
+            // meaningful — reading it once let the guard skip itself and hand an
+            // out-of-range target to the seek.
+            let duration = await safeGetNumber(playerRef.current?.getDuration());
+            for (let i = 0; i < 10 && !(duration > 0); i++) {
+              await new Promise((r) => setTimeout(r, 300));
+              if (!isMountedRef.current) return;
+              duration = await safeGetNumber(playerRef.current?.getDuration());
+            }
+            if (duration > 0 && elapsedSeconds >= duration - 1) {
+              console.log(
+                `Live class is ${elapsedSeconds}s in but the video is only ${duration}s long — not seeking.`
+              );
+              // The class is over even though its slot is not. Skipping the seek
+              // alone would leave autoplay to start it from the beginning, which
+              // is the same "it started again" the learner reports — just from
+              // arriving late rather than sitting through the end. Mark it ended
+              // so nothing automatic plays it, and hold the player quiet.
+              hasEndedRef.current = true;
+              void safePlayerOperation(async () => {
+                await playerRef.current?.pauseVideo();
+              }, "classAlreadyFinished");
+              if (isMountedRef.current) setIsPlayed(false);
+              return;
+            }
             // Seek to the calculated position (force it to bypass restrictions)
             seekToTimestamp(elapsedSeconds, true);
           }, 500);

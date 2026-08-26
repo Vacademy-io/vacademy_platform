@@ -56,8 +56,21 @@ public class CacheConfiguration {
                 CaffeineCache openInstituteDetails = new CaffeineCache(
                                 "openInstituteDetails",
                                 caffeineCache2mBuilder().build());
+                // Separate slot from openInstituteDetails. The two /public/institute/v1
+                // detail endpoints return different bodies for the same instituteId, so
+                // they cannot share a (cacheName, key) pair -- see OpenInstituteController.
+                CaffeineCache openInstituteDetailsNonBatches = new CaffeineCache(
+                                "openInstituteDetailsNonBatches",
+                                caffeineCache2mBuilder().build());
                 CaffeineCache openInstituteIdOrSubdomain = new CaffeineCache(
                                 "openInstituteIdOrSubdomain",
+                                caffeineCache2mBuilder().build());
+                // Slide read-time aggregation per batch set. The dominant cost of the
+                // institute-details payload; 2m keeps a freshly published slide from
+                // being invisible for long. MUST be registered or @Cacheable on
+                // SlideService.calculateReadTimesForPackageSessions throws in the proxy.
+                CaffeineCache packageSessionReadTimes = new CaffeineCache(
+                                "packageSessionReadTimes",
                                 caffeineCache2mBuilder().build());
 
                 CaffeineCache instituteDashboard = new CaffeineCache(
@@ -182,7 +195,9 @@ public class CacheConfiguration {
                                 batchNamesByPackageSessions,
                                 instituteById,
                                 openInstituteDetails,
+                                openInstituteDetailsNonBatches,
                                 openInstituteIdOrSubdomain,
+                                packageSessionReadTimes,
                                 instituteDashboard,
                                 learnerInstituteDetails,
                                 learnerInstituteDetailsByIds,

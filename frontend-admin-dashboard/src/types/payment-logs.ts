@@ -115,9 +115,32 @@ export interface UserPlan {
 
 export interface PaymentLogEntry {
     payment_log: PaymentLog;
+    /** Null on rows that ARE an invoice rather than a payment — those have no plan. */
     user_plan: UserPlan;
-    current_payment_status: 'PAID' | 'FAILED' | 'NOT_INITIATED' | string;
+    /**
+     * PAID | FAILED | PAYMENT_PENDING | NOT_INITIATED, or CANCELLED for a voided invoice —
+     * which is shown but never counted toward collected or due.
+     */
+    current_payment_status: 'PAID' | 'FAILED' | 'NOT_INITIATED' | 'CANCELLED' | string;
     user: User;
+    /**
+     * Set only when this row IS an invoice that has been raised but never paid against (no
+     * payment log exists yet). Payment-backed rows leave this null and get their invoice from
+     * the separate bulk lookup.
+     */
+    invoice?: PaymentLogInvoiceRow | null;
+}
+
+/** The invoice carried inline on an invoice-backed row. Mirrors PaymentLogInvoiceDTO. */
+export interface PaymentLogInvoiceRow {
+    payment_log_id: string;
+    invoice_id: string;
+    invoice_number: string;
+    invoice_date: string | null;
+    status: string;
+    total_amount: number | null;
+    currency: string | null;
+    has_pdf: boolean;
 }
 
 export interface PaymentLogsResponse {

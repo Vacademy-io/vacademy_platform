@@ -875,8 +875,10 @@ const GenerateInviteLinkDialog = ({
                 restrictToSameBatch:
                     safeJsonParse(inviteLinkDetails?.web_page_meta_data_json, {})
                         ?.restrictToSameBatch || false,
-                accessDurationType:
-                    selectedPaymentPlan?.type?.toLowerCase() === 'subscription' ? 'define' : '',
+                // Always 'define'. This used to be blanked for non-subscription plans,
+                // which hid the Learner Access Duration input on edit for exactly the
+                // plan types (FREE / DONATION / CPO) that read the invite's access days.
+                accessDurationType: 'define',
                 accessDurationDays: inviteLinkDetails?.learner_access_days?.toString() || '',
                 inviteeEmails: [],
                 customHtml:
@@ -1038,9 +1040,7 @@ const GenerateInviteLinkDialog = ({
                                 handleCloseDialog={handleCloseDialog}
                             />
                             {/* Learner Access Duration Card */}
-                            {form.watch('selectedPlan')?.type === 'subscription' && (
-                                <LearnerAccessDurationCard form={form} />
-                            )}
+                            <LearnerAccessDurationCard form={form} />
 
                             {/* Availability window + unavailable message */}
                             <InviteAvailabilityCard form={form} />

@@ -57,6 +57,8 @@ export interface BbbMeetingConfig {
     webcams_only_for_moderator?: boolean;
     guest_policy?: string;
     // Lock settings — restrict students only; the host keeps full access
+    disable_mic?: boolean;
+    disable_cam?: boolean;
     disable_private_chat?: boolean;
     disable_public_chat?: boolean;
     disable_shared_notes?: boolean;
@@ -345,6 +347,8 @@ export function transformFormToDTOStep1(
         bbbMuteOnStart,
         bbbWebcamsOnlyForModerator,
         bbbGuestPolicy,
+        bbbDisableMic,
+        bbbDisableCam,
         bbbDisablePrivateChat,
         bbbDisablePublicChat,
         bbbDisableSharedNotes,
@@ -433,6 +437,8 @@ export function transformFormToDTOStep1(
             mute_on_start: bbbMuteOnStart ?? true,
             webcams_only_for_moderator: bbbWebcamsOnlyForModerator ?? false,
             guest_policy: bbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+            disable_mic: bbbDisableMic ?? false,
+            disable_cam: bbbDisableCam ?? false,
             disable_private_chat: bbbDisablePrivateChat ?? false,
             disable_public_chat: bbbDisablePublicChat ?? false,
             disable_shared_notes: bbbDisableSharedNotes ?? false,

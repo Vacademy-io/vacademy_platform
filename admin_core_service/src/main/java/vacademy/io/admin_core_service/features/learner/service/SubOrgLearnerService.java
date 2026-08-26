@@ -561,22 +561,19 @@ public class SubOrgLearnerService {
             }
         }
 
-        String invoiceId = null;
+        // Deferred to after enrollLearnerToSubOrg commits — see generateInvoiceAfterCommit.
+        // Generating inline handed the invoice's REQUIRES_NEW transaction a PaymentLog this
+        // (transactional) enrolment had not committed, so invoice_payment_log_mapping failed its
+        // FK; catching that did not clear rollbackOnly, so the whole sub-org enrolment was then
+        // discarded at commit rather than merely going without an invoice.
+        //
+        // invoiceId is consequently always null in the response now. It was already null whenever
+        // this failed — the catch left it unset — so nothing that used to be populated is lost;
+        // the invoice is still created, just after the enrolment is safely committed.
         if (request.isGenerateInvoice()) {
-            try {
-                PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
-                        .orElse(null);
-                if (persistedLog != null) {
-                    Invoice invoice = invoiceService.generateInvoice(
-                            learnerPlan, persistedLog, request.getInstituteId());
-                    if (invoice != null) invoiceId = invoice.getId();
-                }
-            } catch (Exception e) {
-                log.warn("Invoice generation failed for paymentLogId={}: {}",
-                        paymentLogId, e.getMessage());
-            }
+            invoiceService.generateInvoiceAfterCommit(paymentLogId, request.getInstituteId());
         }
-        return new ManualPaymentResult(paymentLogId, invoiceId);
+        return new ManualPaymentResult(paymentLogId, null);
     }
 
     /**

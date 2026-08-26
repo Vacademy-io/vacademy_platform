@@ -1,10 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CaretDown, CaretUp } from "@phosphor-icons/react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { QuestionHtmlContent } from "./question-html-content";
-
-const COLLAPSED_MAX_HEIGHT_PX = 180;
 
 interface QuestionPassageProps {
   /** `parent_rich_text.content` of the current question — the comprehension passage. */
@@ -15,35 +12,17 @@ interface QuestionPassageProps {
 /**
  * Comprehension passage shown above the question.
  *
- * Sibling sub-questions each carry their own copy of the same passage
- * (the backend stores `parent_rich_text` per question), so this collapses
- * on a height cap rather than a character count — truncating raw HTML by
- * length would cut tags in half and can drop an embedded <img> entirely.
+ * Collapsible as a whole rather than height-capped with a "read more": sibling
+ * sub-questions each carry their own copy of the same passage, so after the
+ * first question the learner mostly wants it out of the way — one tap should
+ * put the question back at the top of the screen, which matters most on a phone.
+ * It opens by default on every new passage.
  */
 export function QuestionPassage({ html, className }: QuestionPassageProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [isOverflowing, setIsOverflowing] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(true);
 
-  // Collapse again when moving to a question with a different passage.
   useEffect(() => {
-    setExpanded(false);
-  }, [html]);
-
-  // Only offer "Read more" when the passage actually exceeds the cap.
-  useLayoutEffect(() => {
-    const node = contentRef.current;
-    if (!node) return;
-
-    const measure = () =>
-      setIsOverflowing(node.scrollHeight > COLLAPSED_MAX_HEIGHT_PX + 8);
-
-    measure();
-
-    // Images (diagrams) load after paint and change the height, so re-measure.
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
+    setExpanded(true);
   }, [html]);
 
   if (!html || !html.trim()) return null;
@@ -51,42 +30,40 @@ export function QuestionPassage({ html, className }: QuestionPassageProps) {
   return (
     <div
       className={cn(
-        "mb-4 rounded-xl border border-primary-100 bg-primary-50 p-4",
+        "mb-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50 md:mb-5",
         className,
       )}
     >
-      <p className="mb-2 text-caption font-bold uppercase tracking-wide text-primary-500">
-        Passage
-      </p>
-
-      <div
-        ref={contentRef}
-        className={cn(
-          "overflow-hidden transition-all",
-          !expanded && "max-h-reg-180",
-        )}
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 px-4 py-3 text-start transition-colors hover:bg-neutral-100"
       >
-        {/* text-gray-800 matches the question body below; tertiary-500 is a 74%
-            lightness support tone and was unreadable on the tinted surface. */}
-        <QuestionHtmlContent
-          html={html}
-          className="text-body text-gray-800 [&_img]:mx-auto [&_img]:h-auto [&_img]:max-w-full"
-        />
-      </div>
+        <span className="text-3xs font-bold uppercase tracking-wide text-neutral-500">
+          Passage
+        </span>
+        <span className="flex-1 text-caption text-neutral-400">
+          {expanded ? "" : "Tap to read"}
+        </span>
+        {expanded ? (
+          <CaretUp size={16} className="flex-none text-neutral-400" />
+        ) : (
+          <CaretDown size={16} className="flex-none text-neutral-400" />
+        )}
+      </button>
 
-      {isOverflowing && (
-        <Button
-          variant="link"
-          className="mt-1 h-auto p-0 text-primary-500"
-          onClick={() => setExpanded((prev) => !prev)}
-        >
-          {expanded ? "Read less" : "Read more"}
-          {expanded ? (
-            <CaretUp className="ml-1 size-4" />
-          ) : (
-            <CaretDown className="ml-1 size-4" />
-          )}
-        </Button>
+      {expanded && (
+        <div className="px-4 pb-4">
+          {/* text-neutral-700 matches the question body below; a lighter support
+              tone was unreadable on the tinted surface. */}
+          {/* Tailwind's reset strips <p> margins, which ran a multi-paragraph
+              passage together into one wall of text. */}
+          <QuestionHtmlContent
+            html={html}
+            className="text-body leading-relaxed text-neutral-700 [&_img]:mx-auto [&_img]:h-auto [&_img]:max-w-full [&_p:last-child]:mb-0 [&_p]:mb-3"
+          />
+        </div>
       )}
     </div>
   );

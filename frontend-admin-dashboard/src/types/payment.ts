@@ -6,7 +6,11 @@ export interface PaymentPlanApi {
     id?: string;
     name: string;
     status: string;
-    validity_in_days: number;
+    /**
+     * Days of course access the plan grants, counted from enrollment.
+     * null = unlimited — the backend leaves expiry_date unset for these.
+     */
+    validity_in_days: number | null;
     actual_price: number;
     elevated_price: number;
     currency: string;

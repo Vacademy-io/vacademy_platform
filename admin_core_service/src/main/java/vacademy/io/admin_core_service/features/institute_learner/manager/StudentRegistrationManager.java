@@ -91,6 +91,9 @@ public class StudentRegistrationManager {
     @Autowired
     private vacademy.io.admin_core_service.features.audience.service.AudienceService audienceService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.learner_access.service.LearnerAccessService learnerAccessService;
+
     StudentRegistrationManager(InstituteCertificateController instituteCertificateController) {
         this.instituteCertificateController = instituteCertificateController;
     }
@@ -656,7 +659,26 @@ public class StudentRegistrationManager {
                 && StringUtils.hasText(details.getCommaSeparatedOrgRoles())) {
             mapping.setCommaSeparatedOrgRoles(details.getCommaSeparatedOrgRoles());
         }
-        return studentSessionRepository.save(mapping).getId();
+
+        // --- 3. Apply the new plan's access days to the base date resolved above ---
+        // Without this, baseDate was computed (STACK from the current expiry, or now)
+        // and then thrown away: a learner who re-enrolled or repurchased kept their old,
+        // often already-expired, window while createNewMapping's first-time path granted
+        // days correctly.
+        //
+        // Guarded on accessDays being present because paid enrollments arrive here as
+        // INVITED with no days yet — their real grant happens in shiftStudentBatch once
+        // payment succeeds. makeExpiryDate returns null for absent days, so an unguarded
+        // call would clear a live expiry and silently hand out unlimited access.
+        Date previousExpiry = mapping.getExpiryDate();
+        if (StringUtils.hasText(details.getAccessDays())) {
+            mapping.setExpiryDate(makeExpiryDate(baseDate, details.getAccessDays()));
+        }
+
+        StudentSessionInstituteGroupMapping saved = studentSessionRepository.save(mapping);
+        recordDetailsAccessGrant(details, saved.getId(), saved.getUserId(),
+                details.getPackageSessionId(), previousExpiry, saved.getExpiryDate());
+        return saved.getId();
     }
 
     /**
@@ -669,17 +691,25 @@ public class StudentRegistrationManager {
             Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
             InstituteStudentDetails details, EnrollmentPolicySettingsDTO policySettingsDTO) {
         UUID studentSessionId = UUID.randomUUID();
-        Date baseDate = determineBaseDate(null, activeDestinationMapping);
+        // enrolled_date and the access window must share one base, or the learner list —
+        // which derives access days as expiry_date - enrolled_date — reports a different
+        // number than the one the enrollment was created with.
+        Date enrollmentDate = details.getEnrollmentDate() == null ? new Date() : details.getEnrollmentDate();
+        Date baseDate = determineBaseDate(null, activeDestinationMapping, enrollmentDate);
+        // Computed once and shared with the audit row below: recomputing it there would
+        // let the logged window drift from the one actually written if either call site
+        // is ever changed in isolation.
+        Date expiryDate = makeExpiryDate(baseDate, details.getAccessDays());
 
         studentSessionRepository.addStudentToInstitute(
                 studentSessionId.toString(),
                 student.getUserId(),
-                details.getEnrollmentDate() == null ? new Date() : details.getEnrollmentDate(),
+                enrollmentDate,
                 details.getEnrollmentStatus(),
                 generateEnrollmentId(),
                 details.getGroupId(),
                 details.getInstituteId(),
-                makeExpiryDate(baseDate, details.getAccessDays()),
+                expiryDate,
                 details.getPackageSessionId(),
                 details.getDestinationPackageSessionId(),
                 details.getUserPlanId(),
@@ -687,13 +717,67 @@ public class StudentRegistrationManager {
                 details.getCommaSeparatedOrgRoles(),
                 details.getType());
 
+        recordDetailsAccessGrant(details, studentSessionId.toString(), student.getUserId(),
+                details.getPackageSessionId(), null, expiryDate);
+
         return studentSessionId.toString();
     }
 
+    /**
+     * Records the access window an {@code InstituteStudentDetails}-driven enrollment
+     * granted. Used by the two linkStudentToInstitute branches, which carry their access
+     * days as a string on the details object rather than resolving them from a user plan.
+     */
+    private void recordDetailsAccessGrant(InstituteStudentDetails details,
+                                          String mappingId,
+                                          String userId,
+                                          String packageSessionId,
+                                          Date previousExpiry,
+                                          Date newExpiry) {
+        Integer accessDays = null;
+        if (StringUtils.hasText(details.getAccessDays())) {
+            try {
+                accessDays = Integer.parseInt(details.getAccessDays());
+            } catch (NumberFormatException ignored) {
+                // Logged by makeExpiryDate already; the row is still worth writing.
+            }
+        }
+        learnerAccessService.recordGrant(
+                vacademy.io.admin_core_service.features.learner_access.enums
+                        .LearnerAccessSourceEnum.ENROLLMENT,
+                details.getInstituteId(),
+                userId,
+                packageSessionId,
+                mappingId,
+                previousExpiry,
+                newExpiry,
+                accessDays,
+                details.getUserPlanId(),
+                null,
+                null,
+                "Enrollment",
+                null,
+                null);
+    }
+
+    /**
+     * The date an access window should be measured from.
+     *
+     * <p>Stacking wins: if the learner already holds unexpired access to the destination
+     * (or to this session), the new days are added on top of that expiry rather than
+     * overlapping it.
+     *
+     * <p>Otherwise the window runs from {@code fallbackDate} — the enrollment date, not
+     * "now". The learner list derives a learner's access days as
+     * {@code expiry_date - enrolled_date}, so basing a backdated enrollment on now would
+     * make it report a different number than the admin typed.
+     */
     private Date determineBaseDate(
             StudentSessionInstituteGroupMapping currentMapping,
-            Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping) {
+            Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping,
+            Date fallbackDate) {
         Date now = new Date();
+        Date base = fallbackDate != null ? fallbackDate : now;
 
         if (activeDestinationMapping.isPresent()) {
             Date destExpiry = activeDestinationMapping.get().getExpiryDate();
@@ -705,10 +789,10 @@ public class StudentRegistrationManager {
         if (currentMapping != null &&
                 LearnerSessionStatusEnum.ACTIVE.name().equalsIgnoreCase(currentMapping.getStatus()) &&
                 currentMapping.getExpiryDate() != null) {
-            return currentMapping.getExpiryDate().after(now) ? currentMapping.getExpiryDate() : now;
+            return currentMapping.getExpiryDate().after(now) ? currentMapping.getExpiryDate() : base;
         }
 
-        return now;
+        return base;
     }
 
     public String shiftStudentBatch(
@@ -734,19 +818,31 @@ public class StudentRegistrationManager {
             String userId = invitedPackageSession.getUserId();
             String instituteId = invitedPackageSession.getInstitute().getId();
 
-            StudentSessionInstituteGroupMapping mappingToUse = findOrCreateMapping(
+            MappingWithPriorAccess resolved = findOrCreateMapping(
                     instituteId, userId, newStatus, invitedPackageSession, activeUserPlanId);
+            StudentSessionInstituteGroupMapping mappingToUse = resolved.mapping();
 
             markOldMappingDeleted(invitedPackageSession);
 
-            return studentSessionRepository.save(mappingToUse).getId();
+            StudentSessionInstituteGroupMapping saved = studentSessionRepository.save(mappingToUse);
+            recordEnrollmentAccessGrant(instituteId, saved, resolved.previousExpiry());
+            return saved.getId();
         } catch (Exception e) {
             e.printStackTrace();
             throw new VacademyException("Failed to link student to institute: " + e.getMessage());
         }
     }
 
-    private StudentSessionInstituteGroupMapping findOrCreateMapping(
+    /**
+     * The mapping an enrollment will be written to, paired with the expiry it carried
+     * <em>before</em> the plan's validity was applied. The caller needs both to log a
+     * truthful "extended from X to Y" — once findOrCreateMapping returns, the old value
+     * is gone.
+     */
+    private record MappingWithPriorAccess(StudentSessionInstituteGroupMapping mapping, Date previousExpiry) {
+    }
+
+    private MappingWithPriorAccess findOrCreateMapping(
             String instituteId,
             String userId,
             String newStatus,
@@ -786,11 +882,69 @@ public class StudentRegistrationManager {
         if (StringUtils.hasText(invitedPackageSession.getCommaSeparatedOrgRoles())) {
             activePackageSession.setCommaSeparatedOrgRoles(invitedPackageSession.getCommaSeparatedOrgRoles());
         }
-        Date baseDate = activePackageSession.getExpiryDate() != null ? activePackageSession.getExpiryDate()
-                : new Date();
+        Date previousExpiry = activePackageSession.getExpiryDate();
+        Date baseDate = previousExpiry != null ? previousExpiry : new Date();
         activePackageSession
                 .setExpiryDate(calculateNewExpiryDate(baseDate, effectiveUserPlanId, null));
-        return activePackageSession;
+        return new MappingWithPriorAccess(activePackageSession, previousExpiry);
+    }
+
+
+    /**
+     * Writes the access-history row behind an enrollment, so a learner's access timeline
+     * begins with "granted 365 days by the Annual plan" instead of starting at whatever
+     * an admin later changed by hand.
+     *
+     * <p>Resolves provenance (which plan or invite supplied the days) from the user plan
+     * the mapping now points at — the same source
+     * {@link #getValidityDaysFromUserPlan(String)} reads the days from, so the logged
+     * figure and the applied figure can never disagree.
+     */
+    private void recordEnrollmentAccessGrant(String instituteId,
+                                             StudentSessionInstituteGroupMapping mapping,
+                                             Date previousExpiry) {
+        try {
+            String userPlanId = mapping.getUserPlanId();
+            Integer accessDays = getValidityDaysFromUserPlan(userPlanId);
+
+            String paymentPlanId = null;
+            String enrollInviteId = null;
+            String planName = null;
+            if (StringUtils.hasText(userPlanId)) {
+                UserPlan userPlan = userPlanService.findById(userPlanId);
+                if (userPlan != null) {
+                    if (userPlan.getPaymentPlan() != null) {
+                        paymentPlanId = userPlan.getPaymentPlan().getId();
+                        planName = userPlan.getPaymentPlan().getName();
+                    }
+                    if (userPlan.getEnrollInvite() != null) {
+                        enrollInviteId = userPlan.getEnrollInvite().getId();
+                        if (planName == null) {
+                            planName = userPlan.getEnrollInvite().getName();
+                        }
+                    }
+                }
+            }
+
+            learnerAccessService.recordGrant(
+                    vacademy.io.admin_core_service.features.learner_access.enums
+                            .LearnerAccessSourceEnum.ENROLLMENT,
+                    instituteId,
+                    mapping,
+                    previousExpiry,
+                    accessDays,
+                    userPlanId,
+                    paymentPlanId,
+                    enrollInviteId,
+                    StringUtils.hasText(planName) ? "Enrolled via " + planName : "Enrollment",
+                    null,
+                    null);
+        } catch (Exception e) {
+            // The enrollment is the thing that matters; a missing history row must never
+            // undo it.
+            log.warn("Could not record access grant for user {} in institute {}: {}",
+                    mapping != null ? mapping.getUserId() : null, instituteId, e.getMessage());
+        }
     }
 
     /**

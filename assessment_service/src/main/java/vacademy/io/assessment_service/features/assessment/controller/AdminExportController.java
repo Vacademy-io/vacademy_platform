@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentUserFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
+import vacademy.io.assessment_service.features.assessment.dto.export.ResultExportColumnsDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.zip.*;
 import vacademy.io.assessment_service.features.assessment.manager.AdminExportManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -51,6 +52,16 @@ public class AdminExportController {
                                                    @RequestParam(name = "assessmentId") String assessmentId,
                                                    @RequestBody AssessmentUserFilter filter) {
         return adminExportManager.getRegisteredCsvExport(user, instituteId, assessmentId, filter);
+    }
+
+    @GetMapping("/csv/registered-participants/columns")
+    public ResponseEntity<ResultExportColumnsDto> getRegisteredCsvColumns(@RequestAttribute("user") CustomUserDetails user,
+                                                                          @RequestParam(name = "instituteId") String instituteId,
+                                                                          @RequestParam(name = "assessmentId") String assessmentId,
+                                                                          // Which sheet the dialog is about to export. Defaults false so
+                                                                          // existing callers keep getting the result columns.
+                                                                          @RequestParam(name = "notAttempted", required = false, defaultValue = "false") boolean notAttempted) {
+        return adminExportManager.getResultExportColumns(user, instituteId, assessmentId, notAttempted);
     }
 
     @PostMapping("/pdf/registered-participants")

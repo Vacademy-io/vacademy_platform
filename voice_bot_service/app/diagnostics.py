@@ -115,6 +115,18 @@ _MAX_DELETED_ANSWERS = 20
 _MAX_LOST_FRAGMENTS = 5
 
 
+def _hit_rate(hits, misses):
+    """Fraction of sentences served from cache. None when not measured, and None
+    (not 0.0) when nothing was attempted — a rate over zero attempts is not a
+    zero rate, it is no reading at all."""
+    if hits is None or misses is None:
+        return None
+    total = hits + misses
+    if total <= 0:
+        return None
+    return round(hits / total, 4)
+
+
 def _p(values: List[float], pct: float) -> Optional[float]:
     """Nearest-rank percentile; None for an empty sample."""
     if not values:
@@ -239,6 +251,17 @@ class CallDiagnostics:
     tts_audio_secs: float = 0.0
     tts_chars: int = 0
 
+    # ── speech cache ──
+    # None = the cache was OFF or unreadable, i.e. NOT MEASURED. It must never
+    # render as 0: "0 hits" is a claim that we looked and found nothing, and a
+    # fleet chart that cannot tell those apart will report a broken cache as a
+    # working one with nothing to serve. Both counters arm together on the first
+    # observation, so "hits 0, misses 12" is a real, honest reading.
+    tts_cache_hits: Optional[int] = None
+    tts_cache_misses: Optional[int] = None
+    tts_cache_chars_saved: int = 0
+    tts_cache_secs_saved: float = 0.0
+
     # ── infrastructure ──
     stt_reconnects: int = 0
     hearing_failures: int = 0     # times we gave up and closed out honestly
@@ -286,6 +309,28 @@ class CallDiagnostics:
                 self.tts_vendor_credits = (self.tts_vendor_credits or 0.0) + float(credits)
             self.tts_audio_secs += float(audio_secs or 0.0)
             self.tts_chars += int(chars or 0)
+        except Exception:
+            pass
+
+    def _arm_cache_counters(self) -> None:
+        if self.tts_cache_hits is None:
+            self.tts_cache_hits = 0
+            self.tts_cache_misses = 0
+
+    def note_tts_cache_hit(self, duration_ms: int, chars: int) -> None:
+        """A sentence served from cache: the vendor was never called."""
+        try:
+            self._arm_cache_counters()
+            self.tts_cache_hits += 1
+            self.tts_cache_chars_saved += int(chars or 0)
+            self.tts_cache_secs_saved += float(duration_ms or 0) / 1000.0
+        except Exception:
+            pass
+
+    def note_tts_cache_miss(self, chars: int) -> None:
+        try:
+            self._arm_cache_counters()
+            self.tts_cache_misses += 1
         except Exception:
             pass
 
@@ -758,6 +803,14 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
                 "meteredRequests": d.tts_meter_frames or None,
                 "audioSecs": round(d.tts_audio_secs, 2) if d.tts_audio_secs else None,
                 "chars": d.tts_chars or None,
+                # null (not 0) when the cache was off — see the field comments.
+                "cacheHits": d.tts_cache_hits,
+                "cacheMisses": d.tts_cache_misses,
+                "cacheCharsSaved": (d.tts_cache_chars_saved
+                                    if d.tts_cache_hits is not None else None),
+                "cacheSecsSaved": (round(d.tts_cache_secs_saved, 2)
+                                   if d.tts_cache_hits is not None else None),
+                "cacheHitRate": _hit_rate(d.tts_cache_hits, d.tts_cache_misses),
             },
             "playout": {
                 "repliesGenerated": d.replies_generated,

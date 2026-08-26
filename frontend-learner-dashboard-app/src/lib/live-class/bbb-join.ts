@@ -39,6 +39,18 @@ export async function openBbbJoinForLearner(
       { params: { scheduleId, role } }
     );
 
+    // The host starts the class. Until they do, the backend returns NOT_STARTED
+    // rather than creating a room — otherwise whichever learner arrived first
+    // would open a meeting the teacher is not in. Distinct from "ended" so the
+    // learner is told to wait instead of being told the class is over.
+    if (response.data?.status === "NOT_STARTED") {
+      toast.info(
+        response.data?.message ||
+          "Your teacher hasn't started this class yet. Please wait a moment and try again."
+      );
+      return;
+    }
+
     // Backend returns { error: "Meeting has ended" } if the meeting was force-ended
     if (response.data?.error) {
       toast.error("This class has ended.");

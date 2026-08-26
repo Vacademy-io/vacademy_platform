@@ -9,6 +9,7 @@ import lombok.Setter;
 import lombok.ToString;
 import vacademy.io.admin_core_service.features.slide.dto.VideoSlideDTO;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
+import vacademy.io.admin_core_service.features.slide.enums.VideoSlideSourceType;
 
 import java.sql.Timestamp;
 
@@ -75,7 +76,13 @@ public class VideoSlide {
         }
         this.embeddedType = addVideoSlideDTO.getEmbeddedType();
         this.embeddedData = addVideoSlideDTO.getEmbeddedData();
-        this.setSourceType(addVideoSlideDTO.getSourceType());
+        // Inferred from the URL when the client omits it, so a Vimeo link can
+        // never be stored without a source type and fall through to the
+        // YouTube player.
+        this.setSourceType(VideoSlideSourceType.resolveSourceType(
+                addVideoSlideDTO.getSourceType(),
+                addVideoSlideDTO.getUrl(),
+                addVideoSlideDTO.getPublishedUrl()));
     }
 
     public VideoSlide() {

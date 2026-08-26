@@ -1,6 +1,16 @@
 import { jsPDF } from 'jspdf';
 import type { ImageTemplate, FieldMapping } from '@/types/certificate/certificate-types';
 import { resolveCertificateCodePlaceholder } from './certificate-code-placeholders';
+import {
+    CUSTOM_FIELD_PREFIX,
+    normalizeCustomFieldKey,
+    TEXT_LINE_HEIGHT,
+} from './serialize-image-template-to-html';
+import type { CertificateCustomField } from '../-services/setting-services';
+// Text-fitting constants and the line budget come from the one module that
+// mirrors CertificateTextFitService. Re-declaring them here is how the editor,
+// the downloaded preview and the issued certificate drift apart.
+import { FONT_STEP, linesAllowed, MIN_FONT_PX, MIN_FONT_SCALE } from './certificate-text-fit';
 
 /**
  * Sample values used when generating the downloadable template preview PDF.
@@ -23,6 +33,8 @@ const SAMPLE_VALUES: Record<string, string> = {
     email: 'student@example.com',
     mobile_number: '+1 555 0100',
     user_id: 'PREVIEW_USER',
+    // Same shape as a real short code, so a box sized here fits the real one.
+    certificate_short_code: 'A1B2C3D4E5',
     theme_color: '#1e4fa1',
     institute_logo: '',
     signature: '',
@@ -36,6 +48,81 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
         img.onerror = () => reject(new Error('Failed to load image'));
         img.src = src;
     });
+
+/**
+ * Greedy word-wrap into the lines the box can hold, shrinking the font until the
+ * value fits — the canvas equivalent of what the issued PDF does (box-height
+ * clamp in CSS, font shrink in CertificateTextFitService).
+ *
+ * Kept in step with the server deliberately: an admin sizes a field against this
+ * preview, so a preview that wraps differently from the certificate is worse
+ * than no preview at all.
+ */
+const fitTextToBox = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+    maxHeight: number,
+    fontSize: number,
+    setFont: (size: number) => void
+): { lines: string[]; fontSize: number } => {
+    const floor = Math.max(MIN_FONT_PX, fontSize * MIN_FONT_SCALE);
+    let size = fontSize;
+
+    for (;;) {
+        setFont(size);
+        const lines = wrapText(ctx, text, maxWidth);
+        const budget = linesAllowed(maxHeight, size);
+        if (lines.length <= budget || size <= floor) {
+            // At the floor the box wins and the rest is clipped, exactly as the
+            // CSS `max-height` does on the issued certificate.
+            return { lines: lines.slice(0, budget), fontSize: size };
+        }
+        size = Math.max(floor, size * FONT_STEP);
+    }
+};
+
+/** Greedy line breaking, breaking mid-word only when a word exceeds the line. */
+const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+    const lines: string[] = [];
+    let current = '';
+
+    const pushCurrent = () => {
+        if (current) lines.push(current);
+        current = '';
+    };
+
+    for (const word of text.trim().split(/\s+/)) {
+        if (!word) continue;
+
+        if (ctx.measureText(word).width > maxWidth) {
+            // No space to wrap at — break the word itself, matching the
+            // `overflow-wrap:break-word` the serialized template emits.
+            pushCurrent();
+            let chunk = '';
+            for (const char of word) {
+                if (chunk && ctx.measureText(chunk + char).width > maxWidth) {
+                    lines.push(chunk);
+                    chunk = char;
+                } else {
+                    chunk += char;
+                }
+            }
+            current = chunk;
+            continue;
+        }
+
+        const candidate = current ? `${current} ${word}` : word;
+        if (ctx.measureText(candidate).width <= maxWidth) {
+            current = candidate;
+        } else {
+            pushCurrent();
+            current = word;
+        }
+    }
+    pushCurrent();
+    return lines.length ? lines : [''];
+};
 
 const drawField = (
     ctx: CanvasRenderingContext2D,
@@ -57,16 +144,39 @@ const drawField = (
     }
 
     ctx.fillStyle = fontColor || '#000000';
-    ctx.font = `${fontWeight === 'bold' ? 'bold ' : ''}${fontSize}px ${fontFamily}`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = alignment === 'center' ? 'center' : alignment === 'right' ? 'right' : 'left';
 
-    const textY = y + height / 2;
+    const setFont = (size: number) => {
+        ctx.font = `${fontWeight === 'bold' ? 'bold ' : ''}${size}px ${fontFamily}`;
+    };
+
+    // Mirrors the issued PDF: wrap to at most two lines, shrinking the font
+    // until the value fits. The previous `fillText(..., maxWidth)` horizontally
+    // *condensed* a long name into the box instead of wrapping it, so the
+    // downloaded preview showed a squashed name the real certificate never had.
+    const contentWidth = Math.max(1, width - padding * 2);
+    const contentHeight = Math.max(1, height - padding * 2);
+    const { lines, fontSize: fittedSize } = fitTextToBox(
+        ctx,
+        value,
+        contentWidth,
+        contentHeight,
+        fontSize,
+        setFont
+    );
+    setFont(fittedSize);
+
     let textX = x + padding;
     if (alignment === 'center') textX = x + width / 2;
     if (alignment === 'right') textX = x + width - padding;
 
-    ctx.fillText(value, textX, textY, width - padding * 2);
+    // Centre the block of lines on the box, as the flex-centred field does.
+    const lineHeight = fittedSize * TEXT_LINE_HEIGHT;
+    const firstLineY = y + height / 2 - ((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, index) => {
+        ctx.fillText(line, textX, firstLineY + index * lineHeight);
+    });
 };
 
 /**
@@ -107,6 +217,12 @@ interface DownloadOptions {
     customImages?: Array<{ id: string; dataUrl: string }>;
     instituteLogoUrl?: string;
     signatureUrl?: string;
+    /**
+     * The institute's own fields. Without these, a downloaded preview drew a
+     * custom field's *label* where its value will print — so an admin sized the
+     * box against the wrong text.
+     */
+    customFields?: CertificateCustomField[];
 }
 
 const SYSTEM_IMAGE_FIELDS = new Set([
@@ -135,6 +251,18 @@ export async function downloadCertificateTemplatePreview(
     canvas.height = template.height;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Could not get canvas context');
+
+    // Admin-defined fields, keyed the way they appear on the canvas. A
+    // learner-sourced field has no value yet, so its fallback is what prints.
+    const customFieldSamples: Record<string, string> = {};
+    for (const field of opts.customFields ?? []) {
+        const key = normalizeCustomFieldKey(field.key || '');
+        if (!key) continue;
+        customFieldSamples[`${CUSTOM_FIELD_PREFIX}${key}`] =
+            field.valueType === 'CUSTOM_FIELD'
+                ? field.fallbackValue || 'Sample value'
+                : (field.value ?? '');
+    }
 
     const bg = await loadImage(template.imageDataUrl);
     ctx.drawImage(bg, 0, 0, template.width, template.height);
@@ -183,6 +311,7 @@ export async function downloadCertificateTemplatePreview(
             .replace(/\}\}$/, '')
             .toLowerCase();
         const sample =
+            customFieldSamples[f.fieldName] ??
             SAMPLE_VALUES[f.fieldName] ??
             SAMPLE_VALUES[normalized] ??
             f.displayName ??

@@ -16,6 +16,7 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
 import java.sql.Date;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -80,9 +81,19 @@ public class StudentFeePaymentGenerationService {
                     payment.setUserPlanId(userPlanId);
                     payment.setCpoId(cpoId);
                     payment.setAsvId(afv.getId());
-                    payment.setIId(afv.getId()); // No installment; use AFV ID as sentinel
+                    // No AftInstallment exists for a one-off fee. i_id is a FK to
+                    // aft_installments (fk_sfp_installment), so the previous "use the AFV id
+                    // as a sentinel" trick could only ever violate it — and since Hibernate
+                    // batches these inserts, that one row aborted the entire batch and took
+                    // the sibling installment rows down with it. Leave it null (V452 drops
+                    // the NOT NULL); asv_id already carries the link to the fee value.
+                    payment.setIId(null);
                     payment.setAmountExpected(afv.getAmount());
                     payment.setAmountPaid(BigDecimal.ZERO);
+                    // A schedule-less fee is payable from enrollment day. Without a due date
+                    // it never enters the "dues now" calculation, so the side-view offers
+                    // nothing to collect against and an admin can't record a payment for it.
+                    payment.setDueDate(Date.valueOf(LocalDate.now()));
                     payment.setStatus("PENDING");
                     payment.setInstituteId(instituteId);
 

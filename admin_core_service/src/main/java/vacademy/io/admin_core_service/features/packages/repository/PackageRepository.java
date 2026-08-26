@@ -1502,6 +1502,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                     p.course_depth, p.course_html_description, p.package_type, p.created_at, p.created_by_user_id,
                     ps_read_time.total_read_time_minutes,
+                    ps.id, ps.session_id,
                     s.id, s.session_name
             """, countQuery = """
                 SELECT COUNT(DISTINCT ps.id)
@@ -2001,7 +2002,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_html_description AS courseHtmlDescriptionHtml,
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
-                0 AS percentageCompleted,
+                COALESCE(MAX(lo.total_progress), 0) AS percentageCompleted,
                 0 AS readTimeInMinutes,
                 0.0 AS rating,
                 dest_ps.id AS packageSessionId,
@@ -2011,13 +2012,25 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ARRAY[CAST(dest_l.id AS text)] AS levelIds,
                 0 AS validityInDays
             FROM student_session_institute_group_mapping ssigm
-            JOIN package_session dest_ps ON dest_ps.id = ssigm.destination_package_session_id
+            JOIN package_session dest_ps
+                ON dest_ps.id = COALESCE(ssigm.destination_package_session_id, ssigm.package_session_id)
             JOIN level dest_l ON dest_l.id = dest_ps.level_id
             JOIN package p ON p.id = dest_ps.package_id
             JOIN package_institute pi ON pi.package_id = p.id
+            LEFT JOIN (
+                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                FROM learner_operation
+                WHERE source = 'PACKAGE_SESSION'
+                  AND (:userId IS NULL OR user_id = :userId)
+                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true
+                       OR operation IN (:learnerOperations))
+                GROUP BY source_id
+            ) lo ON lo.source_id = dest_ps.id
             WHERE ssigm.user_id = :userId
-                AND ssigm.status = 'INVITED'
-                AND ssigm.destination_package_session_id IS NOT NULL
+                AND (
+                    (ssigm.status = 'INVITED' AND ssigm.destination_package_session_id IS NOT NULL)
+                    OR ssigm.status = 'INACTIVE'
+                )
                 AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR dest_l.id IN (:levelIds))
             GROUP BY
@@ -2032,13 +2045,16 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 SELECT COUNT(*) FROM (
                     SELECT dest_ps.id
                     FROM student_session_institute_group_mapping ssigm
-                    JOIN package_session dest_ps ON dest_ps.id = ssigm.destination_package_session_id
+                    JOIN package_session dest_ps
+                        ON dest_ps.id = COALESCE(ssigm.destination_package_session_id, ssigm.package_session_id)
                     JOIN level dest_l ON dest_l.id = dest_ps.level_id
                     JOIN package p ON p.id = dest_ps.package_id
                     JOIN package_institute pi ON pi.package_id = p.id
                     WHERE ssigm.user_id = :userId
-                        AND ssigm.status = 'INVITED'
-                        AND ssigm.destination_package_session_id IS NOT NULL
+                        AND (
+                            (ssigm.status = 'INVITED' AND ssigm.destination_package_session_id IS NOT NULL)
+                            OR ssigm.status = 'INACTIVE'
+                        )
                         AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                         AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR dest_l.id IN (:levelIds))
                     GROUP BY dest_ps.id
@@ -2048,6 +2064,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("userId") String userId,
             @Param("instituteId") String instituteId,
             @Param("levelIds") List<String> levelIds,
+            @Param("learnerOperations") List<String> learnerOperations,
             Pageable pageable);
 
     @Query(value = """

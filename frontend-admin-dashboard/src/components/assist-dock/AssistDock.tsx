@@ -26,7 +26,7 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { useSupportConfig } from '@/services/support';
-import { useRoadmap } from '@/services/roadmap';
+import { useRoadmap, useRoadmapMeta } from '@/services/roadmap';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useAssistDock } from './store';
 import { tutorialsForRoute } from './tutorials';
@@ -70,7 +70,10 @@ export function AssistDock() {
     const setMinimized = useAssistDock((s) => s.setMinimized);
     // Non-admin roles get a 403 here (retry disabled on the hook); the badge is simply omitted then.
     const supportConfig = useSupportConfig();
-    const roadmap = useRoadmap();
+    // The dock mounts on every admin page, so it may only fetch the timestamp here.
+    // The ~1MB body is deferred until the panel is actually opened.
+    const roadmapMeta = useRoadmapMeta();
+    const roadmap = useRoadmap(panel === 'roadmap');
     const [roadmapSeenAt, setRoadmapSeenAt] = useState<string | null>(readRoadmapSeenAt);
 
     const token = getTokenFromCookie(TokenKey.accessToken);
@@ -120,18 +123,19 @@ export function AssistDock() {
     if (!isAuthed || onPublicRoute || !showDock) return null;
 
     const tutorials = tutorialsForRoute(pathname, search?.selectedTab);
-    const hasNewRoadmap = !!roadmap.data?.updatedAt && roadmap.data.updatedAt !== roadmapSeenAt;
+    const hasNewRoadmap =
+        !!roadmapMeta.data?.updatedAt && roadmapMeta.data.updatedAt !== roadmapSeenAt;
     const totalBadge = tutorials.length + (supportConfig.data?.openTicketCount ?? 0);
 
     const openRoadmap = () => {
         togglePanel('roadmap');
-        if (roadmap.data?.updatedAt) {
+        if (roadmapMeta.data?.updatedAt) {
             try {
-                localStorage.setItem(ROADMAP_SEEN_KEY, roadmap.data.updatedAt);
+                localStorage.setItem(ROADMAP_SEEN_KEY, roadmapMeta.data.updatedAt);
             } catch {
                 // private mode / storage disabled — the "new" badge just won't persist
             }
-            setRoadmapSeenAt(roadmap.data.updatedAt);
+            setRoadmapSeenAt(roadmapMeta.data.updatedAt);
         }
     };
 
@@ -238,6 +242,7 @@ export function AssistDock() {
             <RoadmapViewer
                 open={panel === 'roadmap'}
                 html={roadmap.data?.htmlContent ?? ''}
+                loading={roadmap.isPending || roadmap.isFetching}
                 onClose={() => setPanel('none')}
             />
 

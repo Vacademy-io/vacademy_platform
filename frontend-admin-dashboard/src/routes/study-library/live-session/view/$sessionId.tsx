@@ -491,6 +491,22 @@ function ViewLiveSession() {
             .sort((a, b) => a.date.localeCompare(b.date));
     }, [sessionData]);
 
+    /**
+     * The occurrence a host would actually want to start right now: the one in
+     * progress, else the next upcoming one. A recurring session has no single
+     * meeting, which is why the details card offered no host entry point at all
+     * and left the teacher holding only the participant join link.
+     */
+    const currentOrNextSession = useMemo(() => {
+        const all = groupedSchedules.flatMap((day) => day.sessions);
+        const live = all.find((s) => s.status === 'live');
+        if (live) return live;
+        const upcoming = all
+            .filter((s) => s.status === 'upcoming')
+            .sort((a, b) => (a.startDate?.getTime() ?? 0) - (b.startDate?.getTime() ?? 0));
+        return upcoming[0] ?? null;
+    }, [groupedSchedules]);
+
     // Collect all recordings across all schedules
     const allRecordings = useMemo(() => {
         const recordings: Array<MeetingRecording & { date: string; scheduleId: string }> = [];
@@ -1022,6 +1038,62 @@ function ViewLiveSession() {
                                         )}
 
                                         {zoomProvisionBadge}
+
+                                        {/*
+                                          * Recurring sessions get a host entry point here too. Burying it in
+                                          * the Scheduled Sessions calendar at the foot of the page meant a
+                                          * teacher looking at this card saw no way to start her own class.
+                                          */}
+                                        {isRecurring &&
+                                            currentOrNextSession &&
+                                            (() => {
+                                                const startAsHost = resolveHostAction(
+                                                    currentOrNextSession as { id: string; linkType?: string | null }
+                                                );
+                                                if (!startAsHost) return null;
+                                                const isLive = currentOrNextSession.status === 'live';
+                                                return (
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                                            <MonitorPlay className="size-3.5 text-primary" />
+                                                            {isLive ? 'Class in progress' : 'Next class'}
+                                                        </div>
+                                                        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
+                                                            <div className="flex flex-wrap items-center gap-3">
+                                                                <div className="flex items-center gap-2 text-sm">
+                                                                    <Timer className="size-4 text-primary" />
+                                                                    <span className="font-medium">
+                                                                        {currentOrNextSession.startDate
+                                                                            ? `${format(currentOrNextSession.startDate, 'EEE, MMM d')} · `
+                                                                            : ''}
+                                                                        {currentOrNextSession.time}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {currentOrNextSession.duration} mins
+                                                                </span>
+                                                                {isLive && (
+                                                                    <Badge
+                                                                        variant="default"
+                                                                        className="bg-green-500 text-white text-xs"
+                                                                    >
+                                                                        Live
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                            <MyButton
+                                                                onClick={startAsHost}
+                                                                buttonType="primary"
+                                                                scale="small"
+                                                                type="button"
+                                                                className="shrink-0"
+                                                            >
+                                                                Start as Host
+                                                            </MyButton>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
 
                                         {isZoomSession && !isRecurring && groupedSchedules.length > 0 && (
                                             <div className="space-y-2">

@@ -1580,7 +1580,7 @@ export const CourseStructureDetails = ({
                 }))
             ),
         };
-    }, [subjects, subjectModulesMap, chapterSlidesMap]);
+    }, [subjects, subjectModulesMap, chapterSlidesMap, t]);
 
     const totalExpandable = subjects.length + totalModulesCount + totalChaptersCount;
     const totalOpen = openSubjects.size + openModules.size + openChapters.size;

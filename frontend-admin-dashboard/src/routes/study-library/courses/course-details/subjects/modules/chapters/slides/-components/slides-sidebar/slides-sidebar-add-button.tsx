@@ -302,7 +302,9 @@ export const ChapterSidebarAddButton = () => {
                 ],
             },
         ],
-        []
+        // The catalog loads async, so the first render resolves every label to
+        // its raw key. Without t here the memo freezes those keys forever.
+        [t]
     );
 
     const filteredDropdownList = useMemo(() => {

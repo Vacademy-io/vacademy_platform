@@ -20,7 +20,12 @@
         "couldNotInitiatePayment": "भुगतान शुरू नहीं किया जा सका।",
         "pay": "{{currency}} {{amount}} भुगतान करें",
         "logoAlt": "लोगो",
-        "itemsSelected": "चयनित: {{count}} {{course}}"
+        "itemsSelected": "चयनित: {{count}} {{course}}",
+        "basketSaved": "{{amount}} की बचत",
+        "basketSavedWithPercent": "{{amount}} · {{percent}}% की बचत",
+        "basketNextTierAmount": "{{amount}} की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "basketNextTierAmountMore": "{{amount}} की अतिरिक्त छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "basketNextTierPercent": "{{percent}}% की छूट पाने के लिए {{count}} और {{course}} जोड़ें।"
     },
     "errors": {
         "pageNotAvailable": {

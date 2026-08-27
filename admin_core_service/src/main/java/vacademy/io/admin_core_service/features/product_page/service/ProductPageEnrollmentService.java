@@ -235,11 +235,19 @@ public class ProductPageEnrollmentService {
                 .orElseThrow(() -> new VacademyException(
                         "Course page not found: " + request.getProductPageCode()));
 
+        // Each course's own price rides along: a DISCOUNT-basis page reduces
+        // that sum rather than replacing it, so the single-subject rate is read
+        // from the enroll invite's payment plan instead of being written down a
+        // second time in the page settings.
         List<BasketPricingCalculator.BasketItem> basketItems = selectedMappings.stream()
-                .map(m -> m.getPsInvitePaymentOption().getPackageSession())
-                .map(ps -> new BasketPricingCalculator.BasketItem(
-                        ps.getLevel() != null ? ps.getLevel().getLevelName() : null,
-                        ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null))
+                .map(m -> {
+                    var ps = m.getPsInvitePaymentOption().getPackageSession();
+                    PaymentPlan plan = planByMappingId.get(m.getPsInvitePaymentOption().getId());
+                    return new BasketPricingCalculator.BasketItem(
+                            ps.getLevel() != null ? ps.getLevel().getLevelName() : null,
+                            ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null,
+                            plan != null ? plan.getActualPrice() : 0d);
+                })
                 .collect(Collectors.toList());
 
         BasketPricingCalculator.BasketPrice basketPrice = basketPricingCalculator.price(

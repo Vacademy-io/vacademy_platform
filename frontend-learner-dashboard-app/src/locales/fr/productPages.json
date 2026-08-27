@@ -20,7 +20,12 @@
         "couldNotInitiatePayment": "Impossible d'initier le paiement.",
         "pay": "Payer {{currency}} {{amount}}",
         "logoAlt": "logo",
-        "itemsSelected": "{{count}} {{course}} sélectionné(s)"
+        "itemsSelected": "{{count}} {{course}} sélectionné(s)",
+        "basketSaved": "{{amount}} économisés",
+        "basketSavedWithPercent": "{{amount}} · {{percent}} % économisés",
+        "basketNextTierAmount": "Ajoutez {{count}} {{course}} de plus pour obtenir {{amount}} de réduction.",
+        "basketNextTierAmountMore": "Ajoutez {{count}} {{course}} de plus pour obtenir {{amount}} de réduction supplémentaire.",
+        "basketNextTierPercent": "Ajoutez {{count}} {{course}} de plus pour obtenir {{percent}} % de réduction."
     },
     "errors": {
         "pageNotAvailable": {

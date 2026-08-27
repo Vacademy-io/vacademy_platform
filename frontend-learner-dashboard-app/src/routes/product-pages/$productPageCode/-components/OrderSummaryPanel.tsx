@@ -14,8 +14,9 @@ import type {
 } from "../-types/product-page-types";
 import {
   nextCourseCost,
+  nextTier,
   parseBasketPricing,
-  savingsVsSingles,
+  savingsPercent,
 } from "../-utils/basket-pricing";
 import { offerStatuses, parseOffers } from "../-utils/offers";
 import {
@@ -100,10 +101,31 @@ export const OrderSummaryPanel = ({
   // More than one group means the ladder ran per class — say so, or "1 subject
   // ₹349" twice over just looks like the discount failed to apply.
   const pricedPerGroup = (quote?.lines.length ?? 0) > 1;
-  // Under basket pricing the courses have no individual price, so the only
-  // honest saving is against the ladder's own one-subject rate — which is the
-  // number the price card itself advertises.
-  const saved = quote ? savingsVsSingles(basketSettings, quote) : planSavings;
+
+  // ── The four numbers the breakdown is built from ────────────────────────
+  // itemTotal is what these same courses cost bought separately. Every discount
+  // below is measured from it, so each line is checkable rather than asserted.
+  const itemTotal = quote ? quote.itemTotal : listTotal;
+  const basketDiscount = quote ? Math.max(0, quote.itemTotal - quote.total) : 0;
+  const basketPercent = quote ? savingsPercent(quote) : 0;
+  const totalSaved = Math.max(0, Math.round(itemTotal - total));
+  const totalPercent =
+    itemTotal > 0 ? Math.round((totalSaved / itemTotal) * 100) : 0;
+
+  /**
+   * What one more subject would get. Under a fixed ladder that is an exact
+   * rupee figure. Under a discount basis it is a threshold instead — the next
+   * course's price is not known until it is picked, so a rupee figure there
+   * would be a guess dressed up as a promise.
+   */
+  const tierAhead = nextTier(basketSettings, items.length, itemTotal);
+  const upsell = tierAhead
+    ? `Add ${tierAhead.coursesAway} more subject${tierAhead.coursesAway === 1 ? "" : "s"} to get ${tierAhead.label}.`
+    : quote && perNext !== null && perNext.amount > 0 && items.length > 0
+      ? perNext.group
+        ? `Add another ${perNext.group} subject for ${money(perNext.amount)}.`
+        : `Add one more subject for ${money(perNext.amount)}.`
+      : null;
 
   // Predefined page offers. Shown as a list rather than applied silently: an
   // offer the visitor never knew they nearly had grows no basket.
@@ -225,28 +247,6 @@ export const OrderSummaryPanel = ({
           </>
           )}
 
-          {/* Savings callout — only when there is a real saving to show */}
-          {saved > 0 && (
-            <div
-              className={cn(
-                "mx-5 mb-4 flex items-start gap-2.5 rounded-xl border border-success-200 bg-success-50 px-3.5 py-3",
-                variant === "totals" && "mt-4",
-              )}
-            >
-              <Gift className="mt-0.5 size-4 shrink-0 text-success-600" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="text-caption font-bold text-success-700">
-                  You saved {money(saved)}
-                </p>
-                <p className="mt-0.5 text-caption text-success-600">
-                  {quote
-                    ? "Against buying each subject on its own."
-                    : "Applied from your selected plan pricing."}
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Offers — what is on, and what one more step would unlock. */}
           {variant === "full" && offers.length > 0 && (
             <div className="mx-5 mb-4 space-y-1.5 rounded-xl border border-dashed border-primary-200 bg-primary-50/50 p-3">
@@ -293,48 +293,76 @@ export const OrderSummaryPanel = ({
             </div>
           )}
 
-          {/* Totals */}
+          {/* Price details — every line the parent is charged, in the order
+              the server applies them, each one named and signed. A single
+              "you pay ₹799" is not something anyone can check. */}
           <div className="space-y-2 border-t border-gray-100 px-5 py-4">
-            {quote ? (
-              /* One line per group, because a basket spanning two children is
-                 priced per child — a single "subtotal" would hide that. */
-              quote.lines.map((line, i) => (
+            <p className="text-caption font-semibold uppercase tracking-wide text-gray-400">
+              Price details
+            </p>
+
+            {/* What the courses cost bought separately. Always the first line,
+                so every discount below has something to be a discount FROM. */}
+            <div className="flex justify-between text-sm text-gray-700">
+              <span>
+                Item total ({items.length} subject{items.length === 1 ? "" : "s"})
+              </span>
+              <span className="tabular-nums">{money(itemTotal)}</span>
+            </div>
+
+            {/* The per-class detail, only when the basket really did split —
+                one line saying "Class 5" above one saying "Item total" is noise.
+                Each shows what that class costs apart and what it costs here, so
+                the column above and the discount below both add up. */}
+            {pricedPerGroup &&
+              quote!.lines.map((line, i) => (
                 <div
                   key={`${line.label}-${i}`}
-                  className="flex justify-between text-caption text-gray-500"
+                  className="flex justify-between gap-2 pl-3 text-caption text-gray-500"
                 >
                   <span className="truncate">
                     {line.label}
                     <span className="text-gray-400"> · {line.how}</span>
                   </span>
-                  <span className="shrink-0 tabular-nums">{money(line.amount)}</span>
+                  <span className="shrink-0 tabular-nums">
+                    {line.baseAmount > line.amount && (
+                      <span className="text-gray-400 line-through">
+                        {money(line.baseAmount)}
+                      </span>
+                    )}{" "}
+                    {money(line.amount)}
+                  </span>
                 </div>
-              ))
-            ) : (
-              <div className="flex justify-between text-caption text-gray-500">
-                <span>
-                  Subtotal ({items.length} item{items.length === 1 ? "" : "s"})
+              ))}
+
+            {basketDiscount > 0 && (
+              <div className="flex justify-between text-sm font-medium text-success-600">
+                <span className="truncate">
+                  Basket discount
+                  {basketPercent > 0 && (
+                    <span className="text-success-500"> ({basketPercent}% off)</span>
+                  )}
                 </span>
-                <span className="tabular-nums">{money(listTotal)}</span>
+                <span className="shrink-0 tabular-nums">− {money(basketDiscount)}</span>
               </div>
             )}
 
             {!quote && planSavings > 0 && (
-              <div className="flex justify-between text-caption font-medium text-success-600">
+              <div className="flex justify-between text-sm font-medium text-success-600">
                 <span>Plan savings</span>
                 <span className="tabular-nums">− {money(planSavings)}</span>
               </div>
             )}
 
             {offer && (
-              <div className="flex justify-between text-caption font-medium text-success-600">
-                <span className="truncate">{offer.rule.label}</span>
+              <div className="flex justify-between text-sm font-medium text-success-600">
+                <span className="truncate">Offer · {offer.rule.label}</span>
                 <span className="shrink-0 tabular-nums">− {money(offer.amount)}</span>
               </div>
             )}
 
             {discountAmount > 0 && (
-              <div className="flex justify-between text-caption font-medium text-success-600">
+              <div className="flex justify-between text-sm font-medium text-success-600">
                 <span className="truncate">
                   Coupon{couponCode ? ` (${couponCode})` : ""}
                 </span>
@@ -342,9 +370,6 @@ export const OrderSummaryPanel = ({
               </div>
             )}
 
-            {/* What one more actually costs. On a ladder the next subject is
-                usually cheaper than the last, which IS the offer — vaguer
-                wording ("save more!") tells the parent nothing they can act on. */}
             {variant === "full" && pricedPerGroup && (
               <p className="text-caption text-gray-500">
                 Each class is priced on its own, so subjects for different children
@@ -352,14 +377,13 @@ export const OrderSummaryPanel = ({
               </p>
             )}
 
-            {variant === "full" && quote && perNext !== null && perNext.amount > 0 && items.length > 0 && (
+            {/* What one more would actually get. Under a fixed ladder that is a
+                rupee figure; under a discount it is a threshold, because the
+                next course's price is not known until it is picked. */}
+            {variant === "full" && upsell && (
               <div className="flex items-start gap-1.5 rounded-lg bg-primary-50 px-3 py-2 text-caption font-medium text-primary-500">
                 <Gift className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                <span>
-                  {perNext.group
-                    ? `Add another ${perNext.group} subject for ${money(perNext.amount)}.`
-                    : `Add one more subject for ${money(perNext.amount)}.`}
-                </span>
+                <span>{upsell}</span>
               </div>
             )}
           </div>
@@ -371,10 +395,26 @@ export const OrderSummaryPanel = ({
                 <p className="text-sm font-bold text-gray-900">Total Payable</p>
                 <p className="text-caption text-gray-500">Inclusive of all taxes</p>
               </div>
-              <span className="text-h3-semibold font-bold tabular-nums text-gray-900">
-                {total > 0 ? money(total) : "Free"}
-              </span>
+              <div className="text-right">
+                {/* The struck-through figure is what the SAME courses cost apart,
+                    never an invented "MRP" — an inflated original is the oldest
+                    trick in retail and the fastest way to lose a parent. */}
+                {totalSaved > 0 && (
+                  <p className="text-caption text-gray-400 line-through tabular-nums">
+                    {money(itemTotal)}
+                  </p>
+                )}
+                <span className="text-h3-semibold font-bold tabular-nums text-gray-900">
+                  {total > 0 ? money(total) : "Free"}
+                </span>
+              </div>
             </div>
+            {totalSaved > 0 && (
+              <p className="mt-2 rounded-lg bg-success-50 px-3 py-1.5 text-caption font-bold text-success-700">
+                You save {money(totalSaved)}
+                {totalPercent > 0 && ` (${totalPercent}%)`}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-center gap-1.5 border-t border-gray-100 bg-gray-50 px-5 py-3">

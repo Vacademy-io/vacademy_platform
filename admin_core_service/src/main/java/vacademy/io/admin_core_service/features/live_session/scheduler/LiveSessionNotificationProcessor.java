@@ -1031,7 +1031,12 @@ public class LiveSessionNotificationProcessor {
                 Student student = studentRepository.findTopByUserId(userId).orElse(null);
                 if (student != null && student.getEmail() != null) {
                     NotificationDTO dto = new NotificationDTO();
-                    dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
+                    // Attendance gets its own template. LiveClassEmailBody is an
+                    // invitation — it opens "We're excited to invite you to our
+                    // upcoming ...", carries a "Join the Live Class" button and
+                    // closes "We look forward to seeing you there!", none of which
+                    // belongs in a message about a class that already finished.
+                    dto.setBody(AttendanceEmailBody.Attendance_Email_Body);
                     dto.setSubject(title + " - " + sessionTitle);
                     dto.setNotificationType("EMAIL");
                     dto.setSource("ADMIN_CORE");
@@ -1041,16 +1046,15 @@ public class LiveSessionNotificationProcessor {
                     Map<String, String> placeholders = new HashMap<>();
                     placeholders.put("NAME", student.getFullName() != null ? student.getFullName() : "Student");
                     placeholders.put("SESSION_TITLE", sessionTitle);
-                    placeholders.put("ACTION", reasonDetail != null && !reasonDetail.isBlank()
-                            ? "Attendance: " + status + " — " + reasonDetail
-                            : "Attendance: " + status);
+                    placeholders.put("STATUS", status);
+                    placeholders.put("STATUS_COLOR", "ABSENT".equalsIgnoreCase(status) ? "#dc2626" : "#16a34a");
+                    // The explanation is a sentence — it belongs in the body, not
+                    // interpolated into the 24px header the old template used.
+                    placeholders.put("STATUS_NOTE", AttendanceEmailBody.noteBlock(reasonDetail));
+                    placeholders.put("SESSION_DATE", sessionDateLabel(session));
                     placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
                     placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
                     placeholders.put("YEAR", getCurrentYear());
-                    placeholders.put("LINK", "#");
-                    placeholders.put("ALL_TIMEZONE_TIMES", "");
-                    placeholders.put("DATE", "");
-                    placeholders.put("TIME", "");
                     u.setPlaceholders(placeholders);
                     u.setUserId(userId);
                     u.setChannelId(student.getEmail());
@@ -1062,6 +1066,21 @@ public class LiveSessionNotificationProcessor {
         } catch (Exception e) {
             System.out.println("Error sending attendance notification for session " + sessionId + ", user " + userId + ": " + e.getMessage());
         }
+    }
+
+    /** "26 August 2026" for the attendance mail, or an empty label if unknown. */
+    private String sessionDateLabel(LiveSession session) {
+        try {
+            var schedules = scheduleRepository.findBySessionId(session.getId());
+            if (schedules != null && !schedules.isEmpty()) {
+                var d = schedules.get(0).getMeetingDate();
+                if (d != null) {
+                    return new SimpleDateFormat("d MMMM yyyy").format(d);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
     }
 
     private String getThemeColor(String instituteId) {

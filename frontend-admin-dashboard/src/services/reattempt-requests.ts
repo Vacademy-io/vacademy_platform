@@ -67,11 +67,20 @@ export const getReattemptRequests = async (params: {
     return response?.data;
 };
 
-export const getPendingReattemptRequestCount = async (instituteId: string): Promise<number> => {
+/**
+ * `assessmentId` omitted counts the whole institute's inbox. Anything badging a single
+ * assessment must pass it: the institute-wide number is identical on every assessment page, so
+ * an unscoped badge claims this exam has a request waiting when the request belongs to another
+ * exam — and the tab it points at then loads empty.
+ */
+export const getPendingReattemptRequestCount = async (
+    instituteId: string,
+    assessmentId?: string
+): Promise<number> => {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: REATTEMPT_REQUEST_PENDING_COUNT_URL,
-        params: { instituteId },
+        params: { instituteId, assessmentId },
     });
     return response?.data ?? 0;
 };

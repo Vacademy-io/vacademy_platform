@@ -206,12 +206,14 @@ const AssessmentDetailsComponent = () => {
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
     const { canEdit } = useAssessmentActionVisibility();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
-    // Pending learner reattempt requests, shown as a badge on the tab. Polled rather than
-    // fetched once: an admin sitting on this page during a live exam is exactly who needs to
-    // see a request arrive, and that is when they come in.
+    // Pending learner reattempt requests for THIS assessment, shown as a badge on the tab.
+    // Scoped by assessmentId to match the list the tab renders — the institute-wide count is the
+    // same number on every assessment's page, which badged exams that had no request of their own.
+    // Polled rather than fetched once: an admin sitting on this page during a live exam is
+    // exactly who needs to see a request arrive, and that is when they come in.
     const { data: pendingReattemptCount = 0 } = useQuery({
-        queryKey: ['reattempt-requests-pending-count', instituteDetails?.id],
-        queryFn: () => getPendingReattemptRequestCount(instituteDetails?.id ?? ''),
+        queryKey: ['reattempt-requests-pending-count', instituteDetails?.id, assessmentId],
+        queryFn: () => getPendingReattemptRequestCount(instituteDetails?.id ?? '', assessmentId),
         enabled: Boolean(instituteDetails?.id),
         refetchInterval: 60_000,
     });

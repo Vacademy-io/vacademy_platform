@@ -33,6 +33,7 @@ import java.util.Map;
  *   GET    /admin-core-service/super-admin/v1/ai-queue/overview      (fleet + lanes, + optional items)
  *   GET    /admin-core-service/super-admin/v1/ai-queue/items         (the calls themselves, paged)
  *   GET    /admin-core-service/super-admin/v1/ai-queue/capacity
+ *   PUT    /admin-core-service/super-admin/v1/ai-queue/capacity        {"maxConcurrentCalls":2}
  *   PUT    /admin-core-service/super-admin/v1/ai-queue/settings/{key}   {"value":"4"}
  *   GET    /admin-core-service/super-admin/v1/ai-queue/boxes
  *   POST   /admin-core-service/super-admin/v1/ai-queue/boxes            (create)
@@ -117,6 +118,45 @@ public class AiCallQueueAdminController {
         return ResponseEntity.ok(boxService.capacity());
     }
 
+    @Data
+    public static class FleetLimitBody {
+        /**
+         * Simultaneous AI calls to allow. null clears the limit (hardware decides);
+         * 0 pauses dialing — the queue keeps accepting, so nothing is lost.
+         */
+        private Integer maxConcurrentCalls;
+    }
+
+    /**
+         * Change how many AI calls may run at once, fleet-wide.
+         *
+         * <pre>
+         *   PUT /admin-core-service/super-admin/v1/ai-queue/capacity
+         *   {"maxConcurrentCalls": 2}      throttle to 2
+         *   {"maxConcurrentCalls": 0}      pause dialing (queue holds)
+         *   {"maxConcurrentCalls": null}   clear the limit, hardware decides
+         * </pre>
+         *
+         * <p>This caps what the boxes provide, it never raises it — a limit above the
+         * hardware is accepted but non-binding, so this control can never promise
+         * capacity that does not exist. Read {@code vacademyAiCapacity} in the response
+         * for what is now actually enforced, and {@code physicalCapacity} for what the
+         * hardware could carry; showing the requested number alone would be a lie
+         * whenever the two differ.
+         *
+         * <p>Takes effect within one drain tick (~2s) on every replica, with no
+         * restart: the drainer resolves capacity from the database each pass. Lowering
+         * below the calls already in flight never cuts a live call off — it just stops
+         * new ones until the number comes back under the limit.
+         */
+    @PutMapping("/capacity")
+    public ResponseEntity<CapacityView> setCapacity(
+            @RequestBody FleetLimitBody body,
+            @RequestAttribute("user") CustomUserDetails user) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(
+                boxService.setFleetLimit(body == null ? null : body.getMaxConcurrentCalls()));
+    }
     @Data
     public static class SettingBody {
         private String value;

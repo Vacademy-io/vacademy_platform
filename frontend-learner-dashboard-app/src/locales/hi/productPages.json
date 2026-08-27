@@ -36,6 +36,12 @@
         "selectPrompt": "जिन {{courses}} में आप नामांकन लेना चाहते हैं उन्हें चुनें"
     },
     "cartStep": {
+        "heading": {
+            "title": "अपना कार्ट देखें",
+            "subtitlePlanChoice": "आगे बढ़ने से पहले अपना चयन जाँचें और अपने अनुकूल योजना चुनें।",
+            "subtitleDefault": "अपने विषयों की जाँच करें और जो जोड़ना नहीं चाहते थे उसे हटाएँ।"
+        },
+        "backToCourses": "कोर्स पर वापस जाएँ",
         "couponChanged": "कार्ट बदल गया है — कृपया अपना कूपन फिर से लागू करें।",
         "orderSummary": {
             "subtitle": "भुगतान से पहले अपना ऑर्डर जाँच लें"
@@ -46,6 +52,14 @@
         "subtotalItems_one": "उप-योग ({{count}} आइटम)",
         "subtotalItems_other": "उप-योग ({{count}} आइटम)",
         "couponCard": {
+            "errors": {
+                "belowMinItems": "इस कोड के लिए आपके कार्ट में और कोर्स चाहिए।",
+                "expired": "यह कोड समाप्त हो चुका है।",
+                "notStarted": "यह कोड अभी सक्रिय नहीं है।",
+                "limitReached": "यह कोड पूरी तरह से उपयोग हो चुका है।",
+                "emailRestricted": "यह कोड आपके ईमेल के लिए उपलब्ध नहीं है।",
+                "notApplicable": "यह कोड इन कोर्सेज़ पर लागू नहीं होता।"
+            },
             "title": "कूपन कोड",
             "placeholder": "कूपन कोड दर्ज करें",
             "apply": "लागू करें",
@@ -59,6 +73,7 @@
         "subtotal": "उप-योग",
         "allPricesIn": "सभी कीमतें {{currency}} में हैं",
         "completeEnrollmentFor": "{{count}} {{course}} के लिए अपना नामांकन पूरा करें",
+        "amountPayable": "{{currency}} {{amount}} देय",
         "completingEnrollment": "आपका नामांकन पूरा किया जा रहा है…",
         "retryEnrollment": "नामांकन पुनः प्रयास करें",
         "openingPayment": "भुगतान खोला जा रहा है...",

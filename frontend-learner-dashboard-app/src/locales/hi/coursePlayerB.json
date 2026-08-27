@@ -30,7 +30,20 @@
         "showingRange": "{{total}} में से {{from}}–{{to}} दिखाए जा रहे हैं",
         "noCoursesMatch": "\"{{query}}\" से मेल खाने वाला कोई {{courses}} नहीं मिला।",
         "page": "पेज {{number}}",
-        "coursePagesAriaLabel": "{{course}} पेज"
+        "coursePagesAriaLabel": "{{course}} पेज",
+        "added": "जोड़ा गया",
+        "addToCartAriaLabel": "{{course}} को कार्ट में जोड़ें",
+        "removeFromCartAriaLabel": "{{course}} को कार्ट से हटाएं",
+        "selectedCount_one": "{{count}} चयनित",
+        "selectedCount_other": "{{count}} चयनित",
+        "itemsSelected_one": "{{count}} {{course}} चयनित",
+        "itemsSelected_other": "{{count}} {{courses}} चयनित",
+        "total": "कुल",
+        "free": "मुफ़्त",
+        "clearCart": "हटाएं",
+        "proceedToCheckout": "चेकआउट पर आगे बढ़ें",
+        "nothingForSelection": "इस चुनाव के लिए अभी कुछ उपलब्ध नहीं है।",
+        "showAllCourses": "सभी {{courses}} दिखाएं"
     },
     "heroSection": {
         "defaultAlt": "{{course}} पूर्वावलोकन",

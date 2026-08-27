@@ -36,6 +36,12 @@
         "selectPrompt": "Sélectionnez les {{courses}} auxquels vous souhaitez vous inscrire"
     },
     "cartStep": {
+        "heading": {
+            "title": "Vérifiez votre panier",
+            "subtitlePlanChoice": "Vérifiez votre sélection et choisissez la formule qui vous convient avant de continuer.",
+            "subtitleDefault": "Vérifiez vos matières et retirez tout ce que vous n’aviez pas l’intention d’ajouter."
+        },
+        "backToCourses": "Retour aux cours",
         "couponChanged": "Le panier a changé — veuillez réappliquer votre coupon.",
         "orderSummary": {
             "subtitle": "Vérifiez votre commande avant de procéder au paiement"
@@ -46,6 +52,14 @@
         "subtotalItems_one": "Sous-total ({{count}} article)",
         "subtotalItems_other": "Sous-total ({{count}} articles)",
         "couponCard": {
+            "errors": {
+                "belowMinItems": "Ce code nécessite davantage de cours dans votre panier.",
+                "expired": "Ce code a expiré.",
+                "notStarted": "Ce code n’est pas encore actif.",
+                "limitReached": "Ce code a été entièrement utilisé.",
+                "emailRestricted": "Ce code n’est pas disponible pour votre e-mail.",
+                "notApplicable": "Ce code ne s’applique pas à ces cours."
+            },
             "title": "Code promo",
             "placeholder": "Entrez le code promo",
             "apply": "Appliquer",
@@ -60,6 +74,7 @@
         "subtotal": "Sous-total",
         "allPricesIn": "Tous les prix sont en {{currency}}",
         "completeEnrollmentFor": "Terminez votre inscription pour {{count}} {{course}}",
+        "amountPayable": "{{currency}} {{amount}} à payer",
         "completingEnrollment": "Finalisation de votre inscription…",
         "retryEnrollment": "Réessayer l'inscription",
         "openingPayment": "Ouverture du paiement...",

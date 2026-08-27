@@ -26,7 +26,13 @@
         "!**/*.map",
         "!**/test/**",
         "!**/tests/**",
-        "!**/.bin/**"
+        "!**/.bin/**",
+        "!app-builder-bin/**/*",
+        "!7zip-bin/**/*",
+        "!lzma-native/**/*",
+        "!iconv-corefoundation/**/*",
+        "!node-notifier/vendor/notifu/**/*",
+        "!node-notifier/vendor/snoreToast/**/*"
       ]
     }
   ],
@@ -61,7 +67,7 @@
   "extraMetadata": {
     "version": "1.0"
   },
-  "buildVersion": "2",
+  "buildVersion": "4",
   "mac": {
     "category": "public.app-category.education",
     "icon": "assets/shiksha_nation.icns",

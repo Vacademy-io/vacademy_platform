@@ -44,11 +44,15 @@ import { calculateTotalMarks } from '../../../-utils/helper';
 type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 
 const POLL_MS = 3000;
+/** ~30s of unbroken polling failures before we stop and tell the teacher. */
+const MAX_CONSECUTIVE_POLL_ERRORS = 10;
 
 const buildQuestionTypeOptions = (
     t: TFunction
 ): Array<{ value: PaperQuestionType; label: string }> => [
     { value: 'MCQS', label: t('setup.questionTypeOptions.mcqs') },
+    { value: 'MCQM', label: t('setup.questionTypeOptions.mcqm') },
+    { value: 'TRUE_FALSE', label: t('setup.questionTypeOptions.trueFalse') },
     { value: 'ONE_WORD', label: t('setup.questionTypeOptions.oneWord') },
     { value: 'LONG_ANSWER', label: t('setup.questionTypeOptions.longAnswer') },
     { value: 'NUMERIC', label: t('setup.questionTypeOptions.numeric') },
@@ -66,7 +70,7 @@ const setupSchema = z.object({
         .int()
         .min(1, i18next.t('assessmentStep2CreateFromKnowledgeBase:setup.validation.minCount'))
         .max(60, i18next.t('assessmentStep2CreateFromKnowledgeBase:setup.validation.maxCount')),
-    questionType: z.enum(['MCQS', 'ONE_WORD', 'LONG_ANSWER', 'NUMERIC']),
+    questionType: z.enum(['MCQS', 'MCQM', 'TRUE_FALSE', 'ONE_WORD', 'LONG_ANSWER', 'NUMERIC']),
     difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']),
 });
 
@@ -189,10 +193,15 @@ const Step2CreateFromKnowledgeBase = ({
     useEffect(() => {
         if (step !== 'generating' || !taskId) return;
         let cancelled = false;
+        // Consecutive failed polls, not total polls: a long generation is normal and
+        // must not time out, but a poll that keeps erroring used to retry forever and
+        // leave this dialog spinning on "Writing questions from …" with no way out.
+        let consecutiveErrors = 0;
         const tick = async () => {
             try {
                 const job = await getPaperJob(taskId);
                 if (cancelled) return;
+                consecutiveErrors = 0;
                 if (job.status === 'COMPLETED' && job.result) {
                     setResult(job.result);
                     setIssues(job.result.issues);
@@ -205,8 +214,20 @@ const Step2CreateFromKnowledgeBase = ({
                     return;
                 }
                 setTimeout(tick, POLL_MS);
-            } catch {
-                if (!cancelled) setTimeout(tick, POLL_MS);
+            } catch (error) {
+                if (cancelled) return;
+                consecutiveErrors += 1;
+                if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+                    toast.error(
+                        errorMessage(
+                            error,
+                            'Lost contact with the generator. It may still be running — check the knowledge base history.'
+                        )
+                    );
+                    setStep('setup');
+                    return;
+                }
+                setTimeout(tick, POLL_MS);
             }
         };
         const handle = setTimeout(tick, POLL_MS);

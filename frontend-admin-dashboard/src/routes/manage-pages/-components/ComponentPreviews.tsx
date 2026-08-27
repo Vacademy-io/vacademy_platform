@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import {
     BookOpen, Brain, Briefcase, Certificate, ChartLineUp, ChatsCircle, Check,
     Clock, Code, Globe, GraduationCap, Lightbulb, Medal, Rocket, ShieldCheck,
-    Sparkle, Star, Target, Trophy, UsersThree, Wrench,
+    ShoppingCartSimple, Sparkle, Star, Target, Trophy, UsersThree, Wrench,
 } from '@phosphor-icons/react';
 
 import { renderHtmlPage, renderHtmlSection } from '../-utils/catalogue-html';
@@ -157,14 +157,38 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
                                     {props.viewCourseLabel || t('productPageOffer.viewCourse')}
                                 </span>
                             )}
-                            <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center">
-                                {props.ctaLabel || t('productPageOffer.enrolNow')}
-                            </span>
+                            {/* Cart mode swaps the buy CTA for an add/remove
+                                toggle — the canvas has to show that, or the
+                                admin only discovers it on the live page. */}
+                            {props.enableCart ? (
+                                <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center gap-1.5">
+                                    <ShoppingCartSimple className="size-3.5" weight="bold" />
+                                    {props.cartCtaLabel || t('productPageOffer.addToCart')}
+                                </span>
+                            ) : (
+                                <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center">
+                                    {props.ctaLabel || t('productPageOffer.enrolNow')}
+                                </span>
+                            )}
                         </div>
                     </div>
                 );
             })}
         </div>
+        {/* Inert stand-in for the basket bar. On the live page it is pinned to
+            the foot of the viewport once anything is selected; on the canvas it
+            sits under the grid so the section still reads top to bottom. */}
+        {props.enableCart && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-catalogue-lg border border-catalogue-border bg-catalogue-bg-elevated px-4 py-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-catalogue-text-primary">
+                    <ShoppingCartSimple className="size-4 text-primary-500" weight="bold" />
+                    {t('productPageOffer.basketPreviewCount', { count: 2 })}
+                </div>
+                <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm justify-center">
+                    {props.checkoutCtaLabel || t('productPageOffer.checkout')}
+                </span>
+            </div>
+        )}
         {hiddenCount > 0 && (
             <p className="mt-4 text-center text-caption text-catalogue-text-muted">
                 {railCapped

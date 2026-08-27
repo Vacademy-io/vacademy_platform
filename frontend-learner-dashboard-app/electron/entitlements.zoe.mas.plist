@@ -22,7 +22,7 @@
   <key>com.apple.security.device.audio-input</key>
   <true/>
   <!-- Bundle id io.zoeedtech.app on team 7XKD5M7288 (Saurabh Kumar). This is the
-       SAME bundle id as the ZOE Edtech iOS app, so the Mac build joins the
+       SAME bundle id as the ZOE Online School iOS app, so the Mac build joins the
        EXISTING app record (id 6794024192) as its macOS platform. A different id
        would create a separate listing instead. -->
   <key>com.apple.application-identifier</key>

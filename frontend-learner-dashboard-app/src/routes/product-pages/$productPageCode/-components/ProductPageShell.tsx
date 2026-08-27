@@ -27,6 +27,8 @@ interface ProductPageShellProps {
   defaultTab?: "CATALOG" | "CART" | "PAYMENT";
   /** Catalogue the visitor came from — supplies header, footer and theme. */
   tagName?: string;
+  /** Comma-separated level names the browse step is restricted to. */
+  levels?: string;
   utmParams: Record<string, string | undefined>;
 }
 
@@ -59,6 +61,7 @@ export const ProductPageShell = ({
   courseIds,
   defaultTab,
   tagName,
+  levels,
   utmParams,
 }: ProductPageShellProps) => {
   const { step, setPageData, setStep, setSelection, setUtmParams, selectedPsOptionIds } =
@@ -158,12 +161,14 @@ export const ProductPageShell = ({
         <CatalogueChrome
           tagName={pageHasOwnChrome ? undefined : tagName}
           instituteId={instituteId}
+          showFooter={false}
         >
           <CatalogStep
             pageData={pageData}
             settings={settings}
             tagName={tagName}
             productPageCode={productPageCode}
+            levels={levels}
             onNext={() => setStep("CART")}
           />
         </CatalogueChrome>
@@ -173,6 +178,7 @@ export const ProductPageShell = ({
         <CheckoutLayout
           pageData={pageData}
           pageJson={pageJson}
+          settings={settings}
           primaryColor={primaryColor}
         >
           {step === "CART" && (

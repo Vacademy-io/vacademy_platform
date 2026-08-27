@@ -36,6 +36,12 @@
         "selectPrompt": "Select the {{courses}} you'd like to enroll in"
     },
     "cartStep": {
+        "heading": {
+            "title": "Review your cart",
+            "subtitlePlanChoice": "Check your selection and pick the plan that suits you before continuing.",
+            "subtitleDefault": "Check your subjects and remove anything you did not mean to add."
+        },
+        "backToCourses": "Back to courses",
         "couponChanged": "Cart changed — please re-apply your coupon.",
         "orderSummary": {
             "subtitle": "Review your order before proceeding to payment"
@@ -46,6 +52,14 @@
         "subtotalItems_one": "Subtotal ({{count}} item)",
         "subtotalItems_other": "Subtotal ({{count}} items)",
         "couponCard": {
+            "errors": {
+                "belowMinItems": "This code needs more courses in your cart.",
+                "expired": "This code has expired.",
+                "notStarted": "This code is not active yet.",
+                "limitReached": "This code has been fully used.",
+                "emailRestricted": "This code is not available for your email.",
+                "notApplicable": "This code does not apply to these courses."
+            },
             "title": "Coupon Code",
             "placeholder": "Enter coupon code",
             "apply": "Apply",
@@ -59,6 +73,7 @@
         "subtotal": "Subtotal",
         "allPricesIn": "All prices in {{currency}}",
         "completeEnrollmentFor": "Complete your enrollment for {{count}} {{course}}",
+        "amountPayable": "{{currency}} {{amount}} payable",
         "completingEnrollment": "Completing your enrollment…",
         "retryEnrollment": "Retry Enrollment",
         "openingPayment": "Opening payment...",

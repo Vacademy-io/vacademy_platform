@@ -267,6 +267,10 @@ const CampaignCustomFieldsCard = ({
                                         (o) => o.value
                                     ),
                                     isRequired: customFieldsArray[editingIndex].isRequired,
+                                    // So editing opens on the help text / file limits /
+                                    // verification the field already carries, rather than
+                                    // silently resetting them on save.
+                                    config: customFieldsArray[editingIndex].config,
                                 }}
                                 onAddField={(type, name, _oldKey, options, config) => {
                                     handleEditFieldAt(

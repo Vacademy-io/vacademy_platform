@@ -5,7 +5,8 @@
     },
     "actions": {
         "filter": "تصفية",
-        "reset": "إعادة تعيين"
+        "reset": "إعادة تعيين",
+        "tryAgain": "إعادة المحاولة"
     },
     "emptyStates": {
         "noQuestionPapers": "لا توجد أوراق أسئلة متاحة",

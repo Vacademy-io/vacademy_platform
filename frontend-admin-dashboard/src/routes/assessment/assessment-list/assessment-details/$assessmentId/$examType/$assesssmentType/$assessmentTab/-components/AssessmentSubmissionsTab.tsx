@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,20 @@ import {
     getAllColumnsForTableWidth,
     getAssessmentSubmissionsFilteredDataStudentData,
 } from '../-utils/helper';
+import { assessmentStatusStudentNotAttemptedColumns } from '../-utils/student-columns';
+import { ManageColumnsPopover } from '@/components/shared/leads/manage-columns-popover';
+import {
+    useLeadColumnPrefs,
+    useColumnOrderPrefs,
+    orderColumnIds,
+    type LeadColumnToggle,
+} from '@/components/shared/leads/use-lead-column-prefs';
+import { applyColumnLayout, toggleableColumnIds, LOCKED_COLUMN_IDS } from '../-utils/column-layout';
+import {
+    ASSESSMENT_STATUS_STUDENT_NOT_ATTEMPTED_COLUMNS_WIDTH,
+    ASSESSMENT_STATUS_STUDENT_ONGOING_CONTACT_COLUMNS_WIDTH,
+    ASSESSMENT_STATUS_STUDENT_PENDING_CONTACT_COLUMNS_WIDTH,
+} from '@/components/design-system/utils/constants/table-layout';
 import { Route } from '..';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
@@ -86,6 +100,34 @@ export const buildSubmissionStatusFilterOptions = (t: TFunction): MyFilterOption
 export interface SelectedReleaseResultFilterInterface {
     attempt_ids: string[];
 }
+
+// Column layout is remembered per browser and shared by all four tabs: the ids are the
+// same wherever a column appears, so "I never want to see Username" should not have to be
+// said once per tab. orderColumnIds reconciles a saved order against whichever columns the
+// current tab actually has, dropping the ones it doesn't.
+const COLUMN_PREFS_KEY = 'assessment-submissions:hidden-columns';
+const COLUMN_ORDER_KEY = 'assessment-submissions:column-order';
+
+// Everything starts visible — the columns exist because someone asked for them.
+const DEFAULT_HIDDEN_COLUMNS: string[] = [];
+
+/** Popover labels. Most headers are render functions (sort dropdowns, chips), so they
+ *  can't be read off the column definitions. Batch is resolved at call time because it
+ *  follows the institute's own terminology. */
+const COLUMN_LABELS: Record<string, string> = {
+    full_name: 'Name',
+    attempt_date: 'Attempt Date',
+    start_time: 'Start Time',
+    end_time: 'End Time',
+    duration: 'Duration',
+    score: 'Score',
+    submission_file: 'Submission',
+    evaluation_status: 'Evaluation Status',
+    result_status: 'Result Status',
+    email: 'Email',
+    mobile_number: 'Phone Number',
+    username: 'Username',
+};
 
 const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const { t } = useTranslation('assessmentSubmissionsTab');
@@ -233,18 +275,72 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         return getSelectedStudents().map((student) => student.user_id);
     };
 
-    const getAssessmentColumn = {
-        Attempted: getAllColumnsForTable(type, selectedParticipantsTab, isManualEvaluation)
-            .Attempted,
-        Pending: getAllColumnsForTable(type, selectedParticipantsTab).Pending,
-        Ongoing: getAllColumnsForTable(type, selectedParticipantsTab).Ongoing,
-    };
+    // Pending for batch selection is the "never attempted" list, built from batch
+    // enrollment rather than an assessment registration, so it is the only Pending list
+    // whose rows carry batch and contact details. The other two Pending lists come from
+    // projections that never select those, so they keep the name-only columns instead of
+    // showing four empty ones.
+    const isNotAttemptedList =
+        selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch';
+
+    // Memoised because getAllColumnsForTable builds fresh arrays on every call: without
+    // this the column definitions were a new identity each render, which both defeats the
+    // layout memos below and makes the table rebuild its whole column model every render.
+    const getAssessmentColumn = useMemo(
+        () => ({
+            Attempted: getAllColumnsForTable(type, selectedParticipantsTab, isManualEvaluation)
+                .Attempted,
+            Pending: isNotAttemptedList
+                ? assessmentStatusStudentNotAttemptedColumns
+                : getAllColumnsForTable(type, selectedParticipantsTab).Pending,
+            Ongoing: getAllColumnsForTable(type, selectedParticipantsTab).Ongoing,
+        }),
+        [type, selectedParticipantsTab, isManualEvaluation, isNotAttemptedList]
+    );
 
     const getAssessmentColumnWidth = {
         Attempted: getAllColumnsForTableWidth(type, selectedParticipantsTab, isManualEvaluation)
             .Attempted,
-        Pending: getAllColumnsForTableWidth(type, selectedParticipantsTab).Pending,
-        Ongoing: getAllColumnsForTableWidth(type, selectedParticipantsTab).Ongoing,
+        Pending: isNotAttemptedList
+            ? ASSESSMENT_STATUS_STUDENT_NOT_ATTEMPTED_COLUMNS_WIDTH
+            : ASSESSMENT_STATUS_STUDENT_PENDING_CONTACT_COLUMNS_WIDTH,
+        Ongoing: ASSESSMENT_STATUS_STUDENT_ONGOING_CONTACT_COLUMNS_WIDTH,
+    };
+
+    // ─── Manage Column ────────────────────────────────────────────────────────
+    // Which columns are on, and in what order. Same mechanism (and same popover) as
+    // Manage Payments and the lead lists, so all three behave identically.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        COLUMN_PREFS_KEY,
+        DEFAULT_HIDDEN_COLUMNS
+    );
+    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(COLUMN_ORDER_KEY);
+
+    const activeColumns = useMemo(
+        () => getAssessmentColumn[selectedTab as keyof typeof getAssessmentColumn] || [],
+        [getAssessmentColumn, selectedTab]
+    );
+
+    /** What the popover lists, in the order the columns appear on screen. */
+    const columnToggles = useMemo<LeadColumnToggle[]>(() => {
+        const batchLabel = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
+        return orderColumnIds(toggleableColumnIds(activeColumns), columnOrder).map((id) => ({
+            id,
+            label: id === 'package_session_id' ? batchLabel : COLUMN_LABELS[id] ?? id,
+            locked: LOCKED_COLUMN_IDS.has(id),
+        }));
+    }, [activeColumns, columnOrder]);
+
+    /** What the table renders — see applyColumnLayout for why the ends are pinned. */
+    const visibleColumns = useMemo(
+        () => applyColumnLayout(activeColumns, hiddenColumns, columnOrder),
+        [activeColumns, hiddenColumns, columnOrder]
+    );
+
+    /** Reset restores both halves of the layout — what is shown and what order it is in. */
+    const handleResetColumns = () => {
+        resetColumns();
+        resetColumnOrder();
     };
 
     const handleAttemptedTab = (value: string) => {
@@ -552,7 +648,10 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     const clearSearch = () => {
         setSearchText('');
-        selectedFilter['name'] = '';
+        // Commit through setState, not by mutating the object in place: every other
+        // handler builds its request from `...selectedFilter`, and a mutation React
+        // never sees leaves those reading whatever was last rendered.
+        setSelectedFilter((prevFilter) => ({ ...prevFilter, name: '' }));
         if (selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch') {
             getParticipantsListData.mutate({
                 assessmentId,
@@ -616,6 +715,13 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     const handleSearch = (searchValue: string) => {
         setSearchText(searchValue);
+        // The search term has to live in `selectedFilter`, not just in this one request.
+        // Every other fetch (tab switch, paging, batch chips, sort) rebuilds its filter
+        // from `...selectedFilter`, so leaving `name` unset there dropped the search on
+        // the next interaction while the box still showed the term — an unfiltered list
+        // that looks filtered. The CSV export reads `searchText` directly, so it stayed
+        // filtered too: the table and its export disagreed about what was being shown.
+        setSelectedFilter((prevFilter) => ({ ...prevFilter, name: searchValue }));
         if (selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch') {
             getParticipantsListData.mutate({
                 assessmentId,
@@ -1048,6 +1154,13 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         </TabsTrigger>
                     </TabsList>
                     <div className="mr-4 mt-4 flex items-center gap-2">
+                        <ManageColumnsPopover
+                            columns={columnToggles}
+                            hiddenColumns={hiddenColumns}
+                            onToggle={toggleColumn}
+                            onReset={handleResetColumns}
+                            onReorder={setColumnOrder}
+                        />
                         <AssessmentExportCsvDialog
                             assessmentId={assessmentId}
                             instituteId={initData?.id}
@@ -1283,11 +1396,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     total_elements: participantsData.total_elements,
                                     last: participantsData.last,
                                 }}
-                                columns={
-                                    getAssessmentColumn[
-                                        selectedTab as keyof typeof getAssessmentColumn
-                                    ] || []
-                                }
+                                columns={visibleColumns}
                                 columnWidths={
                                     getAssessmentColumnWidth[
                                         selectedTab as keyof typeof getAssessmentColumnWidth

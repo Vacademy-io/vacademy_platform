@@ -33,6 +33,13 @@ const testInputFieldSchema = z.object({
     status: z.string().optional(),
     field_id: z.string().optional(),
     custom_field_data: z.any().optional(),
+    /**
+     * The field's settings object from AddCustomFieldDialog — help text, file
+     * limits, checkbox consent copy, and the verification gate. The dialog has
+     * always returned this and the form dropped it on the floor, so those
+     * settings never survived a save on a campaign field.
+     */
+    config: z.record(z.unknown()).optional(),
 });
 
 /**

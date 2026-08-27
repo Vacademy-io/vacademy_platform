@@ -30,7 +30,20 @@
         "showingRange": "Showing {{from}}–{{to}} of {{total}}",
         "noCoursesMatch": "No {{courses}} match “{{query}}”.",
         "page": "Page {{number}}",
-        "coursePagesAriaLabel": "{{course}} pages"
+        "coursePagesAriaLabel": "{{course}} pages",
+        "added": "Added",
+        "addToCartAriaLabel": "Add {{course}} to cart",
+        "removeFromCartAriaLabel": "Remove {{course}} from cart",
+        "selectedCount_one": "{{count}} selected",
+        "selectedCount_other": "{{count}} selected",
+        "itemsSelected_one": "{{count}} {{course}} selected",
+        "itemsSelected_other": "{{count}} {{courses}} selected",
+        "total": "Total",
+        "free": "Free",
+        "clearCart": "Clear",
+        "proceedToCheckout": "Proceed to checkout",
+        "nothingForSelection": "Nothing here for that choice yet.",
+        "showAllCourses": "Show all {{courses}}"
     },
     "heroSection": {
         "defaultAlt": "{{course}} preview",

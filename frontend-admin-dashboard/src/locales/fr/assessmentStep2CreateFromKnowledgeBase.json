@@ -22,7 +22,9 @@
         "difficulty": "Difficulté",
         "noTopicsWarning": "Cette base de connaissances n'a pas encore de sujets. Les questions seront tirées de l'ensemble de son contenu.",
         "questionTypeOptions": {
-            "mcqs": "Choix multiple",
+            "mcqs": "Choix multiple (une réponse)",
+            "mcqm": "Choix multiple (plusieurs réponses)",
+            "trueFalse": "Vrai / faux",
             "oneWord": "Un mot",
             "longAnswer": "Réponse longue",
             "numeric": "Numérique"

@@ -1,6 +1,12 @@
 /** Question papers generated from a knowledge base — mirrors ai_service kb/paper.py. */
 
-export type PaperQuestionType = 'MCQS' | 'ONE_WORD' | 'LONG_ANSWER' | 'NUMERIC';
+export type PaperQuestionType =
+    | 'MCQS'
+    | 'MCQM'
+    | 'TRUE_FALSE'
+    | 'ONE_WORD'
+    | 'LONG_ANSWER'
+    | 'NUMERIC';
 export type PaperDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
 export interface BlueprintRow {
@@ -94,6 +100,13 @@ export interface PaperQuestion {
     }>;
     tags?: string[];
     level?: string | null;
+    /** KNOWLEDGE_BASE for anything generated here. Persisted by assessment_service V42. */
+    source_type?: string | null;
+    /**
+     * JSON string: kb_id, generation_id, topic, node_ids, source_page, figures.
+     * Kept as a string because that is what the question bank stores and returns.
+     */
+    source_meta?: string | null;
     [key: string]: unknown;
 }
 

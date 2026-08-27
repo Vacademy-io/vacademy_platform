@@ -14,6 +14,8 @@ import CustomInput from '@/components/design-system/custom-input';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { uploadDocsFile } from '../-services/question-paper-services';
 import { toast } from 'sonner';
+import { describeMerge, mergeSectionQuestions } from '../-utils/merge-section-questions';
+import { calculateTotalMarks } from '../../create-assessment/$assessmentId/$examtype/-utils/helper';
 import { addQuestionPaper, getQuestionPaperById } from '../-utils/question-paper-services';
 import {
     MyQuestion,
@@ -455,6 +457,31 @@ export const QuestionPaperUpload = ({
     const { YearClassFilterData, SubjectFilterData } = useFilterDataForAssesment(instituteDetails);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+    /**
+     * What the section already held when this dialog opened.
+     *
+     * Both write paths below (the preview mirror and the post-save write) used to
+     * REPLACE the section's questions, so uploading a document into a section that
+     * already had questions silently discarded them. They cannot simply append either:
+     * the preview mirror re-runs every time the user skips or keeps a flagged question,
+     * and appending there would duplicate the whole set each time.
+     *
+     * Capturing the pre-existing questions once and always writing baseline + current
+     * makes both paths idempotent AND non-destructive.
+     */
+    const sectionBaselineRef = useRef<MyQuestion[] | null>(null);
+    const getSectionBaseline = (): MyQuestion[] => {
+        if (sectionBaselineRef.current === null) {
+            sectionBaselineRef.current =
+                index !== undefined
+                    ? ((sectionsForm?.getValues(
+                          `section.${index}.adaptive_marking_for_each_question`
+                      ) ?? []) as unknown as MyQuestion[])
+                    : [];
+        }
+        return sectionBaselineRef.current;
+    };
+
 
     const form = useQuestionPaperForm(examType);
     const { getValues, setValue, watch } = form;
@@ -535,27 +562,39 @@ export const QuestionPaperUpload = ({
             }
 
             if (index !== undefined) {
+                const incoming = transformQuestionsData.map((question) => ({
+                    questionId: question.questionId,
+                    questionName: question.questionName,
+                    questionType: question.questionType,
+                    questionMark: question.questionMark,
+                    questionPenalty: question.questionPenalty,
+                    ...(question.questionType === 'MCQM' && {
+                        correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
+                            (item) => item.isSelected
+                        ).length,
+                    }),
+                    questionDuration: {
+                        hrs: question.questionDuration.hrs,
+                        min: question.questionDuration.min,
+                    },
+                    parentRichText: question.parentRichTextContent,
+                }));
+                // Written against the baseline, not the section's current value, so this
+                // supersedes whatever the preview mirror put there without duplicating it.
+                const mergeResult = mergeSectionQuestions(
+                    getSectionBaseline() as unknown as typeof incoming,
+                    incoming
+                );
                 sectionsForm?.setValue(
                     `section.${index}.adaptive_marking_for_each_question`,
-                    transformQuestionsData.map((question) => ({
-                        questionId: question.questionId,
-                        questionName: question.questionName,
-                        questionType: question.questionType,
-                        questionMark: question.questionMark,
-                        questionPenalty: question.questionPenalty,
-                        ...(question.questionType === 'MCQM' && {
-                            correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
-                                (item) => item.isSelected
-                            ).length,
-                        }),
-                        questionDuration: {
-                            hrs: question.questionDuration.hrs,
-                            min: question.questionDuration.min,
-                        },
-                        parentRichText: question.parentRichTextContent,
-                    }))
+                    mergeResult.merged
+                );
+                sectionsForm?.setValue(
+                    `section.${index}.total_marks`,
+                    String(calculateTotalMarks(mergeResult.merged))
                 );
                 sectionsForm?.trigger(`section.${index}.adaptive_marking_for_each_question`);
+                toast.success(describeMerge(mergeResult));
             }
 
             setIsMainQuestionPaperAddDialogOpen(false);
@@ -695,24 +734,30 @@ export const QuestionPaperUpload = ({
         setValue('questions', questionsToCommit);
 
         if (index !== undefined) {
+            const incoming = questionsToCommit.map((question) => ({
+                questionId: question.questionId,
+                questionName: question.questionName,
+                questionType: question.questionType,
+                questionMark: question.questionMark,
+                questionPenalty: question.questionPenalty,
+                questionDuration: {
+                    hrs: question.questionDuration.hrs,
+                    min: question.questionDuration.min,
+                },
+                decimals: question.decimals,
+                numericType: question.numericType,
+                validAnswers: question.validAnswers,
+                parentRichText: question.parentRichTextContent,
+                subjectiveAnswerText: question.subjectiveAnswerText,
+            }));
             sectionsForm?.setValue(`section.${index}`, {
                 ...sectionsForm?.getValues(`section.${index}`),
-                adaptive_marking_for_each_question: questionsToCommit.map((question) => ({
-                    questionId: question.questionId,
-                    questionName: question.questionName,
-                    questionType: question.questionType,
-                    questionMark: question.questionMark,
-                    questionPenalty: question.questionPenalty,
-                    questionDuration: {
-                        hrs: question.questionDuration.hrs,
-                        min: question.questionDuration.min,
-                    },
-                    decimals: question.decimals,
-                    numericType: question.numericType,
-                    validAnswers: question.validAnswers,
-                    parentRichText: question.parentRichTextContent,
-                    subjectiveAnswerText: question.subjectiveAnswerText,
-                })),
+                // baseline + this dialog's working set. Re-running (skip / keep-all)
+                // replaces the working set rather than stacking another copy of it.
+                adaptive_marking_for_each_question: mergeSectionQuestions(
+                    getSectionBaseline() as unknown as typeof incoming,
+                    incoming
+                ).merged,
             });
         }
         form.trigger('questions');

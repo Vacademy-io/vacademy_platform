@@ -21,7 +21,9 @@
         "difficulty": "Difficulty",
         "noTopicsWarning": "This knowledge base has no topics yet. Questions will be drawn from all of its material.",
         "questionTypeOptions": {
-            "mcqs": "Multiple choice",
+            "mcqs": "Multiple choice (one answer)",
+            "mcqm": "Multiple choice (several answers)",
+            "trueFalse": "True / false",
             "oneWord": "One word",
             "longAnswer": "Long answer",
             "numeric": "Numeric"

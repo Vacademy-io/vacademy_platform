@@ -5,13 +5,14 @@ import type {
   ProductPageSettings,
   PageJson,
 } from "../-types/product-page-types";
-import { ShoppingCart } from "@phosphor-icons/react";
+import { ShieldCheck, ShoppingCart } from "@phosphor-icons/react";
 import { PageRenderer, CourseGridBlock } from "./PageRenderer";
 import {
   getTerminology,
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { StepProgress } from "./StepProgress";
 
 interface CatalogStepProps {
   pageData: ProductPageData;
@@ -19,6 +20,8 @@ interface CatalogStepProps {
   /** Catalogue slug — enables the per-card "View course" link. */
   tagName?: string;
   productPageCode?: string;
+  /** Comma-separated level names the grid is restricted to (Course Finder). */
+  levels?: string;
   onNext: () => void;
 }
 
@@ -41,6 +44,7 @@ export const CatalogStep = ({
   settings,
   tagName,
   productPageCode,
+  levels,
   onNext,
 }: CatalogStepProps) => {
   const { t } = useTranslation("productPages");
@@ -60,6 +64,7 @@ export const CatalogStep = ({
         settings={settings}
         tagName={tagName}
         productPageCode={productPageCode}
+        lockedLevels={levels}
         onNext={onNext}
       />
     );
@@ -79,6 +84,27 @@ export const CatalogStep = ({
 
   return (
     <div className="min-h-screen bg-catalogue-bg">
+      {/* Step rail — same one the checkout steps wear, so browsing reads as
+          step 1 of 4 rather than a separate page. Only on this fallback view:
+          a page_json-designed catalog is the admin's own layout and must not
+          get platform chrome injected above it. */}
+      <div className="border-b border-catalogue-border bg-catalogue-bg-elevated px-4 py-5">
+        <div className="mx-auto flex max-w-screen-xl items-center gap-4">
+          <div className="min-w-0 flex-1 overflow-x-auto">
+            <StepProgress primaryColor={primaryColor} />
+          </div>
+          <div className="hidden shrink-0 items-center gap-1.5 md:flex">
+            <ShieldCheck className="size-4 text-success-600" aria-hidden="true" />
+            <div className="leading-tight">
+              <p className="text-caption font-semibold text-catalogue-text-secondary">
+                Secure &amp; Safe
+              </p>
+              <p className="text-2xs text-catalogue-text-muted">Your data is protected</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Page title */}
       <div className="border-b border-catalogue-border px-6 py-8 lg:px-8">
         <div className="mx-auto max-w-screen-2xl">
@@ -104,6 +130,7 @@ export const CatalogStep = ({
           primaryColor={primaryColor}
           tagName={tagName}
           productPageCode={productPageCode}
+          lockedLevels={levels}
         />
       </div>
 

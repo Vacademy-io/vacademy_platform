@@ -23,6 +23,9 @@ export interface ProductPageInviteMappingResponse {
     preselected: boolean;
     display_order: number;
     status: string;
+    /** Sent by the backend; used to author basket-pricing groups and combos. */
+    package_name?: string | null;
+    level_name?: string | null;
 }
 
 export interface ProductPageAggregatedField {
@@ -39,8 +42,14 @@ export interface ProductPageAggregatedField {
             fieldType: string;
             isMandatory: boolean | null;
             formOrder: number | null;
+            /** JSON blob: dropdown options, help text, and the verification block. */
+            config?: string | null;
         } | null;
         is_mandatory: boolean | null;
+        /** Position in this page's form. The mapping's answer, so it beats the
+         *  custom field's own institute-wide `formOrder`. Null on fields nobody
+         *  has ordered yet — they all tie and keep their arrival order. */
+        individual_order?: number | null;
     };
     enroll_invite_ids: string[];
 }
@@ -76,6 +85,72 @@ export interface ProductPageRequest {
     mappings: ProductPageInviteMappingRequest[];
 }
 
+export interface BasketPricingGroup {
+    label: string;
+    /** Level names in this group — the basket is split and priced per group. */
+    levels: string[];
+    /** Price for taking EVERY level in this group. Exact, so it survives the
+     *  class gaining or losing a subject. */
+    packPrice?: number;
+}
+
+export interface BasketPricingCombo {
+    label: string;
+    /** Course names that must be selected EXACTLY, within one group. */
+    packages: string[];
+    price: number;
+}
+
+/**
+ * Prices the basket as a whole instead of adding up per-course prices, for
+ * catalogues that sell "any 3 for X". See BasketPricingCalculator.java — the
+ * server recomputes this at checkout and is the authority.
+ */
+export interface BasketPricingSettings {
+    enabled: boolean;
+    ladder: {
+        /** Price for a basket of 1, 2, 3 … in order. */
+        prices: number[];
+        /** Added for each course beyond the last listed price. */
+        perExtra: number;
+    };
+    groups?: BasketPricingGroup[];
+    /**
+     * Where the ladder counts. GROUP (default) prices each class on its own;
+     * BASKET counts every subject together.
+     */
+    ladderScope?: 'GROUP' | 'BASKET';
+    /** Count → price, used only when a group's selection is complete. */
+    wholeGroupPrices?: Record<string, number>;
+    combos?: BasketPricingCombo[];
+}
+
+export interface OfferRule {
+    /** Stable id — the payment log names which offer paid out. */
+    id: string;
+    label: string;
+    /** Cart total at or above this qualifies. Omit for no amount condition. */
+    minAmount?: number;
+    /** At least this many courses. Omit for no count condition. */
+    minCourses?: number;
+    discountType: 'FIXED' | 'PERCENTAGE';
+    discountValue: number;
+    /** Ceiling for a percentage offer. */
+    maxDiscount?: number;
+}
+
+/**
+ * Predefined offers — no code, applied automatically, everyone sees the same
+ * list. Distinct from Coupons, which are codes with their own redemption
+ * limits. Only the BEST qualifying rule is applied. Server recomputes it at
+ * checkout (OfferCalculator.java).
+ */
+export interface OffersSettings {
+    enabled: boolean;
+    rules: OfferRule[];
+    heading?: string;
+}
+
 export interface ProductPageSettings {
     defaultStep: 'CATALOG' | 'CART' | 'PAYMENT';
     allowCourseDeselection: boolean;
@@ -98,6 +173,8 @@ export interface ProductPageSettings {
     coupon: {
         enabled: boolean;
     };
+    basketPricing?: BasketPricingSettings;
+    offers?: OffersSettings;
     afterPaymentRedirectUrl?: string;
     showLoginButton?: boolean;
     successPageContent?: string;
@@ -122,6 +199,8 @@ export interface ProductPageCouponRequest {
     discount_value: number;
     max_discount_value?: number;
     max_uses?: number;
+    /** Smallest cart this code may be used on. Omit for no minimum. */
+    min_items?: number;
     redeem_start_date?: string;
     redeem_end_date?: string;
 }
@@ -196,4 +275,11 @@ export interface MappingRow {
     currency: string;
     preselected: boolean;
     displayOrder: number;
+    /**
+     * Carried so the settings tab can offer real level / course pickers.
+     * Optional: a row just added from the course picker has not been through the
+     * server yet, and these are enrichment for display, never part of the save.
+     */
+    levelName?: string;
+    packageName?: string;
 }

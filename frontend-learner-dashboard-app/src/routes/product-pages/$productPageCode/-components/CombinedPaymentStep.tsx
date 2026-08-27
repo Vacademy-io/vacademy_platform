@@ -13,6 +13,7 @@ import { ArrowLeft, SpinnerGap, ShieldCheck } from "@phosphor-icons/react";
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
+import { resolveLearnerIdentity } from '../-utils/learner-identity';
 
 interface CombinedPaymentStepProps {
     pageData: ProductPageData;
@@ -39,7 +40,7 @@ export const CombinedPaymentStep = ({
     const courseTermFor = (count: number) => (count === 1 ? course : coursePlural).toLocaleLowerCase();
     const {
         selectedPsOptionIds, registrationData, userId, couponCode,
-        discountAmount, totalPrice, finalPrice, utmParams,
+        finalPrice, utmParams,
     } = useProductPageStore();
 
     const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
@@ -57,21 +58,15 @@ export const CombinedPaymentStep = ({
 
     const currency = (pageData.currency || pageData.mappings[0]?.payment_plan?.currency || 'INR') as string;
     const amount = finalPrice();
-    const subtotal = totalPrice();
 
-    const emailEntry = Object.values(registrationData).find(
-        (f) => f.type?.toLowerCase().includes('email') || f.name?.toLowerCase().includes('email')
-    );
-    const phoneEntry = Object.values(registrationData).find(
-        (f) => f.type?.toLowerCase().includes('phone') || f.name?.toLowerCase().includes('phone') || f.name?.toLowerCase().includes('mobile')
-    );
-    const nameEntry = Object.values(registrationData).find(
-        (f) => f.name?.toLowerCase().includes('name') && !f.name?.toLowerCase().includes('email') && !f.name?.toLowerCase().includes('phone')
-    );
-
-    const userEmail = emailEntry?.value || '';
-    const userPhone = phoneEntry?.value || '';
-    const userName = nameEntry?.value || '';
+    // These three prefill the payment vendor's contact block, so they must be
+    // the same values the enrolment is created under. Shared resolver: a label
+    // search for "name" also matches "School Name". See learner-identity.
+    const {
+        email: userEmail,
+        phone: userPhone,
+        name: userName,
+    } = resolveLearnerIdentity(Object.values(registrationData));
 
     const doEnroll = async (paymentInitiationRequest: Record<string, unknown>) => {
         setIsProcessing(true);
@@ -174,69 +169,23 @@ export const CombinedPaymentStep = ({
         }
     };
 
-    const orderSummaryContent = (
-        <>
-            <div className="border-b border-gray-100 px-5 py-4">
-                <h2 className="font-semibold text-gray-900">{t('common.orderSummaryTitle')}</h2>
-            </div>
-            <div className="divide-y divide-gray-100">
-                {selectedMappings.map((m) => {
-                    const mapping = pageData.mappings.find(
-                        (pm) => pm.ps_invite_payment_option_id === m.ps_invite_payment_option_id
-                    );
-                    const nameParts = [mapping?.package_name, mapping?.level_name, mapping?.session_name].filter(Boolean);
-                    const courseName = nameParts.join(' | ') || mapping?.payment_plan?.name || course;
-                    return (
-                        <div key={m.ps_invite_payment_option_id} className="px-5 py-3">
-                            <p className="mb-1 text-xs font-semibold text-gray-800 leading-snug">{courseName}</p>
-                            <div className="flex justify-between text-sm text-gray-500">
-                                <span>{mapping?.payment_plan?.name}</span>
-                                <span className="font-medium text-gray-900">
-                                    {m.amount > 0 ? `${currency} ${m.amount.toLocaleString(i18n.language)}` : t('common.free')}
-                                </span>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-            <div className="space-y-2 border-t border-gray-100 px-5 py-4">
-                {discountAmount > 0 && (
-                    <div className="flex justify-between text-sm text-green-600">
-                        <span>{t('common.couponAppliedLabel', { code: couponCode })}</span>
-                        <span>− {currency} {discountAmount.toLocaleString()}</span>
-                    </div>
-                )}
-                {subtotal !== amount && (
-                    <div className="flex justify-between text-sm text-gray-400 line-through">
-                        <span>{t('combinedPaymentStep.subtotal')}</span>
-                        <span>{currency} {subtotal.toLocaleString()}</span>
-                    </div>
-                )}
-                <div className="flex justify-between pt-1 text-base font-bold text-gray-900">
-                    <span>{t('common.total')}</span>
-                    <span>{currency} {amount.toLocaleString()}</span>
-                </div>
-                <p className="text-end text-xs text-gray-400">{t('combinedPaymentStep.allPricesIn', { currency })}</p>
-            </div>
-        </>
-    );
-
     return (
         <>
-            {/* Two-column body */}
-            <div className="mx-auto max-w-3xl px-4 py-8 lg:flex lg:items-start lg:gap-8">
-                {/* Left: payment form */}
-                <div className="min-w-0 flex-1">
-                    {/* Order summary — mobile only, shown above the payment form */}
-                    <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:hidden">
-                        {orderSummaryContent}
-                    </div>
-
-                    <h1 className="mb-1 text-xl font-bold text-gray-900">{t('combinedPaymentStep.title')}</h1>
-                    <p className="mb-6 text-sm text-gray-500">
+            {/* Line items and totals live in CheckoutLayout's OrderSummaryPanel,
+                which is on screen throughout checkout — this step shows only
+                the payment action itself. */}
+            <div className="px-5 py-6 sm:px-6">
+                <div className="min-w-0">
+                    <h1 className="mb-1 text-lg font-bold text-gray-900">{t('combinedPaymentStep.title')}</h1>
+                    <p className="mb-6 text-caption text-gray-500">
                         {t('combinedPaymentStep.completeEnrollmentFor', {
                             count: selectedPsOptionIds.length,
                             course: courseTermFor(selectedPsOptionIds.length),
+                        })}
+                        {' · '}
+                        {t('combinedPaymentStep.amountPayable', {
+                            currency,
+                            amount: amount.toLocaleString(i18n.language),
                         })}
                     </p>
 
@@ -334,13 +283,6 @@ export const CombinedPaymentStep = ({
                             <ShieldCheck className="size-3.5" />
                             {t('common.securedPayment')}
                         </div>
-                    </div>
-                </div>
-
-                {/* Right: order summary (desktop only) */}
-                <div className="hidden lg:mt-0 lg:block lg:w-72 lg:shrink-0">
-                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                        {orderSummaryContent}
                     </div>
                 </div>
             </div>

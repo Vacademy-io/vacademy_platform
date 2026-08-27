@@ -180,6 +180,20 @@ const CreateAssessmentComponent = () => {
     ];
     const [currentStep, setCurrentStep] = useState(presentStep);
     const [completedSteps, setCompletedSteps] = useState([false, false, false, false]);
+    /** Keep ?currentStep in step with the wizard, so a refresh lands where the user was. */
+    const syncStepToUrl = (step: number) => {
+        navigate({
+            to: '/assessment/create-assessment/$assessmentId/$examtype',
+            params: {
+                assessmentId: assessmentId,
+                examtype: examtype,
+            },
+            search: {
+                currentStep: step,
+            },
+        });
+    };
+
     const completeCurrentStep = () => {
         setCompletedSteps((prev) => {
             const updated = [...prev];
@@ -187,18 +201,12 @@ const CreateAssessmentComponent = () => {
             return updated;
         });
         if (currentStep < steps.length - 1) {
-            setCurrentStep((prev) => prev + 1);
-            // Update URL `currentStep` without reloading
-            navigate({
-                to: '/assessment/create-assessment/$assessmentId/$examtype',
-                params: {
-                    assessmentId: assessmentId,
-                    examtype: examtype,
-                },
-                search: {
-                    currentStep: currentStep,
-                },
-            });
+            const nextStep = currentStep + 1;
+            setCurrentStep(nextStep);
+            // The URL used to be written with the PRE-increment value, inside a setter
+            // that had already advanced — so ?currentStep was permanently one behind, and
+            // since it is only read at mount, a refresh landed on the wrong step.
+            syncStepToUrl(nextStep);
         }
     };
 
@@ -211,6 +219,8 @@ const CreateAssessmentComponent = () => {
     const goToStep = (index: number) => {
         if (index <= currentStep || completedSteps[index - 1]) {
             setCurrentStep(index);
+            // Sidebar navigation never touched the URL at all.
+            syncStepToUrl(index);
         }
     };
 
@@ -219,6 +229,27 @@ const CreateAssessmentComponent = () => {
     const metaDescription =
         examtype === 'SURVEY' ? t('helmet.descriptionSurvey') : t('helmet.descriptionAssessment');
 
+    /*
+     * Warn before the browser discards unsaved work.
+     *
+     * Each step keeps its edits in its own react-hook-form and only writes them to the
+     * zustand store inside the mutation's onSuccess — so anything not yet submitted is
+     * lost on a refresh or a back-navigation, silently. The wizard also holds
+     * savedAssessmentId in memory, so a refresh mid-flow would leave steps 2-4 posting
+     * against an empty assessment id.
+     *
+     * This is the browser-level guard only; in-app step switching keeps the forms mounted.
+     */
+    useEffect(() => {
+        const warnOnUnload = (event: BeforeUnloadEvent) => {
+            // Nothing to lose before the assessment exists or once it is fully done.
+            if (currentStep === 0 && !completedSteps[0]) return;
+            event.preventDefault();
+            event.returnValue = '';
+        };
+        window.addEventListener('beforeunload', warnOnUnload);
+        return () => window.removeEventListener('beforeunload', warnOnUnload);
+    }, [currentStep, completedSteps]);
     return (
         <LayoutContainer
             sidebarComponent={

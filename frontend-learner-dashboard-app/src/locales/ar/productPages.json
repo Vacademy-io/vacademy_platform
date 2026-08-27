@@ -36,6 +36,12 @@
         "selectPrompt": "اختر {{courses}} التي ترغب في التسجيل بها"
     },
     "cartStep": {
+        "heading": {
+            "title": "راجع سلتك",
+            "subtitlePlanChoice": "راجع اختيارك واختر الخطة التي تناسبك قبل المتابعة.",
+            "subtitleDefault": "راجع موادك واحذف أي شيء لم تقصد إضافته."
+        },
+        "backToCourses": "العودة إلى الدورات",
         "couponChanged": "تغيّرت السلة — يرجى إعادة تطبيق الكوبون الخاص بك.",
         "orderSummary": {
             "subtitle": "راجع طلبك قبل المتابعة إلى الدفع"
@@ -50,6 +56,14 @@
         "subtotalItems_many": "المجموع الفرعي ({{count}} عنصرًا)",
         "subtotalItems_other": "المجموع الفرعي ({{count}} عنصر)",
         "couponCard": {
+            "errors": {
+                "belowMinItems": "يحتاج هذا الكود إلى المزيد من الدورات في سلتك.",
+                "expired": "انتهت صلاحية هذا الكود.",
+                "notStarted": "هذا الكود غير نشط بعد.",
+                "limitReached": "تم استخدام هذا الكود بالكامل.",
+                "emailRestricted": "هذا الكود غير متاح لبريدك الإلكتروني.",
+                "notApplicable": "لا ينطبق هذا الكود على هذه الدورات."
+            },
             "title": "كود الكوبون",
             "placeholder": "أدخل كود الكوبون",
             "apply": "تطبيق",
@@ -63,6 +77,7 @@
         "subtotal": "المجموع الفرعي",
         "allPricesIn": "جميع الأسعار بعملة {{currency}}",
         "completeEnrollmentFor": "أكمل تسجيلك في {{count}} {{course}}",
+        "amountPayable": "{{currency}} {{amount}} مستحقة الدفع",
         "completingEnrollment": "جارٍ إكمال تسجيلك…",
         "retryEnrollment": "إعادة محاولة التسجيل",
         "openingPayment": "جارٍ فتح صفحة الدفع...",

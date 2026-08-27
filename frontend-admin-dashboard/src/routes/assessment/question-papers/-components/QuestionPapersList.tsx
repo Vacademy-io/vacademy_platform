@@ -35,6 +35,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { describeMerge, mergeSectionQuestions } from '../-utils/merge-section-questions';
+import { calculateTotalMarks } from '../../create-assessment/$assessmentId/$examtype/-utils/helper';
 export type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 
 // Picks N random questions per tag (as configured in `tagCounts`) and merges
@@ -162,7 +165,9 @@ export const QuestionPapersList = ({
             refetchData();
         },
         onError: (error: unknown) => {
+            // Was console.error only, so a failed favourite/delete looked like it worked.
             console.error(error);
+            toast.error('Could not update this question paper. Please try again.');
         },
     });
 
@@ -312,26 +317,45 @@ export const QuestionPapersList = ({
             questionsToUse = selectQuestionsByTags(questions, tagCounts);
         }
 
+        const incoming = questionsToUse.map((question) => ({
+            questionId: question.questionId,
+            questionName: question.questionName,
+            questionType: question.questionType,
+            questionMark: question.questionMark,
+            questionPenalty: question.questionPenalty,
+            ...(question.questionType === 'MCQM' && {
+                correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
+                    (item) => item.isSelected
+                ).length,
+            }),
+            questionDuration: {
+                hrs: question.questionDuration.hrs,
+                min: question.questionDuration.min,
+            },
+        }));
+
+        // Append: picking a second saved paper for the same section used to discard
+        // everything the first one put there.
+        const mergeResult = mergeSectionQuestions(
+            sectionsForm.getValues(`section.${index}.adaptive_marking_for_each_question`) as
+                | typeof incoming
+                | undefined,
+            incoming
+        );
+
         sectionsForm.setValue(
             `section.${index}.adaptive_marking_for_each_question`,
-            questionsToUse.map((question) => ({
-                questionId: question.questionId,
-                questionName: question.questionName,
-                questionType: question.questionType,
-                questionMark: question.questionMark,
-                questionPenalty: question.questionPenalty,
-                ...(question.questionType === 'MCQM' && {
-                    correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
-                        (item) => item.isSelected
-                    ).length,
-                }),
-                questionDuration: {
-                    hrs: question.questionDuration.hrs,
-                    min: question.questionDuration.min,
-                },
-            }))
+            mergeResult.merged
+        );
+        // The section total is derived from its questions, and the effect that keeps it
+        // in sync only watches marks_per_question — so adding questions has to update it
+        // here, exactly as the knowledge-base dialog does.
+        sectionsForm.setValue(
+            `section.${index}.total_marks`,
+            String(calculateTotalMarks(mergeResult.merged))
         );
         sectionsForm.trigger(`section.${index}.adaptive_marking_for_each_question`);
+        toast.success(describeMerge(mergeResult));
         setIsSavedQuestionPaperDialogOpen(false);
         resetSelectionConfig();
     };

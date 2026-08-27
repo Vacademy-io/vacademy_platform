@@ -64,6 +64,7 @@
 		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2502F0ABC0800089DAC /* GoogleService-Info.plist */; };
 		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		11C855A6C72427C7B48AE0A9 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		12216C0695BE4850F2D32409 /* OfflineMediaPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070B74BA81E94A3D820C661E /* OfflineMediaPlugin.swift */; };
 		12AD9106DDA4265C98D16D1F /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		1376A4A7F9FE68EC97D896F4 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		14E8D273FC7A03FCCF0B9EEE /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
@@ -117,6 +118,7 @@
 		506C1B40C8D810C9A093A73F /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		5196ADBA4C84E9586D75D263 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21216D9D311F8C984BCE098F /* Foundation.framework */; };
+		51DBEC520ED076FD6800432D /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		52C921739581A979D976D4E6 /* LaunchScreenSN.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */; };
 		540A41F34EC54BDAAB02875E /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		542B13A323EA4A28A69BFA55 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
@@ -176,6 +178,7 @@
 		AD056A8BAB964CF8A82B5E28 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		B0001A1F2586FBF665B492F4 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		B0E2CD46332CEEC03CA442A4 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		B4F71D0A265E93C8AD130E77 /* LaunchScreenZOE.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A7C3E19B4F0D82615C4A0B31 /* LaunchScreenZOE.storyboard */; };
 		B529081F47694FDCA934FD6C /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 		B54A1F3CD7664D439F52C51A /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B732170F2E424837BA95FC36 /* MainViewController.swift */; };
 		B69485FE8BAC1BDCB3074B67 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1340CA8AE85454FAEA120CAC /* GoogleService-Info.plist */; };
@@ -216,6 +219,8 @@
 		F9924E04F04197C178D32938 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		FA404FC5414543089A2C9103 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
 		FB8B01BF0100C1105476F1FF /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9B00073F4475E3902818CE10 /* GoogleService-Info.plist */; };
+		FF4678D1AD97A855A3F0ECB6 /* OfflineMediaCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93D3EA14A8641A29AE1336A /* OfflineMediaCrypto.swift */; };
+		FF68169C768260C0D7BEA856 /* OfflineMediaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85C6D06FFEA4567AD04E2CE /* OfflineMediaSchemeHandler.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -292,6 +297,7 @@
 		9B00073F4475E3902818CE10 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Brahm-Varchas/GoogleService-Info.plist"; sourceTree = SOURCE_ROOT; };
 		9BF657DED25A2F36B05C0907 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		9F3DCD4D12768ECFD7DBB5AA /* Pods_Shiksha_Nation_SK.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Shiksha_Nation_SK.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A7C3E19B4F0D82615C4A0B31 /* LaunchScreenZOE.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenZOE.storyboard; path = App/Base.lproj/LaunchScreenZOE.storyboard; sourceTree = "<group>"; };
 		A9350ABD4CDFBB507639AA28 /* Pods-Chanakaya IAS Academy.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakaya IAS Academy.release.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakaya IAS Academy/Pods-Chanakaya IAS Academy.release.xcconfig"; sourceTree = "<group>"; };
 		AD27862833C67F02F11F73AB /* Pods-The Learning Bridge.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-The Learning Bridge.debug.xcconfig"; path = "Pods/Target Support Files/Pods-The Learning Bridge/Pods-The Learning Bridge.debug.xcconfig"; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -525,6 +531,7 @@
 				1340CA8AE85454FAEA120CAC /* GoogleService-Info.plist */,
 				F3969B766B40EF22BCAE4710 /* GoogleService-Info.plist */,
 				24D512D1333882090B007013 /* LaunchScreenDumBee.storyboard */,
+				A7C3E19B4F0D82615C4A0B31 /* LaunchScreenZOE.storyboard */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1128,6 +1135,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				31170A8D66EED80E34866581 /* LaunchScreen.storyboard in Resources */,
+				B4F71D0A265E93C8AD130E77 /* LaunchScreenZOE.storyboard in Resources */,
 				12AD9106DDA4265C98D16D1F /* public in Resources */,
 				C2B8C112621143C004BC58B9 /* Assets.xcassets in Resources */,
 				B0E2CD46332CEEC03CA442A4 /* capacitor.config.json in Resources */,
@@ -1952,6 +1960,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				A5742CAF260A4E0C4386CECF /* AppDelegate.swift in Sources */,
+				FF4678D1AD97A855A3F0ECB6 /* OfflineMediaCrypto.swift in Sources */,
+				12216C0695BE4850F2D32409 /* OfflineMediaPlugin.swift in Sources */,
+				FF68169C768260C0D7BEA856 /* OfflineMediaSchemeHandler.swift in Sources */,
+				51DBEC520ED076FD6800432D /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2343,7 +2355,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = TLBIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/The-Learning-Bridge/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "The Learning Bridge";
@@ -2351,7 +2363,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.learningbridge.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2366,19 +2378,21 @@
 			baseConfigurationReference = 1EDD97834AF3CF16AC83FE71 /* Pods-ZOE Edtech.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = ZOEIcon;
-				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
-				DEVELOPMENT_TEAM = 35NLZB49QN;
+				CODE_SIGN_ENTITLEMENTS = App/ZOE.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 6;
+				DEVELOPMENT_TEAM = 7XKD5M7288;
 				INFOPLIST_FILE = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Edtech";
-				INFOPLIST_KEY_CFBundleName = "ZOE Edtech";
+				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Online School";
+				INFOPLIST_KEY_CFBundleName = "ZOE Online School";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 2.5.5;
 				PRODUCT_BUNDLE_IDENTIFIER = io.zoeedtech.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "ZOE Online School iOS App Store 2026";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2392,7 +2406,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = TLBIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/The-Learning-Bridge/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "The Learning Bridge";
@@ -2400,7 +2414,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.learningbridge.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -2414,17 +2428,17 @@
 			baseConfigurationReference = 3E3ECE5F6CF7DBF477DD159E /* Pods-ZOE Edtech.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = ZOEIcon;
-				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/ZOE.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
-				DEVELOPMENT_TEAM = 35NLZB49QN;
+				CURRENT_PROJECT_VERSION = 6;
+				DEVELOPMENT_TEAM = 7XKD5M7288;
 				INFOPLIST_FILE = "GoogleServiceConfigs/ZOE-Edtech/GoogleService-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Edtech";
-				INFOPLIST_KEY_CFBundleName = "ZOE Edtech";
+				INFOPLIST_KEY_CFBundleDisplayName = "ZOE Online School";
+				INFOPLIST_KEY_CFBundleName = "ZOE Online School";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 2.5.5;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.zoeedtech.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";

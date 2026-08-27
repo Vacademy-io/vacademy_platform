@@ -500,6 +500,10 @@ export const MARK_QUESTION_PAPER_STATUS = `${BASE_URL}/assessment-service/questi
 export const GET_QUESTION_PAPER_BY_ID = `${BASE_URL}/assessment-service/question-paper/view/v1/get-by-id`;
 export const GET_QUESTION_TAGS = `${BASE_URL}/assessment-service/question-paper/view/v1/question-tags`;
 export const ADD_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/add`;
+// Browse INDIVIDUAL questions in the institute's bank (filter by knowledge base,
+// topic, difficulty, type, tag). Distinct from GET_QUESTION_PAPER_FILTERED_DATA
+// above, which lists whole papers.
+export const FILTER_QUESTION_BANK_QUESTIONS = `${BASE_URL}/assessment-service/question-bank/v1/questions/filter`;
 export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/edit`;
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;
 export const STEP2_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/submit`;
@@ -1454,6 +1458,10 @@ export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFi
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
 export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;
+export const REORDER_PRODUCT_PAGE_CUSTOM_FIELDS = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/order`;
+export const UPDATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
 
 // Institute-scoped coupon management (backend V308/V309). The CRUD endpoints
 // are admin-gated via JWT + clientId header (auto-injected by axiosInstance);

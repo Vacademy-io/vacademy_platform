@@ -41,6 +41,9 @@ export const WhatsAppFloatingButton: React.FC<Props> = ({ settings, hasMobileBar
   }`;
   const isLeft = settings.position === "left";
 
+  // `catalogue-floating-cta` lets a multi-course basket bar lift this clear of
+  // itself: that bar takes the bottom of the viewport at EVERY width, not only
+  // the mobile one hasMobileBar already accounts for. See catalogue-tokens.css.
   return (
     <a
       href={href}
@@ -51,7 +54,7 @@ export const WhatsAppFloatingButton: React.FC<Props> = ({ settings, hasMobileBar
       }
       aria-label={settings.label || t("whatsAppFloatingButton.chatWithUs")}
       title={settings.label || t("whatsAppFloatingButton.chatWithUs")}
-      className={`fixed z-catalogue-fixed flex items-center gap-2 rounded-full bg-success-500 px-4 py-3 font-semibold text-white no-underline shadow-lg transition hover:opacity-90 active:scale-[0.98] ${
+      className={`catalogue-floating-cta fixed z-catalogue-fixed flex items-center gap-2 rounded-full bg-success-500 px-4 py-3 font-semibold text-white no-underline shadow-lg transition hover:opacity-90 active:scale-[0.98] ${
         isLeft ? "start-4" : "end-4"
       } ${hasMobileBar ? "bottom-32 md:bottom-6" : "bottom-6"}`}
     >

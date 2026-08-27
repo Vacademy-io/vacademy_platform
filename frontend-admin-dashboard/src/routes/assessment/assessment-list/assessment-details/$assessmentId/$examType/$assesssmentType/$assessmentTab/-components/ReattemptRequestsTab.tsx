@@ -210,7 +210,7 @@ export const ReattemptRequestsTab = () => {
     const [statusFilter, setStatusFilter] = useState<ReattemptRequestStatus | 'ALL'>('PENDING');
     const statusFilters = buildStatusFilters(t);
 
-    const { data, isLoading, isError, refetch } = useQuery({
+    const { data, isLoading, isError, error, refetch } = useQuery({
         queryKey: ['reattempt-requests', instituteId, assessmentId, statusFilter],
         queryFn: () =>
             getReattemptRequests({
@@ -230,11 +230,18 @@ export const ReattemptRequestsTab = () => {
     if (isLoading) return <DashboardLoader />;
 
     if (isError) {
+        // Name the actual failure. A bare "Could not load requests" is indistinguishable
+        // between a dead endpoint, a rejected request line and an auth problem, and the
+        // pending-count badge keeps ticking either way — so the tab looks merely empty.
+        const status = (error as unknown as { response?: { status?: number } })?.response?.status;
+        const reason = status !== undefined ? `HTTP ${status}` : error?.message ?? '';
+
         return (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
                 <p className="text-subtitle font-semibold text-neutral-700">
                     {t('error.title')}
                 </p>
+                {reason && <p className="text-caption text-neutral-500">{reason}</p>}
                 <MyButton buttonType="secondary" scale="medium" onClick={() => refetch()}>
                     <ArrowClockwise size={16} /> {t('error.tryAgain')}
                 </MyButton>

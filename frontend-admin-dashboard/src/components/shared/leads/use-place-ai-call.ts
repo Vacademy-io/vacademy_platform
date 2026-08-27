@@ -34,6 +34,20 @@ export function usePlaceAiCall({ invalidateKeys = [] }: UsePlaceAiCallOptions = 
                 preferredNumberId: vars.preferredNumberId,
             }),
         onSuccess: (resp, vars) => {
+            // ACCEPTED BUT WAITING is not a failure. The fleet carries a fixed number of
+            // simultaneous AI calls, so when every line is busy the call is queued and
+            // dials on its own — status QUEUED with a position and an ETA. This has to be
+            // checked BEFORE the dispatched===false branch below, which it would
+            // otherwise fall into and be reported as "not placed".
+            if (resp && resp.status === 'QUEUED') {
+                toast.info(
+                    resp.providerMessage ||
+                        `AI call queued${vars.leadName ? ` for ${vars.leadName}` : ''}`
+                );
+                queryClient.invalidateQueries({ queryKey: ['ai-call-queue-summary'] });
+                queryClient.invalidateQueries({ queryKey: ['ai-call-queue-items'] });
+                return;
+            }
             // A skip is HTTP 200 with dispatched=false (lead already assigned, duplicate
             // within 30s, daily cap reached). Toasting "queued" for those told the user a
             // call was placed when nothing was dialled — the phone simply never rang, with

@@ -245,6 +245,8 @@
         "subtitle": "Pick a program and enrol in minutes.",
         "viewAllLabel": "See all",
         "ctaLabel": "Enrol now",
+        "cartCtaLabel": "Add to Cart",
+        "checkoutCtaLabel": "Proceed to checkout",
         "viewCourseLabel": "View course"
     }
 }

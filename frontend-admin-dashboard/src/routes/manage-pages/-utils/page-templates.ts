@@ -205,6 +205,66 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
             makeComponent(t, 'ctaBanner'),
         ],
     },
+    // The shape a subject/level catalogue converges on: one hero, one live
+    // course block a visitor can pick SEVERAL courses from, and the reassurance
+    // blocks that answer "why you" before they reach checkout. Built from the
+    // iThinkers Olympiad catalogue, which had to be hand-assembled block by
+    // block (and its cart hand-written into the page JSON) the first time.
+    {
+        id: 'course-catalogue-multi-pick',
+        name: 'Course Catalogue — Multi-pick',
+        description: 'Hero + course rail with a basket + why-us + FAQ + CTA. For sites where one visitor buys several courses.',
+        category: 'page',
+        getComponents: (t) => [
+            makeComponent(t, 'heroSection', {
+                props: {
+                    ...buildComponentTemplates(t)['heroSection']?.props,
+                    layout: 'split',
+                    eyebrow: { text: 'ADMISSIONS OPEN', style: 'badge' },
+                    left: {
+                        title: 'Pick the courses that fit',
+                        description:
+                            '<p>Choose a class, add the subjects you want, and enrol for all of them in one go.</p>',
+                        buttons: [
+                            { text: 'Browse courses', variant: 'primary', action: 'navigate', target: '#courses' },
+                            { text: 'Talk to us', variant: 'secondary', action: 'openLeadCollection' },
+                        ],
+                    },
+                },
+            }),
+            // The one block that has to be wired by hand — it needs a product
+            // page, and the pre-publish check says so if it is left unset.
+            makeComponent(t, 'productPageOffer', {
+                props: {
+                    ...buildComponentTemplates(t)['productPageOffer']?.props,
+                    title: 'Our Courses',
+                    subtitle: 'Pick the ones you want — add as many as you like, then check out once.',
+                    layout: 'carousel',
+                    columns: 4,
+                    align: 'left',
+                    headerScale: 'md',
+                    // A basket only earns its place when a visitor genuinely
+                    // buys more than one; that is the whole premise here, so it
+                    // ships on rather than as something to discover later.
+                    enableCart: true,
+                    // Every course in the rail: with a Course Finder narrowing
+                    // the list to one class, the whole class fits in one row.
+                    pageSize: 0,
+                    railMaxCards: 12,
+                    showDescription: false,
+                },
+            }),
+            makeComponent(t, 'featureGrid', {
+                props: {
+                    ...buildComponentTemplates(t)['featureGrid']?.props,
+                    headerText: 'Why learners choose us',
+                },
+            }),
+            makeComponent(t, 'statsHighlights'),
+            makeComponent(t, 'faqSection'),
+            makeComponent(t, 'ctaBanner'),
+        ],
+    },
     {
         id: 'programs-directory',
         name: 'Programs Directory',
@@ -252,6 +312,22 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
                 props: { ...buildComponentTemplates(t)['sectionHeading']?.props, eyebrow: 'Our programs', title: 'What we offer' },
             }),
             makeComponent(t, 'detailBlocks'),
+        ],
+    },
+    {
+        id: 'course-basket-section',
+        name: 'Course Basket',
+        description: 'One course rail a visitor can pick several courses from, checking out once',
+        category: 'section',
+        getComponents: (t) => [
+            makeComponent(t, 'productPageOffer', {
+                props: {
+                    ...buildComponentTemplates(t)['productPageOffer']?.props,
+                    title: 'Our Courses',
+                    subtitle: 'Pick the ones you want — add as many as you like, then check out once.',
+                    enableCart: true,
+                },
+            }),
         ],
     },
     {

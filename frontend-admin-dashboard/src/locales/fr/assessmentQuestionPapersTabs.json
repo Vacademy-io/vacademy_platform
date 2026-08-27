@@ -5,7 +5,8 @@
     },
     "actions": {
         "filter": "Filtrer",
-        "reset": "Réinitialiser"
+        "reset": "Réinitialiser",
+        "tryAgain": "Réessayer"
     },
     "emptyStates": {
         "noQuestionPapers": "Aucun sujet d'examen disponible",

@@ -408,13 +408,27 @@ export const syncStep4DataWithStore = (form: UseFormReturn<AccessControlFormValu
     setAccessControlData(testAccessData);
 };
 
+/**
+ * {hrs, min} -> total minutes.
+ *
+ * Both fields are seeded as '' by createDefaultSection, and `parseInt('')` is NaN —
+ * which propagates through the addition and then serialises to `null`, so a section the
+ * admin gave a duration to could still be sent with no duration at all. Treating a blank
+ * or unparseable part as 0 is what the neighbouring total_marks / cutoff_marks fields
+ * already do.
+ */
+const toMinutes = (duration: { hrs?: string; min?: string } | undefined): number => {
+    const hrs = parseInt(duration?.hrs ?? '', 10);
+    const min = parseInt(duration?.min ?? '', 10);
+    return (Number.isNaN(hrs) ? 0 : hrs) * 60 + (Number.isNaN(min) ? 0 : min);
+};
+
 export const convertStep2Data = (data: z.infer<typeof sectionDetailsSchema>) => {
     return data.section.map((section, index) => ({
         section_description_html: section.section_description || '',
         section_name: section.sectionName,
         section_id: section.sectionId || '',
-        section_duration:
-            parseInt(section.section_duration.hrs) * 60 + parseInt(section.section_duration.min),
+        section_duration: toMinutes(section.section_duration),
         section_order: index + 1,
         total_marks: parseInt(section.total_marks) || 0,
         cutoff_marks: section.cutoff_marks.checked ? parseInt(section.cutoff_marks.value) || 0 : 0,
@@ -443,9 +457,9 @@ export const convertStep2Data = (data: z.infer<typeof sectionDetailsSchema>) => 
                         }),
                     },
                 }),
-                question_duration_in_min:
-                    parseInt(section.question_duration.hrs) * 60 +
-                        parseInt(section.question_duration.min) || 0,
+                // Same NaN trap as section_duration above: the trailing `|| 0` caught the
+                // NaN but turned "30 minutes with the hours box left blank" into 0.
+                question_duration_in_min: toMinutes(section.question_duration),
                 question_order: qIndex + 1,
                 // Add evaluation criteria fields - send null if not applied
                 evaluation_criteria_json: (question as any).evaluation_criteria_json || null,

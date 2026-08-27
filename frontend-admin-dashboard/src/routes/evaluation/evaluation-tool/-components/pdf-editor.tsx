@@ -67,13 +67,13 @@ import { useInstituteQuery } from "@/services/student-list-section/getInstituteD
 import { getTokenDecodedData, getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useFileUpload } from "@/hooks/use-file-upload";
-import { getPublicUrl } from "@/services/upload_file";
 import { cn } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
 import { MyDialog } from "@/components/design-system/dialog";
 import { useMarksStore, feedbackKey } from "@/stores/evaluation/marks-store";
 import { LoadingOverlay, UploadingOverlay } from "./Overlay";
 import { readEvalReturnUrl, clearEvalReturnUrl } from "../-utils/eval-return";
+import { runEvaluationSubmit } from "../-utils/submit-evaluation";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.mjs`;
 
@@ -97,6 +97,20 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
 // Export raster quality multiplier — matches the on-screen preview's minimum
 // devicePixelRatio floor so strokes/text stay crisp in the downloaded PDF.
 const RENDER_SCALE = 3;
+
+// Zoom bounds shared by manual zoom and fit-to-width. The floor used to be 0.5,
+// which made a phone-camera answer sheet (page boxes several thousand px wide)
+// impossible to see whole: both "Zoom out" and "Fit page to width" bottomed out
+// at 50% with the page still overflowing the pane. 10% is low enough to fit any
+// scan we get while still rendering something rather than nothing.
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 3;
+const ZOOM_STEP = 0.1;
+// Auto-fit stops higher than manual zoom does. Fitting is what the evaluator LANDS on, and
+// a phone-camera page in a phone-width pane fits at ~15% — the whole sheet visible and the
+// handwriting unreadable. Better to fit to a quarter scale and let the pane scroll; anyone
+// who genuinely wants the whole page smaller can still zoom out to MIN_ZOOM by hand.
+const MIN_FIT_ZOOM = 0.25;
 
 // Help text for the tool guide dialog. Tool rows reuse the live `tools` list (so
 // icons stay in sync); this keys a short description by the tool's label.
@@ -152,7 +166,9 @@ interface PDFEvaluatorProps {
 const PDFEvaluator = ({
     isFreeTool = true,
     file,
-    fileId,
+    // `fileId` (the learner's original answer file) is intentionally not read
+    // here — the evaluator loads the sheet through `file`/`pdfUrl`, and the
+    // submit sends the ANNOTATED file's id, never this one.
     questionData,
     assessmentId,
     attemptId,
@@ -672,10 +688,18 @@ const PDFEvaluator = ({
         };
     };
 
-    // Save the current progress on demand (only from the "Save draft" button).
-    const persistDraft = async () => {
+    // The draft write itself, without the "is the evaluator busy" guards. Split
+    // out of persistDraft so a FAILED submit can rescue the evaluator's work: at
+    // that moment isUploading/isLoading are still stale-true in this closure, so
+    // going through persistDraft would silently no-op and the annotations would
+    // be lost with the tab.
+    // `announce: false` is for the submit-failure rescue, where the failure toast
+    // already tells the evaluator their marking was kept — a second "Draft saved"
+    // toast right after an error reads as contradictory. It also rethrows there,
+    // so the caller can report whether the rescue actually worked.
+    const saveDraftNow = async ({ announce = true } = {}) => {
         if (isFreeTool || !attemptId) return;
-        if (savingDraftRef.current || isUploading || isLoading) return;
+        if (savingDraftRef.current) return;
 
         savingDraftRef.current = true;
         setIsSavingDraft(true);
@@ -683,17 +707,26 @@ const PDFEvaluator = ({
             const draft = buildDraftState();
             await saveEvaluationDraft(assessmentId, instituteId, attemptId, draft);
             setDraftSavedAt(draft.savedAt);
-            toast.success("Draft saved", {
-                description: "You can safely leave and resume this evaluation later.",
-                duration: 3000,
-            });
+            if (announce) {
+                toast.success("Draft saved", {
+                    description: "You can safely leave and resume this evaluation later.",
+                    duration: 3000,
+                });
+            }
         } catch (error) {
             console.error("Failed to save evaluation draft:", error);
+            if (!announce) throw error;
             toast.error("Couldn't save draft. Please try again.");
         } finally {
             savingDraftRef.current = false;
             setIsSavingDraft(false);
         }
+    };
+
+    // Save the current progress on demand (only from the "Save draft" button).
+    const persistDraft = async () => {
+        if (savingDraftRef.current || isUploading || isLoading) return;
+        await saveDraftNow();
     };
 
     // One-time draft restore. Runs when the annotation canvas is ready so we can
@@ -999,23 +1032,25 @@ const PDFEvaluator = ({
 
     const handleZoomIn = () => {
         hasManualZoomRef.current = true;
-        setZoomLevel((prevZoom) => Math.min(prevZoom + 0.1, 3)); // Max zoom level of 3
+        setZoomLevel((prevZoom) => Math.min(prevZoom + ZOOM_STEP, MAX_ZOOM));
     };
 
     const handleZoomOut = () => {
         hasManualZoomRef.current = true;
-        setZoomLevel((prevZoom) => Math.max(prevZoom - 0.1, 0.5)); // Min zoom level of 50%
+        setZoomLevel((prevZoom) => Math.max(prevZoom - ZOOM_STEP, MIN_ZOOM));
     };
 
     // Fill the scroll area's available width, so a wide screen shows the
     // handwriting bigger instead of leaving it small with empty grey margin
-    // on both sides. Clamped to the same [0.5, 3] range manual zoom uses.
+    // on both sides. The floor has to go below 50% or an oversized scan can never
+    // actually be fitted to the width — but see MIN_FIT_ZOOM for why it doesn't go
+    // all the way down to the manual limit.
     const computeFitZoom = (): number | null => {
         const availableWidth = pdfScrollAreaRef.current?.clientWidth;
         if (!availableWidth || !dimensions.width) return null;
         const PADDING = 32; // the CardContent's own p-4 (16px each side)
         const fit = (availableWidth - PADDING) / dimensions.width;
-        return Math.min(Math.max(fit, 0.5), 3);
+        return Math.min(Math.max(fit, MIN_FIT_ZOOM), MAX_ZOOM);
     };
 
     const handleResetZoom = () => {
@@ -1199,117 +1234,123 @@ const PDFEvaluator = ({
         }
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const tokenData = getTokenDecodedData(accessToken);
-        setIsLoading(true);
 
-        try {
-            const annotatedPdfBlob = await generateAnnotatedPDF();
-            setIsLoading(false);
-            setIsUploading(true);
-            setUploadingProgress(0);
-            const progressInterval = setInterval(() => {
-                setUploadingProgress((prev) => Math.min(prev + Math.random() * 10, 90));
-            }, 200);
-            // Always give the evaluated artifact a .pdf name/type — the source
-            // answer file may be named without an extension (or be missing),
-            // which would otherwise produce a file that won't open/download as PDF.
-            const baseName = (file?.name || `attempt-${attemptId}`).replace(/\.[^./\\]+$/, "");
-            const evaluatedFileName = `evaluated-${baseName}.pdf`;
-            const evaluatedFileId = await uploadFile({
-                file: new File([annotatedPdfBlob], evaluatedFileName, {
-                    type: "application/pdf",
-                }),
-                setIsUploading,
-                userId: "your-user-id",
-                source: instituteId,
-                sourceId: "EVALUATIONS",
-            });
-            const data_json = {
-                timeTakenInSeconds: currentTime(),
-                attemptId,
-                evaluationStartTime: startTimestamp,
-                evaluatedFileId,
-                setId: "",
-                assessmentId,
-                evaluatorUserId: tokenData?.user,
-            };
-            console.log(fileId);
-            const payload = {
-                set_id: "",
-                // file_id IS the evaluated artifact — the backend stores it on
-                // student_attempt.evaluated_file_id (the file shown to the learner).
-                // Send the annotated PDF, NOT the student's original answer
-                // (`fileId`), which stays in attemptData.
-                file_id: evaluatedFileId,
-                data_json: JSON.stringify(data_json),
-                // Merge the learner-facing feedback into each question's marks entry.
-                request: marksData.map((mark) => ({
-                    ...mark,
-                    evaluator_feedback:
-                        feedbackByQuestion[feedbackKey(mark.section_id, mark.question_id)] ||
-                        undefined,
-                })),
-            };
-            if (evaluatedFileId) {
-                const publicUrl = await getPublicUrl(evaluatedFileId);
-                console.log(publicUrl);
+        // Drafts only exist for a real attempt — the standalone free tool has
+        // nowhere to save to, so don't offer a rescue it can't perform.
+        const canRescueDraft = !isFreeTool && !!attemptId;
+        let progressInterval;
 
-                const response = await submitEvlauationMarks(
-                    assessmentId,
-                    instituteId,
-                    attemptId,
-                    payload,
-                );
-                console.log(response);
-
-                // Auto-release the result for this student so it's visible right
-                // after evaluation. Best-effort — a release failure shouldn't block
-                // the (already successful) marks submission.
-                try {
-                    await releaseEvaluationResult(assessmentId, instituteId, attemptId);
-                } catch (releaseError) {
-                    console.error("Failed to auto-release result:", releaseError);
-                }
-
-                resetMarks();
-                toast.success("Evaluation Submitted", {
-                    description: "The answer sheet evaluation has been completed and submitted.",
-                    duration: 3000,
+        // The ordering, the failure handling and the "never lose the marking"
+        // guarantees live in runEvaluationSubmit, which is typed and unit-tested
+        // (this file is @ts-nocheck'd, so nothing here is). Everything below is
+        // just wiring: what to upload, what to save, which spinners to drive.
+        const outcome = await runEvaluationSubmit({
+            buildAnnotatedPdf: generateAnnotatedPDF,
+            uploadEvaluatedPdf: (annotatedPdfBlob) => {
+                // Always give the evaluated artifact a .pdf name/type — the source
+                // answer file may be named without an extension (or be missing),
+                // which would otherwise produce a file that won't open/download as PDF.
+                const baseName = (file?.name || `attempt-${attemptId}`).replace(/\.[^./\\]+$/, "");
+                return uploadFile({
+                    file: new File([annotatedPdfBlob], `evaluated-${baseName}.pdf`, {
+                        type: "application/pdf",
+                    }),
+                    setIsUploading,
+                    userId: "your-user-id",
+                    source: instituteId,
+                    sourceId: "EVALUATIONS",
                 });
-
-                setIsUploading(false);
-                clearInterval(progressInterval);
-                // Return to wherever the admin launched the evaluator from (e.g.
-                // the assessment slide). Falls back to the assessment-details page
-                // using the REAL play_mode / visibility — never hardcoded values.
-                const returnUrl = readEvalReturnUrl();
-                if (returnUrl) {
-                    clearEvalReturnUrl();
-                    window.location.assign(returnUrl);
-                } else {
-                    navigate({
-                        to: "/evaluation/evaluations/assessment-details/$assessmentId/$examType/$assesssmentType",
-                        params: {
-                            assessmentId,
-                            examType: examType || "EXAM",
-                            assesssmentType: assessmentVisibility || "PRIVATE",
-                        },
-                    });
+            },
+            submitMarks: (evaluatedFileId) =>
+                submitEvlauationMarks(assessmentId, instituteId, attemptId, {
+                    set_id: "",
+                    // file_id IS the evaluated artifact — the backend stores it on
+                    // student_attempt.evaluated_file_id (the file shown to the learner).
+                    // Send the annotated PDF, NOT the student's original answer file,
+                    // which stays in attemptData.
+                    file_id: evaluatedFileId,
+                    data_json: JSON.stringify({
+                        timeTakenInSeconds: currentTime(),
+                        attemptId,
+                        evaluationStartTime: startTimestamp,
+                        evaluatedFileId,
+                        setId: "",
+                        assessmentId,
+                        evaluatorUserId: tokenData?.user,
+                    }),
+                    // Merge the learner-facing feedback into each question's marks entry.
+                    request: marksData.map((mark) => ({
+                        ...mark,
+                        evaluator_feedback:
+                            feedbackByQuestion[feedbackKey(mark.section_id, mark.question_id)] ||
+                            undefined,
+                    })),
+                }),
+            // Auto-release so the result is visible to the learner right after
+            // evaluation. Best-effort — a release failure never loses the marks.
+            releaseResult: () => releaseEvaluationResult(assessmentId, instituteId, attemptId),
+            rescueDraft: canRescueDraft ? () => saveDraftNow({ announce: false }) : undefined,
+            onStage: (stage) => {
+                if (stage === "building") {
+                    setIsLoading(true);
+                    return;
                 }
-            }
-        } catch (error) {
-            console.log(error);
-            toast.error("Error submitting evaluation");
+                if (stage === "uploading") {
+                    setIsLoading(false);
+                    setIsUploading(true);
+                    setUploadingProgress(0);
+                    progressInterval = setInterval(() => {
+                        setUploadingProgress((prev) => Math.min(prev + Math.random() * 10, 90));
+                    }, 200);
+                    return;
+                }
+                // "settled" fires on every path, success or failure, so the editor
+                // can never be left behind the loading overlay with both Submit and
+                // Save draft disabled — a dead end whose only escape was a reload,
+                // which discards every annotation on the sheet.
+                if (progressInterval) clearInterval(progressInterval);
+                setIsLoading(false);
+                setIsUploading(false);
+            },
+        });
+
+        if (outcome.status !== "submitted") {
             setUploadingProgress(0);
-            setIsUploading(false);
+            // Name what broke and say plainly that nothing was saved — the old
+            // generic "Error submitting evaluation" let a failure read like a
+            // slow success, so evaluators walked away from ungraded copies.
+            toast.error("Evaluation not submitted", {
+                description: outcome.workRescued
+                    ? `${outcome.reason} Nothing was saved for this copy — your marking is kept as a draft, so you can retry.`
+                    : `${outcome.reason} Nothing was saved — your marking is still on screen, please try again.`,
+                duration: 8000,
+            });
+            return;
         }
 
-        // Show success toast
+        resetMarks();
+        toast.success("Evaluation Submitted", {
+            description: "The answer sheet evaluation has been completed and submitted.",
+            duration: 3000,
+        });
 
-        // router.navigate({ to: "/evaluation/evaluations" });
-        // Go back to last route
-
-        // TODO: Add actual submission logic here
-        // For example, sending evaluation data to backend
+        // Return to wherever the admin launched the evaluator from (e.g. the
+        // assessment slide). Falls back to the assessment-details page using the
+        // REAL play_mode / visibility — never hardcoded values.
+        const returnUrl = readEvalReturnUrl();
+        if (returnUrl) {
+            clearEvalReturnUrl();
+            window.location.assign(returnUrl);
+        } else {
+            navigate({
+                to: "/evaluation/evaluations/assessment-details/$assessmentId/$examType/$assesssmentType",
+                params: {
+                    assessmentId,
+                    examType: examType || "EXAM",
+                    assesssmentType: assessmentVisibility || "PRIVATE",
+                },
+            });
+        }
     };
 
     if (!pdfFile && !pdfUrl) {
@@ -1999,10 +2040,10 @@ const PDFEvaluator = ({
                     <div className="mx-1 h-5 w-px bg-neutral-200" aria-hidden="true" />
                     <button
                         onClick={handleZoomOut}
-                        disabled={isLoading}
+                        disabled={isLoading || zoomLevel <= MIN_ZOOM}
                         aria-label="Zoom out"
                         title="Zoom out"
-                        className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-40"
+                        className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <MagnifyingGlassMinus size={16} aria-hidden="true" />
                     </button>
@@ -2017,10 +2058,10 @@ const PDFEvaluator = ({
                     </button>
                     <button
                         onClick={handleZoomIn}
-                        disabled={isLoading}
+                        disabled={isLoading || zoomLevel >= MAX_ZOOM}
                         aria-label="Zoom in"
                         title="Zoom in"
-                        className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-40"
+                        className="cursor-pointer rounded-full p-2 text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <MagnifyingGlassPlus size={16} aria-hidden="true" />
                     </button>

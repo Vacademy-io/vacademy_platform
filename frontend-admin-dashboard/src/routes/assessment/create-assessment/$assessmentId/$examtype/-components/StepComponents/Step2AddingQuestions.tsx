@@ -14,6 +14,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Step2SectionInfo from './Step2SectionInfo';
+import Step2CreateAssessmentFromKnowledgeBase from './-components/Step2CreateAssessmentFromKnowledgeBase';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/report-api-error';
 import { getFieldOptions, getStepKey, syncStep2DataWithStore } from '../../-utils/helper';
@@ -159,8 +160,19 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
         });
     };
 
-    const onInvalid = (err: unknown) => {
-        // Handle validation errors
+    const onInvalid = (errors: unknown) => {
+        // Was an empty stub, so a blocked submit looked like a dead button. Step 3 already
+        // scrolls to the first error; this does the same.
+        const firstField = Object.keys((errors as Record<string, unknown>) ?? {})[0];
+        toast.error('Please fix the highlighted fields before continuing.', {
+            className: 'error-toast',
+            duration: 3000,
+        });
+        if (firstField) {
+            document
+                .querySelector(`[name="${firstField}"]`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     };
 
     const { append } = useFieldArray({
@@ -751,6 +763,16 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
                     />
                     {t('addSectionButton')}
                 </button>
+
+                {/*
+                 * Whole-assessment generation sits beside "Add Section" rather than inside
+                 * a section, because it CREATES the sections: the plan decides how the
+                 * paper is broken up. The per-section knowledge-base card inside each
+                 * section is unchanged and still fills one section at a time.
+                 */}
+                <div className="mt-2">
+                    <Step2CreateAssessmentFromKnowledgeBase form={form} />
+                </div>
             </form>
         </FormProvider>
     );

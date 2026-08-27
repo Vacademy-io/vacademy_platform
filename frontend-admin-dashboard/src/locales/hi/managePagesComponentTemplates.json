@@ -245,6 +245,8 @@
         "subtitle": "एक कार्यक्रम चुनें और मिनटों में नामांकन करें।",
         "viewAllLabel": "सभी देखें",
         "ctaLabel": "अभी नामांकन करें",
+        "cartCtaLabel": "कार्ट में जोड़ें",
+        "checkoutCtaLabel": "चेकआउट पर जाएँ",
         "viewCourseLabel": "कोर्स देखें"
     }
 }

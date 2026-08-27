@@ -880,6 +880,7 @@ export const CourseGridBlock = ({
   activeFilters = NO_ACTIVE_FILTERS,
   tagName,
   productPageCode,
+  lockedLevels,
 }: {
   props: Record<string, unknown>;
   pageData: ProductPageData;
@@ -890,6 +891,13 @@ export const CourseGridBlock = ({
   /** Catalogue slug — enables the per-card "View course" link. */
   tagName?: string;
   productPageCode?: string;
+  /**
+   * Comma-separated level names this grid is hard-restricted to, carried over
+   * from the catalogue's Course Finder pick (?levels=). A restriction, not a
+   * default: the visitor who chose "Class 6" must not be shown every other
+   * level here, and cannot widen back out via the level facet.
+   */
+  lockedLevels?: string;
 }) => {
   const { t } = useTranslation("productPages");
   const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -901,10 +909,23 @@ export const CourseGridBlock = ({
   const perPage = Number(props.pageSize) > 0 ? Math.floor(Number(props.pageSize)) : DEFAULT_PAGE_SIZE;
   const { selectedPsOptionIds, toggleSelection, totalPrice } = useProductPageStore();
 
-  const activeMappings = useMemo(
-    () => pageData.mappings.filter((m) => m.status === "ACTIVE"),
-    [pageData.mappings],
-  );
+  const activeMappings = useMemo(() => {
+    const active = pageData.mappings.filter((m) => m.status === "ACTIVE");
+    const allowed = (lockedLevels || "")
+      .split(",")
+      .map((l) => l.trim().toLowerCase())
+      .filter(Boolean);
+    if (allowed.length === 0) return active;
+    // Case-insensitive: levelGroups in catalogue JSON are hand-authored and
+    // drift from the real level names ("Cyber Ai-" vs "Cyber AI-").
+    const allowedSet = new Set(allowed);
+    const narrowed = active.filter((m) =>
+      allowedSet.has((m.level_name || "").trim().toLowerCase()),
+    );
+    // A restriction that matches nothing is a broken link, not an empty
+    // catalogue — fall back to the full list rather than a dead page.
+    return narrowed.length > 0 ? narrowed : active;
+  }, [pageData.mappings, lockedLevels]);
   const currency = pageData.currency || activeMappings[0]?.payment_plan?.currency || "";
 
   // ── Filter / search state ──
@@ -2013,6 +2034,8 @@ interface PageRendererProps {
   /** Catalogue slug — enables the per-card "View course" link. */
   tagName?: string;
   productPageCode?: string;
+  /** Course Finder level restriction, forwarded to every course grid. */
+  lockedLevels?: string;
   onNext: () => void;
 }
 
@@ -2031,6 +2054,7 @@ export const PageRenderer = ({
   settings,
   tagName,
   productPageCode,
+  lockedLevels,
   onNext,
 }: PageRendererProps) => {
   const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
@@ -2071,7 +2095,7 @@ export const PageRenderer = ({
         );
       case "CourseGrid":
         return (
-          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} />
+          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} lockedLevels={lockedLevels} />
         );
       case "TextBlock":
         return <TextBlockComp key={component.id} props={component.props} />;
@@ -2093,7 +2117,7 @@ export const PageRenderer = ({
         );
       case "productCourseGrid":
         return (
-          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} />
+          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} lockedLevels={lockedLevels} />
         );
       case "footer":
         return <NewFooterBlock key={component.id} props={component.props} />;

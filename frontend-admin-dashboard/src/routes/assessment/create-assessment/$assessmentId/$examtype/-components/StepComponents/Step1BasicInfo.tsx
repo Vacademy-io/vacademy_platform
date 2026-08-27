@@ -688,8 +688,19 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
         });
     };
 
-    const onInvalid = (err: unknown) => {
-        // Handle validation errors
+    const onInvalid = (errors: unknown) => {
+        // Was an empty stub, so a blocked submit looked like a dead button. Step 3 already
+        // scrolls to the first error; this does the same.
+        const firstField = Object.keys((errors as Record<string, unknown>) ?? {})[0];
+        toast.error('Please fix the highlighted fields before continuing.', {
+            className: 'error-toast',
+            duration: 3000,
+        });
+        if (firstField) {
+            document
+                .querySelector(`[name="${firstField}"]`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     };
 
     const [assessmentDetails, setAssessmentDetails] = useState<any[]>([]);

@@ -27,7 +27,21 @@ public enum CallTrigger {
      * these leads deliberately — but KEEPS the daily cap and the duplicate window,
      * because a fan-out is exactly what those two are there to bound.
      */
-    BULK_MANUAL;
+    BULK_MANUAL,
+
+    /**
+     * A workflow whose CALL_AI node was explicitly authored with
+     * {@code ignoreAssignedGuard = true}. Same throttle profile as
+     * {@link #BULK_MANUAL}: the already-assigned guard is skipped because an admin
+     * deliberately built a graph that targets leads a counsellor already owns (e.g.
+     * "when a manual call is dispositioned DNP, let the bot try again"), but the
+     * daily cap and the duplicate window still apply — this path IS automation and
+     * can loop, so the two throttles that bound fan-out must stay on.
+     *
+     * <p>Distinct from {@link #AUTOMATION} so the skip is visible in logs and can
+     * never be the default: a node without the flag still comes in as AUTOMATION.
+     */
+    WORKFLOW_EXPLICIT;
 
     /** True when the lead already having a counsellor should block the dial. */
     public boolean enforcesAssignedLeadGuard() {

@@ -61,6 +61,7 @@ import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basi
 import { calculateAveragePenalty } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
 import Step2GenerateQuestionsFromAI from './-components/Step2GenerateQuestionsFromAI';
 import Step2CreateFromKnowledgeBase from './-components/Step2CreateFromKnowledgeBase';
+import Step2PickFromQuestionBank from './-components/Step2PickFromQuestionBank';
 import { CriteriaStatusBadge } from './-components/CriteriaStatusBadge';
 import { CriteriaPreviewDialog } from './-components/CriteriaPreviewDialog';
 import { AddEditCriteriaDialog } from './-components/AddEditCriteriaDialog';
@@ -324,7 +325,28 @@ export const Step2SectionInfo = ({
         }
     }, [getValues, setValue, index]);
 
+    /*
+     * The three effects below apply a section-level value (marks, penalty, per-question
+     * duration) to every question in the section. That bulk-apply is deliberate and is
+     * kept — but it must only happen when the ADMIN CHANGES the field.
+     *
+     * They also ran on mount, where they stamped the section defaults over per-question
+     * values that had just been hydrated from the server or inserted by an AI / upload /
+     * knowledge-base flow. Per-question marks were flattened to the section default, and
+     * the mount run of the first effect recomputed total_marks from a section list that
+     * was often still empty, zeroing a hydrated total.
+     *
+     * A ref per effect skips only that first run.
+     */
+    const marksApplyInitialised = useRef(false);
+    const penaltyApplyInitialised = useRef(false);
+    const durationApplyInitialised = useRef(false);
+
     useEffect(() => {
+        if (!marksApplyInitialised.current) {
+            marksApplyInitialised.current = true;
+            return;
+        }
         const marksPerQuestion = getValues(`section.${index}`).marks_per_question;
 
         // Loop through adaptive_marking_for_each_question and assign questionMark
@@ -344,6 +366,15 @@ export const Step2SectionInfo = ({
     }, [watch(`section.${index}.marks_per_question`)]);
 
     useEffect(() => {
+        if (!penaltyApplyInitialised.current) {
+            penaltyApplyInitialised.current = true;
+            return;
+        }
+        // Negative marking that is switched OFF must not be written onto every question:
+        // this effect fired regardless of `checked`, so clearing the toggle still left
+        // the last penalty value stamped across the section.
+        if (!getValues(`section.${index}`).negative_marking?.checked) return;
+
         const negative_marking = getValues(`section.${index}`).negative_marking.value;
 
         // Loop through adaptive_marking_for_each_question and assign questionMark
@@ -359,6 +390,10 @@ export const Step2SectionInfo = ({
     }, [watch(`section.${index}.negative_marking.value`)]);
 
     useEffect(() => {
+        if (!durationApplyInitialised.current) {
+            durationApplyInitialised.current = true;
+            return;
+        }
         const questionDurationHrs = getValues(`section.${index}`).question_duration?.hrs;
         const questionDurationMin = getValues(`section.${index}`).question_duration?.min;
 
@@ -820,10 +855,10 @@ export const Step2SectionInfo = ({
                             }
                         }}
                         questions={selectorQuestions}
-                        paperId=""
                         onConfirm={handleSelectorConfirm}
                     />
                     <Step2CreateFromKnowledgeBase form={form} index={index} />
+                    <Step2PickFromQuestionBank form={form} index={index} />
                     <div className="relative overflow-hidden rounded-xl">
                         <Step2GenerateQuestionsFromAI form={form} index={index} />
                         <BorderBeam

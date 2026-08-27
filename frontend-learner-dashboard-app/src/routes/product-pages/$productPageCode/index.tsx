@@ -17,6 +17,11 @@ const productPageSearchSchema = z.object({
     // Catalogue slug the visitor arrived from. Lets the page wear that
     // catalogue's header, footer and theme instead of rendering bare.
     tagName: z.string().optional(),
+    // Comma-separated level names the browse step is restricted to. Carries a
+    // Course Finder pick across from the catalogue so the visitor who just
+    // chose "Class 6" does not land back on every level. Unlike courseIds this
+    // only narrows what is VISIBLE — it selects nothing into the cart.
+    levels: z.string().optional(),
     utm_source: z.string().optional(),
     utm_medium: z.string().optional(),
     utm_campaign: z.string().optional(),
@@ -134,6 +139,7 @@ function ProductPageLoader({
                 courseIds={search.courseIds}
                 defaultTab={search.defaultTab}
                 tagName={search.tagName}
+                levels={search.levels}
                 utmParams={{
                     utm_source: search.utm_source,
                     utm_medium: search.utm_medium,

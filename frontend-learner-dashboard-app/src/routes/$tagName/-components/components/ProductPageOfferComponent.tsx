@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -7,15 +8,30 @@ import {
   BookOpen,
   CaretLeft,
   CaretRight,
+  Check,
   Clock,
+  Funnel,
   MagnifyingGlass,
+  ShoppingCartSimple,
   X,
 } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { PriceWithMrp } from "@/components/common/price-with-mrp";
+import { PriceWithMrp, formatPriceAmount } from "@/components/common/price-with-mrp";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-services/product-page-service";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import {
+  parseBasketPricing,
+  quoteBasket,
+} from "@/routes/product-pages/$productPageCode/-utils/basket-pricing";
+import {
+  clearCourseFinderOptions,
+  publishCourseFinderOptions,
+  subscribeCourseFinderApplied,
+  type CourseFinderSelectionPayload,
+} from "../../-utils/course-finder-bus";
 
 /**
  * Product Page Offer — surfaces a Product Page's sellable courses on a
@@ -76,6 +92,17 @@ interface ProductPageOfferProps {
   showViewAll?: boolean;
   viewAllLabel?: string;
   ctaLabel?: string;
+  /**
+   * Turns the per-card CTA into an add-to-cart toggle so several subjects can
+   * be collected here and taken to checkout together, instead of each card
+   * jumping straight into checkout with one course. Off by default — existing
+   * catalogues keep the single-course "Enrol now" behaviour.
+   */
+  enableCart?: boolean;
+  /** Label for the add-to-cart CTA when enableCart is on. */
+  cartCtaLabel?: string;
+  /** Label on the basket bar's primary button when enableCart is on. */
+  checkoutCtaLabel?: string;
   /**
    * Second CTA that opens the course's catalogue details page instead of
    * dropping straight into checkout. Needs the mapping's package id, so it
@@ -290,6 +317,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   showViewAll = false,
   viewAllLabel,
   ctaLabel,
+  enableCart = false,
+  cartCtaLabel,
+  checkoutCtaLabel,
   showViewCourse = true,
   viewCourseLabel,
   showImage = true,
@@ -338,15 +368,179 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
 
   const searchEnabled = showSearch !== false && mappings.length >= SEARCH_MIN_COURSES;
 
+  // ─── Course Finder wiring ──────────────────────────────────────────────────
+  // On a catalogue whose only course block is this one, the page-level Course
+  // Finder wizard has nowhere else to source its levels/sessions/tags from, so
+  // this block publishes them (see course-finder-bus) and applies whatever the
+  // visitor picks. Sourcing the options from the courses actually on sale here
+  // means a pick can never select a level with zero matching courses.
+  const [finderSelection, setFinderSelection] =
+    useState<CourseFinderSelectionPayload | null>(null);
+
+  const finderOptions = useMemo(() => {
+    const uniq = (vals: (string | undefined)[]) =>
+      [...new Set(vals.filter((v): v is string => !!v && v.trim() !== ""))]
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        .map((v) => ({ id: v, name: v }));
+    return {
+      levels: uniq(mappings.map((m) => m.level_name)),
+      sessions: uniq(mappings.map((m) => m.session_name)),
+      tags: uniq(mappings.flatMap((m) => splitTags(m.tags))),
+    };
+  }, [mappings]);
+
+  useEffect(() => {
+    if (isPreviewMode) return;
+    if (mappings.length === 0) return;
+    publishCourseFinderOptions(finderOptions);
+  }, [isPreviewMode, mappings.length, finderOptions]);
+
+  // Retract the options when this block unmounts, so a catalogue page without
+  // one never opens the wizard on a previous page's levels.
+  useEffect(() => clearCourseFinderOptions, []);
+
+  useEffect(() => subscribeCourseFinderApplied(setFinderSelection), []);
+
+  // ─── Multi-subject cart ────────────────────────────────────────────────────
+  // Collected here rather than in the catalogue's cart-store: that store is
+  // built around the book/course catalogue's own checkout (enrollInviteId keys,
+  // buy/rent modes, /{tagName}/cart), whereas these courses check out through
+  // the product page. Package-session ids are exactly what ?courseIds= expects.
+  //
+  // Kept in sessionStorage, keyed per product page: "View course" navigates
+  // away from the catalogue entirely, and a basket that silently empties on the
+  // way back reads as the site losing the visitor's work. sessionStorage, not
+  // local — a basket must not outlive the visit that built it.
+  const cartStorageKey = productPageCode ? `catalogue-offer-cart:${productPageCode}` : null;
+
+  const [cart, setCart] = useState<string[]>(() => {
+    if (!enableCart || !cartStorageKey) return [];
+    try {
+      const parsed = JSON.parse(window.sessionStorage.getItem(cartStorageKey) || "null");
+      return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+    } catch {
+      // Private mode / storage disabled — an in-memory basket still works.
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (!enableCart || !cartStorageKey) return;
+    try {
+      window.sessionStorage.setItem(cartStorageKey, JSON.stringify(cart));
+    } catch {
+      // Nothing to do: the basket lives in state either way.
+    }
+  }, [enableCart, cartStorageKey, cart]);
+
+  const toggleCart = (packageSessionId: string) =>
+    setCart((prev) =>
+      prev.includes(packageSessionId)
+        ? prev.filter((id) => id !== packageSessionId)
+        : [...prev, packageSessionId],
+    );
+
+  // A fresh Course Finder answer means a fresh basket — keeping Class 2 picks
+  // after the visitor switches to Class 5 would check them out for a class
+  // they are no longer shopping for, with the evidence scrolled out of view.
+  useEffect(() => {
+    if (finderSelection) setCart([]);
+  }, [finderSelection]);
+
+  // Resolve the basket against what this page still sells. A restored id whose
+  // course has since been retired (a product-page re-save replaces every
+  // mapping) would otherwise inflate the count and the total past anything the
+  // visitor can see highlighted on screen.
+  const selectedMappings = useMemo(
+    () => (enableCart ? mappings.filter((m) => cart.includes(m.package_session_id)) : []),
+    [enableCart, mappings, cart],
+  );
+
+  // Prices are hidden wholesale inside Apple's reader-app builds, so the basket
+  // shows a count there and no money. See ios-iap-compliance.
+  const hidePrices = shouldHidePaidPurchaseUI();
+
+  const cartTotal = useMemo(() => {
+    if (selectedMappings.length === 0) return null;
+    const currency = selectedMappings.find((m) => m.payment_plan?.currency)?.payment_plan?.currency;
+    // Mixed currencies in one basket cannot be summed into one honest number —
+    // the product page's own cart is the place that reconciles them.
+    const mixed = selectedMappings.some(
+      (m) => m.payment_plan?.currency && m.payment_plan.currency !== currency,
+    );
+    if (mixed) return null;
+
+    // The SAME engine the checkout uses. A product page can price its basket as
+    // a whole ("any 3 for ₹799"), and on such a page the courses cost nothing
+    // individually — so summing item prices here would quote a total the next
+    // screen contradicts. Falls back to the sum when the page prices per course.
+    const quote = quoteBasket(
+      parseBasketPricing(data?.settings_json),
+      selectedMappings.map((m) => ({ levelName: m.level_name, packageName: m.package_name })),
+    );
+    if (quote) return { amount: quote.total, currency };
+
+    const amount = selectedMappings.reduce((sum, m) => sum + (m.payment_plan?.actual_price || 0), 0);
+    return { amount, currency };
+  }, [selectedMappings, data?.settings_json]);
+
+  const checkoutBarOpen = enableCart && selectedMappings.length > 0 && !!productPageCode;
+
+  // The basket bar is position:fixed, but every block on a catalogue page is
+  // wrapped by ComponentStyleWrapper, whose entrance animation puts a
+  // `transform` on that wrapper — and a transformed ancestor re-anchors
+  // position:fixed to itself, which would strand the bar mid-page. So the bar
+  // is portalled out of the section.
+  //
+  // The host is the catalogue's OWN theme wrapper, not document.body: the
+  // palette lives in [data-catalogue-theme] plus the inline --primary-* vars
+  // on that div (and `dark` for dark mode), so a bar sent to body would paint
+  // in the app chrome's colours instead of the institute's.
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+  const setSectionNode = useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    setPortalHost((node.closest("[data-catalogue-theme]") as HTMLElement) || document.body);
+  }, []);
+
+  // Two bars pinned to the bottom of a phone screen would sit on top of each
+  // other, and a half-filled basket is the more urgent of the two — so while it
+  // is open the catalogue's mobile action bar stands down and the WhatsApp
+  // bubble lifts clear. A body class, so neither of them needs to know this
+  // component exists.
+  useEffect(() => {
+    if (!checkoutBarOpen) return;
+    document.body.classList.add("catalogue-has-checkout-bar");
+    return () => document.body.classList.remove("catalogue-has-checkout-bar");
+  }, [checkoutBarOpen]);
+
   const filtered = useMemo(() => {
+    let out = mappings;
+
+    // Case-insensitive on purpose: the wizard's levelGroups are hand-authored
+    // in catalogue JSON and drift from the real level names ("Cyber Ai- Class 6"
+    // vs "Cyber AI- Class 6"), which under exact matching silently drops every
+    // course in that subject.
+    if (finderSelection) {
+      const norm = (v?: string) => (v || "").trim().toLowerCase();
+      const levelSet = new Set(finderSelection.levels.map(norm));
+      const sessionSet = new Set(finderSelection.sessions.map(norm));
+      const tagSet = new Set(finderSelection.tags.map(norm));
+
+      if (levelSet.size > 0) out = out.filter((m) => levelSet.has(norm(m.level_name)));
+      if (sessionSet.size > 0) out = out.filter((m) => sessionSet.has(norm(m.session_name)));
+      if (tagSet.size > 0) {
+        out = out.filter((m) => splitTags(m.tags).some((t) => tagSet.has(norm(t))));
+      }
+    }
+
     const q = query.trim().toLowerCase();
-    if (!q || !searchEnabled) return mappings;
-    return mappings.filter((m) =>
+    if (!q || !searchEnabled) return out;
+    return out.filter((m) =>
       [m.package_name, m.level_name, m.session_name, ...splitTags(m.tags)]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q))
     );
-  }, [mappings, query, searchEnabled]);
+  }, [mappings, query, searchEnabled, finderSelection]);
 
   // 0/unset means "no pager" — render everything.
   const perPage = Number(pageSize) > 0 ? Math.floor(Number(pageSize)) : filtered.length || 1;
@@ -403,12 +597,24 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
 
   // Straight to the product page itself — the "there's more here" affordance
   // an app-style rail heading is expected to carry.
+  // Carry the Course Finder's pick across. Without this the visitor who just
+  // chose "Class 6" here lands on the product page showing every level again.
+  // `levels` narrows what is VISIBLE only — unlike courseIds it selects
+  // nothing into the cart.
+  const seeAllSearch = {
+    ...(instituteId ? { instituteId } : {}),
+    ...(tagName ? { tagName } : {}),
+    ...(finderSelection && finderSelection.levels.length > 0
+      ? { levels: finderSelection.levels.join(",") }
+      : {}),
+  };
+
   const seeAll =
     showViewAll && productPageCode ? (
       <Link
         to="/product-pages/$productPageCode"
         params={{ productPageCode }}
-        search={{ ...(instituteId ? { instituteId } : {}), ...(tagName ? { tagName } : {}) }}
+        search={seeAllSearch}
         className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-catalogue-brand-ink no-underline hover:underline"
       >
         {viewAllLabel || t("productPageOffer.seeAll")}
@@ -423,12 +629,26 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     ? "mt-1 text-sm text-catalogue-text-muted"
     : "catalogue-lead text-catalogue-text-muted";
 
+  // A running count beside the heading. On a four-across rail the basket bar at
+  // the foot of the viewport can otherwise be the ONLY evidence that anything
+  // is selected, and it is nowhere near the cards being tapped.
+  const selectedBadge =
+    enableCart && selectedMappings.length > 0 ? (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-500 ring-1 ring-primary-100">
+        <Check className="size-3.5" weight="bold" aria-hidden="true" />
+        {t("productPageOffer.selectedCount", { count: selectedMappings.length })}
+      </span>
+    ) : null;
+
   const header =
-    title || subtitle || seeAll ? (
+    title || subtitle || seeAll || selectedBadge ? (
       isLeft ? (
         <div className="catalogue-section-header flex items-end justify-between gap-4 text-start">
           <div className="min-w-0">
-            {title && <h2 className={titleClass}>{title}</h2>}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              {title && <h2 className={titleClass}>{title}</h2>}
+              {selectedBadge}
+            </div>
             {subtitle && (
               <p className={`${subtitleClass} catalogue-measure-start`}>{subtitle}</p>
             )}
@@ -439,9 +659,45 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         <div className="catalogue-section-header text-center">
           {title && <h2 className={titleClass}>{title}</h2>}
           {subtitle && <p className={`${subtitleClass} catalogue-measure`}>{subtitle}</p>}
-          {seeAll && <div className="mt-2">{seeAll}</div>}
+          {(seeAll || selectedBadge) && (
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
+              {selectedBadge}
+              {seeAll}
+            </div>
+          )}
         </div>
       )
+    ) : null;
+
+  // What the Course Finder narrowed the list down to, and the way back out of
+  // it. Without this the grid shows a fraction of the catalogue with no on-page
+  // evidence why — the wizard that caused it closed several scrolls ago, and on
+  // a page with search switched off there is no result count either.
+  const finderLabels = finderSelection?.labels ?? [];
+  const finderChips =
+    finderLabels.length > 0 ? (
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-catalogue-text-muted">
+          <Funnel className="size-3.5" weight="bold" aria-hidden="true" />
+          Showing
+        </span>
+        {finderLabels.map((label) => (
+          <span
+            key={label}
+            className="inline-flex items-center rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-catalogue-brand-ink ring-1 ring-primary-100"
+          >
+            {label}
+          </span>
+        ))}
+        <button
+          type="button"
+          onClick={() => setFinderSelection(null)}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-catalogue-text-muted underline-offset-2 hover:underline"
+        >
+          <X className="size-3" weight="bold" aria-hidden="true" />
+          Show all courses
+        </button>
+      </div>
     ) : null;
 
   const section = (children: React.ReactNode) => (
@@ -496,6 +752,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
 
   const renderCard = (m: ProductPageMapping, i: number) => {
         const name = m.package_name || courseTerm;
+        const inCart = enableCart && cart.includes(m.package_session_id);
         // Course tags (CBSE / ICSE …) read first — they are what a visitor
         // scans for — then the level/session the batch belongs to.
         const chips = showChips
@@ -552,22 +809,38 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 ? { flexBasis: `calc((100% - ${(cols - 1) * 1.25}rem) / ${cols})` }
                 : {}),
             } as React.CSSProperties}
+            data-selected={inCart || undefined}
             className={
               "catalogue-card-elevated group flex flex-col p-4 text-start" +
-              (isCarousel ? " min-w-reg-250 shrink-0 snap-start" : "")
+              (isCarousel ? " min-w-reg-250 shrink-0 snap-start" : "") +
+              (inCart ? " catalogue-card-selected" : "")
             }
           >
             {/* Image + title are the "browse" affordance: they open the course
                 page. The enrol CTA below is the "buy" affordance. Keeping them
                 separate is why the card is no longer one big link. */}
-            {showImage &&
-              (detailsLink ? (
-                <Link {...detailsLink} className="no-underline" tabIndex={-1} aria-hidden="true">
+            {showImage && (
+              <div className="relative">
+                {detailsLink ? (
+                  <Link {...detailsLink} className="no-underline" tabIndex={-1} aria-hidden="true">
+                    <CourseImage mediaId={m.course_preview_image_media_id} alt={name} />
+                  </Link>
+                ) : (
                   <CourseImage mediaId={m.course_preview_image_media_id} alt={name} />
-                </Link>
-              ) : (
-                <CourseImage mediaId={m.course_preview_image_media_id} alt={name} />
-              ))}
+                )}
+                {/* A tick on the artwork, not only on the button: in a
+                    four-across rail the buttons sit below the fold of the card
+                    the eye is actually scanning. */}
+                {inCart && (
+                  <span
+                    className="absolute end-2 top-2 inline-flex size-7 items-center justify-center rounded-full bg-primary-500 text-white shadow-md"
+                    aria-hidden="true"
+                  >
+                    <Check className="size-4" weight="bold" />
+                  </span>
+                )}
+              </div>
+            )}
             <div className={showImage ? "mt-3 flex flex-1 flex-col" : "flex flex-1 flex-col"}>
               {showChips && chips.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
@@ -631,16 +904,45 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                       {viewCourseLabel || t("productPageOffer.viewCourse", { course: courseTerm })}
                     </Link>
                   )}
-                  <Link
-                    to="/product-pages/$productPageCode"
-                    params={{ productPageCode }}
-                    search={enrolSearch}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center whitespace-nowrap no-underline"
-                    aria-label={`${ctaLabel || t("productPageOffer.enrolNow")} — ${name}`}
-                  >
-                    {ctaLabel || t("productPageOffer.enrolNow")}
-                    <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
-                  </Link>
+                  {enableCart ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleCart(m.package_session_id)}
+                      aria-pressed={inCart}
+                      aria-label={
+                        inCart
+                          ? t("productPageOffer.removeFromCartAriaLabel", { course: name })
+                          : t("productPageOffer.addToCartAriaLabel", { course: name })
+                      }
+                      className={cn(
+                        "catalogue-btn catalogue-btn-sm flex-1 justify-center whitespace-nowrap",
+                        inCart ? "catalogue-btn-secondary" : "catalogue-btn-primary",
+                      )}
+                    >
+                      {inCart ? (
+                        <>
+                          <Check className="size-3.5" weight="bold" aria-hidden="true" />
+                          {t("productPageOffer.added")}
+                        </>
+                      ) : (
+                        <>
+                          <ShoppingCartSimple className="size-3.5" weight="bold" aria-hidden="true" />
+                          {cartCtaLabel || t("common.addToCart")}
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <Link
+                      to="/product-pages/$productPageCode"
+                      params={{ productPageCode }}
+                      search={enrolSearch}
+                      className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center whitespace-nowrap no-underline"
+                      aria-label={`${ctaLabel || t("productPageOffer.enrolNow")} — ${name}`}
+                    >
+                      {ctaLabel || t("productPageOffer.enrolNow")}
+                      <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>
@@ -755,20 +1057,130 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     </div>
   );
 
+  /* Basket bar — pinned to the foot of the viewport for as long as anything is
+     selected, so the visitor can keep browsing (or scroll into the FAQ) without
+     losing sight of what they have picked or the way to pay for it. It used to
+     be `sticky` inside this section, which meant it scrolled away with the
+     section and, on a phone, sat underneath the fixed mobile action bar.
+     courseIds is the same contract the single-course CTA uses, so checkout
+     needs no special case for a multi-subject basket. */
+  const checkoutBar =
+    checkoutBarOpen && portalHost
+      ? createPortal(
+          <div className="catalogue-checkout-bar fixed inset-x-0 bottom-0 z-60 border-t border-catalogue-border bg-catalogue-bg-elevated/95 backdrop-blur-sm">
+            <div className="catalogue-shell flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-500">
+                  <ShoppingCartSimple className="size-5" weight="bold" aria-hidden="true" />
+                  <span className="absolute -end-1 -top-1 flex min-w-5 justify-center rounded-full bg-primary-500 px-1 text-3xs font-bold leading-5 text-white">
+                    {selectedMappings.length}
+                  </span>
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-catalogue-text-primary">
+                    {t("productPageOffer.itemsSelected", {
+                      count: selectedMappings.length,
+                      course: courseTerm,
+                      courses: coursesTerm,
+                    })}
+                  </p>
+                  {/* Name them: by checkout time the cards that were tapped are
+                      several screens up, and "3 selected" alone is not enough
+                      to pay against. */}
+                  <p className="truncate text-xs text-catalogue-text-muted">
+                    {selectedMappings.map((m) => m.package_name || courseTerm).join(" · ")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex w-full shrink-0 items-center justify-end gap-3 sm:w-auto">
+                {!hidePrices && cartTotal && (
+                  <div className="text-end leading-tight">
+                    <p className="text-3xs font-medium uppercase tracking-wide text-catalogue-text-muted">
+                      {t("productPageOffer.total")}
+                    </p>
+                    <p className="text-base font-bold text-catalogue-text-primary">
+                      {/* A basket of free courses reads better as "Free" than
+                          as a formatted zero — same rule PriceWithMrp applies
+                          to a single card. */}
+                      {cartTotal.amount === 0
+                        ? t("productPageOffer.free")
+                        : formatPriceAmount(cartTotal.amount, cartTotal.currency)}
+                    </p>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCart([])}
+                  className="shrink-0 text-xs font-semibold text-catalogue-text-muted underline-offset-2 hover:underline"
+                >
+                  {t("productPageOffer.clearCart")}
+                </button>
+                <Link
+                  to="/product-pages/$productPageCode"
+                  params={{ productPageCode: productPageCode! }}
+                  search={{
+                    ...(instituteId ? { instituteId } : {}),
+                    ...(tagName ? { tagName } : {}),
+                    courseIds: selectedMappings.map((m) => m.package_session_id).join(","),
+                    defaultTab: "CART" as const,
+                  }}
+                  className="catalogue-btn catalogue-btn-primary shrink-0 justify-center whitespace-nowrap no-underline"
+                >
+                  {checkoutCtaLabel || t("productPageOffer.proceedToCheckout")}
+                  <ArrowRight className="size-4" weight="bold" aria-hidden="true" />
+                </Link>
+              </div>
+            </div>
+          </div>,
+          portalHost,
+        )
+      : null;
+
   // Hand-rolled shell layout (instead of section()) because the carousel track
   // must be a DIRECT child of the full-width section to bleed to the viewport
   // edge — everything else stays inside the shell column.
   return (
     <section
+      ref={setSectionNode}
       className="catalogue-section bg-catalogue-bg"
       style={backgroundColor ? { backgroundColor } : undefined}
     >
       <div className="catalogue-shell">
         {header}
+        {finderChips}
         {searchRow}
         {filtered.length === 0 && (
-          <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
-            {t("productPageOffer.noCoursesMatch", { courses: coursesTerm, query: query.trim() })}
+          <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center">
+            <p className="text-sm text-catalogue-text-muted">
+              {query.trim()
+                ? t("productPageOffer.noCoursesMatch", { courses: coursesTerm, query: query.trim() })
+                : t("productPageOffer.nothingForSelection")}
+            </p>
+            {/* Always leave a way back to the full list. An empty grid with no
+                escape is where a filtered visitor stops browsing. */}
+            {(query.trim() || finderSelection) && (
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {query.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => { setQuery(""); setPage(1); }}
+                    className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm"
+                  >
+                    {t("common.clearSearch")}
+                  </button>
+                )}
+                {finderSelection && (
+                  <button
+                    type="button"
+                    onClick={() => setFinderSelection(null)}
+                    className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm"
+                  >
+                    {t("productPageOffer.showAllCourses", { courses: coursesTerm })}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -840,7 +1252,10 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           </button>
         </nav>
       )}
+
       </div>
+
+      {checkoutBar}
     </section>
   );
 };

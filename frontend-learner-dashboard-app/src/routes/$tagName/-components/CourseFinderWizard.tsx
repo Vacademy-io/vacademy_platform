@@ -21,6 +21,12 @@ export interface CourseFinderSelection {
   levels: string[];
   sessions: string[];
   tags: string[];
+  /**
+   * The option labels exactly as the visitor saw them — group labels such as
+   * "Class 6" rather than the raw level names they expand into. Course blocks
+   * render these as removable "you picked" chips.
+   */
+  labels?: string[];
 }
 
 interface CourseFinderWizardProps {
@@ -123,7 +129,10 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
       const expandedLevels = hasLevelGroups
         ? selection.levels.flatMap((groupLabel) => levelGroups![groupLabel] ?? [groupLabel])
         : selection.levels;
-      onComplete({ ...selection, levels: expandedLevels });
+      // Carry the pre-expansion picks through untouched: they are the only
+      // record of what the visitor chose in their own words.
+      const labels = [...selection.levels, ...selection.sessions, ...selection.tags];
+      onComplete({ ...selection, levels: expandedLevels, labels });
     } else {
       setStepIndex((i) => i + 1);
     }

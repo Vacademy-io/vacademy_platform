@@ -198,6 +198,9 @@ export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/instit
 // Open (unauthenticated) guest-query endpoints — used by the login page pre-auth.
 export const OPEN_DOUBT_CONFIG = `${BASE_URL}/admin-core-service/open/institute/v1/doubts/config`;
 export const OPEN_DOUBT_CREATE = `${BASE_URL}/admin-core-service/open/institute/v1/doubts/create`;
+// Open (unauthenticated) read of STUDENT_DISPLAY_SETTINGS — lets pre-login screens
+// (login page, public catalogue) honour learner display toggles such as signup.enabled.
+export const OPEN_STUDENT_DISPLAY_SETTINGS = `${BASE_URL}/admin-core-service/open/institute/setting/v1/student-display`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;

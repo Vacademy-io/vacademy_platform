@@ -245,6 +245,8 @@
         "subtitle": "Choisissez un programme et inscrivez-vous en quelques minutes.",
         "viewAllLabel": "Voir tout",
         "ctaLabel": "S'inscrire maintenant",
+        "cartCtaLabel": "Ajouter au panier",
+        "checkoutCtaLabel": "Passer à la caisse",
         "viewCourseLabel": "Voir le cours"
     }
 }

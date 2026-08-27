@@ -4,6 +4,8 @@ import type {
     ProductPageStep,
     FieldValue,
 } from '../-types/product-page-types';
+import { parseBasketPricing, quoteBasket, type BasketQuote } from '../-utils/basket-pricing';
+import { bestOffer, parseOffers, type AppliedOffer } from '../-utils/offers';
 
 interface ProductPageStore {
     // Server data
@@ -52,6 +54,13 @@ interface ProductPageStore {
 
     // Computed
     totalPrice: () => number;
+    /**
+     * Whole-basket price, when the page is configured for one. Null means the
+     * page prices per course and totalPrice() stands.
+     */
+    basketQuote: () => BasketQuote | null;
+    /** Best predefined page offer for the current cart, or null. */
+    appliedOffer: () => AppliedOffer | null;
     finalPrice: () => number;
 
     reset: () => void;
@@ -128,9 +137,35 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
             .reduce((sum, m) => sum + (m.payment_plan?.actual_price ?? 0), 0);
     },
 
+    basketQuote: () => {
+        const { pageData, selectedPsOptionIds } = get();
+        if (!pageData) return null;
+        const selected = pageData.mappings.filter((m) =>
+            selectedPsOptionIds.includes(m.ps_invite_payment_option_id)
+        );
+        return quoteBasket(
+            parseBasketPricing(pageData.settings_json),
+            selected.map((m) => ({ levelName: m.level_name, packageName: m.package_name }))
+        );
+    },
+
+    appliedOffer: () => {
+        const { pageData, selectedPsOptionIds } = get();
+        if (!pageData) return null;
+        const quote = get().basketQuote();
+        const base = quote ? quote.total : get().totalPrice();
+        return bestOffer(parseOffers(pageData.settings_json), base, selectedPsOptionIds.length);
+    },
+
     finalPrice: () => {
         const { discountAmount } = get();
-        return Math.max(0, get().totalPrice() - discountAmount);
+        // Same order the server applies them: a configured basket price REPLACES
+        // the sum of item prices, then the best offer, then the coupon — so a
+        // coupon discounts what the visitor would actually have paid.
+        const quote = get().basketQuote();
+        const base = quote ? quote.total : get().totalPrice();
+        const afterOffer = Math.max(0, base - (get().appliedOffer()?.amount ?? 0));
+        return Math.max(0, afterOffer - discountAmount);
     },
 
     reset: () => set(initialState),

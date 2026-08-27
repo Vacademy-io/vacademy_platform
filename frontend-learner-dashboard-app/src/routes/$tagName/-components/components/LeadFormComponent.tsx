@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CheckCircle, PaperPlaneTilt } from "@phosphor-icons/react";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
+import { getFieldVerification } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
+import { FieldVerification } from "@/routes/product-pages/$productPageCode/-components/FieldVerification";
 import { getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
   extractRespondentIdentity,
@@ -96,6 +98,9 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const [respondent, setRespondent] = useState<PostSubmitTokens>({});
+  // The VALUE that was verified per field, not a boolean — editing a verified
+  // number has to re-arm the gate. Same contract as the checkout form.
+  const [verifiedValues, setVerifiedValues] = useState<Record<string, string>>({});
   const mountedAt = useRef(Date.now());
 
   const fields: FormFieldDef[] = useMemo(() => {
@@ -200,6 +205,18 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     const missing = fields.filter((f) => f.mandatory && !(values[f.key] || "").trim());
     if (missing.length > 0) {
       setError(t("leadForm.missingFields", { fields: missing.map((f) => f.name).join(", ") }));
+      return;
+    }
+
+    // Checked here as well as in the UI — a hidden button is not a guarantee.
+    const unverified = fields.filter(
+      (f) =>
+        getFieldVerification(f.config) &&
+        (values[f.key] || "").trim() &&
+        verifiedValues[f.key] !== values[f.key],
+    );
+    if (unverified.length > 0) {
+      setError(`Please verify: ${unverified.map((f) => f.name).join(", ")}`);
       return;
     }
 
@@ -372,6 +389,31 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
             // "Enter details_inst_<uuid>". Use the human label.
             placeholder={t("leadForm.placeholderPrefix", { name: f.name.toLowerCase() })}
           />
+          {/* Same gate the product-page checkout uses, driven by the same
+              per-field config — so a form built here can ask a visitor to prove
+              they own the number before the lead is accepted. */}
+          {(() => {
+            const verification = getFieldVerification(f.config);
+            if (!verification || !instituteId) return null;
+            return (
+              <div className="mt-2">
+                <FieldVerification
+                  verification={verification}
+                  value={values[f.key] || ""}
+                  instituteId={instituteId}
+                  label={f.name}
+                  verified={
+                    !!values[f.key] && verifiedValues[f.key] === values[f.key]
+                  }
+                  onVerified={(verifiedValue) => {
+                    setVerifiedValues((prev) => ({ ...prev, [f.key]: verifiedValue }));
+                    setError("");
+                  }}
+                  disabled={isPreviewMode}
+                />
+              </div>
+            );
+          })()}
         </div>
       ))}
 

@@ -245,6 +245,8 @@
         "subtitle": "اختر برنامجًا وسجل في دقائق.",
         "viewAllLabel": "عرض الكل",
         "ctaLabel": "سجل الآن",
+        "cartCtaLabel": "أضف إلى السلة",
+        "checkoutCtaLabel": "المتابعة إلى الدفع",
         "viewCourseLabel": "عرض الدورة"
     }
 }

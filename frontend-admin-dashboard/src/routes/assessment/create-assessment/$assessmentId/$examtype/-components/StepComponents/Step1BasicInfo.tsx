@@ -544,7 +544,12 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                 },
             },
             assessmentPreview: {
-                checked: storeDataStep1.assessmentPreview?.checked || true, // Default to true
+                // Off by default, and `??` not `||`: with `||` a stored `false` was
+                // coerced straight back to `true`, so once this had ever been on the
+                // toggle could not be turned off again — every remount re-enabled it.
+                // (The three flags below still have that coercion bug; two of them are
+                // stuck on the opposite of what their own comment says they default to.)
+                checked: storeDataStep1.assessmentPreview?.checked ?? false,
                 previewTimeLimit:
                     storeDataStep1.assessmentPreview?.previewTimeLimit || timeLimit[0], // Default preview time
             },

@@ -96,7 +96,7 @@ every pre-dial guard it already enforced is inherited for free — see §7.
 
 ## 3. The tables
 
-Created by `V472__ai_call_queue.sql`, corrected by `V473` and `V474`.
+Created by `V472__ai_call_queue.sql`, corrected by `V473__ai_call_queue_id_varchar.sql`.
 
 ### `ai_call_queue`
 
@@ -158,7 +158,7 @@ The capacity pool — one row per voice box, with its own `max_concurrent`, `ena
 
 | Key | Default | Meaning |
 |---|---|---|
-| `ai_call_fleet_limit` | *(blank)* | **ops ceiling** on simultaneous calls. Blank = hardware decides. `0` = pause |
+| `ai_call_fleet_limit` | *(absent)* | **ops ceiling** on simultaneous calls. Absent/blank = hardware decides. `0` = pause. No migration seeds it — an absent row reads as "no limit", and `PUT /capacity` creates it on first use |
 | `ai_call_capacity_enabled` | `true` | ⚠️ `false` **BYPASSES** the limit (unlimited). Not an on/off switch — see §12 |
 | `ai_call_aavtaar_max_concurrent` | `20` | Aavtaar's own ceiling (their infra, not ours) |
 | `ai_call_stuck_grace_sec` | `720` | a non-terminal call older than this stops holding a slot |

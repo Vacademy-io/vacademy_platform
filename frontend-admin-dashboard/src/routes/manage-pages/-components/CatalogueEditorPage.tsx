@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
@@ -38,6 +39,7 @@ import { getComponentTemplate } from '../-utils/component-templates';
 import { Textarea } from '@/components/ui/textarea';
 
 export const CatalogueEditorPage = () => {
+    const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
     const { tagName } = Route.useParams();
     const instituteId = getCurrentInstituteId();
     const {
@@ -79,7 +81,7 @@ export const CatalogueEditorPage = () => {
             if (!active.data.current?.type || !selectedPageId || !over) return;
 
             const templateKey = active.data.current.type as string;
-            const component = getComponentTemplate(templateKey);
+            const component = getComponentTemplate(templateKey, tTemplates);
             const overId = over.id.toString();
 
             if (overId.startsWith('slot::')) {
@@ -95,7 +97,7 @@ export const CatalogueEditorPage = () => {
 
             setActiveDragLabel(null);
         },
-        [selectedPageId, addComponent, addToSlot]
+        [selectedPageId, addComponent, addToSlot, tTemplates]
     );
 
     const [jsonText, setJsonText] = useState('');

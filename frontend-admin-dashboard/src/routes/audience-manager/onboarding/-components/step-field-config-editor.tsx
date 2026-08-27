@@ -6,6 +6,8 @@
  * order/mandatory/hidden + per-field ADMIN/STUDENT/PARENT role access.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { MyButton } from '@/components/design-system/button';
 import { Switch } from '@/components/ui/switch';
@@ -33,10 +35,10 @@ export interface FieldRow extends OnboardingStepFieldConfig {
 
 let nextTempId = 1;
 
-export function newFieldRowFromCatalog(field: InstituteCustomFieldDTO): FieldRow {
+export function newFieldRowFromCatalog(field: InstituteCustomFieldDTO, t: TFunction): FieldRow {
     return {
         _rowId: `catalog-${field.id}`,
-        _displayName: field.custom_field?.fieldName ?? 'Untitled field',
+        _displayName: field.custom_field?.fieldName ?? t('untitledField'),
         institute_custom_field_id: field.id,
         is_mandatory: false,
         is_hidden: false,
@@ -64,6 +66,7 @@ export function StepFieldConfigEditor({
     onChange,
     onPendingSelectionChange,
 }: StepFieldConfigEditorProps) {
+    const { t } = useTranslation('audienceManagerStepFieldConfigEditor');
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [pickerValues, setPickerValues] = useState<string[]>([]);
 
@@ -83,10 +86,10 @@ export function StepFieldConfigEditor({
     const availableCatalogOptions = useMemo(
         () =>
             availableCatalogFields.map((f) => ({
-                label: f.custom_field?.fieldName ?? 'Untitled field',
+                label: f.custom_field?.fieldName ?? t('untitledField'),
                 value: f.id,
             })),
-        [availableCatalogFields]
+        [availableCatalogFields, t]
     );
 
     const move = (activeIndex: number, overIndex: number) => {
@@ -110,7 +113,7 @@ export function StepFieldConfigEditor({
         const newRows = pickerValues
             .map((id) => catalog.find((f) => f.id === id))
             .filter((f): f is InstituteCustomFieldDTO => !!f)
-            .map(newFieldRowFromCatalog);
+            .map((f) => newFieldRowFromCatalog(f, t));
         onChange([...value, ...newRows]);
         setPickerValues([]);
     };
@@ -180,7 +183,9 @@ export function StepFieldConfigEditor({
                                         <span className="flex-1 truncate text-body font-medium text-neutral-800">
                                             {row._displayName}
                                             {row.new_field && (
-                                                <span className="ml-2 text-caption text-neutral-400">(new)</span>
+                                                <span className="ms-2 text-caption text-neutral-400">
+                                                    {t('newFieldBadge')}
+                                                </span>
                                             )}
                                         </span>
                                         <label className="flex items-center gap-1.5 text-caption text-neutral-600">
@@ -188,21 +193,21 @@ export function StepFieldConfigEditor({
                                                 checked={row.is_mandatory}
                                                 onCheckedChange={(v) => updateRow(row._rowId, { is_mandatory: v })}
                                             />
-                                            Mandatory
+                                            {t('mandatoryLabel')}
                                         </label>
                                         <label className="flex items-center gap-1.5 text-caption text-neutral-600">
                                             <Switch
                                                 checked={row.is_hidden}
                                                 onCheckedChange={(v) => updateRow(row._rowId, { is_hidden: v })}
                                             />
-                                            Hidden
+                                            {t('hiddenLabel')}
                                         </label>
                                         <button
                                             type="button"
                                             className="flex items-center gap-1 text-caption font-medium text-primary-600"
                                             onClick={() => setExpandedRowId(expanded ? null : row._rowId)}
                                         >
-                                            Access {expanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
+                                            {t('accessButton')} {expanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
                                         </button>
                                         <MyButton
                                             type="button"
@@ -229,7 +234,7 @@ export function StepFieldConfigEditor({
                     })}
                     {value.length === 0 && (
                         <div className="rounded-lg border border-dashed border-neutral-300 p-4 text-center text-caption text-neutral-500">
-                            No fields attached yet. Attach an existing custom field or create a new one.
+                            {t('emptyState')}
                         </div>
                     )}
                 </div>
@@ -243,8 +248,8 @@ export function StepFieldConfigEditor({
                     onChange={setPickerValues}
                     placeholder={
                         availableCatalogFields.length === 0
-                            ? 'No more fields to attach'
-                            : 'Attach existing field(s)…'
+                            ? t('pickerPlaceholderEmpty')
+                            : t('pickerPlaceholderDefault')
                     }
                     disabled={availableCatalogFields.length === 0}
                 />
@@ -255,12 +260,14 @@ export function StepFieldConfigEditor({
                     onClick={attachExisting}
                     disable={pickerValues.length === 0}
                 >
-                    Attach{pickerValues.length > 1 ? ` (${pickerValues.length})` : ''}
+                    {pickerValues.length > 1
+                        ? t('attachButtonWithCount', { count: pickerValues.length })
+                        : t('attachButton')}
                 </MyButton>
                 <AddCustomFieldDialog
                     trigger={
                         <MyButton type="button" scale="small" buttonType="secondary">
-                            <Plus size={16} /> Create New Field
+                            <Plus size={16} /> {t('createNewFieldButton')}
                         </MyButton>
                     }
                     onAddField={addNewField}

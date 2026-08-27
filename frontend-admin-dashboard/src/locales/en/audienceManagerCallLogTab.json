@@ -1,0 +1,126 @@
+{
+    "kpi": {
+        "totalCalls": "Total calls",
+        "connected": "Connected",
+        "talkTime": "Talk time",
+        "talkTimeUnit": "h : mm",
+        "uniqueLeads": "Unique leads",
+        "aiVsHuman": "AI vs human",
+        "aiVsHumanUnit": "AI / human"
+    },
+    "chips": {
+        "allCalls": "All calls",
+        "missedInbound": "Missed inbound",
+        "callbacksDue": "Callbacks due"
+    },
+    "filters": {
+        "leadName": "Lead name",
+        "leadNamePlaceholder": "Search name",
+        "number": "Number",
+        "numberPlaceholder": "Phone digits",
+        "direction": "Direction",
+        "directionOutbound": "Outbound",
+        "directionInbound": "Inbound",
+        "type": "Type",
+        "typeHuman": "Human",
+        "typeAi": "AI",
+        "provider": "Provider",
+        "status": "Status",
+        "disposition": "Disposition",
+        "all": "All",
+        "searchPlaceholder": "Search {{label}}…"
+    },
+    "providers": {
+        "exotel": "Exotel",
+        "aavtaarAi": "AI (Aavtaar)",
+        "airtel": "Airtel"
+    },
+    "table": {
+        "heading": "Calls",
+        "empty": "No calls match these filters.",
+        "columns": {
+            "time": "Time",
+            "lead": "Lead",
+            "direction": "Dir",
+            "type": "Type",
+            "status": "Status",
+            "health": "Health",
+            "healthTooltip": "Technical verdict from the AI voice agent",
+            "duration": "Duration",
+            "counsellor": "Counsellor",
+            "disposition": "Disposition",
+            "recording": "Recording",
+            "ai": "AI"
+        },
+        "openLeadProfile": "Open lead profile",
+        "viewLead": "View lead",
+        "ivrOptionChosen": "IVR option chosen"
+    },
+    "directionBadge": {
+        "in": "In",
+        "out": "Out"
+    },
+    "typeBadge": {
+        "ai": "AI",
+        "human": "Human"
+    },
+    "statusDetail": {
+        "whyEnded": "Why did this call end this way?",
+        "loading": "Loading details…",
+        "reasonPrefix": "Reason: {{reason}}",
+        "noDetail": "No further detail available.",
+        "reason": "Reason",
+        "provider": "Provider",
+        "attempted": "Attempted",
+        "answered": "Answered",
+        "duration": "Duration",
+        "cost": "Cost",
+        "viewRawResponse": "View raw provider response"
+    },
+    "disposition": {
+        "edit": "Edit",
+        "set": "Set"
+    },
+    "recording": {
+        "loading": "Loading…",
+        "play": "Play"
+    },
+    "export": {
+        "csv": "CSV",
+        "excel": "Excel",
+        "successToast": "Exported {{format}}",
+        "errorToast": "Export failed. Please try again."
+    },
+    "dispositionDialog": {
+        "heading": "Set call disposition",
+        "save": "Save",
+        "outcome": "Outcome",
+        "noOutcomes": "No outcomes configured.",
+        "mapsToStatus": "→ status",
+        "callbackAt": "Call back at",
+        "notes": "Notes (optional)",
+        "notesPlaceholder": "Add a note",
+        "savedStatusUpdated": "Saved — lead status updated",
+        "saved": "Disposition saved",
+        "saveError": "Could not save the disposition."
+    },
+    "intelligenceDialog": {
+        "heading": "Transcript & AI intelligence",
+        "analyzeHeading": "Analyze this call?",
+        "analyzeConfirm": "Analyze"
+    },
+    "empty": {
+        "pickInstitute": "Pick an institute to view the call log."
+    },
+    "deployPending": {
+        "title": "The call dashboard isn't available on this server yet",
+        "description": "The telephony dashboard endpoints haven't been deployed to this environment. Check back after the next backend release."
+    },
+    "error": {
+        "loadFailed": "Couldn't load the call log."
+    },
+    "common": {
+        "retry": "Retry",
+        "leadFallback": "Lead"
+    }
+}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useEnquiryForm } from '../../-hooks/useEnquiryForm';
 import { defaultEnquiryFormValues, EnquiryForm } from '../../-schema/EnquirySchema';
@@ -152,7 +153,8 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
         formState: { errors },
     } = form;
 
-    const createCampaign = useCreateAudienceCampaign();
+    const { t: tCreateAudienceCampaign } = useTranslation('audienceManagerUseCreateAudienceCampaign');
+    const createCampaign = useCreateAudienceCampaign(tCreateAudienceCampaign);
 
     // Get sessions from institute store
     const sessions = useMemo(() => {

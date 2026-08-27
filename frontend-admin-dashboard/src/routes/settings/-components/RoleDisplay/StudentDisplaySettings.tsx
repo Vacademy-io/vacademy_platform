@@ -198,9 +198,9 @@ export default function StudentDisplaySettings(): JSX.Element {
 
     const addSubTab = (tabId: string) => {
         if (!settings) return;
-        const tabs = settings.sidebar.tabs.map((t) => {
-            if (t.id !== tabId) return t;
-            const nextOrder = ((t.subTabs?.length || 0) + 1) as number;
+        const tabs = settings.sidebar.tabs.map((tb) => {
+            if (tb.id !== tabId) return tb;
+            const nextOrder = ((tb.subTabs?.length || 0) + 1) as number;
             const sub = {
                 id: `custom-sub-${Date.now()}`,
                 label: t('sidebar.defaultSubTabLabel'),
@@ -208,7 +208,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                 order: nextOrder,
                 visible: true,
             };
-            return { ...t, subTabs: [...(t.subTabs || []), sub] };
+            return { ...tb, subTabs: [...(tb.subTabs || []), sub] };
         });
         update('sidebar', { ...settings.sidebar, tabs });
     };

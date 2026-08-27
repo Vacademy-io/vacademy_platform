@@ -1,0 +1,137 @@
+{
+    "navigation": {
+        "updateSurvey": "تحديث الاستبيان",
+        "updateAssessment": "تحديث التقييم",
+        "createSurvey": "إنشاء استبيان",
+        "createAssessment": "إنشاء تقييم"
+    },
+    "toasts": {
+        "updateSuccess": "تم تحديث بيانات الخطوة 1 بنجاح!",
+        "saveSuccess": "تم حفظ بيانات الخطوة 1 بنجاح!"
+    },
+    "errors": {
+        "saveFailed": "فشل حفظ المعلومات الأساسية."
+    },
+    "header": {
+        "title": "المعلومات الأساسية",
+        "description": "قم بتكوين التفاصيل الأساسية لتقييمك، بما في ذلك الاسم والجدول الزمني وطريقة التقييم وتفضيلات إصدار النتائج.",
+        "updateButton": "تحديث",
+        "nextButton": "التالي"
+    },
+    "basicInfoSection": {
+        "titleSurvey": "معلومات الاستبيان",
+        "titleAssessment": "المعلومات الأساسية",
+        "description": "الاسم والمادة والتعليمات المعروضة للمشاركين.",
+        "titlePlaceholder": "أضف عنوانًا",
+        "nameLabelSurvey": "اسم الاستبيان",
+        "nameLabelAssessment": "اسم التقييم",
+        "instructionsLabelSurvey": "تعليمات الاستبيان",
+        "instructionsLabelAssessment": "تعليمات التقييم",
+        "instructionsPlaceholderSurvey": "اكتب تعليمات الاستبيان",
+        "instructionsPlaceholderAssessment": "اكتب تعليمات التقييم"
+    },
+    "liveDateRangeSection": {
+        "title": "النطاق الزمني المباشر",
+        "description": "متى يمكن للمشاركين البدء ومتى يجب عليهم إنهاء التقييم.",
+        "startDateLabel": "تاريخ ووقت البدء",
+        "endDateLabel": "تاريخ ووقت الانتهاء"
+    },
+    "attemptSettingsSection": {
+        "title": "إعدادات المحاولة",
+        "description": "تحكم في كيفية أداء المشاركين لهذا التقييم.",
+        "reattemptCountPlaceholder": "عدد المحاولات",
+        "reattemptCountLabel": "عدد المحاولات",
+        "resultEvaluationType": {
+            "label": "نوع النتيجة والتقييم",
+            "options": {
+                "autoAfterSubmission": {
+                    "label": "تلقائي — الإصدار بعد التسليم",
+                    "help": "يقوم النظام بالتصحيح تلقائيًا. تكون النتائج مرئية للمتعلم فور تسليمه مباشرة."
+                },
+                "autoAfterAssessmentEnd": {
+                    "label": "تلقائي — الإصدار بعد انتهاء الاختبار",
+                    "help": "يقوم النظام بالتصحيح تلقائيًا. لا تصبح النتائج مرئية إلا بعد انقضاء وقت انتهاء التقييم."
+                },
+                "noAutoRelease": {
+                    "label": "تلقائي — الإصدار يدويًا",
+                    "help": "يقوم النظام بالتصحيح تلقائيًا. تبقى النتائج مخفية حتى تنقر على \"إصدار النتيجة\" في علامة تبويب التسليمات."
+                },
+                "manual": {
+                    "label": "التقييم والإصدار اليدوي",
+                    "help": "يقوم المعلم بتصحيح كل تسليم يدويًا. تبقى النتائج مخفية حتى تقوم بتقييمها وإصدارها يدويًا."
+                }
+            }
+        },
+        "submissionType": {
+            "label": "نوع التسليم",
+            "helper": "كيفية تسليم الطلاب لإجاباتهم (مثل رفع ملف أو PDF)."
+        },
+        "assessmentPreview": {
+            "labelSurvey": "السماح بمعاينة الاستبيان",
+            "labelAssessment": "السماح بمعاينة التقييم",
+            "description": "السماح للمشاركين بمعاينة التقييم قبل البدء.",
+            "timeLimitLabel": "حد وقت المعاينة"
+        },
+        "switchSections": {
+            "label": "السماح لـ {{role}} بالتنقل بين الأقسام",
+            "description": "يمكن للمشاركين التنقل ذهابًا وإيابًا بين الأقسام."
+        }
+    },
+    "unusedFields": {
+        "testCreation": {
+            "titlePlaceholder": "أضف عنوانًا",
+            "nameLabelSurvey": "اسم الاستبيان",
+            "nameLabelAssessment": "اسم التقييم"
+        },
+        "liveDateRange": {
+            "startDateLabel": "تاريخ ووقت البدء",
+            "endDateLabel": "تاريخ ووقت الانتهاء"
+        },
+        "assessmentInstructions": {
+            "labelSurvey": "تعليمات الاستبيان",
+            "labelAssessment": "تعليمات التقييم",
+            "placeholderSurvey": "أضف تعليمات الاستبيان",
+            "placeholderAssessment": "أضف تعليمات التقييم"
+        },
+        "assessmentPreview": {
+            "enableLabel": "تمكين معاينة التقييم",
+            "timeLimitLabel": "حد وقت المعاينة"
+        },
+        "reattemptCount": {
+            "placeholder": "أدخل عدد المحاولات",
+            "label": "عدد المحاولات"
+        },
+        "submissionType": {
+            "label": "نوع التسليم",
+            "options": {
+                "autoSubmit": "تسليم تلقائي",
+                "manualSubmit": "تسليم يدوي"
+            }
+        },
+        "durationDistribution": {
+            "label": "توزيع المدة",
+            "helper": "اختر ما إذا كانت حدود الوقت تنطبق على الاختبار بأكمله، أو لكل قسم، أو لكل سؤال.",
+            "options": {
+                "entireAssessment": "التقييم بأكمله",
+                "sectionWise": "حسب القسم",
+                "questionWise": "حسب السؤال"
+            }
+        },
+        "evaluationType": {
+            "label": "نوع التقييم",
+            "options": {
+                "auto": "تقييم تلقائي",
+                "manual": "تقييم يدوي"
+            }
+        },
+        "switchSections": {
+            "label": "السماح بالتنقل بين الأقسام"
+        },
+        "reattemptRequest": {
+            "label": "السماح للطلاب بتقديم طلب إعادة محاولة"
+        },
+        "timeIncreaseRequest": {
+            "label": "السماح للطلاب بتقديم طلب زيادة الوقت"
+        }
+    }
+}

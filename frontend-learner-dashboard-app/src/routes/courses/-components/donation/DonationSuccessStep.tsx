@@ -1,4 +1,5 @@
 import { CheckCircle, XCircle, ArrowsClockwise } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { MyButton } from "@/components/design-system/button";
 import { formatCurrency } from "@/utils/currency";
 
@@ -19,6 +20,7 @@ export const DonationSuccessStep = ({
   onClose, 
   onRetry 
 }: DonationSuccessStepProps) => {
+  const { t } = useTranslation("coursesRouteA");
   const isSuccess = status === 'success';
   const isFailure = status === 'failure';
 
@@ -52,19 +54,19 @@ export const DonationSuccessStep = ({
       <div className="space-y-3">
         {isSuccess ? (
           <>
-            <h2 className="text-3xl font-bold text-gray-900">Thank You!</h2>
+            <h2 className="text-3xl font-bold text-gray-900">{t("donation.successStep.thankYouTitle")}</h2>
             <p className="text-gray-600 text-lg">
-              Your donation of <span className="font-semibold text-green-600">{formatCurrency(amount, currency)}</span> is being processed.
+              {t("donation.successStep.donationProcessingPrefix")} <span className="font-semibold text-green-600">{formatCurrency(amount, currency)}</span> {t("donation.successStep.donationProcessingSuffix")}
             </p>
             <p className="text-gray-500">
-              Thank you for supporting free learning and making education accessible to everyone!
+              {t("donation.successStep.thankYouMessage")}
             </p>
           </>
         ) : (
           <>
-            <h2 className="text-3xl font-bold text-gray-900">Payment Failed</h2>
+            <h2 className="text-3xl font-bold text-gray-900">{t("donation.successStep.paymentFailedTitle")}</h2>
             <p className="text-gray-600 text-lg">
-              We couldn't process your donation of <span className="font-semibold text-red-600">{formatCurrency(amount, currency)}</span>.
+              {t("donation.successStep.paymentFailedPrefix")} <span className="font-semibold text-red-600">{formatCurrency(amount, currency)}</span>{t("donation.successStep.paymentFailedSuffix")}
             </p>
             {error && (
               <div className="bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-xl p-6 shadow-sm">
@@ -78,7 +80,7 @@ export const DonationSuccessStep = ({
                   </div>
                   <div className="flex-1 text-start">
                     <h4 className="text-sm font-semibold text-red-800 mb-2">
-                      Payment Issue
+                      {t("donation.successStep.paymentIssueTitle")}
                     </h4>
                     <p className="text-sm text-red-700 leading-relaxed">
                       {cleanErrorMessage(error)}
@@ -101,7 +103,7 @@ export const DonationSuccessStep = ({
             layoutVariant="default"
           >
             <ArrowsClockwise className="w-4 h-4 me-2" />
-            Try Again
+            {t("donation.successStep.tryAgainButton")}
           </MyButton>
         )}
       </div>

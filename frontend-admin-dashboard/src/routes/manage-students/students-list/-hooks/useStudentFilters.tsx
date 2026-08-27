@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StudentFilterRequest } from '@/types/student-table-types';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -21,6 +22,7 @@ export const ALL_SESSIONS_ID = '__ALL__';
 
 export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) => {
     const { allowAllSessions = false } = options;
+    const { t } = useTranslation('manageStudentsUseStudentFilters');
     const navigate = useNavigate();
     const searchParams = useSearch({ strict: false }) as Record<string, any>;
     const INSTITUTE_ID = getCurrentInstituteId();
@@ -53,7 +55,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
     const hasInitializedFilters = useRef(false);
     const buildAllOption = (): DropdownItemType => ({
         id: ALL_SESSIONS_ID,
-        name: `All ${getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}`,
+        name: t('sessionSelector.allOption', {
+            term: getTerminologyPlural(ContentTerms.Session, SystemTerms.Session),
+        }),
     });
     const buildSessionList = (): DropdownItemType[] => {
         const sessions = getAllSessions().map((session) => ({
@@ -276,7 +280,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 : [searchParams.sessionExpiry];
             const expiryOptions = expiries.map((days) => ({
                 id: String(days),
-                label: `${days} Days`,
+                label: t('filterOptions.sessionExpiryDays', { count: Number(days) }),
             }));
             if (expiryOptions.length > 0) {
                 initialFilters.push({ id: 'session_expiry_days', value: expiryOptions });
@@ -299,7 +303,12 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             const statuses = Array.isArray(searchParams.paymentStatus) ? searchParams.paymentStatus : [searchParams.paymentStatus];
             const options = statuses.map((status: string) => ({
                 id: status,
-                label: status === 'PAID' ? 'Paid' : status === 'failed' ? 'Failed' : 'Payment Failed',
+                label:
+                    status === 'PAID'
+                        ? t('filterOptions.paymentStatus.paid')
+                        : status === 'failed'
+                          ? t('filterOptions.paymentStatus.failed')
+                          : t('filterOptions.paymentStatus.paymentFailed'),
             }));
             if (options.length > 0) {
                 initialFilters.push({ id: 'payment_statuses', value: options });
@@ -311,7 +320,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             const statuses = Array.isArray(searchParams.approvalStatus) ? searchParams.approvalStatus : [searchParams.approvalStatus];
             const options = statuses.map((status: string) => ({
                 id: status,
-                label: status === 'PENDING_FOR_APPROVAL' ? 'Pending for Approval' : 'Invited',
+                label:
+                    status === 'PENDING_FOR_APPROVAL'
+                        ? t('filterOptions.approvalStatus.pending')
+                        : t('filterOptions.approvalStatus.invited'),
             }));
             if (options.length > 0) {
                 initialFilters.push({ id: 'approval_statuses', value: options });
@@ -323,7 +335,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             const learnerType = searchParams.learnerType;
             const options = [{
                 id: learnerType,
-                label: learnerType === 'ABANDONED_CART' ? 'Abandoned Cart' : learnerType,
+                label:
+                    learnerType === 'ABANDONED_CART'
+                        ? t('filterOptions.learnerType.abandonedCart')
+                        : learnerType,
             }];
             initialFilters.push({ id: 'learner_type', value: options });
         }

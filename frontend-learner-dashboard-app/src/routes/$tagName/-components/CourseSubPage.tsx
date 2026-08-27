@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { useNavigate } from "@tanstack/react-router";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
@@ -31,6 +34,9 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   instituteId,
   instituteThemeCode,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
@@ -87,7 +93,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
         }
       } catch (err) {
         console.error("[CourseSubPage] Error fetching catalogue data:", err);
-        setError("Failed to load course catalogue");
+        setError(t("courseSubPage.loadCatalogueFailed", { course }));
       } finally {
         setIsLoading(false);
       }
@@ -269,16 +275,16 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            {error || "Course catalogue not found"}
+            {error || t("courseSubPage.catalogueNotFound", { course })}
           </h2>
           <p className="text-gray-600 mb-4">
-            The requested course catalogue could not be loaded.
+            {t("courseSubPage.catalogueNotLoaded", { course })}
           </p>
           <button
             onClick={() => navigate({ to: "/courses" })}
             className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
           >
-            Go to Courses
+            {t("courseSubPage.goToCourses", { courses })}
           </button>
         </div>
       </div>
@@ -300,16 +306,16 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            Page Not Found
+            {t("courseSubPage.pageNotFound")}
           </h2>
           <p className="text-gray-600 mb-4">
-            The requested page "{page}" could not be found.
+            {t("courseSubPage.pageNotFoundDetail", { page })}
           </p>
           <button
             onClick={() => navigate({ to: `/${tagName}` })}
             className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
           >
-            Go Back to Catalogue
+            {t("courseSubPage.goBackToCatalogue")}
           </button>
         </div>
       </div>

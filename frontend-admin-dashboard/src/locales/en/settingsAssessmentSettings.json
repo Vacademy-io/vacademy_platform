@@ -1,0 +1,26 @@
+{
+    "header": {
+        "title": "Assessment Settings",
+        "subtitle": "Configure assessment features for your institute",
+        "saveChanges": "Save Changes",
+        "saving": "Saving..."
+    },
+    "loading": "Loading assessment settings...",
+    "errors": {
+        "loadSettings": "Failed to load assessment settings",
+        "saveSettings": "Failed to save assessment settings"
+    },
+    "toasts": {
+        "settingsSaved": "Assessment settings saved successfully"
+    },
+    "offlineEntry": {
+        "title": "Offline Data Entry",
+        "description": "Allow data entry users to manually input student responses from paper-based tests. This enables analytics for both online and offline exams.",
+        "enableLabel": "Enable Offline Entry",
+        "enableHint": "Shows the \"Offline Entry\" button on the assessment submissions page"
+    },
+    "reportBranding": {
+        "title": "Assessment Report Branding",
+        "description": "Customize the look and feel of PDF reports generated for students. These settings apply to all assessment reports across your institute."
+    }
+}

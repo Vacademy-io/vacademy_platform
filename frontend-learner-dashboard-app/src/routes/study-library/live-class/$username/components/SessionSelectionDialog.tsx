@@ -19,6 +19,9 @@ import {
   getTimezoneDisplayInfo,
 } from "@/utils/timezone";
 import { calculateDuration } from "@/lib/live-class/utils";
+import { useTranslation } from "react-i18next";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface SessionSelectionDialogProps {
   open: boolean;
@@ -33,17 +36,21 @@ export function SessionSelectionDialog({
   sessions,
   onSelectSession,
 }: SessionSelectionDialogProps) {
+  const { t } = useTranslation("study");
+  const sessionsTerm = getTerminologyPlural(ContentTerms.Session, SystemTerms.Session).toLowerCase();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-screen-80 overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
             <WarningCircle size={28} className="text-primary-600" />
-            Multiple Active Sessions
+            {t("liveClass.sessionSelection.title")}
           </DialogTitle>
           <DialogDescription className="text-neutral-600 dark:text-neutral-300">
-            There are {sessions.length} active sessions right now. Please select
-            which one you'd like to join:
+            {t("liveClass.sessionSelection.description", {
+              count: sessions.length,
+              sessions: sessionsTerm,
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -71,7 +78,9 @@ export function SessionSelectionDialog({
                           : "bg-danger-600"
                       }`}
                     >
-                      {status.isInWaitingRoom ? "WAITING ROOM" : "LIVE NOW"}
+                      {status.isInWaitingRoom
+                        ? t("liveClass.badge.waitingRoom")
+                        : t("liveClass.badge.liveNow")}
                     </span>
                   </div>
 
@@ -86,7 +95,7 @@ export function SessionSelectionDialog({
                     <div className="flex items-center gap-1.5">
                       <Clock size={16} className="text-neutral-500" />
                       <span className="text-neutral-600 dark:text-neutral-300">
-                        <span className="font-medium">Starts:</span>{" "}
+                        <span className="font-medium">{t("liveClass.field.starts")}</span>{" "}
                         {formatSessionTimeInUserTimezone(
                           session.meeting_date,
                           session.start_time,
@@ -102,7 +111,7 @@ export function SessionSelectionDialog({
                     <div className="flex items-center gap-1.5">
                       <Clock size={16} className="text-neutral-500" />
                       <span className="text-neutral-600 dark:text-neutral-300">
-                        <span className="font-medium">Duration:</span>{" "}
+                        <span className="font-medium">{t("liveClass.field.duration")}</span>{" "}
                         {calculateDuration(
                           session.start_time,
                           session.last_entry_time
@@ -126,10 +135,10 @@ export function SessionSelectionDialog({
                   <ArrowSquareOut size={18} className="me-2" />
                   {status.isInWaitingRoom &&
                   session.waiting_room_type !== "PRE_JOINING"
-                    ? "Join Waiting Room"
+                    ? t("liveClass.button.joinWaitingRoom")
                     : status.isInWaitingRoom
-                      ? "Join Live Class"
-                      : "Join Session"}
+                      ? t("liveClass.button.joinLiveClass")
+                      : t("liveClass.button.joinSession")}
                 </Button>
               </div>
             </div>
@@ -138,8 +147,8 @@ export function SessionSelectionDialog({
 
         <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg">
           <p className="text-sm text-blue-800 dark:text-blue-200">
-            <span className="font-semibold">Tip:</span> You can only join one
-            session at a time. Choose the session you want to attend.
+            <span className="font-semibold">{t("liveClass.sessionSelection.tipLabel")}</span>{" "}
+            {t("liveClass.sessionSelection.tipBody", { session: getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase() })}
           </p>
         </div>
       </DialogContent>

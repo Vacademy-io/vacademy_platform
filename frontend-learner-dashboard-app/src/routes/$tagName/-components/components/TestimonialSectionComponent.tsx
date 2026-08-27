@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { CaretLeft, CaretRight, Star } from "@phosphor-icons/react";
 
@@ -32,6 +33,7 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect?: string
   testimonial,
   hoverEffect = "none",
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [hasError, setHasError] = useState(false);
 
@@ -84,7 +86,7 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect?: string
     }`}>
       {/* Rating */}
       {stars > 0 && (
-        <div className="mb-3 flex items-center gap-0.5" aria-label={`Rated ${stars} out of 5`}>
+        <div className="mb-3 flex items-center gap-0.5" aria-label={t("testimonial.ratedOutOf5", { stars })}>
           {Array.from({ length: 5 }, (_, i) => (
             <Star
               key={i}
@@ -135,6 +137,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
   testimonials,
   styles = {},
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const { backgroundColor, cardHoverEffect = "none" } = styles;
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -170,14 +173,14 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
                 <button
                   onClick={prevTestimonial}
                   className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-catalogue-bg border border-catalogue-border text-catalogue-text-secondary p-2 rounded-full hover:text-catalogue-text-primary hover:shadow-md transition-all"
-                  aria-label="Previous testimonial"
+                  aria-label={t("testimonial.previous")}
                 >
                   <CaretLeft className="w-5 h-5" />
                 </button>
                 <button
                   onClick={nextTestimonial}
                   className="absolute end-0 top-1/2 -translate-y-1/2 translate-x-4 bg-catalogue-bg border border-catalogue-border text-catalogue-text-secondary p-2 rounded-full hover:text-catalogue-text-primary hover:shadow-md transition-all"
-                  aria-label="Next testimonial"
+                  aria-label={t("testimonial.next")}
                 >
                   <CaretRight className="w-5 h-5" />
                 </button>
@@ -193,7 +196,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
                     className={`h-2 rounded-full transition-all ${
                       index === currentIndex ? "bg-primary-500 w-6" : "bg-gray-300 w-2"
                     }`}
-                    aria-label={`Go to testimonial ${index + 1}`}
+                    aria-label={t("testimonial.goToTestimonial", { number: index + 1 })}
                   />
                 ))}
               </div>

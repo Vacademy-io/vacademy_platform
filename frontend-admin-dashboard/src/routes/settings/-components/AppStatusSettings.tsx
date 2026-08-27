@@ -10,6 +10,8 @@ import {
     Info,
     Package,
 } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MyButton } from '@/components/design-system/button';
@@ -49,12 +51,16 @@ interface AppStatusResponse {
 
 // ─── Presentation helpers ───────────────────────────────────────────────────────────────────
 
-const PLATFORM_META: Record<Platform, { label: string; Icon: typeof AndroidLogo }> = {
-    ANDROID: { label: 'Android', Icon: AndroidLogo },
-    IOS: { label: 'iOS', Icon: AppleLogo },
-    WINDOWS: { label: 'Windows', Icon: WindowsLogo },
-    MACOS: { label: 'macOS', Icon: AppleLogo },
-};
+function buildPlatformMeta(
+    t: TFunction
+): Record<Platform, { label: string; Icon: typeof AndroidLogo }> {
+    return {
+        ANDROID: { label: t('platforms.android'), Icon: AndroidLogo },
+        IOS: { label: t('platforms.ios'), Icon: AppleLogo },
+        WINDOWS: { label: t('platforms.windows'), Icon: WindowsLogo },
+        MACOS: { label: t('platforms.macos'), Icon: AppleLogo },
+    };
+}
 
 /** Store-status strings come from the health-check dashboard's StoreStatus enum. */
 function statusTone(status: string): StatusType {
@@ -96,10 +102,12 @@ function statusLabel(status: string): string {
  * there is intentionally no edit affordance here.
  */
 export default function AppStatusSettings() {
+    const { t } = useTranslation('settingsAppStatus');
     const instituteId = getInstituteId();
     const [data, setData] = useState<AppStatusResponse | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const platformMeta = buildPlatformMeta(t);
 
     const fetchStatus = async () => {
         if (!instituteId) return;
@@ -112,7 +120,7 @@ export default function AppStatusSettings() {
             setData(res.data);
         } catch (err) {
             console.error('[AppStatus] Failed to load app status', err);
-            setError('Could not load app status right now. Try refreshing in a moment.');
+            setError(t('errors.loadStatus'));
         } finally {
             setLoading(false);
         }
@@ -130,12 +138,9 @@ export default function AppStatusSettings() {
                         <div className="space-y-1">
                             <CardTitle className="flex items-center gap-2 text-lg">
                                 <DeviceMobile className="size-5 text-primary-500" />
-                                App Status
+                                {t('title')}
                             </CardTitle>
-                            <CardDescription>
-                                Your app&apos;s registration and store status on Android, iOS, Windows
-                                and macOS. Set up by the platform team — this view is read-only.
-                            </CardDescription>
+                            <CardDescription>{t('description')}</CardDescription>
                         </div>
                         <MyButton
                             id="app-status-refresh-btn"
@@ -144,7 +149,7 @@ export default function AppStatusSettings() {
                             layoutVariant="icon"
                             onClick={fetchStatus}
                             disable={loading}
-                            title="Refresh status"
+                            title={t('refreshStatus')}
                         >
                             {loading ? (
                                 <CircleNotch className="size-4 animate-spin" />
@@ -167,7 +172,7 @@ export default function AppStatusSettings() {
                 <Card>
                     <CardContent className="flex items-center justify-center gap-2 py-10 text-neutral-500">
                         <CircleNotch className="size-4 animate-spin" />
-                        Loading app status…
+                        {t('loading')}
                     </CardContent>
                 </Card>
             )}
@@ -177,11 +182,10 @@ export default function AppStatusSettings() {
                     <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
                         <Package className="size-8 text-neutral-300" />
                         <p className="text-body font-semibold text-neutral-600">
-                            No app registered yet
+                            {t('emptyState.title')}
                         </p>
                         <p className="max-w-sm text-caption text-neutral-500">
-                            Once the platform team registers a mobile or desktop app for your
-                            institute, its status will show up here.
+                            {t('emptyState.description')}
                         </p>
                     </CardContent>
                 </Card>
@@ -191,7 +195,7 @@ export default function AppStatusSettings() {
                 <Card key={app.id}>
                     <CardHeader>
                         <CardTitle className="text-body font-semibold">
-                            {app.display_name || app.name || 'Untitled app'}
+                            {app.display_name || app.name || t('untitledApp')}
                         </CardTitle>
                         {app.package_name && (
                             <CardDescription className="font-mono text-caption">
@@ -202,11 +206,11 @@ export default function AppStatusSettings() {
                     <CardContent className="space-y-3">
                         {app.platforms.length === 0 && (
                             <p className="text-caption text-neutral-500">
-                                No platforms enabled for this app yet.
+                                {t('noPlatforms')}
                             </p>
                         )}
                         {app.platforms.map((p) => {
-                            const meta = PLATFORM_META[p.platform];
+                            const meta = platformMeta[p.platform];
                             return (
                                 <div
                                     key={p.platform}
@@ -237,7 +241,7 @@ export default function AppStatusSettings() {
                                                 rel="noreferrer"
                                                 className="flex items-center gap-1 text-caption text-primary-500 hover:underline"
                                             >
-                                                View in store
+                                                {t('viewInStore')}
                                                 <ArrowSquareOut className="size-3.5" />
                                             </a>
                                         )}

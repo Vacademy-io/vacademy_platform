@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { PaymentPlanType } from '@/types/payment';
@@ -19,8 +20,13 @@ export const ApprovalToggle: React.FC<ApprovalToggleProps> = ({
     existingFreePlans,
     onApprovalChange,
 }) => {
+    const { t } = useTranslation('settingsApprovalToggle');
     const isDisabled = isApprovalToggleDisabled(planType, existingFreePlans);
     const message = getApprovalToggleMessage(planType, existingFreePlans);
+    const learnerTerm = getTerminologyPlural(
+        RoleTerms.Learner,
+        SystemTerms.Learner
+    ).toLocaleLowerCase();
 
     return (
         <div className="mt-4 space-y-2">
@@ -31,9 +37,7 @@ export const ApprovalToggle: React.FC<ApprovalToggleProps> = ({
                         isDisabled ? 'text-gray-500' : 'text-gray-900'
                     }`}
                 >
-                    Enroll{' '}
-                    {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLocaleLowerCase()} on
-                    approval
+                    {t('label.part1')} {learnerTerm} {t('label.part2')}
                 </Label>
                 <Switch
                     id="requireApproval"

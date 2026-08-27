@@ -1,0 +1,35 @@
+{
+    "fallback": {
+        "notAvailable": "N/A"
+    },
+    "sections": {
+        "accountCredentials": "Account Credentials",
+        "generalDetails": "General Details",
+        "referralDetails": "Referral Details",
+        "contactInformation": "Contact Information",
+        "locationDetails": "Location Details",
+        "guardianDetails": "Parent/Guardian's Details"
+    },
+    "fields": {
+        "enrollmentNo": "Enrollment No",
+        "gender": "Gender",
+        "school": "School",
+        "country": "Country",
+        "state": "State",
+        "city": "City",
+        "pincode": "Pincode",
+        "address": "Address",
+        "mobileNo": "Mobile No.",
+        "emailId": "Email Id",
+        "fatherName": "Father/Male Guardian's Name",
+        "fatherMobileNo": "Father/Male Guardian's Mobile No.",
+        "fatherEmailId": "Father/Male Guardian's Email Id",
+        "motherName": "Mother/Female Guardian's Name",
+        "motherMobileNo": "Mother/Female Guardian's Mobile No",
+        "motherEmailId": "Mother/Female Guardian's Email Id",
+        "username": "Username",
+        "password": "Password",
+        "attendance": "Attendance",
+        "count": "Count"
+    }
+}

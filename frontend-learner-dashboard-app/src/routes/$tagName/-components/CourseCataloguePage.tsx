@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { Capacitor } from "@capacitor/core";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
@@ -38,6 +41,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   instituteThemeCode,
   pageSlug,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === 'android';
@@ -125,7 +131,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         }
       } catch (err) {
         console.error("[CourseCataloguePage] Error fetching catalogue data:", err);
-        setError("Failed to load course catalogue");
+        setError(t("courseSubPage.loadCatalogueFailed", { course }));
       } finally {
         setIsLoading(false);
       }
@@ -446,16 +452,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       <div className="min-h-screen flex items-center justify-center bg-catalogue-bg px-4">
         <div className="catalogue-card flex max-w-md flex-col items-center gap-3 p-8 text-center">
           <h2 className="text-xl font-semibold text-catalogue-text-primary">
-            {error || "Course catalogue not found"}
+            {error || t("courseSubPage.catalogueNotFound", { course })}
           </h2>
           <p className="text-sm text-catalogue-text-secondary">
-            The requested course catalogue could not be loaded.
+            {t("courseSubPage.catalogueNotLoaded", { course })}
           </p>
           <button
             onClick={() => navigate({ to: "/courses" })}
             className="catalogue-btn catalogue-btn-primary mt-1"
           >
-            Go to Courses
+            {t("courseSubPage.goToCourses", { courses })}
           </button>
         </div>
       </div>
@@ -467,11 +473,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // richer institute name for link previews without overriding the tab title.
   const brandedTitle =
     (typeof document !== "undefined" && document.title) || "";
-  const seoTitle = brandedTitle || domainRouting.instituteName || "Course Catalogue";
-  const ogTitle = domainRouting.instituteName || "Course Catalogue";
-  const seoDescription = `Explore the catalogue and enroll online${
-    domainRouting.instituteName ? ` at ${domainRouting.instituteName}` : ""
-  }.`;
+  const defaultCatalogueTitle = t("courseCataloguePage.defaultTitle", { course });
+  const seoTitle = brandedTitle || domainRouting.instituteName || defaultCatalogueTitle;
+  const ogTitle = domainRouting.instituteName || defaultCatalogueTitle;
+  const seoDescription = domainRouting.instituteName
+    ? t("courseCataloguePage.seoDescriptionWithInstitute", {
+        courses,
+        institute: domainRouting.instituteName,
+      })
+    : t("courseCataloguePage.seoDescription", { courses });
 
   /** Which page this URL resolves to. Shared by the chrome check and the
    *  render so the two can never disagree about what is on screen. */
@@ -528,7 +538,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           {/* Keyboard users land on the header nav; this lets them jump the
               whole global chrome straight to the page content. */}
           <a href="#catalogue-main" className="catalogue-skip-link">
-            Skip to main content
+            {t("courseCataloguePage.skipToMainContent")}
           </a>
           {/* Header from JSON globalSettings.
               Suppressed when the active page asks for it: an imported HTML
@@ -663,6 +673,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 /* ─── Back to Top Button ───────────────────────────────────────────────── */
 
 const BackToTopButton = () => {
+  const { t } = useTranslation("coursePlayerA");
   const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
@@ -677,7 +688,7 @@ const BackToTopButton = () => {
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
       className="catalogue-fab fixed bottom-6 end-6 z-50 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur active:scale-95 md:bottom-8 md:end-8"
-      aria-label="Back to top"
+      aria-label={t("courseCataloguePage.backToTop")}
     >
       <CaretUp size={20} weight="bold" aria-hidden="true" />
     </button>

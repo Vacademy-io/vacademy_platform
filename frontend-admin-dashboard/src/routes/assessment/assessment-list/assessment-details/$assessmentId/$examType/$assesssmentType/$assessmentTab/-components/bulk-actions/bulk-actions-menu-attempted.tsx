@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MyButton } from '@/components/design-system/button';
 import { useSubmissionsBulkActionsDialogStoreAttempted } from '../bulk-actions-zustand-store/useSubmissionsBulkActionsDialogStoreAttempted';
+import { useTranslation } from 'react-i18next';
 
 interface BulkActionsMenuProps {
     selectedCount: number;
@@ -21,11 +22,21 @@ interface BulkActionsMenuProps {
     onExportReports?: () => void;
 }
 
+// Internal action-type constants used for dispatch logic. These must never be
+// swapped for translated display text — see handleMenuOptionsChange below.
+const MENU_ACTION = {
+    PROVIDE_REATTEMPT: 'PROVIDE_REATTEMPT',
+    REVALUATE_QUESTION_WISE: 'REVALUATE_QUESTION_WISE',
+    REVALUATE_ENTIRE_ASSESSMENT: 'REVALUATE_ENTIRE_ASSESSMENT',
+    RELEASE_RESULT: 'RELEASE_RESULT',
+} as const;
+
 export const BulkActionsMenuAttempted = ({
     selectedStudents,
     trigger,
     onExportReports,
 }: BulkActionsMenuProps) => {
+    const { t } = useTranslation('assessmentBulkActionsMenuAttempted');
     const {
         openBulkProvideReattemptDialog,
         openBulkProvideRevaluateAssessmentDialog,
@@ -44,20 +55,20 @@ export const BulkActionsMenuAttempted = ({
         const bulkActionInfo: AssessmentSubmissionsBulkActionInfo = {
             selectedStudentIds: validStudents.map((student) => student.user_id),
             selectedStudents: validStudents,
-            displayText: `${validStudents.length} students`,
+            displayText: t('actionInfo.selectedStudents', { count: validStudents.length }),
         };
 
         switch (value) {
-            case 'Provide Reattempt':
+            case MENU_ACTION.PROVIDE_REATTEMPT:
                 openBulkProvideReattemptDialog(bulkActionInfo);
                 break;
-            case 'Revaluate Question Wise':
+            case MENU_ACTION.REVALUATE_QUESTION_WISE:
                 openBulkProvideRevaluateQuestionWiseDialog(bulkActionInfo);
                 break;
-            case 'Revaluate Entire Assessment':
+            case MENU_ACTION.REVALUATE_ENTIRE_ASSESSMENT:
                 openBulkProvideRevaluateAssessmentDialog(bulkActionInfo);
                 break;
-            case 'Release Result':
+            case MENU_ACTION.RELEASE_RESULT:
                 openBulkProvideReleaseDialog(bulkActionInfo);
                 break;
         }
@@ -79,43 +90,47 @@ export const BulkActionsMenuAttempted = ({
                 <DropdownMenuContent>
                     <DropdownMenuItem
                         className="cursor-pointer"
-                        onClick={() => handleMenuOptionsChange('Provide Reattempt')}
+                        onClick={() => handleMenuOptionsChange(MENU_ACTION.PROVIDE_REATTEMPT)}
                     >
-                        Provide Reattempt
+                        {t('menu.provideReattempt')}
                     </DropdownMenuItem>
                     <DropdownMenuSub>
                         <DropdownMenuSubTrigger className="cursor-pointer">
-                            Revaluate
+                            {t('menu.revaluate')}
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
                             <DropdownMenuItem
                                 className="cursor-pointer"
-                                onClick={() => handleMenuOptionsChange('Revaluate Question Wise')}
+                                onClick={() =>
+                                    handleMenuOptionsChange(MENU_ACTION.REVALUATE_QUESTION_WISE)
+                                }
                             >
-                                Question Wise
+                                {t('menu.questionWise')}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={() =>
-                                    handleMenuOptionsChange('Revaluate Entire Assessment')
+                                    handleMenuOptionsChange(
+                                        MENU_ACTION.REVALUATE_ENTIRE_ASSESSMENT
+                                    )
                                 }
                             >
-                                Entire Assessment
+                                {t('menu.entireAssessment')}
                             </DropdownMenuItem>
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>
                     <DropdownMenuItem
                         className="cursor-pointer"
-                        onClick={() => handleMenuOptionsChange('Release Result')}
+                        onClick={() => handleMenuOptionsChange(MENU_ACTION.RELEASE_RESULT)}
                     >
-                        Release Result
+                        {t('menu.releaseResult')}
                     </DropdownMenuItem>
                     {onExportReports && (
                         <DropdownMenuItem
                             className="cursor-pointer"
                             onClick={onExportReports}
                         >
-                            Export Reports (ZIP)
+                            {t('menu.exportReports')}
                         </DropdownMenuItem>
                     )}
                 </DropdownMenuContent>

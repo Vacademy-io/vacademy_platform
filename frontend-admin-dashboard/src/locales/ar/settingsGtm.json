@@ -1,0 +1,30 @@
+{
+    "loading": "جارٍ تحميل إعدادات GTM…",
+    "card": {
+        "title": "مدير الوسوم من Google (GTM)",
+        "description": {
+            "part1": "أدرج حاوية GTM الخاصة بك في صفحات تسجيل المتعلمين. يتيح هذا تتبع التحويلات، وبكسلات إعادة الاستهداف، وأي وسوم تقوم بتكوينها في مساحة عمل GTM الخاصة بك. يتم إرسال حدث ",
+            "part2": " إلى dataLayer عند نجاح التسجيل."
+        }
+    },
+    "toggle": {
+        "enabled": "مفعّل",
+        "disabled": "معطّل"
+    },
+    "containerId": {
+        "label": "معرّف الحاوية",
+        "placeholder": "GTM-XXXXXXX",
+        "hint": "ابحث عن معرّف الحاوية في GTM ← الإدارة ← إعدادات الحاوية."
+    },
+    "errors": {
+        "invalidContainerId": "معرّف حاوية GTM غير صالح. التنسيق المتوقع: GTM-XXXXXXX"
+    },
+    "toasts": {
+        "saveSuccess": "تم حفظ إعدادات GTM",
+        "saveError": "فشل حفظ إعدادات GTM"
+    },
+    "footer": {
+        "save": "حفظ إعدادات GTM",
+        "saving": "جارٍ الحفظ…"
+    }
+}

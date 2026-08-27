@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { cn, toTitleCase } from "@/lib/utils";
 import { VideoPlayer } from "../components/media/video-player";
 import { Badge } from "@/components/ui/badge";
 import { playIllustrations } from "@/assets/play-illustrations";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface CourseHeaderProps {
   courseData: {
@@ -24,6 +27,8 @@ export const CourseHeader = ({
   showConfetti = false,
   minimal = false,
 }: CourseHeaderProps) => {
+  const { t } = useTranslation("courseDetailsA");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const isImageUrl = (url: string) =>
     /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?.*)?$/i.test(url);
   const hasVideo =
@@ -134,7 +139,7 @@ export const CourseHeader = ({
                       onClick={() => setIsDescExpanded((prev) => !prev)}
                       className="mt-1 text-body font-medium text-primary hover:underline focus:outline-none"
                     >
-                      {isDescExpanded ? "View less" : "View more"}
+                      {isDescExpanded ? t("header.viewLess") : t("header.viewMore")}
                     </button>
                   )}
                 </div>
@@ -161,7 +166,7 @@ export const CourseHeader = ({
                 <div className="relative w-full mx-auto overflow-hidden rounded-2xl border border-border/50 bg-muted shadow-sm ring-1 ring-black/5">
                   <img
                     src={courseData.courseMediaId}
-                    alt={toTitleCase(courseData.title || "Course Media")}
+                    alt={toTitleCase(courseData.title || t("header.courseMediaAlt", { course }))}
                     className="w-full max-h-screen-60 object-contain"
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
@@ -176,7 +181,7 @@ export const CourseHeader = ({
               >
                 <img
                   src={courseData.courseBannerMediaId}
-                  alt={toTitleCase(courseData.title || "Course Banner")}
+                  alt={toTitleCase(courseData.title || t("header.courseBannerAlt", { course }))}
                   className="w-full max-h-reg-300 rounded-xl object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = "none";

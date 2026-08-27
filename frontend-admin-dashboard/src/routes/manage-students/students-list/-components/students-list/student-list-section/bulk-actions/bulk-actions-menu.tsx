@@ -1,12 +1,45 @@
 // components/BulkActionsMenu.tsx
 import { MyDropdown } from '@/components/design-system/dropdown';
+import { DropdownItem } from '@/components/design-system/utils/types/dropdown-types';
 import { useDialogStore } from '@/routes/manage-students/students-list/-hooks/useDialogStore';
 import { BulkActionInfo } from '@/routes/manage-students/students-list/-types/bulk-actions-types';
 import { StudentTable } from '@/types/student-table-types';
 import { ReactNode } from 'react';
-import { BulkActionDropdownList } from '@/routes/manage-students/students-list/-constants/bulk-actions-menu-options';
 import { useRouter } from '@tanstack/react-router';
 import { useEnrollRequestsDialogStore } from '@/routes/manage-students/enroll-requests/-components/bulk-actions/bulk-actions-store';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+
+// Internal action-type constants used for dispatch logic. These must never be
+// swapped for translated display text — handleMenuOptionsChange switches on
+// these values, not on the (locale-dependent) label shown in the dropdown.
+const MENU_ACTION = {
+    ACCEPT_REQUEST: 'ACCEPT_REQUEST',
+    CHANGE_BATCH: 'CHANGE_BATCH',
+    EXTEND_COURSE_ACCESS: 'EXTEND_COURSE_ACCESS',
+    RE_REGISTER: 'RE_REGISTER',
+    TERMINATE_REGISTRATION: 'TERMINATE_REGISTRATION',
+    DELETE: 'DELETE',
+    SHARE_CREDENTIALS: 'SHARE_CREDENTIALS',
+    SEND_WHATSAPP_MESSAGE: 'SEND_WHATSAPP_MESSAGE',
+    SEND_EMAIL: 'SEND_EMAIL',
+    CREATE_CERTIFICATE: 'CREATE_CERTIFICATE',
+} as const;
+
+// Was a module-scope `BulkActionDropdownList` string array (imported from
+// -constants/bulk-actions-menu-options). Converted to a factory so the labels
+// can be translated while the dispatch value stays a stable, locale-independent
+// MENU_ACTION key.
+const buildBulkActionDropdownList = (t: TFunction): DropdownItem[] => [
+    { label: t('menu.changeBatch'), value: MENU_ACTION.CHANGE_BATCH },
+    { label: t('menu.extendCourseAccess'), value: MENU_ACTION.EXTEND_COURSE_ACCESS },
+    { label: t('menu.reRegisterForNextSession'), value: MENU_ACTION.RE_REGISTER },
+    { label: t('menu.terminateRegistration'), value: MENU_ACTION.TERMINATE_REGISTRATION },
+    { label: t('menu.shareCredentials'), value: MENU_ACTION.SHARE_CREDENTIALS },
+    { label: t('menu.sendWhatsappMessage'), value: MENU_ACTION.SEND_WHATSAPP_MESSAGE },
+    { label: t('menu.sendEmail'), value: MENU_ACTION.SEND_EMAIL },
+    { label: t('menu.createCertificate'), value: MENU_ACTION.CREATE_CERTIFICATE },
+];
 
 interface BulkActionsMenuProps {
     selectedCount: number;
@@ -25,6 +58,7 @@ export const BulkActionsMenu = ({
     showApprovalActions = false,
 }: BulkActionsMenuProps) => {
     const router = useRouter();
+    const { t } = useTranslation('manageStudentsBulkActionsMenu');
     const {
         openBulkChangeBatchDialog,
         openBulkExtendAccessDialog,
@@ -40,9 +74,12 @@ export const BulkActionsMenu = ({
     // on this page and handles bulk approval.
     const { openBulkAcceptRequestDialog } = useEnrollRequestsDialogStore();
 
-    const dropdownList = showApprovalActions
-        ? ['Accept Request', ...BulkActionDropdownList]
-        : BulkActionDropdownList;
+    const dropdownList: DropdownItem[] = showApprovalActions
+        ? [
+              { label: t('menu.acceptRequest'), value: MENU_ACTION.ACCEPT_REQUEST },
+              ...buildBulkActionDropdownList(t),
+          ]
+        : buildBulkActionDropdownList(t);
 
     const handleMenuOptionsChange = (value: string) => {
         const validStudents = selectedStudents.filter(
@@ -57,38 +94,38 @@ export const BulkActionsMenu = ({
         const bulkActionInfo: BulkActionInfo = {
             selectedStudentIds: validStudents.map((student) => student.id),
             selectedStudents: validStudents,
-            displayText: `${validStudents.length} students`,
+            displayText: t('actionInfo.selectedStudents', { count: validStudents.length }),
         };
 
         switch (value) {
-            case 'Accept Request':
+            case MENU_ACTION.ACCEPT_REQUEST:
                 openBulkAcceptRequestDialog(bulkActionInfo);
                 break;
-            case 'Change Batch':
+            case MENU_ACTION.CHANGE_BATCH:
                 openBulkChangeBatchDialog(bulkActionInfo);
                 break;
-            case 'Extend Course Access':
+            case MENU_ACTION.EXTEND_COURSE_ACCESS:
                 openBulkExtendAccessDialog(bulkActionInfo);
                 break;
-            case 'Re-register for Next Session':
+            case MENU_ACTION.RE_REGISTER:
                 openBulkReRegisterDialog(bulkActionInfo);
                 break;
-            case 'Terminate Registration':
+            case MENU_ACTION.TERMINATE_REGISTRATION:
                 openBulkTerminateRegistrationDialog(bulkActionInfo);
                 break;
-            case 'Delete':
+            case MENU_ACTION.DELETE:
                 openBulkDeleteDialog(bulkActionInfo);
                 break;
-            case 'Share Credentials':
+            case MENU_ACTION.SHARE_CREDENTIALS:
                 openBulkShareCredentialsDialog(bulkActionInfo);
                 break;
-            case 'Send WhatsApp Message':
+            case MENU_ACTION.SEND_WHATSAPP_MESSAGE:
                 openBulkSendMessageDialog(bulkActionInfo);
                 break;
-            case 'Send Email':
+            case MENU_ACTION.SEND_EMAIL:
                 openBulkSendEmailDialog(bulkActionInfo);
                 break;
-            case 'Create Certificate':
+            case MENU_ACTION.CREATE_CERTIFICATE:
                 // Navigate to certificate generation with selected students
                 router.navigate({
                     to: '/certificate-generation/student-data',

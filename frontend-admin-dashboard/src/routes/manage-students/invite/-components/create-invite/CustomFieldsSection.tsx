@@ -17,6 +17,7 @@ import {
     FormFieldRowHeader,
 } from '@/components/common/custom-fields/FormFieldRow';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface CustomFieldsSectionProps {
     toggleIsRequired: (id: number) => void;
@@ -42,6 +43,7 @@ export const CustomFieldsSection = ({
     handleDeleteOpenField,
     handleEditFieldAt,
 }: CustomFieldsSectionProps) => {
+    const { t } = useTranslation('manageStudentsCustomFieldsSection');
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const { watch, control } = useFormContext<InviteForm>();
     const customFields = watch('custom_fields');
@@ -66,8 +68,10 @@ export const CustomFieldsSection = ({
     return (
         <div className="flex flex-col gap-4">
             <div className="flex flex-col">
-                <p className="text-title font-semibold">{`Form Fields (${fields.length})`}</p>
-                <p className="text-caption text-neutral-500">Drag to reorder fields</p>
+                <p className="text-title font-semibold">
+                    {t('header.title', { count: fields.length })}
+                </p>
+                <p className="text-caption text-neutral-500">{t('header.subtitle')}</p>
             </div>
             <FormFieldRowHeader />
             <Sortable
@@ -131,7 +135,7 @@ export const CustomFieldsSection = ({
                             ])
                         }
                     >
-                        <Plus size={32} /> Add Gender
+                        <Plus size={32} /> {t('quickAddButtons.gender')}
                     </MyButton>
                 )}
                 {!customFields
@@ -143,7 +147,7 @@ export const CustomFieldsSection = ({
                         buttonType="secondary"
                         onClick={() => handleAddOpenFieldValues('textfield', 'State', false)}
                     >
-                        <Plus size={32} /> Add State
+                        <Plus size={32} /> {t('quickAddButtons.state')}
                     </MyButton>
                 )}
                 {!customFields
@@ -155,7 +159,7 @@ export const CustomFieldsSection = ({
                         buttonType="secondary"
                         onClick={() => handleAddOpenFieldValues('textfield', 'City', false)}
                     >
-                        <Plus size={32} /> Add City
+                        <Plus size={32} /> {t('quickAddButtons.city')}
                     </MyButton>
                 )}
                 {!customFields
@@ -169,7 +173,7 @@ export const CustomFieldsSection = ({
                             handleAddOpenFieldValues('textfield', 'School/College', false)
                         }
                     >
-                        <Plus size={32} /> Add School/College
+                        <Plus size={32} /> {t('quickAddButtons.schoolCollege')}
                     </MyButton>
                 )}
                 {!customFields
@@ -181,7 +185,7 @@ export const CustomFieldsSection = ({
                         buttonType="secondary"
                         onClick={() => handleAddOpenFieldValues('textfield', 'Address', false)}
                     >
-                        <Plus size={32} /> Add Address
+                        <Plus size={32} /> {t('quickAddButtons.address')}
                     </MyButton>
                 )}
                 {!customFields
@@ -193,7 +197,7 @@ export const CustomFieldsSection = ({
                         buttonType="secondary"
                         onClick={() => handleAddOpenFieldValues('textfield', 'Pincode', false)}
                     >
-                        <Plus size={32} /> Pincode
+                        <Plus size={32} /> {t('quickAddButtons.pincode')}
                     </MyButton>
                 )}
                 {!customFields
@@ -205,7 +209,7 @@ export const CustomFieldsSection = ({
                         buttonType="secondary"
                         onClick={() => handleAddOpenFieldValues('textfield', 'Father Name', false)}
                     >
-                        <Plus size={32} /> Father Name
+                        <Plus size={32} /> {t('quickAddButtons.fatherName')}
                     </MyButton>
                 )}
                 {!customFields
@@ -217,7 +221,7 @@ export const CustomFieldsSection = ({
                         buttonType="secondary"
                         onClick={() => handleAddOpenFieldValues('textfield', 'Mother Name', false)}
                     >
-                        <Plus size={32} /> Mother Name
+                        <Plus size={32} /> {t('quickAddButtons.motherName')}
                     </MyButton>
                 )}
                 {!customFields
@@ -231,7 +235,7 @@ export const CustomFieldsSection = ({
                             handleAddOpenFieldValues('textfield', 'Parent Phone Number', false)
                         }
                     >
-                        <Plus size={32} /> Parent Phone Number
+                        <Plus size={32} /> {t('quickAddButtons.parentPhoneNumber')}
                     </MyButton>
                 )}
                 {!customFields
@@ -243,14 +247,14 @@ export const CustomFieldsSection = ({
                         buttonType="secondary"
                         onClick={() => handleAddOpenFieldValues('textfield', 'Parent Email', false)}
                     >
-                        <Plus size={32} /> Parent Email
+                        <Plus size={32} /> {t('quickAddButtons.parentEmail')}
                     </MyButton>
                 )}
 
                 <AddCustomFieldDialog
                     trigger={
                         <MyButton type="button" scale="medium" buttonType="secondary">
-                            <Plus size={32} /> Add Custom Field
+                            <Plus size={32} /> {t('addCustomFieldButton')}
                         </MyButton>
                     }
                     onAddField={handleAddCustomField}

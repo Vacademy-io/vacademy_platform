@@ -1,0 +1,10 @@
+{
+    "label": {
+        "part1": "Inscrire les",
+        "part2": "sur approbation"
+    },
+    "message": {
+        "approvalDisabled": "L'approbation est désactivée car vous avez déjà un plan gratuit avec approbation. Ce plan sera créé sans approbation.",
+        "approvalRequired": "L'approbation est requise car vous avez déjà un plan gratuit sans approbation. Ce plan sera créé avec approbation."
+    }
+}

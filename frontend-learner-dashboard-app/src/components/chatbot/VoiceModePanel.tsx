@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { X, Microphone, MicrophoneSlash, PhoneDisconnect, SpeakerSlash, SpeakerHigh } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { VoiceAvatar } from "./VoiceAvatar";
@@ -26,12 +27,6 @@ interface TranscriptMessage {
   text: string;
 }
 
-const MODE_LABELS: Record<VoiceModePanelProps["mode"], { label: string; icon: string }> = {
-  voice_interview: { label: "Mock Interview", icon: "briefcase" },
-  voice_doubt: { label: "Doubt Discussion", icon: "message" },
-  voice_oral_test: { label: "Oral Test", icon: "file-question" },
-};
-
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -46,6 +41,12 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   onClose,
   chatbotSettings,
 }) => {
+  const { t } = useTranslation("chatFeatureB");
+  const MODE_LABELS: Record<VoiceModePanelProps["mode"], { label: string; icon: string }> = {
+    voice_interview: { label: t("voiceModeLabels.interview"), icon: "briefcase" },
+    voice_doubt: { label: t("voiceModeLabels.doubt"), icon: "message" },
+    voice_oral_test: { label: t("voiceModeLabels.oralTest"), icon: "file-question" },
+  };
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -276,10 +277,10 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
             audioLevel={currentAudioLevel}
           />
           <p className="text-white/50 text-xs mt-2">
-            {voiceState === "idle" && "Tap the mic button below to start speaking"}
-            {voiceState === "listening" && "I'm listening... tap mic when done"}
-            {voiceState === "processing" && "Processing your response..."}
-            {voiceState === "speaking" && "Tap mic to interrupt and speak"}
+            {voiceState === "idle" && t("voiceModePanel.hintIdle")}
+            {voiceState === "listening" && t("voiceModePanel.hintListening")}
+            {voiceState === "processing" && t("voiceModePanel.hintProcessing")}
+            {voiceState === "speaking" && t("voiceModePanel.hintSpeaking")}
           </p>
         </div>
 
@@ -314,7 +315,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
             size="icon"
             className="h-10 w-10 rounded-full bg-white/10 text-white hover:bg-white/20"
             onClick={toggleMute}
-            title={isMuted ? "Unmute microphone" : "Mute microphone"}
+            title={isMuted ? t("voiceModePanel.unmute") : t("voiceModePanel.mute")}
           >
             {isMuted ? (
               <SpeakerSlash className="h-5 w-5" />
@@ -347,7 +348,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
             onClick={handleEndSession}
           >
             <PhoneDisconnect className="h-4 w-4" />
-            End
+            {t("voiceModePanel.end")}
           </Button>
         </div>
 

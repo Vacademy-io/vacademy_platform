@@ -9,7 +9,10 @@ import { performFullAuthCycle } from "@/services/auth-cycle-service";
 import { loginEnrolledUser } from "@/services/signup-api";
 import { getAccessToken } from "@/lib/auth/sessionUtility";
 import { CheckCircle, XCircle, SpinnerGap } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 const paymentResultSearchSchema = z.object({
   orderId: z.string().optional(),
@@ -32,6 +35,7 @@ function isValidInstituteId(id: string | undefined): id is string {
 }
 
 function PaymentResultPage() {
+  const { t } = useTranslation("miscRoutesB");
   const search = Route.useSearch();
   const {
     orderId: orderIdParam,
@@ -296,11 +300,10 @@ function PaymentResultPage() {
               <XCircle className="w-10 h-10 text-amber-600" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
-              Invalid Payment Link
+              {t("paymentResult.invalidLink.title")}
             </h1>
             <p className="text-gray-600 mb-6">
-              No order ID was provided. Please complete your payment from the
-              enrollment page.
+              {t("paymentResult.invalidLink.description")}
             </p>
           </>
         ) : isPaid ? (
@@ -309,23 +312,25 @@ function PaymentResultPage() {
               <CheckCircle className="w-10 h-10 text-green-600" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
-              Payment Successful!
+              {t("paymentResult.success.title")}
             </h1>
             {isInvoicePayment ? (
               <p className="text-gray-600 mb-6">
-                Your invoice has been paid. A confirmation email will be sent to
-                you shortly.
+                {t("paymentResult.success.invoiceDescription")}
               </p>
             ) : (
               <p className="text-gray-600 mb-6">
-                Your enrollment has been confirmed. Redirecting you to your
-                courses...
+                {t("paymentResult.success.enrollmentDescription", {
+                  courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+                })}
               </p>
             )}
             {isInvoicePayment && safeRedirectPath ? (
               <>
                 <p className="text-gray-600 mb-2">
-                  Taking you to your live class…
+                  {t("paymentResult.success.takingToLiveClass", {
+                    liveClass: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
+                  })}
                 </p>
                 <a
                   href={
@@ -335,7 +340,7 @@ function PaymentResultPage() {
                   }
                   className="inline-flex items-center justify-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 font-medium"
                 >
-                  Continue now
+                  {t("paymentResult.success.continueNow")}
                 </a>
               </>
             ) : isInvoicePayment ? null : (
@@ -347,7 +352,9 @@ function PaymentResultPage() {
                 }
                 className="inline-flex items-center justify-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 font-medium"
               >
-                Go to My Courses
+                {t("paymentResult.success.goToCourses", {
+                  courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+                })}
               </a>
             )}
           </div>
@@ -357,11 +364,10 @@ function PaymentResultPage() {
               <XCircle className="w-10 h-10 text-red-600" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
-              Payment Failed or Cancelled
+              {t("paymentResult.failed.title")}
             </h1>
             <p className="text-gray-600 mb-6">
-              Your payment could not be completed. Please try again or contact
-              support if the issue persists.
+              {t("paymentResult.failed.description")}
             </p>
             <a
               href={
@@ -371,7 +377,7 @@ function PaymentResultPage() {
               }
               className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 font-medium"
             >
-              Back to Dashboard
+              {t("paymentResult.failed.backToDashboard")}
             </a>
           </>
         ) : (
@@ -380,11 +386,10 @@ function PaymentResultPage() {
               <SpinnerGap className="w-10 h-10 text-blue-600 animate-spin" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
-              Processing Payment...
+              {t("paymentResult.pending.title")}
             </h1>
             <p className="text-gray-600">
-              Please wait while we confirm your payment status. This usually
-              takes a few seconds.
+              {t("paymentResult.pending.description")}
             </p>
           </div>
         )}

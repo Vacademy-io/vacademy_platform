@@ -1,0 +1,25 @@
+{
+    "batchDialog": {
+        "moreLink_one": "+{{count}} और",
+        "moreLink_other": "+{{count}} और",
+        "title": "मूल्यांकन बैच"
+    },
+    "info": {
+        "createdOn": "बनाया गया: {{date}}",
+        "subject": "{{label}}: {{name}}",
+        "startDateTime": "प्रारंभ तिथि और समय: {{date}}",
+        "endDateTime": "समाप्ति तिथि और समय: {{date}}",
+        "duration": {
+            "label": "अवधि: ",
+            "hours_one": "{{count}} घंटा",
+            "hours_other": "{{count}} घंटे",
+            "minutes_one": "{{count}} मिनट",
+            "minutes_other": "{{count}} मिनट"
+        },
+        "totalParticipants_one": "कुल प्रतिभागी: {{count}}",
+        "totalParticipants_other": "कुल प्रतिभागी: {{count}}"
+    },
+    "joinLink": {
+        "label": "जॉइन लिंक:"
+    }
+}

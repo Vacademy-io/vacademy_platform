@@ -6,16 +6,16 @@ import {
     DialogDescription as ShadDialogDescription,
 } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
-import { Calendar, CreditCard, Globe, Receipt } from '@phosphor-icons/react';
+import { Calendar, CreditCard, CurrencyDollar, Globe, Receipt } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { MyButton } from '@/components/design-system/button';
 import { UseFormReturn } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { InviteLinkFormValues } from './GenerateInviteLinkSchema';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { handleGetPaymentDetails } from './-services/get-payments';
 import { useEffect, useMemo } from 'react';
 import { getDefaultPlanFromPaymentsData, splitPlansByType } from './-utils/helper';
-import { DollarSign } from 'lucide-react';
 import { useCPOFullDetails } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import type { CPOFeeType } from '@/routes/financial-management/fee-plans/-types/cpo-types';
 import { formatPlanPrice } from '@/utils/finance-utils';
@@ -33,7 +33,7 @@ export const getPaymentPlanIcon = (type: string) => {
         case 'subscription':
             return <Calendar className="size-5" />;
         case 'upfront':
-            return <DollarSign className="size-5" />;
+            return <CurrencyDollar className="size-5" />;
         case 'free':
             return <Globe className="size-5" />;
         case 'cpo':
@@ -69,6 +69,7 @@ interface CpoPlanCardProps {
 }
 
 const CpoPlanCard = ({ plan, isSelected, onSelect }: CpoPlanCardProps) => {
+    const { t } = useTranslation('manageStudentsPaymentPlansDialog');
     const { data, isLoading } = useCPOFullDetails(plan.cpoId ?? null, !!plan.cpoId);
     const installmentCount = useMemo(() => countCpoInstallments(data?.fee_types), [data]);
     const currencySymbol = getCurrencySymbol(plan.currency || 'INR');
@@ -88,32 +89,35 @@ const CpoPlanCard = ({ plan, isSelected, onSelect }: CpoPlanCardProps) => {
                     </div>
                     <Badge
                         variant="secondary"
-                        className="bg-amber-100 text-[10px] font-semibold text-amber-800"
+                        className="bg-amber-100 text-2xs font-semibold text-amber-800"
                     >
-                        CPO
+                        {t('badge.cpo')}
                     </Badge>
                     {isSelected && (
                         <Badge variant="default" className="ml-auto">
-                            Default
+                            {t('badge.default')}
                         </Badge>
                     )}
                 </div>
                 <div className="flex flex-col gap-1 pl-8 text-xs text-neutral-600">
                     <span>
-                        Total Amount: {currencySymbol}
-                        {formatPlanPrice(plan.price) || '—'}
+                        {t('cpo.totalAmount', {
+                            amount: `${currencySymbol}${formatPlanPrice(plan.price) || '—'}`,
+                        })}
                     </span>
                     <span>
-                        Installments:{' '}
+                        {t('cpo.installmentsLabel')}:{' '}
                         {isLoading ? (
-                            <span className="text-neutral-400">loading…</span>
+                            <span className="text-neutral-400">
+                                {t('cpo.installmentsLoading')}
+                            </span>
                         ) : installmentCount > 0 ? (
                             installmentCount
                         ) : (
                             '—'
                         )}
                     </span>
-                    <span>Currency: {plan.currency || 'INR'}</span>
+                    <span>{t('common.currency', { currency: plan.currency || 'INR' })}</span>
                 </div>
             </div>
         </Card>
@@ -121,6 +125,7 @@ const CpoPlanCard = ({ plan, isSelected, onSelect }: CpoPlanCardProps) => {
 };
 
 export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
+    const { t } = useTranslation('manageStudentsPaymentPlansDialog');
     const { data: paymentsData } = useSuspenseQuery(handleGetPaymentDetails());
 
     useEffect(() => {
@@ -137,16 +142,16 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
             open={form.watch('showPlansDialog')}
             onOpenChange={(open) => form.setValue('showPlansDialog', open)}
         >
-            <ShadDialogContent className="flex h-[80vh] min-w-[60vw] max-w-lg flex-col overflow-auto">
+            <ShadDialogContent className="flex max-h-dialog-tall w-dialog-md flex-col overflow-auto">
                 <ShadDialogHeader>
-                    <ShadDialogTitle className="font-bold">Select a Payment Plan</ShadDialogTitle>
+                    <ShadDialogTitle className="font-bold">{t('dialog.title')}</ShadDialogTitle>
                     <ShadDialogDescription className="mt-1">
-                        Choose a payment plan for this course
+                        {t('dialog.description')}
                     </ShadDialogDescription>
                 </ShadDialogHeader>
                 <div className="flex-1 overflow-auto">
                     <div className="mb-4">
-                        <div className="mb-2 mt-4 font-semibold">Free Plans</div>
+                        <div className="mb-2 mt-4 font-semibold">{t('sections.freePlans')}</div>
                         <div className="flex flex-col gap-4">
                             {form.getValues('freePlans')?.map((plan) => (
                                 <Card
@@ -167,27 +172,33 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
                                             </div>
                                             {form.watch('selectedPlan')?.id === plan.id && (
                                                 <Badge variant="default" className="ml-auto">
-                                                    Default
+                                                    {t('badge.default')}
                                                 </Badge>
                                             )}
                                         </div>
                                         {plan.type?.toLowerCase() === 'donation' ? (
                                             <div className="flex flex-col gap-2 pl-8 text-xs text-neutral-600">
                                                 <span>
-                                                    Suggested Amounts:{' '}
-                                                    {getCurrencySymbol(plan.currency || '')}
-                                                    {plan.suggestedAmount?.join(',')}
+                                                    {t('donation.suggestedAmounts', {
+                                                        amount: `${getCurrencySymbol(plan.currency || '')}${plan.suggestedAmount?.join(',')}`,
+                                                    })}
                                                 </span>
                                                 <span>
-                                                    Minimum Amount:{' '}
-                                                    {getCurrencySymbol(plan.currency || '')}
-                                                    {plan.minAmount}
+                                                    {t('donation.minimumAmount', {
+                                                        amount: `${getCurrencySymbol(plan.currency || '')}${plan.minAmount}`,
+                                                    })}
                                                 </span>
-                                                <span>Currency: {plan.currency}</span>
+                                                <span>
+                                                    {t('common.currency', {
+                                                        currency: plan.currency || '',
+                                                    })}
+                                                </span>
                                             </div>
                                         ) : (
                                             <div className="flex flex-col gap-2 pl-8 text-xs text-neutral-600">
-                                                <span>Free for {plan.days} days</span>
+                                                <span>
+                                                    {t('freePlan.days', { count: plan.days })}
+                                                </span>
                                             </div>
                                         )}
                                     </div>
@@ -196,7 +207,7 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
                         </div>
                     </div>
                     <div>
-                        <div className="mb-2 font-semibold">Paid Plans</div>
+                        <div className="mb-2 font-semibold">{t('sections.paidPlans')}</div>
                         <div className="flex flex-col gap-4">
                             {form.getValues('paidPlans')?.map((plan) => {
                                 if (plan.type?.toLowerCase() === 'cpo') {
@@ -229,7 +240,7 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
                                             </div>
                                             {form.watch('selectedPlan')?.id === plan.id && (
                                                 <Badge variant="default" className="ml-auto">
-                                                    Default
+                                                    {t('badge.default')}
                                                 </Badge>
                                             )}
                                         </div>
@@ -237,11 +248,15 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
                                         plan.type?.toLowerCase() === 'one_time' ? (
                                             <div className="flex flex-col gap-2 pl-8 text-xs text-neutral-600">
                                                 <span>
-                                                    Full Price:{' '}
-                                                    {getCurrencySymbol(plan.currency || '')}
-                                                    {formatPlanPrice(plan.price)}
+                                                    {t('upfront.fullPrice', {
+                                                        amount: `${getCurrencySymbol(plan.currency || '')}${formatPlanPrice(plan.price)}`,
+                                                    })}
                                                 </span>
-                                                <span>Currency: {plan.currency}</span>
+                                                <span>
+                                                    {t('common.currency', {
+                                                        currency: plan.currency || '',
+                                                    })}
+                                                </span>
                                             </div>
                                         ) : (
                                             <div className="flex flex-col gap-2 pl-8 text-xs text-neutral-600">
@@ -258,7 +273,11 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
                                                         </div>
                                                     );
                                                 })}
-                                                <span>Currency: {plan.currency}</span>
+                                                <span>
+                                                    {t('common.currency', {
+                                                        currency: plan.currency || '',
+                                                    })}
+                                                </span>
                                             </div>
                                         )}
                                     </div>
@@ -276,7 +295,7 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
                         onClick={() => form.setValue('showAddPlanDialog', true)}
                         className="p-4"
                     >
-                        + Add New Payment Plan
+                        {t('actions.addNewPaymentPlan')}
                     </MyButton>
                 </div>
             </ShadDialogContent>

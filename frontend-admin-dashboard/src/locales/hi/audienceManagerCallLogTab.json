@@ -1,0 +1,126 @@
+{
+    "kpi": {
+        "totalCalls": "कुल कॉल",
+        "connected": "कनेक्टेड",
+        "talkTime": "बातचीत का समय",
+        "talkTimeUnit": "घं : मि",
+        "uniqueLeads": "अद्वितीय लीड",
+        "aiVsHuman": "AI बनाम मानव",
+        "aiVsHumanUnit": "AI / मानव"
+    },
+    "chips": {
+        "allCalls": "सभी कॉल",
+        "missedInbound": "छूटी हुई इनकमिंग कॉल",
+        "callbacksDue": "बकाया कॉलबैक"
+    },
+    "filters": {
+        "leadName": "लीड का नाम",
+        "leadNamePlaceholder": "नाम खोजें",
+        "number": "नंबर",
+        "numberPlaceholder": "फ़ोन अंक",
+        "direction": "दिशा",
+        "directionOutbound": "आउटगोइंग",
+        "directionInbound": "इनकमिंग",
+        "type": "प्रकार",
+        "typeHuman": "मानव",
+        "typeAi": "AI",
+        "provider": "प्रदाता",
+        "status": "स्थिति",
+        "disposition": "परिणाम",
+        "all": "सभी",
+        "searchPlaceholder": "{{label}} खोजें…"
+    },
+    "providers": {
+        "exotel": "Exotel",
+        "aavtaarAi": "AI (Aavtaar)",
+        "airtel": "Airtel"
+    },
+    "table": {
+        "heading": "कॉल",
+        "empty": "इन फ़िल्टर से कोई कॉल मेल नहीं खाती।",
+        "columns": {
+            "time": "समय",
+            "lead": "लीड",
+            "direction": "दिशा",
+            "type": "प्रकार",
+            "status": "स्थिति",
+            "health": "तकनीकी स्थिति",
+            "healthTooltip": "AI वॉइस एजेंट का तकनीकी निष्कर्ष",
+            "duration": "अवधि",
+            "counsellor": "काउंसलर",
+            "disposition": "परिणाम",
+            "recording": "रिकॉर्डिंग",
+            "ai": "AI"
+        },
+        "openLeadProfile": "लीड प्रोफ़ाइल खोलें",
+        "viewLead": "लीड देखें",
+        "ivrOptionChosen": "चुना गया IVR विकल्प"
+    },
+    "directionBadge": {
+        "in": "इन",
+        "out": "आउट"
+    },
+    "typeBadge": {
+        "ai": "AI",
+        "human": "मानव"
+    },
+    "statusDetail": {
+        "whyEnded": "यह कॉल इस तरह क्यों समाप्त हुई?",
+        "loading": "विवरण लोड हो रहा है…",
+        "reasonPrefix": "कारण: {{reason}}",
+        "noDetail": "कोई अतिरिक्त विवरण उपलब्ध नहीं है।",
+        "reason": "कारण",
+        "provider": "प्रदाता",
+        "attempted": "प्रयास किया गया",
+        "answered": "उत्तर दिया गया",
+        "duration": "अवधि",
+        "cost": "लागत",
+        "viewRawResponse": "प्रदाता की मूल प्रतिक्रिया देखें"
+    },
+    "disposition": {
+        "edit": "संपादित करें",
+        "set": "सेट करें"
+    },
+    "recording": {
+        "loading": "लोड हो रहा है…",
+        "play": "चलाएँ"
+    },
+    "export": {
+        "csv": "CSV",
+        "excel": "Excel",
+        "successToast": "{{format}} निर्यात किया गया",
+        "errorToast": "निर्यात विफल रहा। कृपया फिर से प्रयास करें।"
+    },
+    "dispositionDialog": {
+        "heading": "कॉल का परिणाम सेट करें",
+        "save": "सेव करें",
+        "outcome": "परिणाम",
+        "noOutcomes": "कोई परिणाम कॉन्फ़िगर नहीं किया गया है।",
+        "mapsToStatus": "→ स्थिति",
+        "callbackAt": "कॉलबैक का समय",
+        "notes": "नोट्स (वैकल्पिक)",
+        "notesPlaceholder": "एक नोट जोड़ें",
+        "savedStatusUpdated": "सेव हो गया — लीड की स्थिति अपडेट की गई",
+        "saved": "परिणाम सेव हो गया",
+        "saveError": "परिणाम सेव नहीं हो सका।"
+    },
+    "intelligenceDialog": {
+        "heading": "ट्रांसक्रिप्ट और AI इंटेलिजेंस",
+        "analyzeHeading": "क्या इस कॉल का विश्लेषण करें?",
+        "analyzeConfirm": "विश्लेषण करें"
+    },
+    "empty": {
+        "pickInstitute": "कॉल लॉग देखने के लिए एक इंस्टिट्यूट चुनें।"
+    },
+    "deployPending": {
+        "title": "कॉल डैशबोर्ड अभी इस सर्वर पर उपलब्ध नहीं है",
+        "description": "टेलीफ़ोनी डैशबोर्ड एंडपॉइंट अभी इस वातावरण में डिप्लॉय नहीं किए गए हैं। अगले बैकएंड रिलीज़ के बाद दोबारा देखें।"
+    },
+    "error": {
+        "loadFailed": "कॉल लॉग लोड नहीं हो सका।"
+    },
+    "common": {
+        "retry": "पुनः प्रयास करें",
+        "leadFallback": "लीड"
+    }
+}

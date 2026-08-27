@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { ChatScreen } from "@/components/chat/ChatScreen";
 import {
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/chat/")({
 });
 
 function ChatRoute() {
+  const { t } = useTranslation("chatFeatureA");
   const { conversationId, dm } = Route.useSearch();
   const navigate = Route.useNavigate();
 
@@ -56,7 +58,7 @@ function ChatRoute() {
       })
       .catch(() => {
         if (!cancelled) {
-          toast.error("Couldn't open the chat. Please try again.");
+          toast.error(t("route.openChatError"));
         }
       });
     return () => {

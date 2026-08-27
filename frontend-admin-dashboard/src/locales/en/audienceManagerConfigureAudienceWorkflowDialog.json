@@ -1,0 +1,65 @@
+{
+    "dialog": {
+        "title": "Configure Workflow",
+        "description": "Set up an automated email for <bold>“{{audienceName}}”</bold>. For more complex flows (delays, conditions, multiple steps), use the full workflow builder."
+    },
+    "kind": {
+        "label": "Workflow type",
+        "confirmation": {
+            "title": "Confirmation",
+            "description": "Sent immediately when a lead submits the form."
+        },
+        "followup": {
+            "title": "Follow-up",
+            "description": "Sent N days after a lead submits the form."
+        }
+    },
+    "fields": {
+        "followupDays": {
+            "label": "Send follow-up how many days after submission?",
+            "helper": "Workflow runs daily at 9:00 AM IST and emails leads whose submission date is exactly this many days ago. To send on multiple days (e.g. day 3 AND day 7) create separate workflows for each."
+        },
+        "name": {
+            "label": "Workflow name",
+            "placeholder": "e.g. Welcome confirmation for new leads"
+        },
+        "description": {
+            "label": "Description",
+            "optional": "(optional)",
+            "placeholder": "What does this workflow do?"
+        },
+        "template": {
+            "label": "Email template",
+            "loading": "Loading templates...",
+            "placeholder": "-- Select a template --",
+            "noneFound": "No email templates found. Create one in the Communications section first.",
+            "untitledFallback": "Untitled"
+        }
+    },
+    "nameSuggestion": {
+        "confirmation": "{{audienceName}} — confirmation email",
+        "followup_one": "{{audienceName}} — follow-up after {{count}} day",
+        "followup_other": "{{audienceName}} — follow-up after {{count}} days"
+    },
+    "actions": {
+        "cancel": "Cancel",
+        "submit": "Create Workflow",
+        "submitting": "Creating..."
+    },
+    "toast": {
+        "success": "Workflow created",
+        "errorFallback": "Failed to create workflow"
+    },
+    "dto": {
+        "confirmation": {
+            "descriptionFallback": "Send confirmation email when a lead submits \"{{audienceName}}\"",
+            "triggerNodeName": "Trigger: Audience form submitted"
+        },
+        "followup": {
+            "descriptionFallback_one": "Send follow-up email to leads who submitted \"{{audienceName}}\" exactly {{count}} day ago",
+            "descriptionFallback_other": "Send follow-up email to leads who submitted \"{{audienceName}}\" exactly {{count}} days ago",
+            "queryNodeName": "Fetch recent leads"
+        },
+        "sendNodeName": "Send: {{templateName}}"
+    }
+}

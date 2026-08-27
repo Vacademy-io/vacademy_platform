@@ -24,7 +24,7 @@
         "lint:naming": "node scripts/lint-naming-terms.cjs",
         "typecheck": "tsc --project tsconfig.json --noEmit",
         "precommit": "pnpm run typecheck && pnpm run lint && pnpm run build",
-        "prepare": "husky",
+        "prepare": "cd .. && husky .husky || true",
         "lint-staged": "lint-staged",
         "storybook": "concurrently 'pnpm:watch*'",
         "watch:tailwind": "tailwindcss -i ./src/index.css -o ./src/styles/tailwind.css --watch",

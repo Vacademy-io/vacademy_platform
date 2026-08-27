@@ -1,0 +1,43 @@
+{
+    "courseInviteSection": {
+        "heading": "प्रति {{term}} नामांकन आमंत्रण",
+        "description": "प्रत्येक {{term}} के लिए एक आमंत्रण लिंक चुनें। डिफ़ॉल्ट आमंत्रण अपने आप उपयोग करने के लिए खाली छोड़ दें।",
+        "inviteLinkLabel": "आमंत्रण लिंक",
+        "accessDaysLabel": "एक्सेस दिनों का ओवरराइड",
+        "accessDaysPlaceholder": "आमंत्रण से",
+        "autoResolvedFromDefault": "(डिफ़ॉल्ट आमंत्रण से स्वतः हल किया गया)"
+    },
+    "globalOptions": {
+        "heading": "वैश्विक विकल्प",
+        "notifyLearnersLabel": "{{term}} को सूचित करें",
+        "notifyLearnersDescription": "नए नामांकित {{term}} को नामांकन पुष्टिकरण ईमेल भेजें",
+        "sendCredentialsLabel": "क्रेडेंशियल भेजें",
+        "sendCredentialsDescription": "नए {{term}} को लॉगिन क्रेडेंशियल के साथ पंजीकरण ईमेल भेजें",
+        "duplicateHandling": {
+            "label": "यदि {{term}} पहले से नामांकित है",
+            "skipOption": "चुपचाप छोड़ें (अनुशंसित)",
+            "errorOption": "रिपोर्ट में त्रुटि के रूप में चिह्नित करें",
+            "skipDescription": "सक्रिय एक्सेस या लंबित आमंत्रण वाले {{term}} को चुपचाप छोड़ दिया जाएगा।",
+            "errorDescription": "सक्रिय एक्सेस या लंबित आमंत्रण वाले {{term}} परिणामों में विफलताओं के रूप में दिखाई देंगे।",
+            "alwaysReenrolled": "समाप्त हो चुके या समाप्त किए गए {{term}} हमेशा फिर से नामांकित किए जाते हैं।"
+        },
+        "paymentDate": {
+            "label": "भुगतान तिथि (वैकल्पिक)",
+            "placeholder": "भुगतान तिथि चुनें",
+            "description": "वह तिथि जब भुगतान किया गया था"
+        },
+        "transactionId": {
+            "label": "लेनदेन आईडी (वैकल्पिक)",
+            "placeholder": "लेनदेन आईडी दर्ज करें",
+            "description": "बाहरी भुगतान लेनदेन संदर्भ"
+        }
+    },
+    "workflows": {
+        "heading": "नामांकन पर चलने वाले वर्कफ़्लो",
+        "loading": "लिंक किए गए वर्कफ़्लो लोड हो रहे हैं…",
+        "noneLinked": "चयनित {{term}} से कोई स्वचालन वर्कफ़्लो जुड़ा नहीं है।",
+        "global": "वैश्विक",
+        "firesOnEveryEnrollment": "हर बल्क नामांकन पर चलता है:",
+        "noCourseSpecific": "कोई कोर्स-विशिष्ट वर्कफ़्लो लिंक नहीं है।"
+    }
+}

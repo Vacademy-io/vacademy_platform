@@ -1,6 +1,7 @@
 /**
  * Utility functions for handling custom fields in registration forms
  */
+import i18n from "@/i18n";
 
 export interface CustomField {
   guestId: string | null;
@@ -345,14 +346,14 @@ export const validateFieldValue = (
   renderType: FieldRenderType
 ): { isValid: boolean; error?: string } => {
   if (!value || !value.trim()) {
-    return { isValid: false, error: "This field is required" };
+    return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.required") };
   }
 
   switch (renderType) {
     case FieldRenderType.EMAIL: {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(value)) {
-        return { isValid: false, error: "Please enter a valid email address" };
+        return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.invalidEmail") };
       }
       break;
     }
@@ -361,7 +362,7 @@ export const validateFieldValue = (
       if (!phoneRegex.test(value)) {
         return {
           isValid: false,
-          error: "Please enter a valid phone number",
+          error: i18n.t("enrollmentB:fieldValidation.invalidPhone"),
         };
       }
       break;
@@ -370,19 +371,19 @@ export const validateFieldValue = (
       try {
         new URL(value);
       } catch {
-        return { isValid: false, error: "Please enter a valid URL" };
+        return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.invalidUrl") };
       }
       break;
     }
     case FieldRenderType.NUMBER: {
       if (Number.isNaN(Number(value))) {
-        return { isValid: false, error: "Please enter a valid number" };
+        return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.invalidNumber") };
       }
       break;
     }
     case FieldRenderType.DATE: {
       if (Number.isNaN(new Date(value).getTime())) {
-        return { isValid: false, error: "Please enter a valid date" };
+        return { isValid: false, error: i18n.t("enrollmentB:fieldValidation.invalidDate") };
       }
       break;
     }

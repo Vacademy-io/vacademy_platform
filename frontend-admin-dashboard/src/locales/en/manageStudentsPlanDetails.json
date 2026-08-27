@@ -1,0 +1,69 @@
+{
+    "heading": {
+        "activeMemberships": "Active Memberships",
+        "viewHistory": "View History",
+        "membershipHistory": "Membership History"
+    },
+    "emptyState": {
+        "noActivePlans": "No active membership for this learner.",
+        "noPlansFound": "No plans found."
+    },
+    "planStatus": {
+        "active": "Plan Active",
+        "expired": "Plan Expired",
+        "unknown": "Unknown"
+    },
+    "enrollmentStatus": {
+        "active": "Enrollment Active",
+        "inactive": "Course Inactive"
+    },
+    "fallback": {
+        "planName": "Unknown Plan",
+        "paymentOption": "Unknown Payment Option"
+    },
+    "coupon": {
+        "defaultLabel": "Coupon",
+        "percentageOff": "{{point}}% off",
+        "percentageOffWithCap": "{{point}}% off · max {{amount}}",
+        "amountOff": "{{amount}} off"
+    },
+    "autoRenewal": {
+        "enabled": "Auto-Renewal",
+        "disabled": "No Auto-Renewal",
+        "paymentAttemptOn": "Payment attempt on {{date}}",
+        "scheduledDate": "scheduled date",
+        "disabledTooltip": "Auto-renewal is disabled"
+    },
+    "policy": {
+        "expiryPolicy": "Expiry Policy",
+        "finalDate": "Final: {{date}}",
+        "gracePeriod_one": "{{count}} day grace",
+        "gracePeriod_other": "{{count}} days grace",
+        "actionsCount": "Policy Actions ({{count}})",
+        "reenrollmentFrom": "Re-enrollment from {{date}}",
+        "reenrollmentAvailable": "Re-enrollment available",
+        "gapDays_one": "({{count}} day gap)",
+        "gapDays_other": "({{count}} days gap)",
+        "reenrollmentNotAllowed": "Re-enrollment not allowed"
+    },
+    "daysLeft": {
+        "label": "days left",
+        "noExpiry": "No expiry",
+        "activeSession": "Active session",
+        "renewalDueSoon": "Renewal due soon",
+        "urgentRenewal": "Urgent renewal required"
+    },
+    "dates": {
+        "started": "Started {{date}}",
+        "ends": "Ends {{date}}"
+    },
+    "pagination": {
+        "pageOf": "Page {{current}} of {{total}}",
+        "previous": "Previous",
+        "next": "Next"
+    },
+    "toast": {
+        "loadHistoryFailed": "Failed to load plan history",
+        "loadPageFailed": "Failed to load plans"
+    }
+}

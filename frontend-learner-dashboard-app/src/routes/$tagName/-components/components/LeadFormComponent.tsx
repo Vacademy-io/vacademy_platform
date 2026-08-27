@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { CheckCircle, PaperPlaneTilt } from "@phosphor-icons/react";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
@@ -81,6 +82,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   instituteId,
   isPreviewMode = false,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const { data: campaign, isLoading, isError } = useQuery({
     ...handleGetAudienceCampaign({
       instituteId: instituteId || "",
@@ -161,7 +163,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     if (!isPreviewMode) return null;
     return section(
       <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
-        Pick an audience campaign in the properties panel — its form fields render here.
+        {t("leadForm.emptyConfig")}
       </div>
     );
   }
@@ -184,8 +186,8 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     return section(
       <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
         {isError
-          ? "Couldn't load this campaign. Check that it is ACTIVE and belongs to this institute."
-          : "This campaign has no form fields yet — add them in Audience Manager."}
+          ? t("leadForm.errorLoad")
+          : t("leadForm.emptyFields")}
       </div>
     );
   }
@@ -197,7 +199,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
 
     const missing = fields.filter((f) => f.mandatory && !(values[f.key] || "").trim());
     if (missing.length > 0) {
-      setError(`Please fill in: ${missing.map((f) => f.name).join(", ")}`);
+      setError(t("leadForm.missingFields", { fields: missing.map((f) => f.name).join(", ") }));
       return;
     }
 
@@ -226,7 +228,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
       setRespondent(extractRespondentIdentity(formValues));
       setDone(true);
     } catch {
-      setError("Something went wrong — please try again.");
+      setError(t("leadForm.genericError"));
     } finally {
       setSubmitting(false);
     }
@@ -251,7 +253,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
             aria-hidden="true"
           />
           <p className="text-base font-semibold text-catalogue-text-primary">
-            {successMessage || "Thank you! We've received your details."}
+            {successMessage || t("leadForm.defaultThankYou")}
           </p>
         </div>
       );
@@ -273,11 +275,11 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
       postSubmitTokens
     );
     const body =
-      successMessage || configuredMessage || "Thank you! We've received your details.";
+      successMessage || configuredMessage || t("leadForm.defaultThankYou");
     const actionButtons = resolvePostSubmitButtons(postSubmitConfig, postSubmitTokens);
     const anotherLabel =
       applyPostSubmitTokens(postSubmitConfig.anotherResponseText, postSubmitTokens) ||
-      "Submit another response";
+      t("leadForm.defaultAnotherResponse");
 
     const resetForm = () => {
       setValues({});
@@ -312,8 +314,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         )}
         {redirectUrl && secondsLeft !== null && (
           <p className="text-sm text-catalogue-text-muted">
-            Redirecting in {secondsLeft}
-            {secondsLeft === 1 ? " second" : " seconds"}…
+            {t("leadForm.redirectingIn", { count: secondsLeft })}
           </p>
         )}
         {(actionButtons.length > 0 || postSubmitConfig.allowAnotherResponse) && (
@@ -369,7 +370,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
             // Without this the renderer falls back to `Enter ${name}` where
             // name is the raw field KEY — visitors saw "Enter full_name" and
             // "Enter details_inst_<uuid>". Use the human label.
-            placeholder={`Enter ${f.name.toLowerCase()}`}
+            placeholder={t("leadForm.placeholderPrefix", { name: f.name.toLowerCase() })}
           />
         </div>
       ))}
@@ -378,7 +379,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
           aria-hidden + tabIndex -1 keep it out of assistive tech and tabbing. */}
       <div className="sr-only" aria-hidden="true">
         <label>
-          Company website
+          {t("leadForm.companyWebsite")}
           <input
             type="text"
             tabIndex={-1}
@@ -400,7 +401,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         disabled={submitting}
         className="catalogue-btn catalogue-btn-primary w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {submitting ? "Sending…" : submitLabel || "Submit"}
+        {submitting ? t("leadForm.sending") : submitLabel || t("leadForm.submit")}
         {!submitting && <PaperPlaneTilt className="size-4" weight="bold" aria-hidden="true" />}
       </button>
     </form>

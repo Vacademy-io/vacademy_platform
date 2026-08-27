@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { X, CaretLeft, CaretRight, Compass, MagicWand } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -51,6 +52,7 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
   onComplete,
   onSkip,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
   const [stepIndex, setStepIndex] = useState(0);
   const [selection, setSelection] = useState<CourseFinderSelection>(EMPTY_SELECTION);
 
@@ -98,6 +100,8 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
     currentStep === "level" ? "levels" : currentStep === "session" ? "sessions" : "tags";
   const currentSelected = selection[selectionKey];
 
+  const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+
   const stepTitle =
     stepLabels?.[currentStep] ||
     (currentStep === "tag"
@@ -135,8 +139,8 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
             <button
               onClick={onSkip}
               className="absolute end-4 top-4 rounded-full p-1.5 text-catalogue-text-muted transition-colors hover:bg-catalogue-bg-subtle hover:text-catalogue-text-primary"
-              aria-label="Close"
-              title="Close"
+              aria-label={t("common.close")}
+              title={t("common.close")}
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
@@ -145,10 +149,10 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
             <MagicWand className="h-5 w-5 text-primary-500" weight="fill" aria-hidden="true" />
           </div>
           <h2 className="text-lg font-semibold text-catalogue-text-primary">
-            Choose your {stepTitle}
+            {t("courseFinderWizard.chooseYour", { stepTitle })}
           </h2>
           <p className="mt-1 text-sm text-catalogue-text-secondary">
-            Pick one or more options below — we&apos;ll show courses that match.
+            {t("courseFinderWizard.pickOptionsHint", { courses })}
           </p>
         </div>
 
@@ -164,7 +168,7 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
           ))}
         </div>
         <p className="px-6 pb-3 pt-2 text-xs text-catalogue-text-muted">
-          Step {stepIndex + 1} of {activeSteps.length}
+          {t("courseFinderWizard.stepProgress", { current: stepIndex + 1, total: activeSteps.length })}
         </p>
 
         {/* Options */}
@@ -192,7 +196,7 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
           {!mandatory ? (
             <button onClick={onSkip} className="catalogue-btn catalogue-btn-ghost">
               <Compass className="h-3.5 w-3.5" aria-hidden="true" />
-              Skip, show all courses
+              {t("courseFinderWizard.skipShowAll", { courses })}
             </button>
           ) : (
             <span />
@@ -201,7 +205,7 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
             {stepIndex > 0 && (
               <button onClick={handleBack} className="catalogue-btn catalogue-btn-secondary">
                 <CaretLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                Back
+                {t("common.back")}
               </button>
             )}
             <button
@@ -209,7 +213,7 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
               disabled={currentSelected.length === 0}
               className="catalogue-btn catalogue-btn-primary"
             >
-              {isLastStep ? "Show courses" : "Next"}
+              {isLastStep ? t("courseFinderWizard.showCourses", { courses }) : t("common.next")}
               {!isLastStep && <CaretRight className="h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           </div>

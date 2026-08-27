@@ -5,6 +5,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { hasActiveLearnerSession } from "@/lib/auth/sessionUtility";
 
@@ -38,6 +39,7 @@ export const Route = createFileRoute("/$tagName/$courseId/")({
 });
 
 function RouteComponent() {
+  const { t } = useTranslation("coursePlayerB");
   const { courseId, tagName } = Route.useParams() as { courseId: string; tagName: string };
   const { enrollInviteId, packageSessionId, bannerImage, level, price, available_slots, productPageCode } = Route.useSearch();
   const domainRouting = useDomainRouting();
@@ -101,7 +103,7 @@ function RouteComponent() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            Domain Resolution Error
+            {t("courseDetailsRoute.domainResolutionErrorTitle")}
           </h2>
           <p className="text-gray-600 mb-4">
             {domainRouting.error}
@@ -110,7 +112,7 @@ function RouteComponent() {
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
           >
-            Retry
+            {t("courseDetailsRoute.retry")}
           </button>
         </div>
       </div>

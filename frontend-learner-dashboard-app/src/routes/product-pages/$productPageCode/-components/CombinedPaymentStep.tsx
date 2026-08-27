@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useProductPageStore } from '../-stores/product-page-store';
 import { enrollForProductPage } from '../-services/product-page-service';
 import {
@@ -9,6 +10,8 @@ import {
 import { RazorpayCheckoutForm } from '@/components/common/enroll-by-invite/-components/razorpay-checkout-form';
 import type { RazorpayCheckoutFormRef } from '@/components/common/enroll-by-invite/-components/razorpay-checkout-form';
 import { ArrowLeft, SpinnerGap, ShieldCheck } from "@phosphor-icons/react";
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
 
 interface CombinedPaymentStepProps {
@@ -30,6 +33,10 @@ export const CombinedPaymentStep = ({
     onBack,
     onSuccess,
 }: CombinedPaymentStepProps) => {
+    const { t, i18n } = useTranslation('productPages');
+    const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const coursePlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+    const courseTermFor = (count: number) => (count === 1 ? course : coursePlural).toLocaleLowerCase();
     const {
         selectedPsOptionIds, registrationData, userId, couponCode,
         discountAmount, totalPrice, finalPrice, utmParams,
@@ -90,7 +97,7 @@ export const CombinedPaymentStep = ({
             pushCombinedEnrollmentSuccess(amount, selectedPsOptionIds.length, utmParams);
             onSuccess();
         } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Payment failed. Please try again.';
+            const msg = err instanceof Error ? err.message : t('common.genericPaymentFailed');
             setPaymentError(msg);
             pushCombinedPaymentFailed(msg, vendor, utmParams);
         } finally {
@@ -159,7 +166,7 @@ export const CombinedPaymentStep = ({
                 });
             }
         } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Could not initiate payment.';
+            const msg = err instanceof Error ? err.message : t('common.couldNotInitiatePayment');
             setPaymentError(msg);
             pushCombinedPaymentFailed(msg, vendor, utmParams);
         } finally {
@@ -170,7 +177,7 @@ export const CombinedPaymentStep = ({
     const orderSummaryContent = (
         <>
             <div className="border-b border-gray-100 px-5 py-4">
-                <h2 className="font-semibold text-gray-900">Order Summary</h2>
+                <h2 className="font-semibold text-gray-900">{t('common.orderSummaryTitle')}</h2>
             </div>
             <div className="divide-y divide-gray-100">
                 {selectedMappings.map((m) => {
@@ -178,14 +185,14 @@ export const CombinedPaymentStep = ({
                         (pm) => pm.ps_invite_payment_option_id === m.ps_invite_payment_option_id
                     );
                     const nameParts = [mapping?.package_name, mapping?.level_name, mapping?.session_name].filter(Boolean);
-                    const courseName = nameParts.join(' | ') || mapping?.payment_plan?.name || 'Course';
+                    const courseName = nameParts.join(' | ') || mapping?.payment_plan?.name || course;
                     return (
                         <div key={m.ps_invite_payment_option_id} className="px-5 py-3">
                             <p className="mb-1 text-xs font-semibold text-gray-800 leading-snug">{courseName}</p>
                             <div className="flex justify-between text-sm text-gray-500">
                                 <span>{mapping?.payment_plan?.name}</span>
                                 <span className="font-medium text-gray-900">
-                                    {m.amount > 0 ? `${currency} ${m.amount.toLocaleString()}` : 'Free'}
+                                    {m.amount > 0 ? `${currency} ${m.amount.toLocaleString(i18n.language)}` : t('common.free')}
                                 </span>
                             </div>
                         </div>
@@ -195,21 +202,21 @@ export const CombinedPaymentStep = ({
             <div className="space-y-2 border-t border-gray-100 px-5 py-4">
                 {discountAmount > 0 && (
                     <div className="flex justify-between text-sm text-green-600">
-                        <span>Coupon ({couponCode})</span>
+                        <span>{t('common.couponAppliedLabel', { code: couponCode })}</span>
                         <span>− {currency} {discountAmount.toLocaleString()}</span>
                     </div>
                 )}
                 {subtotal !== amount && (
                     <div className="flex justify-between text-sm text-gray-400 line-through">
-                        <span>Subtotal</span>
+                        <span>{t('combinedPaymentStep.subtotal')}</span>
                         <span>{currency} {subtotal.toLocaleString()}</span>
                     </div>
                 )}
                 <div className="flex justify-between pt-1 text-base font-bold text-gray-900">
-                    <span>Total</span>
+                    <span>{t('common.total')}</span>
                     <span>{currency} {amount.toLocaleString()}</span>
                 </div>
-                <p className="text-end text-xs text-gray-400">All prices in {currency}</p>
+                <p className="text-end text-xs text-gray-400">{t('combinedPaymentStep.allPricesIn', { currency })}</p>
             </div>
         </>
     );
@@ -225,9 +232,12 @@ export const CombinedPaymentStep = ({
                         {orderSummaryContent}
                     </div>
 
-                    <h1 className="mb-1 text-xl font-bold text-gray-900">Payment</h1>
+                    <h1 className="mb-1 text-xl font-bold text-gray-900">{t('combinedPaymentStep.title')}</h1>
                     <p className="mb-6 text-sm text-gray-500">
-                        Complete your enrollment for {selectedPsOptionIds.length} course{selectedPsOptionIds.length !== 1 ? 's' : ''}
+                        {t('combinedPaymentStep.completeEnrollmentFor', {
+                            count: selectedPsOptionIds.length,
+                            course: courseTermFor(selectedPsOptionIds.length),
+                        })}
                     </p>
 
                     {paymentError && (
@@ -248,14 +258,14 @@ export const CombinedPaymentStep = ({
                                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                             >
                                 {isProcessing ? (
-                                    <><SpinnerGap className="size-4 animate-spin" /> Completing your enrollment…</>
+                                    <><SpinnerGap className="size-4 animate-spin" /> {t('combinedPaymentStep.completingEnrollment')}</>
                                 ) : (
-                                    'Retry Enrollment'
+                                    t('combinedPaymentStep.retryEnrollment')
                                 )}
                             </button>
                         ) : (
                             <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white">
-                                <SpinnerGap className="size-4 animate-spin" /> Completing your enrollment…
+                                <SpinnerGap className="size-4 animate-spin" /> {t('combinedPaymentStep.completingEnrollment')}
                             </div>
                         )
                     ) : vendor === 'RAZORPAY' ? (
@@ -267,7 +277,10 @@ export const CombinedPaymentStep = ({
                                 currency={currency}
                                 userName={userName}
                                 courseName={pageData.name}
-                                courseDescription={`Enrollment for ${selectedPsOptionIds.length} course(s)`}
+                                courseDescription={t('combinedPaymentStep.courseDescriptionForGateway', {
+                                    count: selectedPsOptionIds.length,
+                                    course: courseTermFor(selectedPsOptionIds.length),
+                                })}
                                 onPaymentReady={handleRazorpaySuccess}
                                 onError={(err) => {
                                     setPaymentError(err);
@@ -283,9 +296,9 @@ export const CombinedPaymentStep = ({
                                 style={{ backgroundColor: primaryColor }}
                             >
                                 {isProcessing ? (
-                                    <><SpinnerGap className="size-4 animate-spin" /> Opening payment...</>
+                                    <><SpinnerGap className="size-4 animate-spin" /> {t('combinedPaymentStep.openingPayment')}</>
                                 ) : (
-                                    <>Pay {currency} {amount.toLocaleString()}</>
+                                    t('common.pay', { currency, amount: amount.toLocaleString(i18n.language) })
                                 )}
                             </button>
                         </>
@@ -298,9 +311,9 @@ export const CombinedPaymentStep = ({
                             style={{ backgroundColor: primaryColor }}
                         >
                             {isProcessing ? (
-                                <><SpinnerGap className="size-4 animate-spin" /> Processing...</>
+                                <><SpinnerGap className="size-4 animate-spin" /> {t('common.processing')}</>
                             ) : (
-                                <>Pay {currency} {amount.toLocaleString()}</>
+                                t('common.pay', { currency, amount: amount.toLocaleString(i18n.language) })
                             )}
                         </button>
                     )}
@@ -314,12 +327,12 @@ export const CombinedPaymentStep = ({
                                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-40"
                             >
                                 <ArrowLeft className="size-4" />
-                                Back
+                                {t('common.back')}
                             </button>
                         ) : <div />}
                         <div className="flex items-center gap-1.5 text-xs text-gray-400">
                             <ShieldCheck className="size-3.5" />
-                            Secured payment
+                            {t('common.securedPayment')}
                         </div>
                     </div>
                 </div>

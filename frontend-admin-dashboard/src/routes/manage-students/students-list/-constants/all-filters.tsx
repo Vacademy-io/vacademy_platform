@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { FilterConfig } from '@/routes/manage-students/students-list/-types/students-list-types';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -7,6 +8,7 @@ import { ALL_SESSIONS_ID } from '@/routes/manage-students/students-list/-hooks/u
 import { CustomFieldSetupItem } from '@/routes/audience-manager/list/-services/get-custom-field-setup';
 
 export const GetFilterData = (
+    t: TFunction,
     instituteDetails: InstituteDetailsType,
     _currentSession: string,
     campaigns?: { id?: string; campaign_name: string }[],
@@ -36,7 +38,7 @@ export const GetFilterData = (
 
     const sessionExpiry = instituteDetails?.session_expiry_days.map((days, index) => ({
         id: index.toString(),
-        label: `Expiring in ${days} days`,
+        label: t('sessionExpiry.optionLabel', { days }),
     }));
 
     // Check if any batch has is_org_associated = true
@@ -66,41 +68,41 @@ export const GetFilterData = (
         },
         {
             id: 'statuses',
-            title: 'Status',
+            title: t('statuses.title'),
             filterList: statuses || [],
         },
         {
             id: 'gender',
-            title: 'Gender',
+            title: t('gender.title'),
             filterList: genders || [],
         },
         {
             id: 'session_expiry_days',
-            title: `${getTerminology(ContentTerms.Session, SystemTerms.Session)} Expiry`,
+            title: `${getTerminology(ContentTerms.Session, SystemTerms.Session)} ${t('sessionExpiry.titleSuffix')}`,
             filterList: sessionExpiry || [],
         },
         {
             id: 'payment_statuses',
-            title: 'Payment Status',
+            title: t('paymentStatus.title'),
             filterList: [
-                { id: 'PAID', label: 'Paid' },
-                { id: 'FAILED', label: 'Failed' },
-                { id: 'PAYMENT_FAILED', label: 'Payment Failed' },
+                { id: 'PAID', label: t('paymentStatus.paid') },
+                { id: 'FAILED', label: t('paymentStatus.failed') },
+                { id: 'PAYMENT_FAILED', label: t('paymentStatus.paymentFailed') },
             ],
         },
         {
             id: 'approval_statuses',
-            title: 'Approval Status',
+            title: t('approvalStatus.title'),
             filterList: [
-                { id: 'PENDING_FOR_APPROVAL', label: 'Pending for Approval' },
-                { id: 'INVITED', label: 'Invited' },
+                { id: 'PENDING_FOR_APPROVAL', label: t('approvalStatus.pendingForApproval') },
+                { id: 'INVITED', label: t('approvalStatus.invited') },
             ],
         },
         {
             id: 'learner_type',
-            title: 'Cart Status',
+            title: t('cartStatus.title'),
             filterList: [
-                { id: 'ABANDONED_CART', label: 'Abandoned Cart' },
+                { id: 'ABANDONED_CART', label: t('cartStatus.abandonedCart') },
             ],
         },
     ];
@@ -114,7 +116,7 @@ export const GetFilterData = (
 
         filterData.push({
             id: 'sub_org_user_types',
-            title: 'Role',
+            title: t('role.title'),
             filterList: roles,
         });
     }
@@ -124,7 +126,7 @@ export const GetFilterData = (
     if (subOrgs && subOrgs.length > 0) {
         filterData.push({
             id: 'sub_org_ids',
-            title: 'Sub-Org',
+            title: t('subOrg.title'),
             filterList: subOrgs.map((so) => ({ id: so.id, label: so.name })),
         });
     }
@@ -137,7 +139,7 @@ export const GetFilterData = (
         if (audienceOptions.length > 0) {
             filterData.push({
                 id: 'audience_ids',
-                title: 'Audience',
+                title: t('audience.title'),
                 filterList: audienceOptions,
             });
         }

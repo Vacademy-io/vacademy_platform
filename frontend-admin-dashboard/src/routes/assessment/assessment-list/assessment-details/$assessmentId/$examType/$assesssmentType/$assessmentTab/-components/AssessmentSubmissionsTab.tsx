@@ -50,6 +50,8 @@ import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-comp
 import { useNavigate } from '@tanstack/react-router';
 import { getAssessmentSettingsFromCache } from '@/services/assessment-settings';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 export interface SelectedSubmissionsFilterInterface {
     name: string;
@@ -68,17 +70,17 @@ export interface SelectedSubmissionsFilterInterface {
 
 // Options for the Evaluation Status filter. ids are the raw student_attempt
 // result_status values the backend filters on.
-export const EVALUATION_STATUS_FILTER_OPTIONS: MyFilterOption[] = [
-    { id: 'PENDING', name: 'Pending' },
-    { id: 'EVALUATING', name: 'Evaluating' },
-    { id: 'COMPLETED', name: 'Evaluated' },
+export const buildEvaluationStatusFilterOptions = (t: TFunction): MyFilterOption[] => [
+    { id: 'PENDING', name: t('filters.evaluationStatus.options.pending') },
+    { id: 'EVALUATING', name: t('filters.evaluationStatus.options.evaluating') },
+    { id: 'COMPLETED', name: t('filters.evaluationStatus.options.evaluated') },
 ];
 
 // Options for the Submission filter (manual evaluation only). ids are the values
 // the backend maps to "attempt has a submitted answer-sheet file" or not.
-export const SUBMISSION_STATUS_FILTER_OPTIONS: MyFilterOption[] = [
-    { id: 'SUBMITTED', name: 'Submitted' },
-    { id: 'NOT_SUBMITTED', name: 'Not Submitted' },
+export const buildSubmissionStatusFilterOptions = (t: TFunction): MyFilterOption[] => [
+    { id: 'SUBMITTED', name: t('filters.submissionStatus.options.submitted') },
+    { id: 'NOT_SUBMITTED', name: t('filters.submissionStatus.options.notSubmitted') },
 ];
 
 export interface SelectedReleaseResultFilterInterface {
@@ -86,6 +88,7 @@ export interface SelectedReleaseResultFilterInterface {
 }
 
 const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
+    const { t } = useTranslation('assessmentSubmissionsTab');
     const navigate = useNavigate();
     const { data: initData } = useSuspenseQuery(useInstituteQuery());
     const { BatchesFilterData } = useFilterDataForAssesment(initData);
@@ -990,7 +993,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     selectedTab === 'Attempted' ? 'text-primary-500' : ''
                                 }`}
                             >
-                                Attempted
+                                {t('tabs.attempted')}
                             </span>
                             <Badge
                                 className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
@@ -1013,7 +1016,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                         selectedTab === 'Ongoing' ? 'text-primary-500' : ''
                                     }`}
                                 >
-                                    Ongoing
+                                    {t('tabs.ongoing')}
                                 </span>
                                 <Badge
                                     className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
@@ -1034,7 +1037,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             <span
                                 className={`${selectedTab === 'Pending' ? 'text-primary-500' : ''}`}
                             >
-                                Pending
+                                {t('tabs.pending')}
                             </span>
                             <Badge
                                 className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
@@ -1083,7 +1086,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     })
                                 }
                             >
-                                Offline Entry
+                                {t('buttons.offlineEntry')}
                             </MyButton>
                         )}
                         <MyButton
@@ -1113,7 +1116,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             : 'bg-white text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    Internal
+                                    {t('participantType.internal')}
                                 </button>
                                 <div className="h-5 w-px bg-neutral-200" />
                                 <button
@@ -1126,7 +1129,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             : 'bg-white text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    External
+                                    {t('participantType.external')}
                                 </button>
                             </div>
                         )}
@@ -1144,7 +1147,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             : 'bg-white text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    Batch Selection
+                                    {t('selectionMode.batch')}
                                 </button>
                                 <div className="h-5 w-px bg-neutral-200" />
                                 <button
@@ -1157,7 +1160,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             : 'bg-white text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    Individual Selection
+                                    {t('selectionMode.individual')}
                                 </button>
                             </div>
                         )}
@@ -1179,8 +1182,8 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         />
                         {selectedTab === 'Attempted' && (
                             <ScheduleTestFilters
-                                label="Evaluation Status"
-                                data={EVALUATION_STATUS_FILTER_OPTIONS}
+                                label={t('filters.evaluationStatus.label')}
+                                data={buildEvaluationStatusFilterOptions(t)}
                                 selectedItems={selectedFilter.evaluation_status || []}
                                 onSelectionChange={handleEvaluationStatusFilter}
                             />
@@ -1189,8 +1192,8 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             whether the attempt has a submitted answer-sheet file. */}
                         {selectedTab === 'Attempted' && isManualEvaluation && (
                             <ScheduleTestFilters
-                                label="Response"
-                                data={SUBMISSION_STATUS_FILTER_OPTIONS}
+                                label={t('filters.submissionStatus.label')}
+                                data={buildSubmissionStatusFilterOptions(t)}
                                 selectedItems={selectedFilter.submission_status || []}
                                 onSelectionChange={handleSubmissionStatusFilter}
                             />
@@ -1213,12 +1216,12 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             buttonType="secondary"
                                             className="font-medium"
                                         >
-                                            Revaluate
+                                            {t('buttons.revaluate')}
                                         </MyButton>
                                     </DialogTrigger>
                                     <DialogContent className="p-0">
                                         <h1 className="rounded-t-lg bg-primary-50 p-4 text-primary-500">
-                                            Revaluate Result
+                                            {t('dialogs.revaluate.title')}
                                         </h1>
                                         <div className="flex flex-col items-center justify-center gap-4 p-4">
                                             <AssessmentGlobalLevelRevaluateAssessment />
@@ -1239,7 +1242,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                         })
                                     }
                                 >
-                                    AI Evaluations
+                                    {t('buttons.aiEvaluations')}
                                 </MyButton>
                             </>
                         )}

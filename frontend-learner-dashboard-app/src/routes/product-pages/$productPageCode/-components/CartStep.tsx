@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useProductPageStore } from '../-stores/product-page-store';
 import { validateCoupon } from '../-services/product-page-service';
 import { pushCartViewed, pushCouponApplied } from '@/components/common/enroll-by-invite/-utils/gtm';
 import { useCouponsEnabled } from '@/components/common/coupon/use-coupons-enabled';
 import { Tag, X, ArrowLeft, ArrowRight, CheckCircle, SpinnerGap } from "@phosphor-icons/react";
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 import type { ProductPageData, ProductPageSettings, PageJson } from '../-types/product-page-types';
 
 function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
@@ -23,6 +26,8 @@ interface CartStepProps {
 }
 
 export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack, onNext }: CartStepProps) => { // design-lint-ignore: page-builder default color
+    const { t, i18n } = useTranslation('productPages');
+    const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const {
         selectedPsOptionIds, couponCode, discountAmount,
         setCouponCode, applyCoupon, clearCoupon, totalPrice, finalPrice, toggleSelection, setSelection, utmParams,
@@ -85,7 +90,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                 clearCoupon();
                 setCouponInput('');
                 setCouponSuccess(false);
-                setCouponError('Cart changed — please re-apply your coupon.');
+                setCouponError(t('cartStep.couponChanged'));
             }
         }
     }, [selectedPsOptionIds, couponCode, discountAmount, clearCoupon]);
@@ -94,7 +99,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
         mutationFn: () => validateCoupon(pageData.code, couponInput.trim(), subtotal),
         onSuccess: (data) => {
             if (!data.valid) {
-                setCouponError(data.message || 'Invalid coupon');
+                setCouponError(data.message || t('cartStep.couponCard.invalidCoupon'));
                 setCouponSuccess(false);
                 return;
             }
@@ -105,7 +110,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
             pushCouponApplied(couponInput.trim(), data.discount_value);
         },
         onError: () => {
-            setCouponError('Failed to validate coupon. Please try again.');
+            setCouponError(t('cartStep.couponCard.failedToValidate'));
             setCouponSuccess(false);
         },
     });
@@ -131,9 +136,9 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                 <CheckCircle className="size-6 text-green-600" />
                             </div>
                             <div>
-                                <h1 className="text-xl font-bold text-gray-900">Order Summary</h1>
+                                <h1 className="text-xl font-bold text-gray-900">{t('common.orderSummaryTitle')}</h1>
                                 <p className="mt-0.5 text-sm text-gray-500">
-                                    Review your order before proceeding to payment
+                                    {t('cartStep.orderSummary.subtitle')}
                                 </p>
                             </div>
                         </div>
@@ -143,7 +148,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                             {selectedMappings.map((mapping, idx) => {
                                 const plan = mapping.payment_plan;
                                 const nameParts = [mapping.package_name, mapping.level_name, mapping.session_name].filter(Boolean);
-                                const courseName = nameParts.join(' | ') || plan?.name || `Course ${idx + 1}`;
+                                const courseName = nameParts.join(' | ') || plan?.name || t('common.courseFallbackWithIndex', { course, index: idx + 1 });
                                 const isSuggested = allSuggestableIds.has(mapping.ps_invite_payment_option_id);
                                 const canRemove = isSuggested || settings.allowCourseDeselection;
                                 const price = plan?.actual_price ?? 0;
@@ -178,14 +183,14 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                                     {currencySymbol}{price.toLocaleString()}
                                                 </span>
                                             ) : (
-                                                <span className="text-xs font-semibold text-green-600">Free</span>
+                                                <span className="text-xs font-semibold text-green-600">{t('common.free')}</span>
                                             )}
                                             {canRemove && (
                                                 <button
                                                     type="button"
                                                     onClick={() => removeFromCart(mapping.ps_invite_payment_option_id)}
                                                     className="flex size-5 items-center justify-center rounded-full text-gray-300 hover:bg-red-50 hover:text-red-400"
-                                                    title="Remove"
+                                                    title={t('cartStep.item.removeTooltip')}
                                                 >
                                                     <X className="size-3" />
                                                 </button>
@@ -201,18 +206,18 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                             <div className="border-t border-gray-100 px-6 py-4">
                                 {selectedMappings.length > 1 && (
                                     <div className="mb-2 flex justify-between text-sm text-gray-500">
-                                        <span>Subtotal ({selectedMappings.length} items)</span>
+                                        <span>{t('cartStep.subtotalItems', { count: selectedMappings.length })}</span>
                                         <span>{currencySymbol}{subtotal.toLocaleString()}</span>
                                     </div>
                                 )}
                                 {hasDiscount && (
                                     <div className="mb-2 flex justify-between text-sm text-green-600">
-                                        <span>Coupon ({couponCode})</span>
+                                        <span>{t('common.couponAppliedLabel', { code: couponCode })}</span>
                                         <span>− {currencySymbol}{discountAmount.toLocaleString()}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between text-base font-bold text-gray-900">
-                                    <span>Total</span>
+                                    <span>{t('common.total')}</span>
                                     <span>{currencySymbol}{finalAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                                 </div>
                             </div>
@@ -224,7 +229,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                     {(settings.coupon?.enabled && instituteCouponsEnabled) && <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
                         <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
                             <Tag className="size-4 text-gray-400" />
-                            <span className="text-sm font-semibold text-gray-700">Coupon Code</span>
+                            <span className="text-sm font-semibold text-gray-700">{t('cartStep.couponCard.title')}</span>
                         </div>
                         <div className="px-5 py-4">
                             {couponSuccess ? (
@@ -233,7 +238,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                         <CheckCircle className="size-4 text-green-600" />
                                         <span className="font-mono text-sm font-semibold text-green-800">{couponCode}</span>
                                         <span className="text-sm text-green-700">
-                                            — {currencySymbol}{discountAmount.toLocaleString()} off
+                                            {t('cartStep.couponCard.discountOff', { amount: `${currencySymbol}${discountAmount.toLocaleString(i18n.language)}` })}
                                         </span>
                                     </div>
                                     <button type="button" onClick={handleRemoveCoupon} className="text-gray-400 hover:text-red-500">
@@ -244,7 +249,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                 <div className="flex gap-2">
                                     <input
                                         type="text"
-                                        placeholder="Enter coupon code"
+                                        placeholder={t('cartStep.couponCard.placeholder')}
                                         value={couponInput}
                                         onChange={(e) => {
                                             setCouponInput(e.target.value.toUpperCase());
@@ -258,7 +263,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                         onClick={() => couponMutation.mutate()}
                                         className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
                                     >
-                                        {couponMutation.isPending ? <SpinnerGap className="size-4 animate-spin" /> : 'Apply'}
+                                        {couponMutation.isPending ? <SpinnerGap className="size-4 animate-spin" /> : t('cartStep.couponCard.apply')}
                                     </button>
                                 </div>
                             )}
@@ -276,7 +281,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                         return (
                             <div>
                                 <h2 className="mb-3 text-sm font-semibold text-gray-700">
-                                    {settings.suggestedCourses!.heading || 'People also buy'}
+                                    {settings.suggestedCourses!.heading || t('common.peopleAlsoBuy')}
                                 </h2>
                                 <div className="flex gap-3 overflow-x-auto pb-2">
                                     {suggestedMappings.map((m) => {
@@ -286,7 +291,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                             .trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
                                         const label = m.package_name
                                             ? `${m.package_name}${m.session_name ? ` · ${m.session_name}` : ''}`
-                                            : plan?.name || 'Course';
+                                            : plan?.name || course;
                                         return (
                                             <div
                                                 key={m.ps_invite_payment_option_id}
@@ -302,7 +307,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                                 <p className="mb-3 text-sm font-bold text-gray-900">
                                                     {(plan?.actual_price ?? 0) > 0
                                                         ? `${currencySymbol}${plan!.actual_price.toLocaleString()}`
-                                                        : 'Free'}
+                                                        : t('common.free')}
                                                 </p>
                                                 {isAdded ? (
                                                     <button
@@ -310,7 +315,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                                         onClick={() => removeSuggested(m.ps_invite_payment_option_id)}
                                                         className="w-full rounded-lg border border-red-400 py-1.5 text-xs font-semibold text-red-500 transition-colors hover:opacity-80"
                                                     >
-                                                        − Remove
+                                                        {t('common.removeSuggested')}
                                                     </button>
                                                 ) : (
                                                     <button
@@ -319,7 +324,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                                         className="w-full rounded-lg border py-1.5 text-xs font-semibold transition-colors hover:opacity-80"
                                                         style={{ borderColor: primaryColor, color: primaryColor }}
                                                     >
-                                                        + Add
+                                                        {t('common.addSuggested')}
                                                     </button>
                                                 )}
                                             </div>
@@ -342,7 +347,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                             className="flex items-center gap-2 rounded-xl border border-gray-300 px-6 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
                         >
                             <ArrowLeft className="size-4" />
-                            Previous
+                            {t('common.previous')}
                         </button>
                     ) : <div />}
                     <button
@@ -351,7 +356,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                         className="flex items-center gap-2 rounded-xl px-8 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
                         style={{ backgroundColor: primaryColor }}
                     >
-                        Next
+                        {t('common.next')}
                         <ArrowRight className="size-4" />
                     </button>
                 </div>

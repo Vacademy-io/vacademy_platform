@@ -1,0 +1,14 @@
+{
+    "menu": {
+        "shareCredentials": "Partager les identifiants",
+        "sendWhatsappMessage": "Envoyer un message WhatsApp",
+        "sendEmail": "Envoyer un e-mail",
+        "acceptRequest": "Accepter la demande",
+        "declineRequest": "Refuser la demande"
+    },
+    "actionInfo": {
+        "selectedStudents_one": "{{count}} étudiant sélectionné",
+        "selectedStudents_many": "{{count}} étudiants sélectionnés",
+        "selectedStudents_other": "{{count}} étudiants sélectionnés"
+    }
+}

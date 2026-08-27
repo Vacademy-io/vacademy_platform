@@ -1,0 +1,36 @@
+{
+    "schema": {
+        "campaignIdRequired": "معرّف الحملة مطلوب"
+    },
+    "navHeading": "إضافة رد",
+    "helmet": {
+        "title": "إضافة رد - {{name}}",
+        "description": "أضف ردًا نيابةً عن أحد المستجيبين."
+    },
+    "backButton": "العودة إلى مستخدمي {{audienceTerm}}",
+    "header": {
+        "description": "املأ التفاصيل أدناه لإرسال رد نيابةً عن أحد المستجيبين."
+    },
+    "emptyState": {
+        "title": "لا توجد حقول نموذج مُهيّأة لهذه {{audienceTerm}}.",
+        "hint": "يرجى إضافة حقول مخصصة أولاً لبدء جمع الردود."
+    },
+    "form": {
+        "sectionTitle": "تفاصيل المستجيب",
+        "requiredFields": "الحقول المطلوبة",
+        "cancel": "إلغاء",
+        "submitting": "جارٍ الإرسال...",
+        "submit": "إرسال الرد"
+    },
+    "validation": {
+        "missingFields": "يرجى ملء الحقول المطلوبة: {{fields}}"
+    },
+    "toast": {
+        "success": "تم إرسال الرد بنجاح!",
+        "genericError": "فشل إرسال الرد. يرجى المحاولة مرة أخرى."
+    },
+    "audienceFallbackName": "هذه {{audienceTerm}}",
+    "footer": {
+        "responsesAppearUnder": "تظهر الردود ضمن <bold>{{audienceName}}</bold> في قائمة {{audienceTerm}} الخاصة بك."
+    }
+}

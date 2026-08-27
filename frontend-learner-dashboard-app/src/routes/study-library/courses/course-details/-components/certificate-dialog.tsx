@@ -1,7 +1,10 @@
 import { GraduationCap } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { toTitleCase } from "@/lib/utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { MyButton } from "@/components/design-system/button";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface CertificateDialogProps {
     open: boolean;
@@ -20,6 +23,8 @@ export const CertificateDialog = ({
     sessionLabel,
     levelLabel,
 }: CertificateDialogProps) => {
+    const { t } = useTranslation("courseDetailsA");
+    const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const isSessionVisible = !!sessionLabel && sessionLabel.toLowerCase() !== "default";
     const isLevelVisible = !!levelLabel && levelLabel.toLowerCase() !== "default";
 
@@ -38,27 +43,35 @@ export const CertificateDialog = ({
                         <GraduationCap size={18} className="text-white" />
                     </div>
                     <div>
-                        <div className="text-base font-semibold">Course Completed</div>
+                        <div className="text-base font-semibold">
+                            {t("certificate.completedTitle", { course })}
+                        </div>
                         <div className="text-xs opacity-90">
-                            Congratulations! You've earned a certificate.
+                            {t("certificate.congratsMessage")}
                         </div>
                     </div>
                 </div>
                 <div className="px-5 py-4">
                     <div className="space-y-2 text-sm">
                         <div>
-                            <span className="font-medium text-gray-700">Course:</span>
+                            <span className="font-medium text-gray-700">
+                                {t("certificate.courseFieldLabel", { course })}
+                            </span>
                             <span className="ms-2">{toTitleCase(courseTitle)}</span>
                         </div>
                         {isSessionVisible && (
                             <div>
-                                <span className="font-medium text-gray-700">Session:</span>
+                                <span className="font-medium text-gray-700">
+                                    {t("certificate.sessionFieldLabel")}
+                                </span>
                                 <span className="ms-2">{toTitleCase(sessionLabel || "")}</span>
                             </div>
                         )}
                         {isLevelVisible && (
                             <div>
-                                <span className="font-medium text-gray-700">Level:</span>
+                                <span className="font-medium text-gray-700">
+                                    {t("certificate.levelFieldLabel")}
+                                </span>
                                 <span className="ms-2">{toTitleCase(levelLabel || "")}</span>
                             </div>
                         )}
@@ -69,7 +82,7 @@ export const CertificateDialog = ({
                             scale="medium"
                             onClick={() => onOpenChange(false)}
                         >
-                            Close
+                            {t("certificate.close")}
                         </MyButton>
                         <MyButton asChild buttonType="primary" scale="medium">
                             <a
@@ -78,7 +91,7 @@ export const CertificateDialog = ({
                                 rel="noopener noreferrer"
                                 onClick={() => onOpenChange(false)}
                             >
-                                View Certificate
+                                {t("certificate.viewCertificate")}
                             </a>
                         </MyButton>
                     </div>

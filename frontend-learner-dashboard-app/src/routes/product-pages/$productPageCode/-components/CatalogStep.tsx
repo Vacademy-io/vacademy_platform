@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useProductPageStore } from "../-stores/product-page-store";
 import type {
   ProductPageData,
@@ -6,6 +7,11 @@ import type {
 } from "../-types/product-page-types";
 import { ShoppingCart } from "@phosphor-icons/react";
 import { PageRenderer, CourseGridBlock } from "./PageRenderer";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface CatalogStepProps {
   pageData: ProductPageData;
@@ -37,7 +43,9 @@ export const CatalogStep = ({
   productPageCode,
   onNext,
 }: CatalogStepProps) => {
+  const { t } = useTranslation("productPages");
   const { selectedPsOptionIds, totalPrice } = useProductPageStore();
+  const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
   const pageJson = parseSafeJson<PageJson>(
     pageData.page_json,
@@ -79,7 +87,7 @@ export const CatalogStep = ({
           </h1>
           {activeMappings.length > 1 && (
             <p className="mt-2 text-sm text-catalogue-text-muted">
-              Select the courses you'd like to enroll in
+              {t("catalogStep.selectPrompt", { courses: courses.toLocaleLowerCase() })}
             </p>
           )}
         </div>
@@ -105,7 +113,13 @@ export const CatalogStep = ({
           <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-gray-800">
-                {count} course{count !== 1 ? "s" : ""} selected
+                {t("common.itemsSelected", {
+                  count,
+                  course: (count === 1
+                    ? getTerminology(ContentTerms.Course, SystemTerms.Course)
+                    : courses
+                  ).toLocaleLowerCase(),
+                })}
               </p>
               {price > 0 ? (
                 <p className="text-base font-bold text-gray-900">
@@ -113,7 +127,7 @@ export const CatalogStep = ({
                 </p>
               ) : (
                 <p className="text-xs font-medium text-green-600">
-                  Free enrollment
+                  {t("common.freeEnrollment")}
                 </p>
               )}
             </div>
@@ -124,7 +138,7 @@ export const CatalogStep = ({
               style={{ backgroundColor: primaryColor }}
             >
               <ShoppingCart className="size-4" />
-              Proceed to Checkout
+              {t("common.proceedToCheckout")}
             </button>
           </div>
         </div>

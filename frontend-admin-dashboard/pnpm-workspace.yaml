@@ -1,0 +1,9 @@
+allowBuilds:
+  '@firebase/util': true
+  '@swc/core': true
+  canvas: true
+  core-js: true
+  core-js-pure: true
+  esbuild: true
+  protobufjs: true
+  sharp: true

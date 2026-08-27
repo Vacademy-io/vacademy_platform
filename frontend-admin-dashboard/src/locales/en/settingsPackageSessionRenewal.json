@@ -1,0 +1,17 @@
+{
+    "title": "Membership Renewal Scheduler",
+    "description": "Runs a daily scan over this institute's member plans and applies each batch's enrollment policy: pre-expiry reminders, the post-expiry waiting period, and final expiry. Off by default — while disabled, no plan in this institute is ever processed by the scheduler.",
+    "loading": "Loading renewal setting…",
+    "toggle": {
+        "enabled": "Renewal scheduler enabled",
+        "disabled": "Renewal scheduler disabled"
+    },
+    "button": {
+        "save": "Save",
+        "saving": "Saving…"
+    },
+    "toasts": {
+        "saveSuccess": "Renewal scheduler setting saved",
+        "saveError": "Failed to save renewal scheduler setting"
+    }
+}

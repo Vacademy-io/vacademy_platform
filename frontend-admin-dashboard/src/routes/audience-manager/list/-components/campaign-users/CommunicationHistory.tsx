@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Button } from '@/components/ui/button';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
-import { ChevronLeft, ChevronRight, MessageSquare, Mail, Bell, AlertCircle } from 'lucide-react';
+import { CaretLeft, CaretRight, ChatCircleDots, EnvelopeSimple, Bell, WarningCircle } from '@phosphor-icons/react';
 import {
     getAudienceCommunications,
     type AudienceCommunicationItem,
@@ -13,10 +15,10 @@ interface CommunicationHistoryProps {
 }
 
 const CHANNEL_ICONS: Record<string, React.ReactNode> = {
-    WHATSAPP: <MessageSquare className="size-4 text-green-600" />,
-    EMAIL: <Mail className="size-4 text-blue-600" />,
+    WHATSAPP: <ChatCircleDots className="size-4 text-green-600" />,
+    EMAIL: <EnvelopeSimple className="size-4 text-blue-600" />,
     PUSH: <Bell className="size-4 text-orange-500" />,
-    SYSTEM_ALERT: <AlertCircle className="size-4 text-purple-600" />,
+    SYSTEM_ALERT: <WarningCircle className="size-4 text-purple-600" />,
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -26,6 +28,25 @@ const STATUS_COLORS: Record<string, string> = {
     FAILED: 'bg-red-100 text-red-800',
     PENDING: 'bg-gray-100 text-gray-800',
 };
+
+function buildChannelLabels(t: TFunction): Record<string, string> {
+    return {
+        WHATSAPP: t('channels.whatsapp'),
+        EMAIL: t('channels.email'),
+        PUSH: t('channels.push'),
+        SYSTEM_ALERT: t('channels.systemAlert'),
+    };
+}
+
+function buildStatusLabels(t: TFunction): Record<string, string> {
+    return {
+        COMPLETED: t('statuses.completed'),
+        PROCESSING: t('statuses.processing'),
+        PARTIAL: t('statuses.partial'),
+        FAILED: t('statuses.failed'),
+        PENDING: t('statuses.pending'),
+    };
+}
 
 function formatDate(dateStr: string): string {
     try {
@@ -42,6 +63,7 @@ function formatDate(dateStr: string): string {
 }
 
 export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) {
+    const { t } = useTranslation('audienceManagerCommunicationHistory');
     const [page, setPage] = useState(0);
     const pageSize = 10;
 
@@ -51,10 +73,13 @@ export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) 
         enabled: !!campaignId,
     });
 
+    const channelLabels = buildChannelLabels(t);
+    const statusLabels = buildStatusLabels(t);
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                Loading communication history...
+                {t('loading')}
             </div>
         );
     }
@@ -62,8 +87,8 @@ export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) 
     if (!data || data.content.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-                <MessageSquare className="size-8 opacity-30" />
-                <p>No messages sent to this audience yet.</p>
+                <ChatCircleDots className="size-8 opacity-30" />
+                <p>{t('emptyState')}</p>
             </div>
         );
     }
@@ -71,18 +96,20 @@ export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) 
     return (
         <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium text-muted-foreground">
-                Communication History
+                {t('heading')}
             </h3>
             <div className="rounded-md border">
                 <table className="w-full text-sm">
                     <thead className="bg-muted/50">
                         <tr>
-                            <th className="px-3 py-2 text-left font-medium">Channel</th>
-                            <th className="px-3 py-2 text-left font-medium">Template / Subject</th>
-                            <th className="px-3 py-2 text-left font-medium">Recipients</th>
-                            <th className="px-3 py-2 text-left font-medium">Result</th>
-                            <th className="px-3 py-2 text-left font-medium">Status</th>
-                            <th className="px-3 py-2 text-left font-medium">Sent At</th>
+                            <th className="px-3 py-2 text-start font-medium">{t('table.channel')}</th>
+                            <th className="px-3 py-2 text-start font-medium">
+                                {t('table.templateSubject')}
+                            </th>
+                            <th className="px-3 py-2 text-start font-medium">{t('table.recipients')}</th>
+                            <th className="px-3 py-2 text-start font-medium">{t('table.result')}</th>
+                            <th className="px-3 py-2 text-start font-medium">{t('table.status')}</th>
+                            <th className="px-3 py-2 text-start font-medium">{t('table.sentAt')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -91,11 +118,13 @@ export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) 
                                 <td className="px-3 py-2">
                                     <div className="flex items-center gap-1.5">
                                         {CHANNEL_ICONS[item.channel] || null}
-                                        <span className="text-xs">{item.channel}</span>
+                                        <span className="text-xs">
+                                            {channelLabels[item.channel] || item.channel}
+                                        </span>
                                     </div>
                                 </td>
-                                <td className="max-w-[200px] truncate px-3 py-2">
-                                    {item.template_name || item.subject || '—'}
+                                <td className="max-w-48 truncate px-3 py-2">
+                                    {item.template_name || item.subject || t('noValuePlaceholder')}
                                 </td>
                                 <td className="px-3 py-2">{item.recipient_count}</td>
                                 <td className="px-3 py-2">
@@ -103,7 +132,9 @@ export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) 
                                     {item.failed > 0 && (
                                         <>
                                             {' / '}
-                                            <span className="text-red-600">{item.failed} failed</span>
+                                            <span className="text-red-600">
+                                                {t('failedCount', { count: item.failed })}
+                                            </span>
                                         </>
                                     )}
                                 </td>
@@ -111,7 +142,7 @@ export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) 
                                     <span
                                         className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[item.status] || STATUS_COLORS.PENDING}`}
                                     >
-                                        {item.status}
+                                        {statusLabels[item.status] || item.status}
                                     </span>
                                 </td>
                                 <td className="px-3 py-2 text-xs text-muted-foreground">
@@ -133,12 +164,12 @@ export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) 
                                 onClick={() => setPage(Math.max(0, page - 1))}
                                 disabled={page === 0}
                             >
-                                <ChevronLeft className="size-4" />
+                                <CaretLeft className="size-4" />
                             </Button>
                         </PaginationItem>
                         <PaginationItem>
                             <span className="px-3 text-sm">
-                                Page {page + 1} of {data.totalPages}
+                                {t('pageOf', { current: page + 1, total: data.totalPages })}
                             </span>
                         </PaginationItem>
                         <PaginationItem>
@@ -148,7 +179,7 @@ export function CommunicationHistory({ campaignId }: CommunicationHistoryProps) 
                                 onClick={() => setPage(Math.min(data.totalPages - 1, page + 1))}
                                 disabled={page >= data.totalPages - 1}
                             >
-                                <ChevronRight className="size-4" />
+                                <CaretRight className="size-4" />
                             </Button>
                         </PaginationItem>
                     </PaginationContent>

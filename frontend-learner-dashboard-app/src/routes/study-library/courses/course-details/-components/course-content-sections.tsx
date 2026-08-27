@@ -4,9 +4,13 @@ import {
     GraduationCap,
     ChalkboardTeacher,
 } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { extractTextFromHTML } from "@/components/common/helper";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 interface Instructor {
@@ -38,6 +42,8 @@ const getInitials = (email: string) => {
 };
 
 export const CourseContentSections = ({ courseData, showInstructors = false }: CourseContentSectionsProps) => {
+    const { t } = useTranslation("courseDetailsA");
+    const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
     return (
         <div className="space-y-4">
             {/* About Course Section */}
@@ -57,11 +63,7 @@ export const CourseContentSections = ({ courseData, showInstructors = false }: C
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                About This{" "}
-                                {getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                )}
+                                {t("contentSections.aboutThisCourse", { course })}
                             </h2>
                         </div>
                         <div
@@ -91,7 +93,7 @@ export const CourseContentSections = ({ courseData, showInstructors = false }: C
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                What You'll Learn
+                                {t("contentSections.whatYoullLearn")}
                             </h2>
                         </div>
                         <div
@@ -121,7 +123,7 @@ export const CourseContentSections = ({ courseData, showInstructors = false }: C
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                Who Should Join
+                                {t("contentSections.whoShouldJoin")}
                             </h2>
                         </div>
                         <div
@@ -151,11 +153,10 @@ export const CourseContentSections = ({ courseData, showInstructors = false }: C
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                {getTerminology(
+                                {getTerminologyPlural(
                                     RoleTerms.Teacher,
                                     SystemTerms.Teacher
                                 )}
-                                s
                             </h2>
                         </div>
                         <div className="space-y-2">

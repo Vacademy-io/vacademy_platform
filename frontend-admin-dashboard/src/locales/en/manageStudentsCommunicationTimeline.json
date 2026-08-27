@@ -1,0 +1,63 @@
+{
+    "channels": {
+        "EMAIL": "Email",
+        "WHATSAPP": "WhatsApp",
+        "PUSH": "Push",
+        "SMS": "SMS"
+    },
+    "statuses": {
+        "PENDING": "Pending",
+        "SENT": "Sent",
+        "DELIVERED": "Delivered",
+        "READ": "Read",
+        "CLICKED": "Clicked",
+        "FAILED": "Failed",
+        "BOUNCED": "Bounced",
+        "COMPLAINT": "Complaint",
+        "RECEIVED": "Received"
+    },
+    "filters": {
+        "all": "All"
+    },
+    "headerMedia": {
+        "viewDocument": "View document",
+        "attachmentAlt": "attachment"
+    },
+    "expandedDetail": {
+        "senderFallback": "Email",
+        "toRecipient": "to {{recipient}}",
+        "messageHeading": "Message",
+        "templateLabel": "Template:",
+        "fromLabel": "From:",
+        "toLabel": "To:",
+        "sourceLabel": "Source:",
+        "deliveryTimelineHeading": "Delivery Timeline",
+        "collapse": "Collapse"
+    },
+    "direction": {
+        "received": "Received via {{channel}}",
+        "sent": "Sent via {{channel}}"
+    },
+    "noSubject": "(no subject)",
+    "emptyStates": {
+        "noContactTitle": "No contact details",
+        "noContactHint": "Select a student with an email or phone number to view their communications.",
+        "loadErrorTitle": "Failed to load communications",
+        "loadErrorHint": "Something went wrong while fetching messages. Please try again.",
+        "noCommunicationsTitle": "No communications found",
+        "noChannelMessages": "No {{channel}} messages yet. Try selecting \"{{allLabel}}\" to see other channels.",
+        "noMessagesYet": "No messages have been sent to or received from this student yet.",
+        "sendFirstMessage": "Send first message"
+    },
+    "sendCard": {
+        "heading": "Send Notification",
+        "subheading": "Email or WhatsApp message"
+    },
+    "pagination": {
+        "previous": "Previous",
+        "next": "Next",
+        "pageOf": "Page {{current}} of {{total}}"
+    },
+    "totalCount_one": "{{count}} total",
+    "totalCount_other": "{{count}} total"
+}

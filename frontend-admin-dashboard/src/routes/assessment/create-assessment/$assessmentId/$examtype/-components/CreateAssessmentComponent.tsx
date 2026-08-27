@@ -1,8 +1,9 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useEffect, useState } from 'react';
 import { MainStepComponent } from './StepComponents/MainStepComponent';
-import { Check, Info, FileText, ListChecks, Users, ShieldCheck } from 'lucide-react';
+import { Check, Info, FileText, ListChecks, Users, ShieldCheck } from '@phosphor-icons/react';
 import { Helmet } from 'react-helmet';
+import { useTranslation } from 'react-i18next';
 import { useSidebar } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +35,7 @@ const CreateAssessmentSidebar: React.FC<CreateAssessmentSidebarProps> = ({
     onStepClick,
 }) => {
     const { open } = useSidebar();
+    const { t } = useTranslation('assessmentCreateAssessmentComponent');
 
     return (
         <div className="flex flex-col gap-1.5 px-3 py-4">
@@ -90,15 +92,15 @@ const CreateAssessmentSidebar: React.FC<CreateAssessmentSidebarProps> = ({
                                 <div className="flex items-center gap-1.5">
                                     <span
                                         className={cn(
-                                            'text-[11px] font-semibold uppercase tracking-wider',
+                                            'text-2xs font-semibold uppercase tracking-wider',
                                             isActive ? 'text-primary-600' : 'text-slate-400'
                                         )}
                                     >
-                                        Step {index + 1}
+                                        {t('sidebar.stepLabel', { number: index + 1 })}
                                     </span>
                                     {isCompleted && !isActive && (
-                                        <span className="text-[10px] font-medium text-emerald-600">
-                                            · Done
+                                        <span className="text-2xs font-medium text-emerald-600">
+                                            {t('sidebar.done')}
                                         </span>
                                     )}
                                 </div>
@@ -110,7 +112,7 @@ const CreateAssessmentSidebar: React.FC<CreateAssessmentSidebarProps> = ({
                                 >
                                     {step.label}
                                 </span>
-                                <span className="truncate text-[11px] text-slate-500">
+                                <span className="truncate text-2xs text-slate-500">
                                     {step.description}
                                 </span>
                             </div>
@@ -121,7 +123,7 @@ const CreateAssessmentSidebar: React.FC<CreateAssessmentSidebarProps> = ({
                             <span
                                 aria-hidden
                                 className={cn(
-                                    'absolute left-[1.92rem] top-[3.25rem] h-3 w-0.5 rounded-full',
+                                    'absolute start-8 top-12 h-3 w-0.5 rounded-full',
                                     isCompleted ? 'bg-emerald-400' : 'bg-slate-200'
                                 )}
                             />
@@ -135,6 +137,7 @@ const CreateAssessmentSidebar: React.FC<CreateAssessmentSidebarProps> = ({
 
 const CreateAssessmentComponent = () => {
     const navigate = useNavigate();
+    const { t } = useTranslation('assessmentCreateAssessmentComponent');
     const [isOpen, setIsOpen] = useState(false);
     const { assessmentId, examtype } = Route.useParams();
     const { currentStep: presentStep } = Route.useSearch();
@@ -142,35 +145,35 @@ const CreateAssessmentComponent = () => {
     const { SubjectFilterData } = useFilterDataForAssesment(instituteDetails);
 
     const examTypeLabel: Record<string, string> = {
-        EXAM: 'Examination',
-        MOCK: 'Mock Assessment',
-        PRACTICE: 'Practice Assessment',
-        SURVEY: 'Survey',
-        MANUAL_UPLOAD_EXAM: 'Manual Upload Exam',
+        EXAM: t('examTypeLabel.exam'),
+        MOCK: t('examTypeLabel.mock'),
+        PRACTICE: t('examTypeLabel.practice'),
+        SURVEY: t('examTypeLabel.survey'),
+        MANUAL_UPLOAD_EXAM: t('examTypeLabel.manualUploadExam'),
     };
 
     const steps: StepDef[] = [
         {
-            label: 'Basic Info',
-            description: 'Name, schedule, and settings',
+            label: t('steps.basicInfo.label'),
+            description: t('steps.basicInfo.description'),
             id: 'basic-info',
             icon: Info,
         },
         {
-            label: 'Add Questions',
-            description: 'Upload or create questions',
+            label: t('steps.addQuestions.label'),
+            description: t('steps.addQuestions.description'),
             id: 'add-question',
             icon: FileText,
         },
         {
-            label: 'Add Participants',
-            description: 'Choose who can take this',
+            label: t('steps.addParticipants.label'),
+            description: t('steps.addParticipants.description'),
             id: 'add-participants',
             icon: Users,
         },
         {
-            label: 'Access Control',
-            description: 'Permissions for managing',
+            label: t('steps.accessControl.label'),
+            description: t('steps.accessControl.description'),
             id: 'access-control',
             icon: ShieldCheck,
         },
@@ -210,6 +213,12 @@ const CreateAssessmentComponent = () => {
             setCurrentStep(index);
         }
     };
+
+    const createLabel =
+        examtype === 'SURVEY' ? t('helmet.titleSurvey') : t('helmet.titleAssessment');
+    const metaDescription =
+        examtype === 'SURVEY' ? t('helmet.descriptionSurvey') : t('helmet.descriptionAssessment');
+
     return (
         <LayoutContainer
             sidebarComponent={
@@ -222,11 +231,8 @@ const CreateAssessmentComponent = () => {
             }
         >
             <Helmet>
-                <title>{examtype === 'SURVEY' ? 'Create Survey' : 'Create Assessment'}</title>
-                <meta
-                    name="description"
-                    content={examtype === 'SURVEY' ? 'This page is for creating a survey for students via admin.' : 'This page is for creating an assessment for students via admin.'}
-                />
+                <title>{createLabel}</title>
+                <meta name="description" content={metaDescription} />
             </Helmet>
             <div className="mb-6 flex flex-col gap-3 border-b border-slate-200 pb-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -238,13 +244,16 @@ const CreateAssessmentComponent = () => {
                             variant="secondary"
                             className="bg-slate-100 font-medium text-slate-600 hover:bg-slate-100"
                         >
-                            Step {currentStep + 1} of {steps.length}
+                            {t('header.stepOf', { current: currentStep + 1, total: steps.length })}
                         </Badge>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-slate-500">
                         <ListChecks className="h-3.5 w-3.5" />
                         <span className="font-medium tabular-nums">
-                            {completedSteps.filter(Boolean).length} / {steps.length} completed
+                            {t('header.completed', {
+                                count: completedSteps.filter(Boolean).length,
+                                total: steps.length,
+                            })}
                         </span>
                     </div>
                 </div>
@@ -263,7 +272,7 @@ const CreateAssessmentComponent = () => {
                 handleCompleteCurrentStep={completeCurrentStep}
                 completedSteps={completedSteps}
             />
-            <NoCourseDialog isOpen={isOpen} setIsOpen={setIsOpen} type={examtype === 'SURVEY' ? 'Create Survey' : 'Create Assessment'} />
+            <NoCourseDialog isOpen={isOpen} setIsOpen={setIsOpen} type={createLabel} />
         </LayoutContainer>
     );
 };

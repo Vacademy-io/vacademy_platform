@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { convertToLocalDateTime } from '@/constants/helper';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import {
@@ -130,17 +132,19 @@ type SlaFilter =
     | 'FOLLOW_UP_DUE'
     | 'FOLLOW_UP_OVERDUE'
     | 'ANY_OVERDUE';
-const SLA_OPTIONS: { value: string; label: string; helper?: string }[] = [
-    { value: ALL_SLA_VALUE, label: 'All action statuses' },
+/** Factory (not the i18next.t() singleton) so it only ever renders once a
+ * useTranslation('audienceManagerRecentLeadsPage') consumer is mounted. */
+const buildSlaOptions = (t: TFunction): { value: string; label: string; helper?: string }[] => [
+    { value: ALL_SLA_VALUE, label: t('slaOptions.all') },
     {
         value: 'ANY_OVERDUE',
-        label: 'Any deadline missed',
-        helper: 'First contact or follow-up — whichever is overdue',
+        label: t('slaOptions.anyOverdueLabel'),
+        helper: t('slaOptions.anyOverdueHelper'),
     },
-    { value: 'TAT_OVERDUE', label: 'First contact missed' },
-    { value: 'TAT_BEFORE', label: 'First contact coming up' },
-    { value: 'FOLLOW_UP_DUE', label: 'Follow-up coming up' },
-    { value: 'FOLLOW_UP_OVERDUE', label: 'Follow-up missed' },
+    { value: 'TAT_OVERDUE', label: t('slaOptions.firstContactMissed') },
+    { value: 'TAT_BEFORE', label: t('slaOptions.firstContactComingUp') },
+    { value: 'FOLLOW_UP_DUE', label: t('slaOptions.followUpComingUp') },
+    { value: 'FOLLOW_UP_OVERDUE', label: t('slaOptions.followUpMissed') },
 ];
 const SEARCH_DEBOUNCE_MS = 500;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -164,13 +168,13 @@ const toDateInputValue = (d: Date) => {
 // Date filter is a preset day-range select (no custom calendar) so a counsellor
 // can switch windows in one click. "ALL" disables the submitted-date filter.
 // (Preset sentinels live in ./recent-leads-search so URL deep-links share them.)
-const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
-    { value: '1', label: 'Last 24 hours' },
-    { value: '7', label: 'Last 7 days' },
-    { value: '15', label: 'Last 15 days' },
-    { value: '30', label: 'Last 30 days' },
-    { value: ALL_DATE_VALUE, label: 'All time' },
-    { value: CUSTOM_DATE_VALUE, label: 'Custom range' },
+const buildDateRangeOptions = (t: TFunction): { value: string; label: string }[] => [
+    { value: '1', label: t('dateRangeOptions.last24Hours') },
+    { value: '7', label: t('dateRangeOptions.last7Days') },
+    { value: '15', label: t('dateRangeOptions.last15Days') },
+    { value: '30', label: t('dateRangeOptions.last30Days') },
+    { value: ALL_DATE_VALUE, label: t('dateRangeOptions.allTime') },
+    { value: CUSTOM_DATE_VALUE, label: t('dateRangeOptions.customRange') },
 ];
 const rangeForPreset = (preset: string): { from: string; to: string } => {
     if (preset === ALL_DATE_VALUE) return { from: '', to: '' };
@@ -215,10 +219,11 @@ const SlaOptionLabel = ({ label, helper }: { label: string; helper?: string }) =
 };
 
 export const RecentLeadsPage = () => {
+    const { t } = useTranslation('audienceManagerRecentLeadsPage');
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Recent Leads</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('nav.title')}</h1>);
+    }, [setNavHeading, t]);
     return (
         <StudentSidebarProvider>
             <RecentLeadsContent />
@@ -227,6 +232,14 @@ export const RecentLeadsPage = () => {
 };
 
 const RecentLeadsContent = () => {
+    const { t } = useTranslation('audienceManagerRecentLeadsPage');
+    const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
+    const dateRangeOptions = useMemo(() => buildDateRangeOptions(t), [t]);
+    const tierLabels: Record<string, string> = {
+        HOT: t('filters.tier.hot'),
+        WARM: t('filters.tier.warm'),
+        COLD: t('filters.tier.cold'),
+    };
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const { setSelectedStudent } = useStudentSidebar();
@@ -438,10 +451,10 @@ const RecentLeadsContent = () => {
             (audiencesQuery.data?.content ?? [])
                 .map((c) => ({
                     id: c.id || c.campaign_id || c.audience_id || '',
-                    name: c.campaign_name || 'Untitled audience',
+                    name: c.campaign_name || t('filters.audience.untitled'),
                 }))
                 .filter((opt) => opt.id !== ''),
-        [audiencesQuery.data]
+        [audiencesQuery.data, t]
     );
 
     // Translate the multi-select status filter into the two backend params.
@@ -470,14 +483,14 @@ const RecentLeadsContent = () => {
                 instituteId: instituteId ?? '',
             }),
         onSuccess: (restored: number) => {
-            toast.success(restored === 1 ? 'Lead restored' : `${restored} leads restored`);
+            toast.success(t('toasts.leadRestored', { count: restored }));
             setSelectedLeads(new Map());
             handleStatusUpdated();
         },
         onError: (error: unknown) => {
             const message =
                 (error as { response?: { data?: { ex?: string } } })?.response?.data?.ex ??
-                'Failed to restore. Please try again.';
+                t('toasts.restoreFailed');
             toast.error(message);
         },
     });
@@ -602,11 +615,12 @@ const RecentLeadsContent = () => {
                 });
             },
             canCall: (vm) => {
-                if (!vm.responseId) return { allowed: false, reason: 'Lead has no submission id' };
+                if (!vm.responseId)
+                    return { allowed: false, reason: t('callReasons.noSubmissionId') };
                 const phone = vm.phone && vm.phone !== '-' ? vm.phone : '';
-                if (!phone) return { allowed: false, reason: 'Lead has no phone on file' };
+                if (!phone) return { allowed: false, reason: t('callReasons.noPhone') };
                 if (placeCall.isPending)
-                    return { allowed: false, reason: 'Another call is starting…' };
+                    return { allowed: false, reason: t('callReasons.callInProgress') };
                 return { allowed: true };
             },
             onAiCallLead: showAiButton
@@ -620,7 +634,7 @@ const RecentLeadsContent = () => {
                   }
                 : undefined,
         }),
-        [setSelectedStudent, updateTier, placeCall, showAiButton]
+        [setSelectedStudent, updateTier, placeCall, showAiButton, t]
     );
 
     // The backend mirrors a per-response status change onto the user's profile
@@ -729,7 +743,7 @@ const RecentLeadsContent = () => {
             });
             setSelectedLeads(map);
         } catch {
-            toast.error('Failed to select all leads');
+            toast.error(t('toasts.selectAllFailed'));
         } finally {
             setSelectAllLoading(false);
         }
@@ -823,12 +837,12 @@ const RecentLeadsContent = () => {
 
     const exportColumnOptions = useMemo<ExportColumnOption[]>(() => {
         const cols: ExportColumnOption[] = [
-            { key: 'lead_id', label: 'Lead ID' },
-            { key: 'submitted_at', label: 'Submitted At' },
-            { key: 'name', label: 'Name' },
-            { key: 'email', label: 'Email' },
-            { key: 'mobile', label: 'Mobile' },
-            { key: 'audience', label: 'Audience' },
+            { key: 'lead_id', label: t('export.columns.leadId') },
+            { key: 'submitted_at', label: t('export.columns.submittedAt') },
+            { key: 'name', label: t('export.columns.name') },
+            { key: 'email', label: t('export.columns.email') },
+            { key: 'mobile', label: t('export.columns.mobile') },
+            { key: 'audience', label: t('export.columns.audience') },
         ];
         // Custom-field columns: the institute catalog gives the full pickable
         // set (Recent Leads is cross-campaign, so no single form definition
@@ -856,18 +870,18 @@ const RecentLeadsContent = () => {
         });
         if (showOps) {
             cols.push(
-                { key: 'lead_status', label: 'Lead Status' },
-                { key: 'counsellor', label: 'Counsellor' },
-                { key: 'activity_notes', label: 'Activity & Notes' },
-                { key: 'notes_count', label: 'Notes Count' },
-                { key: 'lead_journey', label: 'Lead Journey (disposition & notes)' }
+                { key: 'lead_status', label: t('export.columns.leadStatus') },
+                { key: 'counsellor', label: t('export.columns.counsellor') },
+                { key: 'activity_notes', label: t('export.columns.activityNotes') },
+                { key: 'notes_count', label: t('export.columns.notesCount') },
+                { key: 'lead_journey', label: t('export.columns.leadJourney') }
             );
         }
         return cols;
-    }, [showOps, customFieldSetup, data]);
+    }, [showOps, customFieldSetup, data, t]);
     const exportLeadsCsv = async (leads: RecentLeadDetail[], prefix: string) => {
         if (leads.length === 0) {
-            toast.info('No leads to export');
+            toast.info(t('export.noLeadsToExport'));
             return;
         }
         const ids = Array.from(
@@ -886,12 +900,13 @@ const RecentLeadsContent = () => {
             needsOps ? fetchLeadJourneyBatch(ids) : Promise.resolve({}),
         ]);
         const baseHeaders: string[] = [];
-        if (selectedExportCols.has('lead_id')) baseHeaders.push('Lead ID');
-        if (selectedExportCols.has('submitted_at')) baseHeaders.push('Submitted At');
-        if (selectedExportCols.has('name')) baseHeaders.push('Name');
-        if (selectedExportCols.has('email')) baseHeaders.push('Email');
-        if (selectedExportCols.has('mobile')) baseHeaders.push('Mobile');
-        if (selectedExportCols.has('audience')) baseHeaders.push('Audience');
+        if (selectedExportCols.has('lead_id')) baseHeaders.push(t('export.columns.leadId'));
+        if (selectedExportCols.has('submitted_at'))
+            baseHeaders.push(t('export.columns.submittedAt'));
+        if (selectedExportCols.has('name')) baseHeaders.push(t('export.columns.name'));
+        if (selectedExportCols.has('email')) baseHeaders.push(t('export.columns.email'));
+        if (selectedExportCols.has('mobile')) baseHeaders.push(t('export.columns.mobile'));
+        if (selectedExportCols.has('audience')) baseHeaders.push(t('export.columns.audience'));
         // Custom-field columns. Fields the picker listed follow the user's
         // selection; fields discovered only in the fetched data (not in the
         // catalog / current page when the picker was built) are always
@@ -922,12 +937,13 @@ const RecentLeadsContent = () => {
         );
         const tail: string[] = [];
         if (showOps) {
-            if (selectedExportCols.has('lead_status')) tail.push('Lead Status');
-            if (selectedExportCols.has('counsellor')) tail.push('Counsellor');
-            if (selectedExportCols.has('activity_notes')) tail.push('Activity & Notes');
-            if (selectedExportCols.has('notes_count')) tail.push('Notes Count');
+            if (selectedExportCols.has('lead_status')) tail.push(t('export.columns.leadStatus'));
+            if (selectedExportCols.has('counsellor')) tail.push(t('export.columns.counsellor'));
+            if (selectedExportCols.has('activity_notes'))
+                tail.push(t('export.columns.activityNotes'));
+            if (selectedExportCols.has('notes_count')) tail.push(t('export.columns.notesCount'));
             if (selectedExportCols.has('lead_journey'))
-                tail.push('Lead journey (disposition & notes)');
+                tail.push(t('export.columns.leadJourney'));
         }
         const rows = leads.map((lead) => {
             const u = lead.user ?? {};
@@ -982,13 +998,23 @@ const RecentLeadsContent = () => {
                             /<\/?[a-z][^>]*>/i.test(raw) ? parseHtmlToString(raw) : raw
                         ).trim();
                         return [
-                            `${idx + 1}. ${n.title?.trim() || 'Note'} - ${body}`,
-                            `   updatedby - ${n.actor_name || ''}`,
-                            `   date - ${n.created_at ? convertToLocalDateTime(n.created_at) : ''}`,
+                            `${idx + 1}. ${n.title?.trim() || t('export.notes.defaultTitle')} - ${body}`,
+                            `   ${t('export.notes.updatedBy', { name: n.actor_name || '' })}`,
+                            `   ${t('export.notes.date', {
+                                date: n.created_at ? convertToLocalDateTime(n.created_at) : '',
+                            })}`,
                         ].join('\n');
                     })
                     .join('\n\n');
-                if (selectedExportCols.has('lead_status')) row.push(csvSafe(lead.lead_status ?? ''));
+                if (selectedExportCols.has('lead_status'))
+                    row.push(
+                        csvSafe(
+                            leadStatusCatalog.find((s) => s.status_key === lead.lead_status)
+                                ?.label ??
+                                lead.lead_status ??
+                                ''
+                        )
+                    );
                 if (selectedExportCols.has('counsellor')) row.push(csvSafe(cName));
                 if (selectedExportCols.has('activity_notes')) row.push(csvSafe(block));
                 if (selectedExportCols.has('notes_count')) row.push(csvSafe(summary?.count ?? 0));
@@ -1013,7 +1039,7 @@ const RecentLeadsContent = () => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        toast.success(`Exported ${leads.length} leads`);
+        toast.success(t('export.exportedLeads', { count: leads.length }));
     };
 
     const handleExportAll = async () => {
@@ -1058,7 +1084,7 @@ const RecentLeadsContent = () => {
             await exportLeadsCsv(allLeads, 'recent_leads');
         } catch (err) {
             console.error('Recent leads export failed:', err);
-            toast.error('Failed to export recent leads');
+            toast.error(t('export.exportFailed'));
         } finally {
             setIsExporting(false);
         }
@@ -1067,7 +1093,7 @@ const RecentLeadsContent = () => {
     const chips: { label: string; onRemove: () => void }[] = [];
     if (appliedSearch)
         chips.push({
-            label: `Search: ${appliedSearch}`,
+            label: t('chips.search', { query: appliedSearch }),
             onRemove: () => {
                 setSearchInput('');
                 setAppliedSearch('');
@@ -1075,48 +1101,54 @@ const RecentLeadsContent = () => {
         });
     if (audienceFilters.length > 0) {
         const names = audienceFilters.map(
-            (id) => audienceOptions.find((o) => o.id === id)?.name ?? 'Selected'
+            (id) => audienceOptions.find((o) => o.id === id)?.name ?? t('chips.fallbackSelected')
         );
         chips.push({
-            label: `Audience: ${names.join(', ')}`,
+            label: t('chips.audience', { names: names.join(', ') }),
             onRemove: () => handleAudienceChange([]),
         });
     }
     if (tierFilters.length > 0)
         chips.push({
-            label: `Tier: ${tierFilters.join(', ')}`,
+            label: t('chips.tier', {
+                tiers: tierFilters.map((v) => tierLabels[v] ?? v).join(', '),
+            }),
             onRemove: () => setTierFilters([]),
         });
     if (leadStatusFilters.length > 0) {
         const statusLabels = leadStatusFilters.map((v) => {
-            if (v === ALL_ACTIVE_VALUE) return 'Active';
-            if (v === ALL_CONVERTED_VALUE) return 'Converted';
+            if (v === ALL_ACTIVE_VALUE) return t('chips.statusActive');
+            if (v === ALL_CONVERTED_VALUE) return t('chips.statusConverted');
             return leadStatusCatalog.find((s) => s.status_key === v)?.label ?? v;
         });
         chips.push({
-            label: `Status: ${statusLabels.join(', ')}`,
+            label: t('chips.status', { statuses: statusLabels.join(', ') }),
             onRemove: () => setLeadStatusFilters([]),
         });
     }
     if (slaFilters.length > 0)
         chips.push({
-            label: `SLA: ${slaFilters.map((v) => SLA_OPTIONS.find((o) => o.value === v)?.label ?? v).join(', ')}`,
+            label: t('chips.sla', {
+                states: slaFilters
+                    .map((v) => slaOptions.find((o) => o.value === v)?.label ?? v)
+                    .join(', '),
+            }),
             onRemove: () => setSlaFilters([]),
         });
     if (counsellorFilters.length > 0) {
         const cLabels = counsellorFilters.map((id) =>
             id === UNASSIGNED_COUNSELLOR_VALUE
-                ? 'Unassigned'
-                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? 'Selected')
+                ? t('chips.unassigned')
+                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? t('chips.fallbackSelected'))
         );
         chips.push({
-            label: `Counsellor: ${cLabels.join(', ')}`,
+            label: t('chips.counsellor', { names: cLabels.join(', ') }),
             onRemove: () => setCounsellorFilters([]),
         });
     }
     if (sourceFilter)
         chips.push({
-            label: `Source: ${sourceFilter}`,
+            label: t('chips.source', { source: sourceFilter }),
             onRemove: () => {
                 setPage(0);
                 setSourceFilter('');
@@ -1124,9 +1156,10 @@ const RecentLeadsContent = () => {
         });
     customFieldFiltersPayload.forEach((f) => {
         const fieldName =
-            filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
+            filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ??
+            t('chips.fallbackField');
         chips.push({
-            label: `${fieldName}: ${filterEntryValueLabel(f)}`,
+            label: t('chips.customField', { field: fieldName, value: filterEntryValueLabel(f) }),
             // Remove only this entry's backing values — one field can carry
             // several chips (values + contains + empty) at once.
             onRemove: () =>
@@ -1140,9 +1173,13 @@ const RecentLeadsContent = () => {
         let label: string;
         if (rangeDays === CUSTOM_DATE_VALUE) {
             label =
-                customFrom && customTo ? `Date: ${customFrom} → ${customTo}` : 'Date: custom range';
+                customFrom && customTo
+                    ? t('chips.dateRangeCustomWithDates', { from: customFrom, to: customTo })
+                    : t('chips.dateRangeCustomFallback');
         } else {
-            label = DATE_RANGE_OPTIONS.find((o) => o.value === rangeDays)?.label ?? 'Date range';
+            label =
+                dateRangeOptions.find((o) => o.value === rangeDays)?.label ??
+                t('chips.dateRangeFallback');
         }
         chips.push({
             label,
@@ -1162,10 +1199,10 @@ const RecentLeadsContent = () => {
                 {isLoading ? (
                     <>
                         <CircleNotch className="size-5 animate-spin text-neutral-400" />
-                        Loading leads…
+                        {t('heading.loading')}
                     </>
                 ) : (
-                    `${totalElements.toLocaleString()} ${totalElements === 1 ? 'Lead' : 'Leads'}`
+                    t('heading.leadsCount', { count: totalElements })
                 )}
             </h1>
 
@@ -1174,12 +1211,12 @@ const RecentLeadsContent = () => {
                 <div className="flex flex-wrap items-center gap-2">
                     {showOps && (
                         <MultiSelectFilter
-                            label="All tiers"
+                            label={t('filters.tier.label')}
                             icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
                             options={[
-                                { value: 'HOT', label: 'Hot' },
-                                { value: 'WARM', label: 'Warm' },
-                                { value: 'COLD', label: 'Cold' },
+                                { value: 'HOT', label: tierLabels.HOT ?? 'HOT' },
+                                { value: 'WARM', label: tierLabels.WARM ?? 'WARM' },
+                                { value: 'COLD', label: tierLabels.COLD ?? 'COLD' },
                             ]}
                             selected={tierFilters}
                             onChange={setTier}
@@ -1187,11 +1224,11 @@ const RecentLeadsContent = () => {
                         />
                     )}
                     <MultiSelectFilter
-                        label="All leads"
+                        label={t('filters.leadStatus.label')}
                         icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
                         options={[
-                            { value: ALL_ACTIVE_VALUE, label: 'Active (not enrolled)' },
-                            { value: ALL_CONVERTED_VALUE, label: 'Enrolled / Converted' },
+                            { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
+                            { value: ALL_CONVERTED_VALUE, label: t('filters.leadStatus.converted') },
                             ...leadStatusCatalog.map((s) => ({
                                 value: s.status_key,
                                 label: s.label,
@@ -1203,11 +1240,11 @@ const RecentLeadsContent = () => {
                     />
                     {showOps && (
                         <MultiSelectFilter
-                            label="All SLA states"
+                            label={t('filters.sla.label')}
                             icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
-                            options={SLA_OPTIONS.filter((o) => o.value !== ALL_SLA_VALUE).map(
-                                (o) => ({ value: o.value, label: o.label })
-                            )}
+                            options={slaOptions
+                                .filter((o) => o.value !== ALL_SLA_VALUE)
+                                .map((o) => ({ value: o.value, label: o.label }))}
                             selected={slaFilters}
                             onChange={setSla}
                             widthClass="w-44"
@@ -1223,7 +1260,7 @@ const RecentLeadsContent = () => {
                         />
                     )}
                     <MultiSelectFilter
-                        label="All audiences"
+                        label={t('filters.audience.label')}
                         icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
                         options={audienceOptions.map((opt) => ({
                             value: opt.id,
@@ -1273,7 +1310,7 @@ const RecentLeadsContent = () => {
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {DATE_RANGE_OPTIONS.map((opt) => (
+                            {dateRangeOptions.map((opt) => (
                                 <SelectItem key={opt.value} value={opt.value}>
                                     {opt.label}
                                 </SelectItem>
@@ -1287,13 +1324,15 @@ const RecentLeadsContent = () => {
                                     <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
                                     {customFrom && customTo
                                         ? `${customFrom} → ${customTo}`
-                                        : 'Set dates'}
+                                        : t('filters.customDate.setDates')}
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent align="start" className="w-72 space-y-3">
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs text-neutral-600">From</Label>
+                                        <Label className="text-xs text-neutral-600">
+                                            {t('filters.customDate.from')}
+                                        </Label>
                                         <Input
                                             type="date"
                                             value={customFrom}
@@ -1302,7 +1341,9 @@ const RecentLeadsContent = () => {
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs text-neutral-600">To</Label>
+                                        <Label className="text-xs text-neutral-600">
+                                            {t('filters.customDate.to')}
+                                        </Label>
                                         <Input
                                             type="date"
                                             value={customTo}
@@ -1316,7 +1357,7 @@ const RecentLeadsContent = () => {
                                     className="w-full"
                                     onClick={() => setCustomOpen(false)}
                                 >
-                                    Done
+                                    {t('filters.customDate.done')}
                                 </Button>
                             </PopoverContent>
                         </Popover>
@@ -1326,7 +1367,7 @@ const RecentLeadsContent = () => {
                 <div className="flex shrink-0 items-center gap-2">
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.LeadSettings}
-                        label="Lead settings"
+                        label={t('toolbar.leadSettings')}
                     />
                     {/* Deleted leads are hidden from every view by default; this is the only
                         place they surface, and the only route back for one (Restore). Admin-only,
@@ -1341,10 +1382,16 @@ const RecentLeadsContent = () => {
                                 setPage(0);
                                 setSelectedLeads(new Map());
                             }}
-                            title={showDeleted ? 'Back to active leads' : 'Show deleted leads'}
+                            title={
+                                showDeleted
+                                    ? t('toolbar.backToActiveTitle')
+                                    : t('toolbar.showDeletedTitle')
+                            }
                         >
                             <Trash className="mr-1.5 size-4" />
-                            {showDeleted ? 'Viewing deleted' : 'Deleted leads'}
+                            {showDeleted
+                                ? t('toolbar.viewingDeletedButton')
+                                : t('toolbar.deletedLeadsButton')}
                         </Button>
                     )}
                     <ManageColumnsPopover
@@ -1366,7 +1413,7 @@ const RecentLeadsContent = () => {
                         disabled={isExporting || !data?.totalElements}
                     >
                         <DownloadSimple className="mr-1.5 size-4" />
-                        {isExporting ? 'Exporting…' : 'Export'}
+                        {isExporting ? t('toolbar.exporting') : t('toolbar.export')}
                     </Button>
                 </div>
             </div>
@@ -1384,7 +1431,7 @@ const RecentLeadsContent = () => {
                                 type="button"
                                 onClick={chip.onRemove}
                                 className="text-neutral-400 hover:text-neutral-700"
-                                aria-label={`Remove ${chip.label}`}
+                                aria-label={t('chips.removeAriaLabel', { label: chip.label })}
                             >
                                 <X className="size-3" />
                             </button>
@@ -1395,7 +1442,7 @@ const RecentLeadsContent = () => {
                         onClick={handleClearFilter}
                         className="px-1 text-xs font-medium text-primary-600 hover:underline"
                     >
-                        Clear all
+                        {t('chips.clearAll')}
                     </button>
                 </div>
             )}
@@ -1408,13 +1455,13 @@ const RecentLeadsContent = () => {
                         type="text"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
-                        placeholder="Search leads"
+                        placeholder={t('search.placeholder')}
                         className="h-10 w-full pl-8"
-                        aria-label="Search leads"
+                        aria-label={t('search.placeholder')}
                     />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-neutral-500">
-                    <span>Showing</span>
+                    <span>{t('search.showing')}</span>
                     <Select
                         value={String(pageSize)}
                         onValueChange={(v) => {
@@ -1433,7 +1480,11 @@ const RecentLeadsContent = () => {
                             ))}
                         </SelectContent>
                     </Select>
-                    <span>of {isLoading ? '…' : totalElements.toLocaleString()} results</span>
+                    <span>
+                        {isLoading
+                            ? t('search.resultsPending')
+                            : t('search.resultsCount', { count: totalElements })}
+                    </span>
                 </div>
             </div>
 
@@ -1449,7 +1500,7 @@ const RecentLeadsContent = () => {
                     {selectedLeads.size > 0 && (
                         <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
                             <span className="text-body font-medium text-primary-700">
-                                {selectedLeads.size} selected
+                                {t('bulk.selectedCount', { count: selectedLeads.size })}
                             </span>
                             <div className="flex gap-2">
                                 {selectedLeads.size < totalElements && (
@@ -1460,8 +1511,8 @@ const RecentLeadsContent = () => {
                                         onClick={selectAllAcrossPages}
                                     >
                                         {selectAllLoading
-                                            ? 'Selecting…'
-                                            : `Select all ${totalElements}`}
+                                            ? t('bulk.selecting')
+                                            : t('bulk.selectAll', { count: totalElements })}
                                     </MyButton>
                                 )}
                                 <MyButton
@@ -1469,17 +1520,17 @@ const RecentLeadsContent = () => {
                                     scale="small"
                                     onClick={() => setSelectedLeads(new Map())}
                                 >
-                                    Clear
+                                    {t('bulk.clear')}
                                 </MyButton>
                                 <MyDropdown
                                     dropdownList={[
                                         {
-                                            label: 'Assign leads',
+                                            label: t('bulk.assignLeads'),
                                             value: 'assign',
                                             icon: <UserPlus className="size-4" />,
                                         },
                                         {
-                                            label: 'Unassign leads',
+                                            label: t('bulk.unassignLeads'),
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
@@ -1490,14 +1541,14 @@ const RecentLeadsContent = () => {
                                             ? [
                                                   showDeleted
                                                       ? {
-                                                            label: 'Restore leads',
+                                                            label: t('bulk.restoreLeads'),
                                                             value: 'restore',
                                                             icon: (
                                                                 <ArrowCounterClockwise className="size-4 text-primary-600" />
                                                             ),
                                                         }
                                                       : {
-                                                            label: 'Delete leads',
+                                                            label: t('bulk.deleteLeads'),
                                                             value: 'delete',
                                                             icon: (
                                                                 <Trash className="size-4 text-danger-600" />
@@ -1522,7 +1573,7 @@ const RecentLeadsContent = () => {
                                     }}
                                 >
                                     <MyButton buttonType="primary" scale="small">
-                                        Bulk actions
+                                        {t('bulk.actionsButton')}
                                         <CaretDown className="size-3.5" />
                                     </MyButton>
                                 </MyDropdown>
@@ -1531,8 +1582,8 @@ const RecentLeadsContent = () => {
                     )}
                     {error ? (
                         <LeadEmptyState
-                            title="Couldn't load leads"
-                            description="Something went wrong fetching leads. Try again."
+                            title={t('emptyState.errorTitle')}
+                            description={t('emptyState.errorDescription')}
                         />
                     ) : (
                         <LeadTable

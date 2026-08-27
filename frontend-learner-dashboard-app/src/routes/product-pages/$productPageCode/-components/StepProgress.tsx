@@ -1,33 +1,32 @@
 import { Check } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useProductPageStore } from "../-stores/product-page-store";
 
-const CHECKOUT_STEPS = [
-  { id: "CART" as const, label: "Cart" },
-  { id: "FORM" as const, label: "Details" },
-  { id: "PAYMENT" as const, label: "Payment" },
-];
-
-const CPO_CHECKOUT_STEPS = [
-  { id: "CART" as const, label: "Cart" },
-  { id: "FORM" as const, label: "Details" },
-  { id: "CPO_INSTALLMENTS" as const, label: "Installments" },
-];
-
 export const StepProgress = ({
-  primaryColor = "#2563eb",
+  primaryColor = "#2563eb", // design-lint-ignore: page-builder default color
 }: {
   primaryColor?: string;
 }) => {
-  // design-lint-ignore: page-builder default color
+  const { t } = useTranslation("productPages");
   const { step } = useProductPageStore();
   const isCpoFlow = step === "CPO_INSTALLMENTS";
+  const CHECKOUT_STEPS = [
+    { id: "CART" as const, label: t("stepProgress.steps.cart") },
+    { id: "FORM" as const, label: t("stepProgress.steps.details") },
+    { id: "PAYMENT" as const, label: t("stepProgress.steps.payment") },
+  ];
+  const CPO_CHECKOUT_STEPS = [
+    { id: "CART" as const, label: t("stepProgress.steps.cart") },
+    { id: "FORM" as const, label: t("stepProgress.steps.details") },
+    { id: "CPO_INSTALLMENTS" as const, label: t("stepProgress.steps.installments") },
+  ];
   const steps = isCpoFlow ? CPO_CHECKOUT_STEPS : CHECKOUT_STEPS;
   const currentIndex = steps.findIndex((s) => s.id === step);
 
   return (
     <nav
-      aria-label="Enrollment progress"
+      aria-label={t("stepProgress.ariaLabel")}
       className="flex items-center justify-center"
     >
       {steps.map((s, i) => {
@@ -75,8 +74,8 @@ export const StepProgress = ({
               <div
                 className="mb-5 h-px w-14 sm:w-20"
                 style={{
-                  backgroundColor: i < currentIndex ? "#86efac" : "#e5e7eb",
-                }} // design-lint-ignore: page-builder default color
+                  backgroundColor: i < currentIndex ? "#86efac" : "#e5e7eb", // design-lint-ignore: page-builder default color
+                }}
               />
             )}
           </div>

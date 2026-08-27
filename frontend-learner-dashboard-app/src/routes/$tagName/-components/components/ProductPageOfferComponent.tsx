@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRight,
   BookOpen,
@@ -13,6 +14,8 @@ import {
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
 import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-services/product-page-service";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 /**
  * Product Page Offer — surfaces a Product Page's sellable courses on a
@@ -304,6 +307,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   tagName,
   isPreviewMode = false,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
+  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const { data, isLoading, isError } = useQuery({
     ...handleGetProductPage(productPageCode || "", instituteId || ""),
   });
@@ -405,7 +411,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         search={{ ...(instituteId ? { instituteId } : {}), ...(tagName ? { tagName } : {}) }}
         className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-catalogue-brand-ink no-underline hover:underline"
       >
-        {viewAllLabel || "See all"}
+        {viewAllLabel || t("productPageOffer.seeAll")}
         <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
       </Link>
     ) : null;
@@ -460,7 +466,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // ── Not configured yet: guide the admin, stay invisible to visitors ──
   if (!productPageCode) {
     if (!isPreviewMode) return null;
-    return emptyState("Pick a product page in the properties panel to show its courses here.");
+    return emptyState(t("productPageOffer.emptyConfig", { courses: coursesTerm }));
   }
 
   if (isLoading) {
@@ -483,13 +489,13 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     if (!isPreviewMode) return null;
     return emptyState(
       isError
-        ? "Couldn't load this product page. Check that it is ACTIVE and belongs to this institute."
-        : "This product page has no courses yet — add them in its Courses tab."
+        ? t("productPageOffer.errorLoad")
+        : t("productPageOffer.emptyCourses", { courses: coursesTerm })
     );
   }
 
   const renderCard = (m: ProductPageMapping, i: number) => {
-        const name = m.package_name || "Course";
+        const name = m.package_name || courseTerm;
         // Course tags (CBSE / ICSE …) read first — they are what a visitor
         // scans for — then the level/session the batch belongs to.
         const chips = showChips
@@ -622,7 +628,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                       {...detailsLink}
                       className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm flex-1 justify-center whitespace-nowrap no-underline"
                     >
-                      {viewCourseLabel || "View course"}
+                      {viewCourseLabel || t("productPageOffer.viewCourse", { course: courseTerm })}
                     </Link>
                   )}
                   <Link
@@ -630,9 +636,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                     params={{ productPageCode }}
                     search={enrolSearch}
                     className="catalogue-btn catalogue-btn-primary catalogue-btn-sm flex-1 justify-center whitespace-nowrap no-underline"
-                    aria-label={`${ctaLabel || "Enrol now"} — ${name}`}
+                    aria-label={`${ctaLabel || t("productPageOffer.enrolNow")} — ${name}`}
                   >
-                    {ctaLabel || "Enrol now"}
+                    {ctaLabel || t("productPageOffer.enrolNow")}
                     <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
                   </Link>
                 </div>
@@ -657,7 +663,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         onScroll={syncArrows}
         className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto py-2"
         role="group"
-        aria-label={title || "Courses"}
+        aria-label={title || coursesTerm}
       >
         {cards}
         {/* Tail card — states plainly how many courses the rail is not
@@ -676,10 +682,10 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           >
             <span className="catalogue-h3 text-catalogue-brand-ink">+{railHidden}</span>
             <span className="text-sm font-semibold text-catalogue-text-primary">
-              {viewAllLabel || "See all courses"}
+              {viewAllLabel || t("productPageOffer.seeAllCourses", { courses: coursesTerm })}
             </span>
             <span className="text-xs text-catalogue-text-muted">
-              Search and filter the full list
+              {t("productPageOffer.searchAndFilter")}
             </span>
             <ArrowRight className="size-4 text-catalogue-brand-ink" weight="bold" aria-hidden="true" />
           </Link>
@@ -692,7 +698,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         <button
           type="button"
           onClick={() => scrollByPage(-1)}
-          aria-label="Scroll to previous courses"
+          aria-label={t("productPageOffer.scrollPrevious", { courses: coursesTerm })}
           className="catalogue-btn catalogue-btn-secondary absolute left-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg p-0 shadow-lg md:inline-flex"
         >
           <CaretLeft className="size-5" weight="bold" aria-hidden="true" />
@@ -702,7 +708,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         <button
           type="button"
           onClick={() => scrollByPage(1)}
-          aria-label="Scroll to more courses"
+          aria-label={t("productPageOffer.scrollNext", { courses: coursesTerm })}
           className="catalogue-btn catalogue-btn-secondary absolute right-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg p-0 shadow-lg md:inline-flex"
         >
           <CaretRight className="size-5" weight="bold" aria-hidden="true" />
@@ -722,15 +728,15 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           type="search"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-          placeholder="Search courses"
-          aria-label="Search courses"
+          placeholder={t("productPageOffer.searchPlaceholder", { courses: coursesTerm })}
+          aria-label={t("productPageOffer.searchAriaLabel", { courses: coursesTerm })}
           className={`catalogue-input catalogue-input-icon-start w-full ${query ? "catalogue-input-icon-end" : ""}`}
         />
         {query && (
           <button
             type="button"
             onClick={() => { setQuery(""); setPage(1); }}
-            aria-label="Clear search"
+            aria-label={t("common.clearSearch")}
             className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-catalogue-text-muted transition-colors hover:bg-catalogue-interactive-hover hover:text-catalogue-text-primary"
           >
             <X className="size-3.5" weight="bold" aria-hidden="true" />
@@ -739,8 +745,12 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       </div>
       <p className="text-xs text-catalogue-text-muted" role="status" aria-live="polite">
         {filtered.length === 0
-          ? "No matches"
-          : `Showing ${start + 1}–${Math.min(start + visible.length, filtered.length)} of ${filtered.length}`}
+          ? t("productPageOffer.noMatches")
+          : t("productPageOffer.showingRange", {
+              from: start + 1,
+              to: Math.min(start + visible.length, filtered.length),
+              total: filtered.length,
+            })}
       </p>
     </div>
   );
@@ -758,7 +768,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         {searchRow}
         {filtered.length === 0 && (
           <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
-            No courses match “{query.trim()}”.
+            {t("productPageOffer.noCoursesMatch", { courses: coursesTerm, query: query.trim() })}
           </div>
         )}
       </div>
@@ -785,12 +795,12 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
 
       <div className="catalogue-shell">
       {totalPages > 1 && (
-        <nav className="mt-8 flex flex-wrap items-center justify-center gap-2" aria-label="Course pages">
+        <nav className="mt-8 flex flex-wrap items-center justify-center gap-2" aria-label={t("productPageOffer.coursePagesAriaLabel", { course: courseTerm })}>
           <button
             type="button"
             onClick={() => goToPage(safePage - 1)}
             disabled={safePage === 1}
-            aria-label="Previous page"
+            aria-label={t("common.previousPage")}
             className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CaretLeft className="size-3.5" weight="bold" aria-hidden="true" />
@@ -806,7 +816,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 key={p}
                 type="button"
                 onClick={() => goToPage(p)}
-                aria-label={`Page ${p}`}
+                aria-label={t("productPageOffer.page", { number: p })}
                 aria-current={p === safePage ? "page" : undefined}
                 className={
                   p === safePage
@@ -823,7 +833,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
             type="button"
             onClick={() => goToPage(safePage + 1)}
             disabled={safePage === totalPages}
-            aria-label="Next page"
+            aria-label={t("common.nextPage")}
             className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CaretRight className="size-3.5" weight="bold" aria-hidden="true" />

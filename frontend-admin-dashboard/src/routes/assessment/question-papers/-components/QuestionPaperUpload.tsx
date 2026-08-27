@@ -1,4 +1,5 @@
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { uploadQuestionPaperFormSchema } from '../-utils/upload-question-paper-form-schema';
 import { z } from 'zod';
 import { FormProvider, useForm, UseFormReturn } from 'react-hook-form';
@@ -110,6 +111,7 @@ const FileUploadSection = ({
     uploadProgress: number;
     isProgress: boolean;
 }) => {
+    const { t } = useTranslation('assessmentQuestionPaperUpload');
     const fileUpload = form.getValues('fileUpload');
     const isProcessingOnServer = isProgress && uploadProgress >= 99;
 
@@ -117,54 +119,58 @@ const FileUploadSection = ({
         <>
             <div className="ml-4 rounded-lg border border-primary-100 bg-primary-50/40 p-4">
                 <p className="mb-2 text-sm font-semibold text-primary-500">
-                    Expected document formatting
+                    {t('formatGuide.title')}
                 </p>
-                <p className="mb-3 text-xs text-neutral-600">
-                    Each question is read from these markers, one per line. Answer, explanation and
-                    tags are optional — you can tag each question with a subject/topic.
-                </p>
+                <p className="mb-3 text-xs text-neutral-600">{t('formatGuide.description')}</p>
                 <ul className="space-y-1.5 text-xs text-neutral-700">
                     <li className="flex gap-2">
-                        <span className="w-24 shrink-0 font-medium">Question:</span>
+                        <span className="w-24 shrink-0 font-medium">
+                            {t('formatGuide.questionLabel')}
+                        </span>
                         <code className="rounded bg-white px-1.5 py-0.5 font-mono">
                             (1.) Your question text…
                         </code>
                     </li>
                     <li className="flex gap-2">
-                        <span className="w-24 shrink-0 font-medium">Options:</span>
+                        <span className="w-24 shrink-0 font-medium">
+                            {t('formatGuide.optionsLabel')}
+                        </span>
                         <code className="rounded bg-white px-1.5 py-0.5 font-mono">
                             (a.) … &nbsp;(b.) … &nbsp;(c.) … &nbsp;(d.) …
                         </code>
                     </li>
                     <li className="flex gap-2">
-                        <span className="w-24 shrink-0 font-medium">Answer:</span>
+                        <span className="w-24 shrink-0 font-medium">
+                            {t('formatGuide.answerLabel')}
+                        </span>
                         <code className="rounded bg-white px-1.5 py-0.5 font-mono">
                             Ans: A
                         </code>
-                        <span className="text-neutral-500">
-                            — the correct option&apos;s letter (Ans: (A) also works)
-                        </span>
+                        <span className="text-neutral-500">{t('formatGuide.answerHint')}</span>
                     </li>
                     <li className="flex gap-2">
-                        <span className="w-24 shrink-0 font-medium">Explanation:</span>
+                        <span className="w-24 shrink-0 font-medium">
+                            {t('formatGuide.explanationLabel')}
+                        </span>
                         <code className="rounded bg-white px-1.5 py-0.5 font-mono">
                             Exp: Your explanation…
                         </code>
                     </li>
                     <li className="flex gap-2">
-                        <span className="w-24 shrink-0 font-medium">Tags:</span>
+                        <span className="w-24 shrink-0 font-medium">
+                            {t('formatGuide.tagsLabel')}
+                        </span>
                         <code className="rounded bg-white px-1.5 py-0.5 font-mono">
                             Tags: Algebra, Trigonometry
                         </code>
-                        <span className="text-neutral-500">— optional, comma-separated</span>
+                        <span className="text-neutral-500">{t('formatGuide.tagsHint')}</span>
                     </li>
                 </ul>
                 <p className="mt-3 text-xs text-neutral-500">
-                    Minor variations are also accepted — e.g.{' '}
+                    {t('formatGuide.variationsPart1')}{' '}
                     <code className="font-mono">1.)</code>,{' '}
-                    <code className="font-mono">(A)</code> options, and a singular{' '}
-                    <code className="font-mono">Tag:</code> line. Lines that don&apos;t match are
-                    flagged after upload so you can fix or skip them.
+                    <code className="font-mono">(A)</code> {t('formatGuide.variationsPart2')}{' '}
+                    <code className="font-mono">Tag:</code> {t('formatGuide.variationsPart3')}
                 </p>
             </div>
 
@@ -182,25 +188,24 @@ const FileUploadSection = ({
                                             />
                                         </div>
                                         <h1 className="-mt-4 text-xs text-red-500">
-                                            If you are having a problem while uploading docx file
-                                            then please convert your file in html{' '}
+                                            {t('docxHelp.part1')}{' '}
                                             <a
                                                 href="https://wordtohtml.net/convert/docx-to-html"
                                                 target="_blank"
                                                 className="text-blue-500"
                                                 rel="noreferrer"
                                             >
-                                                here
+                                                {t('docxHelp.linkText')}
                                             </a>{' '}
-                                            and try to re-upload.
+                                            {t('docxHelp.part2')}
                                         </h1>
                                     </div>
 
                                     <div className="flex flex-col gap-6">
-                <h1 className="-mt-4 text-xs text-red-500">Step 1 - Go to this website</h1>
-                <h1 className="-mt-4 text-xs text-red-500">Step 2 - Enable embed image</h1>
-                <h1 className="-mt-4 text-xs text-red-500">Step 3 - Download your html file after converting</h1>
-                                        <img src={ConvertToHTML} alt="logo" />
+                <h1 className="-mt-4 text-xs text-red-500">{t('docxHelp.step1')}</h1>
+                <h1 className="-mt-4 text-xs text-red-500">{t('docxHelp.step2')}</h1>
+                <h1 className="-mt-4 text-xs text-red-500">{t('docxHelp.step3')}</h1>
+                                        <img src={ConvertToHTML} alt={t('docxHelp.imageAlt')} />
                                     </div>
 
             {fileUpload && (
@@ -248,7 +253,7 @@ const FileUploadSection = ({
                                                                 size={14}
                                                                 className="animate-spin"
                                                             />
-                                                            Processing…
+                                                            {t('upload.processing')}
                                                         </span>
                                                     ) : (
                                                         <span className="text-xs">
@@ -258,8 +263,7 @@ const FileUploadSection = ({
                                                 </div>
                                                 {isProcessingOnServer && (
                                                     <p className="mt-1 text-xs text-neutral-500">
-                                                        Server is parsing your document. Larger
-                                                        files may take up to a minute.
+                                                        {t('upload.processingHint')}
                                                     </p>
                                                 )}
                                             </div>
@@ -277,14 +281,15 @@ const BasicFormFields = ({ form, YearClassFilterData, SubjectFilterData, default
     defaultSubject?: string;
 }) => {
     const { getTerminology } = useNamingSettings();
+    const { t } = useTranslation('assessmentQuestionPaperUpload');
 
     return (
         <>
                             <CustomInput
                                 control={form.control}
                                 name="title"
-                                label="Title"
-                                placeholder="Enter Title"
+                                label={t('fields.titleLabel')}
+                                placeholder={t('fields.titlePlaceholder')}
                                 required
                             />
                             {!defaultSubject && (
@@ -338,11 +343,13 @@ const ActionButtons = ({
     setCurrentQuestionIndex: (index: number) => void;
     examType: string;
     form: any;
-}) => (
+}) => {
+    const { t } = useTranslation('assessmentQuestionPaperUpload');
+    return (
                             <div className="flex justify-between">
                                 {isProgress ? (
             <Button type="button" variant="outline" className="w-52 border-2">
-                                        Loading...
+                                        {t('buttons.loading')}
                                     </Button>
                                 ) : (
                                     !isManualCreated &&
@@ -351,7 +358,7 @@ const ActionButtons = ({
                                             form={form}
                                             questionPaperId={questionPaperId}
                                             isViewMode={false}
-                                            buttonText="Preview"
+                                            buttonText={t('buttons.preview')}
                                             currentQuestionIndex={currentQuestionIndex}
                                             setCurrentQuestionIndex={(value: number | ((prevState: number) => number)) => {
                                                 if (typeof value === 'function') {
@@ -371,7 +378,7 @@ const ActionButtons = ({
                                         questionPaperId={questionPaperId}
                                         isViewMode={false}
                                         isManualCreated={isManualCreated}
-                                        buttonText="Add Questions"
+                                        buttonText={t('buttons.addQuestions')}
                                         currentQuestionIndex={currentQuestionIndex}
                                         setCurrentQuestionIndex={(value: number | ((prevState: number) => number)) => {
                                             if (typeof value === 'function') {
@@ -394,7 +401,7 @@ const ActionButtons = ({
                                         type="submit"
                                         className="ml-7 w-56 bg-primary-500 text-white"
                                     >
-                                        Done
+                                        {t('buttons.done')}
                                     </Button>
                                 )}
 
@@ -408,7 +415,7 @@ const ActionButtons = ({
                                         type="submit"
                 className="w-56 bg-primary-500 text-white"
                                     >
-                                        Done
+                                        {t('buttons.done')}
                                     </Button>
                                 )}
 
@@ -424,11 +431,12 @@ const ActionButtons = ({
                     formValidation.hasQuestions ? 'block' : 'hidden'
                                         }`}
                                     >
-                                        Done
+                                        {t('buttons.done')}
                                     </Button>
                                 )}
                             </div>
-);
+    );
+};
 
 export const QuestionPaperUpload = ({
     isManualCreated,
@@ -441,6 +449,7 @@ export const QuestionPaperUpload = ({
     examType = 'EXAM',
     defaultSubject,
 }: QuestionPaperUploadProps) => {
+    const { t } = useTranslation('assessmentQuestionPaperUpload');
     const queryClient = useQueryClient();
     const { instituteDetails } = useInstituteDetailsStore();
     const { YearClassFilterData, SubjectFilterData } = useFilterDataForAssesment(instituteDetails);
@@ -490,7 +499,7 @@ export const QuestionPaperUpload = ({
                 getQuestionPaper.question_dtolist
             );
             setCurrentQuestionIndex(0);
-            toast.success('Question Paper added successfully', {
+            toast.success(t('toasts.questionPaperAdded'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -650,7 +659,7 @@ export const QuestionPaperUpload = ({
 
     const onInvalid = (err: unknown) => {
         console.error(err);
-        toast.error('some of your questions are incomplete or needs attentions!', {
+        toast.error(t('toasts.incompleteQuestions'), {
             className: 'error-toast',
             duration: 3000,
         });
@@ -718,7 +727,7 @@ export const QuestionPaperUpload = ({
         setPendingIssues([]);
         if (skipped > 0) {
             toast.success(
-                `Added ${kept.length} question${kept.length === 1 ? '' : 's'}; skipped ${skipped} with issues.`,
+                t('toasts.addedAndSkipped', { count: kept.length, skipped }),
                 { duration: 3500 }
             );
         }
@@ -732,7 +741,7 @@ export const QuestionPaperUpload = ({
         setPendingQuestions([]);
         setPendingIssues([]);
         toast.info(
-            `Loaded all ${total} questions. ${flagged} need editing before you can save.`,
+            t('toasts.loadedAll', { count: total, flagged }),
             { duration: 4000 }
         );
     };

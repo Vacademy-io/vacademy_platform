@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { resolveMobileBarLinks, classifyBarLink, shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 
 /**
@@ -28,9 +29,6 @@ interface MobileActionBarProps {
   nativePad?: boolean;
 }
 
-/** New-user prompt shown as one line beside the signup link, not as a button. */
-const SIGNUP_PROMPT = "Don't have an account?";
-
 export const MobileActionBar: React.FC<MobileActionBarProps> = ({
   catalogueData,
   pageSlug,
@@ -40,6 +38,9 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
   onNavigate,
   nativePad = false,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
+  // New-user prompt shown as one line beside the signup link, not as a button.
+  const signupPrompt = t("mobileActionBar.signupPrompt");
   const links = resolveMobileBarLinks(catalogueData, pageSlug);
 
   // Explicitly cleared header buttons → the admin asked for no bar at all.
@@ -57,18 +58,18 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
       <>
         <div className="flex flex-col gap-1">
           <button onClick={onLogin} className="catalogue-btn catalogue-btn-secondary w-full justify-center">
-            Login
+            {t("common.login")}
           </button>
         </div>
         {legacyGetStartedVisible && shouldShowMobileGetStarted(catalogueData, pageSlug) && (
           <p className="text-center text-xs text-catalogue-text-secondary">
-            {SIGNUP_PROMPT}{" "}
+            {signupPrompt}{" "}
             <button
               type="button"
               onClick={onLegacyGetStarted}
               className="font-semibold text-primary-500 underline underline-offset-2"
             >
-              Get Started
+              {t("mobileActionBar.getStarted")}
             </button>
           </p>
         )}
@@ -113,13 +114,13 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
         if (kind === "leadCollection" || kind === "signup") {
           return (
             <p key={i} className="text-center text-xs text-catalogue-text-secondary">
-              {SIGNUP_PROMPT}{" "}
+              {signupPrompt}{" "}
               <button
                 type="button"
                 onClick={() => handleClick(link)}
                 className="font-semibold text-primary-500 underline underline-offset-2"
               >
-                {link.label || "Get Started"}
+                {link.label || t("mobileActionBar.getStarted")}
               </button>
             </p>
           );
@@ -133,7 +134,7 @@ export const MobileActionBar: React.FC<MobileActionBarProps> = ({
             onClick={() => handleClick(link)}
             className={`catalogue-btn w-full justify-center ${primary ? "catalogue-btn-primary" : "catalogue-btn-secondary"}`}
           >
-            {link.label || "Open"}
+            {link.label || t("mobileActionBar.open")}
           </button>
         );
       })}

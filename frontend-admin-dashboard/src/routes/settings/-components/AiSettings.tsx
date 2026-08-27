@@ -49,7 +49,7 @@ import {
     DEFAULT_VIDEO_BRANDING,
     DEFAULT_VIDEO_STYLE,
     FONT_OPTIONS,
-    WATERMARK_POSITIONS,
+    buildWatermarkPositions,
     fetchVideoBranding,
     fetchVideoStyle,
     fetchVideoTemplates,
@@ -141,8 +141,9 @@ const getAiSettingsSections = (t: (key: string) => string): SettingsSectionGroup
 ];
 
 const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
-    const { t } = useTranslation('settingsAi');
+    const { t } = useTranslation(['settingsAi', 'videoApiStudioVideoStyleBranding']);
     const AI_SETTINGS_SECTIONS = getAiSettingsSections(t);
+    const watermarkPositions = buildWatermarkPositions(t);
     const [openaiKey, setOpenaiKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
     const [defaultModel, setDefaultModel] = useState('');
@@ -659,7 +660,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                             </Button>
                                         )}
                                     </div>
-                                    <p className="text-[10px] text-gray-500">
+                                    <p className="text-2xs text-gray-500">
                                         {keysStatus.hasOpenAI
                                             ? t('providers.hasKeyHint')
                                             : t('providers.noKeyHint')}
@@ -707,7 +708,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                             </Button>
                                         )}
                                     </div>
-                                    <p className="text-[10px] text-gray-500">
+                                    <p className="text-2xs text-gray-500">
                                         {keysStatus.hasGemini
                                             ? t('providers.hasKeyHint')
                                             : t('providers.noKeyHint')}
@@ -781,7 +782,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                             )}
                                         </SelectContent>
                                     </Select>
-                                    <p className="text-[10px] text-gray-500">
+                                    <p className="text-2xs text-gray-500">
                                         {t('providers.defaultModelHint')}
                                     </p>
                                 </div>
@@ -799,7 +800,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         <Card className="border-indigo-100">
                                             <CardContent className="pt-4">
                                                 <div className="flex flex-col">
-                                                    <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                                                    <span className="mb-1 text-2xs font-bold uppercase tracking-wider text-indigo-500">
                                                         {t('providers.totalTokensLabel')}
                                                     </span>
                                                     <span className="text-2xl font-bold text-indigo-900">
@@ -811,7 +812,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         <Card className="border-indigo-100">
                                             <CardContent className="pt-4">
                                                 <div className="flex flex-col">
-                                                    <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                                                    <span className="mb-1 text-2xs font-bold uppercase tracking-wider text-indigo-500">
                                                         {t('providers.totalPriceLabel')}
                                                     </span>
                                                     <span className="text-2xl font-bold text-indigo-900">
@@ -1045,7 +1046,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                 <MyButton
                                     disabled={isSaving}
                                     onClick={handleSave}
-                                    className="min-w-[120px] bg-indigo-600 text-white hover:bg-indigo-700"
+                                    className="min-w-32 bg-indigo-600 text-white hover:bg-indigo-700"
                                 >
                                     {isSaving ? (
                                         <>
@@ -1164,7 +1165,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                             rows={6}
                                             className="w-full rounded-md border border-indigo-100 px-3 py-2 text-sm focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                         />
-                                        <p className="text-[10px] text-gray-500">
+                                        <p className="text-2xs text-gray-500">
                                             {t('coursePrompt.promptHint')}
                                         </p>
                                         {hasCustomPrompt && (
@@ -1200,7 +1201,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         <MyButton
                                             disabled={isSavingAiPrompt}
                                             onClick={handleSaveAiPrompt}
-                                            className="min-w-[120px] bg-indigo-600 text-white hover:bg-indigo-700"
+                                            className="min-w-32 bg-indigo-600 text-white hover:bg-indigo-700"
                                         >
                                             {isSavingAiPrompt ? (
                                                 <>
@@ -1326,7 +1327,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                             className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                                         />
                                                         <p
-                                                            className={`text-[10px] ${videoBranding.intro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
+                                                            className={`text-2xs ${videoBranding.intro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
                                                         >
                                                             {t('videoBranding.kbSize', {
                                                                 size: (
@@ -1350,14 +1351,14 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                 height: '180px',
                                                                 overflow: 'hidden',
                                                                 borderRadius: '6px',
-                                                                border: '1px solid #e5e7eb',
+                                                                border: '1px solid hsl(var(--border))',
                                                                 position: 'relative',
                                                             }}
                                                         >
                                                             <iframe
                                                                 srcDoc={
                                                                     videoBranding.intro.html ||
-                                                                    `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f9fafb;color:#9ca3af;font-family:sans-serif;font-size:12px">${t('videoBranding.introPreviewFallback')}</div>`
+                                                                    `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:rgb(249,250,251);color:rgb(156,163,175);font-family:sans-serif;font-size:12px">${t('videoBranding.introPreviewFallback')}</div>`
                                                                 }
                                                                 style={{
                                                                     width: '1920px',
@@ -1459,7 +1460,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                             className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                                         />
                                                         <p
-                                                            className={`text-[10px] ${videoBranding.outro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
+                                                            className={`text-2xs ${videoBranding.outro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
                                                         >
                                                             {t('videoBranding.kbSize', {
                                                                 size: (
@@ -1483,14 +1484,14 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                 height: '180px',
                                                                 overflow: 'hidden',
                                                                 borderRadius: '6px',
-                                                                border: '1px solid #e5e7eb',
+                                                                border: '1px solid hsl(var(--border))',
                                                                 position: 'relative',
                                                             }}
                                                         >
                                                             <iframe
                                                                 srcDoc={
                                                                     videoBranding.outro.html ||
-                                                                    `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f9fafb;color:#9ca3af;font-family:sans-serif;font-size:12px">${t('videoBranding.outroPreviewFallback')}</div>`
+                                                                    `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:rgb(249,250,251);color:rgb(156,163,175);font-family:sans-serif;font-size:12px">${t('videoBranding.outroPreviewFallback')}</div>`
                                                                 }
                                                                 style={{
                                                                     width: '1920px',
@@ -1548,7 +1549,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                             {t('videoBranding.positionLabel')}
                                                         </Label>
                                                         <div className="grid grid-cols-2 gap-2">
-                                                            {WATERMARK_POSITIONS.map((pos) => (
+                                                            {watermarkPositions.map((pos) => (
                                                                 <button
                                                                     key={pos.value}
                                                                     type="button"
@@ -1600,7 +1601,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                             }
                                                             className="w-full"
                                                         />
-                                                        <p className="text-[10px] text-gray-400">
+                                                        <p className="text-2xs text-gray-400">
                                                             {t('videoBranding.opacityHint')}
                                                         </p>
                                                     </div>
@@ -1633,7 +1634,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                             className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                                         />
                                                         <p
-                                                            className={`text-[10px] ${videoBranding.watermark.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
+                                                            className={`text-2xs ${videoBranding.watermark.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
                                                         >
                                                             {t('videoBranding.kbSize', {
                                                                 size: (
@@ -1642,7 +1643,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                 ).toFixed(1),
                                                             })}
                                                         </p>
-                                                        <p className="text-[10px] text-gray-500">
+                                                        <p className="text-2xs text-gray-500">
                                                             {t('videoBranding.watermarkHtmlHint')}
                                                         </p>
                                                     </div>
@@ -1656,9 +1657,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                 height: '120px',
                                                                 overflow: 'hidden',
                                                                 borderRadius: '6px',
-                                                                border: '1px solid #e5e7eb',
+                                                                border: '1px solid hsl(var(--border))',
                                                                 position: 'relative',
-                                                                background: '#f9fafb',
+                                                                background: 'hsl(var(--muted))',
                                                             }}
                                                         >
                                                             <div
@@ -1682,11 +1683,11 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                     __html:
                                                                         videoBranding.watermark
                                                                             .html ||
-                                                                        `<span style="color:#9ca3af;font-family:sans-serif;font-size:10px">${t('videoBranding.watermarkPreviewFallback')}</span>`,
+                                                                        `<span style="color:hsl(var(--muted-foreground));font-family:sans-serif;font-size:10px">${t('videoBranding.watermarkPreviewFallback')}</span>`,
                                                                 }}
                                                             />
                                                             <span
-                                                                className="text-[8px] text-gray-300"
+                                                                className="text-2xs text-gray-300"
                                                                 style={{
                                                                     position: 'absolute',
                                                                     top: '50%',
@@ -1711,7 +1712,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         <MyButton
                                             disabled={isSavingBranding}
                                             onClick={handleSaveVideoBranding}
-                                            className="min-w-[140px] bg-indigo-600 text-white hover:bg-indigo-700"
+                                            className="min-w-36 bg-indigo-600 text-white hover:bg-indigo-700"
                                         >
                                             {isSavingBranding ? (
                                                 <>
@@ -1805,7 +1806,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         <Label className="text-sm font-semibold">
                                             {t('videoStyle.templateGalleryLabel')}
                                         </Label>
-                                        <p className="text-[10px] text-gray-500">
+                                        <p className="text-2xs text-gray-500">
                                             {t('videoStyle.templateGalleryHint')}
                                         </p>
                                         {isLoadingTemplates ? (
@@ -1845,7 +1846,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                     height: '135px',
                                                                     overflow: 'hidden',
                                                                     position: 'relative',
-                                                                    background: '#f3f4f6',
+                                                                    background: 'hsl(var(--muted))',
                                                                 }}
                                                             >
                                                                 <iframe
@@ -1872,7 +1873,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                 >
                                                                     {template.name}
                                                                 </p>
-                                                                <p className="truncate text-[10px] text-gray-400">
+                                                                <p className="truncate text-2xs text-gray-400">
                                                                     {template.description}
                                                                 </p>
                                                             </div>
@@ -1899,13 +1900,13 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                 DEFAULT_VIDEO_STYLE.primary_color,
                                                         }))
                                                     }
-                                                    className="text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline"
+                                                    className="text-2xs text-indigo-500 hover:text-indigo-700 hover:underline"
                                                 >
                                                     {t('videoStyle.resetToDefault')}
                                                 </button>
                                             )}
                                         </div>
-                                        <p className="text-[10px] text-gray-500">
+                                        <p className="text-2xs text-gray-500">
                                             {t('videoStyle.primaryColorHint')}
                                         </p>
                                         <div className="flex items-center gap-3">
@@ -1996,7 +1997,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         <MyButton
                                             disabled={isSavingStyle}
                                             onClick={handleSaveVideoStyle}
-                                            className="min-w-[140px] bg-indigo-600 text-white hover:bg-indigo-700"
+                                            className="min-w-36 bg-indigo-600 text-white hover:bg-indigo-700"
                                         >
                                             {isSavingStyle ? (
                                                 <>

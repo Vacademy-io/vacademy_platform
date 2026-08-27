@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { X } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { LeadFormComponent } from "./components/LeadFormComponent";
 
 /**
@@ -29,6 +30,8 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
   title,
   instituteId,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
+
   // Esc closes; lock body scroll while open.
   useEffect(() => {
     if (!isOpen) return;
@@ -51,12 +54,12 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
       className="fixed inset-0 z-catalogue-fixed flex items-end justify-center sm:items-center"
       role="dialog"
       aria-modal="true"
-      aria-label={title || "Registration form"}
+      aria-label={title || t("audienceFormModal.registrationForm")}
     >
       {/* Backdrop */}
       <button
         type="button"
-        aria-label="Close form"
+        aria-label={t("audienceFormModal.closeForm")}
         onClick={onClose}
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
       />
@@ -72,7 +75,7 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
             className="catalogue-btn catalogue-btn-secondary size-9 shrink-0 justify-center rounded-full p-0"
           >
             <X className="size-4" weight="bold" aria-hidden="true" />

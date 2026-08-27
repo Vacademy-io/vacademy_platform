@@ -1,12 +1,23 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { COURSE_CATALOG_URL, GET_INVITE_LINKS, GET_SINGLE_INVITE_DETAILS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
-import { Search, Plus, X, ChevronDown, Loader2, CheckCircle2, RefreshCw, Network } from 'lucide-react';
+import {
+    MagnifyingGlass,
+    Plus,
+    X,
+    CaretDown,
+    CircleNotch,
+    CheckCircle,
+    ArrowsClockwise,
+    Network,
+} from '@phosphor-icons/react';
 import type { MappingRow } from '../-types/product-page-types';
 import { SuggestionsPanel } from './SuggestionsPanel';
 
@@ -61,20 +72,22 @@ interface InviteDetails extends EnrollInvite {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function sessionLabel(s: CourseSearchItem) {
-    const level = s.level_name;
-    const session = s.session_name || s.package_session_name;
-    if (level && session) return `${level} · ${session}`;
-    if (level) return level;
-    if (session) return session;
-    return 'Default';
+function buildSessionLabel(t: TFunction) {
+    return (s: CourseSearchItem) => {
+        const level = s.level_name;
+        const session = s.session_name || s.package_session_name;
+        if (level && session) return `${level} · ${session}`;
+        if (level) return level;
+        if (session) return session;
+        return t('sessionLabelDefault');
+    };
 }
 
 function useDebounce<T>(value: T, delay: number): T {
     const [debounced, setDebounced] = useState(value);
     useEffect(() => {
-        const t = setTimeout(() => setDebounced(value), delay);
-        return () => clearTimeout(t);
+        const timeoutId = setTimeout(() => setDebounced(value), delay);
+        return () => clearTimeout(timeoutId);
     }, [value, delay]);
     return debounced;
 }
@@ -92,6 +105,8 @@ interface SelectedRowProps {
 const SelectedRow = ({
     row, session, onChange, onRemove, index,
 }: SelectedRowProps) => {
+    const { t } = useTranslation('managePagesCourseSessionSelector');
+    const sessionLabel = useMemo(() => buildSessionLabel(t), [t]);
     const instituteId = getCurrentInstituteId() || getInstituteId() || '';
     const [showInviteDropdown, setShowInviteDropdown] = useState(false);
 
@@ -200,16 +215,16 @@ const SelectedRow = ({
                                 : row.packageSessionId.slice(0, 16) + '…'}
                         </p>
                         {isLoading && (
-                            <span className="flex items-center gap-1 text-[11px] text-neutral-400">
-                                <Loader2 className="size-3 animate-spin" />
-                                Loading invite…
+                            <span className="flex items-center gap-1 text-2xs text-neutral-400">
+                                <CircleNotch className="size-3 animate-spin" />
+                                {t('selectedRow.loadingInvite')}
                             </span>
                         )}
                     </div>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
-                    {isReady && !isLoading && <CheckCircle2 className="size-4 text-success-500" />}
+                    {isReady && !isLoading && <CheckCircle className="size-4 text-success-500" />}
                     <button
                         type="button"
                         onClick={onRemove}
@@ -230,16 +245,16 @@ const SelectedRow = ({
                         onClick={() => setShowInviteDropdown((v) => !v)}
                         className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-default disabled:opacity-70"
                     >
-                        <span className="max-w-[180px] truncate font-medium">
-                            {row.inviteName || 'Selecting invite…'}
+                        <span className="max-w-44 truncate font-medium">
+                            {row.inviteName || t('selectedRow.selectingInvite')}
                         </span>
                         {invites.length > 1 && (
                             <>
                                 <span className="text-neutral-300">·</span>
-                                <span className="text-[10px] text-primary-500">
-                                    {invites.length} invites
+                                <span className="text-2xs text-primary-500">
+                                    {t('selectedRow.invitesCount', { count: invites.length })}
                                 </span>
-                                <ChevronDown className="size-3 text-neutral-400" />
+                                <CaretDown className="size-3 text-neutral-400" />
                             </>
                         )}
                     </button>
@@ -273,7 +288,7 @@ const SelectedRow = ({
                     </span>
                 ) : row.paymentPlanId ? (
                     <span className="rounded-lg bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-500">
-                        Free
+                        {t('selectedRow.free')}
                     </span>
                 ) : null}
 
@@ -285,19 +300,19 @@ const SelectedRow = ({
                         onChange={(e) => onChange({ ...row, preselected: e.target.checked })}
                         className="size-3.5 accent-primary-500"
                     />
-                    <span className="text-xs text-neutral-500">Pre-selected</span>
+                    <span className="text-xs text-neutral-500">{t('selectedRow.preselected')}</span>
                 </label>
             </div>
 
             {/* Not-ready warning */}
             {!isReady && !isLoading && row.inviteId && (
-                <p className="mt-2 text-[11px] text-warning-600">
-                    No matching payment option found for this invite and session.
+                <p className="mt-2 text-2xs text-warning-600">
+                    {t('selectedRow.noMatchingPaymentOption')}
                 </p>
             )}
             {!isReady && !isLoading && !row.inviteId && invites.length === 0 && (
-                <p className="mt-2 text-[11px] text-danger-600">
-                    No active invite found for this session. Create an invite first.
+                <p className="mt-2 text-2xs text-danger-600">
+                    {t('selectedRow.noActiveInvite')}
                 </p>
             )}
         </div>
@@ -323,6 +338,8 @@ export const CourseSessionSelector = ({
     suggestions,
     onUpdateSuggestions,
 }: CourseSessionSelectorProps) => {
+    const { t } = useTranslation('managePagesCourseSessionSelector');
+    const sessionLabel = useMemo(() => buildSessionLabel(t), [t]);
     const instituteId = getCurrentInstituteId() || getInstituteId() || '';
     const [view, setView] = useState<'list' | 'suggestions'>('list');
     const [search, setSearch] = useState('');
@@ -428,7 +445,7 @@ export const CourseSessionSelector = ({
     const getRowLabel = useCallback((row: MappingRow) => {
         const s = sessionLookup.get(row.packageSessionId);
         return s ? `${s.package_name} · ${sessionLabel(s)}` : row.inviteName || '…';
-    }, [sessionLookup]);
+    }, [sessionLookup, sessionLabel]);
 
     // Sentinel ref for "load more" at bottom of list
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -447,7 +464,7 @@ export const CourseSessionSelector = ({
     // Search is server-side — just group whatever is loaded
     const grouped: Record<string, CourseSearchItem[]> = {};
     for (const s of allSessions) {
-        const key = s.package_name || 'Other';
+        const key = s.package_name || t('browser.otherGroup');
         if (!grouped[key]) grouped[key] = [];
         grouped[key]!.push(s);
     }
@@ -528,8 +545,8 @@ export const CourseSessionSelector = ({
                                 : 'text-neutral-500 hover:text-neutral-700'
                         }`}
                     >
-                        Courses
-                        <span className={`rounded-full px-1.5 text-[10px] font-semibold ${view === 'list' ? 'bg-primary-100 text-primary-700' : 'bg-neutral-200 text-neutral-500'}`}>
+                        {t('tabs.courses')}
+                        <span className={`rounded-full px-1.5 text-2xs font-semibold ${view === 'list' ? 'bg-primary-100 text-primary-700' : 'bg-neutral-200 text-neutral-500'}`}>
                             {readyCount}/{mappingRows.length}
                         </span>
                     </button>
@@ -543,7 +560,7 @@ export const CourseSessionSelector = ({
                         }`}
                     >
                         <Network className="size-3.5" />
-                        Suggestions
+                        {t('tabs.suggestions')}
                     </button>
                 </div>
             )}
@@ -564,7 +581,7 @@ export const CourseSessionSelector = ({
                     <div className="mb-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <h3 className="text-sm font-semibold text-neutral-800">
-                                Selected Courses
+                                {t('selectedCourses.heading')}
                             </h3>
                         </div>
                         <MyButton
@@ -573,7 +590,7 @@ export const CourseSessionSelector = ({
                             onClick={() => setShowBrowser((v) => !v)}
                         >
                             <Plus className="size-3.5" />
-                            Add More
+                            {t('selectedCourses.addMore')}
                         </MyButton>
                     </div>
 
@@ -593,7 +610,7 @@ export const CourseSessionSelector = ({
                     {/* Total price summary */}
                     {totalPrice > 0 && (
                         <div className="mt-3 flex items-center justify-end rounded-xl border border-neutral-100 bg-white px-4 py-3">
-                            <span className="text-sm text-neutral-500">Combined total:</span>
+                            <span className="text-sm text-neutral-500">{t('selectedCourses.combinedTotal')}</span>
                             <span className="ml-2 text-base font-bold text-neutral-900">
                                 {currency} {totalPrice.toLocaleString()}
                             </span>
@@ -607,15 +624,15 @@ export const CourseSessionSelector = ({
                 <div className="rounded-xl border border-neutral-200 bg-white shadow-sm">
                     {/* Browser header */}
                     <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
-                        <Search className="size-4 shrink-0 text-neutral-400" />
+                        <MagnifyingGlass className="size-4 shrink-0 text-neutral-400" />
                         <Input
-                            placeholder="Search courses or batches…"
+                            placeholder={t('browser.searchPlaceholder')}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             className="h-8 flex-1 border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
                         />
                         {sessionsLoading && (
-                            <Loader2 className="size-4 shrink-0 animate-spin text-neutral-300" />
+                            <CircleNotch className="size-4 shrink-0 animate-spin text-neutral-300" />
                         )}
                         {!sessionsLoading && unselectedCount > 0 && (
                             <button
@@ -623,16 +640,16 @@ export const CourseSessionSelector = ({
                                 onClick={handleSelectAll}
                                 className="shrink-0 rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600"
                             >
-                                + Select all ({unselectedCount})
+                                {t('browser.selectAll', { count: unselectedCount })}
                             </button>
                         )}
                         <button
                             type="button"
                             onClick={() => refetchSessions()}
-                            title="Refresh"
+                            title={t('browser.refresh')}
                             className="text-neutral-300 transition-colors hover:text-neutral-500"
                         >
-                            <RefreshCw className="size-3.5" />
+                            <ArrowsClockwise className="size-3.5" />
                         </button>
                         {mappingRows.length > 0 && (
                             <button
@@ -649,21 +666,21 @@ export const CourseSessionSelector = ({
                     <div className="max-h-96 overflow-y-auto">
                         {sessionsLoading ? (
                             <div className="flex items-center justify-center py-10 text-sm text-neutral-400">
-                                <Loader2 className="mr-2 size-4 animate-spin" />
-                                Loading sessions…
+                                <CircleNotch className="me-2 size-4 animate-spin" />
+                                {t('browser.loadingSessions')}
                             </div>
                         ) : allSessions.length === 0 ? (
                             <div className="py-10 text-center text-sm text-neutral-400">
                                 {debouncedSearch
-                                    ? `No sessions match "${debouncedSearch}"`
-                                    : 'No active sessions found.'}
+                                    ? t('browser.noSessionsMatch', { query: debouncedSearch })
+                                    : t('browser.noActiveSessions')}
                             </div>
                         ) : (
                             <>
                                 {Object.entries(grouped).map(([courseName, sessions]) => (
                                     <div key={courseName}>
                                         {/* Course group header */}
-                                        <div className="sticky top-0 border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                                        <div className="sticky top-0 border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-neutral-400">
                                             {courseName}
                                         </div>
 
@@ -690,9 +707,9 @@ export const CourseSessionSelector = ({
                                                         </p>
                                                     </div>
                                                     {isAdded ? (
-                                                        <span className="ml-3 flex shrink-0 items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-semibold text-primary-600">
-                                                            <CheckCircle2 className="size-3" />
-                                                            Added
+                                                        <span className="ms-3 flex shrink-0 items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-2xs font-semibold text-primary-600">
+                                                            <CheckCircle className="size-3" />
+                                                            {t('browser.added')}
                                                         </span>
                                                     ) : (
                                                         <button
@@ -701,10 +718,10 @@ export const CourseSessionSelector = ({
                                                                 e.stopPropagation();
                                                                 handleAddSession(session);
                                                             }}
-                                                            className="ml-3 flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600"
+                                                            className="ms-3 flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-2xs font-medium text-neutral-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600"
                                                         >
                                                             <Plus className="size-3" />
-                                                            Add
+                                                            {t('browser.add')}
                                                         </button>
                                                     )}
                                                 </div>
@@ -717,8 +734,8 @@ export const CourseSessionSelector = ({
                                 <div ref={loadMoreRef} className="px-4 py-3">
                                     {isFetchingNextPage && (
                                         <div className="flex items-center justify-center gap-2 text-xs text-neutral-400">
-                                            <Loader2 className="size-3.5 animate-spin" />
-                                            Loading more…
+                                            <CircleNotch className="size-3.5 animate-spin" />
+                                            {t('browser.loadingMore')}
                                         </div>
                                     )}
                                     {!isFetchingNextPage && hasNextPage && (
@@ -727,8 +744,9 @@ export const CourseSessionSelector = ({
                                             onClick={() => fetchNextPage()}
                                             className="w-full rounded-lg border border-neutral-200 py-1.5 text-xs text-neutral-500 transition-colors hover:bg-neutral-50"
                                         >
-                                            Load more ({totalElements - allSessions.length}{' '}
-                                            remaining)
+                                            {t('browser.loadMore', {
+                                                count: totalElements - allSessions.length,
+                                            })}
                                         </button>
                                     )}
                                 </div>
@@ -738,9 +756,12 @@ export const CourseSessionSelector = ({
 
                     {/* Footer hint */}
                     {allSessions.length > 0 && (
-                        <div className="border-t border-neutral-100 px-4 py-2 text-[11px] text-neutral-400">
-                            {allSessions.length} of {totalElements} sessions loaded ·{' '}
-                            {selectedSessionIds.size} selected
+                        <div className="border-t border-neutral-100 px-4 py-2 text-2xs text-neutral-400">
+                            {t('browser.footerHint', {
+                                loaded: allSessions.length,
+                                total: totalElements,
+                                selected: selectedSessionIds.size,
+                            })}
                         </div>
                     )}
                 </div>

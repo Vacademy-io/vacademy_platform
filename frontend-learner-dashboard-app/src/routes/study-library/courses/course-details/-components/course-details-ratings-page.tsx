@@ -3,8 +3,11 @@ import {
     ChatCircle,
     TrendUp,
 } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { MyPagination } from "@/components/design-system/pagination";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
@@ -83,6 +86,8 @@ export function CourseDetailsRatingsComponent({
     packageSessionId: string | null;
     onLoadingChange?: (loading: boolean) => void;
 }) {
+    const { t } = useTranslation("courseDetailsA");
+    const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const router = useRouter();
     const searchParams = router.state.location.search;
     const queryClient = useQueryClient();
@@ -250,14 +255,14 @@ export function CourseDetailsRatingsComponent({
 
             if (error instanceof AxiosError) {
                 toast.error(
-                    error?.response?.data?.ex || "Failed to submit rating",
+                    error?.response?.data?.ex || t("ratings.toast.submitFailed"),
                     {
                         className: "error-toast",
                         duration: 2000,
                     }
                 );
             } else {
-                toast.error("An unexpected error occurred", {
+                toast.error(t("ratings.toast.unexpectedError"), {
                     className: "error-toast",
                     duration: 2000,
                 });
@@ -377,7 +382,7 @@ export function CourseDetailsRatingsComponent({
             return handleSubmitRating(rating, desc, source_id);
         },
         onSuccess: () => {
-            toast.success("Thank you for your feedback!", {
+            toast.success(t("ratings.toast.thankYou"), {
                 className: "success-toast",
                 duration: 2000,
             });
@@ -395,14 +400,14 @@ export function CourseDetailsRatingsComponent({
         onError: (error: unknown) => {
             if (error instanceof AxiosError) {
                 toast.error(
-                    error?.response?.data?.ex || "Failed to submit rating",
+                    error?.response?.data?.ex || t("ratings.toast.submitFailed"),
                     {
                         className: "error-toast",
                         duration: 2000,
                     }
                 );
             } else {
-                toast.error("An unexpected error occurred", {
+                toast.error(t("ratings.toast.unexpectedError"), {
                     className: "error-toast",
                     duration: 2000,
                 });
@@ -417,7 +422,7 @@ export function CourseDetailsRatingsComponent({
 
         // Ensure rating is selected
         if (!selectedRating) {
-            toast.error("Please select a rating before submitting", {
+            toast.error(t("ratings.toast.selectRatingFirst"), {
                 className: "error-toast",
                 duration: 2000,
             });
@@ -484,7 +489,7 @@ export function CourseDetailsRatingsComponent({
                             "text-sm font-bold text-gray-900 tracking-tight leading-tight",
                             "[.ui-play_&]:text-play-ink"
                         )}>
-                            Ratings & Reviews
+                            {t("ratings.heading")}
                         </h1>
                         <p className={cn(
                             "text-caption text-gray-600 flex items-center gap-1",
@@ -498,7 +503,7 @@ export function CourseDetailsRatingsComponent({
                                 )}
                                 weight="duotone"
                             />
-                            <span>Community feedback and ratings</span>
+                            <span>{t("ratings.subheading")}</span>
                         </p>
                     </div>
                 </div>
@@ -511,12 +516,12 @@ export function CourseDetailsRatingsComponent({
                         "text-xs font-semibold text-neutral-700 dark:text-neutral-300",
                         "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold"
                     )}>
-                        Your Feedback
+                        {t("ratings.form.feedbackLabel")}
                     </label>
                     <Textarea
                         value={feedbackText}
                         onChange={(e) => setFeedbackText(e.target.value)}
-                        placeholder="Write your feedback..."
+                        placeholder={t("ratings.form.feedbackPlaceholder")}
                         rows={2}
                         className="resize-none text-xs"
                     />
@@ -524,7 +529,7 @@ export function CourseDetailsRatingsComponent({
                         "text-xs font-semibold text-neutral-700 dark:text-neutral-300",
                         "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold"
                     )}>
-                        Rating <span className="text-red-500">*</span>
+                        {t("ratings.form.ratingLabel")} <span className="text-red-500">*</span>
                     </label>
                     <div className="flex items-center gap-1.5">
                         {[1, 2, 3, 4, 5].map((star) => (
@@ -554,7 +559,7 @@ export function CourseDetailsRatingsComponent({
                             "[.ui-play_&]:text-play-muted-deep [.ui-play_&]:font-bold"
                         )}>
                             {selectedRating
-                                ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
+                                ? t("ratings.form.starCount", { count: selectedRating })
                                 : ""}
                         </span>
                     </div>
@@ -578,7 +583,7 @@ export function CourseDetailsRatingsComponent({
                         )}
                         onClick={handleSubmit}
                     >
-                        {submitting ? "Submitting..." : "Submit Feedback"}
+                        {submitting ? t("ratings.form.submitting") : t("ratings.form.submit")}
                     </MyButton>
                 </form>
 
@@ -647,13 +652,15 @@ export function CourseDetailsRatingsComponent({
                                                 weight="duotone"
                                             />
                                             <span className="text-xs font-medium">
-                                                {overallRatingData?.total_reviews !==
-                                                    null &&
-                                                    overallRatingData?.total_reviews !==
-                                                    undefined
-                                                    ? overallRatingData.total_reviews
-                                                    : 0}{" "}
-                                                reviews
+                                                {t("ratings.reviewsCount", {
+                                                    count:
+                                                        overallRatingData?.total_reviews !==
+                                                            null &&
+                                                            overallRatingData?.total_reviews !==
+                                                            undefined
+                                                            ? overallRatingData.total_reviews
+                                                            : 0,
+                                                })}
                                             </span>
                                         </div>
                                     </div>
@@ -751,11 +758,10 @@ export function CourseDetailsRatingsComponent({
                                     />
                                 </div>
                                 <h3 className="text-sm font-bold text-gray-900 mb-0.5">
-                                    No reviews yet
+                                    {t("ratings.empty.title")}
                                 </h3>
                                 <p className="text-gray-600 text-caption">
-                                    Be the first to share your experience with
-                                    this course
+                                    {t("ratings.empty.description", { course })}
                                 </p>
                             </div>
                         </div>

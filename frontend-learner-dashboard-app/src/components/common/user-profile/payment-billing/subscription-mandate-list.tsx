@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { ArrowsClockwise, Info, SpinnerGap, Warning } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { MyButton } from "@/components/design-system/button";
 import {
   Dialog,
@@ -48,6 +49,7 @@ export const SubscriptionMandateList = ({
   // subscription surface Apple flags under Guideline 3.1.1. Constant per session.
   if (shouldHidePaidPurchaseUI()) return null;
 
+  const { t } = useTranslation("userProfileExtra");
   const queryClient = useQueryClient();
   const [toCancel, setToCancel] = useState<Subscription | null>(null);
 
@@ -66,8 +68,8 @@ export const SubscriptionMandateList = ({
     mutationFn: (userPlanId: string) =>
       cancelSubscription(instituteId, userPlanId),
     onSuccess: () => {
-      toast.success("Autopay cancelled", {
-        description: "You keep access until the end of your current period.",
+      toast.success(t("subscriptionMandate.toast.cancelSuccessTitle"), {
+        description: t("subscriptionMandate.toast.cancelSuccessDescription"),
       });
       setToCancel(null);
       queryClient.invalidateQueries({
@@ -75,8 +77,8 @@ export const SubscriptionMandateList = ({
       });
     },
     onError: () => {
-      toast.error("Couldn't cancel autopay", {
-        description: "Please try again in a moment.",
+      toast.error(t("subscriptionMandate.toast.cancelErrorTitle"), {
+        description: t("subscriptionMandate.toast.cancelErrorDescription"),
       });
     },
   });
@@ -85,7 +87,7 @@ export const SubscriptionMandateList = ({
     return (
       <div className="flex items-center gap-2 py-3 text-sm text-gray-500">
         <SpinnerGap className="size-4 animate-spin" />
-        Loading subscriptions...
+        {t("subscriptionMandate.loading")}
       </div>
     );
   }
@@ -94,7 +96,7 @@ export const SubscriptionMandateList = ({
     return (
       <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
         <Info className="size-4 shrink-0" />
-        Subscriptions are unavailable right now. Please try again later.
+        {t("subscriptionMandate.error")}
       </div>
     );
   }
@@ -107,7 +109,7 @@ export const SubscriptionMandateList = ({
     return (
       <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
         <Info className="size-4 shrink-0" />
-        You have no active auto-renewing subscriptions.
+        {t("subscriptionMandate.empty")}
       </div>
     );
   }
@@ -131,25 +133,25 @@ export const SubscriptionMandateList = ({
               <div>
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-gray-700">
-                    {sub.plan_name ?? "Subscription"}
+                    {sub.plan_name ?? t("subscriptionMandate.defaultPlanName")}
                   </p>
                   {sub.is_trial && (
                     <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-500">
-                      Trial
+                      {t("subscriptionMandate.trial")}
                     </span>
                   )}
                   {!cancellable && (
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-                      Autopay off
+                      {t("subscriptionMandate.autopayOff")}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-gray-500">
                   {cancellable && nextCharge
-                    ? `Auto-renews on ${nextCharge}`
+                    ? t("subscriptionMandate.autoRenewsOn", { date: nextCharge })
                     : accessUntil
-                      ? `Access until ${accessUntil}`
-                      : "Recurring subscription"}
+                      ? t("subscriptionMandate.accessUntil", { date: accessUntil })
+                      : t("subscriptionMandate.recurringSubscription")}
                 </p>
               </div>
             </div>
@@ -161,7 +163,7 @@ export const SubscriptionMandateList = ({
                 layoutVariant="default"
                 onClick={() => setToCancel(sub)}
               >
-                Cancel autopay
+                {t("subscriptionMandate.cancelAutopay")}
               </MyButton>
             )}
           </div>
@@ -178,16 +180,18 @@ export const SubscriptionMandateList = ({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Warning className="size-5 text-danger-500" weight="fill" />
-              Cancel autopay?
+              {t("subscriptionMandate.dialog.title")}
             </DialogTitle>
             <DialogDescription>
-              Auto-renewal for{" "}
+              {t("subscriptionMandate.dialog.descriptionPrefix")}{" "}
               <span className="font-medium text-gray-700">
-                {toCancel?.plan_name ?? "this subscription"}
+                {toCancel?.plan_name ?? t("subscriptionMandate.dialog.defaultPlanName")}
               </span>{" "}
-              will stop. You&apos;ll keep access until{" "}
-              {formatDate(toCancel?.end_date) ?? "the end of your current period"}
-              , and won&apos;t be charged again.
+              {t("subscriptionMandate.dialog.descriptionSuffix", {
+                endDate:
+                  formatDate(toCancel?.end_date) ??
+                  t("subscriptionMandate.dialog.defaultEndDate"),
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -199,7 +203,7 @@ export const SubscriptionMandateList = ({
               onClick={() => setToCancel(null)}
               disable={cancelMutation.isPending}
             >
-              Keep autopay
+              {t("subscriptionMandate.dialog.keepAutopay")}
             </MyButton>
             <MyButton
               type="button"
@@ -211,7 +215,9 @@ export const SubscriptionMandateList = ({
               }
               disable={cancelMutation.isPending}
             >
-              {cancelMutation.isPending ? "Cancelling..." : "Cancel autopay"}
+              {cancelMutation.isPending
+                ? t("subscriptionMandate.dialog.cancelling")
+                : t("subscriptionMandate.cancelAutopay")}
             </MyButton>
           </DialogFooter>
         </DialogContent>

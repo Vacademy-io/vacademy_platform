@@ -25,7 +25,8 @@
             "evening": "Bonsoir",
             "morningWithName": "Bonjour, {{name}}",
             "afternoonWithName": "Bon après-midi, {{name}}",
-            "eveningWithName": "Bonsoir, {{name}}"
+            "eveningWithName": "Bonsoir, {{name}}",
+            "welcomeBackFallback": "Bon retour"
         },
         "pickUpWhereLeftOff": "Reprenez là où vous en étiez",
         "yourFirstSlide": "votre première {{slide}}",
@@ -212,5 +213,174 @@
         "awardedTooltipWithReason": "{{name}} — Décerné par votre établissement : {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} débloqués",
         "emptyPrompt": "Terminez votre première {{slide}} pour débloquer un badge"
+    },
+    "tnc": {
+        "title": "Accepter les conditions générales",
+        "description": "Vous devez lire et accepter les conditions générales de votre établissement avant d'accéder à votre tableau de bord.",
+        "scrollToRead": "Faites défiler pour lire",
+        "readAgree": "J'ai lu et j'accepte les conditions générales",
+        "digitalSignature": "Signature numérique",
+        "namePlaceholder": "Entrez votre nom légal complet",
+        "signaturePrefilled": "Votre nom enregistré est affiché ci-dessus. En cliquant sur Accepter, vous signez numériquement ce document.",
+        "signatureManual": "En saisissant votre nom et en cliquant sur Accepter, vous signez numériquement ce document.",
+        "accepting": "Acceptation en cours...",
+        "acceptButton": "J'accepte et je continue",
+        "toast": {
+            "needConfirmRead": "Veuillez confirmer que vous avez lu et accepté les conditions générales",
+            "needName": "Veuillez saisir votre nom complet pour accepter",
+            "success": "Conditions générales acceptées avec succès",
+            "failure": "Échec de l'acceptation des conditions générales. Veuillez réessayer."
+        }
+    },
+    "achievements": {
+        "title": "Vos réussites",
+        "xpToNextLevel": "{{xp}} XP avant le niveau {{level}}",
+        "badgesUnlocked": "Badges · {{unlocked}}/{{total}} débloqués"
+    },
+    "attendance": {
+        "title": "Présence",
+        "period7d": "7 jours",
+        "period30d": "30 jours",
+        "period90d": "3 mois",
+        "dayStatus": {
+            "present": "Présent",
+            "absent": "Absent",
+            "noClass": "Pas de cours",
+            "notMarked": "Pas encore renseigné"
+        },
+        "emptyTitleWithStreak": "Assistez à votre {{liveClass}} aujourd'hui pour démarrer votre série",
+        "emptyTitleNoStreak": "Assistez à votre {{liveClass}} aujourd'hui pour commencer le suivi de présence",
+        "emptyBodyWithStreak": "Vos statistiques de présence et votre série hebdomadaire s'afficheront ici.",
+        "emptyBodyNoStreak": "Vos statistiques de présence de la semaine s'afficheront ici.",
+        "viewDetailsAria": "Voir le détail de la présence",
+        "coverageNote_one": "{{count}} jour de {{liveClass}} depuis le {{date}}",
+        "coverageNote_other": "{{count}} jours de {{liveClass}} depuis le {{date}}",
+        "overall": "Total",
+        "streak": "Série",
+        "daysPresent": "Jours de présence",
+        "thisWeek": "Cette semaine",
+        "coverageNote_many": "{{count}} jours de {{liveClass}} depuis le {{date}}"
+    },
+    "continueLearning": {
+        "startLearningTitle": "Commencer à apprendre",
+        "allCaughtUpTitle": "Tout est à jour !",
+        "browsePrompt": "Parcourez vos {{courses}} et commencez par un {{slide}}.",
+        "allCompletePrompt": "Vous avez terminé tous les {{slides}} disponibles. Excellent travail, continuez sur cette lancée.",
+        "startFirstSlideButton": "Commencer par un {{slide}}",
+        "exploreContentButton": "Explorer le contenu",
+        "title": "Continuer l'apprentissage",
+        "slidesInProgress": "{{count}} {{slide}} en cours",
+        "continueFromWhereLeftOff": "Reprenez là où vous en étiez",
+        "resumeLearningButton": "Reprendre l'apprentissage"
+    },
+    "dashboardHero": {
+        "loadingAria": "Chargement",
+        "liveNow": "En direct maintenant",
+        "startsInMinutes": "Commence dans {{minutes}} min",
+        "joinAria": "Rejoindre {{title}}",
+        "welcomeWithName": "Bienvenue, {{name}}",
+        "welcome": "Bienvenue",
+        "getStartedTitle": "Commençons",
+        "getStartedSubtitle": "Quelques étapes rapides pour profiter au maximum de votre apprentissage.",
+        "browseCoursesLabel": "Parcourez vos {{courses}}",
+        "browseCoursesHint": "Ouvrez un sujet et commencez par un {{slide}}",
+        "tryAssessmentLabel": "Essayer une évaluation",
+        "tryAssessmentHint": "Vérifiez vos connaissances avec un quiz rapide",
+        "completeProfileLabel": "Complétez votre profil",
+        "completeProfileHint": "Ajoutez vos informations pour personnaliser l'apprentissage"
+    },
+    "activityChart": {
+        "emptyMessage": "Votre activité apparaîtra ici au fur et à mesure de votre apprentissage.",
+        "title": "Tendance de progression de l'apprentissage",
+        "subtitle": "Comparaison hebdomadaire de l'activité d'apprentissage",
+        "status": {
+            "justStarting": "Tout juste commencé",
+            "excellent": "Excellent",
+            "onTrack": "Sur la bonne voie",
+            "needsFocus": "Besoin de concentration"
+        },
+        "avgLabel": "Moy. : {{time}}",
+        "yourStudyTime": "Votre temps d'étude",
+        "batchAverage": "Moyenne de {{batch}}",
+        "realTimeData": "Données en temps réel",
+        "performanceVsBatch": "Performance par rapport à {{batch}} :",
+        "above": "↗ Au-dessus",
+        "below": "↘ En dessous",
+        "activeDays": "{{active}}/{{total}} jours actifs",
+        "peakDay": "Meilleur jour",
+        "vsBatch": "Vs {{batch}}",
+        "percentDifference": "{{percent}} % de différence",
+        "yourTime": "Votre temps"
+    },
+    "learningInsights": {
+        "title": "Progression de l'apprentissage",
+        "subtitle": "Activité des 7 derniers jours vs moyenne de {{batch}}",
+        "avgLabel": "moy.",
+        "sessionsLabel": "sessions",
+        "streakLabel_one": "jour de série",
+        "streakLabel_other": "jours de série",
+        "chartViewTitle": "Vue graphique",
+        "tableViewTitle": "Vue tableau",
+        "loadError": "Impossible de charger votre activité d'apprentissage.",
+        "tryAgain": "Réessayer",
+        "streakLabel_many": "jours de série"
+    },
+    "mentors": {
+        "title": "Mes mentors",
+        "emptyStateTitle": "Mentorat",
+        "emptyStateBody": "Bénéficiez d'un accompagnement individuel — parcourez les mentors de votre établissement et demandez celui qui correspond à vos besoins.",
+        "findMentorButton": "Trouver un mentor",
+        "viewAll": "Tout voir",
+        "nextSession": "Prochaine séance",
+        "mentorSessionFallback": "Séance de mentorat",
+        "linkPendingTooltip": "Le lien de réunion de votre mentor est encore en cours de création. Revenez sous peu.",
+        "linkComingSoon": "Lien bientôt disponible",
+        "mentorFallbackName": "Mentor",
+        "chatOpenError": "Impossible d'ouvrir la discussion. Veuillez réessayer."
+    },
+    "onboardingGate": {
+        "finishSetupWithName": "Terminez la configuration du compte de {{name}}",
+        "finishSetupGeneric": "Terminez la configuration de votre compte",
+        "completeStepsPrompt": "Terminez les étapes ci-dessous pour accéder à votre tableau de bord.",
+        "progressLabel": "Progression",
+        "waitingOnAdminSuffix": "est pris en charge par l'administrateur de votre établissement — vous n'avez rien à faire ici."
+    },
+    "dashboardPage": {
+        "pageTitle": "Tableau de bord",
+        "metaDescription": "Tableau de bord d'entreprise - Système de gestion de l'apprentissage",
+        "yogaGreeting": "Prêt pour votre séance de yoga du jour ?",
+        "classesToday": "{{count}} {{liveClass}} aujourd'hui",
+        "attendanceStreakFact": "série de présence de {{count}} jours",
+        "statCard": {
+            "coursesEmptyAction": "Parcourir {{courses}}",
+            "liveClassesEmptyAction": "Voir {{liveClasses}}",
+            "assessmentsTitle": "Évaluations",
+            "assessmentsEmptyAction": "Voir les évaluations"
+        },
+        "customWidgetFallbackTitle": "Widget personnalisé",
+        "openButton": "Ouvrir",
+        "devTesting": {
+            "title": "Test développeur",
+            "description": "Tester la fonctionnalité de notification push"
+        },
+        "exploreMembershipsButton": "Découvrir les abonnements",
+        "exploreBooksButton": "Découvrir les livres",
+        "toast": {
+            "attendanceMarkFailed": "Échec de l'enregistrement de la présence"
+        },
+        "holistic": {
+            "yogaIllustrationAlt": "Illustration de yoga",
+            "thisWeekTitle": "Cette semaine",
+            "referFriendTitle": "Parrainer un ami",
+            "referFriendSubtitle": "Partagez l'aventure",
+            "inviteButton": "Inviter",
+            "myClassesTitle": "Mes cours",
+            "liveBadge": "En direct",
+            "joinNowButton": "Rejoindre maintenant",
+            "noLiveClassesScheduled": "Aucun {{liveClasses}} programmé",
+            "checkBackLater": "Revenez plus tard pour les prochains cours en direct",
+            "viewAllClassesButton": "Voir tous les cours",
+            "dateAtTime": "{{date}} à {{time}}"
+        }
     }
 }

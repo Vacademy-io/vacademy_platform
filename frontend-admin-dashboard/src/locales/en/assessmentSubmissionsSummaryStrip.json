@@ -1,0 +1,24 @@
+{
+    "tiles": {
+        "submissionsAttempts": {
+            "label": "Submissions / Attempts"
+        },
+        "submitted": {
+            "label": "Submitted"
+        },
+        "evaluated": {
+            "label": "Evaluated"
+        },
+        "pendingEvaluation": {
+            "label": "Pending Evaluation"
+        },
+        "resultsReleased": {
+            "label": "Results Released"
+        },
+        "avgHighLow": {
+            "label": "Avg / High / Low  (/ {{totalMarks}})",
+            "value": "{{avg}} / {{high}} / {{low}}"
+        },
+        "ratio": "{{numerator}} / {{denominator}}"
+    }
+}

@@ -21,6 +21,7 @@ import { getBatchNamesByIds } from '../assessment-details/$assessmentId/$examTyp
 import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { useTranslation } from 'react-i18next';
 
 const ScheduleTestDetails = ({
     scheduleTestContent,
@@ -33,6 +34,7 @@ const ScheduleTestDetails = ({
 }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const navigate = useNavigate();
+    const { t: tHelper } = useTranslation('homeworkCreationCreateAssessmentHelper');
     const { data: instituteDetails, isLoading } = useSuspenseQuery(useInstituteQuery());
     const batchIdsList = getBatchNamesByIds(
         instituteDetails?.batches_for_sessions,
@@ -204,7 +206,7 @@ const ScheduleTestDetails = ({
                         buttonType="secondary"
                         className="h-8 min-w-8"
                         onClick={(e) => {
-                            handleDownloadQRCode(qrCodeId);
+                            handleDownloadQRCode(qrCodeId, tHelper);
                             e.stopPropagation();
                         }}
                     >

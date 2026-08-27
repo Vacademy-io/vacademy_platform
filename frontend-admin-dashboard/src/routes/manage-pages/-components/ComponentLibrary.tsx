@@ -1,9 +1,19 @@
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { getComponentTemplate, componentTemplates } from '../-utils/component-templates';
+import { getComponentTemplate, buildComponentTemplates } from '../-utils/component-templates';
 import { componentLabel } from '../-utils/component-labels';
 import { useEditorStore } from '../-stores/editor-store';
 import { useDraggable } from '@dnd-kit/core';
-import { Columns2, Columns3, Columns4, GripVertical, LayoutGrid, Plus } from 'lucide-react';
+import {
+    Columns,
+    ColumnsPlusLeft,
+    TextColumns,
+    GridFour,
+    DotsSixVertical,
+    SquaresFour,
+    Plus,
+} from '@phosphor-icons/react';
 
 // Layout presets — each maps a human label to the template key
 const LAYOUT_PRESETS = [
@@ -11,25 +21,25 @@ const LAYOUT_PRESETS = [
         key: 'columnLayout2',
         label: '2 Columns',
         description: '50 / 50',
-        icon: <Columns2 className="size-4 shrink-0 text-teal-500" />,
+        icon: <Columns className="size-4 shrink-0 text-teal-500" />,
     },
     {
         key: 'columnLayout2asymLeft',
         label: '2 Columns',
         description: '1/3 + 2/3',
-        icon: <Columns2 className="size-4 shrink-0 text-teal-500" />,
+        icon: <ColumnsPlusLeft className="size-4 shrink-0 text-teal-500" />,
     },
     {
         key: 'columnLayout3',
         label: '3 Columns',
         description: '33 / 33 / 33',
-        icon: <Columns3 className="size-4 shrink-0 text-teal-500" />,
+        icon: <TextColumns className="size-4 shrink-0 text-teal-500" />,
     },
     {
         key: 'columnLayout4',
         label: '4 Columns',
         description: '25 / 25 / 25 / 25',
-        icon: <Columns4 className="size-4 shrink-0 text-teal-500" />,
+        icon: <GridFour className="size-4 shrink-0 text-teal-500" />,
     },
 ] as const;
 
@@ -67,7 +77,7 @@ const DraggableComponentItem = ({
         >
             {/* Drag handle icon */}
             <div className="px-2 py-3 text-gray-300">
-                <GripVertical className="size-4" />
+                <DotsSixVertical className="size-4" />
             </div>
 
             {/* Click to add */}
@@ -99,22 +109,26 @@ const DraggableComponentItem = ({
 };
 
 export const ComponentLibrary = () => {
+    const { t } = useTranslation('managePagesComponentTemplates');
     const { addComponent, selectedPageId } = useEditorStore();
 
     const handleAdd = (templateKey: string) => {
         if (!selectedPageId) return;
-        const component = getComponentTemplate(templateKey);
+        const component = getComponentTemplate(templateKey, t);
         addComponent(selectedPageId, component);
     };
 
-    const contentTypes = Object.keys(componentTemplates).filter((k) => !LAYOUT_KEYS.has(k));
+    const contentTypes = useMemo(
+        () => Object.keys(buildComponentTemplates(t)).filter((k) => !LAYOUT_KEYS.has(k)),
+        [t]
+    );
 
 
     return (
         <div className="flex flex-col gap-1.5 overflow-y-auto p-3">
             {/* ── Layout containers ── */}
             <p className="mb-1 mt-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-teal-600">
-                <LayoutGrid className="size-3.5" /> Layout
+                <SquaresFour className="size-3.5" /> Layout
             </p>
             {LAYOUT_PRESETS.map((preset) => (
                 <DraggableComponentItem

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
-import { Zap, Clock } from 'lucide-react';
+import { Lightning, Clock } from '@phosphor-icons/react';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     Dialog,
     DialogContent,
@@ -53,6 +55,7 @@ export function ConfigureAudienceWorkflowDialog({
     audienceName,
     instituteId,
 }: ConfigureAudienceWorkflowDialogProps) {
+    const { t } = useTranslation('audienceManagerConfigureAudienceWorkflowDialog');
     const queryClient = useQueryClient();
 
     const [kind, setKind] = useState<WorkflowKind>('confirmation');
@@ -78,20 +81,20 @@ export function ConfigureAudienceWorkflowDialog({
     useEffect(() => {
         if (nameTouched) return;
         if (kind === 'confirmation') {
-            setName(`${audienceName} — confirmation email`);
+            setName(t('nameSuggestion.confirmation', { audienceName }));
         } else {
-            setName(`${audienceName} — follow-up after ${daysAgo} day${daysAgo === 1 ? '' : 's'}`);
+            setName(t('nameSuggestion.followup', { audienceName, count: daysAgo }));
         }
-    }, [kind, daysAgo, audienceName, nameTouched]);
+    }, [kind, daysAgo, audienceName, nameTouched, t]);
 
     // Load the institute's email templates for the dropdown. Cached for 5 min.
     const { data: templateOptions = [], isLoading: templatesLoading } = useQuery({
         queryKey: ['configure-audience-workflow-templates'],
         queryFn: async () => {
             const result = await getMessageTemplates('EMAIL', 0, 100);
-            return (result.templates ?? []).map((t: { name?: string; id?: string }) => ({
-                value: t.name ?? t.id ?? '',
-                label: t.name ?? 'Untitled',
+            return (result.templates ?? []).map((tpl: { name?: string; id?: string }) => ({
+                value: tpl.name ?? tpl.id ?? '',
+                label: tpl.name ?? t('fields.template.untitledFallback'),
             }));
         },
         staleTime: 5 * 60 * 1000,
@@ -100,8 +103,8 @@ export function ConfigureAudienceWorkflowDialog({
     const createMutation = useMutation({
         mutationFn: async () => {
             const dto = kind === 'confirmation'
-                ? buildConfirmationDTO({ name, description, instituteId, audienceId, audienceName, templateName })
-                : buildFollowupDTO({ name, description, instituteId, audienceId, audienceName, templateName, daysAgo });
+                ? buildConfirmationDTO(t, { name, description, instituteId, audienceId, audienceName, templateName })
+                : buildFollowupDTO(t, { name, description, instituteId, audienceId, audienceName, templateName, daysAgo });
             return createWorkflow(dto, getUserId());
         },
         onSuccess: () => {
@@ -112,11 +115,11 @@ export function ConfigureAudienceWorkflowDialog({
                 queryKey: ['GET_ACTIVE_WORKFLOWS_WITH_SCHEDULES'],
                 refetchType: 'all',
             });
-            toast.success('Workflow created');
+            toast.success(t('toast.success'));
             onOpenChange(false);
         },
         onError: (err) => {
-            const msg = err instanceof Error ? err.message : 'Failed to create workflow';
+            const msg = err instanceof Error ? err.message : t('toast.errorFallback');
             toast.error(msg);
         },
     });
@@ -132,10 +135,13 @@ export function ConfigureAudienceWorkflowDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-lg">
                 <DialogHeader>
-                    <DialogTitle>Configure Workflow</DialogTitle>
+                    <DialogTitle>{t('dialog.title')}</DialogTitle>
                     <DialogDescription>
-                        Set up an automated email for <span className="font-semibold">&ldquo;{audienceName}&rdquo;</span>.
-                        For more complex flows (delays, conditions, multiple steps), use the full workflow builder.
+                        <Trans
+                            i18nKey="audienceManagerConfigureAudienceWorkflowDialog:dialog.description"
+                            values={{ audienceName }}
+                            components={{ bold: <span className="font-semibold" /> }}
+                        />
                     </DialogDescription>
                 </DialogHeader>
 
@@ -143,22 +149,22 @@ export function ConfigureAudienceWorkflowDialog({
                     {/* Kind picker — two large clickable cards */}
                     <div className="space-y-1.5">
                         <Label className="text-sm font-medium text-gray-700">
-                            Workflow type <span className="text-red-400">*</span>
+                            {t('kind.label')} <span className="text-red-400">*</span>
                         </Label>
                         <div className="grid grid-cols-2 gap-2">
                             <KindCard
                                 selected={kind === 'confirmation'}
                                 onClick={() => setKind('confirmation')}
-                                icon={<Zap size={18} />}
-                                title="Confirmation"
-                                description="Sent immediately when a lead submits the form."
+                                icon={<Lightning size={18} />}
+                                title={t('kind.confirmation.title')}
+                                description={t('kind.confirmation.description')}
                             />
                             <KindCard
                                 selected={kind === 'followup'}
                                 onClick={() => setKind('followup')}
                                 icon={<Clock size={18} />}
-                                title="Follow-up"
-                                description="Sent N days after a lead submits the form."
+                                title={t('kind.followup.title')}
+                                description={t('kind.followup.description')}
                             />
                         </div>
                     </div>
@@ -167,7 +173,7 @@ export function ConfigureAudienceWorkflowDialog({
                     {kind === 'followup' && (
                         <div className="space-y-1.5">
                             <Label className="text-sm font-medium text-gray-700">
-                                Send follow-up how many days after submission? <span className="text-red-400">*</span>
+                                {t('fields.followupDays.label')} <span className="text-red-400">*</span>
                             </Label>
                             <Input
                                 type="number"
@@ -177,10 +183,8 @@ export function ConfigureAudienceWorkflowDialog({
                                 onChange={(e) => setDaysAgo(parseInt(e.target.value) || 1)}
                                 className="w-32"
                             />
-                            <p className="text-[11px] text-gray-400">
-                                Workflow runs daily at 9:00 AM IST and emails leads whose
-                                submission date is exactly this many days ago. To send on multiple
-                                days (e.g. day 3 AND day 7) create separate workflows for each.
+                            <p className="text-2xs text-gray-400">
+                                {t('fields.followupDays.helper')}
                             </p>
                         </div>
                     )}
@@ -188,7 +192,7 @@ export function ConfigureAudienceWorkflowDialog({
                     {/* Name */}
                     <div className="space-y-1.5">
                         <Label className="text-sm font-medium text-gray-700">
-                            Workflow name <span className="text-red-400">*</span>
+                            {t('fields.name.label')} <span className="text-red-400">*</span>
                         </Label>
                         <Input
                             value={name}
@@ -196,41 +200,41 @@ export function ConfigureAudienceWorkflowDialog({
                                 setNameTouched(true);
                                 setName(e.target.value);
                             }}
-                            placeholder="e.g. Welcome confirmation for new leads"
+                            placeholder={t('fields.name.placeholder')}
                         />
                     </div>
 
                     {/* Description */}
                     <div className="space-y-1.5">
                         <Label className="text-sm font-medium text-gray-700">
-                            Description <span className="text-gray-400 text-xs">(optional)</span>
+                            {t('fields.description.label')} <span className="text-gray-400 text-xs">{t('fields.description.optional')}</span>
                         </Label>
                         <Textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             rows={2}
-                            placeholder="What does this workflow do?"
+                            placeholder={t('fields.description.placeholder')}
                         />
                     </div>
 
                     {/* Template */}
                     <div className="space-y-1.5">
                         <Label className="text-sm font-medium text-gray-700">
-                            Email template <span className="text-red-400">*</span>
+                            {t('fields.template.label')} <span className="text-red-400">*</span>
                         </Label>
                         <select
                             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                             value={templateName}
                             onChange={(e) => setTemplateName(e.target.value)}
                         >
-                            <option value="">{templatesLoading ? 'Loading templates...' : '-- Select a template --'}</option>
+                            <option value="">{templatesLoading ? t('fields.template.loading') : t('fields.template.placeholder')}</option>
                             {templateOptions.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
                         </select>
                         {templateOptions.length === 0 && !templatesLoading && (
-                            <p className="text-[11px] text-amber-600">
-                                No email templates found. Create one in the Communications section first.
+                            <p className="text-2xs text-amber-600">
+                                {t('fields.template.noneFound')}
                             </p>
                         )}
                     </div>
@@ -242,14 +246,14 @@ export function ConfigureAudienceWorkflowDialog({
                         onClick={() => onOpenChange(false)}
                         disabled={createMutation.isPending}
                     >
-                        Cancel
+                        {t('actions.cancel')}
                     </Button>
                     <Button
                         onClick={() => createMutation.mutate()}
                         disabled={!canSubmit}
                         className="gap-1.5"
                     >
-                        {createMutation.isPending ? 'Creating...' : 'Create Workflow'}
+                        {createMutation.isPending ? t('actions.submitting') : t('actions.submit')}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -282,7 +286,7 @@ function KindCard({
                 {icon}
                 <span className="text-sm font-semibold">{title}</span>
             </div>
-            <p className="text-[11px] text-gray-500 leading-relaxed">{description}</p>
+            <p className="text-2xs text-gray-500 leading-relaxed">{description}</p>
         </button>
     );
 }
@@ -303,19 +307,19 @@ interface ConfirmationOpts {
     templateName: string;
 }
 
-function buildConfirmationDTO(opts: ConfirmationOpts): WorkflowBuilderDTO {
+function buildConfirmationDTO(t: TFunction, opts: ConfirmationOpts): WorkflowBuilderDTO {
     const triggerId = uuidv4();
     const emailId = uuidv4();
     return {
         name: opts.name,
-        description: opts.description || `Send confirmation email when a lead submits "${opts.audienceName}"`,
+        description: opts.description || t('dto.confirmation.descriptionFallback', { audienceName: opts.audienceName }),
         status: 'ACTIVE',
         workflow_type: 'EVENT_DRIVEN',
         institute_id: opts.instituteId,
         nodes: [
             {
                 id: triggerId,
-                name: 'Trigger: Audience form submitted',
+                name: t('dto.confirmation.triggerNodeName'),
                 node_type: 'TRIGGER',
                 config: {
                     triggerEvent: 'AUDIENCE_LEAD_SUBMISSION',
@@ -328,7 +332,7 @@ function buildConfirmationDTO(opts: ConfirmationOpts): WorkflowBuilderDTO {
             },
             {
                 id: emailId,
-                name: `Send: ${opts.templateName}`,
+                name: t('dto.sendNodeName', { templateName: opts.templateName }),
                 node_type: 'SEND_EMAIL',
                 config: {
                     templateName: opts.templateName,
@@ -377,21 +381,21 @@ interface FollowupOpts extends ConfirmationOpts {
     daysAgo: number;
 }
 
-function buildFollowupDTO(opts: FollowupOpts): WorkflowBuilderDTO {
+function buildFollowupDTO(t: TFunction, opts: FollowupOpts): WorkflowBuilderDTO {
     const queryId = uuidv4();
     const emailId = uuidv4();
     return {
         name: opts.name,
         description:
             opts.description
-            || `Send follow-up email to leads who submitted "${opts.audienceName}" exactly ${opts.daysAgo} days ago`,
+            || t('dto.followup.descriptionFallback', { audienceName: opts.audienceName, count: opts.daysAgo }),
         status: 'ACTIVE',
         workflow_type: 'SCHEDULED',
         institute_id: opts.instituteId,
         nodes: [
             {
                 id: queryId,
-                name: 'Fetch recent leads',
+                name: t('dto.followup.queryNodeName'),
                 node_type: 'QUERY',
                 config: {
                     prebuiltKey: 'fetch_audience_responses_filtered',
@@ -408,7 +412,7 @@ function buildFollowupDTO(opts: FollowupOpts): WorkflowBuilderDTO {
             },
             {
                 id: emailId,
-                name: `Send: ${opts.templateName}`,
+                name: t('dto.sendNodeName', { templateName: opts.templateName }),
                 node_type: 'SEND_EMAIL',
                 config: {
                     templateName: opts.templateName,

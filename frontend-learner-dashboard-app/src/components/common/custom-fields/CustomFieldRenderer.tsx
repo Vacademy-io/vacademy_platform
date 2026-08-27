@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { MyInput } from "@/components/design-system/input";
 import {
   Select,
@@ -58,6 +59,7 @@ export const CustomFieldRenderer = ({
   disabled = false,
   placeholder,
 }: CustomFieldRendererProps) => {
+  const { t } = useTranslation("layoutCommonB");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const { uploadFile, uploadFilePublic, getPublicUrl, getPublicUrlWithoutLogin } = useFileUpload();
@@ -97,15 +99,20 @@ export const CustomFieldRenderer = ({
 
     if (!isUnrestrictedFileTypes(allowedFileTypes)) {
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      if (!allowedFileTypes!.some((t) => t.toLowerCase() === ext)) {
-        alert(`File type .${ext} is not allowed. Allowed: ${allowedFileTypes!.join(", ")}`);
+      if (!allowedFileTypes!.some((ft) => ft.toLowerCase() === ext)) {
+        alert(
+          t("customFields.file.typeNotAllowed", {
+            ext,
+            allowed: allowedFileTypes!.join(", "),
+          })
+        );
         e.target.value = "";
         return;
       }
     }
 
     if (maxSizeMB && file.size > maxSizeMB * 1024 * 1024) {
-      alert(`File size must be less than ${maxSizeMB}MB`);
+      alert(t("customFields.file.tooLarge", { maxSizeMB }));
       e.target.value = "";
       return;
     }
@@ -156,7 +163,7 @@ export const CustomFieldRenderer = ({
       }
     } catch (err) {
       console.error("File upload failed:", err);
-      alert("File upload failed. Please try again.");
+      alert(t("customFields.file.uploadFailed"));
     } finally {
       setIsUploading(false);
     }
@@ -170,7 +177,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="text"
-            inputPlaceholder={placeholder || `Enter ${name}`}
+            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"
@@ -184,7 +191,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="number"
-            inputPlaceholder={placeholder || `Enter ${name}`}
+            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"
@@ -198,7 +205,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="email"
-            inputPlaceholder={placeholder || `Enter ${name}`}
+            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"
@@ -212,7 +219,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="url"
-            inputPlaceholder={placeholder || `Enter ${name}`}
+            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"
@@ -235,7 +242,7 @@ export const CustomFieldRenderer = ({
             }}
             enableSearch={true}
             disabled={disabled}
-            placeholder={placeholder || `Enter ${name}`}
+            placeholder={placeholder || t("customFields.enterField", { name })}
             inputStyle={{ width: "100%" }}
             containerStyle={{ width: "100%" }}
           />
@@ -254,7 +261,7 @@ export const CustomFieldRenderer = ({
             onChange={(e) => handleChange(e.target.value)}
             disabled={disabled}
             required={required}
-            placeholder={placeholder || "Pick a date"}
+            placeholder={placeholder || t("customFields.pickDate")}
             className="flex w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           />
         );
@@ -262,7 +269,7 @@ export const CustomFieldRenderer = ({
       case FieldRenderType.TEXTAREA:
         return (
           <Textarea
-            placeholder={placeholder || `Enter ${name}`}
+            placeholder={placeholder || t("customFields.enterField", { name })}
             value={value || ""}
             onChange={(e) => handleChange(e.target.value)}
             disabled={disabled}
@@ -313,7 +320,7 @@ export const CustomFieldRenderer = ({
             disabled={disabled}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder={placeholder || `Select ${name}`} />
+              <SelectValue placeholder={placeholder || t("customFields.selectField", { name })} />
             </SelectTrigger>
             <SelectContent>
               {(resolvedOptions || []).map((opt, idx) => (
@@ -396,11 +403,11 @@ export const CustomFieldRenderer = ({
             {isUploading && (
               <div className="flex items-center gap-2 text-sm text-neutral-600">
                 <SpinnerGap className="size-4 animate-spin" />
-                Uploading...
+                {t("customFields.file.uploading")}
               </div>
             )}
             {!isUploading && uploadedFileName && (
-              <div className="text-xs text-success-600">Uploaded: {uploadedFileName}</div>
+              <div className="text-xs text-success-600">{t("customFields.file.uploaded", { fileName: uploadedFileName })}</div>
             )}
             {!isUploading && !uploadedFileName && isValidUrl && (
               <a
@@ -409,13 +416,13 @@ export const CustomFieldRenderer = ({
                 rel="noopener noreferrer"
                 className="text-xs text-primary-500 underline"
               >
-                View current file
+                {t("customFields.file.viewCurrentFile")}
               </a>
             )}
             {!isUnrestrictedFileTypes(allowedFileTypes) && (
               <p className="text-xs text-neutral-500">
-                Allowed: {allowedFileTypes!.join(", ")}
-                {maxSizeMB && ` · Max ${maxSizeMB}MB`}
+                {t("customFields.file.allowedTypes", { allowed: allowedFileTypes!.join(", ") })}
+                {maxSizeMB && t("customFields.file.maxSize", { maxSizeMB })}
               </p>
             )}
           </div>
@@ -426,7 +433,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="text"
-            inputPlaceholder={placeholder || `Enter ${name}`}
+            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"

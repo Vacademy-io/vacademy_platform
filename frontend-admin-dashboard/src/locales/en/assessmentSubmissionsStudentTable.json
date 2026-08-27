@@ -1,0 +1,6 @@
+{
+    "states": {
+        "loading": "Loading...",
+        "error": "Error loading data"
+    }
+}

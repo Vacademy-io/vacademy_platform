@@ -1,6 +1,9 @@
+import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { CONTENT_ONLY_CARD_GRID } from "./course-structure-details";
 
 /**
@@ -13,11 +16,14 @@ import { CONTENT_ONLY_CARD_GRID } from "./course-structure-details";
  * header, and the same card grid the drill-down uses — literally the same
  * constant, so the two cannot drift.
  */
-export const ContentOnlyCourseDetailsSkeleton = () => (
+export const ContentOnlyCourseDetailsSkeleton = () => {
+  const { t } = useTranslation("courseDetailsA");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  return (
   <div
     className="min-h-screen bg-background w-full max-w-full"
     role="status"
-    aria-label="Loading course content"
+    aria-label={t("detailsSkeleton.loadingAriaLabel", { course })}
   >
     {/* Header — title only, matching CourseHeader's minimal mode */}
     <div className="px-2 py-3 sm:px-0 lg:py-4">
@@ -54,4 +60,5 @@ export const ContentOnlyCourseDetailsSkeleton = () => (
       </div>
     </div>
   </div>
-);
+  );
+};

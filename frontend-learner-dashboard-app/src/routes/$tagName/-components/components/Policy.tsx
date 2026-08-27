@@ -1,5 +1,6 @@
 import React from "react";
 import { useParams } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 interface PolicyProps {
     policies: {
@@ -11,6 +12,7 @@ interface PolicyProps {
 }
 
 export const Policy: React.FC<PolicyProps> = ({ policies }) => {
+    const { t } = useTranslation("coursePlayerB");
     const params = useParams({ strict: false }) as Record<string, string>;
     const policyType = params.policyType || params.courseId;
 
@@ -20,8 +22,8 @@ export const Policy: React.FC<PolicyProps> = ({ policies }) => {
     if (!policy) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-                <h1 className="text-2xl font-bold text-gray-900 mb-4">Policy Not Found</h1>
-                <p className="text-gray-600">The requested policy could not be found.</p>
+                <h1 className="text-2xl font-bold text-gray-900 mb-4">{t("policy.notFoundTitle")}</h1>
+                <p className="text-gray-600">{t("policy.notFoundDescription")}</p>
             </div>
         );
     }

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { ProductPageShell } from './-components/ProductPageShell';
 import { PaymentGatewayWrapper } from '@/components/common/enroll-by-invite/-components/payment-gateway-wrapper';
 import { handleGetProductPage } from './-services/product-page-service';
@@ -42,15 +43,20 @@ function ErrorScreen({ title, message }: { title: string; message: string }) {
     );
 }
 
+function ProductPageErrorScreen({ error }: { error: unknown }) {
+    const { t } = useTranslation('productPages');
+    return (
+        <ErrorScreen
+            title={t('errors.pageNotAvailable.title')}
+            message={error instanceof Error ? error.message : t('errors.pageNotAvailable.defaultMessage')}
+        />
+    );
+}
+
 export const Route = createFileRoute('/product-pages/$productPageCode/')({
     validateSearch: productPageSearchSchema,
     component: RouteComponent,
-    errorComponent: ({ error }) => (
-        <ErrorScreen
-            title="Page Not Available"
-            message={error instanceof Error ? error.message : 'Something went wrong loading this page.'}
-        />
-    ),
+    errorComponent: ({ error }) => <ProductPageErrorScreen error={error} />,
     pendingComponent: Spinner,
 });
 
@@ -64,6 +70,7 @@ function parseProductPageCode(rawCode: string): { code: string; embeddedParams: 
 }
 
 function RouteComponent() {
+    const { t } = useTranslation('productPages');
     const { productPageCode: rawCode } = Route.useParams();
     const search = Route.useSearch();
     const { code: productPageCode, embeddedParams } = parseProductPageCode(rawCode);
@@ -91,8 +98,8 @@ function RouteComponent() {
     if (!resolvedInstituteId) {
         return (
             <ErrorScreen
-                title="Institute Not Found"
-                message="Unable to determine the institute for this page. Please use a valid link."
+                title={t('errors.instituteNotFound.title')}
+                message={t('errors.instituteNotFound.message')}
             />
         );
     }

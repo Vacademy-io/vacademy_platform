@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { BASE_URL } from "@/constants/urls";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import {
   RazorpayCheckoutForm,
   RazorpayCheckoutFormRef,
@@ -80,6 +84,8 @@ interface EnrollmentData {
 export const EnrollmentPaymentDialog: React.FC<
   EnrollmentPaymentDialogProps
 > = ({ open, onOpenChange, instituteId, courseData, onSuccess }) => {
+  const { t } = useTranslation("coursePlayerA");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const [step, setStep] = useState<"email" | "payment" | "success">("email");
   const [vendor, setVendor] = useState("STRIPE");
   const [email, setEmail] = useState("");
@@ -196,16 +202,16 @@ export const EnrollmentPaymentDialog: React.FC<
 
       // Validate email
       if (!email.trim()) {
-        setEmailError("Email is required");
+        setEmailError(t("enrollmentPaymentDialog.emailRequired"));
         hasErrors = true;
       } else if (!validateEmail(email)) {
-        setEmailError("Please enter a valid email address");
+        setEmailError(t("common.invalidEmail"));
         hasErrors = true;
       }
 
       // Validate full name
       if (!fullName.trim()) {
-        setValidationError("Full name is required");
+        setValidationError(t("enrollmentPaymentDialog.fullNameRequired"));
         hasErrors = true;
       }
 
@@ -246,7 +252,7 @@ export const EnrollmentPaymentDialog: React.FC<
     // Surface the failure to the learner — previously this was written to
     // state that was never rendered, so a failed (free or paid) enrollment
     // looked like "nothing happened".
-    toast.error(error || "Enrollment failed. Please try again.");
+    toast.error(error || t("enrollmentPaymentDialog.enrollmentFailed"));
   };
 
   const handleClose = () => {
@@ -256,7 +262,7 @@ export const EnrollmentPaymentDialog: React.FC<
   // OTP functions
   const handleSendOTP = async () => {
     if (!email.trim()) {
-      toast.error("Please enter your email address");
+      toast.error(t("enrollmentPaymentDialog.enterEmailAddress"));
       return;
     }
 
@@ -279,9 +285,9 @@ export const EnrollmentPaymentDialog: React.FC<
       );
 
       setOtpSent(true);
-      toast.success("OTP sent to your email");
+      toast.success(t("common.otpSent"));
     } catch (error) {
-      toast.error("Failed to send OTP. Please try again");
+      toast.error(t("common.otpSendFailed"));
     } finally {
       setIsLoadingOtp(false);
     }
@@ -289,7 +295,7 @@ export const EnrollmentPaymentDialog: React.FC<
 
   const handleVerifyOTP = async () => {
     if (!otp.trim()) {
-      toast.error("Please enter the OTP");
+      toast.error(t("enrollmentPaymentDialog.enterOtp"));
       return;
     }
 
@@ -314,9 +320,9 @@ export const EnrollmentPaymentDialog: React.FC<
       setIsEmailVerified(true);
       setOtpSent(false);
       setOtp("");
-      toast.success("Email verified successfully");
+      toast.success(t("common.emailVerified"));
     } catch (error) {
-      toast.error("Failed to verify OTP. Please try again");
+      toast.error(t("common.otpVerifyFailed"));
     } finally {
       setIsVerifyingOtp(false);
     }
@@ -338,7 +344,7 @@ export const EnrollmentPaymentDialog: React.FC<
       if (!courseData.enrollInviteId) {
         setIsInitializing(false);
         setLoading(false);
-        toast.error("Invalid course data: Missing enrollment invite ID");
+        toast.error(t("enrollmentPaymentDialog.invalidCourseData", { course }));
         return;
       }
 
@@ -512,7 +518,7 @@ export const EnrollmentPaymentDialog: React.FC<
           <button
             className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <Cross2Icon className="h-4 w-4" />
           </button>
@@ -523,7 +529,7 @@ export const EnrollmentPaymentDialog: React.FC<
                 <SpinnerGap className="w-12 h-12 text-blue-500 animate-spin" />
               </div>
               <h2 className="text-xl font-semibold text-gray-700">
-                Loading...
+                {t("common.loading")}
               </h2>
             </div>
           ) : step === "success" ? (
@@ -545,10 +551,10 @@ export const EnrollmentPaymentDialog: React.FC<
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                  Enrollment Successful!
+                  {t("enrollmentPaymentDialog.enrollmentSuccessful")}
                 </h2>
                 <p className="text-gray-600">
-                  You have been successfully enrolled in the course.
+                  {t("enrollmentPaymentDialog.enrolledInCourse", { course })}
                 </p>
               </div>
               <MyButton
@@ -558,14 +564,14 @@ export const EnrollmentPaymentDialog: React.FC<
                 className="w-full h-11 text-base"
                 onClick={handleClose}
               >
-                Continue to Course
+                {t("enrollmentPaymentDialog.continueToCourse", { course })}
               </MyButton>
             </div>
           ) : (
             <>
               <div className="mb-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                  Enroll in Course
+                  {t("enrollmentPaymentDialog.enrollInCourse", { course })}
                 </h2>
                 <p className="text-sm text-gray-600">
                   {enrollmentData?.name || courseData.title}
@@ -576,7 +582,7 @@ export const EnrollmentPaymentDialog: React.FC<
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Full Name *
+                      {t("enrollmentPaymentDialog.fullNameLabel")}
                     </label>
                     <input
                       type="text"
@@ -586,7 +592,7 @@ export const EnrollmentPaymentDialog: React.FC<
                         ? "border-red-500 focus:ring-red-500"
                         : "border-gray-300 focus:ring-blue-500"
                         }`}
-                      placeholder="Enter your full name"
+                      placeholder={t("enrollmentPaymentDialog.fullNamePlaceholder")}
                     />
                     {validationError && (
                       <p className="text-red-500 text-sm mt-1">
@@ -597,7 +603,7 @@ export const EnrollmentPaymentDialog: React.FC<
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email Address *
+                      {t("enrollmentPaymentDialog.emailAddressLabel")}
                     </label>
                     <input
                       type="email"
@@ -607,7 +613,7 @@ export const EnrollmentPaymentDialog: React.FC<
                         ? "border-red-500 focus:ring-red-500"
                         : "border-gray-300 focus:ring-blue-500"
                         }`}
-                      placeholder="Enter your email address"
+                      placeholder={t("enrollmentPaymentDialog.emailAddressPlaceholder")}
                     />
                     {emailError && (
                       <p className="text-red-500 text-sm mt-1">{emailError}</p>
@@ -616,7 +622,7 @@ export const EnrollmentPaymentDialog: React.FC<
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone Number
+                      {t("enrollmentPaymentDialog.phoneNumberLabel")}
                     </label>
                     <PhoneInput
                       country={defaultPhoneCountry}
@@ -627,7 +633,7 @@ export const EnrollmentPaymentDialog: React.FC<
                       inputClass="!w-full h-10 !rounded-md !border-input"
                       buttonClass="!rounded-s-md !border-input"
                       containerClass="!w-full"
-                      placeholder="Enter your phone number"
+                      placeholder={t("enrollmentPaymentDialog.phoneNumberPlaceholder")}
                       countryCodeEditable={false}
                       enableAreaCodes={false}
                       disableCountryGuess={false}
@@ -651,10 +657,10 @@ export const EnrollmentPaymentDialog: React.FC<
                   <div className="border-t pt-4 mt-4">
                     <div className="text-center mb-4">
                       <h4 className="text-md font-semibold text-gray-900 mb-2">
-                        Email Verification
+                        {t("enrollmentPaymentDialog.emailVerificationHeading")}
                       </h4>
                       <p className="text-sm text-gray-600">
-                        Verify your email address to continue
+                        {t("enrollmentPaymentDialog.verifyEmailToContinue")}
                       </p>
                     </div>
 
@@ -678,10 +684,10 @@ export const EnrollmentPaymentDialog: React.FC<
                                 size={16}
                                 className="animate-spin me-2"
                               />
-                              Sending...
+                              {t("enrollmentPaymentDialog.sending")}
                             </>
                           ) : (
-                            "Send OTP"
+                            t("leadCollectionModal.sendOtp")
                           )}
                         </MyButton>
                       </div>
@@ -691,7 +697,7 @@ export const EnrollmentPaymentDialog: React.FC<
                       <div className="space-y-3">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Enter 6-digit OTP
+                            {t("enrollmentPaymentDialog.enterSixDigitOtp")}
                           </label>
                           <input
                             type="text"
@@ -701,7 +707,7 @@ export const EnrollmentPaymentDialog: React.FC<
                                 e.target.value.replace(/\D/g, "").slice(0, 6)
                               )
                             }
-                            placeholder="Enter OTP"
+                            placeholder={t("enrollmentPaymentDialog.enterOtpPlaceholder")}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg tracking-widest"
                             maxLength={6}
                           />
@@ -721,10 +727,10 @@ export const EnrollmentPaymentDialog: React.FC<
                                   size={16}
                                   className="animate-spin me-2"
                                 />
-                                Resending...
+                                {t("enrollmentPaymentDialog.resending")}
                               </>
                             ) : (
-                              "Resend OTP"
+                              t("leadCollectionModal.resendOtp")
                             )}
                           </MyButton>
                           <MyButton
@@ -743,10 +749,10 @@ export const EnrollmentPaymentDialog: React.FC<
                                   size={16}
                                   className="animate-spin me-2"
                                 />
-                                Verifying...
+                                {t("leadCollectionModal.verifying")}
                               </>
                             ) : (
-                              "Verify OTP"
+                              t("leadCollectionModal.verifyOtp")
                             )}
                           </MyButton>
                         </div>
@@ -770,7 +776,7 @@ export const EnrollmentPaymentDialog: React.FC<
                             />
                           </svg>
                           <span className="text-sm font-medium text-green-800">
-                            Email verified successfully
+                            {t("common.emailVerified")}
                           </span>
                         </div>
                       </div>
@@ -786,17 +792,17 @@ export const EnrollmentPaymentDialog: React.FC<
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-semibold text-gray-700">
-                            Course Summary
+                            {t("enrollmentPaymentDialog.courseSummary", { course })}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-sm mb-1">
-                          <span className="text-gray-600">Course:</span>
+                          <span className="text-gray-600">{t("enrollmentPaymentDialog.courseLabel", { course })}</span>
                           <span className="font-semibold text-gray-900">
                             {enrollmentData?.name || courseData.title}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-sm mb-1">
-                          <span className="text-gray-600">Email:</span>
+                          <span className="text-gray-600">{t("enrollmentPaymentDialog.emailLabel")}</span>
                           <span className="font-semibold text-gray-900">
                             {email}
                           </span>
@@ -805,7 +811,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           className="text-xs font-medium ms-auto block rounded border border-gray-300 bg-white text-gray-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-blue-50/50 hover:border-blue-300"
                           onClick={handleBack}
                         >
-                          Edit
+                          {t("common.edit")}
                         </button>
                       </div>
 
@@ -813,7 +819,7 @@ export const EnrollmentPaymentDialog: React.FC<
                       {availablePaymentPlans.length > 1 && (
                         <div className="space-y-3">
                           <label className="block text-sm font-medium text-gray-700">
-                            Select Payment Plan
+                            {t("enrollmentPaymentDialog.selectPaymentPlan")}
                           </label>
                           <div className="space-y-2">
                             {availablePaymentPlans.map((plan) => (
@@ -864,7 +870,7 @@ export const EnrollmentPaymentDialog: React.FC<
                                       </span>
                                     </div>
                                     <div className="text-xs text-gray-500 mt-1">
-                                      {plan.validity_in_days} days access
+                                      {t("enrollmentPaymentDialog.daysAccess", { count: plan.validity_in_days })}
                                     </div>
                                   </div>
                                 </div>
@@ -908,8 +914,7 @@ export const EnrollmentPaymentDialog: React.FC<
                                 </span>
                               </div>
                               <div className="text-xs text-gray-500 mt-1">
-                                {selectedPaymentPlan.validity_in_days} days
-                                access
+                                {t("enrollmentPaymentDialog.daysAccess", { count: selectedPaymentPlan.validity_in_days })}
                               </div>
                             </div>
                           </div>
@@ -933,15 +938,16 @@ export const EnrollmentPaymentDialog: React.FC<
                             couponCtx.state.discount > 0 && (
                               <div className="mt-3 flex justify-between text-sm">
                                 <span className="text-gray-600">
-                                  Subtotal {getCurrencySymbol(currency)}
-                                  {selectedPaymentPlan.actual_price.toFixed(2)} ·
-                                  Coupon ({couponCtx.state.appliedCode}) −
-                                  {getCurrencySymbol(currency)}
-                                  {couponCtx.state.discount.toFixed(2)}
+                                  {t("enrollmentPaymentDialog.subtotalCoupon", {
+                                    subtotal: `${getCurrencySymbol(currency)}${selectedPaymentPlan.actual_price.toFixed(2)}`,
+                                    couponCode: couponCtx.state.appliedCode,
+                                    discount: `${getCurrencySymbol(currency)}${couponCtx.state.discount.toFixed(2)}`,
+                                  })}
                                 </span>
                                 <span className="font-semibold text-gray-900">
-                                  You pay {getCurrencySymbol(currency)}
-                                  {effectiveAmount.toFixed(2)}
+                                  {t("enrollmentPaymentDialog.youPay", {
+                                    amount: `${getCurrencySymbol(currency)}${effectiveAmount.toFixed(2)}`,
+                                  })}
                                 </span>
                               </div>
                             )}
@@ -1002,10 +1008,10 @@ export const EnrollmentPaymentDialog: React.FC<
                       ) : (
                         <div className="text-center py-8">
                           <p className="text-sm text-red-600">
-                            Payment gateway not available
+                            {t("enrollmentPaymentDialog.paymentGatewayUnavailable")}
                           </p>
                           <p className="text-xs text-gray-500 mt-2">
-                            Loading Stripe...
+                            {t("enrollmentPaymentDialog.loadingStripe")}
                           </p>
                         </div>
                       )}
@@ -1013,10 +1019,10 @@ export const EnrollmentPaymentDialog: React.FC<
                   ) : (
                     <div className="text-center py-8">
                       <p className="text-sm text-red-600">
-                        No payment plan available
+                        {t("enrollmentPaymentDialog.noPaymentPlanAvailable")}
                       </p>
                       <p className="text-xs text-gray-500 mt-2">
-                        Loading payment options...
+                        {t("enrollmentPaymentDialog.loadingPaymentOptions")}
                       </p>
                     </div>
                   )}
@@ -1036,18 +1042,18 @@ export const EnrollmentPaymentDialog: React.FC<
                     {loading ? (
                       <>
                         <SpinnerGap size={18} className="animate-spin me-2" />
-                        Loading...
+                        {t("common.loading")}
                       </>
                     ) : (selectedPaymentPlan?.actual_price === 0 || (availablePaymentPlans.length > 0 && availablePaymentPlans.every(p => p.actual_price === 0))) ? (
-                      "Continue"
+                      t("enrollmentPaymentDialog.continue")
                     ) : (
-                      "Continue to Payment"
+                      t("enrollmentPaymentDialog.continueToPayment")
                     )}
                   </MyButton>
 
                   {!isEmailVerified && (
                     <p className="text-xs text-gray-500 text-center mt-2">
-                      Please verify your email address to continue
+                      {t("enrollmentPaymentDialog.pleaseVerifyEmailToContinue")}
                     </p>
                   )}
                 </div>
@@ -1098,6 +1104,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
   onBack,
   appliedCouponCode,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
   const [cashfreeSessionData, setCashfreeSessionData] = useState<{
     paymentSessionId: string;
     orderId: string;
@@ -1165,7 +1172,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
               vendor: "CASHFREE",
               amount,
               currency: currency || "INR",
-              description: `Enrollment in ${enrollmentData?.name || courseData.title}`,
+              description: t("enrollmentPaymentDialog.enrollmentDescription", { course: enrollmentData?.name || courseData.title }),
               charge_automatically: true,
               institute_id: instituteId,
               stripe_request: {},
@@ -1199,7 +1206,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
           responseData?.order_id;
 
         if (!paymentSessionId) {
-          throw new Error("Failed to initialize Cashfree payment.");
+          throw new Error(t("enrollmentPaymentDialog.cashfreeInitFailed"));
         }
 
         const ordId = orderId ?? "";
@@ -1231,7 +1238,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
         const errorMsg =
           err?.response?.data?.ex ||
           err?.response?.data?.message ||
-          (err instanceof Error ? err.message : "Failed to initialize payment");
+          (err instanceof Error ? err.message : t("enrollmentPaymentDialog.paymentInitFailed"));
         onError(errorMsg);
       } finally {
         setCashfreeInitLoading(false);
@@ -1257,7 +1264,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
     return (
       <div className="flex flex-col items-center justify-center py-8 space-y-4">
         <SpinnerGap className="w-10 h-10 text-blue-500 animate-spin" />
-        <p className="text-sm text-gray-600">Preparing payment...</p>
+        <p className="text-sm text-gray-600">{t("enrollmentPaymentDialog.preparingPayment")}</p>
       </div>
     );
   }
@@ -1274,7 +1281,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
         environment={cashfreeSessionData.environment}
         instituteId={instituteId}
         onPayClick={() => { }}
-        onPayError={() => onError("Payment initialization failed.")}
+        onPayError={() => onError(t("enrollmentPaymentDialog.paymentInitFailed"))}
         isProcessing={false}
       />
       <button
@@ -1282,7 +1289,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
         className="text-sm font-medium text-gray-600 hover:text-gray-800"
         onClick={onBack}
       >
-        Back
+        {t("common.back")}
       </button>
     </div>
   );
@@ -1338,6 +1345,8 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
   vendor: vendorProp,
   appliedCouponCode,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   // const stripe = useStripe(); // Removed
   // const elements = useElements(); // Removed
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1459,7 +1468,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             vendor: "RAZORPAY",
             amount: amount,
             currency: currency,
-            description: `Enrollment in ${enrollmentData?.name || courseData.title}`,
+            description: t("enrollmentPaymentDialog.enrollmentDescription", { course: enrollmentData?.name || courseData.title }),
             charge_automatically: true,
             institute_id: instituteId,
             stripe_request: {},
@@ -1496,7 +1505,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       console.log("Register API response:", paymentResponse);
 
       if (!response.ok) {
-        throw new Error(paymentResponse.message || paymentResponse.ex || "Failed to complete enrollment");
+        throw new Error(paymentResponse.message || paymentResponse.ex || t("enrollmentPaymentDialog.completeEnrollmentFailed"));
       }
 
       // Try to get credentials from register response and login
@@ -1547,11 +1556,11 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           refreshToken: paymentResponse.user_details.refresh_token,
         });
       } else {
-        onError("Enrollment completed but auto-login failed. Please login manually with your credentials.");
+        onError(t("enrollmentPaymentDialog.autoLoginFailed"));
       }
     } catch (error) {
       console.error("Razorpay completion error:", error);
-      onError(error instanceof Error ? error.message : "Failed to complete enrollment");
+      onError(error instanceof Error ? error.message : t("enrollmentPaymentDialog.completeEnrollmentFailed"));
     } finally {
       setIsProcessing(false);
     }
@@ -1581,7 +1590,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
         // Validate that we have a valid enroll_invite_id
         if (!finalEnrollInviteId) {
-          onError("No enrollment invite ID found. Please try again.");
+          onError(t("enrollmentPaymentDialog.noEnrollInviteId"));
           setIsProcessing(false);
           return;
         }
@@ -1617,7 +1626,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             payment_initiation_request: {
               amount: 0,
               currency: "USD",
-              description: `Free enrollment in ${enrollmentData?.name || courseData.title}`,
+              description: t("enrollmentPaymentDialog.freeEnrollmentDescription", { course: enrollmentData?.name || courseData.title }),
               charge_automatically: false,
               order_id: `free_enrollment_${Date.now()}_${Math.random()
                 .toString(36)
@@ -1651,13 +1660,13 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             refreshToken: "free_refresh_token_" + Date.now(),
           });
         } else {
-          onError(result.message || "Free course enrollment failed");
+          onError(result.message || t("enrollmentPaymentDialog.freeEnrollmentFailed", { course }));
         }
       } catch (error) {
         onError(
           error instanceof Error
             ? error.message
-            : "Free course enrollment failed. Please try again."
+            : t("enrollmentPaymentDialog.freeEnrollmentFailedRetry", { course })
         );
       } finally {
         setIsProcessing(false);
@@ -1709,7 +1718,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
               vendor: "RAZORPAY",
               amount: amount,
               currency: currency,
-              description: `Enrollment in ${enrollmentData?.name || courseData.title}`,
+              description: t("enrollmentPaymentDialog.enrollmentDescription", { course: enrollmentData?.name || courseData.title }),
               charge_automatically: true,
               institute_id: instituteId,
               stripe_request: {},
@@ -1768,7 +1777,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
         if (!orderDetails || !orderDetails.razorpayKeyId || !orderDetails.razorpayOrderId) {
           console.error("Missing Razorpay keys. Full result:", paymentResponse);
-          throw new Error("Failed to create Razorpay order. Backend did not return order details.");
+          throw new Error(t("enrollmentPaymentDialog.razorpayOrderFailed"));
         }
 
         // Step 3: Open Razorpay payment modal
@@ -1782,13 +1791,13 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             email: orderDetails.email || email,
           });
         } else {
-          throw new Error("Razorpay component not ready");
+          throw new Error(t("enrollmentPaymentDialog.razorpayNotReady"));
         }
 
         setIsProcessing(false);
       } catch (error: any) {
         console.error("Razorpay init error:", error);
-        const errorMessage = error?.response?.data?.ex || error?.response?.data?.message || (error instanceof Error ? error.message : "Failed to initialize payment");
+        const errorMessage = error?.response?.data?.ex || error?.response?.data?.message || (error instanceof Error ? error.message : t("enrollmentPaymentDialog.paymentInitFailed"));
         onError(errorMessage);
         setIsProcessing(false);
       }
@@ -1797,13 +1806,13 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
     // For paid courses, proceed with Stripe payment
     if (!stripe || !elements) {
-      onError("Stripe is not loaded. Please refresh the page.");
+      onError(t("enrollmentPaymentDialog.stripeNotLoaded"));
       return;
     }
 
     const cardElement = elements.getElement(CardElement);
     if (!cardElement) {
-      onError("Card element not found.");
+      onError(t("enrollmentPaymentDialog.cardElementNotFound"));
       return;
     }
 
@@ -1824,7 +1833,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
       if (paymentMethodError) {
         setCardError(
-          paymentMethodError.message || "Payment method creation failed."
+          paymentMethodError.message || t("enrollmentPaymentDialog.paymentMethodCreationFailed")
         );
         setIsProcessing(false);
         return;
@@ -1871,7 +1880,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             vendor: "STRIPE",
             amount: amount,
             currency: currency,
-            description: `Enrollment in ${enrollmentData?.name || courseData.title}`,
+            description: t("enrollmentPaymentDialog.enrollmentDescription", { course: enrollmentData?.name || courseData.title }),
             charge_automatically: true,
             institute_id: instituteId,
             stripe_request: {
@@ -1905,7 +1914,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           refreshToken: "mock_refresh_token_" + Date.now(),
         });
       } else {
-        onError(result.message || "Payment processing failed");
+        onError(result.message || t("enrollmentPaymentDialog.paymentProcessingFailed"));
       }
     } catch (error) {
       // For testing: if payment fails, show success anyway with mock tokens
@@ -1918,7 +1927,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         onError(
           error instanceof Error
             ? error.message
-            : "Payment failed. Please try again."
+            : t("enrollmentPaymentDialog.paymentFailedRetry")
         );
       }
     } finally {
@@ -1998,7 +2007,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             </div>
             <div className="ms-3">
               <p className="text-sm font-medium text-green-800">
-                This is a free course! No payment required.
+                {t("enrollmentPaymentDialog.freeCourseMessage", { course })}
               </p>
             </div>
           </div>
@@ -2023,7 +2032,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           {isProcessing ? (
             <>
               <SpinnerGap size={18} className="animate-spin" />
-              {amount === 0 ? "Enrolling..." : "Processing..."}
+              {amount === 0 ? t("enrollmentPaymentDialog.enrolling") : t("enrollmentPaymentDialog.processing")}
             </>
           ) : (
             <>
@@ -2042,12 +2051,12 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  Enroll for Free
+                  {t("enrollmentPaymentDialog.enrollForFree")}
                 </>
               ) : (
                 <>
                   <Lock size={18} />
-                  {vendor === "RAZORPAY" ? "Proceed to Pay" : "Enroll Now"}
+                  {vendor === "RAZORPAY" ? t("enrollmentPaymentDialog.proceedToPay") : t("enrollmentPaymentDialog.enrollNow")}
                 </>
               )}
             </>
@@ -2059,7 +2068,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       {amount > 0 && (
         <div className="text-xs text-gray-500 text-center flex items-center justify-center gap-1">
           <Lock size={14} className="inline-block me-1" />
-          Secure payment powered by
+          {t("enrollmentPaymentDialog.securePaymentPoweredBy")}
           <span className="font-semibold flex items-center gap-1 ms-1">
             {vendor === "RAZORPAY" ? (
               <span>Razorpay</span>
@@ -2098,7 +2107,7 @@ const processEnrollmentPayment = async (paymentData: any) => {
     console.log("Register API Response (Stripe/Free):", JSON.stringify(result, null, 2));
 
     if (!response.ok) {
-      throw new Error(result.message || result.ex || "Payment failed");
+      throw new Error(result.message || result.ex || i18n.t("coursePlayerA:enrollmentPaymentDialog.paymentFailedFallback"));
     }
 
     return result;

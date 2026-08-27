@@ -1,26 +1,30 @@
 import { v4 as uuidv4 } from 'uuid';
+import type { TFunction } from 'i18next';
 import { Page, Component } from '../-types/editor-types';
-import { componentTemplates } from './component-templates';
+import { buildComponentTemplates } from './component-templates';
 
 // Helper to create a component from a template with a fresh ID
-const makeComponent = (type: string, overrides?: Partial<Component>): Component => ({
-    id: uuidv4(),
-    type,
-    enabled: true,
-    ...componentTemplates[type],
-    ...overrides,
-    props: {
-        ...componentTemplates[type]?.props,
-        ...overrides?.props,
-    },
-});
+const makeComponent = (t: TFunction, type: string, overrides?: Partial<Component>): Component => {
+    const componentTemplates = buildComponentTemplates(t);
+    return {
+        id: uuidv4(),
+        type,
+        enabled: true,
+        ...componentTemplates[type],
+        ...overrides,
+        props: {
+            ...componentTemplates[type]?.props,
+            ...overrides?.props,
+        },
+    };
+};
 
 export interface PageTemplate {
     id: string;
     name: string;
     description: string;
     category: 'page' | 'section';
-    getComponents: () => Component[];
+    getComponents: (t: TFunction) => Component[];
 }
 
 export const PAGE_TEMPLATES: PageTemplate[] = [
@@ -30,11 +34,11 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Landing Page',
         description: 'Header + Hero + Stats + Course Catalog + Testimonials + Footer',
         category: 'page',
-        getComponents: () => [
-            makeComponent('header'),
-            makeComponent('heroSection', {
+        getComponents: (t) => [
+            makeComponent(t, 'header'),
+            makeComponent(t, 'heroSection', {
                 props: {
-                    ...componentTemplates['heroSection']?.props,
+                    ...buildComponentTemplates(t)['heroSection']?.props,
                     layout: 'split',
                     left: {
                         title: 'Learn Something New Today',
@@ -43,10 +47,10 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
                     },
                 },
             }),
-            makeComponent('statsHighlights'),
-            makeComponent('courseCatalog'),
-            makeComponent('testimonialSection'),
-            makeComponent('footer'),
+            makeComponent(t, 'statsHighlights'),
+            makeComponent(t, 'courseCatalog'),
+            makeComponent(t, 'testimonialSection'),
+            makeComponent(t, 'footer'),
         ],
     },
     {
@@ -54,11 +58,11 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Course Landing',
         description: 'Header + Hero (course-focused) + Course Catalog + Buy/Rent + Footer',
         category: 'page',
-        getComponents: () => [
-            makeComponent('header'),
-            makeComponent('heroSection', {
+        getComponents: (t) => [
+            makeComponent(t, 'header'),
+            makeComponent(t, 'heroSection', {
                 props: {
-                    ...componentTemplates['heroSection']?.props,
+                    ...buildComponentTemplates(t)['heroSection']?.props,
                     layout: 'centered',
                     left: {
                         title: 'Master Your Skills',
@@ -67,9 +71,9 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
                     },
                 },
             }),
-            makeComponent('courseCatalog'),
-            makeComponent('buyRentSection'),
-            makeComponent('footer'),
+            makeComponent(t, 'courseCatalog'),
+            makeComponent(t, 'buyRentSection'),
+            makeComponent(t, 'footer'),
         ],
     },
     {
@@ -77,11 +81,11 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'About Page',
         description: 'Header + Hero + Stats + Testimonials + Footer',
         category: 'page',
-        getComponents: () => [
-            makeComponent('header'),
-            makeComponent('heroSection', {
+        getComponents: (t) => [
+            makeComponent(t, 'header'),
+            makeComponent(t, 'heroSection', {
                 props: {
-                    ...componentTemplates['heroSection']?.props,
+                    ...buildComponentTemplates(t)['heroSection']?.props,
                     layout: 'centered',
                     left: {
                         title: 'About Us',
@@ -90,9 +94,9 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
                     },
                 },
             }),
-            makeComponent('statsHighlights'),
-            makeComponent('testimonialSection'),
-            makeComponent('footer'),
+            makeComponent(t, 'statsHighlights'),
+            makeComponent(t, 'testimonialSection'),
+            makeComponent(t, 'footer'),
         ],
     },
     {
@@ -100,11 +104,11 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Book Store',
         description: 'Header + Hero + Book Catalog + Footer',
         category: 'page',
-        getComponents: () => [
-            makeComponent('header'),
-            makeComponent('heroSection'),
-            makeComponent('bookCatalogue'),
-            makeComponent('footer'),
+        getComponents: (t) => [
+            makeComponent(t, 'header'),
+            makeComponent(t, 'heroSection'),
+            makeComponent(t, 'bookCatalogue'),
+            makeComponent(t, 'footer'),
         ],
     },
 
@@ -114,10 +118,10 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Hero (Centered)',
         description: 'Fullscreen centered hero section',
         category: 'section',
-        getComponents: () => [
-            makeComponent('heroSection', {
+        getComponents: (t) => [
+            makeComponent(t, 'heroSection', {
                 props: {
-                    ...componentTemplates['heroSection']?.props,
+                    ...buildComponentTemplates(t)['heroSection']?.props,
                     layout: 'centered',
                 },
             }),
@@ -128,9 +132,9 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Social Proof',
         description: 'Stats + Testimonials block',
         category: 'section',
-        getComponents: () => [
-            makeComponent('statsHighlights'),
-            makeComponent('testimonialSection'),
+        getComponents: (t) => [
+            makeComponent(t, 'statsHighlights'),
+            makeComponent(t, 'testimonialSection'),
         ],
     },
     {
@@ -138,8 +142,8 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Course Showcase',
         description: 'Course grid catalog section',
         category: 'section',
-        getComponents: () => [
-            makeComponent('courseCatalog'),
+        getComponents: (t) => [
+            makeComponent(t, 'courseCatalog'),
         ],
     },
     {
@@ -147,8 +151,8 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Media Carousel',
         description: 'Sliding image/video showcase',
         category: 'section',
-        getComponents: () => [
-            makeComponent('mediaShowcase'),
+        getComponents: (t) => [
+            makeComponent(t, 'mediaShowcase'),
         ],
     },
     // ── Niche kits ──────────────────────────────────────────────────────
@@ -163,11 +167,11 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Coaching Institute — Home',
         description: 'Announcement ticker + hero + why-us + programme blocks + enquiry form + FAQ + CTA',
         category: 'page',
-        getComponents: () => [
-            makeComponent('marquee'),
-            makeComponent('heroSection', {
+        getComponents: (t) => [
+            makeComponent(t, 'marquee'),
+            makeComponent(t, 'heroSection', {
                 props: {
-                    ...componentTemplates['heroSection']?.props,
+                    ...buildComponentTemplates(t)['heroSection']?.props,
                     layout: 'split',
                     left: {
                         eyebrow: 'Admissions open',
@@ -180,25 +184,25 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
                     },
                 },
             }),
-            makeComponent('statsHighlights'),
-            makeComponent('sectionHeading', {
-                props: { ...componentTemplates['sectionHeading']?.props, eyebrow: 'Why us', title: 'Built around how students actually learn' },
+            makeComponent(t, 'statsHighlights'),
+            makeComponent(t, 'sectionHeading', {
+                props: { ...buildComponentTemplates(t)['sectionHeading']?.props, eyebrow: 'Why us', title: 'Built around how students actually learn' },
             }),
-            makeComponent('featureGrid'),
-            makeComponent('sectionHeading', {
-                props: { ...componentTemplates['sectionHeading']?.props, eyebrow: 'Our programs', title: 'Every batch, in detail' },
+            makeComponent(t, 'featureGrid'),
+            makeComponent(t, 'sectionHeading', {
+                props: { ...buildComponentTemplates(t)['sectionHeading']?.props, eyebrow: 'Our programs', title: 'Every batch, in detail' },
             }),
-            makeComponent('detailBlocks'),
-            makeComponent('testimonialSection'),
-            makeComponent('leadForm', {
+            makeComponent(t, 'detailBlocks'),
+            makeComponent(t, 'testimonialSection'),
+            makeComponent(t, 'leadForm', {
                 props: {
-                    ...componentTemplates['leadForm']?.props,
+                    ...buildComponentTemplates(t)['leadForm']?.props,
                     title: 'Book your free demo class',
                     subtitle: 'Tell us your class and we will call you back today.',
                 },
             }),
-            makeComponent('faqSection'),
-            makeComponent('ctaBanner'),
+            makeComponent(t, 'faqSection'),
+            makeComponent(t, 'ctaBanner'),
         ],
     },
     {
@@ -206,17 +210,17 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Programs Directory',
         description: 'Compact header + one detailed block per programme + CTA (no prices)',
         category: 'page',
-        getComponents: () => [
-            makeComponent('sectionHeading', {
+        getComponents: (t) => [
+            makeComponent(t, 'sectionHeading', {
                 props: {
-                    ...componentTemplates['sectionHeading']?.props,
+                    ...buildComponentTemplates(t)['sectionHeading']?.props,
                     eyebrow: 'Everything we teach',
                     title: 'All our programs, in full detail',
                     lead: 'What each program covers, who it is for, and how it runs.',
                 },
             }),
-            makeComponent('detailBlocks'),
-            makeComponent('ctaBanner'),
+            makeComponent(t, 'detailBlocks'),
+            makeComponent(t, 'ctaBanner'),
         ],
     },
     {
@@ -224,18 +228,18 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Enquiry / Contact',
         description: 'Campaign enquiry form + contact details + map',
         category: 'page',
-        getComponents: () => [
-            makeComponent('sectionHeading', {
+        getComponents: (t) => [
+            makeComponent(t, 'sectionHeading', {
                 props: {
-                    ...componentTemplates['sectionHeading']?.props,
+                    ...buildComponentTemplates(t)['sectionHeading']?.props,
                     eyebrow: 'Talk to us',
                     title: 'Ask us anything',
                     lead: 'Fill this in and our counsellors will get back to you.',
                 },
             }),
-            makeComponent('leadForm'),
-            makeComponent('contactForm'),
-            makeComponent('mapEmbed'),
+            makeComponent(t, 'leadForm'),
+            makeComponent(t, 'contactForm'),
+            makeComponent(t, 'mapEmbed'),
         ],
     },
     {
@@ -243,11 +247,11 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Programme Blocks',
         description: 'Heading + one detailed block per programme',
         category: 'section',
-        getComponents: () => [
-            makeComponent('sectionHeading', {
-                props: { ...componentTemplates['sectionHeading']?.props, eyebrow: 'Our programs', title: 'What we offer' },
+        getComponents: (t) => [
+            makeComponent(t, 'sectionHeading', {
+                props: { ...buildComponentTemplates(t)['sectionHeading']?.props, eyebrow: 'Our programs', title: 'What we offer' },
             }),
-            makeComponent('detailBlocks'),
+            makeComponent(t, 'detailBlocks'),
         ],
     },
     {
@@ -255,30 +259,30 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         name: 'Enquiry Form',
         description: 'A campaign-backed lead form section',
         category: 'section',
-        getComponents: () => [makeComponent('leadForm')],
+        getComponents: (t) => [makeComponent(t, 'leadForm')],
     },
     {
         id: 'lead-hero',
         name: 'Lead Hero',
         description: 'Hero + Stats to drive lead capture',
         category: 'section',
-        getComponents: () => [
-            makeComponent('heroSection'),
-            makeComponent('statsHighlights'),
+        getComponents: (t) => [
+            makeComponent(t, 'heroSection'),
+            makeComponent(t, 'statsHighlights'),
         ],
     },
 ];
 
 /** Apply a template to a page: replaces all components */
-export const applyPageTemplate = (page: Page, template: PageTemplate): Page => ({
+export const applyPageTemplate = (page: Page, template: PageTemplate, t: TFunction): Page => ({
     ...page,
-    components: template.getComponents(),
+    components: template.getComponents(t),
 });
 
 /** Apply a section template: inserts components before footer (or at end) */
-export const applySectionTemplate = (page: Page, template: PageTemplate): Page => {
+export const applySectionTemplate = (page: Page, template: PageTemplate, t: TFunction): Page => {
     const footerIndex = page.components.findIndex((c) => c.type === 'footer');
-    const newComponents = template.getComponents();
+    const newComponents = template.getComponents(t);
     if (footerIndex >= 0) {
         const updated = [...page.components];
         updated.splice(footerIndex, 0, ...newComponents);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
+import { useTranslation } from 'react-i18next';
 import { Export, Warning } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -47,6 +48,7 @@ export const AssessmentExportCsvDialog = ({
     notAttempted = false,
     notAttemptedScope,
 }: AssessmentExportCsvDialogProps) => {
+    const { t } = useTranslation('assessmentExportCsvDialog');
     const [open, setOpen] = useState(false);
     const [selectedBaseColumns, setSelectedBaseColumns] = useState<string[]>([]);
     const [selectedCustomFieldIds, setSelectedCustomFieldIds] = useState<string[]>([]);
@@ -119,7 +121,7 @@ export const AssessmentExportCsvDialog = ({
                 notAttempted ? notAttemptedScope ?? { batches: [], name: '' } : undefined
             );
             if (!data) {
-                toast.error('No data returned. Please try again.');
+                toast.error(t('toasts.noData'));
                 return;
             }
             const parsed = Papa.parse(data, { header: true, skipEmptyLines: true });
@@ -149,10 +151,10 @@ export const AssessmentExportCsvDialog = ({
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            toast.success('Results exported successfully.');
+            toast.success(t('toasts.exportSuccess'));
             setOpen(false);
         } catch {
-            toast.error('Failed to export CSV. Please try again.');
+            toast.error(t('toasts.exportFailed'));
         } finally {
             setIsExporting(false);
         }
@@ -162,7 +164,7 @@ export const AssessmentExportCsvDialog = ({
         <MyDialog
             open={open}
             onOpenChange={setOpen}
-            heading="Export CSV"
+            heading={t('dialog.heading')}
             dialogWidth="max-w-lg"
             trigger={
                 <MyButton
@@ -172,7 +174,7 @@ export const AssessmentExportCsvDialog = ({
                     className="font-medium"
                 >
                     <Export size={16} />
-                    Export
+                    {t('trigger.label')}
                 </MyButton>
             }
         >
@@ -182,10 +184,7 @@ export const AssessmentExportCsvDialog = ({
                 {columnsQuery.isError && (
                     <div className="flex items-start gap-2 rounded-md border border-danger-200 bg-danger-50 p-3 text-caption text-danger-600">
                         <Warning size={16} className="mt-0.5 shrink-0" />
-                        <span>
-                            Could not load the column list. You can still export the standard result
-                            columns.
-                        </span>
+                        <span>{t('errors.columnsLoadFailed')}</span>
                     </div>
                 )}
 
@@ -193,7 +192,7 @@ export const AssessmentExportCsvDialog = ({
                     <>
                         <div className="flex items-center justify-between">
                             <p className="text-body text-neutral-600">
-                                Choose the columns to include in the file.
+                                {t('chooseColumns')}
                             </p>
                             {(baseColumns.length > 0 || customFields.length > 0) && (
                                 <button
@@ -201,7 +200,7 @@ export const AssessmentExportCsvDialog = ({
                                     className="text-caption font-medium text-primary-500 hover:text-primary-600"
                                     onClick={handleSelectAll}
                                 >
-                                    {allSelected ? 'Clear all' : 'Select all'}
+                                    {allSelected ? t('clearAll') : t('selectAll')}
                                 </button>
                             )}
                         </div>
@@ -210,7 +209,7 @@ export const AssessmentExportCsvDialog = ({
                             {baseColumns.length > 0 && (
                                 <div className="flex flex-col gap-2">
                                     <p className="text-caption font-semibold uppercase text-neutral-500">
-                                        Result columns
+                                        {t('resultColumns.title')}
                                     </p>
                                     {baseColumns.map((column) => (
                                         <label
@@ -233,11 +232,11 @@ export const AssessmentExportCsvDialog = ({
 
                             <div className="flex flex-col gap-2">
                                 <p className="text-caption font-semibold uppercase text-neutral-500">
-                                    Registration form fields
+                                    {t('registrationFields.title')}
                                 </p>
                                 {customFields.length === 0 ? (
                                     <p className="text-caption text-neutral-400">
-                                        This assessment collects no extra details at registration.
+                                        {t('registrationFields.empty')}
                                     </p>
                                 ) : (
                                     customFields.map((field) => (
@@ -272,7 +271,7 @@ export const AssessmentExportCsvDialog = ({
                         }
                         onClick={handleExport}
                     >
-                        {isExporting ? 'Exporting…' : 'Export CSV'}
+                        {isExporting ? t('exporting') : t('exportCsvButton')}
                     </MyButton>
                 )}
             </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import {
@@ -138,6 +139,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
   tagName,
   globalSettings,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const location = useLocation();
   const { addItem, getItemByEnrollInviteId, updateQuantity, getCartMode, syncCart } =
@@ -430,7 +432,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
 
       result.push({
         ...c,
-        title: c.package_name || "Untitled Book",
+        title: c.package_name || t("bookCatalogue.untitledBook"),
         description: textContent,
         thumbnail: c.course_banner_media_id || "/api/placeholder/300/400",
         price: c.min_plan_actual_price || 0,
@@ -452,7 +454,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
       });
     }
     return result;
-  }, [data]);
+  }, [data, t]);
 
   const totalBooks = data?.pages[0]?.totalElements ?? 0;
 
@@ -525,7 +527,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                 <input
                   ref={searchInputRef}
                   type="text"
-                  placeholder="Search books..."
+                  placeholder={t("bookCatalogue.searchPlaceholder")}
                   value={searchTerm}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -545,7 +547,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                 {searchTerm && (
                   <button
                     onClick={clearSearch}
-                    aria-label="Clear search"
+                    aria-label={t("common.clearSearch")}
                     className="absolute end-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                     type="button"
                   >
@@ -566,7 +568,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             <div className="pt-3 pb-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Store
+                  {t("bookCatalogue.store")}
                 </span>
                 <div className="relative">
                   <button
@@ -579,7 +581,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                     }`}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
-                    {storeFilter ? activeStoreName || "Selected store" : "All stores"}
+                    {storeFilter ? activeStoreName || t("bookCatalogue.selectedStore") : t("bookCatalogue.allStores")}
                     <CaretDown className={`h-3.5 w-3.5 transition-transform ${storeMenuOpen ? "rotate-180" : ""}`} />
                   </button>
                   {storeMenuOpen && (
@@ -596,7 +598,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                               !storeFilter ? "bg-primary-50 text-primary-500 font-semibold" : "text-catalogue-text-secondary"
                             }`}
                           >
-                            All stores
+                            {t("bookCatalogue.allStores")}
                           </button>
                         )}
                         {storeList.map((s) => (
@@ -619,12 +621,12 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                 </div>
                 {cartMode === "rent" && !storeFilter && (
                   <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                    Pick a store to browse rental inventory
+                    {t("bookCatalogue.pickStoreRentHint")}
                   </span>
                 )}
                 {cartMode !== "rent" && !storeFilter && (
                   <span className="text-xs text-gray-500">
-                    Showing best price across all stores
+                    {t("bookCatalogue.bestPriceHint")}
                   </span>
                 )}
               </div>
@@ -637,10 +639,10 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
               <div className="flex font-bold flex-col gap-1">
                 <div className="flex items-center justify-between ">
                   <h2 className="text-lg font-bold text-catalogue-text-primary tracking-tight flex items-center gap-2 flex-wrap">
-                    <span>Browse by Genre</span>
+                    <span>{t("bookCatalogue.browseByGenre")}</span>
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-500 border border-primary-200 shadow-sm">
                       <span className="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
-                      {cartMode === 'rent' ? 'Rent Mode' : 'Buy Mode'}
+                      {cartMode === 'rent' ? t("bookCatalogue.rentMode") : t("bookCatalogue.buyMode")}
                     </span>
                   </h2>
                   {selectedGenres.length > 0 && (
@@ -648,7 +650,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       onClick={() => setSelectedGenres([])}
                       className="text-sm font-medium text-primary-500 hover:text-primary-400 transition-colors"
                     >
-                      Clear all
+                      {t("bookCatalogue.clearAll")}
                     </button>
                   )}
                 </div>
@@ -691,10 +693,9 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
         {rentRequiresStorePick ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             <ShoppingBag className="h-10 w-10 text-gray-300" />
-            <h3 className="text-lg font-semibold text-gray-700">Pick a store to browse rentals</h3>
+            <h3 className="text-lg font-semibold text-gray-700">{t("bookCatalogue.pickStoreTitle")}</h3>
             <p className="text-sm text-gray-500 max-w-md">
-              Rental books are picked up at a store, so inventory is store-specific.
-              Choose a store above to see what's available.
+              {t("bookCatalogue.pickStoreDescription")}
             </p>
             {storeList.length > 0 && (
               <div className="flex flex-wrap gap-2 justify-center mt-1">
@@ -717,7 +718,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             ))}
           </div>
         ) : displayedCourses.length === 0 ? (
-          <div className="text-catalogue-text-muted text-xl font-medium mb-4">No books found matching your criteria.</div>
+          <div className="text-catalogue-text-muted text-xl font-medium mb-4">{t("bookCatalogue.noBooksFound")}</div>
         ) : (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-y-4 gap-x-4">
@@ -746,24 +747,24 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                         {!storeFilter && (book.storeCount ?? 0) > 1 ? (
                           <div className="px-2 py-1 rounded-lg text-caption font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                            <span className="text-blue-700 uppercase tracking-wider">Available at {book.storeCount} stores</span>
+                            <span className="text-blue-700 uppercase tracking-wider">{t("bookCatalogue.availableAtStores", { count: book.storeCount })}</span>
                           </div>
                         ) : book.available_slots !== undefined && (
                           <div className="px-2 py-1 rounded-lg text-caption font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
                             {book.available_slots > 5 ? (
                               <>
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-glow-live-green" />
-                                <span className="text-green-700 uppercase tracking-wider">In Stock</span>
+                                <span className="text-green-700 uppercase tracking-wider">{t("common.inStock")}</span>
                               </>
                             ) : book.available_slots > 0 ? (
                               <>
                                 <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shadow-glow-live-orange" />
-                                <span className="text-orange-700 uppercase tracking-wider">Only {book.available_slots} Left</span>
+                                <span className="text-orange-700 uppercase tracking-wider">{t("common.onlyLeft", { count: book.available_slots })}</span>
                               </>
                             ) : (
                               <>
                                 <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                                <span className="text-gray-600 uppercase tracking-wider">Out of Stock</span>
+                                <span className="text-gray-600 uppercase tracking-wider">{t("common.outOfStock")}</span>
                               </>
                             )}
                           </div>
@@ -838,7 +839,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                         onClick={() => navigate({ to: `/${tagName}/cart` })}
                                       >
                                         <ShoppingBag className="h-3 w-3" />
-                                        Cart
+                                        {t("bookCatalogue.cart")}
                                       </Button>
                                     </div>
                                   );
@@ -853,12 +854,12 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                         if (book.enrollInviteId) {
                                           await updateQuantity(book.enrollInviteId, 0);
                                           window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                          toast.success("Removed from cart", { duration: 2000 });
+                                          toast.success(t("bookCatalogue.toast.removedFromCart"), { duration: 2000 });
                                         }
                                       }}
                                     >
                                       <Trash className="h-3 w-3 flex-shrink-0" />
-                                      <span className="truncate">Remove</span>
+                                      <span className="truncate">{t("common.remove")}</span>
                                     </Button>
                                     <Button
                                       className="h-8 px-2 bg-primary-400 hover:bg-primary-500 text-white text-caption font-semibold rounded-lg shadow-md flex items-center gap-1 flex-shrink-0 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
@@ -894,14 +895,14 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                       });
                                       // Dispatch event to update cart count in header
                                       window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                      toast.success("Added to cart", { duration: 2000 });
+                                      toast.success(t("bookCatalogue.toast.addedToCart"), { duration: 2000 });
                                     }
                                   }}
                                   disabled={!book.enrollInviteId || book.available_slots === 0}
                                   style={{ touchAction: "manipulation" }}
                                 >
                                   <ShoppingCart className="h-4 w-4 me-2" />
-                                  {book.available_slots === 0 ? "Out of Stock" : "Add to Cart"}
+                                  {book.available_slots === 0 ? t("common.outOfStock") : t("common.addToCart")}
                                 </Button>
                               );
                             })()}
@@ -925,8 +926,8 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                           />
                           {!storeFilter && book.sessionName && (
                             <p className="text-caption text-gray-500 mt-0.5">
-                              from <span className="font-medium text-gray-700">{book.sessionName}</span>
-                              {(book.storeCount ?? 0) > 1 ? " — lowest price" : ""}
+                              {t("bookCatalogue.fromPrefix")} <span className="font-medium text-gray-700">{book.sessionName}</span>
+                              {(book.storeCount ?? 0) > 1 ? ` ${t("bookCatalogue.lowestPriceSuffix")}` : ""}
                             </p>
                           )}
                         </div>
@@ -978,13 +979,13 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                     <div className="w-3 h-3 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                     <div className="w-3 h-3 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
-                  <p className="text-sm text-gray-500 font-medium">Loading more books...</p>
+                  <p className="text-sm text-gray-500 font-medium">{t("bookCatalogue.loadingMoreBooks")}</p>
                 </div>
               )}
               {!hasNextPage && !isFetching && displayedCourses.length > PAGE_SIZE && (
                 <div className="text-center py-8">
-                  <p className="text-gray-500 font-medium">You've reached the end of the catalogue</p>
-                  <p className="text-sm text-catalogue-text-muted mt-1">Showing all {totalBooks} books</p>
+                  <p className="text-gray-500 font-medium">{t("bookCatalogue.endOfCatalogue")}</p>
+                  <p className="text-sm text-catalogue-text-muted mt-1">{t("bookCatalogue.showingAllBooks", { total: totalBooks })}</p>
                 </div>
               )}
             </div>

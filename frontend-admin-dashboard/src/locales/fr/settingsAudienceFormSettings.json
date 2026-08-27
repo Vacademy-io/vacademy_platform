@@ -1,0 +1,16 @@
+{
+    "loading": "Chargement des paramètres du formulaire…",
+    "header": {
+        "title": "Paramètres par défaut du formulaire d'audience",
+        "description": "L'écran de remerciement avec lequel chaque nouvelle liste d'audience commence. Chaque campagne peut le remplacer lors de sa création ou de sa modification — les changements effectués ici n'affectent que les campagnes créées à partir de maintenant."
+    },
+    "toasts": {
+        "saved": "Paramètres du formulaire enregistrés",
+        "saveFailed": "Échec de l'enregistrement des paramètres du formulaire"
+    },
+    "actions": {
+        "restoreDefaults": "Restaurer les valeurs par défaut",
+        "saving": "Enregistrement…",
+        "saveChanges": "Enregistrer les modifications"
+    }
+}

@@ -1,5 +1,6 @@
 import React from "react";
 import { WhatsappLogo } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { emitLeadCaptured } from "../-utils/catalogue-tracking";
 
 /**
@@ -31,6 +32,7 @@ interface Props {
 }
 
 export const WhatsAppFloatingButton: React.FC<Props> = ({ settings, hasMobileBar = false }) => {
+  const { t } = useTranslation("coursePlayerA");
   const phone = (settings?.phone || "").replace(/\D/g, "");
   if (!settings?.enabled || !phone) return null;
 
@@ -47,8 +49,8 @@ export const WhatsAppFloatingButton: React.FC<Props> = ({ settings, hasMobileBar
       onClick={() =>
         emitLeadCaptured({ sourceType: "WHATSAPP_CLICK", sourceId: "floating-button" })
       }
-      aria-label={settings.label || "Chat with us on WhatsApp"}
-      title={settings.label || "Chat with us on WhatsApp"}
+      aria-label={settings.label || t("whatsAppFloatingButton.chatWithUs")}
+      title={settings.label || t("whatsAppFloatingButton.chatWithUs")}
       className={`fixed z-catalogue-fixed flex items-center gap-2 rounded-full bg-success-500 px-4 py-3 font-semibold text-white no-underline shadow-lg transition hover:opacity-90 active:scale-[0.98] ${
         isLeft ? "start-4" : "end-4"
       } ${hasMobileBar ? "bottom-32 md:bottom-6" : "bottom-6"}`}

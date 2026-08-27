@@ -1,0 +1,28 @@
+{
+    "trigger": {
+        "label": "Export"
+    },
+    "dialog": {
+        "heading": "Export CSV"
+    },
+    "errors": {
+        "columnsLoadFailed": "Could not load the column list. You can still export the standard result columns."
+    },
+    "chooseColumns": "Choose the columns to include in the file.",
+    "selectAll": "Select all",
+    "clearAll": "Clear all",
+    "resultColumns": {
+        "title": "Result columns"
+    },
+    "registrationFields": {
+        "title": "Registration form fields",
+        "empty": "This assessment collects no extra details at registration."
+    },
+    "exporting": "Exporting…",
+    "exportCsvButton": "Export CSV",
+    "toasts": {
+        "noData": "No data returned. Please try again.",
+        "exportSuccess": "Results exported successfully.",
+        "exportFailed": "Failed to export CSV. Please try again."
+    }
+}

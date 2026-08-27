@@ -1,0 +1,49 @@
+{
+    "header": {
+        "title": "Configuration des frais",
+        "totalLabel": "Total :",
+        "afterDiscountLabel": "Après remise :"
+    },
+    "loading": "Chargement des échéances…",
+    "loadError": "Impossible de charger les détails du CPO.",
+    "table": {
+        "index": "#",
+        "feeType": "Type de frais",
+        "startDate": "Date de début",
+        "dueDate": "Date d'échéance",
+        "default": "Par défaut",
+        "amount": "Montant (₹)",
+        "discount": "Remise",
+        "amountOverrideTitle": "Montant modifié manuellement",
+        "effectiveTitle": "Effectif : {{effective}} (modèle {{template}} après remises)",
+        "discountOptions": {
+            "none": "aucune",
+            "percentage": "%",
+            "flat": "₹"
+        }
+    },
+    "cpoDiscount": {
+        "heading": "Remise (facultatif)",
+        "typeLabel": "Type",
+        "options": {
+            "none": "aucune",
+            "percentage": "% du total",
+            "flat": "remise fixe en ₹"
+        },
+        "valueLabel": "Valeur",
+        "reasonLabel": "Motif",
+        "reasonPlaceholder": "ex. remise fratrie",
+        "offSuffix": "= {{amount}} de remise"
+    },
+    "payment": {
+        "heading": "Paiement initial (facultatif)",
+        "skipLabelBold": "Ne pas enregistrer de paiement maintenant.",
+        "skipLabelRest": "L'apprenant paiera chaque échéance en ligne plus tard.",
+        "offlineLabelBold": "Enregistrer un paiement hors ligne.",
+        "offlineLabelRest": "Appliqué aux échéances les plus proches en premier.",
+        "amountLabel": "Montant (₹)",
+        "netDues": "Solde net dû : {{amount}}",
+        "referenceLabel": "Référence (facultatif)",
+        "referencePlaceholder": "ex. chèque n°1234"
+    }
+}

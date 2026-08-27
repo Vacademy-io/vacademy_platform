@@ -1712,7 +1712,7 @@ function EmailListEditor({
     const { t } = useTranslation('settingsNotification');
     const [newEmail, setNewEmail] = useState('');
     const [newName, setNewName] = useState('');
-    const [newPurposeCode, setNewPurposeCode] = useState<string>(getEmailPurposes()[0].code);
+    const [newPurposeCode, setNewPurposeCode] = useState<string>(getEmailPurposes()[0]!.code);
     const [newCustomPurpose, setNewCustomPurpose] = useState('');
     const [newDescription, setNewDescription] = useState('');
 
@@ -1803,7 +1803,7 @@ function EmailListEditor({
 
             setNewEmail('');
             setNewName('');
-            setNewPurposeCode(getEmailPurposes()[0].code);
+            setNewPurposeCode(getEmailPurposes()[0]!.code);
             setNewCustomPurpose('');
             setNewDescription('');
         } catch (error) {

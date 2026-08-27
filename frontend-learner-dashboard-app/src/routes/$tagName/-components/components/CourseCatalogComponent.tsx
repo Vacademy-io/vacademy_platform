@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   COURSE_CATALOG_SORT_OPTIONS,
   CourseCatalogProps,
@@ -33,7 +34,7 @@ import {
   getTerminology,
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 import { resolveInviteAvailability } from "@/lib/invite-availability";
 
@@ -126,6 +127,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
   alt,
   className,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [courseImageUrl, setCourseImageUrl] = useState<string>("");
   const [loadingImage, setLoadingImage] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -179,7 +181,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
       <div className="aspect-video">
         <div className="w-full h-full bg-catalogue-bg-muted animate-pulse rounded-md flex items-center justify-center">
           <div className="text-catalogue-text-muted text-xs">
-            Loading...
+            {t("courseCatalog.loadingImage")}
           </div>
         </div>
       </div>
@@ -253,6 +255,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   handleChange,
   disabled,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [isExpanded, setIsExpanded] = useState(false);
   const initialDisplayCount = 3;
   const canExpand = items.length > initialDisplayCount;
@@ -265,12 +268,12 @@ const FilterSection: React.FC<FilterSectionProps> = ({
       <div className="space-y-1.5">
         {items.length === 0 && !disabled && (
           <p className="text-xs text-catalogue-text-muted">
-            No {title.toLowerCase()} available.
+            {t("courseCatalog.noItemsAvailable", { title: title.toLowerCase() })}
           </p>
         )}
         {disabled && (
           <p className="text-xs text-catalogue-text-muted">
-            {title} filters are currently unavailable.
+            {t("courseCatalog.filtersUnavailable", { title })}
           </p>
         )}
         {itemsToDisplay.map((item) => (
@@ -302,12 +305,12 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         >
           {isExpanded ? (
             <>
-              Show Less
+              {t("courseCatalog.showLess")}
               <CaretUp size={12} />
             </>
           ) : (
             <>
-              Show More
+              {t("courseCatalog.showMore")}
               <CaretDown size={12} />
             </>
           )}
@@ -340,6 +343,7 @@ const CartControls: React.FC<{
   updateQuantity,
   removeItem,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const cartItem = course.enrollInviteId
     ? getItemByEnrollInviteId(course.enrollInviteId)
     : undefined;
@@ -370,7 +374,7 @@ const CartControls: React.FC<{
                 updateQuantity(course.enrollInviteId, cartItem.quantity - 1);
               } else {
                 removeItem(course.enrollInviteId);
-                toast.success(`${course.title} removed from cart`);
+                toast.success(t("courseCatalog.removedFromCart", { title: course.title }));
               }
             }
           }}
@@ -401,7 +405,7 @@ const CartControls: React.FC<{
         onClick={(e) => {
           e.stopPropagation();
           if (!course.enrollInviteId) {
-            toast.error("Cannot add item to cart: missing enroll invite ID");
+            toast.error(t("courseCatalog.missingEnrollInvite"));
             return;
           }
           addItem({
@@ -419,13 +423,13 @@ const CartControls: React.FC<{
             sessionName: course.sessionName,
             courseId: course.courseId,
           });
-          toast.success(`${course.title} added to cart!`);
+          toast.success(t("courseCatalog.addedToCart", { title: course.title }));
         }}
         className="bg-primary-500 hover:bg-primary-400 text-white text-xs font-medium rounded-md px-2.5 py-1 flex items-center justify-center gap-1.5"
         size="sm"
       >
         <ShoppingCart className="h-3.5 w-3.5" />
-        <span>Add</span>
+        <span>{t("courseCatalog.add")}</span>
       </Button>
     );
   }
@@ -467,6 +471,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   tagName,
   globalSettings,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const {
     addItem,
@@ -845,10 +850,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
           return {
             id: course.id || course.packageId,
-            title: course.package_name || "Untitled Course",
+            title:
+              course.package_name ||
+              t("courseCatalog.untitledCourse", {
+                course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+              }),
             description:
               parseHtmlContent(course.course_html_description_html) ||
-              "No description available",
+              t("courseCatalog.noDescriptionAvailable"),
             thumbnail: thumbnailUrl,
             bannerImage: thumbnailUrl, // Use the same image as banner for details page
             price: finalPrice,
@@ -857,7 +866,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             type: course.package_type || course.type || "General",
             level: course.level_name || "Beginner",
             instructor:
-              course.instructors?.[0]?.full_name || "Unknown Instructor",
+              course.instructors?.[0]?.full_name ||
+              t("courseCatalog.unknownInstructor", {
+                teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+              }),
             duration:
               course.estimated_duration || course.duration || "",
             rating: course.rating || 0,
@@ -1190,7 +1202,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           className="text-catalogue-text-secondary"
                         />
                         <span className="text-sm font-medium text-catalogue-text-primary">
-                          Filters
+                          {t("courseCatalog.filters")}
                         </span>
                         {hasActiveFilters && (
                           <span className="catalogue-badge catalogue-badge-primary rounded-full">
@@ -1212,7 +1224,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {/* Desktop Header */}
                     <div className="hidden lg:flex justify-between items-center mb-6">
                       <h2 className="text-lg font-semibold text-catalogue-text-primary">
-                        Filters
+                        {t("courseCatalog.filters")}
                       </h2>
                       <div className="flex gap-1">
                         {/* Filters apply live on desktop, so no "Apply" button is needed. */}
@@ -1221,7 +1233,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           disabled={!hasActiveFilters}
                           className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
-                          Clear All
+                          {t("courseCatalog.clearAll")}
                         </Button>
                       </div>
                     </div>
@@ -1229,7 +1241,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {/* Mobile Header */}
                     <div className="lg:hidden flex justify-between items-center mb-4">
                       <h2 className="text-lg font-semibold text-catalogue-text-primary">
-                        Filters
+                        {t("courseCatalog.filters")}
                       </h2>
                       <div className="flex gap-1">
                         <Button
@@ -1237,13 +1249,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           disabled={!hasActiveFilters}
                           className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
-                          Clear All
+                          {t("courseCatalog.clearAll")}
                         </Button>
                         <Button
                           onClick={onApplyFilters}
                           className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
-                          Show results
+                          {t("courseCatalog.showResults")}
                         </Button>
                       </div>
                     </div>
@@ -1306,7 +1318,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                             (filter) =>
                               filter.id === "instructors" ||
                               filter.id === "authors",
-                          )?.label ?? "Authors"
+                          )?.label ?? t("courseCatalog.authors")
                         }
                         items={instructors}
                         selectedItems={selectedInstructors}
@@ -1324,12 +1336,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {shouldShowPriceFilter && (
                       <div className="mb-5">
                         <h3 className="text-sm font-semibold text-catalogue-text-primary mb-2.5">
-                          {priceFilterConfig?.label ?? "Price Range"}
+                          {priceFilterConfig?.label ?? t("courseCatalog.priceRange")}
                         </h3>
                         <div className="flex items-end gap-2 rounded-lg bg-catalogue-bg-subtle p-3">
                           <div className="flex-1">
                             <label className="block text-xs text-catalogue-text-secondary mb-1">
-                              Min
+                              {t("courseCatalog.min")}
                             </label>
                             <input
                               type="number"
@@ -1344,7 +1356,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           <span className="pb-2 text-catalogue-text-muted">–</span>
                           <div className="flex-1">
                             <label className="block text-xs text-catalogue-text-secondary mb-1">
-                              Max
+                              {t("courseCatalog.max")}
                             </label>
                             <input
                               type="number"
@@ -1383,17 +1395,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     />
                     <input
                       type="text"
-                      placeholder={`Search ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}...`}
+                      placeholder={t("courseCatalog.searchPlaceholder", {
+                        courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase(),
+                      })}
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      aria-label={`Search ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}`}
+                      aria-label={t("courseCatalog.searchAriaLabel", {
+                        courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase(),
+                      })}
                       className="w-full ps-10 pe-9 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
                     />
                     {searchTerm && (
                       <button
                         type="button"
                         onClick={() => setSearchTerm("")}
-                        aria-label="Clear search"
+                        aria-label={t("common.clearSearch")}
                         className="absolute end-3 top-1/2 -translate-y-1/2 text-catalogue-text-muted hover:text-catalogue-text-primary"
                       >
                         <X size={16} aria-hidden="true" />
@@ -1545,7 +1561,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       {/* Description — guard against placeholder text */}
                       {displayDescription &&
                         course.description &&
-                        course.description !== "No description available" && (
+                        course.description !== t("courseCatalog.noDescriptionAvailable") && (
                           <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed">
                             {course.description}
                           </p>
@@ -1584,8 +1600,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                                 <div className="shrink-0">
                                   <span className="text-xs font-semibold text-orange-600">
                                     {availability === "NOT_STARTED"
-                                      ? "Opens soon"
-                                      : "Enrollment closed"}
+                                      ? t("courseCatalog.openSoon")
+                                      : t("courseCatalog.enrollmentClosed")}
                                   </span>
                                 </div>
                               );
@@ -1594,7 +1610,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                               <div className="shrink-0">
                                 {course.price === 0 ? (
                                   <span className="text-xs font-bold text-green-600">
-                                    100% Free
+                                    {t("courseCatalog.freeLabel")}
                                   </span>
                                 ) : (
                                   <PriceWithMrp
@@ -1638,9 +1654,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           handleCourseClick(course);
                         }}
                         className="catalogue-btn catalogue-btn-primary mt-2 w-full"
-                        aria-label={`View ${courseTerm}`}
+                        aria-label={t("courseCatalog.viewCourse", { course: courseTerm })}
                       >
-                        View {courseTerm}
+                        {t("courseCatalog.viewCourse", { course: courseTerm })}
                       </button>
                     </div>
                   </div>
@@ -1655,11 +1671,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   <MagnifyingGlass size={26} />
                 </div>
                 <p className="text-base font-semibold text-catalogue-text-primary">
-                  No {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} found
+                  {t("courseCatalog.noResultsFound", {
+                    courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase(),
+                  })}
                 </p>
                 <p className="max-w-sm text-sm text-catalogue-text-secondary">
-                  Try adjusting your search or filters to find what you're
-                  looking for.
+                  {t("courseCatalog.noResultsHint")}
                 </p>
                 {hasActiveFilters && (
                   <button
@@ -1667,7 +1684,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     onClick={clearAllFilters}
                     className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm mt-1"
                   >
-                    Clear all filters
+                    {t("courseCatalog.clearAllFilters")}
                   </button>
                 )}
               </div>
@@ -1677,7 +1694,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             {totalPages > 1 && (
               <div className="mt-8 flex flex-col items-center gap-4">
                 <nav
-                  aria-label="Pagination"
+                  aria-label={t("courseCatalog.paginationAriaLabel")}
                   className="flex flex-wrap items-center justify-center gap-1.5"
                 >
                   <button
@@ -1686,11 +1703,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       setCurrentPage((prev) => Math.max(prev - 1, 1))
                     }
                     disabled={currentPage === 1}
-                    aria-label="Previous page"
+                    aria-label={t("common.previousPage")}
                     className="inline-flex h-9 items-center gap-1 rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-3 text-sm font-medium text-catalogue-text-secondary transition-colors hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <CaretLeft size={15} weight="bold" />
-                    <span className="hidden sm:inline">Previous</span>
+                    <span className="hidden sm:inline">{t("courseCatalog.previous")}</span>
                   </button>
 
                   {getPageNumbers(currentPage, totalPages).map((p, i) =>
@@ -1725,28 +1742,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       setCurrentPage((prev) => Math.min(prev + 1, totalPages))
                     }
                     disabled={currentPage === totalPages}
-                    aria-label="Next page"
+                    aria-label={t("common.nextPage")}
                     className="inline-flex h-9 items-center gap-1 rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-3 text-sm font-medium text-catalogue-text-secondary transition-colors hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <span className="hidden sm:inline">Next</span>
+                    <span className="hidden sm:inline">{t("courseCatalog.next")}</span>
                     <CaretRight size={15} weight="bold" />
                   </button>
                 </nav>
 
                 <p className="text-sm text-catalogue-text-secondary">
-                  Showing{" "}
-                  <span className="font-semibold text-catalogue-text-primary">
-                    {(currentPage - 1) * itemsPerPage + 1}–
-                    {Math.min(
-                      currentPage * itemsPerPage,
-                      filteredCourses.length,
-                    )}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-semibold text-catalogue-text-primary">
-                    {filteredCourses.length}
-                  </span>{" "}
-                  {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}
+                  {t("courseCatalog.showingRange", {
+                    from: (currentPage - 1) * itemsPerPage + 1,
+                    to: Math.min(currentPage * itemsPerPage, filteredCourses.length),
+                    total: filteredCourses.length,
+                    courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase(),
+                  })}
                 </p>
               </div>
             )}

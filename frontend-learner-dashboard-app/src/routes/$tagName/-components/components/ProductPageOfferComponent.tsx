@@ -22,7 +22,7 @@ import { PriceWithMrp, formatPriceAmount } from "@/components/common/price-with-
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import {
   accentFromTheme,
-  celebrateSaving,
+  celebrateSavingOnce,
 } from "@/routes/product-pages/$productPageCode/-utils/celebrate-saving";
 import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-services/product-page-service";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
@@ -545,20 +545,23 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     setPortalHost((node.closest("[data-catalogue-theme]") as HTMLElement) || document.body);
   }, []);
 
-  // Celebrate a saving that GREW. Seeded on first render so restoring a page
-  // with a basket already filled does not fire a burst at nobody, and skipped
-  // where prices are hidden — there is no saving on screen to celebrate.
+  // Celebrate a saving this basket has never reached before.
+  //
+  // Gated on `data`: the cart rehydrates from sessionStorage synchronously but
+  // the page data arrives async, so until it lands the basket reads as empty —
+  // and the moment prices arrive would look like a saving just earned. Skipped
+  // where prices are hidden: there is nothing on screen to celebrate.
+  //
   // The accent is read off the catalogue's own theme wrapper (the portal host),
   // so the burst is the institute's colour rather than ours.
-  const lastSavedRef = useRef<number | null>(null);
   useEffect(() => {
-    const saved = cartTotal?.saved ?? 0;
-    const previous = lastSavedRef.current;
-    lastSavedRef.current = saved;
-    if (previous !== null && saved > previous && !hidePrices) {
-      celebrateSaving(accentFromTheme(portalHost));
-    }
-  }, [cartTotal?.saved, hidePrices, portalHost]);
+    if (!data || hidePrices || !productPageCode) return;
+    celebrateSavingOnce(
+      productPageCode,
+      cartTotal?.saved ?? 0,
+      accentFromTheme(portalHost),
+    );
+  }, [data, cartTotal?.saved, hidePrices, portalHost, productPageCode]);
 
   // Two bars pinned to the bottom of a phone screen would sit on top of each
   // other, and a half-filled basket is the more urgent of the two — so while it

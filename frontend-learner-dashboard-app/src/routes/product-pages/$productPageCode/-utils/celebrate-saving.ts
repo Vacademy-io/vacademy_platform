@@ -54,6 +54,40 @@ export function accentFromTheme(el: HTMLElement | null | undefined): string | un
     return triplet.startsWith('#') || triplet.startsWith('rgb') ? triplet : `hsl(${triplet})`;
 }
 
+/**
+ * Celebrate only a saving this basket has never reached before.
+ *
+ * A per-mount ref is not enough. Leaving the catalogue for checkout unmounts
+ * the bar; coming back remounts it, and the basket rehydrates from
+ * sessionStorage *before* the page data finishes loading — so the effect seeds
+ * against an empty basket and the moment prices arrive reads as a saving the
+ * visitor just earned. They got confetti for pressing Back.
+ *
+ * The high-water mark rides in sessionStorage beside the cart itself, so it
+ * survives that round trip. Adding a third subject still celebrates (it beats
+ * the mark); removing one does not; clearing and rebuilding does, because that
+ * saving really was earned again.
+ */
+export function celebrateSavingOnce(key: string, saved: number, accent?: string): void {
+    if (typeof window === 'undefined') return;
+    const storageKey = `basket-celebrated:${key}`;
+    let previous = 0;
+    try {
+        previous = Number(window.sessionStorage.getItem(storageKey) ?? '0') || 0;
+    } catch {
+        // Private mode / storage disabled — fall back to celebrating nothing
+        // rather than celebrating on every remount.
+        previous = saved;
+    }
+    if (saved === previous) return;
+    try {
+        window.sessionStorage.setItem(storageKey, String(saved));
+    } catch {
+        /* not fatal — the burst is a nicety, not state anyone depends on */
+    }
+    if (saved > previous) celebrateSaving(accent);
+}
+
 export function celebrateSaving(accent?: string): void {
     if (
         typeof window === 'undefined' ||

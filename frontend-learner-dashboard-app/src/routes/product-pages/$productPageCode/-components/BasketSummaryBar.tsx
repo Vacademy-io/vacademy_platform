@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Gift, ShoppingCart } from '@phosphor-icons/react';
 import {
@@ -7,7 +7,7 @@ import {
 } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 import type { ProductPageData } from '../-types/product-page-types';
-import { celebrateSaving } from '../-utils/celebrate-saving';
+import { celebrateSavingOnce } from '../-utils/celebrate-saving';
 import { useBasketSavings } from '../-utils/use-basket-savings';
 
 /**
@@ -43,14 +43,13 @@ export const BasketSummaryBar = ({ pageData, onNext, primaryColor }: BasketSumma
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
-    // Celebrate a saving that GREW. Seeded on first render so restoring a page
-    // with courses already picked does not fire a burst at nobody.
-    const lastSaved = useRef<number | null>(null);
+    // Celebrate a saving this basket has never reached before. Shared with the
+    // catalogue bar and keyed the same way, so walking between the two surfaces
+    // cannot re-fire a burst the visitor has already seen.
     useEffect(() => {
-        const previous = lastSaved.current;
-        lastSaved.current = saved;
-        if (previous !== null && saved > previous) celebrateSaving(primaryColor);
-    }, [saved, primaryColor]);
+        if (count === 0) return;
+        celebrateSavingOnce(pageData.code, saved, primaryColor);
+    }, [count, saved, primaryColor, pageData.code]);
 
     if (count === 0) return null;
 

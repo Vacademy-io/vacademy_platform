@@ -1,5 +1,7 @@
 import { Check } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
+import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { cn } from "@/lib/utils";
 import { useProductPageStore } from "../-stores/product-page-store";
 
@@ -11,18 +13,39 @@ export const StepProgress = ({
   const { t } = useTranslation("productPages");
   const { step } = useProductPageStore();
   const isCpoFlow = step === "CPO_INSTALLMENTS";
+  const courses = getTerminologyPlural(
+    ContentTerms.Course,
+    SystemTerms.Course,
+  ).toLocaleLowerCase();
+  // The browse step is part of the rail so the visitor sees the whole journey
+  // from the first screen. It is also the step CatalogStep is ON: without an
+  // entry for it, findIndex returns -1, and `done`/`active` are then false for
+  // every step — the rail renders as three dead grey circles with no "you are
+  // here" at all.
+  const CATALOG_STEP = {
+    id: "CATALOG" as const,
+    label: t("stepProgress.steps.catalog", { courses }),
+  };
   const CHECKOUT_STEPS = [
+    CATALOG_STEP,
     { id: "CART" as const, label: t("stepProgress.steps.cart") },
     { id: "FORM" as const, label: t("stepProgress.steps.details") },
     { id: "PAYMENT" as const, label: t("stepProgress.steps.payment") },
   ];
   const CPO_CHECKOUT_STEPS = [
+    CATALOG_STEP,
     { id: "CART" as const, label: t("stepProgress.steps.cart") },
     { id: "FORM" as const, label: t("stepProgress.steps.details") },
     { id: "CPO_INSTALLMENTS" as const, label: t("stepProgress.steps.installments") },
   ];
   const steps = isCpoFlow ? CPO_CHECKOUT_STEPS : CHECKOUT_STEPS;
   const currentIndex = steps.findIndex((s) => s.id === step);
+
+  // A step the rail does not know about leaves currentIndex at -1, which makes
+  // `done` and `active` false for every entry — the rail then renders as a row
+  // of dead grey circles claiming the visitor is nowhere. Showing nothing is
+  // the better failure: it is obviously absent rather than subtly broken.
+  if (currentIndex < 0) return null;
 
   return (
     <nav

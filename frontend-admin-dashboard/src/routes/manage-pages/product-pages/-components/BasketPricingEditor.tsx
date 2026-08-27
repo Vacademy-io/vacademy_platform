@@ -6,6 +6,7 @@ import type {
     BasketPricingCombo,
     BasketPricingGroup,
     BasketPricingSettings,
+    BasketPricingTier,
     MappingRow,
 } from '../-types/product-page-types';
 
@@ -51,6 +52,44 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
     const groups = value.groups ?? [];
     const combos = value.combos ?? [];
     const packs = value.wholeGroupPrices ?? {};
+    const tiers = value.tiers ?? [];
+    const basis = value.pricingBasis ?? 'FLAT';
+
+    /**
+     * The commonest course price on this page. Only used to preview the maths —
+     * the engine reads each course's own plan, never this.
+     */
+    const typicalPrice = useMemo(() => {
+        const counts = new Map<number, number>();
+        for (const c of courses) {
+            const price = c.paymentPlanPrice ?? 0;
+            if (price > 0) counts.set(price, (counts.get(price) ?? 0) + 1);
+        }
+        let best = 0;
+        let bestCount = 0;
+        for (const [price, n] of counts) {
+            if (n > bestCount) {
+                best = price;
+                bestCount = n;
+            }
+        }
+        return best;
+    }, [courses]);
+
+    const setTier = (index: number, patch: Partial<BasketPricingTier>) =>
+        set({ tiers: tiers.map((t, i) => (i === index ? { ...t, ...patch } : t)) });
+
+    /** Mirrors tierDiscount in the engine: the best tier the count qualifies for. */
+    const discountAt = (count: number, base: number) => {
+        let best = 0;
+        for (const tier of tiers) {
+            const min = tier.minCourses ?? 0;
+            if (min <= 0 || count < min) continue;
+            const amount = tier.type === 'AMOUNT' ? tier.value : (base * tier.value) / 100;
+            best = Math.max(best, amount);
+        }
+        return Math.min(Math.max(0, best), base);
+    };
 
     /** What the ladder charges for a basket of n — mirrors the pricing engine. */
     const ladderAt = (n: number) =>
@@ -78,12 +117,156 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
     return (
         <div className="space-y-4 bg-neutral-50/60 px-5 py-4 ps-14">
             <p className="text-2xs text-neutral-500">
-                The basket is priced as a whole and this <strong>replaces</strong> the courses&apos;
-                own prices — which is the point on a page where each course is ₹0. The cheapest
-                applicable rule always wins, so a bigger basket never costs more.
+                Prices the basket as a whole rather than course by course. The cheapest applicable
+                rule always wins, so a bigger basket never costs more.
             </p>
 
+            {/* ── Pricing basis ──────────────────────────────────────────────── */}
+            <div className="space-y-2">
+                <Label className="text-xs">Where the price comes from</Label>
+                {(
+                    [
+                        [
+                            'DISCOUNT',
+                            'Discount off the course prices',
+                            'The courses keep the price set on their enroll invite and the basket takes a percentage or amount off. Change a price once, on the invite, and every basket follows.',
+                        ],
+                        [
+                            'FLAT',
+                            'A fixed price per number of subjects',
+                            'The basket costs a set amount whatever the courses cost. Needed only when the courses are free and there is nothing to discount — otherwise the per-subject rate ends up written down twice and the two drift apart.',
+                        ],
+                    ] as const
+                ).map(([option, label, hint]) => {
+                    const active = basis === option;
+                    return (
+                        <button
+                            key={option}
+                            type="button"
+                            onClick={() => set({ pricingBasis: option })}
+                            className={`w-full rounded border p-2 text-start ${
+                                active
+                                    ? 'border-primary-400 bg-primary-50'
+                                    : 'border-neutral-200 bg-white'
+                            }`}
+                        >
+                            <p className="text-2xs font-semibold text-neutral-700">{label}</p>
+                            <p className="mt-0.5 text-2xs text-neutral-500">{hint}</p>
+                        </button>
+                    );
+                })}
+                {basis === 'DISCOUNT' && typicalPrice === 0 && (
+                    <p className="rounded border border-danger-200 bg-danger-50 p-2 text-2xs text-danger-600">
+                        These courses have no price on their enroll invites, so there is nothing to
+                        discount and every basket will be <strong>free</strong>. Price the courses
+                        on their invites, or use a fixed price per number of subjects.
+                    </p>
+                )}
+                {basis === 'FLAT' && typicalPrice > 0 && (
+                    <p className="rounded border border-warning-200 bg-warning-50 p-2 text-2xs text-warning-700">
+                        These courses are priced ({typicalPrice} each on their invite), so a fixed
+                        price ignores that. Repricing a course on its invite will not change what a
+                        basket costs.
+                    </p>
+                )}
+            </div>
+
+            {/* ── Discount tiers ─────────────────────────────────────────────── */}
+            {basis === 'DISCOUNT' && (
+                <div className="space-y-2 border-t border-neutral-200 pt-3">
+                    <Label className="text-xs">Discount by number of subjects</Label>
+                    <p className="text-2xs text-neutral-500">
+                        The highest tier the basket reaches applies. A percentage keeps working as
+                        the basket grows, so it needs no rung per count.
+                    </p>
+                    {tiers.length === 0 && (
+                        <p className="text-2xs text-neutral-400">
+                            No tiers yet — every basket pays full course price.
+                        </p>
+                    )}
+                    {tiers.map((tier, index) => {
+                        const base = typicalPrice * tier.minCourses;
+                        const off = discountAt(tier.minCourses, base);
+                        return (
+                            <div key={index} className="flex flex-wrap items-center gap-2">
+                                <span className="text-2xs text-neutral-500">From</span>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    value={tier.minCourses}
+                                    onChange={(e) =>
+                                        setTier(index, { minCourses: num(e.target.value, 1) })
+                                    }
+                                    className="h-8 w-16"
+                                    aria-label="Minimum subjects for this tier"
+                                />
+                                <span className="text-2xs text-neutral-500">subjects, take</span>
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    value={tier.value}
+                                    onChange={(e) => setTier(index, { value: num(e.target.value) })}
+                                    className="h-8 w-20"
+                                    aria-label="Discount value"
+                                />
+                                <select
+                                    value={tier.type}
+                                    onChange={(e) =>
+                                        setTier(index, {
+                                            type: e.target.value as BasketPricingTier['type'],
+                                        })
+                                    }
+                                    className="h-8 rounded border border-neutral-200 bg-white px-2 text-2xs"
+                                    aria-label="Discount type"
+                                >
+                                    <option value="PERCENT">% off</option>
+                                    <option value="AMOUNT">₹ off</option>
+                                </select>
+                                {base > 0 && (
+                                    <span className="text-2xs text-neutral-400">
+                                        {tier.minCourses} × {typicalPrice} = {base} →{' '}
+                                        <strong className="text-neutral-600">
+                                            {Math.round(base - off)}
+                                        </strong>
+                                    </span>
+                                )}
+                                <button
+                                    type="button"
+                                    aria-label={`Remove the ${tier.minCourses}-subject tier`}
+                                    onClick={() =>
+                                        set({ tiers: tiers.filter((_, i) => i !== index) })
+                                    }
+                                    className="rounded p-1 text-neutral-400 hover:text-danger-500"
+                                >
+                                    <Trash className="size-3.5" />
+                                </button>
+                            </div>
+                        );
+                    })}
+                    <button
+                        type="button"
+                        onClick={() =>
+                            set({
+                                tiers: [
+                                    ...tiers,
+                                    {
+                                        minCourses:
+                                            Math.max(1, ...tiers.map((t) => t.minCourses)) + 1,
+                                        type: 'PERCENT',
+                                        value: 10,
+                                    },
+                                ],
+                            })
+                        }
+                        className="inline-flex items-center gap-1 text-2xs font-semibold text-primary-500"
+                    >
+                        <Plus className="size-3.5" /> Add a tier
+                    </button>
+                </div>
+            )}
+
             {/* ── Ladder ─────────────────────────────────────────────────────── */}
+            {basis === 'FLAT' && (
             <div className="space-y-2">
                 <Label className="text-xs">Price by number of subjects</Label>
                 {prices.map((price, index) => (
@@ -144,6 +327,7 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                     </span>
                 </div>
             </div>
+            )}
 
             {/* ── Ladder scope ───────────────────────────────────────────────── */}
             <div className="space-y-2 border-t border-neutral-200 pt-3">

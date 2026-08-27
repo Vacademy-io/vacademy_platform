@@ -25,8 +25,20 @@ import java.util.Set;
  *
  * Configured under `basketPricing` in the product page's settings_json:
  *
+ *   pricingBasis      FLAT (default) reads `ladder` as ABSOLUTE prices — the
+ *                     only thing that works when the courses are ₹0 and carry
+ *                     no price to discount. DISCOUNT reads `tiers` as a
+ *                     reduction off what the selected courses actually cost on
+ *                     their enroll invites, so the money has ONE source: the
+ *                     payment plan. Prefer DISCOUNT wherever the courses are
+ *                     priced — under FLAT the single-subject rate is written
+ *                     down twice (here and on the plan) and the two drift.
+ *   tiers             [{minCourses, type: PERCENT|AMOUNT, value}] for DISCOUNT.
+ *                     The highest minCourses at or below the count wins, so a
+ *                     tier at 3 also covers 4, 5, … — which is the point of a
+ *                     percentage: it keeps scaling without a new rung.
  *   ladder            prices[] for a basket of 1, 2, 3 … plus perExtra for each
- *                     one beyond the last listed price.
+ *                     one beyond the last listed price. FLAT basis only.
  *   groups            label → the level names belonging to it. No groups
  *                     configured means the whole basket is one group.
  *   ladderScope       GROUP (default) runs the ladder inside each group, so a
@@ -68,18 +80,33 @@ public class BasketPricingCalculator {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** One selected course, reduced to the only two things pricing cares about. */
-    public record BasketItem(String levelName, String packageName) {
+    /**
+     * One selected course. `price` is what its payment plan charges on the
+     * enroll invite — the base a DISCOUNT basis reduces, and the honest
+     * "before" figure the checkout shows even under a FLAT basis.
+     */
+    public record BasketItem(String levelName, String packageName, double price) {
+        /** Kept for callers that price on count alone (FLAT pages with ₹0 courses). */
+        public BasketItem(String levelName, String packageName) {
+            this(levelName, packageName, 0d);
+        }
     }
 
     /** What a basket costs, and the per-group breakdown behind it. */
     @Getter
     public static class BasketPrice {
         private final double total;
+        /**
+         * What the same courses cost bought separately. The checkout needs it to
+         * say "₹1,047 → ₹799, you save ₹248" instead of quoting a bare ₹799 the
+         * parent has no way to judge.
+         */
+        private final double itemTotal;
         private final List<String> breakdown = new ArrayList<>();
 
-        BasketPrice(double total) {
+        BasketPrice(double total, double itemTotal) {
             this.total = total;
+            this.itemTotal = itemTotal;
         }
     }
 
@@ -107,9 +134,11 @@ public class BasketPricingCalculator {
                 ladder.add(p.asDouble(0));
             }
             double perExtra = cfg.path("ladder").path("perExtra").asDouble(0);
-            if (ladder.isEmpty()) {
-                // Nothing to price with. Better to fall back to item prices than
-                // to hand back a free basket.
+            if (ladder.isEmpty() && !discountBasis(cfg)) {
+                // A FLAT page prices by count alone, so an empty ladder has
+                // nothing to price with. Better to fall back to item prices than
+                // to hand back a free basket. A DISCOUNT page needs no ladder —
+                // its base is what the courses cost on their enroll invites.
                 return null;
             }
 
@@ -117,11 +146,13 @@ public class BasketPricingCalculator {
             boolean ladderAcrossBasket = "BASKET".equalsIgnoreCase(cfg.path("ladderScope").asText("GROUP"));
 
             double total = 0;
+            double itemTotal = 0;
             List<String> lines = new ArrayList<>();
 
             for (Map.Entry<String, List<BasketItem>> entry : grouped.entrySet()) {
                 GroupQuote quote = priceGroup(cfg, entry.getKey(), entry.getValue(), ladder, perExtra);
                 total += quote.amount;
+                itemTotal += quote.baseAmount;
                 lines.add(quote.label);
             }
 
@@ -129,7 +160,9 @@ public class BasketPricingCalculator {
                 // One ladder over every subject in the basket. Still never worse
                 // than pricing the groups apart — a full pack or combo inside one
                 // group can beat it, so take whichever is cheaper.
-                double whole = ladderPrice(ladder, perExtra, items.size());
+                double whole = discountBasis(cfg)
+                        ? itemTotal - tierDiscount(cfg, itemTotal, items.size())
+                        : ladderPrice(ladder, perExtra, items.size());
                 if (whole < total) {
                     total = whole;
                     lines.clear();
@@ -137,7 +170,9 @@ public class BasketPricingCalculator {
                 }
             }
 
-            BasketPrice priced = new BasketPrice(Math.max(0, Math.round(total)));
+            BasketPrice priced = new BasketPrice(
+                    Math.max(0, Math.round(total)),
+                    Math.max(0, Math.round(itemTotal)));
             priced.breakdown.addAll(lines);
             return priced;
 
@@ -169,15 +204,74 @@ public class BasketPricingCalculator {
         return out;
     }
 
-    private record GroupQuote(double amount, String label) {
+    private record GroupQuote(double amount, double baseAmount, String label) {
+    }
+
+    private boolean discountBasis(JsonNode cfg) {
+        return "DISCOUNT".equalsIgnoreCase(cfg.path("pricingBasis").asText("FLAT"));
+    }
+
+    /**
+     * What the courses in a group cost on their own.
+     *
+     * Falls back to the ladder's single-subject rate when the courses are ₹0 —
+     * a FLAT page with free courses still needs SOMETHING to measure the saving
+     * against, and the one-subject rung is the figure its own price card
+     * advertises.
+     */
+    private double baseFor(List<BasketItem> picked, List<Double> ladder) {
+        double sum = 0;
+        for (BasketItem item : picked) {
+            sum += item.price();
+        }
+        if (sum > 0) {
+            return sum;
+        }
+        double single = ladder.isEmpty() ? 0 : ladder.get(0);
+        return single * picked.size();
+    }
+
+    /**
+     * The discount for a basket of this size: the BEST of every tier the count
+     * qualifies for. A PERCENT tier keeps scaling as the basket grows, which is
+     * why it needs no rung per count; an AMOUNT tier stays flat.
+     *
+     * Best, not highest-threshold: a tier list where a later rung happens to be
+     * worth less ("2+ → ₹500 off, 5+ → 10% off") would otherwise take the
+     * discount AWAY from a parent for adding a fifth subject. Picking the best
+     * qualifying tier makes that misconfiguration merely useless rather than
+     * punitive, and is identical for the normal increasing ladder.
+     */
+    private double tierDiscount(JsonNode cfg, double base, int count) {
+        double best = 0;
+        for (JsonNode tier : cfg.path("tiers")) {
+            int min = tier.path("minCourses").asInt(0);
+            if (min <= 0 || count < min) {
+                continue;
+            }
+            double value = tier.path("value").asDouble(0);
+            double amount = "PERCENT".equalsIgnoreCase(tier.path("type").asText("PERCENT"))
+                    ? base * value / 100.0
+                    : value;
+            best = Math.max(best, amount);
+        }
+        return Math.min(Math.max(0, best), base);
     }
 
     private GroupQuote priceGroup(JsonNode cfg, String groupLabel, List<BasketItem> picked,
             List<Double> ladder, double perExtra) {
         int count = picked.size();
+        double base = baseFor(picked, ladder);
 
-        double best = ladderPrice(ladder, perExtra, count);
+        double best;
         String how = count + " subject" + (count == 1 ? "" : "s");
+        if (discountBasis(cfg)) {
+            // The courses' own prices are the base, so the single-subject rate
+            // lives in exactly one place: the payment plan on the enroll invite.
+            best = base - tierDiscount(cfg, base, count);
+        } else {
+            best = ladderPrice(ladder, perExtra, count);
+        }
 
         // Full pack: every level configured for this group is in the basket.
         Double wholeGroup = wholeGroupPrice(cfg, groupLabel, picked, count);
@@ -207,7 +301,14 @@ public class BasketPricingCalculator {
 
         String label = (groupLabel == null || groupLabel.isBlank() ? "Basket" : groupLabel)
                 + " — " + how;
-        return new GroupQuote(best, label);
+        // Under DISCOUNT the base IS the starting point, so a misconfigured tier
+        // must never push the basket above it. Under FLAT the ladder deliberately
+        // REPLACES the item sum in both directions — capping there would silently
+        // reprice every existing page whose courses undercut its own ladder.
+        if (discountBasis(cfg) && base > 0) {
+            best = Math.min(best, base);
+        }
+        return new GroupQuote(best, base, label);
     }
 
     private Double wholeGroupPrice(JsonNode cfg, String groupLabel, List<BasketItem> picked, int count) {

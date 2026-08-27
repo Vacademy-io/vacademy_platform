@@ -9,6 +9,7 @@ import { BASE_URL } from "@/constants/urls";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { pushCourseSelectionChanged } from "@/components/common/enroll-by-invite/-utils/gtm";
 import { buildComponentStyle, getAnimationStyle } from "../-utils/component-style";
+import { BasketSummaryBar } from "./BasketSummaryBar";
 import { CourseStructureDetails } from "@/routes/$tagName/-components/CourseStructureDetails";
 import {
   getTerminology,
@@ -1373,44 +1374,14 @@ const StickyCartBar = ({
   pageData: ProductPageData;
   onNext: () => void;
   primaryColor: string;
-}) => {
-  const { t } = useTranslation("productPages");
-  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
-  const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
-  const { selectedPsOptionIds, totalPrice } = useProductPageStore();
-  const currency = pageData.currency || pageData.mappings[0]?.payment_plan?.currency || "";
-  const price = totalPrice();
-  const count = selectedPsOptionIds.length;
-  if (count === 0) return null;
-
-  return (
-    <div className="sticky bottom-0 z-30 border-t border-gray-100 bg-white/95 px-4 py-3 shadow-top-bar backdrop-blur-md">
-      <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-caption text-gray-500">
-            {t("common.itemsSelected", { count, course: (count === 1 ? courseTerm : coursesTerm).toLocaleLowerCase() })}
-          </p>
-          {price > 0 ? (
-            <p className="text-xl font-bold text-gray-900">
-              {currency} {price.toLocaleString()}
-            </p>
-          ) : (
-            <p className="text-base font-bold text-emerald-600">{t("common.freeEnrollment")}</p>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onNext}
-          className="flex shrink-0 items-center gap-2 rounded-xl px-7 py-3 text-sm font-bold text-white shadow-lg transition-all duration-150 hover:opacity-90 active:scale-95"
-          style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}55` }}
-        >
-          <ShoppingCart className="size-4" />
-          {t("common.proceedToCheckout")}
-        </button>
-      </div>
-    </div>
-  );
-};
+}) => (
+  // Shared with the plain-catalogue bar so the two cannot quote different
+  // totals for the same basket — this one summed the card prices and ignored
+  // basket pricing entirely, quoting the undiscounted figure right up to
+  // checkout. The shared bar keeps this one's translations and institute
+  // terminology.
+  <BasketSummaryBar pageData={pageData} onNext={onNext} primaryColor={primaryColor} />
+);
 
 // ─── New catalogue-format blocks ─────────────────────────────────────────────
 

@@ -11,8 +11,17 @@
  * are all ₹0), so a percentage off the sum is a percentage of nothing.
  *
  * The rules, in full:
+ *  - `pricingBasis` picks what the rules mean. FLAT (default) reads `ladder` as
+ *    ABSOLUTE prices — the only thing that works when the courses are ₹0 and
+ *    carry no price to discount. DISCOUNT reads `tiers` as a reduction off what
+ *    the courses actually cost on their enroll invites, so the single-subject
+ *    rate has ONE home: the payment plan. Under FLAT it is written down twice,
+ *    here and on the plan, and the two drift apart;
  *  - the ladder gives a price for a basket of 1, 2, 3 … and `perExtra` for each
  *    course beyond the last listed price;
+ *  - a tier is {minCourses, type: PERCENT|AMOUNT, value}. The highest
+ *    minCourses the basket reaches wins, so a tier at 3 also covers 4, 5, … —
+ *    which is the point of a percentage: it scales without a rung per count;
  *  - groups split the basket. `ladderScope: 'GROUP'` (default) runs the ladder
  *    inside each group, so a parent buying one subject each for two children
  *    pays two single-subject prices; `'BASKET'` runs it across everything, so
@@ -49,8 +58,22 @@ export interface BasketPricingCombo {
     price: number;
 }
 
+export interface BasketPricingTier {
+    /** Applies once the basket reaches this many courses. */
+    minCourses: number;
+    type: 'PERCENT' | 'AMOUNT';
+    /** Percent of the item total, or a flat currency amount. */
+    value: number;
+}
+
 export interface BasketPricingSettings {
     enabled: boolean;
+    /**
+     * FLAT (default) prices by count via `ladder`. DISCOUNT reduces what the
+     * courses cost on their enroll invites via `tiers`.
+     */
+    pricingBasis?: 'FLAT' | 'DISCOUNT';
+    tiers?: BasketPricingTier[];
     ladder: {
         /** Price for a basket of 1, 2, 3 … in order. */
         prices: number[];
@@ -73,11 +96,19 @@ export interface BasketPricingSettings {
 export interface BasketItem {
     levelName?: string | null;
     packageName?: string | null;
+    /** What its payment plan charges on the enroll invite. */
+    price?: number | null;
 }
 
 export interface BasketQuoteLine {
     label: string;
     amount: number;
+    /**
+     * What this group's courses cost bought separately. The checkout needs it to
+     * say "₹1,047 → ₹799, save ₹248" instead of quoting a bare ₹799 the parent
+     * has no way to judge.
+     */
+    baseAmount: number;
     /** How this group's price was reached, shown in the summary. */
     how: string;
     count: number;
@@ -85,6 +116,8 @@ export interface BasketQuoteLine {
 
 export interface BasketQuote {
     total: number;
+    /** Sum of every line's baseAmount. */
+    itemTotal: number;
     lines: BasketQuoteLine[];
 }
 
@@ -96,9 +129,12 @@ export const parseBasketPricing = (
     if (!settingsJson) return undefined;
     try {
         const cfg = JSON.parse(settingsJson)?.basketPricing as BasketPricingSettings | undefined;
-        // A ladder with no prices cannot price anything; treat it as not
-        // configured so the page falls back to item prices instead of free.
-        return cfg?.enabled && cfg.ladder?.prices?.length ? cfg : undefined;
+        if (!cfg?.enabled) return undefined;
+        // A DISCOUNT page needs no ladder at all — its base comes from the
+        // courses. A FLAT page with no prices cannot price anything, so treat it
+        // as unconfigured and fall back to item prices rather than to free.
+        if (cfg.pricingBasis === 'DISCOUNT') return cfg;
+        return cfg.ladder?.prices?.length ? cfg : undefined;
     } catch {
         return undefined;
     }
@@ -109,6 +145,47 @@ export const ladderPrice = (prices: number[], perExtra: number, count: number): 
     if (count <= 0) return 0;
     if (count <= prices.length) return prices[count - 1] ?? 0;
     return (prices[prices.length - 1] ?? 0) + perExtra * (count - prices.length);
+};
+
+const isDiscountBasis = (settings: BasketPricingSettings): boolean =>
+    settings.pricingBasis === 'DISCOUNT';
+
+/**
+ * What a set of courses costs on its own.
+ *
+ * Falls back to the ladder's single-subject rate when the courses are ₹0 — a
+ * FLAT page with free courses still needs something to measure the saving
+ * against, and the one-subject rung is the figure its price card advertises.
+ */
+const baseFor = (settings: BasketPricingSettings, picked: BasketItem[]): number => {
+    const sum = picked.reduce((total, item) => total + (item.price ?? 0), 0);
+    if (sum > 0) return sum;
+    return (settings.ladder?.prices?.[0] ?? 0) * picked.length;
+};
+
+/**
+ * The discount for a basket of this size: the BEST of every tier the count
+ * qualifies for. A PERCENT tier keeps scaling as the basket grows, which is why
+ * it needs no rung per count; an AMOUNT tier stays flat.
+ *
+ * Best, not highest-threshold: a tier list where a later rung happens to be
+ * worth less ("2+ → ₹500 off, 5+ → 10% off") would otherwise take the discount
+ * AWAY from a parent for adding a fifth subject. Identical for the normal
+ * increasing ladder.
+ */
+export const tierDiscount = (
+    settings: BasketPricingSettings,
+    base: number,
+    count: number
+): number => {
+    let best = 0;
+    for (const tier of settings.tiers ?? []) {
+        const min = tier.minCourses ?? 0;
+        if (min <= 0 || count < min) continue;
+        const amount = tier.type === 'AMOUNT' ? tier.value : (base * tier.value) / 100;
+        best = Math.max(best, amount);
+    }
+    return Math.min(Math.max(0, best), base);
 };
 
 const groupBasket = (
@@ -138,7 +215,10 @@ export const quoteBasket = (
 
     for (const [label, picked] of groupBasket(settings, items)) {
         const count = picked.length;
-        let best = ladderPrice(prices, perExtra, count);
+        const base = baseFor(settings, picked);
+        let best = isDiscountBasis(settings)
+            ? base - tierDiscount(settings, base, count)
+            : ladderPrice(prices, perExtra, count);
         let how = `${count} subject${count === 1 ? '' : 's'}`;
 
         // Full pack — every level configured for this group is in the basket.
@@ -178,22 +258,33 @@ export const quoteBasket = (
             }
         }
 
-        lines.push({ label: label || 'Your selection', amount: best, how, count });
+        // Under DISCOUNT the base IS the starting point, so a misconfigured tier
+        // must never push the basket above it. Under FLAT the ladder deliberately
+        // REPLACES the item sum in both directions — capping there would silently
+        // reprice every existing page whose courses undercut its own ladder.
+        if (isDiscountBasis(settings) && base > 0) best = Math.min(best, base);
+
+        lines.push({ label: label || 'Your selection', amount: best, baseAmount: base, how, count });
     }
 
     const grouped = Math.round(lines.reduce((sum, l) => sum + l.amount, 0));
+    const itemTotal = Math.round(lines.reduce((sum, l) => sum + l.baseAmount, 0));
 
     if (settings.ladderScope === 'BASKET') {
         // One ladder over the whole basket. Never worse than pricing the groups
         // apart — a full pack or combo inside one group can still beat it.
-        const whole = ladderPrice(prices, perExtra, items.length);
+        const whole = isDiscountBasis(settings)
+            ? itemTotal - tierDiscount(settings, itemTotal, items.length)
+            : ladderPrice(prices, perExtra, items.length);
         if (whole < grouped) {
             return {
                 total: Math.max(0, Math.round(whole)),
+                itemTotal,
                 lines: [
                     {
                         label: 'Your selection',
                         amount: whole,
+                        baseAmount: itemTotal,
                         how: `${items.length} subject${items.length === 1 ? '' : 's'}`,
                         count: items.length,
                     },
@@ -202,7 +293,7 @@ export const quoteBasket = (
         }
     }
 
-    return { total: Math.max(0, grouped), lines };
+    return { total: Math.max(0, grouped), itemTotal, lines };
 };
 
 /**
@@ -218,10 +309,58 @@ export const savingsVsSingles = (
     quote: BasketQuote | null
 ): number => {
     if (!settings || !quote) return 0;
-    const single = settings.ladder.prices[0] ?? 0;
-    if (single <= 0) return 0;
-    const asSingles = quote.lines.reduce((sum, line) => sum + line.count * single, 0);
-    return Math.max(0, Math.round(asSingles - quote.total));
+    return Math.max(0, Math.round(quote.itemTotal - quote.total));
+};
+
+/**
+ * The next discount tier the basket has not reached, and how far away it is.
+ *
+ * This is the nudge a DISCOUNT page can make honestly: the threshold is a
+ * course count, so "add 1 more subject for 25% off" is exact, where quoting a
+ * rupee figure would depend on which course gets picked.
+ *
+ * `base` lets the label quote the EXTRA saving rather than the new total. A
+ * basket already holding ₹99 off does not gain ₹248 by adding one more — it
+ * gains ₹149, and promising the larger number is the kind of thing a parent
+ * notices at the payment screen.
+ */
+export const nextTier = (
+    settings: BasketPricingSettings | undefined,
+    count: number,
+    base = 0
+): {
+    coursesAway: number;
+    /** English, for the surfaces that are not translated yet. */
+    label: string;
+    /** The same fact as data, so a translated surface can phrase it itself. */
+    offer: { type: 'PERCENT' | 'AMOUNT'; value: number; incremental: boolean };
+} | null => {
+    if (!settings || !isDiscountBasis(settings)) return null;
+    const ahead = (settings.tiers ?? [])
+        .filter((t) => (t.minCourses ?? 0) > count)
+        .sort((a, b) => a.minCourses - b.minCourses);
+    const next = ahead[0];
+    if (!next) return null;
+
+    const alreadyOff = base > 0 ? tierDiscount(settings, base, count) : 0;
+    let label: string;
+    let offer: { type: 'PERCENT' | 'AMOUNT'; value: number; incremental: boolean };
+    if (next.type === 'AMOUNT') {
+        const extra = Math.round(next.value - alreadyOff);
+        const incremental = alreadyOff > 0 && extra > 0;
+        offer = { type: 'AMOUNT', value: incremental ? extra : next.value, incremental };
+        label = incremental ? `₹${extra} more off` : `₹${next.value} off`;
+    } else {
+        offer = { type: 'PERCENT', value: next.value, incremental: false };
+        label = `${next.value}% off`;
+    }
+    return { coursesAway: next.minCourses - count, label, offer };
+};
+
+/** The saving as a percentage of what the courses cost apart. 0 when there is none. */
+export const savingsPercent = (quote: BasketQuote | null): number => {
+    if (!quote || quote.itemTotal <= 0) return 0;
+    return Math.max(0, Math.round(((quote.itemTotal - quote.total) / quote.itemTotal) * 100));
 };
 
 /**
@@ -241,6 +380,10 @@ export const nextCourseCost = (
     quote: BasketQuote | null
 ): { amount: number; group: string | null } | null => {
     if (!settings || !quote) return null;
+    // Under DISCOUNT the next course's cost depends on ITS price, which is not
+    // known until it is picked. Quoting a number here would be a guess; the
+    // honest nudge there is the next tier — see nextTier below.
+    if (isDiscountBasis(settings)) return null;
     const { prices, perExtra } = settings.ladder;
 
     if (settings.ladderScope === 'BASKET') {

@@ -665,7 +665,11 @@ public class LiveSessionProviderController {
                         }
                     }
                 }
-                attendanceCriteriaEvaluator.evaluate(criteriaSession, schedule, roster, adminMarked);
+                // callback.getDuration() is how long the meeting really ran, in
+                // seconds — the threshold is capped to it so an early finish
+                // cannot fail learners who stayed for the whole class.
+                attendanceCriteriaEvaluator.evaluate(criteriaSession, schedule, roster, adminMarked,
+                        callback.getDuration());
             }
 
             schedule.setLastAttendanceSyncAt(new java.util.Date());

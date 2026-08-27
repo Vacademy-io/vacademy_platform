@@ -1,6 +1,8 @@
 {
     "trigger": {
-        "label": "Export Reports (ZIP)"
+        "label": "Export Reports (ZIP)",
+        "short": "Reports",
+        "tooltip": "Export a ZIP of report PDFs, one per student"
     },
     "dialog": {
         "heading": "Export Reports (ZIP)"

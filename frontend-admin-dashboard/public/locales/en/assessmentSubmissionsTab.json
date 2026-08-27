@@ -2,7 +2,10 @@
     "tabs": {
         "attempted": "Attempted",
         "ongoing": "Ongoing",
-        "pending": "Pending"
+        "pending": "Pending",
+        "attemptedSubtitle": "Students who have submitted",
+        "pendingSubtitle": "Students who haven't submitted",
+        "ongoingSubtitle": "Students currently attempting"
     },
     "participantType": {
         "internal": "Internal",
@@ -31,12 +34,19 @@
     },
     "buttons": {
         "offlineEntry": "Offline Entry",
-        "revaluate": "Revaluate",
-        "aiEvaluations": "AI Evaluations"
+        "revaluate": "Reevaluate",
+        "aiEvaluations": "AI Evaluations",
+        "refresh": "Refresh",
+        "refreshTooltip": "Reload submissions and recalculate the summary",
+        "revaluateTooltip": "Re-run evaluation for the selected submissions",
+        "aiEvaluationsTooltip": "Open AI evaluation for this assessment"
     },
     "dialogs": {
         "revaluate": {
-            "title": "Revaluate Result"
+            "title": "Reevaluate Result"
         }
+    },
+    "search": {
+        "placeholder": "Search students..."
     }
 }

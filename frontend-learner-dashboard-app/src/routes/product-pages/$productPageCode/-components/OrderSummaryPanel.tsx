@@ -135,12 +135,17 @@ export const OrderSummaryPanel = ({
    */
   const tierAhead = nextTier(basketSettings, items.length, itemTotal);
   const upsell = tierAhead
-    ? t("cartStep.basket.addForTier", {
-        count: tierAhead.coursesAway,
-        course: courseTerm,
-        courses: coursesTerm,
-        offer: tierAhead.label,
-      })
+    ? tierAhead.coursesAway > 0
+      ? t("cartStep.basket.addForTier", {
+          count: tierAhead.coursesAway,
+          course: courseTerm,
+          courses: coursesTerm,
+          offer: tierAhead.label,
+        })
+      : t("cartStep.basket.spendForTier", {
+          amount: money(tierAhead.amountAway),
+          offer: tierAhead.label,
+        })
     : quote && perNext !== null && perNext.amount > 0 && items.length > 0
       ? perNext.group
         ? t("cartStep.basket.addAnotherGroup", {

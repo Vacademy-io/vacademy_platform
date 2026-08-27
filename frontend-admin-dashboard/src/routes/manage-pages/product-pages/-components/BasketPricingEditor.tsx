@@ -79,14 +79,33 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
     const setTier = (index: number, patch: Partial<BasketPricingTier>) =>
         set({ tiers: tiers.map((t, i) => (i === index ? { ...t, ...patch } : t)) });
 
-    /** Mirrors tierDiscount in the engine: the best tier the count qualifies for. */
+    /** Mirrors tierApplies in the engine — count, spend, or both. */
+    const applies = (tier: BasketPricingTier, base: number, count: number) => {
+        const minCourses = tier.minCourses ?? 0;
+        const minAmount = tier.minAmount ?? 0;
+        if (minCourses <= 0 && minAmount <= 0) return false;
+        if (minCourses > 0 && count < minCourses) return false;
+        if (minAmount > 0 && base < minAmount) return false;
+        const maxAmount = tier.maxAmount ?? 0;
+        return !(maxAmount > 0 && base > maxAmount);
+    };
+
+    /** Mirrors tierAmount: the value, then the optional currency ceiling. */
+    const amountOf = (tier: BasketPricingTier, base: number) => {
+        const value = tier.value ?? 0;
+        if (value <= 0) return 0;
+        let off = tier.type === 'AMOUNT' ? value : (base * value) / 100;
+        const cap = tier.maxDiscount ?? 0;
+        if (cap > 0) off = Math.min(off, cap);
+        return Math.max(0, off);
+    };
+
+    /** Mirrors tierDiscount: the best tier this basket qualifies for. */
     const discountAt = (count: number, base: number) => {
         let best = 0;
         for (const tier of tiers) {
-            const min = tier.minCourses ?? 0;
-            if (min <= 0 || count < min) continue;
-            const amount = tier.type === 'AMOUNT' ? tier.value : (base * tier.value) / 100;
-            best = Math.max(best, amount);
+            if (!applies(tier, base, count)) continue;
+            best = Math.max(best, amountOf(tier, base));
         }
         return Math.min(Math.max(0, best), base);
     };
@@ -176,8 +195,10 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                 <div className="space-y-2 border-t border-neutral-200 pt-3">
                     <Label className="text-xs">Discount by number of subjects</Label>
                     <p className="text-2xs text-neutral-500">
-                        The highest tier the basket reaches applies. A percentage keeps working as
-                        the basket grows, so it needs no rung per count.
+                        Gate a tier on how many subjects, on how much the basket is worth, or on
+                        both — when both are set, both must hold. Leave an amount at 0 to ignore it.
+                        The best qualifying tier wins, so a bigger basket never loses a discount it
+                        already had.
                     </p>
                     {tiers.length === 0 && (
                         <p className="text-2xs text-neutral-400">
@@ -185,61 +206,138 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                         </p>
                     )}
                     {tiers.map((tier, index) => {
-                        const base = typicalPrice * tier.minCourses;
-                        const off = discountAt(tier.minCourses, base);
+                        // Preview against a basket that actually reaches this tier,
+                        // so the figure shown is the figure charged.
+                        const byCount = (tier.minCourses ?? 0) * typicalPrice;
+                        const base = Math.max(byCount, tier.minAmount ?? 0);
+                        const count = Math.max(
+                            tier.minCourses ?? 0,
+                            typicalPrice > 0 ? Math.ceil(base / typicalPrice) : 0
+                        );
+                        const off = discountAt(count, base);
+                        const noCondition =
+                            (tier.minCourses ?? 0) <= 0 && (tier.minAmount ?? 0) <= 0;
+                        const impossibleBand =
+                            (tier.maxAmount ?? 0) > 0 &&
+                            (tier.maxAmount ?? 0) < (tier.minAmount ?? 0);
                         return (
-                            <div key={index} className="flex flex-wrap items-center gap-2">
-                                <span className="text-2xs text-neutral-500">From</span>
-                                <Input
-                                    type="number"
-                                    min={1}
-                                    value={tier.minCourses}
-                                    onChange={(e) =>
-                                        setTier(index, { minCourses: num(e.target.value, 1) })
-                                    }
-                                    className="h-8 w-16"
-                                    aria-label="Minimum subjects for this tier"
-                                />
-                                <span className="text-2xs text-neutral-500">subjects, take</span>
-                                <Input
-                                    type="number"
-                                    min={0}
-                                    value={tier.value}
-                                    onChange={(e) => setTier(index, { value: num(e.target.value) })}
-                                    className="h-8 w-20"
-                                    aria-label="Discount value"
-                                />
-                                <select
-                                    value={tier.type}
-                                    onChange={(e) =>
-                                        setTier(index, {
-                                            type: e.target.value as BasketPricingTier['type'],
-                                        })
-                                    }
-                                    className="h-8 rounded border border-neutral-200 bg-white px-2 text-2xs"
-                                    aria-label="Discount type"
-                                >
-                                    <option value="PERCENT">% off</option>
-                                    <option value="AMOUNT">₹ off</option>
-                                </select>
-                                {base > 0 && (
-                                    <span className="text-2xs text-neutral-400">
-                                        {tier.minCourses} × {typicalPrice} = {base} →{' '}
+                            <div
+                                key={index}
+                                className="space-y-1.5 rounded border border-neutral-200 bg-white p-2"
+                            >
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-2xs text-neutral-500">From</span>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        value={tier.minCourses ?? 0}
+                                        onChange={(e) =>
+                                            setTier(index, { minCourses: num(e.target.value) })
+                                        }
+                                        className="h-8 w-14"
+                                        aria-label="Minimum subjects for this tier"
+                                    />
+                                    <span className="text-2xs text-neutral-500">
+                                        subjects, or from
+                                    </span>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        value={tier.minAmount ?? 0}
+                                        onChange={(e) =>
+                                            setTier(index, { minAmount: num(e.target.value) })
+                                        }
+                                        className="h-8 w-20"
+                                        aria-label="Minimum basket amount for this tier"
+                                    />
+                                    <span className="text-2xs text-neutral-500">up to</span>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        value={tier.maxAmount ?? 0}
+                                        onChange={(e) =>
+                                            setTier(index, { maxAmount: num(e.target.value) })
+                                        }
+                                        className="h-8 w-20"
+                                        aria-label="Maximum basket amount for this tier"
+                                    />
+                                    <button
+                                        type="button"
+                                        aria-label="Remove this tier"
+                                        onClick={() =>
+                                            set({ tiers: tiers.filter((_, i) => i !== index) })
+                                        }
+                                        className="ms-auto rounded p-1 text-neutral-400 hover:text-danger-500"
+                                    >
+                                        <Trash className="size-3.5" />
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-2xs text-neutral-500">take</span>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        value={tier.value}
+                                        onChange={(e) =>
+                                            setTier(index, { value: num(e.target.value) })
+                                        }
+                                        className="h-8 w-20"
+                                        aria-label="Discount value"
+                                    />
+                                    <select
+                                        value={tier.type}
+                                        onChange={(e) =>
+                                            setTier(index, {
+                                                type: e.target.value as BasketPricingTier['type'],
+                                            })
+                                        }
+                                        className="h-8 rounded border border-neutral-200 bg-white px-2 text-2xs"
+                                        aria-label="Discount type"
+                                    >
+                                        <option value="PERCENT">% off</option>
+                                        <option value="AMOUNT">₹ off</option>
+                                    </select>
+                                    {tier.type === 'PERCENT' && (
+                                        <>
+                                            <span className="text-2xs text-neutral-500">
+                                                but never more than
+                                            </span>
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                value={tier.maxDiscount ?? 0}
+                                                onChange={(e) =>
+                                                    setTier(index, {
+                                                        maxDiscount: num(e.target.value),
+                                                    })
+                                                }
+                                                className="h-8 w-20"
+                                                aria-label="Maximum discount for this tier"
+                                            />
+                                        </>
+                                    )}
+                                </div>
+                                {noCondition && (
+                                    <p className="text-2xs text-warning-700">
+                                        Set a subject count or an amount, or this tier never
+                                        applies.
+                                    </p>
+                                )}
+                                {!noCondition && impossibleBand && (
+                                    <p className="text-2xs text-danger-600">
+                                        The upper bound is below the lower one, so no basket can
+                                        fall inside this band.
+                                    </p>
+                                )}
+                                {!noCondition && !impossibleBand && base > 0 && (
+                                    <p className="text-2xs text-neutral-400">
+                                        {count} × {typicalPrice} = {Math.round(base)} &rarr;{' '}
                                         <strong className="text-neutral-600">
                                             {Math.round(base - off)}
-                                        </strong>
-                                    </span>
+                                        </strong>{' '}
+                                        (&minus;{Math.round(off)})
+                                    </p>
                                 )}
-                                <button
-                                    type="button"
-                                    aria-label={`Remove the ${tier.minCourses}-subject tier`}
-                                    onClick={() =>
-                                        set({ tiers: tiers.filter((_, i) => i !== index) })
-                                    }
-                                    className="rounded p-1 text-neutral-400 hover:text-danger-500"
-                                >
-                                    <Trash className="size-3.5" />
-                                </button>
                             </div>
                         );
                     })}
@@ -251,7 +349,8 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
                                     ...tiers,
                                     {
                                         minCourses:
-                                            Math.max(1, ...tiers.map((t) => t.minCourses)) + 1,
+                                            Math.max(1, ...tiers.map((t) => t.minCourses ?? 0)) +
+                                            1,
                                         type: 'PERCENT',
                                         value: 10,
                                     },
@@ -267,66 +366,66 @@ export const BasketPricingEditor = ({ value, courses, onChange }: Props) => {
 
             {/* ── Ladder ─────────────────────────────────────────────────────── */}
             {basis === 'FLAT' && (
-            <div className="space-y-2">
-                <Label className="text-xs">Price by number of subjects</Label>
-                {prices.map((price, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                        <span className="w-24 shrink-0 text-2xs text-neutral-500">
-                            {index + 1} subject{index === 0 ? '' : 's'}
-                        </span>
+                <div className="space-y-2">
+                    <Label className="text-xs">Price by number of subjects</Label>
+                    {prices.map((price, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                            <span className="w-24 shrink-0 text-2xs text-neutral-500">
+                                {index + 1} subject{index === 0 ? '' : 's'}
+                            </span>
+                            <Input
+                                type="number"
+                                min={0}
+                                value={price}
+                                onChange={(e) => setPrice(index, num(e.target.value))}
+                                className="h-8 w-24"
+                            />
+                            {index === prices.length - 1 && prices.length > 1 && (
+                                <button
+                                    type="button"
+                                    aria-label={`Remove the ${index + 1}-subject price`}
+                                    onClick={() =>
+                                        set({ ladder: { ...value.ladder, prices: prices.slice(0, -1) } })
+                                    }
+                                    className="rounded p-1 text-neutral-400 hover:text-danger-500"
+                                >
+                                    <Trash className="size-3.5" />
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                    <button
+                        type="button"
+                        onClick={() =>
+                            set({
+                                ladder: {
+                                    ...value.ladder,
+                                    prices: [...prices, ladderAt(prices.length + 1)],
+                                },
+                            })
+                        }
+                        className="inline-flex items-center gap-1 text-2xs font-semibold text-primary-500"
+                    >
+                        <Plus className="size-3.5" /> Add a step
+                    </button>
+
+                    <div className="flex items-center gap-2 pt-1">
+                        <span className="w-24 shrink-0 text-2xs text-neutral-500">Each extra</span>
                         <Input
                             type="number"
                             min={0}
-                            value={price}
-                            onChange={(e) => setPrice(index, num(e.target.value))}
+                            value={value.ladder?.perExtra ?? 0}
+                            onChange={(e) =>
+                                set({ ladder: { ...value.ladder, perExtra: num(e.target.value) } })
+                            }
                             className="h-8 w-24"
                         />
-                        {index === prices.length - 1 && prices.length > 1 && (
-                            <button
-                                type="button"
-                                aria-label={`Remove the ${index + 1}-subject price`}
-                                onClick={() =>
-                                    set({ ladder: { ...value.ladder, prices: prices.slice(0, -1) } })
-                                }
-                                className="rounded p-1 text-neutral-400 hover:text-danger-500"
-                            >
-                                <Trash className="size-3.5" />
-                            </button>
-                        )}
+                        <span className="text-2xs text-neutral-400">
+                            beyond {prices.length} — e.g. {prices.length + 2} subjects ={' '}
+                            {ladderAt(prices.length + 2)}
+                        </span>
                     </div>
-                ))}
-                <button
-                    type="button"
-                    onClick={() =>
-                        set({
-                            ladder: {
-                                ...value.ladder,
-                                prices: [...prices, ladderAt(prices.length + 1)],
-                            },
-                        })
-                    }
-                    className="inline-flex items-center gap-1 text-2xs font-semibold text-primary-500"
-                >
-                    <Plus className="size-3.5" /> Add a step
-                </button>
-
-                <div className="flex items-center gap-2 pt-1">
-                    <span className="w-24 shrink-0 text-2xs text-neutral-500">Each extra</span>
-                    <Input
-                        type="number"
-                        min={0}
-                        value={value.ladder?.perExtra ?? 0}
-                        onChange={(e) =>
-                            set({ ladder: { ...value.ladder, perExtra: num(e.target.value) } })
-                        }
-                        className="h-8 w-24"
-                    />
-                    <span className="text-2xs text-neutral-400">
-                        beyond {prices.length} — e.g. {prices.length + 2} subjects ={' '}
-                        {ladderAt(prices.length + 2)}
-                    </span>
                 </div>
-            </div>
             )}
 
             {/* ── Ladder scope ───────────────────────────────────────────────── */}

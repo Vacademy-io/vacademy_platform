@@ -42,6 +42,7 @@
     },
     "cartStep": {
         "basket": {
+            "spendForTier": "Dépensez {{amount}} de plus pour obtenir {{offer}} sur tout le panier.",
             "cartItems": "{{courses}} dans votre panier",
             "emptyTitle": "Votre panier est encore vide",
             "emptyBody": "Choisissez au moins un {{course}} pour passer à la caisse.",

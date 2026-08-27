@@ -314,12 +314,20 @@ export const CartItemList = ({
                 <div className="flex items-center gap-2.5 rounded-2xl border border-primary-200 bg-primary-50 px-4 py-3">
                     <Gift className="size-5 shrink-0 text-primary-500" aria-hidden="true" />
                     <p className="min-w-0 text-sm font-semibold text-primary-500">
-                        {t('cartStep.basket.addForTier', {
-                            count: tierAhead.coursesAway,
-                            course: courseTerm,
-                            courses: coursesTerm,
-                            offer: tierAhead.label,
-                        })}
+                        {/* Whichever gap is real. Promising "add 1 more" for a
+                            tier gated on spend would be a promise the basket
+                            cannot keep. */}
+                        {tierAhead.coursesAway > 0
+                            ? t('cartStep.basket.addForTier', {
+                                  count: tierAhead.coursesAway,
+                                  course: courseTerm,
+                                  courses: coursesTerm,
+                                  offer: tierAhead.label,
+                              })
+                            : t('cartStep.basket.spendForTier', {
+                                  amount: money(tierAhead.amountAway),
+                                  offer: tierAhead.label,
+                              })}
                     </p>
                 </div>
             )}

@@ -14,6 +14,8 @@
         "nextPage": "Next page"
     },
     "productPageOffer": {
+        "spendMoreForTierAmount": "Spend {{spend}} more to get {{amount}} off.",
+        "spendMoreForTierPercent": "Spend {{spend}} more to get {{percent}}% off.",
         "addMoreForTierAmount": "Add {{count}} more {{course}} to get {{amount}} off.",
         "addMoreForTierAmountMore": "Add {{count}} more {{course}} to get {{amount}} more off.",
         "addMoreForTierPercent": "Add {{count}} more {{course}} to get {{percent}}% off.",

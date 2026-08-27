@@ -51,6 +51,33 @@ import {
   formatDate as formatDateIntl,
   formatDateTime as formatDateTimeIntl,
 } from "@/lib/formatters";
+
+/**
+ * Calendar labels live in the lazily-loaded `study` catalog, so a render can land
+ * before that namespace resolves (or after its chunk fails to fetch) with t()
+ * still handing back the raw key. Reading `.map` off that string took the whole
+ * page down, so these stand in until the catalog is actually in.
+ */
+const FALLBACK_MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const FALLBACK_DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** t(key, { returnObjects: true }) yields the key itself until the catalog loads. */
+const asStringArray = (value: unknown, fallback: string[]): string[] =>
+  Array.isArray(value) && value.length > 0 ? (value as string[]) : fallback;
+
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
 });
@@ -1011,9 +1038,15 @@ function RouteComponent() {
     const daysInMonth = getDaysInMonth(month, year);
     const firstDay = getFirstDayOfMonth(month, year);
 
-    const monthNames = t("liveClass.calendar.monthNames", { returnObjects: true }) as string[];
+    const monthNames = asStringArray(
+      t("liveClass.calendar.monthNames", { returnObjects: true }),
+      FALLBACK_MONTH_NAMES
+    );
 
-    const dayNames = t("liveClass.calendar.dayNamesShort", { returnObjects: true }) as string[];
+    const dayNames = asStringArray(
+      t("liveClass.calendar.dayNamesShort", { returnObjects: true }),
+      FALLBACK_DAY_NAMES_SHORT
+    );
 
     const days = [];
 
@@ -1594,7 +1627,9 @@ function RouteComponent() {
           </TabsContent>
 
           <TabsContent value="calendar" className="mt-6">
-            {renderCalendarView()}
+            {/* Called eagerly by JSX, so keep it behind the same condition that
+                mounts this panel — the list tab paid for a full month render. */}
+            {selectedView === "calendar" && renderCalendarView()}
           </TabsContent>
         </Tabs >
 

@@ -456,7 +456,7 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
             icon: JSX.Element;
             onClick: () => void;
         }[];
-    }, [roleDisplay?.contentTypes]);
+    }, [roleDisplay?.contentTypes, t]);
 
     const onAddAll = async () => {
         if (staged.length === 0) {

@@ -635,7 +635,7 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
             },
         ];
         return tabs.filter((t) => t.show);
-    }, [roles, roleDisplay?.courseList, instituteDetails?.id]);
+    }, [roles, roleDisplay?.courseList, instituteDetails?.id, t]);
 
     // Apply default tab from role settings when appropriate
     useEffect(() => {

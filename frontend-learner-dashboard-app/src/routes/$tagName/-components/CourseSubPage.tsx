@@ -299,6 +299,14 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     p.id === `/${page}`
   );
 
+  /** Same opt-out as CourseCataloguePage. This component is the one that
+   *  ACTUALLY renders custom pages on published sites: /$tagName/$courseId/
+   *  outranks /$tagName/$pageSlug in route matching, so the gate added to
+   *  CourseCataloguePage never ran for them — found by tracing a live page's
+   *  header parent chain over CDP after the config flag provably had no
+   *  effect. An imported HTML page carries its own nav and footer. */
+  const hidesSiteChrome = !!(currentPage as { hideSiteChrome?: boolean } | undefined)?.hideSiteChrome;
+
   // If no matching page found, show not found
   if (!currentPage) {
     console.warn("[CourseSubPage] No page found for route:", page);
@@ -377,7 +385,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       {(!showIntroPage || introCompleted) && catalogueData && (
         <>
           {/* Header from JSON globalSettings */}
-          {(catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
+          {!hidesSiteChrome && (catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
             <JsonRenderer
               page={{
                 id: "header",
@@ -422,7 +430,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
           />
 
           {/* Footer from JSON globalSettings */}
-          {(catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (
+          {!hidesSiteChrome && (catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (
             <JsonRenderer
               page={{
                 id: "footer",

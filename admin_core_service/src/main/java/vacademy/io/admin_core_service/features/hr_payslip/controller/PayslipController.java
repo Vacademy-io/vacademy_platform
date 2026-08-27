@@ -3,7 +3,8 @@ package vacademy.io.admin_core_service.features.hr_payslip.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.hr_payslip.dto.GeneratePayslipDTO;
 import vacademy.io.admin_core_service.features.hr_payslip.dto.PayslipDTO;
 import vacademy.io.admin_core_service.features.hr_payslip.service.PayslipService;
@@ -19,15 +20,20 @@ public class PayslipController {
     private PayslipService payslipService;
 
     @Autowired
-    private InstituteAccessValidator instituteAccessValidator;
+    private HrAccessGuard hrAccessGuard;
 
     @PostMapping("/generate")
+    @Auditable(
+            entityType = "HR_PAYSLIP",
+            action = "GENERATE",
+            entityIdExpr = "#dto?.payrollRunId",
+            descriptionExpr = "'generated payslips for payroll run ' + #dto?.payrollRunId")
     public ResponseEntity<String> generatePayslips(
             @RequestBody GeneratePayslipDTO dto,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        String result = payslipService.generatePayslips(dto.getPayrollRunId());
+        hrAccessGuard.requireHrAdmin(user, instituteId);
+        String result = payslipService.generatePayslips(dto.getPayrollRunId(), instituteId);
         return ResponseEntity.ok(result);
     }
 
@@ -37,7 +43,8 @@ public class PayslipController {
             @RequestParam(value = "year", required = false) Integer year,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        // Employee must belong to the validated institute; non-HR callers may only read their own payslips
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, employeeId);
         List<PayslipDTO> payslips = payslipService.getPayslips(employeeId, year);
         return ResponseEntity.ok(payslips);
     }
@@ -47,8 +54,8 @@ public class PayslipController {
             @PathVariable("id") String id,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        PayslipDTO payslip = payslipService.getPayslipById(id);
+        hrAccessGuard.validateMember(user, instituteId);
+        PayslipDTO payslip = payslipService.getPayslipById(id, instituteId, user);
         return ResponseEntity.ok(payslip);
     }
 }

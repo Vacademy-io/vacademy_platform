@@ -4,7 +4,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.hr_employee.dto.*;
 import vacademy.io.admin_core_service.features.hr_employee.service.EmployeeBankService;
 import vacademy.io.admin_core_service.features.hr_employee.service.EmployeeDocumentService;
@@ -27,16 +28,21 @@ public class EmployeeController {
     private EmployeeDocumentService employeeDocumentService;
 
     @Autowired
-    private InstituteAccessValidator instituteAccessValidator;
+    private HrAccessGuard hrAccessGuard;
 
     // ======================== Employee Profile ========================
 
     @PostMapping
+    @Auditable(
+            entityType = "HR_EMPLOYEE",
+            action = "CREATE",
+            entityIdExpr = "#result?.body",
+            descriptionExpr = "'created employee profile ' + (#dto?.employeeCode ?: '')")
     public ResponseEntity<String> createEmployee(
             @RequestBody EmployeeProfileDTO dto,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        hrAccessGuard.requireHrAdmin(user, instituteId);
         String id = employeeService.createEmployee(dto, instituteId);
         return ResponseEntity.ok(id);
     }
@@ -47,8 +53,9 @@ public class EmployeeController {
             @RequestParam(defaultValue = "0") int pageNo,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        Page<EmployeeProfileDTO> employees = employeeService.getEmployees(instituteId, null, pageNo, pageSize);
+        hrAccessGuard.requireHrStaff(user, instituteId);
+        Page<EmployeeProfileDTO> employees = employeeService.getEmployees(
+                instituteId, null, pageNo, pageSize, hrAccessGuard.isHrAdmin(user));
         return ResponseEntity.ok(employees);
     }
 
@@ -59,8 +66,9 @@ public class EmployeeController {
             @RequestParam(defaultValue = "0") int pageNo,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        Page<EmployeeProfileDTO> employees = employeeService.getEmployees(instituteId, filterDTO, pageNo, pageSize);
+        hrAccessGuard.requireHrStaff(user, instituteId);
+        Page<EmployeeProfileDTO> employees = employeeService.getEmployees(
+                instituteId, filterDTO, pageNo, pageSize, hrAccessGuard.isHrAdmin(user));
         return ResponseEntity.ok(employees);
     }
 
@@ -69,30 +77,42 @@ public class EmployeeController {
             @PathVariable("id") String id,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        EmployeeProfileDTO employee = employeeService.getEmployeeById(id);
+        // HR staff may view anyone in the institute; an employee may view their own profile
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, id);
+        EmployeeProfileDTO employee = employeeService.getEmployeeById(
+                id, instituteId, hrAccessGuard.isHrAdmin(user));
         return ResponseEntity.ok(employee);
     }
 
     @PutMapping("/{id}")
+    @Auditable(
+            entityType = "HR_EMPLOYEE",
+            action = "UPDATE",
+            entityIdExpr = "#id",
+            descriptionExpr = "'updated employee profile ' + #id")
     public ResponseEntity<String> updateEmployee(
             @PathVariable("id") String id,
             @RequestBody EmployeeProfileDTO dto,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        String updatedId = employeeService.updateEmployee(id, dto);
+        hrAccessGuard.requireHrAdmin(user, instituteId);
+        String updatedId = employeeService.updateEmployee(id, dto, instituteId);
         return ResponseEntity.ok(updatedId);
     }
 
     @PutMapping("/{id}/status")
+    @Auditable(
+            entityType = "HR_EMPLOYEE",
+            action = "STATUS_CHANGE",
+            entityIdExpr = "#id",
+            descriptionExpr = "'changed employee ' + #id + ' status to ' + #statusUpdateDTO?.status")
     public ResponseEntity<String> updateEmployeeStatus(
             @PathVariable("id") String id,
             @RequestBody EmployeeStatusUpdateDTO statusUpdateDTO,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        String updatedId = employeeService.updateEmployeeStatus(id, statusUpdateDTO);
+        hrAccessGuard.requireHrAdmin(user, instituteId);
+        String updatedId = employeeService.updateEmployeeStatus(id, statusUpdateDTO, instituteId);
         return ResponseEntity.ok(updatedId);
     }
 
@@ -101,21 +121,27 @@ public class EmployeeController {
             @PathVariable("id") String id,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        List<EmployeeProfileDTO> directReports = employeeService.getOrgChart(id);
+        hrAccessGuard.requireHrStaff(user, instituteId);
+        List<EmployeeProfileDTO> directReports = employeeService.getOrgChart(
+                id, instituteId, hrAccessGuard.isHrAdmin(user));
         return ResponseEntity.ok(directReports);
     }
 
     // ======================== Bank Details ========================
 
     @PostMapping("/{id}/bank-details")
+    @Auditable(
+            entityType = "HR_EMPLOYEE_BANK",
+            action = "CREATE",
+            entityIdExpr = "#result?.body",
+            descriptionExpr = "'added bank detail for employee ' + #id")
     public ResponseEntity<String> addBankDetail(
             @PathVariable("id") String id,
             @RequestBody EmployeeBankDetailDTO dto,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        String bankId = employeeBankService.addBankDetail(id, dto);
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, id);
+        String bankId = employeeBankService.addBankDetail(id, dto, instituteId);
         return ResponseEntity.ok(bankId);
     }
 
@@ -124,33 +150,43 @@ public class EmployeeController {
             @PathVariable("id") String id,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        List<EmployeeBankDetailDTO> bankDetails = employeeBankService.getBankDetails(id);
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, id);
+        List<EmployeeBankDetailDTO> bankDetails = employeeBankService.getBankDetails(id, instituteId);
         return ResponseEntity.ok(bankDetails);
     }
 
     @PutMapping("/{id}/bank-details/{bid}")
+    @Auditable(
+            entityType = "HR_EMPLOYEE_BANK",
+            action = "UPDATE",
+            entityIdExpr = "#bid",
+            descriptionExpr = "'updated bank detail ' + #bid + ' for employee ' + #id")
     public ResponseEntity<String> updateBankDetail(
             @PathVariable("id") String id,
             @PathVariable("bid") String bid,
             @RequestBody EmployeeBankDetailDTO dto,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        String updatedId = employeeBankService.updateBankDetail(id, bid, dto);
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, id);
+        String updatedId = employeeBankService.updateBankDetail(id, bid, dto, instituteId);
         return ResponseEntity.ok(updatedId);
     }
 
     // ======================== Documents ========================
 
     @PostMapping("/{id}/documents")
+    @Auditable(
+            entityType = "HR_EMPLOYEE_DOCUMENT",
+            action = "CREATE",
+            entityIdExpr = "#result?.body",
+            descriptionExpr = "'uploaded document ' + (#dto?.documentName ?: '') + ' for employee ' + #id")
     public ResponseEntity<String> addDocument(
             @PathVariable("id") String id,
             @RequestBody EmployeeDocumentDTO dto,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        String docId = employeeDocumentService.addDocument(id, dto);
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, id);
+        String docId = employeeDocumentService.addDocument(id, dto, instituteId);
         return ResponseEntity.ok(docId);
     }
 
@@ -159,19 +195,24 @@ public class EmployeeController {
             @PathVariable("id") String id,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        List<EmployeeDocumentDTO> documents = employeeDocumentService.getDocuments(id);
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, id);
+        List<EmployeeDocumentDTO> documents = employeeDocumentService.getDocuments(id, instituteId);
         return ResponseEntity.ok(documents);
     }
 
     @DeleteMapping("/{id}/documents/{did}")
+    @Auditable(
+            entityType = "HR_EMPLOYEE_DOCUMENT",
+            action = "DELETE",
+            entityIdExpr = "#did",
+            descriptionExpr = "'deleted document ' + #did + ' of employee ' + #id")
     public ResponseEntity<Void> deleteDocument(
             @PathVariable("id") String id,
             @PathVariable("did") String did,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        employeeDocumentService.deleteDocument(id, did);
+        hrAccessGuard.requireHrAdmin(user, instituteId);
+        employeeDocumentService.deleteDocument(id, did, instituteId);
         return ResponseEntity.ok().build();
     }
 }

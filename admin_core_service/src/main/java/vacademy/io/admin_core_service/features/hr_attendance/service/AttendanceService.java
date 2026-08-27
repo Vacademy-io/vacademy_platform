@@ -59,13 +59,14 @@ public class AttendanceService {
     @Autowired
     private UserRepository userRepository;
 
-    // TODO: BUG 6 — Currently any authenticated user can check in for any employeeId.
-    // Once role-based authorization infrastructure is in place, verify that dto.getEmployeeId()
-    // belongs to the authenticated user, or that the user has ADMIN/HR role to mark attendance for others.
+    /**
+     * BUG 6 FIX: the employee is resolved and authorized by HrAccessGuard in the
+     * controller (self or HR staff, verified member of the validated institute),
+     * so this method never re-fetches by an unchecked id.
+     */
     @Transactional
-    public String checkIn(CheckInDTO dto, String instituteId) {
-        EmployeeProfile employee = employeeProfileRepository.findById(dto.getEmployeeId())
-                .orElseThrow(() -> new VacademyException("Employee not found with id: " + dto.getEmployeeId()));
+    public String checkIn(CheckInDTO dto, EmployeeProfile employee) {
+        String instituteId = employee.getInstituteId();
 
         // Fetch attendance config for geo-fence and IP restriction validation
         AttendanceConfig config = attendanceConfigRepository.findByInstituteId(instituteId).orElse(null);
@@ -92,7 +93,7 @@ public class AttendanceService {
 
         LocalDate today = LocalDate.now();
         Optional<AttendanceRecord> existingRecord = attendanceRecordRepository
-                .findByEmployeeIdAndAttendanceDate(dto.getEmployeeId(), today);
+                .findByEmployeeIdAndAttendanceDate(employee.getId(), today);
 
         if (existingRecord.isPresent() && existingRecord.get().getCheckInTime() != null) {
             throw new VacademyException("Employee has already checked in today");
@@ -110,7 +111,7 @@ public class AttendanceService {
 
         // Set shift if employee has an active shift mapping
         Optional<EmployeeShiftMapping> shiftMapping = employeeShiftMappingRepository
-                .findActiveMapping(dto.getEmployeeId(), today);
+                .findActiveMapping(employee.getId(), today);
         shiftMapping.ifPresent(mapping -> record.setShift(mapping.getShift()));
 
         record.setCheckInTime(LocalDateTime.now());
@@ -137,17 +138,18 @@ public class AttendanceService {
     }
 
     @Transactional
-    public String checkOut(CheckOutDTO dto, String instituteId) {
+    public String checkOut(CheckOutDTO dto, EmployeeProfile employee) {
+        String instituteId = employee.getInstituteId();
         LocalDate today = LocalDate.now();
 
         // BUG 3 FIX: For night shifts, the employee may check out on the next day.
         // Try today first, then fall back to yesterday's record.
         Optional<AttendanceRecord> existingOpt = attendanceRecordRepository
-                .findByEmployeeIdAndAttendanceDate(dto.getEmployeeId(), today);
+                .findByEmployeeIdAndAttendanceDate(employee.getId(), today);
         if (existingOpt.isEmpty()) {
             // Try yesterday for night shift
             existingOpt = attendanceRecordRepository
-                    .findByEmployeeIdAndAttendanceDate(dto.getEmployeeId(), today.minusDays(1));
+                    .findByEmployeeIdAndAttendanceDate(employee.getId(), today.minusDays(1));
         }
         if (existingOpt.isEmpty()) {
             throw new VacademyException("No check-in record found for today");
@@ -212,8 +214,26 @@ public class AttendanceService {
         return "Check-out recorded successfully. Total hours: " + totalHours;
     }
 
+    /**
+     * Admin bulk mark. Records are always written against the VALIDATED
+     * instituteId (never the one in the request body), and every employee in
+     * the batch is verified to belong to that institute before anything is saved.
+     */
     @Transactional
-    public String markBulkAttendance(BulkAttendanceMarkDTO dto) {
+    public String markBulkAttendance(BulkAttendanceMarkDTO dto, String instituteId) {
+        if (dto.getEntries() == null || dto.getEntries().isEmpty()) {
+            throw new VacademyException("No attendance entries provided");
+        }
+
+        // Batch-fetch and institute-check every employee in the list up front
+        List<String> employeeIds = dto.getEntries().stream()
+                .map(BulkAttendanceMarkDTO.AttendanceMarkEntry::getEmployeeId)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, EmployeeProfile> employeeMap = employeeProfileRepository.findAllById(employeeIds).stream()
+                .filter(e -> instituteId.equals(e.getInstituteId()))
+                .collect(Collectors.toMap(EmployeeProfile::getId, e -> e));
+
         int successCount = 0;
 
         for (BulkAttendanceMarkDTO.AttendanceMarkEntry entry : dto.getEntries()) {
@@ -224,8 +244,10 @@ public class AttendanceService {
                 throw new VacademyException("Invalid attendance status: " + entry.getStatus());
             }
 
-            EmployeeProfile employee = employeeProfileRepository.findById(entry.getEmployeeId())
-                    .orElseThrow(() -> new VacademyException("Employee not found with id: " + entry.getEmployeeId()));
+            EmployeeProfile employee = employeeMap.get(entry.getEmployeeId());
+            if (employee == null) {
+                throw new VacademyException("Employee not found with id: " + entry.getEmployeeId());
+            }
 
             Optional<AttendanceRecord> existingRecord = attendanceRecordRepository
                     .findByEmployeeIdAndAttendanceDate(entry.getEmployeeId(), dto.getDate());
@@ -236,7 +258,7 @@ public class AttendanceService {
             } else {
                 record = new AttendanceRecord();
                 record.setEmployee(employee);
-                record.setInstituteId(dto.getInstituteId());
+                record.setInstituteId(instituteId);
                 record.setAttendanceDate(dto.getDate());
             }
 

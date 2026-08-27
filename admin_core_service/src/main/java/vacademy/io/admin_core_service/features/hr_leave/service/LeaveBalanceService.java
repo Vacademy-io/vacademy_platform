@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.hr_leave.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
 import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
 import vacademy.io.admin_core_service.features.hr_leave.dto.LeaveBalanceAdjustDTO;
@@ -12,6 +13,7 @@ import vacademy.io.admin_core_service.features.hr_leave.entity.LeavePolicy;
 import vacademy.io.admin_core_service.features.hr_leave.entity.LeaveType;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveBalanceRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeavePolicyRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
@@ -33,8 +35,12 @@ public class LeaveBalanceService {
     @Autowired
     private EmployeeProfileRepository employeeProfileRepository;
 
+    @Autowired
+    private HrAccessGuard hrAccessGuard;
+
     @Transactional(readOnly = true)
-    public List<LeaveBalanceDTO> getBalances(String employeeId, Integer year) {
+    public List<LeaveBalanceDTO> getBalances(String employeeId, Integer year, String instituteId, CustomUserDetails user) {
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, employeeId);
         List<LeaveBalance> balances = leaveBalanceRepository.findByEmployee_IdAndYear(employeeId, year);
         return balances.stream()
                 .map(this::toDTO)
@@ -42,13 +48,15 @@ public class LeaveBalanceService {
     }
 
     @Transactional
-    public String adjustBalance(String balanceId, LeaveBalanceAdjustDTO dto) {
+    public String adjustBalance(String balanceId, LeaveBalanceAdjustDTO dto, String instituteId, CustomUserDetails user) {
+        hrAccessGuard.requireHrAdmin(user, instituteId);
         if (dto.getAdjustment() == null) {
             throw new VacademyException("Adjustment amount is required");
         }
 
         LeaveBalance balance = leaveBalanceRepository.findById(balanceId)
                 .orElseThrow(() -> new VacademyException("Leave balance not found"));
+        hrAccessGuard.requireInstituteMatch(balance.getEmployee().getInstituteId(), instituteId, "Leave balance");
 
         BigDecimal currentAdjustment = balance.getAdjustment() != null ? balance.getAdjustment() : BigDecimal.ZERO;
         balance.setAdjustment(currentAdjustment.add(dto.getAdjustment()));
@@ -63,7 +71,8 @@ public class LeaveBalanceService {
      * and add the accrual amount.
      */
     @Transactional
-    public String accrueLeaves(String instituteId) {
+    public String accrueLeaves(String instituteId, CustomUserDetails user) {
+        hrAccessGuard.requireHrAdmin(user, instituteId);
         LocalDate today = LocalDate.now();
         int currentYear = today.getYear();
 
@@ -159,7 +168,8 @@ public class LeaveBalanceService {
      * calculate closing balance and handle carry forward and encashment.
      */
     @Transactional
-    public String yearEndProcess(String instituteId, Integer year) {
+    public String yearEndProcess(String instituteId, Integer year, CustomUserDetails user) {
+        hrAccessGuard.requireHrAdmin(user, instituteId);
         int nextYear = year + 1;
 
         // Get all active employees

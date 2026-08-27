@@ -103,6 +103,10 @@ public class PayrollEntry {
     @OneToMany(mappedBy = "payrollEntry", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<PayrollEntryComponent> entryComponents;
 
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 

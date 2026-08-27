@@ -7,10 +7,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_attendance.entity.Holiday;
 import vacademy.io.admin_core_service.features.hr_attendance.repository.HolidayRepository;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
-import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
 import vacademy.io.admin_core_service.features.hr_leave.dto.LeaveActionDTO;
 import vacademy.io.admin_core_service.features.hr_leave.dto.LeaveApplicationDTO;
 import vacademy.io.admin_core_service.features.hr_leave.dto.LeaveApplyDTO;
@@ -22,6 +22,8 @@ import vacademy.io.admin_core_service.features.hr_leave.enums.LeaveStatus;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveApplicationRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveBalanceRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveTypeRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
@@ -45,13 +47,13 @@ public class LeaveApplicationService {
     private LeaveBalanceRepository leaveBalanceRepository;
 
     @Autowired
-    private EmployeeProfileRepository employeeProfileRepository;
-
-    @Autowired
     private HolidayRepository holidayRepository;
 
+    @Autowired
+    private HrAccessGuard hrAccessGuard;
+
     @Transactional
-    public String applyLeave(LeaveApplyDTO dto, String instituteId) {
+    public String applyLeave(LeaveApplyDTO dto, String instituteId, CustomUserDetails user) {
         if (!StringUtils.hasText(dto.getEmployeeId())) {
             throw new VacademyException("Employee ID is required");
         }
@@ -75,15 +77,17 @@ public class LeaveApplicationService {
             throw new VacademyException("Half-day leave can only be applied for a single day");
         }
 
-        EmployeeProfile employee = employeeProfileRepository.findById(dto.getEmployeeId())
-                .orElseThrow(() -> new VacademyException("Employee not found"));
+        // Non-HR callers may only apply for themselves; the employee is
+        // verified to belong to the validated institute.
+        EmployeeProfile employee = hrAccessGuard.requireSelfOrHrStaff(user, instituteId, dto.getEmployeeId());
 
         LeaveType leaveType = leaveTypeRepository.findById(dto.getLeaveTypeId())
                 .orElseThrow(() -> new VacademyException("Leave type not found"));
+        hrAccessGuard.requireInstituteMatch(leaveType.getInstituteId(), instituteId, "Leave type");
 
         // BUG 1 FIX: Check for overlapping leaves (PENDING or APPROVED)
         List<LeaveApplication> overlapping = leaveApplicationRepository.findOverlappingLeaves(
-                dto.getEmployeeId(), dto.getFromDate(), dto.getToDate());
+                employee.getId(), dto.getFromDate(), dto.getToDate());
         if (!overlapping.isEmpty()) {
             throw new VacademyException("Leave application overlaps with an existing leave");
         }
@@ -112,7 +116,7 @@ public class LeaveApplicationService {
         // Validate leave balance
         int year = dto.getFromDate().getYear();
         LeaveBalance balance = leaveBalanceRepository
-                .findByEmployee_IdAndLeaveType_IdAndYear(dto.getEmployeeId(), dto.getLeaveTypeId(), year)
+                .findByEmployee_IdAndLeaveType_IdAndYear(employee.getId(), leaveType.getId(), year)
                 .orElse(null);
 
         if (balance != null) {
@@ -160,9 +164,18 @@ public class LeaveApplicationService {
     }
 
     @Transactional
-    public String approveRejectLeave(String id, LeaveActionDTO actionDTO, String approverUserId) {
+    public String approveRejectLeave(String id, LeaveActionDTO actionDTO, String instituteId, CustomUserDetails user) {
+        hrAccessGuard.requireHrStaff(user, instituteId);
+
         LeaveApplication application = leaveApplicationRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Leave application not found"));
+        hrAccessGuard.requireInstituteMatch(application.getInstituteId(), instituteId, "Leave application");
+
+        // No self-approval: even HR staff must not decide their own leave.
+        String applicantUserId = application.getEmployee().getUserId();
+        if (applicantUserId != null && applicantUserId.equals(user.getUserId())) {
+            throw new ForbiddenException("You cannot approve or reject your own leave application");
+        }
 
         if (!LeaveStatus.PENDING.name().equals(application.getStatus())) {
             throw new VacademyException("Only pending leave applications can be approved or rejected");
@@ -187,12 +200,20 @@ public class LeaveApplicationService {
                             year)
                     .orElseThrow(() -> new VacademyException("Leave balance not found"));
 
+            // Re-validate at approval time: the balance may have changed since the
+            // application was submitted (other approvals, adjustments, encashment).
+            BigDecimal availableBalance = balance.getClosingBalance();
+            if (availableBalance.compareTo(application.getTotalDays()) < 0) {
+                throw new VacademyException("Insufficient leave balance to approve. Available: "
+                        + availableBalance + ", Requested: " + application.getTotalDays());
+            }
+
             BigDecimal currentUsed = balance.getUsed() != null ? balance.getUsed() : BigDecimal.ZERO;
             balance.setUsed(currentUsed.add(application.getTotalDays()));
             leaveBalanceRepository.save(balance);
 
             application.setStatus(LeaveStatus.APPROVED.name());
-            application.setApprovedBy(approverUserId);
+            application.setApprovedBy(user.getUserId());
             application.setApprovedAt(LocalDateTime.now());
         } else {
             // Rejected
@@ -208,9 +229,14 @@ public class LeaveApplicationService {
     }
 
     @Transactional
-    public String cancelLeave(String id) {
+    public String cancelLeave(String id, String instituteId, CustomUserDetails user) {
         LeaveApplication application = leaveApplicationRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Leave application not found"));
+
+        // Membership + institute scope + only the applicant themselves or HR
+        // staff may cancel.
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, application.getEmployee().getId());
+        hrAccessGuard.requireInstituteMatch(application.getInstituteId(), instituteId, "Leave application");
 
         String currentStatus = application.getStatus();
         if (!LeaveStatus.PENDING.name().equals(currentStatus)
@@ -243,7 +269,15 @@ public class LeaveApplicationService {
 
     @Transactional(readOnly = true)
     public Page<LeaveApplicationDTO> getLeaveApplications(String instituteId, String status,
-                                                           String employeeId, int pageNo, int pageSize) {
+                                                           String employeeId, int pageNo, int pageSize,
+                                                           CustomUserDetails user) {
+        if (StringUtils.hasText(employeeId)) {
+            // Employee-scoped listing: the employee themselves or HR staff.
+            hrAccessGuard.requireSelfOrHrStaff(user, instituteId, employeeId);
+        } else {
+            // Institute-wide listing is HR staff only.
+            hrAccessGuard.requireHrStaff(user, instituteId);
+        }
         Pageable pageable = PageRequest.of(pageNo, pageSize);
         Page<LeaveApplication> page = leaveApplicationRepository.findByFilters(
                 instituteId, status, employeeId, pageable);
@@ -251,8 +285,16 @@ public class LeaveApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public List<LeaveApplicationDTO> getPendingForManager(String managerUserId) {
-        List<LeaveApplication> applications = leaveApplicationRepository.findPendingForManager(managerUserId);
+    public List<LeaveApplicationDTO> getPendingForManager(String instituteId, String approverId, CustomUserDetails user) {
+        hrAccessGuard.validateMember(user, instituteId);
+        // Non-HR callers only ever see the queue addressed to themselves;
+        // HR staff may inspect another approver's queue.
+        String managerUserId = user.getUserId();
+        if (StringUtils.hasText(approverId) && hrAccessGuard.isHrStaff(user)) {
+            managerUserId = approverId;
+        }
+        List<LeaveApplication> applications = leaveApplicationRepository
+                .findPendingForManagerInInstitute(managerUserId, instituteId);
         return applications.stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());

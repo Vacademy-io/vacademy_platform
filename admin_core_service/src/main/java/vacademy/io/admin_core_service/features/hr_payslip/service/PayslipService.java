@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.hr_payslip.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_payroll.entity.PayrollEntry;
 import vacademy.io.admin_core_service.features.hr_payroll.entity.PayrollEntryComponent;
 import vacademy.io.admin_core_service.features.hr_payroll.entity.PayrollRun;
@@ -13,6 +14,7 @@ import vacademy.io.admin_core_service.features.hr_payroll.repository.PayrollRunR
 import vacademy.io.admin_core_service.features.hr_payslip.dto.PayslipDTO;
 import vacademy.io.admin_core_service.features.hr_payslip.entity.Payslip;
 import vacademy.io.admin_core_service.features.hr_payslip.repository.PayslipRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDateTime;
@@ -33,14 +35,20 @@ public class PayslipService {
     @Autowired
     private PayrollEntryRepository payrollEntryRepository;
 
+    @Autowired
+    private HrAccessGuard hrAccessGuard;
+
     @Transactional
-    public String generatePayslips(String payrollRunId) {
+    public String generatePayslips(String payrollRunId, String instituteId) {
         PayrollRun run = payrollRunRepository.findById(payrollRunId)
                 .orElseThrow(() -> new VacademyException("Payroll run not found"));
+        hrAccessGuard.requireInstituteMatch(run.getInstituteId(), instituteId, "Payroll run");
 
-        // Payroll must be at least PROCESSED to generate payslips
+        // Payroll must be at least PROCESSED (and not cancelled) to generate payslips
         String status = run.getStatus();
-        if (PayrollStatus.DRAFT.name().equals(status) || PayrollStatus.PROCESSING.name().equals(status)) {
+        if (PayrollStatus.DRAFT.name().equals(status)
+                || PayrollStatus.PROCESSING.name().equals(status)
+                || PayrollStatus.CANCELLED.name().equals(status)) {
             throw new VacademyException("Payroll run must be PROCESSED or later to generate payslips. Current status: " + status);
         }
 
@@ -98,9 +106,12 @@ public class PayslipService {
     }
 
     @Transactional(readOnly = true)
-    public PayslipDTO getPayslipById(String id) {
+    public PayslipDTO getPayslipById(String id, String instituteId, CustomUserDetails user) {
         Payslip payslip = payslipRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Payslip not found"));
+        hrAccessGuard.requireInstituteMatch(payslip.getInstituteId(), instituteId, "Payslip");
+        // Only HR staff or the payslip's own employee may read it
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, payslip.getEmployee().getId());
         return toDTO(payslip);
     }
 

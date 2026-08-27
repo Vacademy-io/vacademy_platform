@@ -16,16 +16,21 @@ public class AttendanceConfigService {
     @Autowired
     private AttendanceConfigRepository attendanceConfigRepository;
 
+    /**
+     * Upserts the config for the VALIDATED institute. The instituteId inside the
+     * DTO is deliberately ignored — trusting it allowed overwriting another
+     * institute's config (cross-tenant write).
+     */
     @Transactional
-    public AttendanceConfigDTO saveConfig(AttendanceConfigDTO dto) {
+    public AttendanceConfigDTO saveConfig(AttendanceConfigDTO dto, String instituteId) {
         AttendanceConfig config;
 
-        Optional<AttendanceConfig> existing = attendanceConfigRepository.findByInstituteId(dto.getInstituteId());
+        Optional<AttendanceConfig> existing = attendanceConfigRepository.findByInstituteId(instituteId);
         if (existing.isPresent()) {
             config = existing.get();
         } else {
             config = new AttendanceConfig();
-            config.setInstituteId(dto.getInstituteId());
+            config.setInstituteId(instituteId);
         }
 
         config.setMode(dto.getMode());

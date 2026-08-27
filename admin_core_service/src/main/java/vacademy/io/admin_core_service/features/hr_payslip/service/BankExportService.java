@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.hr_payslip.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeBankDetail;
 import vacademy.io.admin_core_service.features.hr_payroll.entity.PayrollEntry;
 import vacademy.io.admin_core_service.features.hr_payroll.entity.PayrollRun;
@@ -32,10 +33,14 @@ public class BankExportService {
     @Autowired
     private PayrollEntryRepository payrollEntryRepository;
 
+    @Autowired
+    private HrAccessGuard hrAccessGuard;
+
     @Transactional
-    public String generateBankExport(BankExportRequestDTO requestDTO, String userId) {
+    public String generateBankExport(BankExportRequestDTO requestDTO, String userId, String instituteId) {
         PayrollRun run = payrollRunRepository.findById(requestDTO.getPayrollRunId())
                 .orElseThrow(() -> new VacademyException("Payroll run not found"));
+        hrAccessGuard.requireInstituteMatch(run.getInstituteId(), instituteId, "Payroll run");
 
         // BUG 4 FIX: Validate payroll run status before generating bank export
         String runStatus = run.getStatus();
@@ -117,7 +122,10 @@ public class BankExportService {
     }
 
     @Transactional(readOnly = true)
-    public List<BankExportDTO> getBankExports(String payrollRunId) {
+    public List<BankExportDTO> getBankExports(String payrollRunId, String instituteId) {
+        PayrollRun run = payrollRunRepository.findById(payrollRunId)
+                .orElseThrow(() -> new VacademyException("Payroll run not found"));
+        hrAccessGuard.requireInstituteMatch(run.getInstituteId(), instituteId, "Payroll run");
         List<BankExportLog> logs = bankExportLogRepository.findByPayrollRunIdOrderByCreatedAtDesc(payrollRunId);
         return logs.stream().map(this::toDTO).collect(Collectors.toList());
     }

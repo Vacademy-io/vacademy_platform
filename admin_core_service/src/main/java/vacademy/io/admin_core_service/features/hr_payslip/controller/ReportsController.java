@@ -6,7 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.hr_payslip.dto.BankExportDTO;
 import vacademy.io.admin_core_service.features.hr_payslip.dto.BankExportRequestDTO;
 import vacademy.io.admin_core_service.features.hr_payslip.service.BankExportService;
@@ -28,15 +29,21 @@ public class ReportsController {
     private HrReportService hrReportService;
 
     @Autowired
-    private InstituteAccessValidator instituteAccessValidator;
+    private HrAccessGuard hrAccessGuard;
 
     @PostMapping("/bank-export")
+    @Auditable(
+            entityType = "HR_BANK_EXPORT",
+            action = "GENERATE",
+            entityIdExpr = "#requestDTO?.payrollRunId",
+            descriptionExpr = "'generated bank export for payroll run ' + #requestDTO?.payrollRunId")
     public ResponseEntity<byte[]> generateBankExport(
             @RequestBody BankExportRequestDTO requestDTO,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        String csvContent = bankExportService.generateBankExport(requestDTO, user.getUserId());
+        // Plaintext bank account numbers + net pay for all staff — HR admin ONLY
+        hrAccessGuard.requireHrAdmin(user, instituteId);
+        String csvContent = bankExportService.generateBankExport(requestDTO, user.getUserId(), instituteId);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("text/csv"));
         headers.setContentDispositionFormData("attachment", "bank_export.csv");
@@ -48,8 +55,8 @@ public class ReportsController {
             @RequestParam("payrollRunId") String payrollRunId,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        List<BankExportDTO> exports = bankExportService.getBankExports(payrollRunId);
+        hrAccessGuard.requireHrStaff(user, instituteId);
+        List<BankExportDTO> exports = bankExportService.getBankExports(payrollRunId, instituteId);
         return ResponseEntity.ok(exports);
     }
 
@@ -59,7 +66,7 @@ public class ReportsController {
             @RequestParam("month") Integer month,
             @RequestParam("year") Integer year,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        hrAccessGuard.requireHrStaff(user, instituteId);
         Map<String, Object> summary = hrReportService.getPayrollSummary(instituteId, month, year);
         return ResponseEntity.ok(summary);
     }

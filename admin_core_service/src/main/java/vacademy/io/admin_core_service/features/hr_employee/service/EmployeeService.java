@@ -8,6 +8,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.dto.EmployeeFilterDTO;
 import vacademy.io.admin_core_service.features.hr_employee.dto.EmployeeProfileDTO;
 import vacademy.io.admin_core_service.features.hr_employee.dto.EmployeeStatusUpdateDTO;
@@ -39,14 +40,25 @@ public class EmployeeService {
     @Autowired
     private DesignationRepository designationRepository;
 
+    @Autowired
+    private HrAccessGuard hrAccessGuard;
+
     @Transactional
     public String createEmployee(EmployeeProfileDTO dto, String instituteId) {
         if (!StringUtils.hasText(dto.getUserId())) {
             throw new VacademyException("User ID is required");
         }
+        if (dto.getJoinDate() == null) {
+            throw new VacademyException("Join date is required");
+        }
 
         if (employeeProfileRepository.existsByUserIdAndInstituteId(dto.getUserId(), instituteId)) {
             throw new VacademyException("Employee profile already exists for this user in this institute");
+        }
+
+        if (StringUtils.hasText(dto.getEmployeeCode())
+                && employeeProfileRepository.findByInstituteIdAndEmployeeCode(instituteId, dto.getEmployeeCode()).isPresent()) {
+            throw new VacademyException("Employee code already exists for this institute");
         }
 
         if (dto.getEmploymentType() != null) {
@@ -91,18 +103,21 @@ public class EmployeeService {
         if (StringUtils.hasText(dto.getDepartmentId())) {
             Department department = departmentRepository.findById(dto.getDepartmentId())
                     .orElseThrow(() -> new VacademyException("Department not found"));
+            hrAccessGuard.requireInstituteMatch(department.getInstituteId(), instituteId, "Department");
             employee.setDepartment(department);
         }
 
         if (StringUtils.hasText(dto.getDesignationId())) {
             Designation designation = designationRepository.findById(dto.getDesignationId())
                     .orElseThrow(() -> new VacademyException("Designation not found"));
+            hrAccessGuard.requireInstituteMatch(designation.getInstituteId(), instituteId, "Designation");
             employee.setDesignation(designation);
         }
 
         if (StringUtils.hasText(dto.getReportingManagerId())) {
             EmployeeProfile manager = employeeProfileRepository.findById(dto.getReportingManagerId())
                     .orElseThrow(() -> new VacademyException("Reporting manager not found"));
+            hrAccessGuard.requireInstituteMatch(manager.getInstituteId(), instituteId, "Reporting manager");
             employee.setReportingManager(manager);
         }
 
@@ -111,9 +126,10 @@ public class EmployeeService {
     }
 
     @Transactional
-    public String updateEmployee(String id, EmployeeProfileDTO dto) {
+    public String updateEmployee(String id, EmployeeProfileDTO dto, String instituteId) {
         EmployeeProfile employee = employeeProfileRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Employee not found"));
+        hrAccessGuard.requireInstituteMatch(employee.getInstituteId(), instituteId, "Employee");
 
         if (dto.getEmployeeCode() != null) {
             employee.setEmployeeCode(dto.getEmployeeCode());
@@ -173,13 +189,15 @@ public class EmployeeService {
         if (dto.getMaritalStatus() != null) {
             employee.setMaritalStatus(dto.getMaritalStatus());
         }
-        if (dto.getPanNumber() != null) {
+        // Masked round-trip guard: these fields are masked in toDTO, so a value
+        // containing '*' is a re-submitted mask, not new data — keep the stored value.
+        if (dto.getPanNumber() != null && !isMaskedValue(dto.getPanNumber())) {
             employee.setPanNumber(dto.getPanNumber());
         }
-        if (dto.getTaxIdNumber() != null) {
+        if (dto.getTaxIdNumber() != null && !isMaskedValue(dto.getTaxIdNumber())) {
             employee.setTaxIdNumber(dto.getTaxIdNumber());
         }
-        if (dto.getUanNumber() != null) {
+        if (dto.getUanNumber() != null && !isMaskedValue(dto.getUanNumber())) {
             employee.setUanNumber(dto.getUanNumber());
         }
         if (dto.getStatutoryInfo() != null) {
@@ -195,6 +213,7 @@ public class EmployeeService {
             } else {
                 Department department = departmentRepository.findById(dto.getDepartmentId())
                         .orElseThrow(() -> new VacademyException("Department not found"));
+                hrAccessGuard.requireInstituteMatch(department.getInstituteId(), instituteId, "Department");
                 employee.setDepartment(department);
             }
         }
@@ -205,6 +224,7 @@ public class EmployeeService {
             } else {
                 Designation designation = designationRepository.findById(dto.getDesignationId())
                         .orElseThrow(() -> new VacademyException("Designation not found"));
+                hrAccessGuard.requireInstituteMatch(designation.getInstituteId(), instituteId, "Designation");
                 employee.setDesignation(designation);
             }
         }
@@ -216,6 +236,7 @@ public class EmployeeService {
                 validateNoReportingCycle(id, dto.getReportingManagerId());
                 EmployeeProfile manager = employeeProfileRepository.findById(dto.getReportingManagerId())
                         .orElseThrow(() -> new VacademyException("Reporting manager not found"));
+                hrAccessGuard.requireInstituteMatch(manager.getInstituteId(), instituteId, "Reporting manager");
                 employee.setReportingManager(manager);
             }
         }
@@ -225,15 +246,16 @@ public class EmployeeService {
     }
 
     @Transactional(readOnly = true)
-    public EmployeeProfileDTO getEmployeeById(String id) {
+    public EmployeeProfileDTO getEmployeeById(String id, String instituteId, boolean includeSensitive) {
         EmployeeProfile employee = employeeProfileRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Employee not found"));
+        hrAccessGuard.requireInstituteMatch(employee.getInstituteId(), instituteId, "Employee");
 
-        return toDTO(employee);
+        return toDTO(employee, includeSensitive);
     }
 
     @Transactional(readOnly = true)
-    public Page<EmployeeProfileDTO> getEmployees(String instituteId, EmployeeFilterDTO filterDTO, int pageNo, int pageSize) {
+    public Page<EmployeeProfileDTO> getEmployees(String instituteId, EmployeeFilterDTO filterDTO, int pageNo, int pageSize, boolean includeSensitive) {
         String status = (filterDTO != null && StringUtils.hasText(filterDTO.getStatus())) ? filterDTO.getStatus() : null;
         String departmentId = (filterDTO != null && StringUtils.hasText(filterDTO.getDepartmentId())) ? filterDTO.getDepartmentId() : null;
         String designationId = (filterDTO != null && StringUtils.hasText(filterDTO.getDesignationId())) ? filterDTO.getDesignationId() : null;
@@ -244,13 +266,14 @@ public class EmployeeService {
         Page<EmployeeProfile> employeePage = employeeProfileRepository.findByFilters(
                 instituteId, status, departmentId, designationId, employmentType, pageable);
 
-        return employeePage.map(this::toDTO);
+        return employeePage.map(employee -> toDTO(employee, includeSensitive));
     }
 
     @Transactional
-    public String updateEmployeeStatus(String id, EmployeeStatusUpdateDTO statusUpdateDTO) {
+    public String updateEmployeeStatus(String id, EmployeeStatusUpdateDTO statusUpdateDTO, String instituteId) {
         EmployeeProfile employee = employeeProfileRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Employee not found"));
+        hrAccessGuard.requireInstituteMatch(employee.getInstituteId(), instituteId, "Employee");
 
         if (!StringUtils.hasText(statusUpdateDTO.getStatus())) {
             throw new VacademyException("Status is required");
@@ -278,12 +301,17 @@ public class EmployeeService {
     }
 
     @Transactional(readOnly = true)
-    public List<EmployeeProfileDTO> getOrgChart(String employeeId) {
+    public List<EmployeeProfileDTO> getOrgChart(String employeeId, String instituteId, boolean includeSensitive) {
+        EmployeeProfile employee = employeeProfileRepository.findById(employeeId)
+                .orElseThrow(() -> new VacademyException("Employee not found"));
+        hrAccessGuard.requireInstituteMatch(employee.getInstituteId(), instituteId, "Employee");
+
         // Get direct reports for the given employee
         List<EmployeeProfile> directReports = employeeProfileRepository.findByReportingManagerId(employeeId);
 
         return directReports.stream()
-                .map(this::toDTO)
+                .filter(report -> instituteId.equals(report.getInstituteId()))
+                .map(report -> toDTO(report, includeSensitive))
                 .collect(Collectors.toList());
     }
 
@@ -306,7 +334,12 @@ public class EmployeeService {
         return "****" + value.substring(value.length() - 4);
     }
 
-    private EmployeeProfileDTO toDTO(EmployeeProfile employee) {
+    /** True when the value is a round-tripped mask produced by {@link #maskSensitive}. */
+    private boolean isMaskedValue(String value) {
+        return value != null && value.contains("*");
+    }
+
+    private EmployeeProfileDTO toDTO(EmployeeProfile employee, boolean includeSensitive) {
         EmployeeProfileDTO dto = EmployeeProfileDTO.builder()
                 .id(employee.getId())
                 .userId(employee.getUserId())
@@ -330,7 +363,8 @@ public class EmployeeService {
                 .panNumber(maskSensitive(employee.getPanNumber()))
                 .taxIdNumber(maskSensitive(employee.getTaxIdNumber()))
                 .uanNumber(maskSensitive(employee.getUanNumber()))
-                .statutoryInfo(employee.getStatutoryInfo())
+                // statutoryInfo may hold raw PAN/PF/ESI values — HR admins only
+                .statutoryInfo(includeSensitive ? employee.getStatutoryInfo() : null)
                 .customFields(employee.getCustomFields())
                 .build();
 

@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.hr_payroll.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
 import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.CreateLoanDTO;
@@ -13,6 +14,7 @@ import vacademy.io.admin_core_service.features.hr_payroll.entity.LoanRepayment;
 import vacademy.io.admin_core_service.features.hr_payroll.enums.LoanStatus;
 import vacademy.io.admin_core_service.features.hr_payroll.repository.EmployeeLoanRepository;
 import vacademy.io.admin_core_service.features.hr_payroll.repository.LoanRepaymentRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
@@ -35,10 +37,14 @@ public class LoanService {
     @Autowired
     private EmployeeProfileRepository employeeProfileRepository;
 
+    @Autowired
+    private HrAccessGuard hrAccessGuard;
+
     @Transactional
     public String createLoan(CreateLoanDTO dto, String instituteId) {
         EmployeeProfile employee = employeeProfileRepository.findById(dto.getEmployeeId())
                 .orElseThrow(() -> new VacademyException("Employee not found"));
+        hrAccessGuard.requireInstituteMatch(employee.getInstituteId(), instituteId, "Employee");
 
         EmployeeLoan loan = new EmployeeLoan();
         loan.setEmployee(employee);
@@ -72,9 +78,15 @@ public class LoanService {
     }
 
     @Transactional
-    public String approveLoan(String id, String approverUserId) {
+    public String approveLoan(String id, String approverUserId, String instituteId) {
         EmployeeLoan loan = loanRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Loan not found"));
+        hrAccessGuard.requireInstituteMatch(loan.getInstituteId(), instituteId, "Loan");
+
+        // The approver must not be the loan's own employee
+        if (approverUserId != null && approverUserId.equals(loan.getEmployee().getUserId())) {
+            throw new VacademyException("You cannot approve your own loan");
+        }
 
         if (!LoanStatus.PENDING.name().equals(loan.getStatus())) {
             throw new VacademyException("Only PENDING loans can be approved. Current status: " + loan.getStatus());
@@ -98,10 +110,12 @@ public class LoanService {
     }
 
     @Transactional(readOnly = true)
-    public List<LoanRepaymentDTO> getRepayments(String loanId) {
-        // Verify the loan exists
-        loanRepository.findById(loanId)
+    public List<LoanRepaymentDTO> getRepayments(String loanId, String instituteId, CustomUserDetails user) {
+        EmployeeLoan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new VacademyException("Loan not found"));
+        hrAccessGuard.requireInstituteMatch(loan.getInstituteId(), instituteId, "Loan");
+        // Only HR staff or the loan's own employee may read its repayments
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, loan.getEmployee().getId());
 
         List<LoanRepayment> repayments = repaymentRepository.findByLoanIdOrderByYearAscMonthAsc(loanId);
 

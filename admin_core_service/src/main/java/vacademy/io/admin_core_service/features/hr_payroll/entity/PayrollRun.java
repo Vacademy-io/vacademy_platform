@@ -39,6 +39,14 @@ public class PayrollRun {
     @Column(name = "status", length = 20)
     private String status;
 
+    // REGULAR | OFF_CYCLE | FNF | BONUS (V200; only REGULAR runs are unique per month)
+    @Column(name = "run_type", length = 30)
+    private String runType;
+
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     @Column(name = "total_employees")
     private Integer totalEmployees;
 

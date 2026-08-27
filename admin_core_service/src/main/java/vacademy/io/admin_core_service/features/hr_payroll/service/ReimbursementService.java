@@ -6,13 +6,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
-import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.CreateReimbursementDTO;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.ReimbursementActionDTO;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.ReimbursementDTO;
 import vacademy.io.admin_core_service.features.hr_payroll.entity.Reimbursement;
 import vacademy.io.admin_core_service.features.hr_payroll.repository.ReimbursementRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDateTime;
@@ -24,12 +25,13 @@ public class ReimbursementService {
     private ReimbursementRepository reimbursementRepository;
 
     @Autowired
-    private EmployeeProfileRepository employeeProfileRepository;
+    private HrAccessGuard hrAccessGuard;
 
     @Transactional
-    public String submitReimbursement(CreateReimbursementDTO dto, String instituteId) {
-        EmployeeProfile employee = employeeProfileRepository.findById(dto.getEmployeeId())
-                .orElseThrow(() -> new VacademyException("Employee not found"));
+    public String submitReimbursement(CreateReimbursementDTO dto, String instituteId, CustomUserDetails user) {
+        // Resolves the employee, verifies it belongs to the validated institute, and
+        // lets non-HR callers submit only for their OWN employee record
+        EmployeeProfile employee = hrAccessGuard.requireSelfOrHrStaff(user, instituteId, dto.getEmployeeId());
 
         Reimbursement reimbursement = new Reimbursement();
         reimbursement.setEmployee(employee);
@@ -54,9 +56,15 @@ public class ReimbursementService {
     }
 
     @Transactional
-    public String approveRejectReimbursement(String id, ReimbursementActionDTO actionDTO, String approverUserId) {
+    public String approveRejectReimbursement(String id, ReimbursementActionDTO actionDTO, String approverUserId, String instituteId) {
         Reimbursement reimbursement = reimbursementRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Reimbursement not found"));
+        hrAccessGuard.requireInstituteMatch(reimbursement.getInstituteId(), instituteId, "Reimbursement");
+
+        // A user must not approve/reject their own reimbursement
+        if (approverUserId != null && approverUserId.equals(reimbursement.getEmployee().getUserId())) {
+            throw new VacademyException("You cannot action your own reimbursement");
+        }
 
         if (!"PENDING".equals(reimbursement.getStatus())) {
             throw new VacademyException("Only PENDING reimbursements can be actioned. Current status: " + reimbursement.getStatus());

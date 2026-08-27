@@ -4,8 +4,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
-import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
 import vacademy.io.admin_core_service.features.hr_leave.dto.CompOffActionDTO;
 import vacademy.io.admin_core_service.features.hr_leave.dto.CompOffDTO;
 import vacademy.io.admin_core_service.features.hr_leave.entity.CompensatoryOff;
@@ -15,6 +15,8 @@ import vacademy.io.admin_core_service.features.hr_leave.enums.LeaveStatus;
 import vacademy.io.admin_core_service.features.hr_leave.repository.CompensatoryOffRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveBalanceRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveTypeRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
@@ -31,28 +33,32 @@ public class CompOffService {
     private CompensatoryOffRepository compensatoryOffRepository;
 
     @Autowired
-    private EmployeeProfileRepository employeeProfileRepository;
-
-    @Autowired
     private LeaveTypeRepository leaveTypeRepository;
 
     @Autowired
     private LeaveBalanceRepository leaveBalanceRepository;
 
+    @Autowired
+    private HrAccessGuard hrAccessGuard;
+
     @Transactional
-    public String requestCompOff(CompOffDTO dto, String instituteId) {
+    public String requestCompOff(CompOffDTO dto, String instituteId, CustomUserDetails user) {
         if (!StringUtils.hasText(dto.getEmployeeId())) {
             throw new VacademyException("Employee ID is required");
         }
         if (dto.getWorkedOnDate() == null) {
             throw new VacademyException("Worked on date is required");
         }
-        if (dto.getEarnedDays() == null || dto.getEarnedDays().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new VacademyException("Earned days must be greater than zero");
+        // Sanity clamp: the client-supplied earnedDays is never trusted beyond
+        // a plausible single-request range.
+        if (dto.getEarnedDays() == null || dto.getEarnedDays().compareTo(BigDecimal.ZERO) <= 0
+                || dto.getEarnedDays().compareTo(new BigDecimal("2")) > 0) {
+            throw new VacademyException("Earned days must be greater than zero and at most 2");
         }
 
-        EmployeeProfile employee = employeeProfileRepository.findById(dto.getEmployeeId())
-                .orElseThrow(() -> new VacademyException("Employee not found"));
+        // Non-HR callers may only request comp-off for themselves; the employee
+        // is verified to belong to the validated institute.
+        EmployeeProfile employee = hrAccessGuard.requireSelfOrHrStaff(user, instituteId, dto.getEmployeeId());
 
         CompensatoryOff compOff = new CompensatoryOff();
         compOff.setEmployee(employee);
@@ -67,9 +73,18 @@ public class CompOffService {
     }
 
     @Transactional
-    public String approveRejectCompOff(String id, CompOffActionDTO actionDTO, String approverUserId) {
+    public String approveRejectCompOff(String id, CompOffActionDTO actionDTO, String instituteId, CustomUserDetails user) {
+        hrAccessGuard.requireHrStaff(user, instituteId);
+
         CompensatoryOff compOff = compensatoryOffRepository.findById(id)
                 .orElseThrow(() -> new VacademyException("Compensatory off request not found"));
+        hrAccessGuard.requireInstituteMatch(compOff.getEmployee().getInstituteId(), instituteId, "Compensatory off request");
+
+        // No self-approval: even HR staff must not decide their own comp-off.
+        String requesterUserId = compOff.getEmployee().getUserId();
+        if (requesterUserId != null && requesterUserId.equals(user.getUserId())) {
+            throw new ForbiddenException("You cannot approve or reject your own compensatory off request");
+        }
 
         if (!LeaveStatus.PENDING.name().equals(compOff.getStatus())) {
             throw new VacademyException("Only pending compensatory off requests can be approved or rejected");
@@ -81,7 +96,7 @@ public class CompOffService {
 
         if (Boolean.TRUE.equals(actionDTO.getApproved())) {
             compOff.setStatus(LeaveStatus.APPROVED.name());
-            compOff.setApprovedBy(approverUserId);
+            compOff.setApprovedBy(user.getUserId());
 
             // BUG 6 FIX: Credit approved comp-off to leave balance
             creditCompOffToLeaveBalance(compOff);
@@ -94,7 +109,8 @@ public class CompOffService {
     }
 
     @Transactional(readOnly = true)
-    public List<CompOffDTO> getCompOffs(String employeeId) {
+    public List<CompOffDTO> getCompOffs(String employeeId, String instituteId, CustomUserDetails user) {
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, employeeId);
         // Fetch all comp offs for the employee (all statuses), ordered by worked on date desc
         List<CompensatoryOff> compOffs = compensatoryOffRepository
                 .findByEmployee_IdAndStatusOrderByWorkedOnDateDesc(employeeId, LeaveStatus.APPROVED.name());

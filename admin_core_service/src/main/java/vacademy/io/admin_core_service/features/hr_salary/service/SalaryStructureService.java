@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
 import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
 import vacademy.io.admin_core_service.features.hr_salary.dto.*;
@@ -11,6 +12,7 @@ import vacademy.io.admin_core_service.features.hr_salary.entity.*;
 import vacademy.io.admin_core_service.features.hr_salary.enums.CalculationType;
 import vacademy.io.admin_core_service.features.hr_salary.enums.ComponentType;
 import vacademy.io.admin_core_service.features.hr_salary.repository.*;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
@@ -40,6 +42,9 @@ public class SalaryStructureService {
     @Autowired
     private SalaryRevisionRepository salaryRevisionRepository;
 
+    @Autowired
+    private HrAccessGuard hrAccessGuard;
+
     /**
      * Assigns a salary structure to an employee based on a template and CTC.
      * Handles component resolution order: Basic first, then percentage-of-basic,
@@ -61,9 +66,10 @@ public class SalaryStructureService {
             throw new VacademyException("Effective from date is required");
         }
 
-        // 1. Find EmployeeProfile
+        // 1. Find EmployeeProfile — must belong to the validated institute (cross-tenant IDOR fix)
         EmployeeProfile employee = employeeProfileRepository.findById(dto.getEmployeeId())
                 .orElseThrow(() -> new VacademyException("Employee not found with id: " + dto.getEmployeeId()));
+        hrAccessGuard.requireInstituteMatch(employee.getInstituteId(), instituteId, "Employee");
 
         // 2. Find and supersede any active structure
         BigDecimal oldCtc = null;
@@ -80,9 +86,10 @@ public class SalaryStructureService {
             salaryStructureRepository.save(oldStructure);
         }
 
-        // 3. Load template
+        // 3. Load template — must belong to the validated institute (cross-tenant IDOR fix)
         SalaryTemplate template = salaryTemplateRepository.findById(dto.getTemplateId())
                 .orElseThrow(() -> new VacademyException("Salary template not found with id: " + dto.getTemplateId()));
+        hrAccessGuard.requireInstituteMatch(template.getInstituteId(), instituteId, "Salary template");
 
         // 4. Create new EmployeeSalaryStructure
         BigDecimal ctcMonthly = dto.getCtcAnnual().divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
@@ -383,11 +390,16 @@ public class SalaryStructureService {
 
     /**
      * Gets a salary structure by ID with all its components.
+     * The owning employee is only known after the load, so the self-or-HR-staff
+     * check (institute membership + employee-in-institute + caller is HR staff
+     * or IS that employee) happens here rather than in the controller.
      */
     @Transactional(readOnly = true)
-    public EmployeeSalaryStructureDTO getStructure(String structureId) {
+    public EmployeeSalaryStructureDTO getStructure(String structureId, String instituteId, CustomUserDetails user) {
         EmployeeSalaryStructure structure = salaryStructureRepository.findById(structureId)
                 .orElseThrow(() -> new VacademyException("Salary structure not found"));
+
+        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, structure.getEmployee().getId());
 
         return toStructureDTO(structure);
     }

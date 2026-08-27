@@ -15,11 +15,12 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Plus, Trash2, Info } from 'lucide-react';
 import { currencyOptions } from '../../-constants/payments';
-import { PaymentPlan, PaymentPlans } from '@/types/payment';
+import { PaymentPlan, PaymentPlanType, PaymentPlans } from '@/types/payment';
 import { getCurrencySymbol } from './utils/utils';
 import { DAYS_IN_MONTH } from '@/routes/settings/-constants/terms';
 import { UpfrontPlanConfiguration } from './PaymentPlanCreator/UpfrontPlanConfiguration';
 import { FreePlanConfiguration } from './PaymentPlanCreator/FreePlanConfiguration';
+import { ApprovalToggle } from './PaymentPlanCreator/ApprovalToggle';
 
 interface CustomInterval {
     value: number | string;
@@ -37,6 +38,8 @@ interface PaymentPlanEditorProps {
     onSave: (plan: PaymentPlan) => void;
     onCancel: () => void;
     isSaving: boolean;
+    requireApproval: boolean;
+    setRequireApproval: (value: boolean) => void;
 }
 
 export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
@@ -46,6 +49,8 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
     onSave,
     onCancel,
     isSaving,
+    requireApproval,
+    setRequireApproval,
 }) => {
     const { t } = useTranslation('settingsPaymentPlan');
     const [planData, setPlanData] = useState<PaymentPlan>(editingPlan);
@@ -169,6 +174,19 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
         }
     }, [editingPlan, featuresGlobal, setFeaturesGlobal]);
 
+    // The dialog's parent owns requireApproval so create and edit post the same field.
+    // Seeding it from the plan being edited is what makes the toggle reflect reality —
+    // without it the parent's default (false) was posted back on every edit, silently
+    // clearing approval on any plan that had it.
+    useEffect(() => {
+        setRequireApproval(!!editingPlan.requireApproval);
+    }, [editingPlan.id, editingPlan.requireApproval, setRequireApproval]);
+
+    const handleApprovalChange = (value: boolean) => {
+        setRequireApproval(value);
+        setPlanData((prev) => ({ ...prev, requireApproval: value }));
+    };
+
     const updateConfig = (newConfig: Record<string, unknown>) => {
         setPlanData({
             ...planData,
@@ -215,7 +233,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
             return;
         }
 
-        let updatedPlanData = { ...planData };
+        let updatedPlanData = { ...planData, requireApproval };
         if (planData.type === PaymentPlans.SUBSCRIPTION) {
             const intervals = planData.config?.subscription?.customIntervals || [];
             if (intervals.length > 0) {
@@ -342,6 +360,15 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                         />
                         <Label htmlFor="isDefault">{t('step1.setAsDefault')}</Label>
                     </div>
+
+                    <ApprovalToggle
+                        planType={planData.type as PaymentPlanType}
+                        requireApproval={requireApproval}
+                        // Creation-time free-plan restrictions don't apply to an existing plan.
+                        existingFreePlans={[]}
+                        onApprovalChange={handleApprovalChange}
+                        isEditing
+                    />
                 </div>
             )}
 

@@ -51,6 +51,7 @@ public class AttendanceEmailBody {
 
                             <p style="font-size:14px; line-height:1.6; color:#64748b; margin:24px 0 0 0;">
                               If you believe this is incorrect, please contact your instructor.
+                              If there is any discrepancy, please contact the faculty.
                             </p>
 
                             <p style="font-size:15px; line-height:1.6; margin-top:20px;">

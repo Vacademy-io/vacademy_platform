@@ -2380,6 +2380,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         // tags or @media queries needed), and are readable on every
                         // screen size.
                         StringBuilder tableHtml = new StringBuilder();
+                        // Set when at least one card explains a criteria-driven
+                        // absence — the closing note below is only meaningful then.
+                        boolean anyCriteriaAbsence = false;
                         tableHtml.append("<div style=\"margin:16px 0\">");
 
                         // Index engagement logs by sessionId for quick lookup
@@ -2563,12 +2566,21 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                                      .append(engagementStr).append("</span>")
                                      .append("</div>");
                             if (absenceReason != null) {
+                                anyCriteriaAbsence = true;
                                 tableHtml.append("<div style=\"margin-top:8px;padding:8px 10px;")
                                          .append("border-radius:6px;background:#fef2f2;")
                                          .append("font-size:12px;color:#991b1b;line-height:1.5\">")
                                          .append(absenceReason).append("</div>");
                             }
                             tableHtml.append("</div>");
+                        }
+                        if (anyCriteriaAbsence) {
+                            // Rendered inside {{sessionsTableHtml}} so the institute's
+                            // stored Attendance Report template is not touched.
+                            tableHtml.append("<p style=\"margin:14px 0 0 0;font-size:12px;")
+                                     .append("color:#64748b;line-height:1.6\">")
+                                     .append("If there is any discrepancy, please contact the faculty.")
+                                     .append("</p>");
                         }
                         tableHtml.append("</div>");
                         s.put("sessionsTableHtml", tableHtml.toString());

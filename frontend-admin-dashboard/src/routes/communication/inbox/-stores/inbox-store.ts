@@ -1,11 +1,13 @@
 import { create } from 'zustand';
-import { InboxConversation, InboxMessage } from '../-services/inbox-api';
+import { InboxConversation, InboxFilter, InboxMessage } from '../-services/inbox-api';
 
 interface InboxState {
     conversations: InboxConversation[];
     selectedPhone: string | null;
     messages: InboxMessage[];
     searchQuery: string;
+    /** ALL | UNANSWERED (bot handed over, nobody replied) | FAILED (a send was refused). */
+    filter: InboxFilter;
     isLoadingConversations: boolean;
     isLoadingMessages: boolean;
     hasMoreConversations: boolean;
@@ -19,6 +21,7 @@ interface InboxState {
     prependMessages: (messages: InboxMessage[]) => void;
     appendMessage: (message: InboxMessage) => void;
     setSearchQuery: (query: string) => void;
+    setFilter: (filter: InboxFilter) => void;
     setIsLoadingConversations: (loading: boolean) => void;
     setIsLoadingMessages: (loading: boolean) => void;
     setHasMoreConversations: (hasMore: boolean) => void;
@@ -28,6 +31,8 @@ interface InboxState {
 
     // Update conversation's last message when a new message is sent/received
     updateConversationLastMessage: (phone: string, message: string, type: string) => void;
+    /** Clear the "Unanswered" badge locally right after a reply, without waiting for a poll. */
+    markConversationAnswered: (phone: string) => void;
 }
 
 export const useInboxStore = create<InboxState>((set) => ({
@@ -35,6 +40,7 @@ export const useInboxStore = create<InboxState>((set) => ({
     selectedPhone: null,
     messages: [],
     searchQuery: '',
+    filter: 'ALL',
     isLoadingConversations: false,
     isLoadingMessages: false,
     hasMoreConversations: true,
@@ -56,6 +62,7 @@ export const useInboxStore = create<InboxState>((set) => ({
     appendMessage: (message) =>
         set((state) => ({ messages: [...state.messages, message] })),
     setSearchQuery: (query) => set({ searchQuery: query }),
+    setFilter: (filter) => set({ filter, conversationOffset: 0, hasMoreConversations: true }),
     setIsLoadingConversations: (loading) => set({ isLoadingConversations: loading }),
     setIsLoadingMessages: (loading) => set({ isLoadingMessages: loading }),
     setHasMoreConversations: (hasMore) => set({ hasMoreConversations: hasMore }),
@@ -76,5 +83,24 @@ export const useInboxStore = create<InboxState>((set) => ({
                       }
                     : c
             ),
+        })),
+
+    markConversationAnswered: (phone) =>
+        set((state) => ({
+            conversations:
+                // On the Unanswered tab an answered conversation no longer belongs in the list.
+                state.filter === 'UNANSWERED'
+                    ? state.conversations.filter((c) => c.phone !== phone)
+                    : state.conversations.map((c) =>
+                          c.phone === phone
+                              ? {
+                                    ...c,
+                                    awaitingReply: false,
+                                    escalationId: undefined,
+                                    escalationReason: undefined,
+                                    escalationMessage: undefined,
+                                }
+                              : c
+                      ),
         })),
 }));

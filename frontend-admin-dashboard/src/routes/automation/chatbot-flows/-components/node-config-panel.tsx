@@ -737,6 +737,29 @@ function AiResponseConfig({ config, onChange }: { config: Record<string, unknown
             <FieldLabel>Fallback Message (on error/max turns)</FieldLabel>
             <input type="text" value={(config.fallbackMessage as string) || ''} onChange={(e) => onChange('fallbackMessage', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded" placeholder="Let me connect you with a human agent." />
 
+            <SectionLabel>When the AI doesn&rsquo;t know</SectionLabel>
+            <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={config.escalateWhenUnsure !== false} onChange={(e) => onChange('escalateWhenUnsure', e.target.checked)} className="rounded" />
+                <span className="text-sm">Hand over to an admin instead of guessing</span>
+            </label>
+            {config.escalateWhenUnsure !== false && (
+                <>
+                    <FieldLabel>Hand-over Message</FieldLabel>
+                    <textarea
+                        value={(config.escalationMessage as string) || ''}
+                        onChange={(e) => onChange('escalationMessage', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border rounded h-16 resize-y"
+                        placeholder="I don't have that information with me right now. Let me check with our team and get back to you shortly."
+                    />
+                    <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 mt-1">
+                        When the answer isn&rsquo;t in the AI&rsquo;s context it sends this message instead of
+                        inventing one. The conversation is then marked <b>Unanswered</b> in the WhatsApp
+                        Inbox and the people listed under <b>Flow Settings</b> are told a learner is
+                        waiting, by email and/or WhatsApp. Replying from the Inbox clears it.
+                    </div>
+                </>
+            )}
+
             <SectionLabel>Interactive Responses</SectionLabel>
             <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={(config.enableInteractive as boolean) || false} onChange={(e) => onChange('enableInteractive', e.target.checked)} className="rounded" />

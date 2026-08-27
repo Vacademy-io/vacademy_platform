@@ -8,6 +8,28 @@ import RootNotFoundComponent from './components/core/default-not-found';
 import RootPendingComponent from './components/core/default-pending';
 import './index.css';
 // import { ThemeProvider } from "./providers/theme-provider";
+
+// Evict service workers left behind by earlier builds (vite-plugin-pwa era).
+// A stale Workbox worker serves its precached index.html for every navigation,
+// pinning the browser to a dead bundle — reloads included. public/sw.js is the
+// network-side kill switch for browsers still running the old bundle; this is
+// the in-app half for anyone who reaches the new code with a stray
+// registration. The firebase messaging worker (push notifications, no fetch
+// handler) is the one registration we keep.
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => {
+            registrations.forEach((registration) => {
+                const worker =
+                    registration.active ?? registration.waiting ?? registration.installing;
+                if (worker && !worker.scriptURL.endsWith('/firebase-messaging-sw.js')) {
+                    registration.unregister().catch(() => {});
+                }
+            });
+        })
+        .catch(() => {});
+}
 import { SidebarProvider } from './components/ui/sidebar';
 import { routeTree } from './routeTree.gen';
 import './i18n';

@@ -343,16 +343,18 @@ public class ProductPageEnrollmentService {
             // otherwise every paid learner ends up with a duplicate UserPlan and an orphan
             // gateway order. Mirrors completeGatewayPaymentConfirmation() in
             // LearnerEnrollRequestService, which solves the same problem for the invite flow.
-            PaymentLog phase1Log = findPhase1PaymentLog(
-                    payReq.getRazorpayRequest().getRazorpayOrderId());
+            String gatewayOrderRef = payReq.getRazorpayRequest().getRazorpayOrderId();
+            PaymentLog phase1Log = findPhase1PaymentLog(gatewayOrderRef);
             if (phase1Log != null) {
-                log.info("Razorpay Phase 2: completing Phase 1 enrollment, paymentLog={}, userPlan={}",
-                        phase1Log.getId(), phase1Log.getUserPlan().getId());
+                log.info("Razorpay Phase 2: completing Phase 1 enrollment, parentPaymentLog={}", phase1Log.getId());
 
-                // Idempotent with the webhook: whichever of the two arrives second is a no-op,
-                // because updatePaymentLogsByOrderId claims the PAID transition conditionally.
+                // Drive this through the gateway order reference, exactly as the webhook
+                // does, so the parent AND every child log it registered are marked PAID and
+                // each child activates its own UserPlan. Idempotent with the webhook:
+                // whichever of the two arrives second is a no-op, because
+                // updatePaymentLogsByOrderId claims the PAID transition conditionally.
                 paymentLogService.updatePaymentLog(
-                        phase1Log.getId(), PaymentStatusEnum.PAID.name(), request.getInstituteId());
+                        gatewayOrderRef, PaymentStatusEnum.PAID.name(), request.getInstituteId());
 
                 // Activation (batch shift, credential mail, enrollment notifications, workflow)
                 // is driven from applyOperationsOnFirstPayment via the line above. The coupon
@@ -370,7 +372,6 @@ public class ProductPageEnrollmentService {
                 return ProductPageEnrollResponse.builder()
                         .paymentLogId(phase1Log.getId())
                         .userId(user.getId())
-                        .userPlanId(phase1Log.getUserPlan().getId())
                         .status(PaymentStatusEnum.PAID.name())
                         .enrolledPackageSessionIds(selectedMappings.stream()
                                 .map(m -> m.getPsInvitePaymentOption().getPackageSession().getId())
@@ -651,7 +652,6 @@ public class ProductPageEnrollmentService {
 
         List<String> enrolledSessionIds = new ArrayList<>();
         List<String> childPaymentLogIds = new ArrayList<>();
-        vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan firstUserPlan = null;
 
         for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
             ProductPageInviteMapping mapping = selectedMappings.stream()
@@ -691,15 +691,22 @@ public class ProductPageEnrollmentService {
 
             enrolledSessionIds.add(bridge.getPackageSession().getId());
 
-            if (firstUserPlan == null) {
-                firstUserPlan = userPlan;
-            } else {
-                // Subsequent mappings: collect child PaymentLog IDs so the webhook
-                // can process them via the childPaymentLogIds multi-package mechanism.
-                if (enrollResp.getPaymentResponse() != null
-                        && StringUtils.hasText(enrollResp.getPaymentResponse().getOrderId())) {
-                    childPaymentLogIds.add(enrollResp.getPaymentResponse().getOrderId());
-                }
+            // Register EVERY child PaymentLog — including the first mapping's — on the
+            // parent, so updatePaymentLogsByOrderId cascades the PAID transition to all
+            // of them and each one activates its own UserPlan.
+            //
+            // The parent is deliberately left unlinked to a plan. It is tempting to link
+            // it (that is what the redirect-gateway branch used to do for its first
+            // mapping), but a linked PAID log posts a ledger CREDIT_PAYMENT, and
+            // recordCreditPayment de-duplicates on the PaymentLog id — not the plan. A
+            // linked parent carrying the ORDER TOTAL plus one linked child per course
+            // therefore credits the learner total + every extra course price on a
+            // multi-course checkout. Crediting only the children sums to exactly the
+            // order total, and leaves the same row shape a successful checkout produces
+            // today: parent PAID/unlinked, one PAID/linked child per course.
+            if (enrollResp.getPaymentResponse() != null
+                    && StringUtils.hasText(enrollResp.getPaymentResponse().getOrderId())) {
+                childPaymentLogIds.add(enrollResp.getPaymentResponse().getOrderId());
             }
 
             if (parentPaymentLogId != null) {
@@ -714,22 +721,20 @@ public class ProductPageEnrollmentService {
 
         appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
 
-        // Link the first UserPlan to the parent PaymentLog. Without this link,
-        // handlePostPaymentLogic() treats the payment as a donation (userPlan == null)
-        // and skips applyOperationsOnFirstPayment().
-        if (firstUserPlan != null && parentPaymentLogId != null) {
-            final vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan planToLink =
-                    firstUserPlan;
+        // Record the children on the parent. This is what lets the payment webhook reach
+        // them: updatePaymentLogsByOrderId resolves the parent from the gateway order
+        // reference, reads childPaymentLogIds out of its payment_specific_data, and marks
+        // the whole set PAID — at which point each child drives applyOperationsOnFirstPayment
+        // for its own UserPlan. Without this the webhook would see a parent with no plan,
+        // treat the payment as a donation, and enrol nobody.
+        if (!childPaymentLogIds.isEmpty() && parentPaymentLogId != null) {
             paymentLogRepository.findById(parentPaymentLogId).ifPresent(parentLog -> {
-                parentLog.setUserPlan(planToLink);
-                if (!childPaymentLogIds.isEmpty()) {
-                    String existingData = parentLog.getPaymentSpecificData();
-                    Map<String, Object> data = existingData != null
-                            ? JsonUtil.fromJson(existingData, Map.class) : new HashMap<>();
-                    if (data == null) data = new HashMap<>();
-                    data.put("childPaymentLogIds", childPaymentLogIds);
-                    parentLog.setPaymentSpecificData(JsonUtil.toJson(data));
-                }
+                String existingData = parentLog.getPaymentSpecificData();
+                Map<String, Object> data = existingData != null
+                        ? JsonUtil.fromJson(existingData, Map.class) : new HashMap<>();
+                if (data == null) data = new HashMap<>();
+                data.put("childPaymentLogIds", childPaymentLogIds);
+                parentLog.setPaymentSpecificData(JsonUtil.toJson(data));
                 paymentLogRepository.save(parentLog);
             });
         }
@@ -738,14 +743,17 @@ public class ProductPageEnrollmentService {
     }
 
     /**
-     * Finds the PaymentLog created when the gateway order was opened, so its
-     * already-provisioned enrollment can be completed instead of duplicated.
+     * Finds the parent PaymentLog of a gateway order that already carries a provisioned
+     * enrollment, so the confirmation call can complete it instead of duplicating it.
      *
-     * <p>The gateway order reference lives inside {@code payment_specific_data}. Several
-     * logs can mention it (the parent order plus one child per selected invite); the
-     * order creator is the earliest one carrying a UserPlan. Returns {@code null} when
-     * nothing matches — orders opened before Phase 1 provisioning shipped have no plan
-     * to complete, and the caller falls back to enrolling from the confirmation call.
+     * <p>The gateway order reference lives inside {@code payment_specific_data}, and the
+     * parent is the earliest log mentioning it. Provisioning is recognised by the
+     * {@code childPaymentLogIds} entry that {@link #provisionPendingEnrollments} writes
+     * there — that, not a linked UserPlan, is what the parent carries.
+     *
+     * <p>Returns {@code null} when there is nothing to complete: an order opened before
+     * this provisioning shipped, or one whose Phase 1 enrollment failed. The caller then
+     * falls back to enrolling from the confirmation call itself.
      */
     private PaymentLog findPhase1PaymentLog(String gatewayOrderRef) {
         if (!StringUtils.hasText(gatewayOrderRef)) {
@@ -754,13 +762,29 @@ public class ProductPageEnrollmentService {
         try {
             return paymentLogRepository.findAllByOrderIdInJson(gatewayOrderRef)
                     .stream()
-                    .filter(pl -> pl.getUserPlan() != null)
+                    .filter(pl -> hasProvisionedChildren(pl))
                     .min(Comparator.comparing(PaymentLog::getCreatedAt))
                     .orElse(null);
         } catch (Exception e) {
             log.warn("Could not look up the originating payment log for gateway order {}: {}",
                     gatewayOrderRef, e.getMessage());
             return null;
+        }
+    }
+
+    private boolean hasProvisionedChildren(PaymentLog paymentLog) {
+        if (!StringUtils.hasText(paymentLog.getPaymentSpecificData())) {
+            return false;
+        }
+        try {
+            Map<String, Object> data = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
+            if (data == null) {
+                return false;
+            }
+            Object children = data.get("childPaymentLogIds");
+            return children instanceof List && !((List<?>) children).isEmpty();
+        } catch (Exception e) {
+            return false;
         }
     }
 

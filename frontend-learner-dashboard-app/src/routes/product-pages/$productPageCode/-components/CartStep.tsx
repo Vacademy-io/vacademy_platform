@@ -36,7 +36,7 @@ import { cn } from '@/lib/utils';
 import { CartItemList } from './CartItemList';
 import { OffersStrip } from './OffersStrip';
 import { MobileCheckoutBar } from './MobileCheckoutBar';
-import { parseBasketPricing, savingsVsSingles } from '../-utils/basket-pricing';
+
 import { offerStatuses, parseOffers } from '../-utils/offers';
 import type { ProductPageData, ProductPageSettings, PageJson } from '../-types/product-page-types';
 
@@ -105,9 +105,13 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
     // Same chain the server bills on: a basket price replaces the item sum,
     // then the best offer, then the coupon.
     const quote = basketQuote();
-    const basketSettings = parseBasketPricing(pageData.settings_json);
-    const saved = quote ? savingsVsSingles(basketSettings, quote) : 0;
     const total = finalPrice();
+    // Measured the same way the panel directly above measures it — against what
+    // the courses cost apart, after EVERY discount. Counting only the basket
+    // rule here had the sticky bar and the summary quoting two different
+    // savings on one screen the moment a coupon was applied.
+    const itemTotal = quote ? quote.itemTotal : totalPrice();
+    const saved = Math.max(0, Math.round(itemTotal - total));
     const offers = offerStatuses(
         parseOffers(pageData.settings_json),
         quote ? quote.total : subtotal,

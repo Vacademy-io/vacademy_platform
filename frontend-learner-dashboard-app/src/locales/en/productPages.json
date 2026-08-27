@@ -20,7 +20,12 @@
         "couldNotInitiatePayment": "Could not initiate payment.",
         "pay": "Pay {{currency}} {{amount}}",
         "logoAlt": "logo",
-        "itemsSelected": "{{count}} {{course}} selected"
+        "itemsSelected": "{{count}} {{course}} selected",
+        "basketSaved": "saved {{amount}}",
+        "basketSavedWithPercent": "saved {{amount}} · {{percent}}%",
+        "basketNextTierAmount": "Add {{count}} more {{course}} to get {{amount}} off.",
+        "basketNextTierAmountMore": "Add {{count}} more {{course}} to get {{amount}} more off.",
+        "basketNextTierPercent": "Add {{count}} more {{course}} to get {{percent}}% off."
     },
     "errors": {
         "pageNotAvailable": {

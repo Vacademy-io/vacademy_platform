@@ -145,7 +145,14 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
         );
         return quoteBasket(
             parseBasketPricing(pageData.settings_json),
-            selected.map((m) => ({ levelName: m.level_name, packageName: m.package_name }))
+            // The plan's own price rides along: a DISCOUNT-basis page reduces
+            // that sum rather than replacing it, so the single-subject rate is
+            // read from the enroll invite instead of the page settings.
+            selected.map((m) => ({
+                levelName: m.level_name,
+                packageName: m.package_name,
+                price: m.payment_plan?.actual_price ?? 0,
+            }))
         );
     },
 

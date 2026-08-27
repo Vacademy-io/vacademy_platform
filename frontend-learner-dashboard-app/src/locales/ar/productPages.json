@@ -20,7 +20,12 @@
         "couldNotInitiatePayment": "تعذّر بدء عملية الدفع.",
         "pay": "ادفع {{currency}} {{amount}}",
         "logoAlt": "الشعار",
-        "itemsSelected": "تم تحديد {{count}} {{course}}"
+        "itemsSelected": "تم تحديد {{count}} {{course}}",
+        "basketSaved": "وفّرت {{amount}}",
+        "basketSavedWithPercent": "وفّرت {{amount}} · {{percent}}٪",
+        "basketNextTierAmount": "أضف {{count}} {{course}} أخرى للحصول على خصم {{amount}}.",
+        "basketNextTierAmountMore": "أضف {{count}} {{course}} أخرى للحصول على خصم إضافي قدره {{amount}}.",
+        "basketNextTierPercent": "أضف {{count}} {{course}} أخرى للحصول على خصم {{percent}}٪."
     },
     "errors": {
         "pageNotAvailable": {

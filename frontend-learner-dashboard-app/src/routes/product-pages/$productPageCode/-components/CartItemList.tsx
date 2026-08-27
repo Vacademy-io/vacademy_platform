@@ -10,6 +10,7 @@ import type {
 import {
     groupLabelFor,
     ladderPrice,
+    nextTier,
     parseBasketPricing,
     type BasketQuoteLine,
 } from '../-utils/basket-pricing';
@@ -74,7 +75,9 @@ export const CartItemList = ({
 
     const quote = basketQuote();
     const basketSettings = parseBasketPricing(pageData.settings_json);
-    const singleRate = basketSettings?.ladder.prices[0] ?? 0;
+    // Threshold-based nudge for discount pages, where the next course's price is
+    // not known until it is picked.
+    const tierAhead = nextTier(basketSettings, items.length, quote?.itemTotal ?? 0);
 
     const canRemove = settings.allowCourseDeselection !== false;
     const removeItem = (id: string) =>
@@ -136,18 +139,20 @@ export const CartItemList = ({
     return (
         <section aria-label="Courses in your cart" className="space-y-4">
             {groups.map((group, gi) => {
-                // Under basket pricing the courses carry no price of their own,
-                // so the saving is measured against the ladder's one-subject
-                // rate — the number the price card itself advertises.
+                // Measured against what these same courses cost apart — the
+                // figure the group header strikes through. Never an invented
+                // "MRP": an inflated original is the fastest way to lose a parent.
                 const line = group.line;
-                const saved =
-                    line && singleRate > 0
-                        ? Math.max(0, line.count * singleRate - line.amount)
+                const saved = line ? Math.max(0, Math.round(line.baseAmount - line.amount)) : 0;
+                const savedPercent =
+                    line && line.baseAmount > 0
+                        ? Math.round((saved / line.baseAmount) * 100)
                         : 0;
                 // What one more subject in THIS class would add. Named exactly,
-                // because "add more to save more" is not something a parent can act on.
+                // because "add more to save more" is not something a parent can
+                // act on. Only meaningful on a fixed ladder — see tierAhead.
                 const nextHere =
-                    line && basketSettings
+                    line && basketSettings && basketSettings.pricingBasis !== 'DISCOUNT'
                         ? ladderPrice(
                               basketSettings.ladder.prices,
                               basketSettings.ladder.perExtra,
@@ -179,12 +184,20 @@ export const CartItemList = ({
                             </div>
                             {line && (
                                 <div className="shrink-0 text-right">
-                                    <p className="text-base font-bold tabular-nums text-gray-900">
-                                        {money(line.amount)}
+                                    <p className="flex items-baseline justify-end gap-1.5">
+                                        {saved > 0 && (
+                                            <span className="text-caption tabular-nums text-gray-400 line-through">
+                                                {money(line.baseAmount)}
+                                            </span>
+                                        )}
+                                        <span className="text-base font-bold tabular-nums text-gray-900">
+                                            {money(line.amount)}
+                                        </span>
                                     </p>
                                     {saved > 0 && (
                                         <p className="text-caption font-semibold text-success-600">
-                                            saved {money(saved)}
+                                            save {money(saved)}
+                                            {savedPercent > 0 && ` · ${savedPercent}%`}
                                         </p>
                                     )}
                                 </div>
@@ -264,6 +277,20 @@ export const CartItemList = ({
                     </div>
                 );
             })}
+
+            {/* On a discount page the reward for adding one more is a threshold,
+                not a rupee figure — the next course's price is not known until it
+                is picked, so quoting one would be a guess dressed as a promise. */}
+            {tierAhead && (
+                <div className="flex items-center gap-2.5 rounded-2xl border border-primary-200 bg-primary-50 px-4 py-3">
+                    <Gift className="size-5 shrink-0 text-primary-500" aria-hidden="true" />
+                    <p className="min-w-0 text-sm font-semibold text-primary-500">
+                        Add {tierAhead.coursesAway} more subject
+                        {tierAhead.coursesAway === 1 ? '' : 's'} to get {tierAhead.label} the
+                        whole basket.
+                    </p>
+                </div>
+            )}
 
             {onAddMore && (
             <button

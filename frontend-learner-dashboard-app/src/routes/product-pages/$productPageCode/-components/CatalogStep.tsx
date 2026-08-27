@@ -1,16 +1,13 @@
 import { useTranslation } from "react-i18next";
-import { useProductPageStore } from "../-stores/product-page-store";
 import type {
   ProductPageData,
   ProductPageSettings,
   PageJson,
 } from "../-types/product-page-types";
-import { ShieldCheck, ShoppingCart } from "@phosphor-icons/react";
+import { ShieldCheck } from "@phosphor-icons/react";
 import { PageRenderer, CourseGridBlock } from "./PageRenderer";
-import {
-  getTerminology,
-  getTerminologyPlural,
-} from "@/components/common/layout-container/sidebar/utils";
+import { BasketSummaryBar } from "./BasketSummaryBar";
+import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { StepProgress } from "./StepProgress";
 
@@ -48,7 +45,6 @@ export const CatalogStep = ({
   onNext,
 }: CatalogStepProps) => {
   const { t } = useTranslation("productPages");
-  const { selectedPsOptionIds, totalPrice } = useProductPageStore();
   const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
   const pageJson = parseSafeJson<PageJson>(
@@ -75,12 +71,7 @@ export const CatalogStep = ({
   // instead of an unfiltered wall of every course on the page. Same grid the
   // page-builder renders, so the two never diverge.
   const activeMappings = pageData.mappings.filter((m) => m.status === "ACTIVE");
-  const currency =
-    pageData.currency || activeMappings[0]?.payment_plan?.currency || "";
   const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
-
-  const price = totalPrice();
-  const count = selectedPsOptionIds.length;
 
   return (
     <div className="min-h-screen bg-catalogue-bg">
@@ -134,42 +125,14 @@ export const CatalogStep = ({
         />
       </div>
 
-      {/* Sticky action bar */}
-      {count > 0 && (
-        <div className="sticky bottom-0 z-30 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm">
-          <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-800">
-                {t("common.itemsSelected", {
-                  count,
-                  course: (count === 1
-                    ? getTerminology(ContentTerms.Course, SystemTerms.Course)
-                    : courses
-                  ).toLocaleLowerCase(),
-                })}
-              </p>
-              {price > 0 ? (
-                <p className="text-base font-bold text-gray-900">
-                  {currency} {price.toLocaleString()}
-                </p>
-              ) : (
-                <p className="text-xs font-medium text-green-600">
-                  {t("common.freeEnrollment")}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={onNext}
-              className="flex shrink-0 items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
-              style={{ backgroundColor: primaryColor }}
-            >
-              <ShoppingCart className="size-4" />
-              {t("common.proceedToCheckout")}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Sticky action bar — shared with the designed-page catalogue, so the
+          two formats cannot quote different totals for the same basket. */}
+      <BasketSummaryBar
+        pageData={pageData}
+        onNext={onNext}
+        primaryColor={primaryColor}
+      />
+
     </div>
   );
 };

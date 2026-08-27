@@ -106,8 +106,24 @@ export interface BasketPricingCombo {
  * catalogues that sell "any 3 for X". See BasketPricingCalculator.java — the
  * server recomputes this at checkout and is the authority.
  */
+export interface BasketPricingTier {
+    /** Applies once the basket reaches this many courses. */
+    minCourses: number;
+    type: 'PERCENT' | 'AMOUNT';
+    /** Percent off the course prices, or a flat currency amount. */
+    value: number;
+}
+
 export interface BasketPricingSettings {
     enabled: boolean;
+    /**
+     * FLAT (default) reads `ladder` as absolute prices — the only thing that
+     * works when the courses are free and carry no price to discount. DISCOUNT
+     * reads `tiers` as a reduction off what the courses cost on their enroll
+     * invites, so the per-course rate has ONE home: the payment plan.
+     */
+    pricingBasis?: 'FLAT' | 'DISCOUNT';
+    tiers?: BasketPricingTier[];
     ladder: {
         /** Price for a basket of 1, 2, 3 … in order. */
         prices: number[];

@@ -67,7 +67,7 @@
   "extraMetadata": {
     "version": "1.0.1"
   },
-  "buildVersion": "6",
+  "buildVersion": "7",
   "mac": {
     "category": "public.app-category.education",
     "icon": "assets/zoe.icns",

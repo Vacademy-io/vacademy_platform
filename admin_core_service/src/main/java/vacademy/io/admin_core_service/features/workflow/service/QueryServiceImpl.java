@@ -2290,6 +2290,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             logMap.put("engagementData", logEntry.getEngagementData());
                             logMap.put("providerTotalDurationMinutes", logEntry.getProviderTotalDurationMinutes());
                             logMap.put("statusType", logEntry.getStatusType());
+                            logMap.put("attendanceEvaluationJson", logEntry.getAttendanceEvaluationJson());
                             engagementLogsByStudent.computeIfAbsent(userId, k -> new ArrayList<>()).add(logMap);
                         }
                     } catch (Exception e) {
@@ -2510,6 +2511,30 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             // One card per session — uses a 2-cell table for the header row
                             // (title + status pill) so it works in Outlook (no flexbox).
                             // Body uses simple <div>s for label/value rows.
+                            // When a minimum-attendance rule decided this row, say so on the
+                            // card. "Absent" next to "Duration: 4 min" reads like a
+                            // contradiction unless the learner is told what the bar was.
+                            String absenceReason = null;
+                            if ("ABSENT".equals(status) && eng != null
+                                    && eng.get("attendanceEvaluationJson") != null) {
+                                try {
+                                    var ev = objectMapper.readTree(
+                                            String.valueOf(eng.get("attendanceEvaluationJson")));
+                                    String why = ev.path("reason").asText("");
+                                    long attSec = ev.path("attendedSeconds").asLong(0);
+                                    // The threshold is not disclosed to learners; only that
+                                    // the time fell short of it.
+                                    if ("BELOW_THRESHOLD".equals(why)) {
+                                        absenceReason = "Marked absent — you were in the class for "
+                                                + fmtHms(attSec) + ", which is below the minimum"
+                                                + " attendance required for this class.";
+                                    } else if ("NO_SHOW".equals(why)) {
+                                        absenceReason = "Marked absent — our records show you did not"
+                                                + " join the class.";
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+
                             String sessionTitle = String.valueOf(session.getOrDefault("title", "-"));
                             String meetingDate = String.valueOf(session.getOrDefault("meetingDate", "-"));
                             String statusBg = "PRESENT".equals(status) ? "#dcfce7" : "#fee2e2";
@@ -2537,6 +2562,12 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                                      .append("<span style=\"color:").append(engagementColor).append(";font-weight:600\">")
                                      .append(engagementStr).append("</span>")
                                      .append("</div>");
+                            if (absenceReason != null) {
+                                tableHtml.append("<div style=\"margin-top:8px;padding:8px 10px;")
+                                         .append("border-radius:6px;background:#fef2f2;")
+                                         .append("font-size:12px;color:#991b1b;line-height:1.5\">")
+                                         .append(absenceReason).append("</div>");
+                            }
                             tableHtml.append("</div>");
                         }
                         tableHtml.append("</div>");
@@ -2754,6 +2785,13 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // malformed JSON — treat as no order id
         }
         return null;
+    }
+
+    /** "4m 50s" / "6m" / "45s" — learner-facing duration for the attendance report. */
+    private static String fmtHms(long totalSeconds) {
+        long m = totalSeconds / 60, sec = totalSeconds % 60;
+        if (m == 0) return sec + "s";
+        return sec == 0 ? m + "m" : m + "m " + sec + "s";
     }
 }
 

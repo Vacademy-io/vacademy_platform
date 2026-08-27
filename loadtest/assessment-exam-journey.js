@@ -27,6 +27,7 @@
  */
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import { b64decode } from 'k6/encoding';
 import { Trend, Rate, Counter } from 'k6/metrics';
 
 const BASE = __ENV.BASE_URL || 'https://backend-stage.vacademy.io';
@@ -131,35 +132,50 @@ export default function () {
     // --- Phase 1: login, jittered across the login window ---
     sleep(Math.random() * LOGIN_WINDOW);
 
+    // AuthRequestDto uses SnakeCaseStrategy — field names must be snake_case
+    // (verified against prod 2026-08-27; camelCase silently deserializes to null
+    // and reads as Bad credentials). Seeded users must hold a student-portal
+    // role: this learner route rejects admin-only accounts.
     let res = http.post(`${BASE}/auth-service/learner/v1/login`, JSON.stringify({
-        userName: username,
+        user_name: username,
         password: PASSWORD,
-        clientName: 'ASSESSMENT',
-        instituteId: INSTITUTE_ID,
+        client_name: 'ADMIN_PORTAL',
+        institute_id: INSTITUTE_ID,
     }), { headers: jsonHeaders(null), tags: { step: 'login' } });
     loginMs.add(res.timings.duration);
     if (!check(res, { 'login 200': (r) => r.status === 200 })) return fail('login', res);
     const body = res.json();
-    const token = body.accessToken || body.access_token || (body.data && body.data.accessToken);
+    const token = body.accessToken;
     if (!token) return fail('login-token', res);
+    // The JWT payload's "user" claim is the userId the preview registration
+    // needs (verified against prod 2026-08-27).
+    const claims = JSON.parse(b64decode(token.split('.')[1], 'rawurl', 's'));
+    const userId = claims.user;
 
     // --- Phase 2: start burst, jittered across the start window ---
     sleep(Math.random() * START_WINDOW);
 
+    // Request AND response DTOs are snake_case throughout (SnakeCaseStrategy;
+    // verified against prod 2026-08-27). user_id is required — registration is
+    // lazily created on first preview and its userId column is NOT NULL.
     const previewUrl = `${BASE}/assessment-service/assessment/learner/assessment-start-preview` +
         `?assessment_id=${ASSESSMENT_ID}&instituteId=${INSTITUTE_ID}` +
         (BATCH_IDS ? `&batch_ids=${BATCH_IDS}` : '');
-    res = http.post(previewUrl, JSON.stringify({ username: username }),
-        { headers: jsonHeaders(token), tags: { step: 'preview' } });
+    res = http.post(previewUrl, JSON.stringify({
+        username: username,
+        user_id: userId,
+        email: `${username}@loadtest.invalid`,
+        full_name: `Load Test ${username}`,
+    }), { headers: jsonHeaders(token), tags: { step: 'preview' } });
     previewMs.add(res.timings.duration);
     if (!check(res, { 'preview 200': (r) => r.status === 200 })) return fail('preview', res);
     const preview = res.json();
-    const attemptId = preview.attemptId || preview.attempt_id;
-    const userRegistrationId = preview.userRegistrationId || preview.user_registration_id || null;
+    const attemptId = preview.attempt_id;
+    const userRegistrationId = preview.assessment_user_registration_id || null;
     if (!attemptId) return fail('preview-attemptId', res);
 
     res = http.post(`${BASE}/assessment-service/assessment/learner/assessment-start-assessment`,
-        JSON.stringify({ assessmentId: ASSESSMENT_ID, attemptId: attemptId, userRegistrationId: userRegistrationId }),
+        JSON.stringify({ assessment_id: ASSESSMENT_ID, attempt_id: attemptId, user_registration_id: userRegistrationId }),
         { headers: jsonHeaders(token), tags: { step: 'start' } });
     startMs.add(res.timings.duration);
     // Concurrent duplicate starts replay the stored startTime server-side
@@ -177,7 +193,7 @@ export default function () {
         sleep(SYNC_INTERVAL * (0.9 + Math.random() * 0.2));
         const elapsed = Math.floor((Date.now() - examStart) / 1000);
         res = http.post(`${statusBase}/update?assessmentId=${ASSESSMENT_ID}&attemptId=${attemptId}`,
-            JSON.stringify({ jsonContent: buildAttemptData(elapsed) }),
+            JSON.stringify({ json_content: buildAttemptData(elapsed) }),
             { headers: jsonHeaders(token), tags: { step: 'sync' } });
         syncMs.add(res.timings.duration);
         check(res, { 'sync 200': (r) => r.status === 200 }) || stepFailures.add(1, { step: 'sync' });
@@ -189,8 +205,9 @@ export default function () {
         return; // abandoned attempt stays LIVE for the expiry cron to sweep
     }
     const elapsed = Math.floor((Date.now() - examStart) / 1000);
+    // submit returns a plain string, not JSON — check status only
     res = http.post(`${statusBase}/submit?assessmentId=${ASSESSMENT_ID}&attemptId=${attemptId}`,
-        JSON.stringify({ jsonContent: buildAttemptData(elapsed) }),
+        JSON.stringify({ json_content: buildAttemptData(elapsed) }),
         { headers: jsonHeaders(token), tags: { step: 'submit' } });
     submitMs.add(res.timings.duration);
     if (!check(res, { 'submit 200': (r) => r.status === 200 })) return fail('submit', res);

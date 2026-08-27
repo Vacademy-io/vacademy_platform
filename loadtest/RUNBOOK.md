@@ -28,7 +28,36 @@ dedicated throwaway institute, at an off-peak hour, with live abort criteria.
 3. **Window:** 02:00–05:00 IST. Announce internally; nobody deploys during it.
 4. **Baseline snapshot** (same commands as §4) taken before ramping.
 
-## 1. Seed the load-test tenant (once)
+## 1. Seed the load-test tenant (once) — ✅ DONE 2026-08-27
+
+Everything in this section is already provisioned and end-to-end validated
+(one full journey ran against prod: login 372ms → preview 538ms → start 362ms
+→ autosave 398ms → submit; attempt ENDED/COMPLETED with 120/120 marks and 31
+question_wise_marks rows). Ready-to-run values:
+
+```bash
+k6 run assessment-exam-journey.js \
+  -e INSTITUTE_ID=245536e4-3748-4065-a7d3-0df03c9e5ddc \
+  -e ASSESSMENT_ID=55af0371-e36d-4554-ae4a-d998ace3261e \
+  -e BATCH_IDS=88d0e88e-8518-49c7-9a51-daefb80b752f \
+  -e USER_PREFIX=loadtest -e PASSWORD='LoadTest@123' -e USER_COUNT=1000 \
+  -e VUS=50 -e LOGIN_WINDOW=120 -e START_WINDOW=60 -e EXAM_MINUTES=10
+```
+
+- Institute: "LOADTEST" `245536e4-3748-4065-a7d3-0df03c9e5ddc`
+- Assessment: "Surprise Test" `55af0371-…` — 30 MCQS (4 marks, −1 negative),
+  AUTO evaluation, 20 reattempts, LIVE window until 2026-09-03 12:04 UTC
+  (**extend bound_end_time before testing after that date**)
+- Batch registration: `88d0e88e-8518-49c7-9a51-daefb80b752f` (registration is
+  created lazily at first preview — no admin-core enrollment needed)
+- Learners: `loadtest0001`…`loadtest1000` / `LoadTest@123`, STUDENT role,
+  seeded directly in auth DB (cleanup: `DELETE FROM user_role WHERE user_id IN
+  (SELECT id FROM users WHERE username LIKE 'loadtest%')` then the users)
+- Questions tagged `source_type='LOADTEST'` in the question table for cleanup
+- `attempt-template.json` is committed and validated — correct answers are
+  `<questionId>-A`, so scored runs exercise the CORRECT path with real marks
+
+Original procedure (kept for re-seeding a new tenant):
 
 1. Create institute `LOADTEST — do not use` via the normal admin flow.
 2. Create one batch; bulk-upload learners:

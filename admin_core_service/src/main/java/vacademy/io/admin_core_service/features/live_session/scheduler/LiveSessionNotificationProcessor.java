@@ -13,7 +13,6 @@ import vacademy.io.admin_core_service.features.live_session.entity.ScheduleNotif
 import vacademy.io.admin_core_service.features.live_session.enums.LiveClassAction;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationTypeEnum;
-import vacademy.io.admin_core_service.features.live_session.constants.AttendanceEmailBody;
 import vacademy.io.admin_core_service.features.live_session.constants.LiveClassEmailBody;
 import vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService;
 import vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService.ResolvedTemplate;
@@ -68,14 +67,6 @@ public class LiveSessionNotificationProcessor {
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
-    /**
-     * Only used to decide which attendance template applies. @Lazy keeps it out
-     * of this bean's construction graph — the evaluator already holds a @Lazy
-     * reference back to this processor.
-     */
-    @Autowired
-    @org.springframework.context.annotation.Lazy
-    private vacademy.io.admin_core_service.features.live_session.service.AttendanceCriteriaService attendanceCriteriaService;
 
     /**
      * Look-back window for the LIVE_SESSION_END dispatch. MUST equal the
@@ -1040,17 +1031,8 @@ public class LiveSessionNotificationProcessor {
                 // Build a simple email notification for the student
                 Student student = studentRepository.findTopByUserId(userId).orElse(null);
                 if (student != null && student.getEmail() != null) {
-                    // Only a class running the minimum-attendance rule gets the
-                    // dedicated template. Everyone else keeps exactly today's mail:
-                    // the invitation template is wrong for attendance, but fixing
-                    // that for every institute is a separate decision from this
-                    // feature and is not ours to make here.
-                    boolean criteriaMail = attendanceCriteriaService.resolve(session).isActive();
-
                     NotificationDTO dto = new NotificationDTO();
-                    dto.setBody(criteriaMail
-                            ? AttendanceEmailBody.Attendance_Email_Body
-                            : LiveClassEmailBody.Live_Class_Email_Body);
+                    dto.setBody(LiveClassEmailBody.Live_Class_Email_Body);
                     dto.setSubject(title + " - " + sessionTitle);
                     dto.setNotificationType("EMAIL");
                     dto.setSource("ADMIN_CORE");
@@ -1060,25 +1042,17 @@ public class LiveSessionNotificationProcessor {
                     Map<String, String> placeholders = new HashMap<>();
                     placeholders.put("NAME", student.getFullName() != null ? student.getFullName() : "Student");
                     placeholders.put("SESSION_TITLE", sessionTitle);
+                    // {{ACTION}} lands in the template's 24px <h1>, so it stays a
+                    // short label. The explanation reaches the learner through the
+                    // push/system body and the daily attendance report card.
+                    placeholders.put("ACTION", "Attendance: " + status);
                     placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
                     placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
                     placeholders.put("YEAR", getCurrentYear());
-                    if (criteriaMail) {
-                        placeholders.put("STATUS", status);
-                        placeholders.put("STATUS_COLOR",
-                                "ABSENT".equalsIgnoreCase(status) ? "#dc2626" : "#16a34a");
-                        // A sentence belongs in the body, not interpolated into the
-                        // 24px header the invitation template uses for {{ACTION}}.
-                        placeholders.put("STATUS_NOTE", AttendanceEmailBody.noteBlock(reasonDetail));
-                        placeholders.put("SESSION_DATE", sessionDateLabel(session));
-                    } else {
-                        // Unchanged from before this feature.
-                        placeholders.put("ACTION", "Attendance: " + status);
-                        placeholders.put("LINK", "#");
-                        placeholders.put("ALL_TIMEZONE_TIMES", "");
-                        placeholders.put("DATE", "");
-                        placeholders.put("TIME", "");
-                    }
+                    placeholders.put("LINK", "#");
+                    placeholders.put("ALL_TIMEZONE_TIMES", "");
+                    placeholders.put("DATE", "");
+                    placeholders.put("TIME", "");
                     u.setPlaceholders(placeholders);
                     u.setUserId(userId);
                     u.setChannelId(student.getEmail());
@@ -1092,20 +1066,6 @@ public class LiveSessionNotificationProcessor {
         }
     }
 
-    /** "26 August 2026" for the attendance mail, or an empty label if unknown. */
-    private String sessionDateLabel(LiveSession session) {
-        try {
-            var schedules = scheduleRepository.findBySessionId(session.getId());
-            if (schedules != null && !schedules.isEmpty()) {
-                var d = schedules.get(0).getMeetingDate();
-                if (d != null) {
-                    return new SimpleDateFormat("d MMMM yyyy").format(d);
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return "";
-    }
 
     private String getThemeColor(String instituteId) {
         try {

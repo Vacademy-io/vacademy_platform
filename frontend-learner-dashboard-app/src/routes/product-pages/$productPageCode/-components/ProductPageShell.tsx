@@ -215,7 +215,7 @@ export const ProductPageShell = ({
         <CatalogueChrome
           tagName={pageHasOwnChrome ? undefined : tagName}
           instituteId={instituteId}
-          showFooter={false}
+          showFooter
         >
           <CatalogStep
             pageData={pageData}
@@ -228,7 +228,18 @@ export const ProductPageShell = ({
         </CatalogueChrome>
       )}
 
+      {/* Checkout wears the SAME chrome as the catalogue the visitor came from.
+          The header changing character mid-purchase — site header while
+          browsing, a bare coloured bar once money is involved — reads as
+          having left the site. A page that declares its own header/footer keeps
+          them instead (tagName undefined makes this a passthrough), so nothing
+          stacks two headers. */}
       {(step === "CART" || step === "FORM" || step === "PAYMENT" || step === "CPO_INSTALLMENTS") && (
+        <CatalogueChrome
+          tagName={pageHasOwnChrome ? undefined : tagName}
+          instituteId={instituteId}
+          showFooter
+        >
         <CheckoutLayout
           pageData={pageData}
           pageJson={pageJson}
@@ -276,6 +287,7 @@ export const ProductPageShell = ({
             />
           )}
         </CheckoutLayout>
+        </CatalogueChrome>
       )}
 
       {step === "SUCCESS" && <ProductPageSuccess pageData={pageData} />}

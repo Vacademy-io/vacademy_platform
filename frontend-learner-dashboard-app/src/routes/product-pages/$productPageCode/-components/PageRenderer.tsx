@@ -172,10 +172,15 @@ export const HeaderBlock = ({
   pageName: string;
 }) => {
   const { t } = useTranslation("productPages");
-  const title = (props.title as string) || pageName || "";
   const logoFileId = (props.logoFileId as string) || "";
   const showLogo = props.showLogo !== false;
   const logoUrl = useFileUrl(logoFileId);
+  // The logo IS the identity. Printing the page name beside it repeats the
+  // brand twice in the same bar. Keyed off whether a logo is CONFIGURED, not
+  // whether it has resolved yet, so the name does not flash in and out while
+  // the file URL loads. An explicitly authored title always wins.
+  const hasLogo = showLogo && !!logoFileId;
+  const title = (props.title as string) || (hasLogo ? "" : pageName) || "";
 
   return (
     <header
@@ -1563,8 +1568,10 @@ export const NewHeaderBlock = ({
   pageName: string;
 }) => {
   const { t } = useTranslation("productPages");
-  const title = (props.title as string) || pageName || "";
-  const logoUrl = useImageSrc((props.logo as string) || "");
+  const logoRaw = (props.logo as string) || "";
+  const logoUrl = useImageSrc(logoRaw);
+  // See HeaderBlock: a logo already says who this is.
+  const title = (props.title as string) || (logoRaw ? "" : pageName) || "";
   const navigation = (props.navigation as Array<{ label: string; url?: string; route?: string }>) || [];
   const ctaButton = (props.ctaButton as { enabled?: boolean; text?: string; url?: string; bgColor?: string; textColor?: string }) || {};
   const bg = (props.backgroundColor as string) || primaryColor;

@@ -40,6 +40,14 @@ const LOGIN_WINDOW = Number(__ENV.LOGIN_WINDOW || 300); // secs learners spread 
 const START_WINDOW = Number(__ENV.START_WINDOW || 120); // secs after login window learners hit start
 const EXAM_MINUTES = Number(__ENV.EXAM_MINUTES || 10);
 const SYNC_INTERVAL = Number(__ENV.SYNC_INTERVAL || 60); // matches the app's autosave cadence
+// Boundary knobs:
+// SUBMIT_RATIO < 1 models dropouts/abandons — those VUs stop syncing and never
+// submit, leaving their attempts LIVE for the expiry cron (its mass-expiry
+// fan-out is a boundary worth exercising once at the target level).
+const SUBMIT_RATIO = Number(__ENV.SUBMIT_RATIO || 1.0);
+// USER_COUNT = how many learners were actually seeded; refuses to run past it
+// so VUs don't all fail login and read as a false server-side collapse.
+const USER_COUNT = Number(__ENV.USER_COUNT || 1000);
 
 const attemptTemplate = open('./attempt-template.json');
 
@@ -111,6 +119,12 @@ function buildAttemptData(elapsedSecs) {
     return JSON.stringify(data);
 }
 
+export function setup() {
+    if (VUS > USER_COUNT) {
+        throw new Error(`VUS=${VUS} exceeds USER_COUNT=${USER_COUNT} seeded learners — seed more users or lower VUS`);
+    }
+}
+
 export default function () {
     const username = `${USER_PREFIX}${String(__VU).padStart(4, '0')}`;
 
@@ -148,7 +162,12 @@ export default function () {
         JSON.stringify({ assessmentId: ASSESSMENT_ID, attemptId: attemptId, userRegistrationId: userRegistrationId }),
         { headers: jsonHeaders(token), tags: { step: 'start' } });
     startMs.add(res.timings.duration);
-    if (!check(res, { 'start 200': (r) => r.status === 200 })) return fail('start', res);
+    // Concurrent duplicate starts replay the stored startTime server-side
+    // (idempotent since the 22 Aug fix); an "already live" body is therefore a
+    // usable attempt, not a failure — tolerate it so a rerun against a still-LIVE
+    // attempt keeps going instead of poisoning the error rate.
+    const startOk = res.status === 200 || String(res.body).toLowerCase().includes('already live');
+    if (!check(res, { 'start usable': () => startOk })) return fail('start', res);
 
     // --- Phase 3: steady-state autosave syncs ---
     const statusBase = `${BASE}/assessment-service/assessment/learner/status`;
@@ -164,7 +183,11 @@ export default function () {
         check(res, { 'sync 200': (r) => r.status === 200 }) || stepFailures.add(1, { step: 'sync' });
     }
 
-    // --- Phase 4: submit ---
+    // --- Phase 4: submit (or abandon, if this VU drew the dropout straw) ---
+    if (Math.random() >= SUBMIT_RATIO) {
+        journeyFailed.add(0);
+        return; // abandoned attempt stays LIVE for the expiry cron to sweep
+    }
     const elapsed = Math.floor((Date.now() - examStart) / 1000);
     res = http.post(`${statusBase}/submit?assessmentId=${ASSESSMENT_ID}&attemptId=${attemptId}`,
         JSON.stringify({ jsonContent: buildAttemptData(elapsed) }),

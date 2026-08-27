@@ -121,7 +121,48 @@ number is the highest level where **all** of: p95 sync < 2s, p95 start < 5s,
 p95 submit < 8s, error rate < 1%, and no abort criterion fired — divided by
 1.5 as the safety factor we actually promise.
 
-## 7. Cleanup
+## 7. Boundary conditions — verified 2026-08-27, re-check before big exams
+
+**Connection budget (hard ceilings).** Postgres primary `max_connections=200`.
+PgBouncer server pools sum to ~167 at absolute worst case (all pools + reserves
+saturated at once) — headroom exists but is finite: raising any PgBouncer
+`pool_size` eats it. Client side: `max_client_conn=300` vs ~150 worst-case
+client connections across all services after the auth fix and with assessment
+at 2 replicas. ai-service also routes via PgBouncer (DB_HOST=pgbouncer).
+`query_wait_timeout=15s` means queries queued at PgBouncer beyond 15s are
+KILLED, not delayed — under overload expect errors, not slow answers.
+
+**Mass expiry (nobody submits).** The 5-min cron sweeps all LIVE attempts past
+their time and enqueues a recalc per attempt onto the shared 8-thread pool
+(queue 100, CallerRuns). Post-batching this is self-throttling and drains ~1000
+attempts in well under a minute; exercise it once at target level with
+`-e SUBMIT_RATIO=0.7` (30% abandon). Pre-batching this same path would have
+taken >1 hour — do not run this variant on an old build.
+
+**Duplicate clicks.** `start` is idempotent since 22 Aug (replays the stored
+startTime — a repeat call cannot extend a learner's clock). A duplicate
+`submit` is accepted and re-runs the full calculation: harmless to data
+(ASSESSMENT_END has a replay guard) but it doubles submit-wave CPU; the FE
+guard is the real protection. Keep an eye on submit counts vs VUs in results.
+
+**Re-runs of the harness.** Enable unlimited reattempts on the load-test
+assessment (else run 2 fails on existing attempts) and keep the whole run
+inside the assessment's LIVE window — `boundEndTime` must be at least
+`LOGIN_WINDOW + START_WINDOW + EXAM_MINUTES + 15min` away or the expiry cron
+ends attempts mid-run and pollutes the numbers. The script tolerates an
+"already live" reply on start (that's the idempotent replay, not an error) and
+refuses to run with `VUS > USER_COUNT` so failed logins never masquerade as
+server collapse.
+
+**Token edge.** JWTs live 30 days: a learner mid-exam never refreshes, but a
+learner whose token expires the moment the exam starts re-logins on the spot —
+the login window and start burst can overlap; that is why the ramp keeps
+LOGIN_WINDOW and START_WINDOW adjacent rather than gapped.
+
+**Stress variant.** One run at target level with `-e SYNC_INTERVAL=30` doubles
+steady-state pressure and tells you the margin above the app's real 60s cadence.
+
+## 8. Cleanup
 
 The load-test institute stays (reusable). Optionally delete the run's
 attempts to keep tables lean:

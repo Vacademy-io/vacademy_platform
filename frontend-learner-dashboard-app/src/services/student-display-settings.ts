@@ -1,5 +1,5 @@
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { BASE_URL } from "@/constants/urls";
+import { BASE_URL, OPEN_STUDENT_DISPLAY_SETTINGS } from "@/constants/urls";
 import { getInstituteId } from "@/constants/helper";
 import {
   STUDENT_DISPLAY_SETTINGS_KEY,
@@ -460,6 +460,74 @@ export async function getStudentDisplaySettings(
     return request;
   }
   return fetchAndCacheStudentDisplaySettings(instituteId, forceRefresh);
+}
+
+// Session memo + in-flight dedupe for the unauthenticated read.
+const publicSettingsByInstitute = new Map<string, StudentDisplaySettingsData>();
+const inFlightPublicSettingsByInstitute = new Map<
+  string,
+  Promise<StudentDisplaySettingsData>
+>();
+
+/**
+ * Pre-login read of an institute's student display settings.
+ *
+ * `getStudentDisplaySettings()` resolves the institute through `getInstituteId()`,
+ * which needs an access token — so on public screens (course catalogue) it
+ * silently falls back to DEFAULTS and every toggle reads as its default value.
+ * This variant takes the institute explicitly and goes through the `/open/**`
+ * endpoint, so a gate like `signup.enabled: false` actually takes effect before
+ * anyone has logged in.
+ *
+ * Memoised per institute for the session, deduped while in flight, and the
+ * endpoint itself is `@ClientCacheable(300s, PUBLIC)`. Results are written to
+ * the shared per-institute cache so the authenticated reader benefits too.
+ * Any failure yields defaults — a public page must never break because a
+ * settings read did.
+ */
+export async function getPublicStudentDisplaySettings(
+  instituteId: string | null | undefined
+): Promise<StudentDisplaySettingsData> {
+  if (!instituteId) return DEFAULT_STUDENT_DISPLAY_SETTINGS;
+
+  const memo = publicSettingsByInstitute.get(instituteId);
+  if (memo) return memo;
+
+  const cached = readCacheForInstitute(instituteId);
+  if (cached) return mergeWithDefaults(cached);
+
+  const inFlight = inFlightPublicSettingsByInstitute.get(instituteId);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    try {
+      const res = await authenticatedAxiosInstance.get<
+        StudentDisplaySettingsData | null
+      >(OPEN_STUDENT_DISPLAY_SETTINGS, { params: { instituteId } });
+      // The open endpoint returns the setting's `data` object directly (null
+      // when the institute never configured it), not the `{ data }` envelope
+      // the authenticated endpoint uses.
+      const serverData = res.data;
+      const merged = mergeWithDefaults(
+        serverData && Object.keys(serverData).length
+          ? serverData
+          : DEFAULT_STUDENT_DISPLAY_SETTINGS
+      );
+      await writeCacheForInstitute(instituteId, merged);
+      publicSettingsByInstitute.set(instituteId, merged);
+      return merged;
+    } catch {
+      return DEFAULT_STUDENT_DISPLAY_SETTINGS;
+    }
+  })();
+
+  inFlightPublicSettingsByInstitute.set(instituteId, request);
+  request.finally(() => {
+    if (inFlightPublicSettingsByInstitute.get(instituteId) === request) {
+      inFlightPublicSettingsByInstitute.delete(instituteId);
+    }
+  });
+  return request;
 }
 
 async function fetchAndCacheStudentDisplaySettings(

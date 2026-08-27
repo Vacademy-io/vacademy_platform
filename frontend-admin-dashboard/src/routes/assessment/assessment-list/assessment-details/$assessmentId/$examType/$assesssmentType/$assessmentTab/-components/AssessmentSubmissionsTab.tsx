@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,20 @@ import {
     getAllColumnsForTableWidth,
     getAssessmentSubmissionsFilteredDataStudentData,
 } from '../-utils/helper';
+import { assessmentStatusStudentNotAttemptedColumns } from '../-utils/student-columns';
+import { ManageColumnsPopover } from '@/components/shared/leads/manage-columns-popover';
+import {
+    useLeadColumnPrefs,
+    useColumnOrderPrefs,
+    orderColumnIds,
+    type LeadColumnToggle,
+} from '@/components/shared/leads/use-lead-column-prefs';
+import { applyColumnLayout, toggleableColumnIds, LOCKED_COLUMN_IDS } from '../-utils/column-layout';
+import {
+    ASSESSMENT_STATUS_STUDENT_NOT_ATTEMPTED_COLUMNS_WIDTH,
+    ASSESSMENT_STATUS_STUDENT_ONGOING_CONTACT_COLUMNS_WIDTH,
+    ASSESSMENT_STATUS_STUDENT_PENDING_CONTACT_COLUMNS_WIDTH,
+} from '@/components/design-system/utils/constants/table-layout';
 import { Route } from '..';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
@@ -50,6 +64,8 @@ import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-comp
 import { useNavigate } from '@tanstack/react-router';
 import { getAssessmentSettingsFromCache } from '@/services/assessment-settings';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 export interface SelectedSubmissionsFilterInterface {
     name: string;
@@ -68,24 +84,53 @@ export interface SelectedSubmissionsFilterInterface {
 
 // Options for the Evaluation Status filter. ids are the raw student_attempt
 // result_status values the backend filters on.
-export const EVALUATION_STATUS_FILTER_OPTIONS: MyFilterOption[] = [
-    { id: 'PENDING', name: 'Pending' },
-    { id: 'EVALUATING', name: 'Evaluating' },
-    { id: 'COMPLETED', name: 'Evaluated' },
+export const buildEvaluationStatusFilterOptions = (t: TFunction): MyFilterOption[] => [
+    { id: 'PENDING', name: t('filters.evaluationStatus.options.pending') },
+    { id: 'EVALUATING', name: t('filters.evaluationStatus.options.evaluating') },
+    { id: 'COMPLETED', name: t('filters.evaluationStatus.options.evaluated') },
 ];
 
 // Options for the Submission filter (manual evaluation only). ids are the values
 // the backend maps to "attempt has a submitted answer-sheet file" or not.
-export const SUBMISSION_STATUS_FILTER_OPTIONS: MyFilterOption[] = [
-    { id: 'SUBMITTED', name: 'Submitted' },
-    { id: 'NOT_SUBMITTED', name: 'Not Submitted' },
+export const buildSubmissionStatusFilterOptions = (t: TFunction): MyFilterOption[] => [
+    { id: 'SUBMITTED', name: t('filters.submissionStatus.options.submitted') },
+    { id: 'NOT_SUBMITTED', name: t('filters.submissionStatus.options.notSubmitted') },
 ];
 
 export interface SelectedReleaseResultFilterInterface {
     attempt_ids: string[];
 }
 
+// Column layout is remembered per browser and shared by all four tabs: the ids are the
+// same wherever a column appears, so "I never want to see Username" should not have to be
+// said once per tab. orderColumnIds reconciles a saved order against whichever columns the
+// current tab actually has, dropping the ones it doesn't.
+const COLUMN_PREFS_KEY = 'assessment-submissions:hidden-columns';
+const COLUMN_ORDER_KEY = 'assessment-submissions:column-order';
+
+// Everything starts visible — the columns exist because someone asked for them.
+const DEFAULT_HIDDEN_COLUMNS: string[] = [];
+
+/** Popover labels. Most headers are render functions (sort dropdowns, chips), so they
+ *  can't be read off the column definitions. Batch is resolved at call time because it
+ *  follows the institute's own terminology. */
+const COLUMN_LABELS: Record<string, string> = {
+    full_name: 'Name',
+    attempt_date: 'Attempt Date',
+    start_time: 'Start Time',
+    end_time: 'End Time',
+    duration: 'Duration',
+    score: 'Score',
+    submission_file: 'Submission',
+    evaluation_status: 'Evaluation Status',
+    result_status: 'Result Status',
+    email: 'Email',
+    mobile_number: 'Phone Number',
+    username: 'Username',
+};
+
 const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
+    const { t } = useTranslation('assessmentSubmissionsTab');
     const navigate = useNavigate();
     const { data: initData } = useSuspenseQuery(useInstituteQuery());
     const { BatchesFilterData } = useFilterDataForAssesment(initData);
@@ -230,18 +275,72 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         return getSelectedStudents().map((student) => student.user_id);
     };
 
-    const getAssessmentColumn = {
-        Attempted: getAllColumnsForTable(type, selectedParticipantsTab, isManualEvaluation)
-            .Attempted,
-        Pending: getAllColumnsForTable(type, selectedParticipantsTab).Pending,
-        Ongoing: getAllColumnsForTable(type, selectedParticipantsTab).Ongoing,
-    };
+    // Pending for batch selection is the "never attempted" list, built from batch
+    // enrollment rather than an assessment registration, so it is the only Pending list
+    // whose rows carry batch and contact details. The other two Pending lists come from
+    // projections that never select those, so they keep the name-only columns instead of
+    // showing four empty ones.
+    const isNotAttemptedList =
+        selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch';
+
+    // Memoised because getAllColumnsForTable builds fresh arrays on every call: without
+    // this the column definitions were a new identity each render, which both defeats the
+    // layout memos below and makes the table rebuild its whole column model every render.
+    const getAssessmentColumn = useMemo(
+        () => ({
+            Attempted: getAllColumnsForTable(type, selectedParticipantsTab, isManualEvaluation)
+                .Attempted,
+            Pending: isNotAttemptedList
+                ? assessmentStatusStudentNotAttemptedColumns
+                : getAllColumnsForTable(type, selectedParticipantsTab).Pending,
+            Ongoing: getAllColumnsForTable(type, selectedParticipantsTab).Ongoing,
+        }),
+        [type, selectedParticipantsTab, isManualEvaluation, isNotAttemptedList]
+    );
 
     const getAssessmentColumnWidth = {
         Attempted: getAllColumnsForTableWidth(type, selectedParticipantsTab, isManualEvaluation)
             .Attempted,
-        Pending: getAllColumnsForTableWidth(type, selectedParticipantsTab).Pending,
-        Ongoing: getAllColumnsForTableWidth(type, selectedParticipantsTab).Ongoing,
+        Pending: isNotAttemptedList
+            ? ASSESSMENT_STATUS_STUDENT_NOT_ATTEMPTED_COLUMNS_WIDTH
+            : ASSESSMENT_STATUS_STUDENT_PENDING_CONTACT_COLUMNS_WIDTH,
+        Ongoing: ASSESSMENT_STATUS_STUDENT_ONGOING_CONTACT_COLUMNS_WIDTH,
+    };
+
+    // ─── Manage Column ────────────────────────────────────────────────────────
+    // Which columns are on, and in what order. Same mechanism (and same popover) as
+    // Manage Payments and the lead lists, so all three behave identically.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        COLUMN_PREFS_KEY,
+        DEFAULT_HIDDEN_COLUMNS
+    );
+    const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(COLUMN_ORDER_KEY);
+
+    const activeColumns = useMemo(
+        () => getAssessmentColumn[selectedTab as keyof typeof getAssessmentColumn] || [],
+        [getAssessmentColumn, selectedTab]
+    );
+
+    /** What the popover lists, in the order the columns appear on screen. */
+    const columnToggles = useMemo<LeadColumnToggle[]>(() => {
+        const batchLabel = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
+        return orderColumnIds(toggleableColumnIds(activeColumns), columnOrder).map((id) => ({
+            id,
+            label: id === 'package_session_id' ? batchLabel : COLUMN_LABELS[id] ?? id,
+            locked: LOCKED_COLUMN_IDS.has(id),
+        }));
+    }, [activeColumns, columnOrder]);
+
+    /** What the table renders — see applyColumnLayout for why the ends are pinned. */
+    const visibleColumns = useMemo(
+        () => applyColumnLayout(activeColumns, hiddenColumns, columnOrder),
+        [activeColumns, hiddenColumns, columnOrder]
+    );
+
+    /** Reset restores both halves of the layout — what is shown and what order it is in. */
+    const handleResetColumns = () => {
+        resetColumns();
+        resetColumnOrder();
     };
 
     const handleAttemptedTab = (value: string) => {
@@ -549,7 +648,10 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     const clearSearch = () => {
         setSearchText('');
-        selectedFilter['name'] = '';
+        // Commit through setState, not by mutating the object in place: every other
+        // handler builds its request from `...selectedFilter`, and a mutation React
+        // never sees leaves those reading whatever was last rendered.
+        setSelectedFilter((prevFilter) => ({ ...prevFilter, name: '' }));
         if (selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch') {
             getParticipantsListData.mutate({
                 assessmentId,
@@ -613,6 +715,13 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     const handleSearch = (searchValue: string) => {
         setSearchText(searchValue);
+        // The search term has to live in `selectedFilter`, not just in this one request.
+        // Every other fetch (tab switch, paging, batch chips, sort) rebuilds its filter
+        // from `...selectedFilter`, so leaving `name` unset there dropped the search on
+        // the next interaction while the box still showed the term — an unfiltered list
+        // that looks filtered. The CSV export reads `searchText` directly, so it stayed
+        // filtered too: the table and its export disagreed about what was being shown.
+        setSelectedFilter((prevFilter) => ({ ...prevFilter, name: searchValue }));
         if (selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch') {
             getParticipantsListData.mutate({
                 assessmentId,
@@ -990,7 +1099,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     selectedTab === 'Attempted' ? 'text-primary-500' : ''
                                 }`}
                             >
-                                Attempted
+                                {t('tabs.attempted')}
                             </span>
                             <Badge
                                 className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
@@ -1013,7 +1122,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                         selectedTab === 'Ongoing' ? 'text-primary-500' : ''
                                     }`}
                                 >
-                                    Ongoing
+                                    {t('tabs.ongoing')}
                                 </span>
                                 <Badge
                                     className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
@@ -1034,7 +1143,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             <span
                                 className={`${selectedTab === 'Pending' ? 'text-primary-500' : ''}`}
                             >
-                                Pending
+                                {t('tabs.pending')}
                             </span>
                             <Badge
                                 className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
@@ -1045,6 +1154,13 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         </TabsTrigger>
                     </TabsList>
                     <div className="mr-4 mt-4 flex items-center gap-2">
+                        <ManageColumnsPopover
+                            columns={columnToggles}
+                            hiddenColumns={hiddenColumns}
+                            onToggle={toggleColumn}
+                            onReset={handleResetColumns}
+                            onReorder={setColumnOrder}
+                        />
                         <AssessmentExportCsvDialog
                             assessmentId={assessmentId}
                             instituteId={initData?.id}
@@ -1083,7 +1199,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     })
                                 }
                             >
-                                Offline Entry
+                                {t('buttons.offlineEntry')}
                             </MyButton>
                         )}
                         <MyButton
@@ -1113,7 +1229,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             : 'bg-white text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    Internal
+                                    {t('participantType.internal')}
                                 </button>
                                 <div className="h-5 w-px bg-neutral-200" />
                                 <button
@@ -1126,7 +1242,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             : 'bg-white text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    External
+                                    {t('participantType.external')}
                                 </button>
                             </div>
                         )}
@@ -1144,7 +1260,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             : 'bg-white text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    Batch Selection
+                                    {t('selectionMode.batch')}
                                 </button>
                                 <div className="h-5 w-px bg-neutral-200" />
                                 <button
@@ -1157,7 +1273,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             : 'bg-white text-neutral-600 hover:bg-neutral-50'
                                     )}
                                 >
-                                    Individual Selection
+                                    {t('selectionMode.individual')}
                                 </button>
                             </div>
                         )}
@@ -1179,8 +1295,8 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         />
                         {selectedTab === 'Attempted' && (
                             <ScheduleTestFilters
-                                label="Evaluation Status"
-                                data={EVALUATION_STATUS_FILTER_OPTIONS}
+                                label={t('filters.evaluationStatus.label')}
+                                data={buildEvaluationStatusFilterOptions(t)}
                                 selectedItems={selectedFilter.evaluation_status || []}
                                 onSelectionChange={handleEvaluationStatusFilter}
                             />
@@ -1189,8 +1305,8 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             whether the attempt has a submitted answer-sheet file. */}
                         {selectedTab === 'Attempted' && isManualEvaluation && (
                             <ScheduleTestFilters
-                                label="Response"
-                                data={SUBMISSION_STATUS_FILTER_OPTIONS}
+                                label={t('filters.submissionStatus.label')}
+                                data={buildSubmissionStatusFilterOptions(t)}
                                 selectedItems={selectedFilter.submission_status || []}
                                 onSelectionChange={handleSubmissionStatusFilter}
                             />
@@ -1213,12 +1329,12 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                             buttonType="secondary"
                                             className="font-medium"
                                         >
-                                            Revaluate
+                                            {t('buttons.revaluate')}
                                         </MyButton>
                                     </DialogTrigger>
                                     <DialogContent className="p-0">
                                         <h1 className="rounded-t-lg bg-primary-50 p-4 text-primary-500">
-                                            Revaluate Result
+                                            {t('dialogs.revaluate.title')}
                                         </h1>
                                         <div className="flex flex-col items-center justify-center gap-4 p-4">
                                             <AssessmentGlobalLevelRevaluateAssessment />
@@ -1239,7 +1355,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                         })
                                     }
                                 >
-                                    AI Evaluations
+                                    {t('buttons.aiEvaluations')}
                                 </MyButton>
                             </>
                         )}
@@ -1280,11 +1396,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     total_elements: participantsData.total_elements,
                                     last: participantsData.last,
                                 }}
-                                columns={
-                                    getAssessmentColumn[
-                                        selectedTab as keyof typeof getAssessmentColumn
-                                    ] || []
-                                }
+                                columns={visibleColumns}
                                 columnWidths={
                                     getAssessmentColumnWidth[
                                         selectedTab as keyof typeof getAssessmentColumnWidth

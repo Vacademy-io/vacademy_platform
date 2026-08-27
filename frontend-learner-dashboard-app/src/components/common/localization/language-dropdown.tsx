@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLanguageStore } from "@/stores/localization/useLanguageStore";
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ interface LanguageDropdownProps {
 export const LanguageDropdown = ({
   className = "absolute end-4 top-4 z-10",
 }: LanguageDropdownProps) => {
+  const { t } = useTranslation("layoutCommonB");
   useSyncLanguage();
 
   const locale = useLanguageStore((state) => state.locale);
@@ -42,7 +44,7 @@ export const LanguageDropdown = ({
       <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
         <DropdownMenuTrigger
           className="flex items-center gap-1.5 rounded-md border border-neutral-300 bg-neutral-50 px-2.5 py-1 text-sm text-neutral-600 outline-none hover:bg-neutral-100"
-          aria-label="Change language"
+          aria-label={t("languageDropdown.changeLanguage")}
         >
           <Globe className="size-4 shrink-0" />
           <span className="max-w-28 truncate">{LOCALE_LABELS[locale]}</span>

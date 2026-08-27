@@ -122,7 +122,7 @@ _MAX_HTML_BLOCKS_PER_PAGE = 3
 
 _CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
 _CSS_URL_RE = re.compile(r"url\s*\([^)]*\)", re.I)
-_CSS_BANNED_RE = re.compile(r"@import\b|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:", re.I)
+_CSS_BANNED_RE = re.compile(r"@import\b|expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript\s*:", re.I)
 _IMG_SRC_RE = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]*)(")', re.I)
 
 

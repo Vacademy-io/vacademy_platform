@@ -24,6 +24,9 @@ import { getLiveClassDisclaimer } from "@/services/live-class-disclaimer";
 import { DisclaimerVideoScreen } from "@/routes/study-library/live-class/-components/DisclaimerVideoScreen";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 
 export const Route = createFileRoute("/study-library/live-class/$username/")({
@@ -31,6 +34,7 @@ export const Route = createFileRoute("/study-library/live-class/$username/")({
 });
 
 function RouteComponent() {
+  const { t } = useTranslation("study");
   const params = Route.useParams();
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
@@ -130,7 +134,7 @@ function RouteComponent() {
           }
         } catch (error) {
           console.error("Failed to mark attendance:", error);
-          toast.error("Failed to mark attendance");
+          toast.error(t("liveClass.toast.markAttendanceFailed"));
 
           // Still proceed with navigation even if attendance marking fails
           if (isBbbSession(session.link_type)) {
@@ -383,8 +387,9 @@ function RouteComponent() {
       <div className="bg-white border-t">
         <div className="mx-auto px-4 py-4">
           <p className="text-center text-sm text-gray-500">
-            Need help? Contact support for assistance with accessing your live
-            session.
+            {t("liveClass.usernameLogin.footerHelp", {
+              liveSession: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase(),
+            })}
           </p>
         </div>
       </div>

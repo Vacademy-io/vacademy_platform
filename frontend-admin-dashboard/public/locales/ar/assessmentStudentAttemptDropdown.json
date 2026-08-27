@@ -1,0 +1,89 @@
+{
+    "dialogs": {
+        "attentionLabel": "تنبيه",
+        "yes": "نعم",
+        "cancel": "إلغاء",
+        "continue": "متابعة",
+        "provideReattempt": {
+            "title": "منح محاولة إعادة",
+            "confirmMessagePrefix": "هل أنت متأكد أنك تريد منح فرصة إعادة المحاولة لـ",
+            "providing": "جارٍ المنح..."
+        },
+        "releaseResult": {
+            "title": "نشر النتيجة",
+            "confirmMessagePrefix": "هل أنت متأكد أنك تريد نشر النتيجة لـ"
+        },
+        "manualReEvaluate": {
+            "title": "إعادة تقييم المحاولة",
+            "evaluatingLabel": "قيد التقييم",
+            "messagePart1": "لديه محاولة تم تقييمها بالفعل. ستؤدي إعادة التقييم إلى إعادتها إلى حالة",
+            "messagePart2": "حتى تقوم بإرسال درجات جديدة. هل تريد المتابعة؟"
+        },
+        "evaluateWithAI": {
+            "title": "تقييم الاختبار بالذكاء الاصطناعي",
+            "evaluatingLabel": "قيد التقييم",
+            "reEvaluationWarningPart1": "تم تقييم هذه المحاولة بالفعل. ستؤدي إعادة التقييم إلى إعادتها إلى حالة",
+            "reEvaluationWarningPart2": "حتى تصبح النتيجة الجديدة جاهزة.",
+            "selectModelLabel": "اختر نموذج الذكاء الاصطناعي",
+            "selectModelPlaceholder": "اختر نموذجًا",
+            "chooseModelPrefix": "اختر نموذج الذكاء الاصطناعي لتقييم مشاركة",
+            "chooseModelSuffix": "",
+            "rubricInfo": "بالنسبة لأي سؤال بدون معايير تقييم، يقوم الذكاء الاصطناعي بإنشاء معايير التصحيح في المرة الأولى ويعيد استخدامها لكل طالب، بحيث يتم تقييم الجميع بنفس الطريقة. حدد معايير التقييم على الاختبار للتحكم الكامل في كيفية منح الدرجات.",
+            "estimatedCostLabel": "التكلفة المقدّرة:",
+            "creditsCount_zero": "{{count}} رصيد",
+            "creditsCount_one": "{{count}} رصيد واحد",
+            "creditsCount_two": "{{count}} رصيدان",
+            "creditsCount_few": "{{count}} أرصدة",
+            "creditsCount_many": "{{count}} رصيدًا",
+            "creditsCount_other": "{{count}} رصيد",
+            "balance_zero": "الرصيد: {{count}}",
+            "balance_one": "الرصيد: {{count}}",
+            "balance_two": "الرصيد: {{count}}",
+            "balance_few": "الرصيد: {{count}}",
+            "balance_many": "الرصيد: {{count}}",
+            "balance_other": "الرصيد: {{count}}",
+            "insufficientCredits": "لا يوجد رصيد كافٍ لهذا التقييم. أضف رصيدًا إلى مؤسستك للمتابعة.",
+            "starting": "جارٍ البدء...",
+            "start": "ابدأ"
+        },
+        "revaluateEntireAssessment": {
+            "title": "إعادة تقييم الاختبار بالكامل",
+            "confirmMessagePrefix": "هل أنت متأكد أنك تريد إعادة التقييم لـ",
+            "confirmMessageSuffix": "بالنسبة للاختبار بالكامل؟"
+        }
+    },
+    "dropdown": {
+        "checkingSubmission": "جارٍ التحقق من المشاركة...",
+        "viewSubmission": "عرض المشاركة",
+        "loadingSubmission": "جارٍ تحميل المشاركة...",
+        "uploadSubmission": "رفع المشاركة",
+        "provideReattempt": "منح محاولة إعادة",
+        "evaluate": "تقييم",
+        "revaluate": "إعادة تقييم",
+        "questionWise": "حسب السؤال",
+        "entireAssessment": "الاختبار بالكامل",
+        "manual": "يدوي",
+        "evaluateWithAI": "تقييم بالذكاء الاصطناعي",
+        "checkingEvaluatedCopy": "جارٍ التحقق من النسخة المقيَّمة...",
+        "viewEvaluatedCopy": "عرض النسخة المقيَّمة",
+        "loadingEvaluatedCopy": "جارٍ تحميل النسخة المقيَّمة...",
+        "generatingReport": "جارٍ إنشاء التقرير...",
+        "downloadReport": "تنزيل التقرير",
+        "releaseResult": "نشر النتيجة"
+    },
+    "toasts": {
+        "reattemptProvided": "تم منح {{name}} فرصة إعادة المحاولة.",
+        "reattemptError": "فشل منح فرصة إعادة المحاولة. يرجى المحاولة مرة أخرى.",
+        "reattemptRegistrationError": "تعذر تحديد تسجيل هذا المشارك. يرجى المحاولة مرة أخرى.",
+        "resultReleased": "تم نشر النتيجة بنجاح. تم إشعار المتعلم عبر البريد الإلكتروني.",
+        "revaluateSuccess": "تمت إعادة تقييم محاولتك لهذا الاختبار. يرجى التحقق من بريدك الإلكتروني!",
+        "evaluationStarted": "بدأ التقييم بالذكاء الاصطناعي بنجاح!",
+        "evaluationError": "فشل بدء التقييم بالذكاء الاصطناعي. يرجى المحاولة مرة أخرى.",
+        "noEvaluatedCopy": "لم يتم العثور على نسخة مقيَّمة لهذه المحاولة.",
+        "evaluatedCopyLoadError": "فشل تحميل النسخة المقيَّمة. يرجى المحاولة مرة أخرى.",
+        "noSubmissionFile": "لم يتم العثور على ملف مشاركة لهذه المحاولة.",
+        "popupBlocked": "يرجى السماح بالنوافذ المنبثقة لعرض المشاركة.",
+        "submissionLoadError": "فشل تحميل المشاركة. يرجى المحاولة مرة أخرى.",
+        "reportGenerateError": "فشل إنشاء التقرير. يرجى المحاولة مرة أخرى."
+    }
+}

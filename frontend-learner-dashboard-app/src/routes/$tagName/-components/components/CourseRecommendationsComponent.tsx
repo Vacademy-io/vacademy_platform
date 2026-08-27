@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { CourseRecommendationsProps } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface CourseRecommendationsComponentProps extends CourseRecommendationsProps {
   instituteId: string;
@@ -27,6 +30,7 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
   tagName,
   globalSettings,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const [recommendedCourses, setRecommendedCourses] = useState<RecommendedCourse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,7 +74,12 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
 
             return {
               id: course.id || course.packageId,
-              title: course.package_name || course.title || "Untitled Course",
+              title:
+                course.package_name ||
+                course.title ||
+                t("courseRecommendations.untitledCourse", {
+                  course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                }),
               description: course.short_description || course.description || "",
               thumbnail: thumbnailUrl,
               price: course.package_price || course.price || 0,
@@ -161,13 +170,13 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
                   {/* PRIMARY ACCENT: Price */}
                   {globalSettings?.payment?.enabled !== false && (
                     <span className="text-base font-bold text-primary-600">
-                      {course.price === 0 ? "Free" : `₹${course.price}`}
+                      {course.price === 0 ? t("courseRecommendations.free") : `₹${course.price}`}
                     </span>
                   )}
                   {/* NEUTRAL: Instructor */}
                   {course.instructor && (
                     <span className="text-xs text-gray-500">
-                      by {course.instructor}
+                      {t("courseRecommendations.by", { instructor: course.instructor })}
                     </span>
                   )}
                 </div>

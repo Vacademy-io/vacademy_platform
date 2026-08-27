@@ -35,7 +35,17 @@ interface PageResponse<T> {
     number: number;
 }
 
-/** `assessmentId` omitted gives the institute-wide inbox. */
+/**
+ * `assessmentId` omitted gives the institute-wide inbox.
+ *
+ * `status` goes over the wire comma-joined, never as an array. Axios's default serializer
+ * writes an array as `status[]=PENDING` *with the brackets un-escaped* (it rewrites %5B/%5D
+ * back to [ and ]), and the nginx ingress answers a request line containing raw brackets with
+ * a 400 — which kills the CORS preflight, so the browser never even sends the GET and the tab
+ * renders "Could not load requests". Spring splits a comma-separated value straight into the
+ * `List<String> status` param; `status[]=…` binds to nothing at all, which silently turned the
+ * status filter into a no-op on the requests that did get through.
+ */
 export const getReattemptRequests = async (params: {
     instituteId: string;
     assessmentId?: string;
@@ -49,7 +59,7 @@ export const getReattemptRequests = async (params: {
         params: {
             instituteId: params.instituteId,
             assessmentId: params.assessmentId,
-            status: params.status,
+            status: params.status?.length ? params.status.join(',') : undefined,
             page: params.page ?? 0,
             size: params.size ?? 25,
         },

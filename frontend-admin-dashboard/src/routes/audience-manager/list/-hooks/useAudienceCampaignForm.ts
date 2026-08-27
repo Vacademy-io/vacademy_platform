@@ -1,15 +1,21 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import {
-    audienceCampaignSchema,
+    buildAudienceCampaignSchema,
     AudienceCampaignForm,
     defaultFormValues,
 } from '../-schema/AudienceCampaignSchema';
 
 export const useAudienceCampaignForm = (initialValues?: AudienceCampaignForm) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const { t } = useTranslation('audienceManagerAudienceCampaignSchema');
+
+    // Rebuilt from this hook's own `t` so the validation messages stay in sync with the
+    // active locale (see buildAudienceCampaignSchema's doc comment in AudienceCampaignSchema.ts).
+    const audienceCampaignSchema = useMemo(() => buildAudienceCampaignSchema(t), [t]);
 
     const form = useForm<AudienceCampaignForm>({
         resolver: zodResolver(audienceCampaignSchema),

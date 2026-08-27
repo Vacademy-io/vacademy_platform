@@ -1,0 +1,49 @@
+{
+    "header": {
+        "title": "शुल्क कॉन्फ़िगरेशन",
+        "totalLabel": "कुल:",
+        "afterDiscountLabel": "छूट के बाद:"
+    },
+    "loading": "किस्तें लोड हो रही हैं…",
+    "loadError": "CPO विवरण लोड नहीं हो सका।",
+    "table": {
+        "index": "#",
+        "feeType": "शुल्क प्रकार",
+        "startDate": "प्रारंभ तिथि",
+        "dueDate": "देय तिथि",
+        "default": "डिफ़ॉल्ट",
+        "amount": "राशि (₹)",
+        "discount": "छूट",
+        "amountOverrideTitle": "मैन्युअल राशि ओवरराइड",
+        "effectiveTitle": "प्रभावी: {{effective}} (छूट के बाद टेम्पलेट {{template}})",
+        "discountOptions": {
+            "none": "कोई नहीं",
+            "percentage": "%",
+            "flat": "₹"
+        }
+    },
+    "cpoDiscount": {
+        "heading": "छूट (वैकल्पिक)",
+        "typeLabel": "प्रकार",
+        "options": {
+            "none": "कोई नहीं",
+            "percentage": "कुल का %",
+            "flat": "फ्लैट ₹ छूट"
+        },
+        "valueLabel": "मूल्य",
+        "reasonLabel": "कारण",
+        "reasonPlaceholder": "जैसे: भाई-बहन छूट",
+        "offSuffix": "= {{amount}} की छूट"
+    },
+    "payment": {
+        "heading": "प्रारंभिक भुगतान (वैकल्पिक)",
+        "skipLabelBold": "अभी कोई भुगतान दर्ज न करें।",
+        "skipLabelRest": "विद्यार्थी बाद में प्रत्येक किस्त का ऑनलाइन भुगतान करेगा।",
+        "offlineLabelBold": "एक ऑफ़लाइन भुगतान दर्ज करें।",
+        "offlineLabelRest": "सबसे पहले वाली किस्तों पर लागू किया जाएगा।",
+        "amountLabel": "राशि (₹)",
+        "netDues": "शुद्ध बकाया: {{amount}}",
+        "referenceLabel": "संदर्भ (वैकल्पिक)",
+        "referencePlaceholder": "जैसे: चेक #1234"
+    }
+}

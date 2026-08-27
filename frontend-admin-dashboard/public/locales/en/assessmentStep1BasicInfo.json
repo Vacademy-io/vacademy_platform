@@ -1,0 +1,137 @@
+{
+    "navigation": {
+        "updateSurvey": "Update Survey",
+        "updateAssessment": "Update Assessment",
+        "createSurvey": "Create Survey",
+        "createAssessment": "Create Assessment"
+    },
+    "toasts": {
+        "updateSuccess": "Step 1 data has been updated successfully!",
+        "saveSuccess": "Step 1 data has been saved successfully!"
+    },
+    "errors": {
+        "saveFailed": "Failed to save basic info."
+    },
+    "header": {
+        "title": "Basic Information",
+        "description": "Configure the basic details for your assessment including name, schedule, evaluation method, and result release preferences.",
+        "updateButton": "Update",
+        "nextButton": "Next"
+    },
+    "basicInfoSection": {
+        "titleSurvey": "Survey Information",
+        "titleAssessment": "Basic Information",
+        "description": "Name, subject, and instructions shown to participants.",
+        "titlePlaceholder": "Add Title",
+        "nameLabelSurvey": "Survey Name",
+        "nameLabelAssessment": "Assessment Name",
+        "instructionsLabelSurvey": "Survey Instructions",
+        "instructionsLabelAssessment": "Assessment Instructions",
+        "instructionsPlaceholderSurvey": "Write the survey instructions",
+        "instructionsPlaceholderAssessment": "Write the assessment instructions"
+    },
+    "liveDateRangeSection": {
+        "title": "Live Date Range",
+        "description": "When participants can start and must finish the assessment.",
+        "startDateLabel": "Start Date & Time",
+        "endDateLabel": "End Date & Time"
+    },
+    "attemptSettingsSection": {
+        "title": "Attempt Settings",
+        "description": "Control how participants take this assessment.",
+        "reattemptCountPlaceholder": "Reattempt Count",
+        "reattemptCountLabel": "Reattempt Count",
+        "resultEvaluationType": {
+            "label": "Result & Evaluation Type",
+            "options": {
+                "autoAfterSubmission": {
+                    "label": "Auto — Release after submission",
+                    "help": "System grades automatically. Results are visible to the learner immediately after they submit."
+                },
+                "autoAfterAssessmentEnd": {
+                    "label": "Auto — Release after exam ends",
+                    "help": "System grades automatically. Results become visible only after the assessment end time passes."
+                },
+                "noAutoRelease": {
+                    "label": "Auto — Release manually",
+                    "help": "System grades automatically. Results stay hidden until you click \"Release Result\" in the submissions tab."
+                },
+                "manual": {
+                    "label": "Manual evaluation & release",
+                    "help": "Teacher grades each submission by hand. Results stay hidden until you manually evaluate and release them."
+                }
+            }
+        },
+        "submissionType": {
+            "label": "Submission Type",
+            "helper": "How students submit their answers (e.g., file upload, PDF)."
+        },
+        "assessmentPreview": {
+            "labelSurvey": "Allow Survey Preview",
+            "labelAssessment": "Allow Assessment Preview",
+            "description": "Let participants preview the assessment before starting.",
+            "timeLimitLabel": "Preview Time Limit"
+        },
+        "switchSections": {
+            "label": "Allow {{role}}s to switch between sections",
+            "description": "Participants can jump back and forth between sections."
+        }
+    },
+    "unusedFields": {
+        "testCreation": {
+            "titlePlaceholder": "Add Title",
+            "nameLabelSurvey": "Survey Name",
+            "nameLabelAssessment": "Assessment Name"
+        },
+        "liveDateRange": {
+            "startDateLabel": "Start Date & Time",
+            "endDateLabel": "End Date & Time"
+        },
+        "assessmentInstructions": {
+            "labelSurvey": "Survey Instructions",
+            "labelAssessment": "Assessment Instructions",
+            "placeholderSurvey": "Add Survey Instructions",
+            "placeholderAssessment": "Add Assessment Instructions"
+        },
+        "assessmentPreview": {
+            "enableLabel": "Enable Assessment Preview",
+            "timeLimitLabel": "Preview Time Limit"
+        },
+        "reattemptCount": {
+            "placeholder": "Enter Reattempt Count",
+            "label": "Reattempt Count"
+        },
+        "submissionType": {
+            "label": "Submission Type",
+            "options": {
+                "autoSubmit": "Auto Submit",
+                "manualSubmit": "Manual Submit"
+            }
+        },
+        "durationDistribution": {
+            "label": "Duration Distribution",
+            "helper": "Choose whether time limits apply to the whole test, per section, or per question.",
+            "options": {
+                "entireAssessment": "Entire Assessment",
+                "sectionWise": "Section Wise",
+                "questionWise": "Question Wise"
+            }
+        },
+        "evaluationType": {
+            "label": "Evaluation Type",
+            "options": {
+                "auto": "Auto Evaluation",
+                "manual": "Manual Evaluation"
+            }
+        },
+        "switchSections": {
+            "label": "Allow Switching Between Sections"
+        },
+        "reattemptRequest": {
+            "label": "Allow Students to Raise Reattempt Request"
+        },
+        "timeIncreaseRequest": {
+            "label": "Allow Students to Raise Time Increase Request"
+        }
+    }
+}

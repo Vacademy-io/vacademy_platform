@@ -1,0 +1,32 @@
+{
+    "toast": {
+        "copiedToClipboard": "{{field}} copied to clipboard!",
+        "copyFailed": "Failed to copy {{field}}"
+    },
+    "password": {
+        "notFound": "password not found"
+    },
+    "empty": {
+        "noOverviewData": "No overview data available"
+    },
+    "errors": {
+        "fetchStudentDetails": "Error fetching student details"
+    },
+    "sections": {
+        "customFields": "Custom Fields",
+        "termsAndConditions": "Terms & Conditions"
+    },
+    "fields": {
+        "status": "Status",
+        "signedOn": "Signed on",
+        "signedPdf": "Signed PDF",
+        "notAvailable": "N/A"
+    },
+    "status": {
+        "signed": "Signed",
+        "notSigned": "Not Signed"
+    },
+    "actions": {
+        "download": "Download"
+    }
+}

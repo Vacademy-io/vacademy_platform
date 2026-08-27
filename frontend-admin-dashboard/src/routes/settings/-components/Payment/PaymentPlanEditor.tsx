@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,11 +15,12 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Plus, Trash2, Info } from 'lucide-react';
 import { currencyOptions } from '../../-constants/payments';
-import { PaymentPlan, PaymentPlans } from '@/types/payment';
+import { PaymentPlan, PaymentPlanType, PaymentPlans } from '@/types/payment';
 import { getCurrencySymbol } from './utils/utils';
 import { DAYS_IN_MONTH } from '@/routes/settings/-constants/terms';
 import { UpfrontPlanConfiguration } from './PaymentPlanCreator/UpfrontPlanConfiguration';
 import { FreePlanConfiguration } from './PaymentPlanCreator/FreePlanConfiguration';
+import { ApprovalToggle } from './PaymentPlanCreator/ApprovalToggle';
 
 interface CustomInterval {
     value: number | string;
@@ -36,6 +38,8 @@ interface PaymentPlanEditorProps {
     onSave: (plan: PaymentPlan) => void;
     onCancel: () => void;
     isSaving: boolean;
+    requireApproval: boolean;
+    setRequireApproval: (value: boolean) => void;
 }
 
 export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
@@ -45,7 +49,10 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
     onSave,
     onCancel,
     isSaving,
+    requireApproval,
+    setRequireApproval,
 }) => {
+    const { t } = useTranslation('settingsPaymentPlan');
     const [planData, setPlanData] = useState<PaymentPlan>(editingPlan);
     const [currentStep, setCurrentStep] = useState(1);
     const [selectedUnit, setSelectedUnit] = useState<'days' | 'months'>('months');
@@ -167,6 +174,19 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
         }
     }, [editingPlan, featuresGlobal, setFeaturesGlobal]);
 
+    // The dialog's parent owns requireApproval so create and edit post the same field.
+    // Seeding it from the plan being edited is what makes the toggle reflect reality —
+    // without it the parent's default (false) was posted back on every edit, silently
+    // clearing approval on any plan that had it.
+    useEffect(() => {
+        setRequireApproval(!!editingPlan.requireApproval);
+    }, [editingPlan.id, editingPlan.requireApproval, setRequireApproval]);
+
+    const handleApprovalChange = (value: boolean) => {
+        setRequireApproval(value);
+        setPlanData((prev) => ({ ...prev, requireApproval: value }));
+    };
+
     const updateConfig = (newConfig: Record<string, unknown>) => {
         setPlanData({
             ...planData,
@@ -197,6 +217,10 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
         return days;
     };
 
+    // Helper to translate the raw 'days' | 'months' unit value for display
+    const unitLabel = (unit: 'days' | 'months'): string =>
+        unit === 'days' ? t('units.days') : t('units.months');
+
     const handleSave = () => {
         if (!planData.name || !planData.type) {
             return;
@@ -209,7 +233,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
             return;
         }
 
-        let updatedPlanData = { ...planData };
+        let updatedPlanData = { ...planData, requireApproval };
         if (planData.type === PaymentPlans.SUBSCRIPTION) {
             const intervals = planData.config?.subscription?.customIntervals || [];
             if (intervals.length > 0) {
@@ -293,13 +317,13 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 <div className="space-y-6">
                     <div>
                         <Label htmlFor="planName" className="text-sm font-medium">
-                            Plan Name *
+                            {t('step1.planNameLabel')}
                         </Label>
                         <Input
                             id="planName"
                             value={planData.name}
                             onChange={(e) => setPlanData({ ...planData, name: e.target.value })}
-                            placeholder="Enter plan name"
+                            placeholder={t('step1.planNamePlaceholder')}
                             className="mt-1"
                             required
                         />
@@ -307,7 +331,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
 
                     <div>
                         <Label htmlFor="planCurrency" className="text-sm font-medium">
-                            Plan Currency
+                            {t('step1.planCurrencyLabel')}
                         </Label>
                         <Select
                             value={planData.currency}
@@ -334,8 +358,17 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                 setPlanData({ ...planData, isDefault: !!checked })
                             }
                         />
-                        <Label htmlFor="isDefault">Set as default plan</Label>
+                        <Label htmlFor="isDefault">{t('step1.setAsDefault')}</Label>
                     </div>
+
+                    <ApprovalToggle
+                        planType={planData.type as PaymentPlanType}
+                        requireApproval={requireApproval}
+                        // Creation-time free-plan restrictions don't apply to an existing plan.
+                        existingFreePlans={[]}
+                        onApprovalChange={handleApprovalChange}
+                        isEditing
+                    />
                 </div>
             )}
 
@@ -360,12 +393,14 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                     {planData.type === PaymentPlans.SUBSCRIPTION && (
                         <Card>
                             <CardHeader>
-                                <CardTitle>Subscription Plan Configuration</CardTitle>
+                                <CardTitle>{t('subscription.title')}</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-6">
                                 {/* Global Unit Selection */}
                                 <div className="mb-4">
-                                    <Label className="text-sm font-medium">Duration Unit</Label>
+                                    <Label className="text-sm font-medium">
+                                        {t('subscription.durationUnitLabel')}
+                                    </Label>
                                     <Select
                                         value={selectedUnit}
                                         onValueChange={(value: 'days' | 'months') => {
@@ -411,17 +446,23 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="days">Days</SelectItem>
-                                            <SelectItem value="months">Months</SelectItem>
+                                            <SelectItem value="days">
+                                                {t('units.days')}
+                                            </SelectItem>
+                                            <SelectItem value="months">
+                                                {t('units.months')}
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <p className="mt-1 text-xs text-gray-500">
-                                        This unit will apply to all pricing intervals
+                                        {t('subscription.durationUnitHint')}
                                     </p>
                                 </div>
 
                                 <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-medium">Pricing Intervals</h3>
+                                    <h3 className="text-sm font-medium">
+                                        {t('subscription.pricingIntervals')}
+                                    </h3>
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -448,7 +489,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                         }}
                                     >
                                         <Plus className="mr-2 size-4" />
-                                        Add Interval
+                                        {t('subscription.addInterval')}
                                     </Button>
                                 </div>
 
@@ -461,7 +502,9 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                             >
                                                 <div className="grid grid-cols-3 gap-3">
                                                     <div>
-                                                        <Label className="text-xs">Title</Label>
+                                                        <Label className="text-xs">
+                                                            {t('subscription.intervalTitleLabel')}
+                                                        </Label>
                                                         <Input
                                                             value={interval.title || ''}
                                                             onChange={(e) => {
@@ -487,7 +530,9 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                     </div>
                                                     <div>
                                                         <Label className="text-xs">
-                                                            Duration ({selectedUnit})
+                                                            {t('subscription.durationLabel', {
+                                                                unit: unitLabel(selectedUnit),
+                                                            })}
                                                         </Label>
                                                         <Input
                                                             type="number"
@@ -520,7 +565,9 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                         />
                                                     </div>
                                                     <div>
-                                                        <Label className="text-xs">Price</Label>
+                                                        <Label className="text-xs">
+                                                            {t('subscription.priceLabel')}
+                                                        </Label>
                                                         <div className="mt-1 flex items-center space-x-2">
                                                             <span className="text-sm">
                                                                 {getCurrencySymbol(
@@ -557,7 +604,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                 {/* Features for this interval */}
                                                 <div>
                                                     <h4 className="mb-2 text-xs font-semibold">
-                                                        Features
+                                                        {t('subscription.featuresLabel')}
                                                     </h4>
                                                     <div className="space-y-2">
                                                         {featuresGlobal.map((feature, fidx) => (
@@ -639,7 +686,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                     className="text-red-600 hover:text-red-700"
                                                 >
                                                     <Trash2 className="mr-2 size-4" />
-                                                    Remove Interval
+                                                    {t('subscription.removeInterval')}
                                                 </Button>
                                             </div>
                                         )
@@ -676,12 +723,14 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                     {planData.type === PaymentPlans.DONATION && (
                         <Card>
                             <CardHeader>
-                                <CardTitle>Donation Configuration</CardTitle>
+                                <CardTitle>{t('donation.title')}</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div>
                                     <Label>
-                                        Suggested Amounts ({getCurrencySymbol(planData.currency)})
+                                        {t('donation.suggestedAmountsLabel', {
+                                            currency: getCurrencySymbol(planData.currency),
+                                        })}
                                     </Label>
                                     <Input
                                         value={planData.config?.donation?.suggestedAmounts || ''}
@@ -694,12 +743,14 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                             })
                                         }
                                         className="mt-1"
-                                        placeholder="10, 25, 50, 100"
+                                        placeholder={t('donation.suggestedAmountsPlaceholder')}
                                     />
                                 </div>
                                 <div>
                                     <Label>
-                                        Minimum Amount ({getCurrencySymbol(planData.currency)})
+                                        {t('donation.minimumAmountLabel', {
+                                            currency: getCurrencySymbol(planData.currency),
+                                        })}
                                     </Label>
                                     <Input
                                         type="number"
@@ -729,7 +780,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                             })
                                         }
                                     />
-                                    <Label>Allow custom amounts</Label>
+                                    <Label>{t('donation.allowCustomAmounts')}</Label>
                                 </div>
                             </CardContent>
                         </Card>
@@ -742,10 +793,8 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 <div className="space-y-6">
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-lg">Apply Discounts to Plan</CardTitle>
-                            <p className="text-sm text-gray-600">
-                                Set discounts for each plan interval or price tier
-                            </p>
+                            <CardTitle className="text-lg">{t('discounts.title')}</CardTitle>
+                            <p className="text-sm text-gray-600">{t('discounts.subtitle')}</p>
                         </CardHeader>
                         <CardContent>
                             {planData.type === PaymentPlans.SUBSCRIPTION &&
@@ -755,19 +804,19 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                         <thead>
                                             <tr className="bg-gray-50">
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Subscription Interval
+                                                    {t('discounts.subscriptionIntervalColumn')}
                                                 </th>
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Original Price
+                                                    {t('discounts.originalPriceColumn')}
                                                 </th>
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Discount Type
+                                                    {t('discounts.discountTypeColumn')}
                                                 </th>
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Discount Amount
+                                                    {t('discounts.discountAmountColumn')}
                                                 </th>
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Final Price
+                                                    {t('discounts.finalPriceColumn')}
                                                 </th>
                                             </tr>
                                         </thead>
@@ -810,7 +859,15 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                             <td className="border border-gray-200 px-4 py-2">
                                                                 <span className="font-medium">
                                                                     {interval.title ||
-                                                                        `${interval.value} ${interval.unit} Plan`}
+                                                                        t(
+                                                                            'subscription.intervalPlanFallback',
+                                                                            {
+                                                                                value: interval.value,
+                                                                                unit: unitLabel(
+                                                                                    interval.unit
+                                                                                ),
+                                                                            }
+                                                                        )}
                                                                 </span>
                                                             </td>
                                                             <td className="border border-gray-200 px-4 py-2">
@@ -846,13 +903,19 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                                     </SelectTrigger>
                                                                     <SelectContent>
                                                                         <SelectItem value="none">
-                                                                            No Discount
+                                                                            {t(
+                                                                                'discounts.noDiscount'
+                                                                            )}
                                                                         </SelectItem>
                                                                         <SelectItem value="percentage">
-                                                                            % Off
+                                                                            {t(
+                                                                                'discounts.percentOff'
+                                                                            )}
                                                                         </SelectItem>
                                                                         <SelectItem value="fixed">
-                                                                            Flat Off
+                                                                            {t(
+                                                                                'discounts.flatOff'
+                                                                            )}
                                                                         </SelectItem>
                                                                     </SelectContent>
                                                                 </Select>
@@ -928,14 +991,14 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                                 </span>
                                                                 {finalPrice < originalPrice && (
                                                                     <div className="text-xs text-gray-500">
-                                                                        Save{' '}
-                                                                        {getCurrencySymbol(
-                                                                            planData.currency
-                                                                        )}
-                                                                        {(
-                                                                            originalPrice -
-                                                                            finalPrice
-                                                                        ).toLocaleString()}
+                                                                        {t('discounts.save', {
+                                                                            amount: `${getCurrencySymbol(
+                                                                                planData.currency
+                                                                            )}${(
+                                                                                originalPrice -
+                                                                                finalPrice
+                                                                            ).toLocaleString()}`,
+                                                                        })}
                                                                     </div>
                                                                 )}
                                                             </td>
@@ -952,19 +1015,19 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                         <thead>
                                             <tr className="bg-gray-50">
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Plan Type
+                                                    {t('discounts.planTypeColumn')}
                                                 </th>
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Original Price
+                                                    {t('discounts.originalPriceColumn')}
                                                 </th>
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Discount Type
+                                                    {t('discounts.discountTypeColumn')}
                                                 </th>
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Discount Amount
+                                                    {t('discounts.discountAmountColumn')}
                                                 </th>
                                                 <th className="border border-gray-200 px-4 py-2 text-left font-medium">
-                                                    Final Price
+                                                    {t('discounts.finalPriceColumn')}
                                                 </th>
                                             </tr>
                                         </thead>
@@ -972,7 +1035,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                             <tr className="hover:bg-gray-50">
                                                 <td className="border border-gray-200 px-4 py-2">
                                                     <span className="font-medium">
-                                                        One-Time Payment
+                                                        {t('discounts.oneTimePayment')}
                                                     </span>
                                                 </td>
                                                 <td className="border border-gray-200 px-4 py-2">
@@ -1012,13 +1075,13 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                         </SelectTrigger>
                                                         <SelectContent>
                                                             <SelectItem value="none">
-                                                                No Discount
+                                                                {t('discounts.noDiscount')}
                                                             </SelectItem>
                                                             <SelectItem value="percentage">
-                                                                % Off
+                                                                {t('discounts.percentOff')}
                                                             </SelectItem>
                                                             <SelectItem value="fixed">
-                                                                Flat Off
+                                                                {t('discounts.flatOff')}
                                                             </SelectItem>
                                                         </SelectContent>
                                                     </Select>
@@ -1135,14 +1198,14 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                                                 </span>
                                                                 {finalPrice < originalPrice && (
                                                                     <div className="text-xs text-gray-500">
-                                                                        Save{' '}
-                                                                        {getCurrencySymbol(
-                                                                            planData.currency
-                                                                        )}
-                                                                        {(
-                                                                            originalPrice -
-                                                                            finalPrice
-                                                                        ).toLocaleString()}
+                                                                        {t('discounts.save', {
+                                                                            amount: `${getCurrencySymbol(
+                                                                                planData.currency
+                                                                            )}${(
+                                                                                originalPrice -
+                                                                                finalPrice
+                                                                            ).toLocaleString()}`,
+                                                                        })}
                                                                     </div>
                                                                 )}
                                                             </>
@@ -1157,7 +1220,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                                 <Alert>
                                     <Info className="size-4" />
                                     <AlertDescription>
-                                        No pricing information available for this plan type.
+                                        {t('discounts.noPricingInfo')}
                                     </AlertDescription>
                                 </Alert>
                             )}
@@ -1171,13 +1234,13 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 <div>
                     {currentStep > 1 && (
                         <Button variant="outline" onClick={handleBack}>
-                            Back
+                            {t('actions.back')}
                         </Button>
                     )}
                 </div>
                 <div className="flex space-x-2">
                     <Button variant="outline" onClick={onCancel} disabled={isSaving}>
-                        Cancel
+                        {t('actions.cancel')}
                     </Button>
                     {currentStep < getTotalSteps() ||
                     (currentStep === 2 &&
@@ -1199,13 +1262,13 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                             {isSaving ? (
                                 <>
                                     <div className="mr-2 size-4 animate-spin rounded-full border-b-2 border-white"></div>
-                                    Saving...
+                                    {t('actions.saving')}
                                 </>
                             ) : (planData.type === PaymentPlans.FREE && currentStep === 2) ||
                               (planData.type === PaymentPlans.DONATION && currentStep === 2) ? (
-                                'Update Plan'
+                                t('actions.updatePlan')
                             ) : (
-                                'Next'
+                                t('actions.next')
                             )}
                         </Button>
                     ) : (
@@ -1217,10 +1280,10 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                             {isSaving ? (
                                 <>
                                     <div className="mr-2 size-4 animate-spin rounded-full border-b-2 border-white"></div>
-                                    Saving...
+                                    {t('actions.saving')}
                                 </>
                             ) : (
-                                'Update Payment Plan'
+                                t('actions.updatePaymentPlan')
                             )}
                         </Button>
                     )}

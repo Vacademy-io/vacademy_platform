@@ -1,0 +1,17 @@
+{
+    "menu": {
+        "acceptRequest": "अनुरोध स्वीकार करें",
+        "changeBatch": "बैच बदलें",
+        "extendCourseAccess": "कोर्स एक्सेस बढ़ाएं",
+        "reRegisterForNextSession": "अगले सत्र के लिए पुनः पंजीकरण करें",
+        "terminateRegistration": "पंजीकरण समाप्त करें",
+        "shareCredentials": "लॉगिन विवरण साझा करें",
+        "sendWhatsappMessage": "व्हाट्सएप संदेश भेजें",
+        "sendEmail": "ईमेल भेजें",
+        "createCertificate": "प्रमाणपत्र बनाएं"
+    },
+    "actionInfo": {
+        "selectedStudents_one": "{{count}} विद्यार्थी चयनित",
+        "selectedStudents_other": "{{count}} विद्यार्थी चयनित"
+    }
+}

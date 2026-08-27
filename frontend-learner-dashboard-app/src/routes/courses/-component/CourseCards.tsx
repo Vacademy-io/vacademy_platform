@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Star, BookOpen } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { toTitleCase } from "@/lib/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
@@ -43,11 +44,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
     previewImageUrl,
 }) => {
     const router = useRouter();
+    const { t } = useTranslation("coursesRouteA");
     const [courseImageUrl, setCourseImageUrl] = useState("");
     const [loadingImage, setLoadingImage] = useState(true);
 
     const instructor = instructors[0];
-    const instructorName = instructor?.full_name || "Unknown Instructor";
+    const instructorName = instructor?.full_name || t("common.unknownInstructor");
     const instructorImage = instructor?.image_url || fallbackInstructorImage;
 
     const ratingValue = rating || 0;
@@ -179,13 +181,13 @@ const CourseCard: React.FC<CourseCardProps> = ({
                             ))}
                             {tags && tags.length > 3 && (
                                 <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full inline-block">
-                                    + {tags.length - 3} more
+                                    {t("courseCard.moreTags", { count: tags.length - 3 })}
                                 </span>
                             )}
                         </div>
                     ) : (
                         <span className="text-xs text-gray-400 italic">
-                            No tags available
+                            {t("courseCard.noTagsAvailable")}
                         </span>
                     )}
                 </div>
@@ -222,8 +224,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     onClick={handleViewCoureseDetails}
                     className="w-full py-2 sm:py-2.5 text-sm sm:text-base"
                 >
-                    View{" "}
-                    {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                    {t("courseCard.viewButton", {
+                        course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                    })}
                 </Button>
             </div>
         </div>

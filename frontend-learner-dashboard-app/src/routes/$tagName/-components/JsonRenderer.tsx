@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Page, GlobalSettings, CourseCatalogueData } from "../-types/course-catalogue-types";
 import {
   buildComponentStyle,
@@ -570,6 +571,7 @@ const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], 
 };
 
 const VideoEmbedRenderer: React.FC<any> = ({ url = '', title, caption, aspectRatio = '16:9', autoplay = false }) => {
+  const { t } = useTranslation("coursePlayerA");
   const getEmbedUrl = (rawUrl: string) => {
     if (!rawUrl) return '';
     const ytMatch = rawUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([A-Za-z0-9_-]{11})/);
@@ -586,11 +588,11 @@ const VideoEmbedRenderer: React.FC<any> = ({ url = '', title, caption, aspectRat
         {title && <h2 className="mb-6 text-center text-2xl font-bold text-catalogue-text-primary">{title}</h2>}
         {embedUrl ? (
           <div className="relative w-full overflow-hidden rounded-xl shadow-lg" style={{ paddingBottom: padMap[aspectRatio] || '56.25%' }}>
-            <iframe src={embedUrl} className="absolute inset-0 size-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title={title || 'Video'} />
+            <iframe src={embedUrl} className="absolute inset-0 size-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title={title || t("jsonRenderer.video")} />
           </div>
         ) : (
           <div className="flex items-center justify-center rounded-xl bg-catalogue-bg-muted text-catalogue-text-muted" style={{ aspectRatio: aspectRatio.replace(':', '/') }}>
-            No video URL configured
+            {t("jsonRenderer.noVideoUrlConfigured")}
           </div>
         )}
         {caption && <p className="mt-3 text-center text-sm text-catalogue-text-muted">{caption}</p>}
@@ -631,7 +633,9 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
   );
 };
 
-const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [] }) => (
+const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [] }) => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
   <section className="catalogue-section bg-catalogue-bg">
     <div className="catalogue-shell">
       {headerText && <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
@@ -639,7 +643,7 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
       <div className={`grid gap-6 ${plans.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
         {plans.map((plan: any, i: number) => (
           <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className={`relative flex flex-col rounded-2xl border-2 p-8 ${plan.highlighted ? 'border-primary-500 shadow-xl' : 'border-catalogue-border'}`}>
-            {plan.highlighted && <div className="absolute -top-3 start-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-semibold text-white" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>Recommended</div>}
+            {plan.highlighted && <div className="absolute -top-3 start-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-semibold text-white" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>{t("jsonRenderer.recommended")}</div>}
             <h3 className="text-xl font-bold text-catalogue-text-primary">{plan.name}</h3>
             {plan.description && <p className="mt-1 text-sm text-catalogue-text-muted">{plan.description}</p>}
             <div className="mt-4 flex items-baseline gap-1">
@@ -663,7 +667,8 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
       </div>
     </div>
   </section>
-);
+  );
+};
 
 /** Pull the visitor's identity out of authored form fields by name heuristics
  *  (the same heuristics the audience submit service uses). */
@@ -682,7 +687,8 @@ const extractLeadIdentity = (fields: any[], formData: Record<string, string>) =>
   return { email, phone, fullName, rest };
 };
 
-const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], submitLabel = 'Send Message', successMessage, backgroundColor, audienceId, instituteId, tagName }) => {
+const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], submitLabel, successMessage, backgroundColor, audienceId, instituteId, tagName }) => {
+  const { t } = useTranslation("coursePlayerA");
   // HISTORY: this form used to fake success with no network call — every
   // submission on every institute site was silently discarded. It now submits
   // through the hardened catalogue-lead pipeline; audienceId (optional, set in
@@ -699,8 +705,8 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
     // Spam verdicts show the success state — never tell a bot it was caught.
     if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
     const { email, phone, fullName, rest } = extractLeadIdentity(fields, formData);
-    if (!email) { setError('Please include your email address.'); return; }
-    if (!instituteId) { setError('This form is not connected yet — please try again later.'); return; }
+    if (!email) { setError(t("jsonRenderer.includeEmailAddress")); return; }
+    if (!instituteId) { setError(t("jsonRenderer.formNotConnected")); return; }
     setSubmitting(true);
     try {
       await submitWebsiteLead({
@@ -715,7 +721,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
       });
       setSubmitted(true);
     } catch {
-      setError('Something went wrong — please try again.');
+      setError(t("jsonRenderer.somethingWentWrongRetry"));
     } finally {
       setSubmitting(false);
     }
@@ -728,7 +734,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
         {subheading && <p className={`mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         {submitted ? (
           <div className="rounded-xl border border-green-200 bg-green-50 p-8 text-center text-green-700 font-medium">
-            {successMessage || 'Thank you! We\'ll be in touch soon.'}
+            {successMessage || t("jsonRenderer.contactFormSuccessDefault")}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5 rounded-xl border border-catalogue-border bg-catalogue-bg p-8 shadow-sm">
@@ -744,11 +750,11 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
             ))}
             {/* Honeypot — hidden from humans, filled by bots. */}
             <div className="sr-only" aria-hidden="true">
-              <label>Company website<input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} /></label>
+              <label>{t("jsonRenderer.companyWebsite")}<input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} /></label>
             </div>
             {error && <p className="rounded-lg bg-warning-50 px-4 py-2.5 text-sm text-catalogue-text-secondary" role="alert">{error}</p>}
             <button type="submit" disabled={submitting} className="w-full rounded-lg py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>
-              {submitting ? 'Sending…' : submitLabel}
+              {submitting ? t("jsonRenderer.sendingEllipsis") : (submitLabel || t("jsonRenderer.sendMessage"))}
             </button>
           </form>
         )}
@@ -805,7 +811,9 @@ const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, annou
   </section>
 );
 
-const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns = 3, showCaptions = false }) => (
+const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns = 3, showCaptions = false }) => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
   <section className="catalogue-section-tight bg-catalogue-bg">
     <div className="catalogue-shell">
       {headerText && <h2 className="mb-8 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
@@ -815,7 +823,7 @@ const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns 
             {img.src ? (
               <img src={img.src} alt={img.alt || ''} className="w-full object-cover transition group-hover:scale-105" style={{ aspectRatio: '4/3' }} />
             ) : (
-              <div className="flex w-full items-center justify-center rounded-xl bg-catalogue-bg-muted text-catalogue-text-muted" style={{ aspectRatio: '4/3' }}>No image</div>
+              <div className="flex w-full items-center justify-center rounded-xl bg-catalogue-bg-muted text-catalogue-text-muted" style={{ aspectRatio: '4/3' }}>{t("jsonRenderer.noImage")}</div>
             )}
             {showCaptions && img.caption && <p className="mt-2 text-center text-sm text-catalogue-text-muted">{img.caption}</p>}
           </div>
@@ -823,7 +831,8 @@ const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns 
       </div>
     </div>
   </section>
-);
+  );
+};
 
 /* ─── Spacer / Divider ─────────────────────────────────────────────────── */
 
@@ -1001,6 +1010,7 @@ const MarqueeRenderer: React.FC<any> = ({
   iconColor = '#facc15', // design-lint-ignore: page-builder default color
   fontSize = 'sm',
 }) => {
+  const { t } = useTranslation("coursePlayerA");
   const list = (Array.isArray(items) ? items : []).filter((it: any) => it && it.text);
   if (list.length === 0) return null;
   const row = [...list, ...list];
@@ -1008,7 +1018,7 @@ const MarqueeRenderer: React.FC<any> = ({
     <section
       className="catalogue-marquee-viewport overflow-hidden py-3"
       style={{ backgroundColor }}
-      aria-label="Announcements"
+      aria-label={t("jsonRenderer.announcements")}
     >
       <div
         className={`catalogue-marquee flex items-center gap-10 ${pauseOnHover === false ? 'catalogue-marquee-nopause' : ''}`}
@@ -1206,7 +1216,9 @@ const SectionHeadingRenderer: React.FC<any> = ({
 
 /* ─── Map Embed ────────────────────────────────────────────────────────── */
 
-const MapEmbedRenderer: React.FC<any> = ({ embedUrl, height = '400px', borderRadius = '8px', title }) => (
+const MapEmbedRenderer: React.FC<any> = ({ embedUrl, height = '400px', borderRadius = '8px', title }) => {
+  const { t } = useTranslation("coursePlayerA");
+  return (
   <section className="py-8 px-4">
     <div className="mx-auto max-w-5xl">
       {title && <h3 className="mb-4 text-xl font-semibold text-catalogue-text-primary">{title}</h3>}
@@ -1219,20 +1231,22 @@ const MapEmbedRenderer: React.FC<any> = ({ embedUrl, height = '400px', borderRad
           allowFullScreen
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
-          title={title || 'Map'}
+          title={title || t("jsonRenderer.map")}
         />
       ) : (
         <div className="flex items-center justify-center rounded bg-catalogue-bg-muted text-catalogue-text-muted" style={{ height, borderRadius }}>
-          No map URL configured
+          {t("jsonRenderer.noMapUrlConfigured")}
         </div>
       )}
     </div>
   </section>
-);
+  );
+};
 
 /* ─── Countdown Timer ──────────────────────────────────────────────────── */
 
 const CountdownTimerRenderer: React.FC<any> = ({ targetDate, heading, expiredMessage, backgroundColor = '#1E293B', textColor = 'white', style = 'cards' }) => { // design-lint-ignore: page-builder default color
+  const { t } = useTranslation("coursePlayerA");
   const [timeLeft, setTimeLeft] = React.useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [expired, setExpired] = React.useState(false);
 
@@ -1256,16 +1270,16 @@ const CountdownTimerRenderer: React.FC<any> = ({ targetDate, heading, expiredMes
   if (expired) {
     return (
       <section style={{ backgroundColor }} className="catalogue-section-tight px-4 text-center">
-        <p className="text-xl font-semibold" style={{ color: textColor }}>{expiredMessage || 'The event has started!'}</p>
+        <p className="text-xl font-semibold" style={{ color: textColor }}>{expiredMessage || t("jsonRenderer.eventStarted")}</p>
       </section>
     );
   }
 
   const units = [
-    { label: 'Days', value: timeLeft.days },
-    { label: 'Hours', value: timeLeft.hours },
-    { label: 'Mins', value: timeLeft.minutes },
-    { label: 'Secs', value: timeLeft.seconds },
+    { label: t("jsonRenderer.days"), value: timeLeft.days },
+    { label: t("jsonRenderer.hours"), value: timeLeft.hours },
+    { label: t("jsonRenderer.mins"), value: timeLeft.minutes },
+    { label: t("jsonRenderer.secs"), value: timeLeft.seconds },
   ];
 
   return (
@@ -1637,7 +1651,9 @@ const openWhatsApp = (phone?: string, message?: string) => {
   );
 };
 
-const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false, action = 'link', audienceId = '', formTitle = '', whatsappPhone = '', whatsappMessage = '' }) => {
+const ButtonBlockRenderer: React.FC<any> = ({ text, url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false, action = 'link', audienceId = '', formTitle = '', whatsappPhone = '', whatsappMessage = '' }) => {
+  const { t } = useTranslation("coursePlayerA");
+  const buttonText = text || t("jsonRenderer.button");
   const bg = backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))';
   const fg = textColor || (variant === 'filled' ? 'white' : bg);
   const padding = size === 'small' ? '10px 24px' : size === 'large' ? '16px 40px' : '12px 32px';
@@ -1657,17 +1673,17 @@ const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target
     <section className="py-8 px-4 sm:px-6 lg:px-8" style={{ textAlign: alignment as any }}>
       {action === 'whatsapp' ? (
         <button type="button" onClick={() => openWhatsApp(whatsappPhone, whatsappMessage)} className={className} style={styleProps}>
-          {text}
+          {buttonText}
         </button>
       ) : action === 'openForm' && audienceId ? (
         // Any button can be a registration point: opens the campaign's form as
         // a popup instead of navigating.
-        <button type="button" onClick={() => dispatchOpenAudienceForm(audienceId, formTitle || text)} className={className} style={styleProps}>
-          {text}
+        <button type="button" onClick={() => dispatchOpenAudienceForm(audienceId, formTitle || buttonText)} className={className} style={styleProps}>
+          {buttonText}
         </button>
       ) : (
         <CatalogueLink to={url || '#'} target={target} className={className} style={styleProps}>
-          {text}
+          {buttonText}
         </CatalogueLink>
       )}
     </section>
@@ -1676,7 +1692,8 @@ const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target
 
 /* ─── Newsletter Signup ────────────────────────────────────────────────── */
 
-const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder = 'Enter your email', buttonText = 'Subscribe', layout = 'inline', backgroundColor, successMessage, audienceId, instituteId, tagName }) => {
+const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder, buttonText, layout = 'inline', backgroundColor, successMessage, audienceId, instituteId, tagName }) => {
+  const { t } = useTranslation("coursePlayerA");
   // HISTORY: previously set the success flag with no network call — every
   // subscription was silently discarded. Now submits through the catalogue-lead
   // pipeline; audienceId (optional) routes to a chosen campaign.
@@ -1693,7 +1710,7 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
     if (!email) return;
     setError('');
     if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
-    if (!instituteId) { setError('This form is not connected yet — please try again later.'); return; }
+    if (!instituteId) { setError(t("jsonRenderer.formNotConnected")); return; }
     setSubmitting(true);
     try {
       await submitWebsiteLead({
@@ -1705,7 +1722,7 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
       });
       setSubmitted(true);
     } catch {
-      setError('Something went wrong — please try again.');
+      setError(t("jsonRenderer.somethingWentWrongRetry"));
     } finally {
       setSubmitting(false);
     }
@@ -1717,7 +1734,7 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
         {heading && <h3 className={`mb-2 text-2xl font-bold ${txt.heading}`}>{heading}</h3>}
         {subheading && <p className={`mb-6 ${txt.muted}`}>{subheading}</p>}
         {submitted ? (
-          <p className="text-lg font-medium text-green-600">{successMessage || 'Thank you for subscribing!'}</p>
+          <p className="text-lg font-medium text-green-600">{successMessage || t("jsonRenderer.newsletterSuccessDefault")}</p>
         ) : (
           <form onSubmit={handleSubmit} className={`flex ${layout === 'stacked' ? 'flex-col' : ''} gap-3`}>
             <input
@@ -1725,12 +1742,12 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={placeholder}
+              placeholder={placeholder || t("jsonRenderer.enterYourEmail")}
               className="flex-1 rounded-lg border border-catalogue-border bg-catalogue-bg px-4 py-3 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             />
             {/* Honeypot — hidden from humans, filled by bots. */}
             <div className="sr-only" aria-hidden="true">
-              <label>Company website<input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} /></label>
+              <label>{t("jsonRenderer.companyWebsite")}<input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} /></label>
             </div>
             <button
               type="submit"
@@ -1738,7 +1755,7 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
               className="rounded-lg px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
               style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}
             >
-              {submitting ? '…' : buttonText}
+              {submitting ? '…' : (buttonText || t("jsonRenderer.subscribe"))}
             </button>
           </form>
         )}

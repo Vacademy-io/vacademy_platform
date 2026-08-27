@@ -1,0 +1,48 @@
+{
+    "navHeading": {
+        "fallback": "Onboarding Flow"
+    },
+    "actions": {
+        "backToFlows": "Back to Onboarding Flows",
+        "retry": "Retry",
+        "activating": "Activating…",
+        "activateFlow": "Activate Flow",
+        "addStep": "Add Step",
+        "edit": "Edit",
+        "cancel": "Cancel",
+        "removing": "Removing…",
+        "remove": "Remove"
+    },
+    "states": {
+        "loadingFlow": "Loading flow…",
+        "loadFlowError": "Couldn't load this onboarding flow.",
+        "addStepBeforeActivating": "Add at least one step before activating this flow.",
+        "loadingSteps": "Loading steps…",
+        "noStepsTitle": "No steps yet",
+        "noStepsDescription": "Add the first step (e.g. an enrollment form) to start building this flow."
+    },
+    "tags": {
+        "optional": "Optional",
+        "grantsStudentRole": "Grants STUDENT role",
+        "sendsCredentials": "Sends credentials"
+    },
+    "statusLabels": {
+        "draft": "Draft",
+        "active": "Active",
+        "archived": "Archived"
+    },
+    "stepTypeLabels": {
+        "FORM": "Form"
+    },
+    "deleteDialog": {
+        "title": "Remove this step?",
+        "description": "\"{{stepName}}\" will be archived. Learners already on this step keep their progress, but the step won't appear for anyone starting the flow after this."
+    },
+    "toasts": {
+        "reorderError": "Could not save the new order. Reverting.",
+        "stepRemoved": "Step removed",
+        "removeError": "Could not remove the step.",
+        "flowActivated": "Flow activated",
+        "activateError": "Could not activate the flow."
+    }
+}

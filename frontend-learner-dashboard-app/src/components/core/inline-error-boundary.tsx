@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { WarningCircle } from "@phosphor-icons/react";
+import i18n from "@/i18n";
 import { MyButton } from "@/components/design-system/button";
 
 interface InlineErrorBoundaryProps {
@@ -44,8 +45,8 @@ export class InlineErrorBoundary extends Component<
     if (!this.state.hasError) return this.props.children;
 
     const {
-      title = "This section couldn't be shown",
-      description = "Something went wrong while loading it. Your answers and the timer are unaffected.",
+      title = i18n.t("courseComponentsExtra:inlineErrorBoundary.defaultTitle"),
+      description = i18n.t("courseComponentsExtra:inlineErrorBoundary.defaultDescription"),
     } = this.props;
 
     return (
@@ -58,7 +59,7 @@ export class InlineErrorBoundary extends Component<
           scale="medium"
           onClick={this.handleReset}
         >
-          Try again
+          {i18n.t("courseComponentsExtra:common.tryAgain")}
         </MyButton>
       </div>
     );

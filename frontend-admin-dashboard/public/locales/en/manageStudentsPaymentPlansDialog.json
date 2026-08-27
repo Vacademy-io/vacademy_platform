@@ -1,0 +1,36 @@
+{
+    "dialog": {
+        "title": "Select a Payment Plan",
+        "description": "Choose a payment plan for this course"
+    },
+    "sections": {
+        "freePlans": "Free Plans",
+        "paidPlans": "Paid Plans"
+    },
+    "badge": {
+        "default": "Default",
+        "cpo": "CPO"
+    },
+    "common": {
+        "currency": "Currency: {{currency}}"
+    },
+    "cpo": {
+        "totalAmount": "Total Amount: {{amount}}",
+        "installmentsLabel": "Installments",
+        "installmentsLoading": "loading…"
+    },
+    "donation": {
+        "suggestedAmounts": "Suggested Amounts: {{amount}}",
+        "minimumAmount": "Minimum Amount: {{amount}}"
+    },
+    "freePlan": {
+        "days_one": "Free for {{count}} day",
+        "days_other": "Free for {{count}} days"
+    },
+    "upfront": {
+        "fullPrice": "Full Price: {{amount}}"
+    },
+    "actions": {
+        "addNewPaymentPlan": "+ Add New Payment Plan"
+    }
+}

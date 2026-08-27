@@ -277,6 +277,7 @@ export const ProductPageEditor = () => {
                             <ProductPageSettingsCard
                                 settings={settings}
                                 onChange={updateSettings}
+                                courses={mappingRows}
                             />
                         </div>
                     )}

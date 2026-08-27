@@ -13,6 +13,7 @@ import {
   useMemo,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { Trans, useTranslation } from "react-i18next";
 import { useTrackingStore } from "@/stores/study-library/youtube-video-tracking-store";
 import { getEpochTimeInMillis } from "./utils";
 import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTimeToSeconds";
@@ -145,6 +146,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   enableConcentrationScore = true,
   concentrationSettings,
 }) => {
+  const { t } = useTranslation("libraryCommonB");
   const { activeItem } = useContentStore();
   // When Slide Content Protection is on, block right-click on the player (the
   // iframe is pointer-events-none with custom controls, so the contextmenu fires
@@ -2121,10 +2123,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                     </span>
-                    <h4 className="text-base font-bold text-white tracking-tight">Active Focus Check</h4>
+                    <h4 className="text-base font-bold text-white tracking-tight">{t("youtubePlayer.verification.title")}</h4>
                   </div>
                   <p className="text-sm text-zinc-400 leading-relaxed">
-                    Select <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle">{verificationNumbers[1]}</span> to maintain your learning streak.
+                    <Trans
+                      i18nKey="youtubePlayer.verification.prompt"
+                      t={t}
+                      values={{ number: verificationNumbers[1] }}
+                      components={{
+                        num: (
+                          <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle" />
+                        ),
+                      }}
+                    />
                   </p>
                 </div>
 
@@ -2143,7 +2154,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             </div>
             <div className="text-center mt-3">
               <span className="text-xs font-medium text-zinc-500 bg-black/40 px-3 py-1 rounded-full border border-white/5 backdrop-blur-md">
-                Closing in {verificationCountdown}s
+                {t("youtubePlayer.verification.closingIn", { seconds: verificationCountdown })}
               </span>
             </div>
           </div>
@@ -2186,10 +2197,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                       </span>
-                      <h4 className="text-base font-bold text-white tracking-tight">Active Focus Check</h4>
+                      <h4 className="text-base font-bold text-white tracking-tight">{t("youtubePlayer.verification.title")}</h4>
                     </div>
                     <p className="text-sm text-zinc-400 leading-relaxed">
-                      Select <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle">{verificationNumbers[1]}</span> to maintain your learning streak.
+                      <Trans
+                        i18nKey="youtubePlayer.verification.prompt"
+                        t={t}
+                        values={{ number: verificationNumbers[1] }}
+                        components={{
+                          num: (
+                            <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle" />
+                          ),
+                        }}
+                      />
                     </p>
                   </div>
 
@@ -2211,7 +2231,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               </div>
               <div className="text-center mt-3">
                 <span className="text-xs font-medium text-zinc-500 bg-black/40 px-3 py-1 rounded-full border border-white/5 backdrop-blur-md">
-                  Closing in {verificationCountdown}s
+                  {t("youtubePlayer.verification.closingIn", { seconds: verificationCountdown })}
                 </span>
               </div>
             </div>
@@ -2244,7 +2264,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   toggleFullscreen(e as any);
                 }}
                 className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all active:scale-95 shadow-lg backdrop-blur-sm border border-white/10"
-                aria-label="Exit fullscreen"
+                aria-label={t("youtubePlayer.controls.exitFullscreen")}
               >
                 <X size={24} weight="bold" />
               </button>
@@ -2310,10 +2330,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     <button
                       onClick={goToLive}
                       className="flex items-center gap-1 px-3 py-1 rounded-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-all hover:scale-105 backdrop-blur-sm animate-pulse"
-                      title="Go to live stream"
+                      title={t("youtubePlayer.controls.goToLive")}
                     >
                       <div className="w-2 h-2 bg-white rounded-full"></div>
-                      LIVE
+                      {t("youtubePlayer.controls.live")}
                     </button>
                   )}
 
@@ -2351,7 +2371,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     {showSpeedOptions && allowRewind && (
                       <div className="speed-dropdown absolute bottom-full end-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-20 min-w-20 max-h-reg-250 overflow-y-auto">
                         <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
-                          Speed
+                          {t("youtubePlayer.controls.speed")}
                         </div>
                         <div className="py-2">
                           {speedOptions.map((speed) => (
@@ -2427,12 +2447,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                           }
                         }}
                         disabled={!allowRewind}
-                        title={`Question ${index + 1}${isAnswered
-                            ? " (Answered)"
+                        title={`${t("youtubePlayer.questionMarker.title", { index: index + 1 })}${isAnswered
+                            ? t("youtubePlayer.questionMarker.answered")
                             : canSkip
-                              ? " (Skippable)"
-                              : " (Required)"
-                          }${!allowRewind ? " (Navigation disabled)" : ""}`}
+                              ? t("youtubePlayer.questionMarker.skippable")
+                              : t("youtubePlayer.questionMarker.required")
+                          }${!allowRewind ? t("youtubePlayer.questionMarker.navigationDisabled") : ""}`}
                       >
                         {isAnswered ? (
                           <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
@@ -2496,14 +2516,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             <button
               onClick={handleManualPlay}
               className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-2xl hover:scale-105 transition-all duration-300 hover:shadow-primary-500/50 active:scale-95"
-              aria-label="Start video"
+              aria-label={t("youtubePlayer.manualPlay.ariaLabel")}
             >
               <div className="p-4 rounded-full bg-white/20 backdrop-blur-sm">
                 <Play size={48} weight="fill" />
               </div>
-              <span className="text-lg font-semibold">Tap to Start Video</span>
+              <span className="text-lg font-semibold">{t("youtubePlayer.manualPlay.tapToStart")}</span>
               <span className="text-sm text-white/80">
-                Video will play automatically
+                {t("youtubePlayer.manualPlay.autoplayHint")}
               </span>
             </button>
           </div>
@@ -2576,10 +2596,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     <button
                       onClick={goToLive}
                       className="flex items-center gap-1 px-3 py-1 rounded-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-all hover:scale-105 backdrop-blur-sm animate-pulse"
-                      title="Go to live stream"
+                      title={t("youtubePlayer.controls.goToLive")}
                     >
                       <div className="w-2 h-2 bg-white rounded-full"></div>
-                      LIVE
+                      {t("youtubePlayer.controls.live")}
                     </button>
                   )}
 
@@ -2672,12 +2692,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                           }
                         }}
                         disabled={!allowRewind}
-                        title={`Question ${index + 1}${isAnswered
-                            ? " (Answered)"
+                        title={`${t("youtubePlayer.questionMarker.title", { index: index + 1 })}${isAnswered
+                            ? t("youtubePlayer.questionMarker.answered")
                             : canSkip
-                              ? " (Skippable)"
-                              : " (Required)"
-                          }${!allowRewind ? " (Navigation disabled)" : ""}`}
+                              ? t("youtubePlayer.questionMarker.skippable")
+                              : t("youtubePlayer.questionMarker.required")
+                          }${!allowRewind ? t("youtubePlayer.questionMarker.navigationDisabled") : ""}`}
                       >
                         {isAnswered ? (
                           <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
@@ -2746,7 +2766,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           }}
         >
           <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
-            Speed
+            {t("youtubePlayer.controls.speed")}
           </div>
           <div className="py-2">
             {speedOptions.map((speed) => (

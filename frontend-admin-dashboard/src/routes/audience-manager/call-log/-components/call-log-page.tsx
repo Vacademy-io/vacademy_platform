@@ -9,6 +9,7 @@
  * disposition flow.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowsClockwise, User } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -51,9 +52,9 @@ const computeRange = (days: number) => {
 };
 
 const PRESETS = [
-    { key: '7', label: '7d', days: 7 },
-    { key: '30', label: '30d', days: 30 },
-    { key: '90', label: '90d', days: 90 },
+    { key: '7', days: 7 },
+    { key: '30', days: 30 },
+    { key: '90', days: 90 },
 ] as const;
 
 const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
@@ -61,10 +62,11 @@ const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export function CallLogPage() {
+    const { t } = useTranslation('audienceManagerCallLogPage');
     const setNavHeading = useNavHeadingStore((s) => s.setNavHeading);
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Call Log</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('header.navTitle')}</h1>);
+    }, [setNavHeading, t]);
 
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
@@ -127,16 +129,15 @@ export function CallLogPage() {
         <div className="flex min-h-full flex-col gap-6 bg-neutral-50 p-6">
             <header className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
-                    <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Call Log</h1>
-                    <p className="text-sm text-neutral-600">
-                        Every call across your team — AI &amp; human, inbound &amp; outbound, all
-                        providers. Filter, disposition and export.
-                    </p>
+                    <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
+                        {t('header.title')}
+                    </h1>
+                    <p className="text-sm text-neutral-600">{t('header.subtitle')}</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <SettingsQuickAccessButton
                         settingsKey={SettingsTabs.Telephony}
-                        label="Calling settings"
+                        label={t('header.callingSettings')}
                     />
                     <Button
                         onClick={refresh}
@@ -146,7 +147,7 @@ export function CallLogPage() {
                         className="gap-2"
                     >
                         <ArrowsClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
-                        Refresh
+                        {t('header.refresh')}
                     </Button>
                 </div>
             </header>
@@ -166,13 +167,13 @@ export function CallLogPage() {
                                     : 'text-neutral-600 hover:bg-neutral-50'
                             )}
                         >
-                            {p.label}
+                            {t('filters.presetLabel', { days: p.days })}
                         </button>
                     ))}
                 </div>
                 <div className="flex flex-col gap-1">
                     <Label htmlFor="cl-from" className="text-xs text-neutral-600">
-                        From
+                        {t('filters.from')}
                     </Label>
                     <Input
                         id="cl-from"
@@ -184,7 +185,7 @@ export function CallLogPage() {
                 </div>
                 <div className="flex flex-col gap-1">
                     <Label htmlFor="cl-to" className="text-xs text-neutral-600">
-                        To
+                        {t('filters.to')}
                     </Label>
                     <Input
                         id="cl-to"
@@ -195,10 +196,10 @@ export function CallLogPage() {
                     />
                 </div>
                 <Button onClick={apply} size="sm" disabled={!instituteId}>
-                    Apply
+                    {t('filters.apply')}
                 </Button>
                 <Button onClick={reset} size="sm" variant="ghost">
-                    Reset
+                    {t('filters.reset')}
                 </Button>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                     <TeamPicker
@@ -216,7 +217,7 @@ export function CallLogPage() {
 
             {!instituteId ? (
                 <div className="rounded-xl border border-warning-200 bg-warning-50 p-4 text-sm text-warning-700">
-                    Pick an institute to view the call log.
+                    {t('filters.noInstitute')}
                 </div>
             ) : (
                 <CallLogTab
@@ -232,7 +233,9 @@ export function CallLogPage() {
                 per-counsellor leaderboard. Only when the institute has it enabled. */}
             {instituteId && callIntelligenceEnabled && (
                 <div className="flex flex-col gap-3">
-                    <h2 className="text-base font-semibold text-neutral-900">Call Intelligence</h2>
+                    <h2 className="text-base font-semibold text-neutral-900">
+                        {t('callIntelligence.heading')}
+                    </h2>
                     <CallIntelligenceTab
                         instituteId={instituteId}
                         fromDate={applied.from}
@@ -264,6 +267,7 @@ function CounsellorScopePicker({
     value: string | undefined;
     onChange: (userId: string | undefined) => void;
 }) {
+    const { t } = useTranslation('audienceManagerCallLogPage');
     // Role-based roster: every COUNSELLOR-role user the caller may see —
     // hierarchy scope for scoped callers, institute-wide for pure admins.
     const rosterQuery = useQuery({
@@ -289,12 +293,17 @@ function CounsellorScopePicker({
             value={value ?? ALL_COUNSELLORS_VALUE}
             onValueChange={(v) => onChange(v === ALL_COUNSELLORS_VALUE ? undefined : v)}
         >
-            <SelectTrigger className="h-9 w-52 bg-white" aria-label="Filter by counsellor">
+            <SelectTrigger
+                className="h-9 w-52 bg-white"
+                aria-label={t('counsellorPicker.ariaLabel')}
+            >
                 <User className="mr-1.5 size-4 shrink-0 text-neutral-400" />
-                <SelectValue placeholder="All counsellors" />
+                <SelectValue placeholder={t('counsellorPicker.allCounsellors')} />
             </SelectTrigger>
             <SelectContent>
-                <SelectItem value={ALL_COUNSELLORS_VALUE}>All counsellors</SelectItem>
+                <SelectItem value={ALL_COUNSELLORS_VALUE}>
+                    {t('counsellorPicker.allCounsellors')}
+                </SelectItem>
                 {options.map((o) => (
                     <SelectItem key={o.id} value={o.id}>
                         {o.name}

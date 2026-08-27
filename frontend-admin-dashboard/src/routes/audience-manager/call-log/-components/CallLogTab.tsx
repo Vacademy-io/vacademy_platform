@@ -22,6 +22,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
     ArrowsClockwise,
     DownloadSimple,
@@ -104,11 +106,14 @@ export interface CallLogTabProps {
 const PAGE_SIZE = 25;
 const ALL = '__ALL__';
 
-const PROVIDER_OPTIONS = [
-    { value: 'EXOTEL', label: 'Exotel' },
-    { value: 'AAVTAAR', label: 'AI (Aavtaar)' },
-    { value: 'AIRTEL', label: 'Airtel' },
-] as const;
+/** Provider filter/label vocabulary — labels come from the translation catalog. */
+function buildProviderOptions(t: TFunction) {
+    return [
+        { value: 'EXOTEL', label: t('providers.exotel') },
+        { value: 'AAVTAAR', label: t('providers.aavtaarAi') },
+        { value: 'AIRTEL', label: t('providers.airtel') },
+    ] as const;
+}
 
 // ── Formatting ─────────────────────────────────────────────────────────────
 
@@ -224,6 +229,7 @@ export default function CallLogTab({
     teamId,
     counsellorUserId,
 }: CallLogTabProps) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     const queryClient = useQueryClient();
     const scope: CallLogScope = { instituteId, fromDate, toDate, teamId, counsellorUserId };
 
@@ -393,7 +399,7 @@ export default function CallLogTab({
     };
 
     if (!instituteId) {
-        return <EmptyBlock message="Pick an institute to view the call log." />;
+        return <EmptyBlock message={t('empty.pickInstitute')} />;
     }
     if (searchQuery.isError && isCallLogEndpointMissing(searchQuery.error)) {
         return <DeployPendingNotice />;
@@ -423,35 +429,35 @@ export default function CallLogTab({
                 {/* 1 — KPI strip */}
                 <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
                     <KpiStat
-                        label="Total calls"
+                        label={t('kpi.totalCalls')}
                         value={fmtNumber(metrics?.total_calls)}
                         tone="primary"
                         loading={metricsQuery.isLoading}
                     />
                     <KpiStat
-                        label="Connected"
+                        label={t('kpi.connected')}
                         value={fmtNumber(metrics?.connected_calls)}
                         sub={fmtPct(metrics?.connect_rate)}
                         tone="success"
                         loading={metricsQuery.isLoading}
                     />
                     <KpiStat
-                        label="Talk time"
+                        label={t('kpi.talkTime')}
                         value={fmtTalkHm(metrics?.total_talk_seconds)}
-                        sub="h : mm"
+                        sub={t('kpi.talkTimeUnit')}
                         tone="warning"
                         loading={metricsQuery.isLoading}
                     />
                     <KpiStat
-                        label="Unique leads"
+                        label={t('kpi.uniqueLeads')}
                         value={fmtNumber(metrics?.unique_leads)}
                         tone="info"
                         loading={metricsQuery.isLoading}
                     />
                     <KpiStat
-                        label="AI vs human"
+                        label={t('kpi.aiVsHuman')}
                         value={`${fmtNumber(metrics?.ai_calls)} / ${fmtNumber(metrics?.human_calls)}`}
-                        sub="AI / human"
+                        sub={t('kpi.aiVsHumanUnit')}
                         tone="default"
                         loading={metricsQuery.isLoading}
                     />
@@ -463,19 +469,19 @@ export default function CallLogTab({
                         <ChipToggle
                             active={chip === 'NONE'}
                             onClick={() => setChip('NONE')}
-                            label="All calls"
+                            label={t('chips.allCalls')}
                         />
                         <ChipToggle
                             active={chip === 'MISSED'}
                             onClick={() => setChip(chip === 'MISSED' ? 'NONE' : 'MISSED')}
-                            label="Missed inbound"
+                            label={t('chips.missedInbound')}
                             count={metrics?.missed_inbound_due}
                             tone="danger"
                         />
                         <ChipToggle
                             active={chip === 'CALLBACKS'}
                             onClick={() => setChip(chip === 'CALLBACKS' ? 'NONE' : 'CALLBACKS')}
-                            label="Callbacks due"
+                            label={t('chips.callbacksDue')}
                             count={metrics?.callbacks_due}
                             tone="warning"
                         />
@@ -490,46 +496,46 @@ export default function CallLogTab({
 
                     <div className="flex flex-wrap items-end gap-3">
                         <FilterText
-                            label="Lead name"
+                            label={t('filters.leadName')}
                             value={leadName}
                             onChange={setLeadName}
-                            placeholder="Search name"
+                            placeholder={t('filters.leadNamePlaceholder')}
                         />
                         <FilterText
-                            label="Number"
+                            label={t('filters.number')}
                             value={toNumber}
                             onChange={setToNumber}
-                            placeholder="Phone digits"
+                            placeholder={t('filters.numberPlaceholder')}
                         />
                         <FilterSelect
-                            label="Direction"
+                            label={t('filters.direction')}
                             value={direction}
                             onChange={setDirection}
                             options={[
-                                { value: 'OUTBOUND', label: 'Outbound' },
-                                { value: 'INBOUND', label: 'Inbound' },
+                                { value: 'OUTBOUND', label: t('filters.directionOutbound') },
+                                { value: 'INBOUND', label: t('filters.directionInbound') },
                             ]}
                         />
                         <FilterSelect
-                            label="Type"
+                            label={t('filters.type')}
                             value={callType}
                             onChange={setCallType}
                             options={[
-                                { value: 'HUMAN', label: 'Human' },
-                                { value: 'AI', label: 'AI' },
+                                { value: 'HUMAN', label: t('filters.typeHuman') },
+                                { value: 'AI', label: t('filters.typeAi') },
                             ]}
                         />
                         <FilterSelect
-                            label="Provider"
+                            label={t('filters.provider')}
                             value={providerType}
                             onChange={setProviderType}
-                            options={PROVIDER_OPTIONS.map((p) => ({
+                            options={buildProviderOptions(t).map((p) => ({
                                 value: p.value,
                                 label: p.label,
                             }))}
                         />
                         <FilterSelect
-                            label="Status"
+                            label={t('filters.status')}
                             value={status}
                             onChange={setStatus}
                             options={TELEPHONY_CALL_STATUSES.map((s) => ({
@@ -538,7 +544,7 @@ export default function CallLogTab({
                             }))}
                         />
                         <FilterMultiSelect
-                            label="Disposition"
+                            label={t('filters.disposition')}
                             selected={dispositionKeys}
                             onChange={setDispositionKeys}
                             options={dispositionOptions.map((d) => ({
@@ -553,7 +559,7 @@ export default function CallLogTab({
                 <section className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
                     <div className="flex items-center justify-between">
                         <h2 className="text-base font-semibold text-neutral-900">
-                            Calls
+                            {t('table.heading')}
                             {data && (
                                 <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
                                     {fmtNumber(data.total_elements)}
@@ -567,31 +573,43 @@ export default function CallLogTab({
                     ) : searchQuery.isError ? (
                         <ErrorNotice onRetry={() => searchQuery.refetch()} />
                     ) : rows.length === 0 ? (
-                        <EmptyBlock message="No calls match these filters." />
+                        <EmptyBlock message={t('table.empty')} />
                     ) : (
                         <>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
-                                            <th className="py-2 pr-3">Time</th>
-                                            <th className="py-2 pr-3">Lead</th>
-                                            <th className="py-2 pr-3">Dir</th>
-                                            <th className="py-2 pr-3">Type</th>
-                                            <th className="py-2 pr-3">Status</th>
+                                            <th className="py-2 pe-3">{t('table.columns.time')}</th>
+                                            <th className="py-2 pe-3">{t('table.columns.lead')}</th>
+                                            <th className="py-2 pe-3">{t('table.columns.direction')}</th>
+                                            <th className="py-2 pe-3">{t('table.columns.type')}</th>
+                                            <th className="py-2 pe-3">{t('table.columns.status')}</th>
                                             {canSeeCallHealth && (
                                                 <th
                                                     className="py-2 pr-3"
-                                                    title="Technical verdict from the AI voice agent"
+                                                    title={t('table.columns.healthTooltip')}
                                                 >
-                                                    Health
+                                                    {t('table.columns.health')}
                                                 </th>
                                             )}
-                                            <th className="py-2 pr-3 text-right">Duration</th>
-                                            <th className="py-2 pr-3">Counsellor</th>
-                                            <th className="py-2 pr-3">Disposition</th>
-                                            <th className="py-2 pr-3">Recording</th>
-                                            {intelEnabled && <th className="py-2 pr-3">AI</th>}
+                                            <th className="py-2 pe-3 text-end">
+                                                {t('table.columns.duration')}
+                                            </th>
+                                            <th className="py-2 pe-3">
+                                                {t('table.columns.counsellor')}
+                                            </th>
+                                            <th className="py-2 pe-3">
+                                                {t('table.columns.disposition')}
+                                            </th>
+                                            <th className="py-2 pe-3">
+                                                {t('table.columns.recording')}
+                                            </th>
+                                            {intelEnabled && (
+                                                <th className="py-2 pe-3">
+                                                    {t('table.columns.ai')}
+                                                </th>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -614,9 +632,9 @@ export default function CallLogTab({
                                                                 type="button"
                                                                 onClick={() => void openLead(r)}
                                                                 className="w-fit text-left font-medium text-primary-600 hover:underline"
-                                                                title="Open lead profile"
+                                                                title={t('table.openLeadProfile')}
                                                             >
-                                                                {r.lead_name || 'View lead'}
+                                                                {r.lead_name || t('table.viewLead')}
                                                             </button>
                                                         ) : (
                                                             <span className="font-medium text-neutral-900">
@@ -629,7 +647,7 @@ export default function CallLogTab({
                                                         {r.ivr_selection && (
                                                             <span
                                                                 className="mt-1 inline-flex w-fit items-center rounded-sm bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700"
-                                                                title="IVR option chosen"
+                                                                title={t('table.ivrOptionChosen')}
                                                             >
                                                                 {r.ivr_selection}
                                                             </span>
@@ -679,10 +697,10 @@ export default function CallLogTab({
                                                             type="button"
                                                             onClick={() => setIntelTarget(r)}
                                                             className="inline-flex items-center gap-1 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100"
-                                                            title="Transcript & AI intelligence"
+                                                            title={t('intelligenceDialog.heading')}
                                                         >
                                                             <Sparkle size={14} weight="fill" />
-                                                            AI
+                                                            {t('table.columns.ai')}
                                                         </button>
                                                     </td>
                                                 )}
@@ -812,15 +830,16 @@ function FilterSelect({
     onChange: (v: string) => void;
     options: Array<{ value: string; label: string }>;
 }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     return (
         <div className="flex flex-col gap-1">
             <Label className="text-xs text-neutral-600">{label}</Label>
             <Select value={value} onValueChange={onChange}>
                 <SelectTrigger className="h-9 w-40 bg-white">
-                    <SelectValue placeholder="All" />
+                    <SelectValue placeholder={t('filters.all')} />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value={ALL}>All</SelectItem>
+                    <SelectItem value={ALL}>{t('filters.all')}</SelectItem>
                     {options.map((o) => (
                         <SelectItem key={o.value} value={o.value}>
                             {o.label}
@@ -848,15 +867,16 @@ function FilterMultiSelect({
     onChange: (v: string[]) => void;
     options: Array<{ value: string; label: string }>;
 }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     return (
         <div className="flex flex-col gap-1">
             <Label className="text-xs text-neutral-600">{label}</Label>
             <MultiSelectFilter
-                label="All"
+                label={t('filters.all')}
                 options={options}
                 selected={selected}
                 onChange={onChange}
-                placeholder={`Search ${label.toLowerCase()}…`}
+                placeholder={t('filters.searchPlaceholder', { label: label.toLowerCase() })}
                 // twMerge lets these win over the component's default h-10 / w-44,
                 // so the trigger lines up with the FilterSelect boxes beside it.
                 widthClass="h-9 w-40"
@@ -869,6 +889,7 @@ function FilterMultiSelect({
 // ── Cell renderers ─────────────────────────────────────────────────────────
 
 function DirectionBadge({ direction }: { direction: string }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     const inbound = direction === 'INBOUND';
     return (
         <span
@@ -882,12 +903,13 @@ function DirectionBadge({ direction }: { direction: string }) {
             ) : (
                 <PhoneOutgoing size={12} weight="bold" />
             )}
-            {inbound ? 'In' : 'Out'}
+            {inbound ? t('directionBadge.in') : t('directionBadge.out')}
         </span>
     );
 }
 
 function TypeBadge({ callType }: { callType: 'AI' | 'HUMAN' }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     const ai = callType === 'AI';
     return (
         <span
@@ -897,7 +919,7 @@ function TypeBadge({ callType }: { callType: 'AI' | 'HUMAN' }) {
             )}
         >
             {ai ? <Robot size={12} weight="bold" /> : <User size={12} weight="bold" />}
-            {ai ? 'AI' : 'Human'}
+            {ai ? t('typeBadge.ai') : t('typeBadge.human')}
         </span>
     );
 }
@@ -915,9 +937,9 @@ function CallStatusPill({ status }: { status: string }) {
     );
 }
 
-function humanizeProvider(p: string | null | undefined): string {
+function humanizeProvider(t: TFunction, p: string | null | undefined): string {
     if (!p) return '—';
-    return PROVIDER_OPTIONS.find((o) => o.value === p)?.label ?? p;
+    return buildProviderOptions(t).find((o) => o.value === p)?.label ?? p;
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -935,6 +957,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
  * that lazily loads the deep detail (provider hangup/cause/error, price, timing).
  */
 function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     const [open, setOpen] = useState(false);
     const detailable = isDetailable(row);
 
@@ -955,7 +978,7 @@ function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow })
                 <button
                     type="button"
                     className="inline-flex items-center gap-1 rounded-full hover:opacity-80"
-                    title="Why did this call end this way?"
+                    title={t('statusDetail.whyEnded')}
                 >
                     <CallStatusPill status={row.status} />
                     <Info size={14} className="text-neutral-400" />
@@ -969,34 +992,45 @@ function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow })
                     </span>
                 </div>
                 {detailQuery.isLoading ? (
-                    <p className="text-xs text-neutral-500">Loading details…</p>
+                    <p className="text-xs text-neutral-500">{t('statusDetail.loading')}</p>
                 ) : detailQuery.isError ? (
                     <p className="text-xs text-neutral-500">
                         {row.termination_reason
-                            ? `Reason: ${row.termination_reason}`
-                            : 'No further detail available.'}
+                            ? t('statusDetail.reasonPrefix', { reason: row.termination_reason })
+                            : t('statusDetail.noDetail')}
                     </p>
                 ) : d ? (
                     <div className="flex flex-col gap-1.5">
                         <DetailRow
-                            label="Reason"
+                            label={t('statusDetail.reason')}
                             value={d.termination_reason || row.termination_reason || '—'}
                         />
-                        <DetailRow label="Provider" value={humanizeProvider(d.provider_type)} />
+                        <DetailRow
+                            label={t('statusDetail.provider')}
+                            value={humanizeProvider(t, d.provider_type)}
+                        />
                         {d.provider_details.map((kv, i) => (
                             <DetailRow key={i} label={kv.label} value={kv.value} />
                         ))}
-                        <DetailRow label="Attempted" value={fmtDateTime(d.start_time)} />
                         <DetailRow
-                            label="Answered"
+                            label={t('statusDetail.attempted')}
+                            value={fmtDateTime(d.start_time)}
+                        />
+                        <DetailRow
+                            label={t('statusDetail.answered')}
                             value={d.answer_time ? fmtDateTime(d.answer_time) : '—'}
                         />
-                        <DetailRow label="Duration" value={fmtDuration(d.duration_seconds)} />
-                        {d.price != null && <DetailRow label="Cost" value={String(d.price)} />}
+                        <DetailRow
+                            label={t('statusDetail.duration')}
+                            value={fmtDuration(d.duration_seconds)}
+                        />
+                        {d.price != null && (
+                            <DetailRow label={t('statusDetail.cost')} value={String(d.price)} />
+                        )}
                         {d.raw_provider_response && (
                             <details className="mt-1">
                                 <summary className="cursor-pointer text-xs text-primary-600">
-                                    View raw provider response
+                                    {t('statusDetail.viewRawResponse')}
                                 </summary>
                                 <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-neutral-50 p-2 text-caption text-neutral-600">
                                     {d.raw_provider_response}
@@ -1005,7 +1039,7 @@ function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow })
                         )}
                     </div>
                 ) : (
-                    <p className="text-xs text-neutral-500">No further detail available.</p>
+                    <p className="text-xs text-neutral-500">{t('statusDetail.noDetail')}</p>
                 )}
             </PopoverContent>
         </Popover>
@@ -1022,6 +1056,7 @@ function DispositionCell({
     labels: Map<string, string>;
     onEdit: () => void;
 }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     // Human-set disposition takes precedence; otherwise show the AI disposition (read-only).
     const current = row.disposition_key || row.ai_disposition;
     // Same normalization the filter matches on, so "Not_Interested" and
@@ -1039,13 +1074,14 @@ function DispositionCell({
                 <span className="text-xs text-neutral-400">—</span>
             )}
             <MyButton buttonType="text" scale="small" onClick={onEdit}>
-                {row.disposition_key ? 'Edit' : 'Set'}
+                {row.disposition_key ? t('disposition.edit') : t('disposition.set')}
             </MyButton>
         </div>
     );
 }
 
 function RecordingCell({ instituteId, row }: { instituteId: string; row: CallRow }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     const [url, setUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [failed, setFailed] = useState(false);
@@ -1071,7 +1107,7 @@ function RecordingCell({ instituteId, row }: { instituteId: string; row: CallRow
         <MyButton buttonType="secondary" scale="small" onClick={load} disable={loading}>
             <span className="flex items-center gap-1.5">
                 <Waveform size={14} weight="fill" />
-                {loading ? 'Loading…' : failed ? 'Retry' : 'Play'}
+                {loading ? t('recording.loading') : failed ? t('common.retry') : t('recording.play')}
             </span>
         </MyButton>
     );
@@ -1088,12 +1124,13 @@ function ExportButton({
     filters: CallLogFilters;
     disabled: boolean;
 }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     const run = async (format: 'csv' | 'xlsx') => {
         try {
             await exportCallLog(scope, filters, format);
-            toast.success(`Exported ${format.toUpperCase()}`);
+            toast.success(t('export.successToast', { format: format.toUpperCase() }));
         } catch {
-            toast.error('Export failed. Please try again.');
+            toast.error(t('export.errorToast'));
         }
     };
     return (
@@ -1106,7 +1143,7 @@ function ExportButton({
             >
                 <span className="flex items-center gap-1.5">
                     <DownloadSimple size={14} />
-                    CSV
+                    {t('export.csv')}
                 </span>
             </MyButton>
             <MyButton
@@ -1117,7 +1154,7 @@ function ExportButton({
             >
                 <span className="flex items-center gap-1.5">
                     <DownloadSimple size={14} />
-                    Excel
+                    {t('export.excel')}
                 </span>
             </MyButton>
         </div>
@@ -1139,6 +1176,7 @@ function DispositionDialog({
     onClose: () => void;
     onApplied: () => void;
 }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     const [selected, setSelected] = useState<string>('');
     const [notes, setNotes] = useState('');
     const [callbackAt, setCallbackAt] = useState('');
@@ -1159,16 +1197,18 @@ function DispositionDialog({
         },
         onSuccess: (res) => {
             toast.success(
-                res.lead_status_synced ? `Saved — lead status updated` : 'Disposition saved'
+                res.lead_status_synced
+                    ? t('dispositionDialog.savedStatusUpdated')
+                    : t('dispositionDialog.saved')
             );
             onApplied();
         },
-        onError: () => toast.error('Could not save the disposition.'),
+        onError: () => toast.error(t('dispositionDialog.saveError')),
     });
 
     return (
         <MyDialog
-            heading="Set call disposition"
+            heading={t('dispositionDialog.heading')}
             open={!!call}
             onOpenChange={(open) => {
                 if (!open) onClose();
@@ -1182,19 +1222,21 @@ function DispositionDialog({
                         await mutation.mutateAsync();
                     }}
                 >
-                    Save
+                    {t('dispositionDialog.save')}
                 </MyButton>
             }
         >
             <div className="flex flex-col gap-4">
                 {call && (
                     <p className="text-sm text-neutral-600">
-                        {call.lead_name || 'Lead'} · {fmtDuration(call.duration_seconds)} ·{' '}
-                        {humanizeCallStatus(call.status)}
+                        {call.lead_name || t('common.leadFallback')} ·{' '}
+                        {fmtDuration(call.duration_seconds)} · {humanizeCallStatus(call.status)}
                     </p>
                 )}
                 <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs text-neutral-600">Outcome</Label>
+                    <Label className="text-xs text-neutral-600">
+                        {t('dispositionDialog.outcome')}
+                    </Label>
                     <div className="flex flex-wrap gap-2">
                         {options.map((o) => (
                             <button
@@ -1210,20 +1252,24 @@ function DispositionDialog({
                             >
                                 {o.label}
                                 {o.maps_to_lead_status && (
-                                    <span className="text-xs text-neutral-400">→ status</span>
+                                    <span className="text-xs text-neutral-400">
+                                        {t('dispositionDialog.mapsToStatus')}
+                                    </span>
                                 )}
                             </button>
                         ))}
                         {options.length === 0 && (
                             <span className="text-sm text-neutral-400">
-                                No outcomes configured.
+                                {t('dispositionDialog.noOutcomes')}
                             </span>
                         )}
                     </div>
                 </div>
                 {isCallback && (
                     <div className="flex flex-col gap-1.5">
-                        <Label className="text-xs text-neutral-600">Call back at</Label>
+                        <Label className="text-xs text-neutral-600">
+                            {t('dispositionDialog.callbackAt')}
+                        </Label>
                         <Input
                             type="datetime-local"
                             value={callbackAt}
@@ -1233,11 +1279,13 @@ function DispositionDialog({
                     </div>
                 )}
                 <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs text-neutral-600">Notes (optional)</Label>
+                    <Label className="text-xs text-neutral-600">
+                        {t('dispositionDialog.notes')}
+                    </Label>
                     <Input
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Add a note"
+                        placeholder={t('dispositionDialog.notesPlaceholder')}
                         className="h-9"
                     />
                 </div>
@@ -1256,6 +1304,7 @@ function DispositionDialog({
  * {@link ToolCostConfirmDialog} before the pipeline is triggered.
  */
 function CallIntelligenceDialog({ call, onClose }: { call: CallRow | null; onClose: () => void }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     const [confirmData, setConfirmData] = useState<{
         credits: number | null;
         currentBalance: number | null;
@@ -1299,7 +1348,7 @@ function CallIntelligenceDialog({ call, onClose }: { call: CallRow | null; onClo
     return (
         <>
             <MyDialog
-                heading="Transcript & AI intelligence"
+                heading={t('intelligenceDialog.heading')}
                 open={!!call}
                 onOpenChange={(o) => {
                     if (!o) onClose();
@@ -1309,7 +1358,8 @@ function CallIntelligenceDialog({ call, onClose }: { call: CallRow | null; onClo
                 {call && (
                     <div className="flex flex-col gap-3">
                         <p className="text-sm text-neutral-600">
-                            {call.lead_name || 'Lead'} · {fmtDuration(call.duration_seconds)} ·{' '}
+                            {call.lead_name || t('common.leadFallback')} ·{' '}
+                            {fmtDuration(call.duration_seconds)} ·{' '}
                             {humanizeCallStatus(call.status)}
                         </p>
                         <CallIntelligencePanel
@@ -1331,8 +1381,8 @@ function CallIntelligenceDialog({ call, onClose }: { call: CallRow | null; onClo
                 balanceAfter={confirmData?.balanceAfter ?? null}
                 sufficient={confirmData?.sufficient ?? null}
                 onConfirm={() => settle(true)}
-                heading="Analyze this call?"
-                confirmLabel="Analyze"
+                heading={t('intelligenceDialog.analyzeHeading')}
+                confirmLabel={t('intelligenceDialog.analyzeConfirm')}
             />
         </>
     );
@@ -1373,29 +1423,26 @@ function KpiStat({ label, value, sub, tone, loading }: KpiStatProps) {
 }
 
 function DeployPendingNotice() {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     return (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
             <WarningCircle size={28} className="text-neutral-400" />
-            <p className="text-sm font-medium text-neutral-700">
-                The call dashboard isn&apos;t available on this server yet
-            </p>
-            <p className="max-w-md text-xs text-neutral-500">
-                The telephony dashboard endpoints haven&apos;t been deployed to this environment.
-                Check back after the next backend release.
-            </p>
+            <p className="text-sm font-medium text-neutral-700">{t('deployPending.title')}</p>
+            <p className="max-w-md text-xs text-neutral-500">{t('deployPending.description')}</p>
         </div>
     );
 }
 
 function ErrorNotice({ onRetry }: { onRetry: () => void }) {
+    const { t } = useTranslation('audienceManagerCallLogTab');
     return (
         <div className="flex flex-col items-center gap-3 py-8 text-center">
             <WarningCircle size={24} className="text-danger-500" />
-            <p className="text-sm text-neutral-600">Couldn&apos;t load the call log.</p>
+            <p className="text-sm text-neutral-600">{t('error.loadFailed')}</p>
             <MyButton buttonType="secondary" scale="small" onClick={onRetry}>
                 <span className="flex items-center gap-2">
                     <ArrowsClockwise size={14} />
-                    Retry
+                    {t('common.retry')}
                 </span>
             </MyButton>
         </div>

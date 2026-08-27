@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useFieldArray } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { useAudienceCampaignForm } from '../../-hooks/useAudienceCampaignForm';
@@ -125,6 +126,9 @@ interface CreateCampaignFormProps {
 }
 
 export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSuccess, campaign }) => {
+    const { t } = useTranslation('audienceManagerCreateCampaignForm');
+    const { t: tUpdateAudienceCampaign } = useTranslation('audienceManagerUseUpdateAudienceCampaign');
+    const { t: tCreateAudienceCampaign } = useTranslation('audienceManagerUseCreateAudienceCampaign');
     const { instituteDetails } = useInstituteDetailsStore();
     const isEditMode = Boolean(campaign);
     const editingCampaignId = useMemo(() => getCampaignIdentifier(campaign), [campaign]);
@@ -163,8 +167,8 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         getValues,
         formState: { errors },
     } = form;
-    const createCampaign = useCreateAudienceCampaign();
-    const updateCampaign = useUpdateAudienceCampaign();
+    const createCampaign = useCreateAudienceCampaign(tCreateAudienceCampaign);
+    const updateCampaign = useUpdateAudienceCampaign(tUpdateAudienceCampaign);
 
     // Sub-org options for the optional Sub-Org picker. Reuses the same accessible-sub-orgs
     // endpoint as the rest of the app ({id = child-institute id, name}).
@@ -176,10 +180,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     });
     const subOrgDropdownOptions = useMemo(
         () => [
-            { value: '', label: 'None' },
+            { value: '', label: t('subOrg.noneOption') },
             ...(accessibleSubOrgs ?? []).map((so) => ({ value: so.id, label: so.name })),
         ],
-        [accessibleSubOrgs]
+        [accessibleSubOrgs, t]
     );
     const existingCustomFields = useMemo(
         () => convertExistingCustomFields(campaignData?.institute_custom_fields),
@@ -260,7 +264,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             }
         } catch (error) {
             console.error('Upload failed:', error);
-            toast.error('Failed to upload campaign image');
+            toast.error(t('errors.uploadImageFailed'));
         } finally {
             const prev = getValues('uploadingStates');
             setValue('uploadingStates', { ...prev, campaign_image: false });
@@ -565,6 +569,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             // The dialog only returns options for choice types, so switching away from one
             // clears them instead of leaving stale values to reappear.
             options: options?.map((opt, i) => ({ id: String(i), value: opt.value })),
+            // Always an object once the dialog has run, so "edited to nothing"
+            // is distinguishable from "never touched" on save.
+            config: config ?? {},
         });
 
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
@@ -653,7 +660,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             ...prevOptions,
             {
                 id: String(prevOptions.length),
-                value: `option ${prevOptions.length + 1}`,
+                value: t('customField.newOptionDefault', { number: prevOptions.length + 1 }),
                 disabled: true,
             },
         ]);
@@ -679,7 +686,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             name,
             oldKey,
             ...(resolvedOptions && { options: resolvedOptions }),
-            isRequired: true,
+            // Carried through so help text, file limits and the verification gate
+            // survive the save — the dialog collected them, this dropped them.
+            config: config ?? {},
+            isRequired: (config?.isRequired as boolean | undefined) ?? true,
             key: '',
             order: customFields.length,
         };
@@ -692,7 +702,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
 
     const onFormSubmit = handleSubmit(async (data: AudienceCampaignForm) => {
         if (!instituteDetails?.id) {
-            toast.error('Institute context unavailable. Please refresh and try again.');
+            toast.error(t('errors.instituteContextUnavailable'));
             return;
         }
 
@@ -717,12 +727,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             try {
                 const parsed = JSON.parse(data.institute_custom_fields);
                 if (parsed !== null && !Array.isArray(parsed)) {
-                    toast.error('Custom fields JSON must be an array.');
+                    toast.error(t('errors.customFieldsMustBeArray'));
                     return;
                 }
                 parsedCustomFields = parsed;
             } catch (error) {
-                toast.error('Custom fields must be valid JSON.');
+                toast.error(t('errors.customFieldsInvalidJson'));
                 console.error('Invalid custom fields JSON:', error);
                 return;
             }
@@ -832,11 +842,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     const isSaving = isSubmitting || createCampaign.isPending || updateCampaign.isPending;
     const primaryButtonLabel = isEditMode
         ? isSaving
-            ? 'Saving...'
-            : 'Save Changes'
+            ? t('actions.saving')
+            : t('actions.save')
         : isSaving
-          ? 'Creating...'
-          : `Create ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`;
+          ? t('actions.creating')
+          : t('actions.create', {
+                term: getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList),
+            });
 
     // Show loading state while fetching campaign data
     if (isEditMode && isLoadingCampaign) {
@@ -852,7 +864,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {isStatusActive && latestCampaignShareLink && (
                 <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
                     <p className="text-sm font-semibold text-primary-700">
-                        Campaign link ready to share
+                        {t('shareLink.ready')}
                     </p>
                     <CampaignLink
                         presetLink={latestCampaignShareLink}
@@ -864,11 +876,11 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Campaign Name */}
             <div>
                 <label className="block text-sm font-semibold text-neutral-700">
-                    Campaign Name <span className="text-red-500">*</span>
+                    {t('campaignName.label')} <span className="text-red-500">*</span>
                 </label>
                 <input
                     type="text"
-                    placeholder="Enter campaign name"
+                    placeholder={t('campaignName.placeholder')}
                     {...register('campaign_name')}
                     className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                 />
@@ -885,7 +897,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Campaign Type <span className="text-red-500">*</span>
+                        {t('campaignType.label')} <span className="text-red-500">*</span>
                     </label>
                     <div className="mt-2">
                         <CampaignTypeDropdown
@@ -903,12 +915,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 {/* CampaignObjective */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Campaign Objective
+                        {t('campaignObjective.label')}
                         {/* <span className="text-red-500">*</span> */}
                     </label>
                     <input
                         type="text"
-                        placeholder="e.g., Engagement, Retention"
+                        placeholder={t('campaignObjective.placeholder')}
                         {...register('campaign_objective')}
                         className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                     />
@@ -923,12 +935,14 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Sub-Org (optional) — only shown when the institute has sub-orgs */}
             {subOrgDropdownOptions.length > 1 && (
                 <div>
-                    <label className="block text-sm font-semibold text-neutral-700">Sub-Org</label>
+                    <label className="block text-sm font-semibold text-neutral-700">
+                        {t('subOrg.label')}
+                    </label>
                     <div className="mt-2">
                         <StatusDropdown
                             value={watch('sub_org_id') || ''}
                             initialOptions={subOrgDropdownOptions}
-                            placeholder="Select sub-org (optional)"
+                            placeholder={t('subOrg.placeholder')}
                             onChange={(val) => {
                                 setValue('sub_org_id', val, { shouldDirty: true });
                             }}
@@ -942,7 +956,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 <div className="flex flex-wrap gap-2">
                     <label className="block text-sm font-semibold text-neutral-700">
                         {' '}
-                        Team Notifications{' '}
+                        {t('teamNotifications.label')}{' '}
                     </label>
                     <TooltipProvider>
                         <Tooltip delayDuration={0}>
@@ -950,16 +964,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                 <button
                                     type="button"
                                     className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label="Information about sharing campaign analytics"
+                                    aria-label={t('teamNotifications.infoAriaLabel')}
                                 >
                                     <Info className="size-4" weight="bold" />
                                 </button>
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>
-                                    Enter email addresses of team members who should receive
-                                    campaign updates
-                                </p>
+                                <p>{t('teamNotifications.tooltip')}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -968,7 +979,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     ref={multiEmailRef}
                     value={emails}
                     onChange={setEmails}
-                    placeholder="Enter email addresses"
+                    placeholder={t('teamNotifications.placeholder')}
                     error={errors?.to_notify?.message}
                 />
 
@@ -976,7 +987,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 <div className="flex items-center justify-between gap-2 px-2 py-2">
                     <div className="flex items-center gap-2">
                         <label className="block text-sm font-semibold text-neutral-700">
-                            Share Campaign Analytics with Team Members
+                            {t('shareAnalytics.label')}
                         </label>
                         <TooltipProvider>
                             <Tooltip delayDuration={0}>
@@ -984,16 +995,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                     <button
                                         type="button"
                                         className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                        aria-label="Information about sharing campaign analytics"
+                                        aria-label={t('shareAnalytics.infoAriaLabel')}
                                     >
                                         <Info className="size-4" weight="regular" />
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                    <p>
-                                        Allow team members to view campaign performance metrics and
-                                        reports
-                                    </p>
+                                    <p>{t('shareAnalytics.tooltip')}</p>
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
@@ -1010,10 +1018,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Description */}
             <div>
                 <label className="block text-sm font-semibold text-neutral-700">
-                    Campaign Description
+                    {t('description.label')}
                 </label>
                 <textarea
-                    placeholder="Describe the campaign's goals, target audience, and key messages"
+                    placeholder={t('description.placeholder')}
                     rows={3}
                     {...register('description')}
                     className="mt-2 w-full resize-none rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
@@ -1031,7 +1039,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 {/* Start Date */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Start Date <span className="text-red-500">*</span>
+                        {t('startDate.label')} <span className="text-red-500">*</span>
                     </label>
                     <Controller
                         name="start_date_local"
@@ -1096,7 +1104,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 {/* End Date */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        End Date <span className="text-red-500">*</span>
+                        {t('endDate.label')} <span className="text-red-500">*</span>
                     </label>
                     <Controller
                         name="end_date_local"
@@ -1176,23 +1184,22 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Status */}
             <div>
                 <div className="flex items-center gap-2">
-                    <label className="block text-sm font-semibold text-neutral-700">Status</label>
+                    <label className="block text-sm font-semibold text-neutral-700">
+                        {t('status.label')}
+                    </label>
                     <TooltipProvider>
                         <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
                                 <button
                                     type="button"
                                     className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label="Information about sharing campaign analytics"
+                                    aria-label={t('status.infoAriaLabel')}
                                 >
                                     <Info className="size-4" weight="bold" />
                                 </button>
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>
-                                    To share the campaign link with Learners, please ensure the
-                                    campaign status is set to Active.
-                                </p>
+                                <p>{t('status.tooltip')}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -1215,7 +1222,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             <div>
                 <div className="flex items-center gap-2">
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Initial Lead Score
+                        {t('initialLeadScore.label')}
                     </label>
                     <TooltipProvider>
                         <Tooltip delayDuration={0}>
@@ -1223,16 +1230,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                 <button
                                     type="button"
                                     className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label="Initial lead score info"
+                                    aria-label={t('initialLeadScore.infoAriaLabel')}
                                 >
                                     <Info className="size-4" weight="bold" />
                                 </button>
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>
-                                    A base score added to every lead captured through this campaign.
-                                    Final score = initial score + calculated score (capped at 100).
-                                </p>
+                                <p>{t('initialLeadScore.tooltip')}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -1292,8 +1296,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                         // block, and the create form must look the way it
                         // always did for admins who don't need it.
                         collapsible
-                        previewCampaignName={watch('campaign_name') || 'Your Campaign'}
-                        description="What the respondent sees the moment this form is submitted. Prefilled from Settings → Lead Settings → Forms; changes here apply to this campaign only."
+                        previewCampaignName={
+                            watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
+                        }
+                        description={t('postSubmit.description')}
                     />
                 )}
             />
@@ -1309,7 +1315,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     buttonType="secondary"
                     scale="medium"
                 >
-                    Reset
+                    {t('actions.reset')}
                 </MyButton>
                 <MyButton type="submit" disabled={isSaving} buttonType="primary" scale="medium">
                     {primaryButtonLabel}

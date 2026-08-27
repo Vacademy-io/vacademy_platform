@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { CheckCircle } from "@phosphor-icons/react";
 import QuizTimer from "./QuizTimer";
 import QuizTimeWarning from "./QuizTimeWarning";
@@ -71,20 +73,20 @@ interface QuizViewerProps {
   reAttemptCount?: number | null;
 }
 
-const BASE_QUESTION_TYPE_DESCRIPTIONS: Record<string, string> = {
-  MCQS: "Multiple Choice Questions - Single Correct Option",
-  MCQM: "Multiple Choice Questions - Multiple Correct Option",
-  NUMERIC: "Numeric Answer",
-  ONE_WORD: "One Word Answer",
-  TEXT: "Short Answer - Text Response",
-  LONG_ANSWER: "Long Answer - Detailed Response",
-  TRUE_FALSE: "True or False",
-  MATCH: "Match the Following",
-  FILL_IN_THE_BLANK: "Fill in the Blank",
-};
+const getBaseQuestionTypeDescriptions = (t: TFunction): Record<string, string> => ({
+  MCQS: t("quizViewer.questionTypeDescriptions.mcqs"),
+  MCQM: t("quizViewer.questionTypeDescriptions.mcqm"),
+  NUMERIC: t("quizViewer.questionTypeDescriptions.numeric"),
+  ONE_WORD: t("quizViewer.questionTypeDescriptions.oneWord"),
+  TEXT: t("quizViewer.questionTypeDescriptions.text"),
+  LONG_ANSWER: t("quizViewer.questionTypeDescriptions.longAnswer"),
+  TRUE_FALSE: t("quizViewer.questionTypeDescriptions.trueFalse"),
+  MATCH: t("quizViewer.questionTypeDescriptions.match"),
+  FILL_IN_THE_BLANK: t("quizViewer.questionTypeDescriptions.fillInTheBlank"),
+});
 
-const formatQuestionTypeLabel = (type?: string) => {
-  if (!type) return "Question";
+const formatQuestionTypeLabel = (type: string | undefined, t: TFunction) => {
+  if (!type) return t("quizViewer.questionTypeDescriptions.genericQuestion");
   return type
     .split("_")
     .filter(Boolean)
@@ -142,25 +144,28 @@ const isAnswerCorrect = (q: Question, answer: AnswerValue): boolean => {
   return correct.includes(String(answer));
 };
 
-const getQuestionTypeDescription = (type?: string): string => {
+const getQuestionTypeDescription = (type: string | undefined, t: TFunction): string => {
+  const baseDescriptions = getBaseQuestionTypeDescriptions(t);
   if (!type) {
-    return BASE_QUESTION_TYPE_DESCRIPTIONS.MCQS;
+    return baseDescriptions.MCQS;
   }
 
-  const directMatch = BASE_QUESTION_TYPE_DESCRIPTIONS[type];
+  const directMatch = baseDescriptions[type];
   if (directMatch) {
     return directMatch;
   }
 
   if (type.startsWith("C")) {
     const baseType = type.slice(1);
-    const baseDescription = BASE_QUESTION_TYPE_DESCRIPTIONS[baseType];
+    const baseDescription = baseDescriptions[baseType];
     if (baseDescription) {
-      return `Comprehension ${baseDescription}`;
+      return t("quizViewer.questionTypeDescriptions.comprehensionPrefix", {
+        description: baseDescription,
+      });
     }
   }
 
-  return formatQuestionTypeLabel(type);
+  return formatQuestionTypeLabel(type, t);
 };
 
 
@@ -177,6 +182,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   passPercentage,
   reAttemptCount,
 }) => {
+  const { t } = useTranslation("libraryCommonB");
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<{ [questionId: string]: string | number | string[] }>({});
   const [numericErrors, setNumericErrors] = useState<{ [questionId: string]: string }>({});
@@ -473,8 +479,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   const total = questions?.length || 0;
   const questionType = currentQuestion?.question_type || "MCQS";
   const questionTypeDescription = useMemo(
-    () => getQuestionTypeDescription(questionType),
-    [questionType]
+    () => getQuestionTypeDescription(questionType, t),
+    [questionType, t]
   );
   // Derive correct answers from auto_evaluation_json
   const correctAnswers = useMemo<(string | number)[]>(() => {
@@ -534,7 +540,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
             <div className="w-8 h-8 text-gray-400 text-2xl font-bold">?</div>
           </div>
-          <p className="text-gray-500">No quiz questions available.</p>
+          <p className="text-gray-500">{t("quizViewer.noQuestionsAvailable")}</p>
         </div>
       </div>
     );
@@ -682,7 +688,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       attemptLogs={displayedAttemptLogs}
       onRestart={() => {
         if (attemptsExhausted) {
-          toast.error("No attempts remaining for this quiz.");
+          toast.error(t("quizViewer.toast.noAttemptsRemaining"));
           return;
         }
         const { slideId, chapterId } = getUrlParams();
@@ -709,7 +715,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
 
   const handleQuizSubmit = async (finalAnswers: typeof answers) => {
     if (attemptsExhausted) {
-      toast.error("No attempts remaining for this quiz.");
+      toast.error(t("quizViewer.toast.noAttemptsRemaining"));
       setShowReview(true);
       return;
     }
@@ -719,7 +725,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       const userId = (await getUserId()) || "";
 
       if (!slideId || !chapterId || !moduleId || !subjectId || !packageSessionId || !userId) {
-        toast.error("Cannot submit quiz — missing context. Please reopen this slide.");
+        toast.error(t("quizViewer.toast.missingContext"));
         return;
       }
 
@@ -754,7 +760,9 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       }
 
       toast.success(
-        offlineQueued ? "Saved — will sync when online" : "Quiz submitted!",
+        offlineQueued
+          ? t("quizViewer.toast.savedOffline")
+          : t("quizViewer.toast.quizSubmitted"),
         { className: "text-center" }
       );
 
@@ -790,7 +798,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       setShowReview(true);
       if (onComplete) onComplete();
     } catch {
-      toast.error("Failed to submit quiz. Please try again.");
+      toast.error(t("quizViewer.toast.submitFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -819,7 +827,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       setAnswers((prev) => ({ ...prev, [currentQuestion.id]: "" }));
       onAnswer(currentQuestion.id, "");
     } else if (!isNumeric) {
-      setNumericErrors((prev) => ({ ...prev, [currentQuestion.id]: "Please enter a valid number" }));
+      setNumericErrors((prev) => ({ ...prev, [currentQuestion.id]: t("quizViewer.invalidNumber") }));
       setAnswers((prev) => ({ ...prev, [currentQuestion.id]: value }));
       onAnswer(currentQuestion.id, value);
     } else {
@@ -853,7 +861,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     // correct answers will be shown in the final report after the quiz.
     if (!showReportAndCorrectAnswers && moveOnlyOnCorrectAnswer && !isCurrentAnswerCorrect) {
       setShowIncorrectNotice(true);
-      toast.error("Incorrect answer. Please try again.");
+      toast.error(t("quizViewer.toast.incorrectAnswer"));
       return;
     }
 
@@ -876,7 +884,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
             packageSessionId: packageSessionId,
             userId,
           });
-          toast.error("Cannot submit quiz — missing context. Please reopen this slide.");
+          toast.error(t("quizViewer.toast.missingContext"));
           return;
         }
 
@@ -925,7 +933,9 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         console.groupEnd();
         console.log("Quiz submitted successfully");
         toast.success(
-          offlineQueued ? "Saved — will sync when online" : "Quiz submitted successfully!",
+          offlineQueued
+            ? t("quizViewer.toast.savedOffline")
+            : t("quizViewer.toast.quizSubmittedSuccessfully"),
           { className: "text-center" }
         );
         queryClient.invalidateQueries({ queryKey: ["quiz-slide-activity-logs", currentUserId, currentSlideIdForAttempts] });
@@ -1045,7 +1055,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         if (onComplete) onComplete();
       } catch (err) {
         console.error("❌ [QuizViewer] Quiz submission failed", err);
-        toast.error("Failed to submit quiz. Please try again.");
+        toast.error(t("quizViewer.toast.submitFailed"));
       } finally {
         setIsSubmitting(false);
       }
@@ -1111,7 +1121,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
               inputType="text"
               input={String(currentAnswer || "")}
               onChangeFunction={(e) => handleNumericInput(e.target.value)}
-              inputPlaceholder="Enter numeric value"
+              inputPlaceholder={t("quizViewer.placeholders.numeric")}
               inputMode="numeric"
               className={`text-sm py-3 font-normal w-full border-primary-100 focus:border-primary-500 focus:ring-primary-500 ${
                 numericErrors[currentQuestion.id] ? "border-danger-600 focus:border-danger-600 focus:ring-danger-600" : ""
@@ -1134,7 +1144,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
               inputType="text"
               input={String(currentAnswer || "")}
               onChangeFunction={(e) => handleTextInput(e.target.value)}
-              inputPlaceholder="Type your answer"
+              inputPlaceholder={t("quizViewer.placeholders.text")}
               className="text-sm py-3 font-normal w-full border-primary-100 focus:border-primary-500 focus:ring-primary-500"
               onCopy={(e) => e.preventDefault()}
               onCut={(e) => e.preventDefault()}
@@ -1149,7 +1159,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
             <Textarea
               value={currentAnswer || ""}
               onChange={(e) => handleTextInput(e.target.value)}
-              placeholder="Type your answer..."
+              placeholder={t("quizViewer.placeholders.longAnswer")}
               className="min-h-reg-150 sm:min-h-reg-200 text-sm w-full border-primary-100 focus:border-primary-500 focus:ring-primary-500"
               onCopy={(e) => e.preventDefault()}
               onCut={(e) => e.preventDefault()}
@@ -1269,7 +1279,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       {/* Question X of Y and Progress bar */}
       <div className="mb-8">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm text-gray-700 font-medium">Question {current + 1} of {total}</span>
+          <span className="text-sm text-gray-700 font-medium">{t("quizViewer.questionOf", { current: current + 1, total })}</span>
           <div className="ms-auto flex items-center gap-3">
             {timeLimitMinutes && timeLimitMinutes > 0 && (
               <QuizTimer
@@ -1297,8 +1307,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         {/* Render passage and question together if passage exists */}
         {hasPassage ? (
           <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Passage:</h3>
-            <div 
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">{t("quizViewer.passageLabel")}</h3>
+            <div
               className="text-sm text-gray-800 leading-relaxed rich-text-content"
               dangerouslySetInnerHTML={{ __html: showFullPassage || !isPassageLong ? renderHtmlWithMath(passageHtml) : renderHtmlWithMath(passageToShow) }}
             />
@@ -1308,25 +1318,25 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
                 onClick={() => setShowFullPassage((prev) => !prev)}
                 type="button"
               >
-                {showFullPassage ? "Show less" : "Show more"}
+                {showFullPassage ? t("quizViewer.showLess") : t("quizViewer.showMore")}
               </button>
             )}
             {/* Question text inside the same box */}
             <div className="mt-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Question:</h3>
-              <div 
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">{t("quizViewer.questionLabel")}</h3>
+              <div
                 className="text-sm font-medium text-gray-900 leading-relaxed rich-text-content"
-                dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || "Question text not available") }}
+                dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || t("quizViewer.questionTextUnavailable")) }}
               />
             </div>
           </div>
         ) : (
           // No passage, just show question text as before
           <div className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Question:</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">{t("quizViewer.questionLabel")}</h3>
             <div
               className="text-sm font-medium text-gray-900 leading-relaxed rich-text-content"
-              dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || "Question text not available") }}
+              dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || t("quizViewer.questionTextUnavailable")) }}
             />
           </div>
         )}
@@ -1344,7 +1354,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           className="flex items-center justify-center min-w-reg-120 space-x-2"
         >
           <span>←</span>
-          <span>Previous</span>
+          <span>{t("quizViewer.buttons.previous")}</span>
         </MyButton>
 
         <div className="flex items-center space-x-2">
@@ -1352,10 +1362,10 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
             <CheckCircle className="w-5 h-5 text-green-500" />
           )}
           <span className="text-sm text-gray-500">
-            {isAnswered() ? "Answered" : "Not answered"}
+            {isAnswered() ? t("quizViewer.answered") : t("quizViewer.notAnswered")}
           </span>
           {showIncorrectNotice && (
-            <span className="text-sm text-danger-600 ms-2">Incorrect. Try again.</span>
+            <span className="text-sm text-danger-600 ms-2">{t("quizViewer.incorrectTryAgain")}</span>
           )}
         </div>
 
@@ -1366,7 +1376,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           onClick={handleNext}
           className="flex items-center justify-center min-w-reg-120 space-x-2"
         >
-          <span>{isSubmitting ? "Submitting..." : current === total - 1 ? "Finish" : "Next"}</span>
+          <span>{isSubmitting ? t("quizViewer.buttons.submitting") : current === total - 1 ? t("quizViewer.buttons.finish") : t("quizViewer.buttons.next")}</span>
           {current !== total - 1 && !isSubmitting && <span>→</span>}
         </MyButton>
       </div>

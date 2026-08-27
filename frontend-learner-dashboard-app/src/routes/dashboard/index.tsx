@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { openInBrowser } from "@/lib/open-in-browser";
+import { formatDate } from "@/lib/formatters";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
@@ -139,6 +141,7 @@ export const Route = createFileRoute("/dashboard/")({
  * learner doesn't pay for dashboard queries they can't see yet.
  */
 function DashboardOnboardingGate() {
+  const { t } = useTranslation("dashboard");
   // Resolved the same way as the standalone /onboarding page (getInstituteId(), not the
   // domain-routing store): that store only gets populated once useDomainRouting's async
   // resolution completes, which can still be in flight on a fresh page load, and starts
@@ -198,17 +201,17 @@ function DashboardOnboardingGate() {
         <div>
           <h1 className="text-h3 font-semibold text-neutral-700">
             {pending.instance.subject_full_name
-              ? `Finish setting up ${pending.instance.subject_full_name}'s account`
-              : "Finish setting up your account"}
+              ? t("onboardingGate.finishSetupWithName", { name: pending.instance.subject_full_name })
+              : t("onboardingGate.finishSetupGeneric")}
           </h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Complete the steps below to continue to your dashboard.
+            {t("onboardingGate.completeStepsPrompt")}
           </p>
         </div>
         <OnboardingStepForm stepInstance={pending.current.step} onSubmitted={() => {}} />
         <ModernCard variant="outlined" padding="md" rounded="lg">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Progress
+            {t("onboardingGate.progressLabel")}
           </p>
           <OnboardingProgressList stepInstances={pending.instance.step_instances} />
         </ModernCard>
@@ -222,8 +225,8 @@ function DashboardOnboardingGate() {
         <div className="flex items-center justify-center gap-2 border-b border-warning-200 bg-warning-50 px-4 py-2.5 text-center text-sm text-warning-700">
           <Hourglass size={16} weight="fill" />
           <span>
-            <strong>&ldquo;{waitingOnAdmin.current.step.step_name}&rdquo;</strong> is being
-            handled by your school admin — you don&apos;t need to do anything here.
+            <strong>&ldquo;{waitingOnAdmin.current.step.step_name}&rdquo;</strong>{" "}
+            {t("onboardingGate.waitingOnAdminSuffix")}
           </span>
         </div>
       )}
@@ -233,6 +236,7 @@ function DashboardOnboardingGate() {
 }
 
 export function DashboardComponent() {
+  const { t } = useTranslation("dashboard");
   const [username, setUsername] = useState<string | null>(null);
   const [testAssignedCount, setTestAssignedCount] = useState<number>(0);
   // Count kept in state only because fetchStaticData's signature requires the setter.
@@ -343,11 +347,12 @@ export function DashboardComponent() {
 
   const greetingText = useMemo(() => {
     const firstName = (username ?? "").trim().split(/\s+/)[0] ?? "";
-    if (!firstName) return "Welcome back";
+    if (!firstName) return t("hero.greeting.welcomeBackFallback");
     const hour = new Date().getHours();
     const period = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
-    return `Good ${period}, ${firstName.charAt(0).toUpperCase()}${firstName.slice(1)}`;
-  }, [username]);
+    const capitalizedName = `${firstName.charAt(0).toUpperCase()}${firstName.slice(1)}`;
+    return t(`hero.greeting.${period}WithName`, { name: capitalizedName });
+  }, [username, t]);
 
   // Update Zustand store when React Query data changes
   useEffect(() => {
@@ -492,7 +497,7 @@ export function DashboardComponent() {
   }, [batchId, refetchLiveSessions]);
 
   useEffect(() => {
-    setNavHeading("Dashboard");
+    setNavHeading(t("dashboardPage.pageTitle"));
     const initializeDashboard = async () => {
       setIsLoading(true);
       try {
@@ -692,7 +697,7 @@ export function DashboardComponent() {
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
-        toast.error("Failed to mark attendance");
+        toast.error(t("dashboardPage.toast.attendanceMarkFailed"));
 
         if (isBbbSession(session.link_type)) {
           // BBB: open the personalized join URL (real name + userId). Checked FIRST
@@ -728,12 +733,15 @@ export function DashboardComponent() {
   // One useful header fact: classes today, else attendance streak, else none.
   const headerFact =
     classesTodayCount > 0
-      ? `${classesTodayCount} ${(classesTodayCount === 1
-          ? liveClassSingular
-          : liveClassPlural
-        ).toLowerCase()} today`
+      ? t("dashboardPage.classesToday", {
+          count: classesTodayCount,
+          liveClass: (classesTodayCount === 1
+            ? liveClassSingular
+            : liveClassPlural
+          ).toLowerCase(),
+        })
       : attendanceStreak > 0
-        ? `${attendanceStreak}-day attendance streak`
+        ? t("dashboardPage.attendanceStreakFact", { count: attendanceStreak })
         : null;
 
   const heroProps = {
@@ -772,10 +780,9 @@ export function DashboardComponent() {
             navigate({ to: "/study-library/courses" });
           }}
           isLoading={isLoading}
-          emptyActionLabel={`Browse ${getTerminologyPlural(
-            ContentTerms.Course,
-            SystemTerms.Course
-          )}`}
+          emptyActionLabel={t("dashboardPage.statCard.coursesEmptyAction", {
+            courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+          })}
           className="stat-card-courses [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
           iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-info-soft-ink [.ui-play_&]:ring-0"
           cleanerIllustrationSrc={cleanerIconCourses}
@@ -795,10 +802,9 @@ export function DashboardComponent() {
           icon={Play}
           onClick={() => navigate({ to: "/study-library/live-class" })}
           isLoading={isLoadingLiveSessions}
-          emptyActionLabel={`View ${getTerminologyPlural(
-            ContentTerms.LiveSession,
-            SystemTerms.LiveSession
-          )}`}
+          emptyActionLabel={t("dashboardPage.statCard.liveClassesEmptyAction", {
+            liveClasses: getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession),
+          })}
           className="stat-card-live [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
           iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:ring-0"
           cleanerIllustrationSrc={cleanerIconLive}
@@ -810,7 +816,7 @@ export function DashboardComponent() {
       render: (layout) => (
         <StatCard
           layout={layout}
-          title="Assessments"
+          title={t("dashboardPage.statCard.assessmentsTitle")}
           count={testAssignedCount}
           icon={Trophy}
           onClick={() => {
@@ -821,7 +827,7 @@ export function DashboardComponent() {
             navigate({ to: "/assessment/examination" });
           }}
           isLoading={isLoading}
-          emptyActionLabel="View Assessments"
+          emptyActionLabel={t("dashboardPage.statCard.assessmentsEmptyAction")}
           className="stat-card-assessments [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
           iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-accent-soft-ink [.ui-play_&]:ring-0"
           cleanerIllustrationSrc={cleanerIconAssessments}
@@ -905,7 +911,7 @@ export function DashboardComponent() {
         >
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">
-              {customWidget.title || "Custom Widget"}
+              {customWidget.title || t("dashboardPage.customWidgetFallbackTitle")}
             </CardTitle>
             {customWidget.subTitle && (
               <CardDescription>{customWidget.subTitle}</CardDescription>
@@ -926,7 +932,7 @@ export function DashboardComponent() {
                 }}
                 className="w-full justify-between"
               >
-                Open <CaretRight size={14} />
+                {t("dashboardPage.openButton")} <CaretRight size={14} />
               </Button>
             )}
           </CardContent>
@@ -1000,11 +1006,11 @@ export function DashboardComponent() {
         <title>
           {typeof document !== "undefined" && document.title
             ? document.title
-            : "Dashboard"}
+            : t("dashboardPage.pageTitle")}
         </title>
         <meta
           name="description"
-          content="Enterprise Dashboard - Learning Management System"
+          content={t("dashboardPage.metaDescription")}
         />
         <meta
           name="viewport"
@@ -1044,7 +1050,7 @@ export function DashboardComponent() {
                 {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
                   <p className="mt-1 flex items-center gap-2 text-muted-foreground">
                     <Sparkle size={16} className="text-primary" />
-                    <span>Ready for today's yoga journey?</span>
+                    <span>{t("dashboardPage.yogaGreeting")}</span>
                   </p>
                 ) : headerFact ? (
                   <p className="mt-1 text-caption text-muted-foreground">
@@ -1055,7 +1061,7 @@ export function DashboardComponent() {
             </div>
 
             <p className="text-caption text-muted-foreground">
-              {new Date().toLocaleDateString("en-US", {
+              {formatDate(new Date(), {
                 weekday: "long",
                 month: "long",
                 day: "numeric",
@@ -1155,10 +1161,10 @@ export function DashboardComponent() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-orange-900">
-                      Developer Testing
+                      {t("dashboardPage.devTesting.title")}
                     </h3>
                     <p className="text-sm text-orange-700">
-                      Test push notification functionality
+                      {t("dashboardPage.devTesting.description")}
                     </p>
                   </div>
                 </CardContent>
@@ -1187,7 +1193,7 @@ export function DashboardComponent() {
                         navigate({ to: "/collections" as never });
                       }}
                     >
-                      Explore Memberships
+                      {t("dashboardPage.exploreMembershipsButton")}
                       <CaretRight size={14} />
                     </Button>
                   )}
@@ -1199,7 +1205,7 @@ export function DashboardComponent() {
                         navigate({ to: "/collections" as never });
                       }}
                     >
-                      Explore Books
+                      {t("dashboardPage.exploreBooksButton")}
                       <CaretRight size={14} />
                     </Button>
                   )}
@@ -1220,7 +1226,7 @@ export function DashboardComponent() {
                   <CardContent className="p-0 relative h-full flex items-center justify-center min-h-72">
                     <img
                       src="/yoga-dashboard.png"
-                      alt="Yoga illustration"
+                      alt={t("dashboardPage.holistic.yogaIllustrationAlt")}
                       className="object-contain max-h-72"
                     />
                   </CardContent>
@@ -1238,7 +1244,7 @@ export function DashboardComponent() {
                           size={18}
                           className="text-primary"
                         />
-                        <span>This Week</span>
+                        <span>{t("dashboardPage.holistic.thisWeekTitle")}</span>
                       </div>
                       {weeklyAttendance?.weekRange && (
                         <span className="text-xs text-muted-foreground font-normal">
@@ -1320,10 +1326,10 @@ export function DashboardComponent() {
                       </div>
                       <div>
                         <h3 className="font-semibold text-sm">
-                          Refer A Friend
+                          {t("dashboardPage.holistic.referFriendTitle")}
                         </h3>
                         <p className="text-xs text-muted-foreground">
-                          Share the journey
+                          {t("dashboardPage.holistic.referFriendSubtitle")}
                         </p>
                       </div>
                     </div>
@@ -1332,7 +1338,7 @@ export function DashboardComponent() {
                       variant="secondary"
                       onClick={() => navigate({ to: "/referral" })}
                     >
-                      Invite
+                      {t("dashboardPage.holistic.inviteButton")}
                     </Button>
                   </CardContent>
                 </Card>
@@ -1347,7 +1353,7 @@ export function DashboardComponent() {
                     <VideoCamera size={18} />
                   </div>
                   <div className="space-y-0.5">
-                    <CardTitle className="text-base">My Classes</CardTitle>
+                    <CardTitle className="text-base">{t("dashboardPage.holistic.myClassesTitle")}</CardTitle>
                     <CardDescription className="text-xs">
                       {getUserTimezone()}
                     </CardDescription>
@@ -1358,7 +1364,7 @@ export function DashboardComponent() {
                   size="sm"
                   onClick={() => navigate({ to: "/study-library/live-class" })}
                 >
-                  View All <CaretRight size={14} className="ms-1" />
+                  {t("liveClasses.viewAll")} <CaretRight size={14} className="ms-1" />
                 </Button>
               </CardHeader>
               <CardContent>
@@ -1407,13 +1413,13 @@ export function DashboardComponent() {
                             variant="default"
                             className="bg-green-600 hover:bg-green-700"
                           >
-                            Live
+                            {t("dashboardPage.holistic.liveBadge")}
                           </Badge>
                           <Button
                             size="sm"
                             onClick={() => handleJoinSession(session)}
                           >
-                            Join Now
+                            {t("dashboardPage.holistic.joinNowButton")}
                           </Button>
                         </div>
                       </div>
@@ -1435,18 +1441,22 @@ export function DashboardComponent() {
                                 {session.title}
                               </h4>
                               <p className="text-xs text-muted-foreground">
-                                {new Date(
-                                  `${session.meeting_date}T${session.start_time}`
-                                ).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                })}{" "}
-                                at{" "}
-                                {formatSessionTimeInUserTimezone(
-                                  session.meeting_date,
-                                  session.start_time,
-                                  session.timezone
-                                )}
+                                {t("dashboardPage.holistic.dateAtTime", {
+                                  date: formatDate(
+                                    new Date(
+                                      `${session.meeting_date}T${session.start_time}`
+                                    ),
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                    }
+                                  ),
+                                  time: formatSessionTimeInUserTimezone(
+                                    session.meeting_date,
+                                    session.start_time,
+                                    session.timezone
+                                  ),
+                                })}
                               </p>
                             </div>
                           </div>
@@ -1454,7 +1464,7 @@ export function DashboardComponent() {
                             variant="secondary"
                             className="bg-blue-100 text-blue-700 border-blue-200"
                           >
-                            Upcoming
+                            {t("liveClasses.upcomingBadge")}
                           </Badge>
                         </div>
                       ))}
@@ -1469,10 +1479,12 @@ export function DashboardComponent() {
                             />
                           </div>
                           <h3 className="font-semibold text-sm">
-                            No {getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase()} scheduled
+                            {t("dashboardPage.holistic.noLiveClassesScheduled", {
+                              liveClasses: getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase(),
+                            })}
                           </h3>
                           <p className="text-xs text-muted-foreground mt-1 mb-4">
-                            Check back later for upcoming live classes
+                            {t("dashboardPage.holistic.checkBackLater")}
                           </p>
                           <Button
                             variant="outline"
@@ -1481,7 +1493,7 @@ export function DashboardComponent() {
                               navigate({ to: "/study-library/live-class" })
                             }
                           >
-                            View All Classes
+                            {t("dashboardPage.holistic.viewAllClassesButton")}
                           </Button>
                         </div>
                       )}

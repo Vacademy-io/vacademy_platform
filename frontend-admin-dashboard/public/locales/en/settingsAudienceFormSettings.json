@@ -1,0 +1,16 @@
+{
+    "loading": "Loading form settings…",
+    "header": {
+        "title": "Audience Form Defaults",
+        "description": "The thank-you screen every new audience list starts with. Each campaign can override it while being created or edited — changes here only affect campaigns created from now on."
+    },
+    "toasts": {
+        "saved": "Form settings saved",
+        "saveFailed": "Failed to save form settings"
+    },
+    "actions": {
+        "restoreDefaults": "Restore Defaults",
+        "saving": "Saving…",
+        "saveChanges": "Save Changes"
+    }
+}

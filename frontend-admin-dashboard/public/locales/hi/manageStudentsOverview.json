@@ -1,0 +1,32 @@
+{
+    "toast": {
+        "copiedToClipboard": "{{field}} क्लिपबोर्ड पर कॉपी हो गया!",
+        "copyFailed": "{{field}} कॉपी करने में विफल"
+    },
+    "password": {
+        "notFound": "पासवर्ड नहीं मिला"
+    },
+    "empty": {
+        "noOverviewData": "कोई अवलोकन डेटा उपलब्ध नहीं है"
+    },
+    "errors": {
+        "fetchStudentDetails": "छात्र विवरण प्राप्त करने में त्रुटि"
+    },
+    "sections": {
+        "customFields": "कस्टम फ़ील्ड",
+        "termsAndConditions": "नियम एवं शर्तें"
+    },
+    "fields": {
+        "status": "स्थिति",
+        "signedOn": "हस्ताक्षर की तारीख",
+        "signedPdf": "हस्ताक्षरित PDF",
+        "notAvailable": "उपलब्ध नहीं"
+    },
+    "status": {
+        "signed": "हस्ताक्षरित",
+        "notSigned": "हस्ताक्षरित नहीं"
+    },
+    "actions": {
+        "download": "डाउनलोड करें"
+    }
+}

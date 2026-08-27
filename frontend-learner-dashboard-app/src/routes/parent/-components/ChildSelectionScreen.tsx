@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import type { ChildProfile } from "@/types/parent-portal";
 import { BASE_URL } from "@/constants/urls";
 
@@ -32,6 +33,7 @@ export function ChildSelectionScreen({
   parentName,
   onSelect,
 }: ChildSelectionScreenProps) {
+  const { t } = useTranslation("parent");
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -54,10 +56,10 @@ export function ChildSelectionScreen({
         className="text-center mb-10 sm:mb-14 relative z-10"
       >
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight mb-3">
-          Hello, {parentName}
+          {t("admissionPortal.childSelect.hello", { name: parentName })}
         </h1>
         <p className="text-slate-600 font-medium text-sm sm:text-base">
-          Select a student to manage their admission journey
+          {t("admissionPortal.childSelect.subtitle")}
         </p>
       </motion.div>
 
@@ -80,7 +82,7 @@ export function ChildSelectionScreen({
         transition={{ delay: 0.8 }}
         className="mt-12 text-slate-400 text-xs sm:text-sm text-center relative z-10 font-medium"
       >
-        Student profiles are linked to your registered email. Contact the school office for assistance.
+        {t("admissionPortal.childSelect.footerHint")}
       </motion.p>
     </motion.div>
   );

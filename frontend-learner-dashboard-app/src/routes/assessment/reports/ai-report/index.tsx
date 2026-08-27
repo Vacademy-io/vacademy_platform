@@ -15,6 +15,7 @@ import AIReportDetailsPage from "@/components/common/my-reports/ai-report-detail
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { addHours } from "date-fns";
 import { formatTime } from "@/lib/format-date";
+import { useTranslation } from "react-i18next";
 
 const aiReportParamsSchema = z.object({
   assessmentId: z.string(),
@@ -88,6 +89,7 @@ interface ParsedProcessedJSON {
 }
 
 function RouteComponent() {
+  const { t } = useTranslation("assessment");
   const { assessmentId, assessmentName, attemptId } = Route.useSearch();
   const [parsedProcessedJSON, setParsedProcessedJSON] =
     useState<ParsedProcessedJSON | null>(null);
@@ -213,11 +215,10 @@ function RouteComponent() {
             <div className="text-center flex flex-col items-center gap-3">
               <DashboardLoader />
               <h2 className="text-xl font-semibold text-gray-900">
-                Generating your AI report
+                {t("aiReport.generating.title")}
               </h2>
               <p className="text-gray-600">
-                We&apos;re analyzing your assessment. This can take up to a
-                minute — please don&apos;t close this page.
+                {t("aiReport.generating.description")}
               </p>
             </div>
           </div>
@@ -225,13 +226,14 @@ function RouteComponent() {
           <div className="flex items-center justify-center min-h-screen w-full">
             <div className="text-center">
               <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                Report Not Available
+                {t("aiReport.unavailable.title")}
               </h2>
               <p className="text-gray-600 flex items-center flex-col gap-2">
-                We couldn&apos;t generate the AI report for this assessment
-                right now.
+                {t("aiReport.unavailable.description")}
                 <span className="text-black">
-                  Please check back after {formatTime(addHours(new Date(), 1))}.
+                  {t("aiReport.unavailable.checkBack", {
+                    time: formatTime(addHours(new Date(), 1)),
+                  })}
                 </span>
               </p>
             </div>

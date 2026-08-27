@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, PhoneCall, Robot } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyDialog } from '@/components/design-system/dialog';
 import { cn } from '@/lib/utils';
 import {
@@ -26,26 +28,28 @@ interface CampaignProgressDialogProps {
 const TERMINAL = new Set(['COMPLETED', 'NO_ANSWER', 'BUSY', 'FAILED', 'CANCELLED']);
 
 /** status → chip label + design-token classes (semantic tokens only). */
-function chip(status: string): { label: string; cls: string; live?: boolean } {
-    switch (status) {
-        case 'COMPLETED':
-            return { label: 'Completed', cls: 'bg-success-50 text-success-700' };
-        case 'NO_ANSWER':
-            return { label: 'No answer', cls: 'bg-warning-50 text-warning-700' };
-        case 'BUSY':
-            return { label: 'Busy', cls: 'bg-warning-50 text-warning-700' };
-        case 'FAILED':
-            return { label: 'Failed', cls: 'bg-danger-50 text-danger-700' };
-        case 'CANCELLED':
-            return { label: 'Cancelled', cls: 'bg-danger-50 text-danger-700' };
-        case 'ANSWERED':
-        case 'IN_PROGRESS':
-            return { label: 'On call', cls: 'bg-info-50 text-info-700', live: true };
-        case 'COUNSELLOR_RINGING':
-            return { label: 'Ringing', cls: 'bg-info-50 text-info-700', live: true };
-        default: // INITIATED / QUEUED
-            return { label: 'Dialing', cls: 'bg-neutral-100 text-neutral-600', live: true };
-    }
+function buildChip(t: TFunction) {
+    return function chip(status: string): { label: string; cls: string; live?: boolean } {
+        switch (status) {
+            case 'COMPLETED':
+                return { label: t('status.completed'), cls: 'bg-success-50 text-success-700' };
+            case 'NO_ANSWER':
+                return { label: t('status.noAnswer'), cls: 'bg-warning-50 text-warning-700' };
+            case 'BUSY':
+                return { label: t('status.busy'), cls: 'bg-warning-50 text-warning-700' };
+            case 'FAILED':
+                return { label: t('status.failed'), cls: 'bg-danger-50 text-danger-700' };
+            case 'CANCELLED':
+                return { label: t('status.cancelled'), cls: 'bg-danger-50 text-danger-700' };
+            case 'ANSWERED':
+            case 'IN_PROGRESS':
+                return { label: t('status.onCall'), cls: 'bg-info-50 text-info-700', live: true };
+            case 'COUNSELLOR_RINGING':
+                return { label: t('status.ringing'), cls: 'bg-info-50 text-info-700', live: true };
+            default: // INITIATED / QUEUED
+                return { label: t('status.dialing'), cls: 'bg-neutral-100 text-neutral-600', live: true };
+        }
+    };
 }
 
 /**
@@ -64,6 +68,8 @@ export function CampaignProgressDialog({
     leadNames,
     parallel,
 }: CampaignProgressDialogProps) {
+    const { t } = useTranslation('audienceManagerCampaignProgressDialog');
+    const chip = useMemo(() => buildChip(t), [t]);
     const [finished, setFinished] = useState(false);
     // Rows persist across polls even if a poll fails transiently.
     const rowsRef = useRef<Map<string, AiCampaignCallStatus>>(new Map());
@@ -106,7 +112,7 @@ export function CampaignProgressDialog({
 
     return (
         <MyDialog
-            heading="AI calls in progress"
+            heading={t('dialog.heading')}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="w-full max-w-lg"
@@ -116,17 +122,20 @@ export function CampaignProgressDialog({
                     <p className="font-semibold">
                         {finished ? (
                             <span className="flex items-center gap-1.5 text-success-700">
-                                <CheckCircle className="size-4" /> All {expectedTotal} calls finished
+                                <CheckCircle className="size-4" />{' '}
+                                {t('header.allFinished', { count: expectedTotal })}
                             </span>
                         ) : (
                             <span className="flex items-center gap-1.5">
                                 <Robot className="size-4 text-primary-500" />
-                                {doneCount} of {expectedTotal} completed
-                                {liveCount > 0 && ` · ${liveCount} live`}
+                                {t('header.progress', { done: doneCount, total: expectedTotal })}
+                                {liveCount > 0 && t('header.liveSuffix', { count: liveCount })}
                             </span>
                         )}
                     </p>
-                    <span className="text-caption text-neutral-500">{parallel} at a time</span>
+                    <span className="text-caption text-neutral-500">
+                        {t('header.parallelLabel', { count: parallel })}
+                    </span>
                 </div>
 
                 {/* progress bar */}
@@ -144,7 +153,7 @@ export function CampaignProgressDialog({
                 <div className="max-h-72 space-y-1.5 overflow-y-auto">
                     {rows.length === 0 && (
                         <p className="flex items-center gap-1.5 py-3 text-neutral-500">
-                            <PhoneCall className="size-4 animate-pulse" /> Dialing the first lead…
+                            <PhoneCall className="size-4 animate-pulse" /> {t('list.dialingFirst')}
                         </p>
                     )}
                     {rows.map((r) => {
@@ -156,13 +165,16 @@ export function CampaignProgressDialog({
                             >
                                 <div className="min-w-0">
                                     <p className="truncate text-body font-medium">
-                                        {leadNames.get(r.responseId) ?? 'Lead'}
+                                        {leadNames.get(r.responseId) ?? t('list.defaultLeadName')}
                                     </p>
                                     <p className="text-caption text-neutral-500">
                                         {r.disposition
                                             ? r.disposition
                                             : r.durationSeconds
-                                              ? `${Math.floor(r.durationSeconds / 60)}m ${r.durationSeconds % 60}s`
+                                              ? t('list.duration', {
+                                                    minutes: Math.floor(r.durationSeconds / 60),
+                                                    seconds: r.durationSeconds % 60,
+                                                })
                                               : ''}
                                     </p>
                                 </div>
@@ -181,15 +193,10 @@ export function CampaignProgressDialog({
                 </div>
 
                 {poll.isError && (
-                    <p className="text-caption text-warning-600">
-                        Live updates paused (retrying) — the calls keep running server-side.
-                    </p>
+                    <p className="text-caption text-warning-600">{t('error.pollPaused')}</p>
                 )}
                 {!finished && (
-                    <p className="text-caption text-neutral-500">
-                        Runs in the background — closing this window does not stop the calls.
-                        Outcomes and counsellor assignment land automatically after each call.
-                    </p>
+                    <p className="text-caption text-neutral-500">{t('footer.backgroundNotice')}</p>
                 )}
             </div>
         </MyDialog>

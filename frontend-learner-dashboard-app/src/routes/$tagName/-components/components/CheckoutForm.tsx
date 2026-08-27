@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
@@ -20,7 +21,7 @@ import {
     INSTITUTE_ID,
 } from "@/constants/urls";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { getBooksPreferenceFieldId } from "../../-services/custom-fields-service";
 import { toast } from "sonner";
 import axios from "axios";
@@ -54,6 +55,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     isRentMode = false,
     additionalCharges = [],
 }) => {
+    const { t } = useTranslation("coursePlayerB");
     const [email, setEmail] = useState("");
     const [fullName, setFullName] = useState("");
     const [phone, setPhone] = useState("");
@@ -101,7 +103,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         if (!open || !targetInviteId) {
             if (open && !targetInviteId) {
                 console.error("[CheckoutForm] No valid enrollInviteId found");
-                toast.error("Missing enrollment information");
+                toast.error(t("checkoutForm.toast.missingEnrollmentInfo"));
             }
             return;
         }
@@ -229,7 +231,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             })
             .catch(err => {
                 console.error("[CheckoutForm] Failed to fetch enrollment details:", err);
-                toast.error("Failed to load payment options. Please try again.");
+                toast.error(t("checkoutForm.toast.loadPaymentOptionsFailed"));
             })
             .finally(() => {
                 setIsInitializing(false);
@@ -247,7 +249,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
     const handleSendPhoneOTP = async () => {
         if (!phone.trim() || !validatePhone(phone)) {
-            setPhoneError("Valid phone number is required to send OTP");
+            setPhoneError(t("checkoutForm.errors.phoneRequiredOtp"));
             return;
         }
 
@@ -265,10 +267,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             );
 
             setPhoneOtpSent(true);
-            toast.success("OTP sent to your WhatsApp");
+            toast.success(t("checkoutForm.toast.otpSentWhatsapp"));
         } catch (error) {
             console.error("Failed to send WhatsApp OTP:", error);
-            toast.error("Failed to send OTP. Please try again");
+            toast.error(t("checkoutForm.toast.otpSendFailed"));
         } finally {
             setIsLoadingPhoneOtp(false);
         }
@@ -276,7 +278,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
     const handleVerifyPhoneOTP = async () => {
         if (!otp.trim()) {
-            toast.error("Please enter the OTP");
+            toast.error(t("checkoutForm.errors.otpRequired"));
             return;
         }
 
@@ -298,10 +300,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             setPhoneOtpSent(false);
             setOtp("");
             setPhoneError("");
-            toast.success("Phone verified successfully");
+            toast.success(t("checkoutForm.toast.phoneVerified"));
         } catch (error) {
             console.error("Failed to verify WhatsApp OTP:", error);
-            toast.error("Invalid OTP. Please try again");
+            toast.error(t("checkoutForm.toast.otpInvalid"));
         } finally {
             setIsVerifyingPhoneOtp(false);
         }
@@ -315,21 +317,21 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
         if (showFullForm) {
             if (!fullName.trim()) {
-                setNameError("Full name is required");
+                setNameError(t("checkoutForm.errors.fullNameRequired"));
                 hasErrors = true;
             }
             if (!email.trim() || !validateEmail(email)) {
-                setEmailError("Valid email is required");
+                setEmailError(t("checkoutForm.errors.emailRequired"));
                 hasErrors = true;
             }
             if (!phone.trim() || !validatePhone(phone)) {
-                setPhoneError("Valid phone number is required");
+                setPhoneError(t("checkoutForm.errors.phoneRequired"));
                 hasErrors = true;
             }
         }
 
         if (!isPhoneVerified) {
-            setPhoneError("Phone verification is required");
+            setPhoneError(t("checkoutForm.errors.phoneVerificationRequired"));
             hasErrors = true;
         }
         // AddressForm renders its own field-level errors when validate() runs.
@@ -379,7 +381,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 const booksPreferenceFieldId = await getBooksPreferenceFieldId(instituteId);
 
                 if (!booksPreferenceFieldId) {
-                    throw new Error("Unable to find Books Preference custom field. Please contact support.");
+                    throw new Error(t("checkoutForm.errors.booksPreferenceMissing"));
                 }
 
                 // Build the books preference value - only the book names (titles)
@@ -572,7 +574,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                         const script = document.createElement("script");
                         script.src = "https://checkout.razorpay.com/v1/checkout.js";
                         script.onload = () => resolve();
-                        script.onerror = () => reject(new Error("Failed to load Razorpay SDK"));
+                        script.onerror = () => reject(new Error(t("checkoutForm.errors.razorpaySdkLoadFailed")));
                         document.body.appendChild(script);
                     });
                 }
@@ -580,12 +582,14 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     key: razorpayKeyId,
                     amount: response.data?.payment_response?.response_data?.amountDue || (totalAmount * 100),
                     currency: response.data?.payment_response?.response_data?.currency || "INR",
-                    name: "Checkout",
-                    description: "Course Enrollment",
+                    name: t("checkoutForm.header.title"),
+                    description: t("checkoutForm.razorpayDescription", {
+                        course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                    }),
                     order_id: razorpayOrderId,
                     handler: async function (razorpayResponse: any) {
                         console.log("Razorpay payment success:", razorpayResponse);
-                        toast.success("Payment successful!");
+                        toast.success(t("checkoutForm.toast.paymentSuccessful"));
                         
                         // Wait for a brief moment for backend to process
                         setTimeout(() => {
@@ -607,7 +611,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     modal: {
                         ondismiss: function() {
                             setLoading(false);
-                            toast.info("Payment cancelled");
+                            toast.info(t("checkoutForm.toast.paymentCancelled"));
                         }
                     }
                 };
@@ -615,7 +619,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 const rzp = new (window as any).Razorpay(options);
                 rzp.open();
             } else if (response.data && (response.data.responseCode === "SUCCESS" || response.data.status === "SUCCESS")) {
-                toast.success("Checkout successful!");
+                toast.success(t("checkoutForm.toast.checkoutSuccessful"));
                 // Clean up credentials storage as we are doing direct redirect with tokens potentially
                 localStorage.removeItem("pendingUserEmail");
                 localStorage.removeItem("pendingUserPassword");
@@ -634,7 +638,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             }
         } catch (error: any) {
             console.error("Checkout failed:", error);
-            const errorMessage = error.response?.data?.ex || error.response?.data?.message || error.message || "Checkout failed. Please try again.";
+            const errorMessage = error.response?.data?.ex || error.response?.data?.message || error.message || t("checkoutForm.toast.checkoutFailedDefault");
             toast.error(errorMessage);
         } finally {
             setLoading(false);
@@ -650,8 +654,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     {/* Compact Header */}
                     <div className="bg-primary-600 px-5 py-2 text-white flex justify-between items-center shrink-0">
                         <div>
-                            <h2 className="text-lg font-bold">Checkout</h2>
-                            <p className="text-sm text-black font-medium leading-tight">Complete your information</p>
+                            <h2 className="text-lg font-bold">{t("checkoutForm.header.title")}</h2>
+                            <p className="text-sm text-black font-medium leading-tight">{t("checkoutForm.header.subtitle")}</p>
                         </div>
                         <button
                             className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
@@ -665,7 +669,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                         {isInitializing ? (
                             <div className="flex flex-col items-center justify-center py-10 space-y-3">
                                 <SpinnerGap className="h-8 w-8 text-primary-500 animate-spin" />
-                                <p className="text-sm text-gray-500 font-medium">Preparing checkout...</p>
+                                <p className="text-sm text-gray-500 font-medium">{t("checkoutForm.loading")}</p>
                             </div>
                         ) : (
                             <>
@@ -687,14 +691,14 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                         {/* Name */}
                                         <div className="space-y-1">
                                             <label className="text-caption font-bold text-gray-900 uppercase flex items-center gap-1.5">
-                                                <User className="h-3 w-3" /> Full Name
+                                                <User className="h-3 w-3" /> {t("checkoutForm.labels.fullName")}
                                             </label>
                                     <input
                                         type="text"
                                         value={fullName}
                                         onChange={(e) => setFullName(e.target.value)}
                                         className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium ${nameError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
-                                        placeholder="Enter your name"
+                                        placeholder={t("checkoutForm.placeholders.name")}
                                     />
                                     {nameError && <p className="text-red-500 text-caption font-semibold">{nameError}</p>}
                                 </div>
@@ -702,14 +706,14 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                 {/* Email */}
                                 <div className="space-y-1">
                                     <label className="text-caption font-bold text-gray-900 uppercase flex items-center gap-1.5">
-                                        <Envelope className="h-3 w-3" /> Email Address
+                                        <Envelope className="h-3 w-3" /> {t("checkoutForm.labels.emailAddress")}
                                     </label>
                                     <input
                                         type="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium ${emailError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
-                                        placeholder="email@example.com"
+                                        placeholder={t("checkoutForm.placeholders.email")}
                                     />
                                     {emailError && <p className="text-red-500 text-caption font-semibold">{emailError}</p>}
                                 </div>
@@ -717,7 +721,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                 {/* Phone */}
                                 <div className="space-y-1">
                                     <label className="text-caption font-bold text-gray-900 uppercase flex items-center gap-1.5">
-                                        <Phone className="h-3 w-3" /> Phone Number (WhatsApp)
+                                        <Phone className="h-3 w-3" /> {t("checkoutForm.labels.phoneWhatsapp")}
                                     </label>
                                     <div className="flex gap-2">
                                         <div className="relative flex-1">
@@ -747,7 +751,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                 onClick={handleSendPhoneOTP}
                                                 disabled={isLoadingPhoneOtp || !phone || phoneOtpSent}
                                             >
-                                                {isLoadingPhoneOtp ? <SpinnerGap className="h-3.5 w-3.5 animate-spin" /> : phoneOtpSent ? "Sent" : "Verify"}
+                                                {isLoadingPhoneOtp ? <SpinnerGap className="h-3.5 w-3.5 animate-spin" /> : phoneOtpSent ? t("checkoutForm.buttons.sent") : t("checkoutForm.buttons.verify")}
                                             </MyButton>
                                         )}
                                     </div>
@@ -762,7 +766,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                 value={otp}
                                                 onChange={(e) => setOtp(e.target.value)}
                                                 className="flex-1 px-3 py-1.5 bg-white border border-primary-300 rounded-lg text-sm font-bold tracking-wider-2 text-center focus:ring-2 focus:ring-primary-50"
-                                                placeholder="------"
+                                                placeholder={t("checkoutForm.placeholders.otp")}
                                                 maxLength={6}
                                                 autoFocus
                                             />
@@ -774,7 +778,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                 onClick={handleVerifyPhoneOTP}
                                                 disabled={isVerifyingPhoneOtp || otp.length < 4}
                                             >
-                                                {isVerifyingPhoneOtp ? <SpinnerGap className="h-3.5 w-3.5 animate-spin" /> : "Verify OTP"}
+                                                {isVerifyingPhoneOtp ? <SpinnerGap className="h-3.5 w-3.5 animate-spin" /> : t("checkoutForm.buttons.verifyOtp")}
                                             </MyButton>
                                         </div>
                                     )}
@@ -792,7 +796,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                 {additionalCharges.length > 0 ? (
                                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1">
                                         <div className="flex justify-between text-xs text-gray-700">
-                                            <span>Subtotal ({items.length} {items.length === 1 ? "item" : "items"})</span>
+                                            <span>{t("checkoutForm.summary.subtotalCount", { count: items.length })}</span>
                                             <span className="font-medium">₹{(totalAmount - sumChargeAmounts(additionalCharges)).toFixed(2)}</span>
                                         </div>
                                         {additionalCharges.map((charge) => (
@@ -802,20 +806,20 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                             </div>
                                         ))}
                                         <div className="flex justify-between items-center pt-1.5 border-t border-gray-200">
-                                            <span className="text-caption text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
+                                            <span className="text-caption text-gray-500 font-bold uppercase tracking-tight">{t("checkoutForm.summary.orderTotal")}</span>
                                             <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(2)}</span>
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center justify-between">
                                         <div className="flex flex-col">
-                                            <span className="text-caption text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
+                                            <span className="text-caption text-gray-500 font-bold uppercase tracking-tight">{t("checkoutForm.summary.orderTotal")}</span>
                                             <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(0)}</span>
                                         </div>
                                         <div className="text-end">
-                                            <span className="text-caption text-gray-400 font-medium block">{items.length} Items</span>
+                                            <span className="text-caption text-gray-400 font-medium block">{t("checkoutForm.summary.itemsCount", { count: items.length })}</span>
                                             <span className="text-caption text-green-600 font-bold flex items-center justify-end gap-1">
-                                                <span className="w-1 h-1 bg-green-500 rounded-full" /> Secure
+                                                <span className="w-1 h-1 bg-green-500 rounded-full" /> {t("checkoutForm.summary.secure")}
                                             </span>
                                         </div>
                                     </div>
@@ -838,13 +842,13 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                 <SpinnerGap className="animate-spin h-5 w-5" />
                             ) : (
                                 <>
-                                    <span>Proceed to Payment</span>
+                                    <span>{t("checkoutForm.buttons.proceedToPayment")}</span>
                                     <CaretRight className="h-4 w-4" />
                                 </>
                             )}
                         </MyButton>
                         {!isPhoneVerified && (
-                            <p className="text-center text-caption text-red-400 mt-2 font-bold">WhatsApp verification required to continue</p>
+                            <p className="text-center text-caption text-red-400 mt-2 font-bold">{t("checkoutForm.whatsappRequired")}</p>
                         )}
                     </div>
                 </DialogPrimitive.Content>

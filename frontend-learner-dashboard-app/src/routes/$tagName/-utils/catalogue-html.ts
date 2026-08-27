@@ -77,8 +77,20 @@ const MEDIA_HOST_RE =
     /^https:\/\/(([a-z0-9-]+\.)*vacademy\.io|vacademy-media-storage-public\.s3\.amazonaws\.com|d1om4dxj9e7kkd\.cloudfront\.net)\//i;
 
 const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
+// The WHOLE statement, not just the keyword. Removing only `@import` left
+// ` "tailwindcss";` behind, and CSS error recovery treats that junk as the
+// prelude of a rule — consuming everything up to the NEXT {...} block and
+// dropping it. On a real imported page the next block was the :host variable
+// palette, so one ghost token silently deleted every colour on the page.
+// Found by reading the parsed CSSOM over CDP: the rule was in textContent
+// and absent from sheet.cssRules.
+const CSS_IMPORT_STMT_RE = /@import\b[^;]*(;|$)/gi;
 const CSS_URL_RE = /url\s*\([^)]*\)/gi;
-const CSS_BANNED_RE = /@import\b|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/gi;
+// `behavior:` targets the legacy IE binding property. Without a boundary it
+// also matches INSIDE scroll-behavior, overscroll-behavior and
+// transition-behavior, truncating them to `scroll- smooth` — caught by
+// simulating a real page's CSS, where it silently killed smooth scrolling.
+const CSS_BANNED_RE = /@import\b|expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript\s*:/gi;
 const MAX_HTML = 30000;
 const MAX_CSS = 20000;
 
@@ -91,6 +103,7 @@ export const scrubCss = (css: string, page = false): string =>
     css
         .slice(0, page ? MAX_PAGE_CSS : MAX_CSS)
         .replace(CSS_COMMENT_RE, '')
+        .replace(CSS_IMPORT_STMT_RE, '')
         // :root, html and body cannot match inside a shadow root: the first two
         // select the document element and the third does not exist there at
         // all — the content sits directly under the root. A pasted page uses

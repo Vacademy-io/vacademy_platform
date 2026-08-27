@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { SelectedQuestionPaperFilters } from './ScheduleTestMainComponent';
 
@@ -20,6 +21,8 @@ const ScheduleTestFilterButtons = ({
     handleSubmitFilters,
     handleResetFilters,
 }: ScheduleTestFilterButtonsProps) => {
+    const { t } = useTranslation('assessmentScheduleTestFilterButtons');
+
     const isButtonEnabled = () => {
         const {
             name,
@@ -58,14 +61,14 @@ const ScheduleTestFilterButtons = ({
                 className="h-9 cursor-pointer px-4"
                 onClick={handleSubmitFilters}
             >
-                Apply
+                {t('apply')}
             </MyButton>
             <button
                 type="button"
                 onClick={handleResetFilters}
                 className="h-9 cursor-pointer rounded-lg px-3 text-sm font-medium text-neutral-500 transition-colors duration-200 hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
             >
-                Clear all
+                {t('clearAll')}
             </button>
         </div>
     );

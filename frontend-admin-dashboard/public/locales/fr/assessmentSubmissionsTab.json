@@ -1,0 +1,42 @@
+{
+    "tabs": {
+        "attempted": "Tentés",
+        "ongoing": "En cours",
+        "pending": "En attente"
+    },
+    "participantType": {
+        "internal": "Interne",
+        "external": "Externe"
+    },
+    "selectionMode": {
+        "batch": "Sélection par lot",
+        "individual": "Sélection individuelle"
+    },
+    "filters": {
+        "evaluationStatus": {
+            "label": "Statut d'évaluation",
+            "options": {
+                "pending": "En attente",
+                "evaluating": "En cours d'évaluation",
+                "evaluated": "Évalué"
+            }
+        },
+        "submissionStatus": {
+            "label": "Réponse",
+            "options": {
+                "submitted": "Soumis",
+                "notSubmitted": "Non soumis"
+            }
+        }
+    },
+    "buttons": {
+        "offlineEntry": "Saisie hors ligne",
+        "revaluate": "Réévaluer",
+        "aiEvaluations": "Évaluations IA"
+    },
+    "dialogs": {
+        "revaluate": {
+            "title": "Réévaluer le résultat"
+        }
+    }
+}

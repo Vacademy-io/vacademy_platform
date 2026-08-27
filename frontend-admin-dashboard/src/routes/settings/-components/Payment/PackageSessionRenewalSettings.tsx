@@ -19,6 +19,7 @@ import { ArrowsClockwise } from '@phosphor-icons/react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { useTranslation } from 'react-i18next';
 
 const SETTING_KEY = 'PAYMENT_SETTING';
 const RENEWAL_FLAG = 'packageSessionRenewalSchedulerEnabled';
@@ -50,6 +51,7 @@ const savePaymentSetting = async (data: PaymentSettingData): Promise<void> => {
 };
 
 export default function PackageSessionRenewalSettings() {
+    const { t } = useTranslation('settingsPackageSessionRenewal');
     const queryClient = useQueryClient();
     const [settingData, setSettingData] = useState<PaymentSettingData>({});
     const [hasChanges, setHasChanges] = useState(false);
@@ -70,12 +72,12 @@ export default function PackageSessionRenewalSettings() {
     const { mutate: save, isPending: saving } = useMutation({
         mutationFn: savePaymentSetting,
         onSuccess: () => {
-            toast.success('Renewal scheduler setting saved');
+            toast.success(t('toasts.saveSuccess'));
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['payment-setting'] });
         },
         onError: () => {
-            toast.error('Failed to save renewal scheduler setting');
+            toast.error(t('toasts.saveError'));
         },
     });
 
@@ -91,18 +93,13 @@ export default function PackageSessionRenewalSettings() {
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                     <ArrowsClockwise className="size-5" />
-                    Membership Renewal Scheduler
+                    {t('title')}
                 </CardTitle>
-                <CardDescription>
-                    Runs a daily scan over this institute&apos;s member plans and applies each
-                    batch&apos;s enrollment policy: pre-expiry reminders, the post-expiry waiting
-                    period, and final expiry. Off by default — while disabled, no plan in this
-                    institute is ever processed by the scheduler.
-                </CardDescription>
+                <CardDescription>{t('description')}</CardDescription>
             </CardHeader>
             <CardContent>
                 {isLoading ? (
-                    <div className="text-body text-neutral-500">Loading renewal setting…</div>
+                    <div className="text-body text-neutral-500">{t('loading')}</div>
                 ) : (
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -115,9 +112,7 @@ export default function PackageSessionRenewalSettings() {
                                 htmlFor="package-session-renewal-enabled"
                                 className="cursor-pointer"
                             >
-                                {enabled
-                                    ? 'Renewal scheduler enabled'
-                                    : 'Renewal scheduler disabled'}
+                                {enabled ? t('toggle.enabled') : t('toggle.disabled')}
                             </Label>
                         </div>
                         <MyButton
@@ -126,7 +121,7 @@ export default function PackageSessionRenewalSettings() {
                             onClick={() => save(settingData)}
                             disable={saving || !hasChanges}
                         >
-                            {saving ? 'Saving…' : 'Save'}
+                            {saving ? t('button.saving') : t('button.save')}
                         </MyButton>
                     </div>
                 )}

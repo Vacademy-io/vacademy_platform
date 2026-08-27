@@ -1,0 +1,221 @@
+{
+    "common": {
+        "startNewChat": "بدء محادثة جديدة",
+        "closeSession": "إغلاق الجلسة",
+        "aiGear": "إعدادات الذكاء الاصطناعي",
+        "closePanel": "إغلاق اللوحة",
+        "mathSymbols": "الرموز الرياضية",
+        "preview": "معاينة:",
+        "retry": "إعادة المحاولة",
+        "newChat": "محادثة جديدة",
+        "dropImageHere": "أفلت الصورة هنا",
+        "voiceChatLabel": "محادثة صوتية",
+        "startVoiceConversation": "بدء محادثة صوتية",
+        "creditsExhausted": "لقد نفدت أرصدة OpenRouter الخاصة بك. يرجى إعادة شحن رصيدك لمتابعة استخدام مساعد الذكاء الاصطناعي.",
+        "attachmentAlt": "مرفق",
+        "attachedImageAlt": "مرفق",
+        "copy": "نسخ"
+    },
+    "voiceModeLabels": {
+        "interview": "مقابلة تجريبية",
+        "doubt": "مناقشة استفسار",
+        "oralTest": "اختبار شفهي",
+        "sessionFallback": "الجلسة"
+    },
+    "floatingButton": {
+        "nudgeMessages": {
+            "doubts": "هل لديك أي استفسارات؟",
+            "learnSomething": "هل تريد تعلم شيء جديد؟",
+            "practice": "هل تريد أسئلة تدريبية؟"
+        },
+        "tooltip": {
+            "draggable": "اضغط للمحادثة • اسحب للتحريك",
+            "tapOnly": "اضغط للمحادثة"
+        }
+    },
+    "panel": {
+        "offlineNotice": "أنت غير متصل بالإنترنت. سيتم إرسال الرسائل عند إعادة الاتصال.",
+        "initializing": "جارٍ تهيئة المحادثة...",
+        "generatingQuiz": "جارٍ إنشاء الاختبار...",
+        "errorTitle": "حدث خطأ ما",
+        "sessionEnded": "انتهت هذه المحادثة",
+        "queuedTooltip": "في قائمة الانتظار - سيتم الإرسال عند الاتصال",
+        "copyMessage": "نسخ الرسالة",
+        "attachImageTitle": "إرفاق صورة (يتم اكتشاف صور المسائل الرياضية تلقائياً)",
+        "fullscreen": "ملء الشاشة",
+        "exitFullscreen": "الخروج من ملء الشاشة",
+        "inputPlaceholder": "اكتب رسالة... (استخدم $ للرموز الرياضية)"
+    },
+    "sidePanel": {
+        "initializing": "جارٍ التهيئة...",
+        "generating": "جارٍ الإنشاء...",
+        "creditsExhaustedShort": "لقد نفدت أرصدة OpenRouter الخاصة بك. يرجى إعادة شحن رصيدك للمتابعة.",
+        "errorTitle": "حدث خطأ ما.",
+        "sessionEnded": "انتهت الجلسة. ابدأ محادثة جديدة.",
+        "attachImageTitle": "إرفاق صورة",
+        "inputPlaceholder": "اطرح سؤالاً... ($ للرموز الرياضية)"
+    },
+    "widget": {
+        "assistantSubtitle": "مساعد {{instituteName}} للذكاء الاصطناعي",
+        "error": "حدث خطأ، يرجى بدء محادثة جديدة",
+        "inputPlaceholder": "اكتب رسالتك...",
+        "chatButtonAlt": "محادثة",
+        "context": {
+            "title": "السياق المستخدم:",
+            "route": "المسار:",
+            "courseId": "معرف {{course}}:",
+            "slideId": "معرف {{slide}}:",
+            "moduleId": "معرف {{module}}:"
+        }
+    },
+    "micButton": {
+        "transcribing": "جارٍ تحويل الصوت إلى نص...",
+        "stopRecording": "إيقاف التسجيل",
+        "voiceToText": "تحويل الصوت إلى نص"
+    },
+    "quickActions": {
+        "explainThis": {
+            "label": "اشرح هذا",
+            "prompt": "اشرح ما يوجد في هذا {{slide}} بعبارات بسيطة"
+        },
+        "quizMe": {
+            "label": "اختبرني",
+            "prompt": "اختبرني في "
+        },
+        "summarize": {
+            "label": "لخّص",
+            "prompt": "أعطني ملخصاً موجزاً لهذا {{slide}}"
+        },
+        "courseOverview": {
+            "label": "نظرة عامة على {{course}}",
+            "prompt": "أعطني نظرة عامة على هذا {{course}}"
+        },
+        "learningPath": {
+            "label": "مسار التعلّم",
+            "prompt": "ما هو مسار التعلّم الموصى به لهذا {{course}}؟"
+        },
+        "prerequisites": {
+            "label": "المتطلبات الأساسية",
+            "prompt": "ما هي المتطلبات الأساسية لهذا {{course}}؟"
+        },
+        "hint": {
+            "label": "تلميح",
+            "prompt": "أعطني تلميحاً لهذا السؤال دون الكشف عن الإجابة"
+        },
+        "explainConcept": {
+            "label": "اشرح المفهوم",
+            "prompt": "اشرح المفهوم الذي يتم اختباره في هذا السؤال"
+        },
+        "helpMeLearn": {
+            "label": "ساعدني على التعلّم",
+            "prompt": "ساعدني على تعلّم "
+        },
+        "askDoubt": {
+            "label": "اطرح استفساراً",
+            "prompt": "لدي سؤال حول "
+        },
+        "practice": {
+            "label": "تدريب"
+        }
+    },
+    "quiz": {
+        "questionLabel": "س{{number}}",
+        "answeredCount": "تمت الإجابة عن {{answered}} من {{total}}",
+        "previous": "السابق",
+        "next": "التالي",
+        "submitQuiz": "إرسال الاختبار",
+        "submitted": "تم الإرسال"
+    },
+    "quizFeedback": {
+        "passed": "لقد اجتزت الاختبار! 🎉",
+        "keepPracticing": "واصل التدريب!",
+        "completedIn": "تم الإنجاز خلال {{minutes}} د {{seconds}} ث",
+        "recommendations": "التوصيات",
+        "hideDetails": "إخفاء تفاصيل الأسئلة",
+        "showDetails": "عرض تفاصيل الأسئلة",
+        "questionNumber": "السؤال {{number}}",
+        "yourAnswer": "إجابتك: ",
+        "notAnswered": "لم تتم الإجابة",
+        "correctAnswer": "الإجابة الصحيحة: ",
+        "explanation": "الشرح: "
+    },
+    "sessionScorecard": {
+        "summaryTitle": "ملخص {{mode}}",
+        "score": "النتيجة",
+        "strengths": "نقاط القوة",
+        "areasToImprove": "مجالات التحسين",
+        "feedback": "الملاحظات",
+        "close": "إغلاق",
+        "startNewSession": "بدء جلسة جديدة"
+    },
+    "toolIndicator": {
+        "checkingProgress": "جارٍ التحقق من تقدّمك التعليمي...",
+        "reviewingPerformance": "جارٍ مراجعة بيانات أدائك...",
+        "searchingResources": "جارٍ البحث عن محتوى ذي صلة...",
+        "searchingCourseMaterials": "جارٍ البحث في مواد {{course}}...",
+        "workingOnIt": "جارٍ العمل على ذلك..."
+    },
+    "voiceAvatar": {
+        "ready": "جاهز",
+        "listening": "يستمع...",
+        "thinking": "يفكر...",
+        "speaking": "يتحدث..."
+    },
+    "voiceModePanel": {
+        "unmute": "إلغاء كتم الميكروفون",
+        "mute": "كتم الميكروفون",
+        "end": "إنهاء",
+        "hintIdle": "اضغط على زر الميكروفون أدناه لبدء التحدث",
+        "hintListening": "أنا أستمع... اضغط على الميكروفون عند الانتهاء",
+        "hintProcessing": "جارٍ معالجة ردّك...",
+        "hintSpeaking": "اضغط على الميكروفون للمقاطعة والتحدث"
+    },
+    "voiceModeSelector": {
+        "title": "الوضع الصوتي",
+        "subtitle": "اختر طريقة التفاعل",
+        "modeInterviewLabel": "أجرِ مقابلتي",
+        "modeInterviewDescription": "تدرّب من خلال مقابلة تجريبية حول موضوعك الحالي",
+        "modeDoubtLabel": "ناقش استفسارك",
+        "modeDoubtDescription": "ناقش استفساراتك من خلال التفاعل الصوتي",
+        "modeOralTestLabel": "أجرِ اختباراً شفهياً",
+        "modeOralTestDescription": "اختبر معرفتك من خلال أسئلة وأجوبة شفهية",
+        "topicLabelInterview": "موضوع المقابلة",
+        "topicLabelOralTest": "موضوع الاختبار",
+        "topicLabelDoubt": "ما هو استفسارك؟",
+        "topicPlaceholderInterview": "مثال: هياكل البيانات، React، تعلّم الآلة",
+        "topicPlaceholderOralTest": "مثال: البناء الضوئي، قوانين نيوتن، الجبر",
+        "topicPlaceholderDoubt": "مثال: أنا مرتبك بشأن العودية (recursion)",
+        "topicHelperOptional": "اختياري — أو ابدأ الحديث مباشرة",
+        "topicHelperRecommended": "موصى به — يساعد في توليد أسئلة أفضل",
+        "languageLabel": "اللغة",
+        "languageEn": "الإنجليزية",
+        "languageHi": "الهندية",
+        "languageBn": "البنغالية",
+        "languageTa": "التاميلية",
+        "languageTe": "التيلوغوية",
+        "languageKn": "الكانادية",
+        "languageMl": "المالايالامية",
+        "languageMr": "الماراثية",
+        "languageGu": "الغوجاراتية",
+        "languagePa": "البنجابية",
+        "languageOr": "الأوديا",
+        "cancel": "إلغاء",
+        "start": "ابدأ"
+    },
+    "latexToolbar": {
+        "groupArithmetic": "الحساب",
+        "groupRelations": "العلاقات",
+        "groupCalculus": "التفاضل والتكامل",
+        "groupGreek": "اليونانية",
+        "groupOther": "أخرى"
+    },
+    "useChatbot": {
+        "initErrorNetwork": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. أواجه مشكلة في الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت.",
+        "initErrorNotFound": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. لم يتم العثور على نقطة نهاية خدمة الذكاء الاصطناعي. يرجى التحقق من الإعدادات.",
+        "initErrorAuth": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. فشلت المصادقة. يرجى محاولة تسجيل الدخول مرة أخرى.",
+        "initErrorGeneric": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. أواجه مشكلة في الاتصال حالياً (خطأ: {{errorMessage}}). كيف يمكنني مساعدتك؟",
+        "initErrorFallback": "مرحباً! أنا {{assistantName}}، مساعدك الذكي. أواجه مشكلة في الاتصال حالياً. كيف يمكنني مساعدتك؟",
+        "processingFailed": "عذراً، واجهت خطأ أثناء معالجة طلبك. يرجى المحاولة مرة أخرى.",
+        "quizSubmitFailed": "عذراً، لم أتمكن من إرسال اختبارك. يرجى المحاولة مرة أخرى."
+    }
+}

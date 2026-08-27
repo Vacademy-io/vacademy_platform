@@ -157,7 +157,39 @@ class NotAttemptedParticipantsTest {
         assertThat(row.getEvaluationStatus()).isNull();
         assertThat(row.getReportReleaseResultStatus()).isNull();
         assertThat(row.getLastReportReleaseDate()).isNull();
+    }
+
+    // --- contact details: what the tab needs to actually chase these learners ---
+
+    @Test
+    void contactDetailsReachTheRowSoTheTabCanShowWhatItsOwnCsvShows() {
+        // The Pending tab and its "not attempted" export answer the same question; a
+        // learner the tab can only name, while the CSV gives an email and a phone number,
+        // sends the teacher to the export for every follow-up.
+        EnrolledLearnerDto learner = new EnrolledLearnerDto(
+                "u1", "Aadya Saxena", BATCH, "aadya@example.com", "9876543210", "aadya123");
+
+        ParticipantsDetailsDto row = NotAttemptedParticipants
+                .page(List.of(learner), Set.of(), null, FIRST_PAGE)
+                .getContent()
+                .get(0);
+
+        assertThat(row.getUserEmail()).isEqualTo("aadya@example.com");
+        assertThat(row.getPhoneNumber()).isEqualTo("9876543210");
+        assertThat(row.getUsername()).isEqualTo("aadya123");
+    }
+
+    @Test
+    void aLearnerImportedWithoutContactDetailsStillAppearsWithBlanksRatherThanBeingDropped() {
+        ParticipantsDetailsDto row = NotAttemptedParticipants
+                .page(List.of(learner("u1", "Aadya Saxena")), Set.of(), null, FIRST_PAGE)
+                .getContent()
+                .get(0);
+
+        assertThat(row.getStudentName()).isEqualTo("Aadya Saxena");
         assertThat(row.getUserEmail()).isNull();
+        assertThat(row.getPhoneNumber()).isNull();
+        assertThat(row.getUsername()).isNull();
     }
 
     // --- resolveBatchIds: which batches we are even allowed to look at ---

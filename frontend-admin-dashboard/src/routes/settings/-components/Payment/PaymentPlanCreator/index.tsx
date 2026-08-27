@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import {
@@ -69,6 +70,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
     requireApproval = false,
     setRequireApproval,
 }) => {
+    const { t } = useTranslation('settingsPaymentPlanCreator');
     const [currentStep, setCurrentStep] = useState(1);
     const [planData, setPlanData] = useState<Partial<PaymentPlan>>({});
     const [showPreview, setShowPreview] = useState(false);
@@ -441,7 +443,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <CreditCard className="size-5" />
-                            Edit Payment Plan
+                            {t('dialog.editTitle')}
                         </DialogTitle>
                     </DialogHeader>
                     <PaymentPlanEditor
@@ -451,6 +453,8 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                         onSave={onSave}
                         onCancel={onClose}
                         isSaving={isSaving}
+                        requireApproval={requireApproval}
+                        setRequireApproval={onApprovalChange}
                     />
                 </DialogContent>
             </Dialog>
@@ -468,7 +472,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                     <div className="flex items-center justify-between">
                         <DialogTitle className="flex items-center gap-2">
                             <CreditCard className="size-5" />
-                            Create Payment Plan
+                            {t('dialog.createTitle')}
                         </DialogTitle>
                     </div>
                 </div>
@@ -506,7 +510,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                             htmlFor="planCurrency"
                                             className="text-sm font-medium"
                                         >
-                                            Plan Currency
+                                            {t('step2.planCurrencyLabel')}
                                         </Label>
                                         <Select
                                             value={planData.currency}
@@ -529,8 +533,10 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                             </SelectContent>
                                         </Select>
                                         <p className="mt-1 text-xs text-gray-500">
-                                            Default: {defaultCurrency} (
-                                            {getCurrencySymbol(defaultCurrency)})
+                                            {t('step2.defaultCurrencyHint', {
+                                                currency: defaultCurrency,
+                                                symbol: getCurrencySymbol(defaultCurrency),
+                                            })}
                                         </p>
                                     </div>
                                 )}

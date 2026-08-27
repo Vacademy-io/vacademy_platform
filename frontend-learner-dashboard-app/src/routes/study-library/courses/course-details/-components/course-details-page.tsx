@@ -2,11 +2,12 @@ import { useRouter } from "@tanstack/react-router";
 import { CaretLeft } from "@phosphor-icons/react";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
   CourseDetailsFormValues,
-  courseDetailsSchema,
+  makeCourseDetailsSchema,
 } from "./course-details-schema";
 import { useSuspenseQuery, useQuery } from "@tanstack/react-query";
 import { handleGetSlideCountDetails } from "../-services/get-slides-count";
@@ -61,20 +62,29 @@ export type {
   SubjectType,
 } from "../-utils/course-details-types";
 
-const heading = (
-  <div className="flex items-center">
-    <CaretLeft
-      onClick={() => window.history.back()}
-      className="cursor-pointer"
-    />
-    <h1 className="text-lg ms-2">
-      {getTerminology(ContentTerms.Course, SystemTerms.Course)} Details
-    </h1>
-  </div>
-);
-
 export const CourseDetailsPage = () => {
+  const { t, i18n: i18nInstance } = useTranslation("courseDetailsA");
+  const { t: tSlideCounts } = useTranslation("courseDetailsC");
   const { setNavHeading } = useNavHeadingStore();
+  const courseDetailsSchema = useMemo(
+    () => makeCourseDetailsSchema(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [i18nInstance.language],
+  );
+
+  const heading = (
+    <div className="flex items-center">
+      <CaretLeft
+        onClick={() => window.history.back()}
+        className="cursor-pointer"
+      />
+      <h1 className="text-lg ms-2">
+        {t("detailsPage.heading", {
+          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+        })}
+      </h1>
+    </div>
+  );
 
   useEffect(() => {
     setNavHeading(heading);
@@ -374,8 +384,12 @@ export const CourseDetailsPage = () => {
 
   // Custom slide count calculation to handle special document types
   const processedSlideCounts = useMemo(
-    () => processSlideCounts(slideCountQuery.data as SlideCountType[] | null),
-    [slideCountQuery.data],
+    () =>
+      processSlideCounts(
+        slideCountQuery.data as SlideCountType[] | null,
+        tSlideCounts,
+      ),
+    [slideCountQuery.data, tSlideCounts],
   );
 
   usePaymentStatusSync({

@@ -2,7 +2,9 @@ import { SEND_LEARNER_CREDENTIALS, SHARE_CREDENTIALS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
 import { useMutation } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import type { CredentialDeliveryMode } from '@/components/templates/CredentialDeliveryModePicker';
+import type { TFunction } from 'i18next';
 
 export interface ShareCredentialsParams {
     userIds: string[];
@@ -31,12 +33,13 @@ export interface ShareCredentialsSummary {
 const TEMPLATE_SEND_CONCURRENCY = 4;
 
 const sendWithTemplate = async (
+    t: TFunction,
     userIds: string[],
     templateId?: string
 ): Promise<ShareCredentialsSummary> => {
     const instituteId = getInstituteId();
     if (!instituteId) {
-        throw new Error('Institute ID not found. Please log in again.');
+        throw new Error(t('manageStudentsShareCredentialsService:errors.instituteIdNotFound'));
     }
 
     let sent = 0;
@@ -81,21 +84,30 @@ const sendWithTemplate = async (
     return { sent, failed, message };
 };
 
-export const shareCredentials = async ({
-    userIds,
-    mode = 'DEFAULT',
-    templateId,
-}: ShareCredentialsParams): Promise<ShareCredentialsSummary> => {
-    if (mode === 'TEMPLATE') {
-        return sendWithTemplate(userIds, templateId);
-    }
-    // The built-in mail takes the whole batch in one call — keep it that way.
-    await authenticatedAxiosInstance.post(SHARE_CREDENTIALS, userIds);
-    return { sent: userIds.length, failed: 0 };
-};
+/**
+ * Takes the translation function rather than importing the i18next singleton — the only
+ * caller is useShareCredentials below, which sources it from its own useTranslation() so
+ * the 'manageStudentsShareCredentialsService' namespace is guaranteed to be loaded whenever
+ * this runs.
+ */
+export const buildShareCredentials =
+    (t: TFunction) =>
+    async ({
+        userIds,
+        mode = 'DEFAULT',
+        templateId,
+    }: ShareCredentialsParams): Promise<ShareCredentialsSummary> => {
+        if (mode === 'TEMPLATE') {
+            return sendWithTemplate(t, userIds, templateId);
+        }
+        // The built-in mail takes the whole batch in one call — keep it that way.
+        await authenticatedAxiosInstance.post(SHARE_CREDENTIALS, userIds);
+        return { sent: userIds.length, failed: 0 };
+    };
 
 export const useShareCredentials = () => {
+    const { t } = useTranslation(['manageStudentsShareCredentialsService']);
     return useMutation({
-        mutationFn: shareCredentials,
+        mutationFn: buildShareCredentials(t),
     });
 };

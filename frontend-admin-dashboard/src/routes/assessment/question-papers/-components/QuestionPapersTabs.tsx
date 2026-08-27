@@ -1,4 +1,5 @@
 import { Dispatch, SetStateAction, useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { WarningCircle } from '@phosphor-icons/react';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
@@ -52,6 +53,7 @@ export const QuestionPapersTabs = ({
     examType,
     onManualSelectionReady,
 }: QuestionPapersTabsProps) => {
+    const { t } = useTranslation('assessmentQuestionPapersTabs');
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const data = getTokenDecodedData(accessToken);
     const INSTITUTE_ID = data && Object.keys(data.authorities)[0];
@@ -304,7 +306,7 @@ export const QuestionPapersTabs = ({
                         />
                     )}
                     <QuestionPapersFilter
-                        label="Year/Class"
+                        label={t('filters.yearClass')}
                         data={YearClassFilterData}
                         selectedItems={selectedQuestionPaperFilters['level_ids'] || []}
                         onSelectionChange={(items) => handleFilterChange('level_ids', items)}
@@ -317,7 +319,7 @@ export const QuestionPapersTabs = ({
                     />
                     {TagFilterData.length > 0 && (
                         <QuestionPapersFilter
-                            label="Tags"
+                            label={t('filters.tags')}
                             data={TagFilterData}
                             selectedItems={selectedQuestionPaperFilters['tag_ids'] || []}
                             onSelectionChange={(items) => handleFilterChange('tag_ids', items)}
@@ -332,7 +334,7 @@ export const QuestionPapersTabs = ({
                                 className="h-8"
                                 onClick={handleSubmitFilters}
                             >
-                                Filter
+                                {t('actions.filter')}
                             </MyButton>
                             <MyButton
                                 buttonType="secondary"
@@ -341,12 +343,12 @@ export const QuestionPapersTabs = ({
                                 className="h-8 border border-neutral-400 bg-neutral-200 hover:border-neutral-500 hover:bg-neutral-300 active:border-neutral-600 active:bg-neutral-400"
                                 onClick={handleResetFilters}
                             >
-                                Reset
+                                {t('actions.reset')}
                             </MyButton>
                         </div>
                     )}
                     <div
-                        className={`flex gap-4 ${Object.keys(selectedQuestionPaperFilters).length > 0 ? 'mt-[-3px]' : ''
+                        className={`flex gap-4 ${Object.keys(selectedQuestionPaperFilters).length > 0 ? '-mt-1' : ''
                             }`}
                     >
                         <QuestionPapersSearchComponent
@@ -407,14 +409,14 @@ export const QuestionPapersTabs = ({
                                             .finally(() => setIsLoading(false));
                                     }}
                                 >
-                                    Try again
+                                    {t('actions.tryAgain')}
                                 </MyButton>
                             </>
                         ) : (
                             <>
                                 <EmptyQuestionPapers />
                                 <span className="text-neutral-600">
-                                    No question papers available
+                                    {t('emptyStates.noQuestionPapers')}
                                 </span>
                             </>
                         )}
@@ -441,7 +443,7 @@ export const QuestionPapersTabs = ({
                     <div className="flex h-screen flex-col items-center justify-center">
                         <EmptyQuestionPapers />
                         <span className="text-neutral-600">
-                            No question paper has been marked as favourites yet
+                            {t('emptyStates.noFavouriteQuestionPapers')}
                         </span>
                     </div>
                 )}

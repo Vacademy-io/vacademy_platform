@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, Copy, Link as LinkIcon } from '@phosphor-icons/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ const CampaignLink: React.FC<CampaignLinkProps> = ({
     label,
     className,
 }) => {
+    const { t } = useTranslation('audienceManagerCampaignLink');
     const { instituteDetails } = useInstituteDetailsStore();
     const [copySuccess, setCopySuccess] = useState(false);
 
@@ -63,14 +65,14 @@ const CampaignLink: React.FC<CampaignLinkProps> = ({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={shareableLink}
-                                className="min-w-0 flex-1 truncate py-2 pr-3 font-mono text-xs text-neutral-700 hover:text-primary-600 sm:text-[13px]"
+                                className="min-w-0 flex-1 truncate py-2 pe-3 font-mono text-xs text-neutral-700 hover:text-primary-600 sm:text-body"
                             >
                                 {shareableLink}
                             </a>
                         </TooltipTrigger>
                         <TooltipContent
                             side="top"
-                            className="max-w-[min(90vw,28rem)] break-all"
+                            className="max-w-md break-all"
                         >
                             {shareableLink}
                         </TooltipContent>
@@ -81,18 +83,18 @@ const CampaignLink: React.FC<CampaignLinkProps> = ({
                     variant="ghost"
                     size="sm"
                     onClick={handleCopy}
-                    aria-label={copySuccess ? 'Copied' : 'Copy link'}
+                    aria-label={copySuccess ? t('copiedAriaLabel') : t('copyLinkAriaLabel')}
                     className="shrink-0 rounded-none border-l border-neutral-200 px-3 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
                 >
                     {copySuccess ? (
                         <span className="flex items-center gap-1.5 text-success-600">
                             <Check size={14} weight="bold" />
-                            <span className="text-xs font-medium">Copied</span>
+                            <span className="text-xs font-medium">{t('copied')}</span>
                         </span>
                     ) : (
                         <span className="flex items-center gap-1.5">
                             <Copy size={14} weight="bold" />
-                            <span className="hidden text-xs font-medium sm:inline">Copy</span>
+                            <span className="hidden text-xs font-medium sm:inline">{t('copy')}</span>
                         </span>
                     )}
                 </Button>

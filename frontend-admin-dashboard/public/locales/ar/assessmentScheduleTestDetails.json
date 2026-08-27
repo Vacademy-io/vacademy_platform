@@ -1,0 +1,41 @@
+{
+    "batchDialog": {
+        "moreLink_zero": "+{{count}} إضافية",
+        "moreLink_one": "+{{count}} إضافي",
+        "moreLink_two": "+{{count}} إضافيان",
+        "moreLink_few": "+{{count}} إضافية",
+        "moreLink_many": "+{{count}} إضافيًا",
+        "moreLink_other": "+{{count}} إضافية",
+        "title": "دفعات التقييم"
+    },
+    "info": {
+        "createdOn": "تم الإنشاء في: {{date}}",
+        "subject": "{{label}}: {{name}}",
+        "startDateTime": "تاريخ ووقت البدء: {{date}}",
+        "endDateTime": "تاريخ ووقت الانتهاء: {{date}}",
+        "duration": {
+            "label": "المدة: ",
+            "hours_zero": "{{count}} ساعة",
+            "hours_one": "{{count}} ساعة واحدة",
+            "hours_two": "{{count}} ساعتان",
+            "hours_few": "{{count}} ساعات",
+            "hours_many": "{{count}} ساعة",
+            "hours_other": "{{count}} ساعة",
+            "minutes_zero": "{{count}} دقيقة",
+            "minutes_one": "{{count}} دقيقة واحدة",
+            "minutes_two": "{{count}} دقيقتان",
+            "minutes_few": "{{count}} دقائق",
+            "minutes_many": "{{count}} دقيقة",
+            "minutes_other": "{{count}} دقيقة"
+        },
+        "totalParticipants_zero": "إجمالي المشاركين: {{count}}",
+        "totalParticipants_one": "إجمالي المشاركين: {{count}}",
+        "totalParticipants_two": "إجمالي المشاركين: {{count}}",
+        "totalParticipants_few": "إجمالي المشاركين: {{count}}",
+        "totalParticipants_many": "إجمالي المشاركين: {{count}}",
+        "totalParticipants_other": "إجمالي المشاركين: {{count}}"
+    },
+    "joinLink": {
+        "label": "رابط الانضمام:"
+    }
+}

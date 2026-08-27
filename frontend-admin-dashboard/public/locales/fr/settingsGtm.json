@@ -1,0 +1,30 @@
+{
+    "loading": "Chargement des paramètres GTM…",
+    "card": {
+        "title": "Google Tag Manager",
+        "description": {
+            "part1": "Injectez votre conteneur GTM sur les pages d'inscription des apprenants. Cela active le suivi des conversions, les pixels de remarketing et toutes les balises que vous configurez dans votre espace de travail GTM. Un événement ",
+            "part2": " est envoyé au dataLayer lors d'une inscription réussie."
+        }
+    },
+    "toggle": {
+        "enabled": "Activé",
+        "disabled": "Désactivé"
+    },
+    "containerId": {
+        "label": "ID du conteneur",
+        "placeholder": "GTM-XXXXXXX",
+        "hint": "Trouvez votre ID de conteneur dans GTM → Admin → Paramètres du conteneur."
+    },
+    "errors": {
+        "invalidContainerId": "ID de conteneur GTM invalide. Format attendu : GTM-XXXXXXX"
+    },
+    "toasts": {
+        "saveSuccess": "Paramètres GTM enregistrés",
+        "saveError": "Échec de l'enregistrement des paramètres GTM"
+    },
+    "footer": {
+        "save": "Enregistrer les paramètres GTM",
+        "saving": "Enregistrement…"
+    }
+}

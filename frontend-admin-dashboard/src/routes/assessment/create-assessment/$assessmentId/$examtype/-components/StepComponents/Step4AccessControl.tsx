@@ -1,6 +1,7 @@
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import React, { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import { FormProvider, useForm, UseFormReturn } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { AccessControlFormSchema } from '../../-utils/access-control-form-schema';
 import { MyButton } from '@/components/design-system/button';
@@ -62,6 +63,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
     handleCompleteCurrentStep,
     completedSteps,
 }) => {
+    const { t } = useTranslation('assessmentStep4AccessControl');
     const instituteId = getInstituteId();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
@@ -118,7 +120,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
             if (assessmentId !== 'defaultId') {
                 useAccessControlStore.getState().reset();
                 window.history.back();
-                toast.success('Your assessment has been updated successfully!', {
+                toast.success(t('toasts.updateSuccess'), {
                     className: 'success-toast',
                     duration: 2000,
                 });
@@ -130,7 +132,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                 useSectionDetailsStore.getState().reset();
                 useTestAccessStore.getState().reset();
                 useAccessControlStore.getState().reset();
-                toast.success('Your assessment has been saved successfully!', {
+                toast.success(t('toasts.saveSuccess'), {
                     className: 'success-toast',
                     duration: 2000,
                 });
@@ -148,7 +150,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                 feature: 'assessment-step4-access-control',
                 tags: { actionType: assessmentId !== 'defaultId' ? 'update' : 'create' },
                 extra: { assessmentId, instituteId: instituteDetails?.id, examType },
-                fallbackMessage: 'Failed to save access control.',
+                fallbackMessage: t('errors.saveFailed'),
             });
         },
     });
@@ -177,7 +179,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
             if (assessmentId !== 'defaultId') {
                 useAccessControlStore.getState().reset();
                 window.history.back();
-                toast.success('Your assessment has been updated and published successfully!', {
+                toast.success(t('toasts.updatePublishSuccess'), {
                     className: 'success-toast',
                     duration: 2000,
                 });
@@ -189,7 +191,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                 useSectionDetailsStore.getState().reset();
                 useTestAccessStore.getState().reset();
                 useAccessControlStore.getState().reset();
-                toast.success('Your assessment has been published successfully!', {
+                toast.success(t('toasts.publishSuccess'), {
                     className: 'success-toast',
                     duration: 2000,
                 });
@@ -205,7 +207,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                 feature: 'assessment-publish',
                 tags: { actionType: assessmentId !== 'defaultId' ? 'update' : 'create' },
                 extra: { assessmentId, instituteId: instituteDetails?.id, examType },
-                fallbackMessage: 'Failed to publish assessment.',
+                fallbackMessage: t('errors.publishFailed'),
             });
         },
     });
@@ -354,10 +356,9 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
             <form>
                 <div className="m-0 flex items-center justify-between p-0">
                     <div>
-                        <h1>Access Control</h1>
+                        <h1>{t('header.title')}</h1>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Control who can manage, view results, and evaluate this
-                            assessment.
+                            {t('header.description')}
                         </p>
                     </div>
                     <div className="flex items-center gap-6">
@@ -367,7 +368,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                             buttonType="secondary"
                             onClick={handleSubmit(onSubmit, onInvalid)}
                         >
-                            {assessmentId !== 'defaultId' ? 'Update' : 'Save'}
+                            {assessmentId !== 'defaultId' ? t('header.update') : t('header.save')}
                         </MyButton>
                         <MyButton
                             type="button"
@@ -375,7 +376,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                             buttonType="primary"
                             onClick={handlePublishAssessment}
                         >
-                            Publish
+                            {t('header.publish')}
                         </MyButton>
                     </div>
                 </div>
@@ -387,7 +388,11 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                         key: 'creation_access',
                     }) === 'REQUIRED' && (
                         <AccessControlCards
-                            heading={examType === 'SURVEY' ? 'Survey Creation Access' : 'Assessment Creation Access'}
+                            heading={
+                                examType === 'SURVEY'
+                                    ? t('sections.creationAccessSurvey')
+                                    : t('sections.creationAccess')
+                            }
                             keyVal="assessment_creation_access"
                             form={form}
                             existingInstituteUsersData={existingInstituteUsersData}
@@ -400,7 +405,11 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                         key: 'live_assessment_access',
                     }) === 'REQUIRED' && (
                         <AccessControlCards
-                            heading={examType === 'SURVEY' ? 'Live Survey Notification' : 'Live Assessment Notification'}
+                            heading={
+                                examType === 'SURVEY'
+                                    ? t('sections.liveNotificationSurvey')
+                                    : t('sections.liveNotification')
+                            }
                             keyVal="live_assessment_notification"
                             form={form}
                             existingInstituteUsersData={existingInstituteUsersData}
@@ -413,7 +422,11 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                         key: 'report_and_submission_access',
                     }) === 'REQUIRED' && (
                         <AccessControlCards
-                            heading={examType === 'SURVEY' ? 'Survey Submission & Report Access' : 'Assessment Submission & Report Access'}
+                            heading={
+                                examType === 'SURVEY'
+                                    ? t('sections.submissionReportAccessSurvey')
+                                    : t('sections.submissionReportAccess')
+                            }
                             keyVal="assessment_submission_and_report_access"
                             form={form}
                             existingInstituteUsersData={existingInstituteUsersData}
@@ -426,7 +439,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
                         key: 'evaluation_access',
                     }) === 'REQUIRED' && (
                         <AccessControlCards
-                            heading="Evaluation Process"
+                            heading={t('sections.evaluationProcess')}
                             keyVal="evaluation_process"
                             form={form}
                             existingInstituteUsersData={existingInstituteUsersData}
@@ -456,6 +469,7 @@ const AccessControlCards = ({
     existingInstituteUsersData: InvitedUsersInterface[];
     setExistingInstituteUsersData: Dispatch<SetStateAction<InvitedUsersInterface[]>>;
 }) => {
+    const { t } = useTranslation('assessmentStep4AccessControl');
     const [selectedUsers, setSelectedUsers] = useState<string[]>(
         form.getValues(keyVal).map((user) => user.userId)
     );
@@ -609,7 +623,7 @@ const AccessControlCards = ({
 
             // Refetch data to update the user list
             handleRefetchData();
-            toast.success('Invitation for this user has been cancelled successfully!', {
+            toast.success(t('toasts.cancelInviteSuccess'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -689,13 +703,13 @@ const AccessControlCards = ({
                         <DialogTrigger>
                             <MyButton type="button" scale="medium" buttonType="secondary">
                                 <Plus size={32} />
-                                Add
+                                {t('card.addButton')}
                             </MyButton>
                         </DialogTrigger>
-                        <DialogContent className="no-scrollbar !m-0 flex h-[90vh] !w-full !max-w-[90vw] flex-col overflow-hidden !p-0">
+                        <DialogContent className="no-scrollbar !m-0 flex max-h-dialog-tall w-dialog-xl flex-col overflow-hidden !p-0">
                             {/* Header */}
                             <h1 className="sticky top-0 z-10 rounded-t-lg bg-primary-50 p-4 text-primary-500">
-                                Add User
+                                {t('card.addUserTitle')}
                             </h1>
 
                             {/* Scrollable Middle Section */}
@@ -704,7 +718,7 @@ const AccessControlCards = ({
                                 <div className="flex items-center justify-between pt-6">
                                     <div className="flex items-center gap-6">
                                         <ScheduleTestFilters
-                                            label="Role Type"
+                                            label={t('card.roleTypeLabel')}
                                             data={RoleType}
                                             selectedItems={selectedFilter['roles'] || []}
                                             onSelectionChange={(items) =>
@@ -722,7 +736,7 @@ const AccessControlCards = ({
                                             checked={isSelectAllChecked}
                                             onCheckedChange={handleSelectAll}
                                         />
-                                        <span className="font-thin">Select All</span>
+                                        <span className="font-thin">{t('card.selectAll')}</span>
                                     </div>
                                 </div>
 
@@ -755,14 +769,14 @@ const AccessControlCards = ({
                                                                         className={`whitespace-nowrap rounded-lg border border-neutral-300 ${
                                                                             role.roleName ===
                                                                             'ADMIN'
-                                                                                ? 'bg-[#F4F9FF]'
+                                                                                ? 'bg-info-50'
                                                                                 : role.roleName ===
                                                                                     'CONTENT CREATOR'
-                                                                                  ? 'bg-[#F4FFF9]'
+                                                                                  ? 'bg-success-50'
                                                                                   : role.roleName ===
                                                                                       'ASSESSMENT CREATOR'
-                                                                                    ? 'bg-[#FFF4F5]'
-                                                                                    : 'bg-[#F5F0FF]'
+                                                                                    ? 'bg-danger-50'
+                                                                                    : 'bg-purple-50'
                                                                         } py-1.5 font-thin shadow-none`}
                                                                     >
                                                                         {role.roleName}
@@ -778,16 +792,16 @@ const AccessControlCards = ({
                                                 {user.status === 'INVITED' && (
                                                     <Dialog>
                                                         <DialogTrigger className="text-sm font-semibold text-primary-500">
-                                                            Cancel Invitation
+                                                            {t('card.cancelInvitation')}
                                                         </DialogTrigger>
-                                                        <DialogContent className="flex w-[500px] flex-col p-0">
+                                                        <DialogContent className="flex w-dialog-md flex-col p-0">
                                                             <h1 className="rounded-lg bg-primary-50 p-4 text-primary-500">
-                                                                Cancel Invitation
+                                                                {t('card.cancelInvitation')}
                                                             </h1>
                                                             <div className="flex flex-col gap-4 p-4 pt-3">
                                                                 <div className="flex items-center gap-1">
                                                                     <span className="text-danger-600">
-                                                                        Attention
+                                                                        {t('card.attention')}
                                                                     </span>
                                                                     <Info
                                                                         size={18}
@@ -795,12 +809,11 @@ const AccessControlCards = ({
                                                                     />
                                                                 </div>
                                                                 <h1 className="-mt-2 font-thin">
-                                                                    Are you sure you want to cancel
-                                                                    invitation for
+                                                                    {t('card.confirmCancel.prefix')}
                                                                     <span className="text-primary-500">
                                                                         &nbsp;{user.name}
                                                                     </span>
-                                                                    ?
+                                                                    {t('card.confirmCancel.suffix')}
                                                                 </h1>
                                                                 <div className="mt-2 flex justify-end">
                                                                     <MyButton
@@ -813,7 +826,7 @@ const AccessControlCards = ({
                                                                             )
                                                                         }
                                                                     >
-                                                                        Yes
+                                                                        {t('card.yes')}
                                                                     </MyButton>
                                                                 </div>
                                                             </div>
@@ -837,7 +850,7 @@ const AccessControlCards = ({
                                     className="mb-0"
                                     onClick={handleDone}
                                 >
-                                    Done
+                                    {t('card.done')}
                                 </MyButton>
                             </footer>
                         </DialogContent>
@@ -863,14 +876,14 @@ const AccessControlCards = ({
                                                                 key={role.roleId}
                                                                 className={`whitespace-nowrap rounded-lg border border-neutral-300 ${
                                                                     role.roleName === 'ADMIN'
-                                                                        ? 'bg-[#F4F9FF]'
+                                                                        ? 'bg-info-50'
                                                                         : role.roleName ===
                                                                             'CONTENT CREATOR'
-                                                                          ? 'bg-[#F4FFF9]'
+                                                                          ? 'bg-success-50'
                                                                           : role.roleName ===
                                                                               'ASSESSMENT CREATOR'
-                                                                            ? 'bg-[#FFF4F5]'
-                                                                            : 'bg-[#F5F0FF]'
+                                                                            ? 'bg-danger-50'
+                                                                            : 'bg-purple-50'
                                                                 } py-1.5 font-thin shadow-none`}
                                                             >
                                                                 {role.roleName}

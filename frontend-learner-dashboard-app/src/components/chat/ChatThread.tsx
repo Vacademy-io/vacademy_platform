@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, PencilSimple, Trash, X } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,6 +68,7 @@ export function ChatThread({
   onDelete,
   onEdit,
 }: ChatThreadProps) {
+  const { t } = useTranslation("chatFeatureA");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [editTarget, setEditTarget] = useState<UiChatMessage | null>(null);
   const [editText, setEditText] = useState("");
@@ -104,9 +106,7 @@ export function ChatThread({
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 text-center">
-        <p className="text-caption text-muted-foreground">
-          No messages yet. Say hello to get the conversation started.
-        </p>
+        <p className="text-caption text-muted-foreground">{t("thread.empty")}</p>
       </div>
     );
   }
@@ -129,7 +129,7 @@ export function ChatThread({
             onClick={onLoadMore}
             disabled={isLoadingMore}
           >
-            {isLoadingMore ? "Loading…" : "Load earlier messages"}
+            {isLoadingMore ? t("common.loading") : t("thread.loadEarlier")}
           </Button>
         </div>
       )}
@@ -171,7 +171,10 @@ export function ChatThread({
               {showDay && (
                 <div className="my-2 flex items-center justify-center">
                   <span className="rounded-full bg-muted px-3 py-1 text-caption font-medium text-muted-foreground">
-                    {dayLabel(msg.createdAt)}
+                    {dayLabel(msg.createdAt, {
+                      today: t("thread.dayToday"),
+                      yesterday: t("thread.dayYesterday"),
+                    })}
                   </span>
                 </div>
               )}
@@ -201,13 +204,13 @@ export function ChatThread({
                   <div className="group/msg min-w-0">
                     {showName && (
                       <span className="mb-0.5 block px-1 text-caption font-medium text-muted-foreground">
-                        {msg.senderName || "Member"}
+                        {msg.senderName || t("common.memberFallback")}
                       </span>
                     )}
 
                     {isTombstoned ? (
                       <div className="rounded-2xl border border-dashed border-border px-3 py-2 text-body italic text-muted-foreground">
-                        This message was deleted
+                        {t("thread.deletedMessage")}
                       </div>
                     ) : (
                       <div
@@ -231,7 +234,7 @@ export function ChatThread({
                             {canEdit && (
                               <button
                                 type="button"
-                                aria-label="Edit message"
+                                aria-label={t("thread.editMessage")}
                                 onClick={() => {
                                   setEditTarget(msg);
                                   setEditText(msg.content ?? "");
@@ -244,7 +247,7 @@ export function ChatThread({
                             {canDelete && (
                               <button
                                 type="button"
-                                aria-label="Delete message"
+                                aria-label={t("thread.deleteMessage")}
                                 onClick={() => setDeleteTarget(msg)}
                                 className="flex size-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm hover:bg-muted"
                               >
@@ -263,7 +266,7 @@ export function ChatThread({
                           >
                             <img
                               src={msg.attachmentUrl}
-                              alt={msg.attachmentName || "attachment"}
+                              alt={msg.attachmentName || t("thread.attachmentAltFallback")}
                               className="max-h-64 w-full rounded-lg object-cover"
                             />
                           </a>
@@ -276,7 +279,7 @@ export function ChatThread({
                             rel="noopener noreferrer"
                             className="mb-1 block truncate underline"
                           >
-                            {msg.attachmentName || "Attachment"}
+                            {msg.attachmentName || t("thread.attachmentNameFallback")}
                           </a>
                         )}
 
@@ -286,7 +289,7 @@ export function ChatThread({
 
                         {msg.failed ? (
                           <span
-                            aria-label="Message failed to send"
+                            aria-label={t("thread.failedAria")}
                             className="mt-1 flex items-center justify-end gap-2 text-3xs leading-none"
                           >
                             <button
@@ -300,12 +303,12 @@ export function ChatThread({
                               )}
                             >
                               <ArrowClockwise size={12} />
-                              Retry
+                              {t("thread.retry")}
                             </button>
                             {onDismissFailed && (
                               <button
                                 type="button"
-                                aria-label="Dismiss failed message"
+                                aria-label={t("thread.dismissFailedAria")}
                                 onClick={() => onDismissFailed(msg)}
                                 className={cn(
                                   "flex items-center rounded-md p-0.5 hover:opacity-80",
@@ -320,7 +323,7 @@ export function ChatThread({
                           </span>
                         ) : (
                           <span
-                            aria-label={msg.pending ? "Sending message" : undefined}
+                            aria-label={msg.pending ? t("thread.sendingAria") : undefined}
                             className={cn(
                               "mt-0.5 block text-end text-3xs leading-none",
                               isOwn
@@ -329,8 +332,10 @@ export function ChatThread({
                             )}
                           >
                             {msg.pending
-                              ? "Sending…"
-                              : `${timeLabel(msg.createdAt)}${msg.isEdited ? " · edited" : ""}`}
+                              ? t("thread.sending")
+                              : msg.isEdited
+                                ? t("thread.timestampEdited", { time: timeLabel(msg.createdAt) })
+                                : timeLabel(msg.createdAt)}
                           </span>
                         )}
                       </div>
@@ -353,17 +358,19 @@ export function ChatThread({
       >
         <DialogContent className="w-full max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-body font-semibold">Edit message</DialogTitle>
+            <DialogTitle className="text-body font-semibold">
+              {t("thread.editMessage")}
+            </DialogTitle>
           </DialogHeader>
           <Textarea
-            aria-label="Message text"
+            aria-label={t("thread.editDialog.inputAria")}
             rows={4}
             maxLength={8000}
             value={editText}
             onChange={(e) => setEditText(e.target.value)}
           />
           <p className="text-caption text-muted-foreground">
-            Everyone in the conversation sees the change, marked as edited.
+            {t("thread.editDialog.notice")}
           </p>
           <DialogFooter>
             <Button
@@ -371,7 +378,7 @@ export function ChatThread({
               disabled={isSavingEdit}
               onClick={() => setEditTarget(null)}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               disabled={
@@ -388,7 +395,7 @@ export function ChatThread({
                   .finally(() => setIsSavingEdit(false));
               }}
             >
-              {isSavingEdit ? "Saving…" : "Save"}
+              {isSavingEdit ? t("common.saving") : t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -402,15 +409,14 @@ export function ChatThread({
       >
         <DialogContent className="w-full max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-body font-semibold">Delete message</DialogTitle>
+            <DialogTitle className="text-body font-semibold">
+              {t("thread.deleteMessage")}
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-body text-muted-foreground">
-            This removes the message for everyone in the conversation. It can&apos;t be
-            undone.
-          </p>
+          <p className="text-body text-muted-foreground">{t("thread.deleteDialog.body")}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={() => {
@@ -419,7 +425,7 @@ export function ChatThread({
                 if (target) onDelete?.(target);
               }}
             >
-              Delete
+              {t("thread.deleteDialog.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

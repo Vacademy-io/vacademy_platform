@@ -1,0 +1,18 @@
+{
+    "menu": {
+        "acceptRequest": "Accepter la demande",
+        "changeBatch": "Changer de groupe",
+        "extendCourseAccess": "Prolonger l'accès au cours",
+        "reRegisterForNextSession": "Réinscrire pour la prochaine session",
+        "terminateRegistration": "Résilier l'inscription",
+        "shareCredentials": "Partager les identifiants",
+        "sendWhatsappMessage": "Envoyer un message WhatsApp",
+        "sendEmail": "Envoyer un e-mail",
+        "createCertificate": "Créer un certificat"
+    },
+    "actionInfo": {
+        "selectedStudents_one": "{{count}} étudiant sélectionné",
+        "selectedStudents_many": "{{count}} étudiants sélectionnés",
+        "selectedStudents_other": "{{count}} étudiants sélectionnés"
+    }
+}

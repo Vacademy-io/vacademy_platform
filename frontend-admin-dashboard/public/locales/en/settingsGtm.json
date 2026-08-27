@@ -1,0 +1,30 @@
+{
+    "loading": "Loading GTM settings…",
+    "card": {
+        "title": "Google Tag Manager",
+        "description": {
+            "part1": "Inject your GTM container on learner enrollment pages. This enables conversion tracking, remarketing pixels, and any tags you configure in your GTM workspace. An ",
+            "part2": " event is pushed to the dataLayer on successful registration."
+        }
+    },
+    "toggle": {
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+    },
+    "containerId": {
+        "label": "Container ID",
+        "placeholder": "GTM-XXXXXXX",
+        "hint": "Find your Container ID in GTM → Admin → Container Settings."
+    },
+    "errors": {
+        "invalidContainerId": "Invalid GTM Container ID. Expected format: GTM-XXXXXXX"
+    },
+    "toasts": {
+        "saveSuccess": "GTM settings saved",
+        "saveError": "Failed to save GTM settings"
+    },
+    "footer": {
+        "save": "Save GTM Settings",
+        "saving": "Saving…"
+    }
+}

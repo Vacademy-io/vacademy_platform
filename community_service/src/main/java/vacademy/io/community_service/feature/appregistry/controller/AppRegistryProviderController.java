@@ -17,14 +17,14 @@ import java.util.Set;
  * Store Connect JWT or holding a Google service-account key client-side would expose the private
  * key to anyone with devtools.
  *
- * <p>Live today: IOS and MACOS, via {@link StoreStatusSyncService} (App Store Connect API — the
- * only store credential present in vacademy-secrets as of this writing). ANDROID (Play Developer
- * API, needs a Google Cloud service-account key) and WINDOWS (Partner Center, needs Azure AD) have
- * no credential configured, so they still answer <b>501 Not Implemented</b> with a plain
- * explanation — a dashboard that invents "Live" for a store it can't actually reach is worse than
- * one that says "go and look". The client renders that as "Manual action required" and links to
- * the right console. The same 501 fallback covers iOS/macOS operations this sync doesn't cover
- * yet ({@code getReviews}) and any request where the app record has no bundle id filled in.
+ * <p>All four platforms route through {@link StoreStatusSyncService}, which resolves a credential
+ * per institute (see {@code StoreCredentialResolver}) — whether a given app actually gets a live
+ * answer depends on whether that institute (or the shared default) has a credential on file, not
+ * on the platform itself. When none exists, or the app record has no bundle/package/store id
+ * filled in, or {@code getReviews} is requested (not implemented for any provider yet), this
+ * answers <b>501 Not Implemented</b> with a plain explanation — a dashboard that invents "Live"
+ * for a store it can't actually reach is worse than one that says "go and look". The client
+ * renders that as "Manual action required" and links to the right console.
  *
  * <p>When a new provider is wired up, it must use the official API and documented auth only —
  * Play Developer API via a service account, App Store Connect via a JWT-signed .p8, Partner Center
@@ -97,20 +97,22 @@ public class AppRegistryProviderController {
     }
 
     private static String notConfiguredMessage(String platformKey, String operation) {
-        if ("android".equals(platformKey)) {
-            return "The Play Developer API isn't configured on the server yet — it needs a Google Cloud "
-                    + "service-account JSON key with Play Console API access. Check the store console and "
-                    + "record the result in the dashboard.";
-        }
-        if ("windows".equals(platformKey)) {
-            return "The Microsoft Partner Center API isn't configured on the server yet — it needs an "
-                    + "Azure AD app registration with Partner Center access. Check the store console and "
-                    + "record the result in the dashboard.";
-        }
         if ("getReviews".equals(operation)) {
-            return "Review sync isn't implemented yet — check App Store Connect directly.";
+            return "Review sync isn't implemented yet — check the store console directly.";
         }
-        return "This app's Bundle ID isn't filled in yet, or the App Store Connect credential isn't "
-                + "configured on the server. Check the store console and record the result in the dashboard.";
+        return switch (platformKey) {
+            case "android" -> "Couldn't sync live status. Either no Play Developer credential is on file for "
+                    + "this institute (add one via /store-credentials), the app's Package Name isn't filled in, "
+                    + "or the account can't see this package — check the store console and record the result "
+                    + "in the dashboard.";
+            case "windows" -> "Couldn't sync live status. Either no Partner Center credential is on file for "
+                    + "this institute (add one via /store-credentials), the app's Store ID isn't filled in, or "
+                    + "the account can't see this application — check the store console and record the result "
+                    + "in the dashboard.";
+            default -> "Couldn't sync live status. Either no App Store Connect credential is on file for this "
+                    + "institute (add one via /store-credentials), the app's Bundle ID isn't filled in, or the "
+                    + "account can't see this bundle — check the store console and record the result in the "
+                    + "dashboard.";
+        };
     }
 }

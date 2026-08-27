@@ -1,6 +1,12 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { CheckCircle, BookOpen, ArrowRight } from "@phosphor-icons/react";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import type {
   ProductPageData,
   ProductPageSettings,
@@ -20,6 +26,9 @@ const PAYMENT_SUCCESS_TARGET_ORIGINS = [
 ];
 
 export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
+  const { t } = useTranslation("productPages");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const coursePlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const { selectedPsOptionIds, utmParams } = useProductPageStore();
 
   const settings: ProductPageSettings = pageData.settings_json
@@ -72,7 +81,7 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
         <CheckCircle className="size-10 text-green-600" />
       </div>
 
-      <h1 className="text-2xl font-bold text-gray-900">You're enrolled!</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{t("success.title")}</h1>
 
       {/* Custom or default content */}
       {successPageContent ? (
@@ -82,8 +91,10 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
         />
       ) : (
         <p className="mt-2 max-w-sm text-center text-sm text-gray-500">
-          Successfully enrolled in {enrolledCount} course
-          {enrolledCount !== 1 ? "s" : ""}. Start learning right away.
+          {t("success.defaultMessage", {
+            count: enrolledCount,
+            course: (enrolledCount === 1 ? course : coursePlural).toLocaleLowerCase(),
+          })}
         </p>
       )}
 
@@ -97,15 +108,15 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
             <CheckCircle className="size-4 shrink-0 text-green-500" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-gray-900">
-                {m.payment_plan?.name || "Course"}
+                {m.payment_plan?.name || course}
               </p>
               {m.payment_plan?.validity_in_days > 0 && (
                 <p className="text-xs text-gray-400">
                   {m.payment_plan.validity_in_days === 365
-                    ? "1 year access"
+                    ? t("success.access.oneYear")
                     : m.payment_plan.validity_in_days % 30 === 0
-                      ? `${m.payment_plan.validity_in_days / 30} months access`
-                      : `${m.payment_plan.validity_in_days} days access`}
+                      ? t("success.access.months", { count: m.payment_plan.validity_in_days / 30 })
+                      : t("success.access.days", { count: m.payment_plan.validity_in_days })}
                 </p>
               )}
             </div>
@@ -124,7 +135,7 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
           className="mt-8 flex items-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
         >
           <BookOpen className="size-4" />
-          Go to My Courses
+          {t("success.goToMyCourses", { courses: coursePlural })}
           <ArrowRight className="size-4" />
         </a>
       )}

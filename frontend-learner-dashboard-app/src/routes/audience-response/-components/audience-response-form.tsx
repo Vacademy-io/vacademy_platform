@@ -44,6 +44,7 @@ import {
 } from "../-utils/post-submit-config";
 import { usePostSubmitRedirect } from "../-utils/use-post-submit-redirect";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface AudienceResponseFormProps {
   campaignData: AudienceCampaignResponse;
@@ -87,6 +88,7 @@ const AudienceResponseForm = ({
   instituteId,
   audienceId,
 }: AudienceResponseFormProps) => {
+  const { t } = useTranslation("liveClassGuest");
   const domainRouting = useDomainRouting();
   const { setInstituteDetails } = useInstituteDetailsStore();
   const [loading, setLoading] = useState(false);
@@ -313,7 +315,7 @@ const AudienceResponseForm = ({
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         error?.message ||
-        "Failed to submit response. Please try again.";
+        t("audienceResponse.form.toast.submitFailed");
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -351,7 +353,7 @@ const AudienceResponseForm = ({
     const showAnother = postSubmitConfig.allowAnotherResponse;
     const anotherLabel =
       applyPostSubmitTokens(postSubmitConfig.anotherResponseText, postSubmitTokens) ||
-      "Submit another response";
+      t("audienceResponse.form.success.submitAnotherDefault");
 
     const handleAnotherResponse = () => {
       form.reset(defaultValues);
@@ -410,9 +412,13 @@ const AudienceResponseForm = ({
                 {/* Success Message — copy, CTA and redirect all come from the
                     campaign's Post Submit Configuration. */}
                 <div className="space-y-3">
-                  {(useCustomScreen ? successTitle : "Registration Successful!") && (
+                  {(useCustomScreen
+                    ? successTitle
+                    : t("audienceResponse.form.success.defaultTitle")) && (
                     <h2 className="text-2xl sm:text-3xl font-bold text-neutral-800">
-                      {useCustomScreen ? successTitle : "Registration Successful!"}
+                      {useCustomScreen
+                        ? successTitle
+                        : t("audienceResponse.form.success.defaultTitle")}
                     </h2>
                   )}
                   {useCustomScreen && successHtml ? (
@@ -423,23 +429,24 @@ const AudienceResponseForm = ({
                   ) : (
                     (useCustomScreen
                       ? successMessage
-                      : "Thank you for your response. Your form has been submitted successfully.") && (
+                      : t("audienceResponse.form.success.defaultMessage")) && (
                       <p className="text-lg text-neutral-600 whitespace-pre-line">
                         {useCustomScreen
                           ? successMessage
-                          : "Thank you for your response. Your form has been submitted successfully."}
+                          : t("audienceResponse.form.success.defaultMessage")}
                       </p>
                     )
                   )}
                   {campaignData.send_respondent_email && (
                     <p className="text-sm text-neutral-500">
-                      A confirmation email will be sent to you shortly.
+                      {t("audienceResponse.form.success.confirmationEmailNotice")}
                     </p>
                   )}
                   {redirectUrl && secondsLeft !== null && (
                     <p className="text-sm text-neutral-500">
-                      Redirecting in {secondsLeft}
-                      {secondsLeft === 1 ? " second" : " seconds"}…
+                      {t("audienceResponse.form.success.redirecting", {
+                        count: secondsLeft,
+                      })}
                     </p>
                   )}
                 </div>
@@ -544,7 +551,7 @@ const AudienceResponseForm = ({
             {campaignData.campaign_objective && (
               <div className="mt-4">
                 <p className="text-sm font-semibold text-neutral-700 mb-2">
-                  Objective:
+                  {t("audienceResponse.form.campaign.objectiveLabel")}
                 </p>
                 <p className="text-neutral-600">{campaignData.campaign_objective}</p>
               </div>
@@ -564,10 +571,10 @@ const AudienceResponseForm = ({
                 size="md"
                 className="text-neutral-800 text-xl sm:text-2xl mb-2"
               >
-                Please fill in your details
+                {t("audienceResponse.form.details.title")}
               </ModernCardTitle>
               <p className="text-neutral-600 text-sm">
-                This information will be used to contact you about the campaign.
+                {t("audienceResponse.form.details.subtitle")}
               </p>
             </ModernCardHeader>
 
@@ -586,10 +593,14 @@ const AudienceResponseForm = ({
 
                 {formFields.length === 0 ? (
                   <div className="text-center py-8 text-neutral-600">
-                    <p className="text-lg font-semibold mb-2">No form fields available</p>
-                    <p>This campaign does not have any custom fields configured.</p>
+                    <p className="text-lg font-semibold mb-2">
+                      {t("audienceResponse.form.noFields.title")}
+                    </p>
+                    <p>{t("audienceResponse.form.noFields.description")}</p>
                     <p className="text-xs mt-4 text-neutral-400">
-                      Custom Fields from API: {campaignData.institute_custom_fields?.length || 0}
+                      {t("audienceResponse.form.noFields.debugCount", {
+                        count: campaignData.institute_custom_fields?.length || 0,
+                      })}
                     </p>
                   </div>
                 ) : (
@@ -667,7 +678,7 @@ const AudienceResponseForm = ({
                                 <FormControl>
                                   <PhoneInputField
                                     label={capitalise(value.name)}
-                                    placeholder="123 456 7890"
+                                    placeholder={t("common.phoneExamplePlaceholder")}
                                     name={`${key}.value`}
                                     control={form.control}
                                     country={phoneCountryCode}
@@ -734,7 +745,9 @@ const AudienceResponseForm = ({
                     disabled={loading}
                     className="min-w-32"
                   >
-                    {loading ? "Submitting..." : "Submit Response"}
+                    {loading
+                      ? t("audienceResponse.form.submitButton.submitting")
+                      : t("audienceResponse.form.submitButton.default")}
                   </MyButton>
                 </div>
               </form>

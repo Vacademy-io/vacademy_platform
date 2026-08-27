@@ -11,17 +11,26 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.community_service.feature.appregistry.entity.AppRegistration;
 import vacademy.io.community_service.feature.appregistry.repository.AppRegistrationRepository;
 import vacademy.io.community_service.feature.appregistry.store.AppStoreConnectClient;
+import vacademy.io.community_service.feature.appregistry.store.GooglePlayClient;
+import vacademy.io.community_service.feature.appregistry.store.MicrosoftPartnerCenterClient;
+import vacademy.io.community_service.feature.appregistry.store.StoreCredentialResolver;
 
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Live status sync for the two platforms with a real credential today — IOS and MACOS both go
- * through App Store Connect (same API, same .p8 key). ANDROID (Play Developer API) and WINDOWS
- * (Partner Center) have no service-account/Azure-AD credential configured anywhere in
- * vacademy-secrets yet, so {@link #sync} simply isn't called for them — the controller keeps
- * answering those with the existing "manual action required" 501.
+ * Live status sync across all four platforms — which provider client is actually reachable
+ * depends entirely on whether a credential exists for this institute (see
+ * {@link StoreCredentialResolver}). When none does, {@link #sync} returns null and the caller
+ * falls back to the existing "manual action required" 501 response — never a fabricated status.
+ *
+ * <p>App Store Connect (IOS/MACOS) is the only one of the four verified against real, live data
+ * this was built and tested against — see {@link AppStoreConnectClient}'s javadoc for what that
+ * caught. {@link GooglePlayClient} and {@link MicrosoftPartnerCenterClient} are written to their
+ * providers' documented API shapes but have never run against a real credential; treat their
+ * status-mapping as reviewed, not proven, until the first institute with a real Play/Partner
+ * Center credential exercises them.
  *
  * <p>A successful sync also writes the fetched status/version/build back into the stored
  * {@code AppRegistration.payload}, so an institute admin reading the status endpoint sees the
@@ -34,21 +43,20 @@ import java.util.Map;
 public class StoreStatusSyncService {
 
     private final AppRegistrationRepository repository;
-    private final AppStoreConnectClient appStoreConnectClient;
+    private final StoreCredentialResolver storeCredentialResolver;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * @return the AppStatusResult-shaped fields for the dashboard's {@code getAppStatus} contract,
-     *         or null when this platform/appId combination can't be synced live — either no
-     *         credential is configured, the record/bundle id is missing, or the call to Apple
-     *         failed. The controller treats null as "fall back to manual".
+     *         or null when this platform/appId combination can't be synced live — no credential
+     *         configured for this institute+platform, the record/identifier field is missing, or
+     *         the call to the store failed. The controller treats null as "fall back to manual".
      */
     @Transactional
     public Map<String, Object> sync(String recordId, String platform) {
-        if (!"IOS".equalsIgnoreCase(platform) && !"MACOS".equalsIgnoreCase(platform)) {
-            return null;
-        }
-        if (!appStoreConnectClient.isConfigured()) {
+        String platformKey = platform == null ? "" : platform.toUpperCase(Locale.ROOT);
+        if (!"IOS".equals(platformKey) && !"MACOS".equals(platformKey)
+                && !"ANDROID".equals(platformKey) && !"WINDOWS".equals(platformKey)) {
             return null;
         }
 
@@ -65,44 +73,101 @@ public class StoreStatusSyncService {
             return null;
         }
 
-        String platformKey = platform.toUpperCase(Locale.ROOT);
+        String instituteId = record.path("basics").path("instituteId").asText(null);
         JsonNode platformNode = record.path("platforms").path(platformKey);
+
+        Result result = switch (platformKey) {
+            case "IOS", "MACOS" -> syncApple(platformNode, instituteId, platformKey);
+            case "ANDROID" -> syncGooglePlay(platformNode, instituteId);
+            case "WINDOWS" -> syncPartnerCenter(platformNode, instituteId);
+            default -> null;
+        };
+        if (result == null) {
+            return null;
+        }
+
+        String syncedAt = Instant.now().toString();
+        persist(row, record, platformKey, result, syncedAt);
+
+        return Map.of(
+                "status", result.status,
+                "version", result.version,
+                "build", result.build,
+                "releasedAt", result.releasedAt,
+                // OTA (Capacitor bundle) rollout status is a separate system this integration has
+                // no visibility into — never fabricated, always reported as unknown.
+                "otaStatus", "NONE",
+                "storeUrl", result.storeUrl);
+    }
+
+    /** Common shape every provider branch reduces to before the shared persist/response step. */
+    private record Result(String status, String version, String build, String storeUrl, String releasedAt) {
+    }
+
+    private Result syncApple(JsonNode platformNode, String instituteId, String platformKey) {
         String bundleId = platformNode.path("fields").path("bundle_id").asText("");
         if (bundleId.isBlank()) {
             return null;
         }
-
-        AppStoreConnectClient.AppStatus ascStatus = appStoreConnectClient.fetchStatus(bundleId);
+        AppStoreConnectClient client = storeCredentialResolver.resolveAppStoreConnect(instituteId, platformKey);
+        if (client == null) {
+            return null;
+        }
+        AppStoreConnectClient.AppStatus ascStatus = client.fetchStatus(bundleId);
         String status = ascStatus == null ? "NOT_REGISTERED" : mapAppStoreState(ascStatus.appStoreState());
-        String version = ascStatus == null ? "" : ascStatus.versionString();
-        String build = ascStatus == null ? "" : ascStatus.buildNumber();
         String storeUrl = ascStatus == null ? ""
                 : "https://appstoreconnect.apple.com/apps/" + ascStatus.ascAppId() + "/appstore";
         String releasedAt = "LIVE".equals(status) && ascStatus != null ? ascStatus.createdDate() : "";
-        String syncedAt = Instant.now().toString();
-
-        persist(row, record, platformKey, status, version, build, storeUrl, releasedAt, syncedAt);
-
-        return Map.of(
-                "status", status,
-                "version", version,
-                "build", build,
-                "releasedAt", releasedAt,
-                // OTA (Capacitor bundle) rollout status is a separate system this integration has
-                // no visibility into — never fabricated, always reported as unknown.
-                "otaStatus", "NONE",
-                "storeUrl", storeUrl);
+        return new Result(status,
+                ascStatus == null ? "" : ascStatus.versionString(),
+                ascStatus == null ? "" : ascStatus.buildNumber(),
+                storeUrl, releasedAt);
     }
 
-    private void persist(AppRegistration row, ObjectNode record, String platformKey, String status,
-                          String version, String build, String storeUrl, String releasedAt, String syncedAt) {
+    private Result syncGooglePlay(JsonNode platformNode, String instituteId) {
+        String packageName = platformNode.path("fields").path("package_name").asText("");
+        if (packageName.isBlank()) {
+            return null;
+        }
+        GooglePlayClient client = storeCredentialResolver.resolveGooglePlay(instituteId);
+        if (client == null) {
+            return null;
+        }
+        GooglePlayClient.AppStatus playStatus = client.fetchStatus(packageName);
+        String status = playStatus == null ? "NOT_REGISTERED" : mapPlayReleaseStatus(playStatus.releaseStatus());
+        String storeUrl = playStatus == null ? ""
+                : "https://play.google.com/console/developers/app/" + packageName;
+        return new Result(status,
+                playStatus == null ? "" : playStatus.releaseName(),
+                playStatus == null ? "" : playStatus.versionCode(),
+                storeUrl, "");
+    }
+
+    private Result syncPartnerCenter(JsonNode platformNode, String instituteId) {
+        String storeId = platformNode.path("fields").path("store_id").asText("");
+        if (storeId.isBlank()) {
+            return null;
+        }
+        MicrosoftPartnerCenterClient client = storeCredentialResolver.resolvePartnerCenter(instituteId);
+        if (client == null) {
+            return null;
+        }
+        MicrosoftPartnerCenterClient.AppStatus pcStatus = client.fetchStatus(storeId);
+        String status = pcStatus == null ? "NOT_REGISTERED" : mapPartnerCenterStatus(pcStatus.submissionStatus());
+        String storeUrl = pcStatus == null ? ""
+                : "https://partner.microsoft.com/dashboard/products/" + storeId;
+        return new Result(status, "", "", storeUrl, "");
+    }
+
+    private void persist(AppRegistration row, ObjectNode record, String platformKey, Result result,
+                          String syncedAt) {
         ObjectNode platforms = (ObjectNode) record.path("platforms");
         ObjectNode platformNode = (ObjectNode) platforms.path(platformKey);
-        platformNode.put("status", status);
-        if (!version.isBlank()) platformNode.put("currentVersion", version);
-        if (!build.isBlank()) platformNode.put("currentBuild", build);
-        if (!storeUrl.isBlank()) platformNode.put("storeUrl", storeUrl);
-        if (!releasedAt.isBlank()) platformNode.put("releasedAt", releasedAt);
+        platformNode.put("status", result.status);
+        if (!result.version.isBlank()) platformNode.put("currentVersion", result.version);
+        if (!result.build.isBlank()) platformNode.put("currentBuild", result.build);
+        if (!result.storeUrl.isBlank()) platformNode.put("storeUrl", result.storeUrl);
+        if (!result.releasedAt.isBlank()) platformNode.put("releasedAt", result.releasedAt);
         platformNode.put("lastSyncedAt", syncedAt);
         record.put("updatedAt", syncedAt);
 
@@ -130,6 +195,38 @@ public class StoreStatusSyncService {
             case "DEVELOPER_REMOVED_FROM_SALE", "REMOVED_FROM_SALE" -> "REMOVED";
             case "PENDING_CONTRACT" -> "SUSPENDED";
             case "PROCESSING_FOR_APP_STORE" -> "BUILD_PROCESSING";
+            default -> "SUBMITTED";
+        };
+    }
+
+    /**
+     * Maps a Play production-track release's {@code status} field to the dashboard's StoreStatus.
+     * Per Google's documented values: draft, inProgress, halted, completed. Unverified against a
+     * real account — see this class's javadoc.
+     */
+    private static String mapPlayReleaseStatus(String releaseStatus) {
+        return switch (releaseStatus) {
+            case "completed" -> "LIVE";
+            case "inProgress" -> "SUBMITTED";
+            case "halted" -> "SUSPENDED";
+            case "draft" -> "DRAFT";
+            default -> "SUBMITTED";
+        };
+    }
+
+    /**
+     * Maps a Microsoft Store submission's {@code status} field to the dashboard's StoreStatus.
+     * Unverified against a real account — see this class's javadoc.
+     */
+    private static String mapPartnerCenterStatus(String submissionStatus) {
+        return switch (submissionStatus) {
+            case "Published" -> "LIVE";
+            case "Release" -> "APPROVED";
+            case "Certification" -> "IN_REVIEW";
+            case "PendingCommit", "CommitStarted", "PreProcessing", "Signing" -> "SUBMITTED";
+            case "Failed", "PublishFailed", "PreProcessingFailed", "CertificationFailed", "ReleaseFailed" -> "REJECTED";
+            case "Canceled" -> "REMOVED";
+            case "None" -> "DRAFT";
             default -> "SUBMITTED";
         };
     }

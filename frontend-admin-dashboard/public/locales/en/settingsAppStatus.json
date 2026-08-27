@@ -1,0 +1,22 @@
+{
+    "title": "App Status",
+    "description": "Your app's registration and store status on Android, iOS, Windows and macOS. Set up by the platform team — this view is read-only.",
+    "refreshStatus": "Refresh status",
+    "errors": {
+        "loadStatus": "Could not load app status right now. Try refreshing in a moment."
+    },
+    "loading": "Loading app status…",
+    "emptyState": {
+        "title": "No app registered yet",
+        "description": "Once the platform team registers a mobile or desktop app for your institute, its status will show up here."
+    },
+    "untitledApp": "Untitled app",
+    "noPlatforms": "No platforms enabled for this app yet.",
+    "viewInStore": "View in store",
+    "platforms": {
+        "android": "Android",
+        "ios": "iOS",
+        "windows": "Windows",
+        "macos": "macOS"
+    }
+}

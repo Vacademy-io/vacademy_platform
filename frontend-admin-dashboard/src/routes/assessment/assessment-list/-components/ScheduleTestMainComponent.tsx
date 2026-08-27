@@ -1,10 +1,11 @@
 import { Helmet } from 'react-helmet';
 import { Tabs } from '@/components/ui/tabs';
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { ScheduleTestFilters } from './ScheduleTestFilters';
-import { Info } from 'lucide-react';
+import { Info } from '@phosphor-icons/react';
 import {
     useFilterDataForAssesment,
     useFilterDataForAssesmentInitData,
@@ -96,6 +97,7 @@ export const ScheduleTestMainComponent = ({
     showBatchFilter?: boolean;
 }) => {
     const navigate = useNavigate();
+    const { t } = useTranslation('assessmentScheduleTestMainComponent');
 
     // Always call Route.useSearch() regardless of props
     const routeSearchParams = SafeRouteSearch();
@@ -142,7 +144,7 @@ export const ScheduleTestMainComponent = ({
     const [scheduleTestTabsData, setScheduleTestTabsData] = useState<ScheduleTestTab[]>([
         {
             value: 'liveTests',
-            message: 'No tests are currently live.',
+            message: t('tabs.liveTests.emptyMessage'),
             data: {
                 content: [],
                 last: false,
@@ -154,7 +156,7 @@ export const ScheduleTestMainComponent = ({
         },
         {
             value: 'upcomingTests',
-            message: 'No upcoming tests scheduled.',
+            message: t('tabs.upcomingTests.emptyMessage'),
             data: {
                 content: [],
                 last: false,
@@ -166,7 +168,7 @@ export const ScheduleTestMainComponent = ({
         },
         {
             value: 'previousTests',
-            message: 'No previous tests available.',
+            message: t('tabs.previousTests.emptyMessage'),
             data: {
                 content: [],
                 last: false,
@@ -178,7 +180,7 @@ export const ScheduleTestMainComponent = ({
         },
         {
             value: 'draftTests',
-            message: 'No draft tests available.',
+            message: t('tabs.draftTests.emptyMessage'),
             data: {
                 content: [],
                 last: false,
@@ -556,7 +558,8 @@ export const ScheduleTestMainComponent = ({
     }, [isCourseOutline, batchId]);
 
     useEffect(() => {
-        if (!isCourseOutline) setNavHeading(<h1 className="text-lg">Assessments List</h1>);
+        if (!isCourseOutline)
+            setNavHeading(<h1 className="text-lg">{t('header.navHeading')}</h1>);
     }, []);
 
     useEffect(() => {
@@ -585,11 +588,8 @@ export const ScheduleTestMainComponent = ({
     return (
         <>
             <Helmet>
-                <title>Schedule Tests</title>
-                <meta
-                    name="description"
-                    content="This page shows the list of all the schedules tests and also an assessment can be scheduled here."
-                />
+                <title>{t('meta.helmetTitle')}</title>
+                <meta name="description" content={t('meta.helmetDescription')} />
             </Helmet>
             <ScheduleTestHeaderDescription isCourseOutline />
             <div className="flex flex-col gap-4">
@@ -615,7 +615,7 @@ export const ScheduleTestMainComponent = ({
                                     even on a wide screen. */}
                                 <div className="no-scrollbar -mx-1 flex min-w-0 flex-1 flex-wrap items-center gap-2 px-1 lg:flex-nowrap lg:overflow-x-auto">
                                     <span className="hidden shrink-0 pr-1 text-sm font-medium text-neutral-500 sm:inline">
-                                        Filter by
+                                        {t('filters.filterBy')}
                                     </span>
                                     {/* Only show batch filter if not in course outline mode or explicitly enabled */}
                                     {(!isCourseOutline || showBatchFilter) && (
@@ -651,7 +651,7 @@ export const ScheduleTestMainComponent = ({
                                         }
                                     />
                                     <ScheduleTestFilters
-                                        label="Mode"
+                                        label={t('filters.mode')}
                                         data={ModeData}
                                         selectedItems={
                                             selectedQuestionPaperFilters['assessment_modes'] || []
@@ -661,7 +661,7 @@ export const ScheduleTestMainComponent = ({
                                         }
                                     />
                                     <ScheduleTestFilters
-                                        label="Type"
+                                        label={t('filters.type')}
                                         data={AssessmentTypeData}
                                         selectedItems={
                                             selectedQuestionPaperFilters['access_statuses'] || []
@@ -671,7 +671,7 @@ export const ScheduleTestMainComponent = ({
                                         }
                                     />
                                     <ScheduleTestFilters
-                                        label="Evaluation"
+                                        label={t('filters.evaluation')}
                                         data={EvaluationTypeData}
                                         selectedItems={
                                             selectedQuestionPaperFilters['evaluation_types'] || []
@@ -712,11 +712,14 @@ export const ScheduleTestMainComponent = ({
                                 <p className="mt-3 flex items-center gap-1.5 border-t border-neutral-200 pt-3 text-xs text-neutral-500">
                                     <Info className="size-3.5 shrink-0 text-primary-500" />
                                     <span>
-                                        {activeFilterCount}{' '}
-                                        {activeFilterCount === 1 ? 'filter' : 'filters'} selected
-                                        &mdash; press{' '}
-                                        <span className="font-medium text-neutral-700">Apply</span>{' '}
-                                        to update the list.
+                                        {t('filters.unapplied.countLabel', {
+                                            count: activeFilterCount,
+                                        })}{' '}
+                                        {t('filters.unapplied.instructionPrefix')}{' '}
+                                        <span className="font-medium text-neutral-700">
+                                            {t('filters.unapplied.applyLabel')}
+                                        </span>{' '}
+                                        {t('filters.unapplied.instructionSuffix')}
                                     </span>
                                 </p>
                             )}
@@ -734,7 +737,11 @@ export const ScheduleTestMainComponent = ({
                     ))}
                 </Tabs>
             </div>
-            <NoCourseDialog type={'Creating assessment'} isOpen={isOpen} setIsOpen={setIsOpen} />
+            <NoCourseDialog
+                type={t('dialogs.noCourse.type')}
+                isOpen={isOpen}
+                setIsOpen={setIsOpen}
+            />
         </>
     );
 };

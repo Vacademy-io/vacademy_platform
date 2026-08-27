@@ -1,0 +1,42 @@
+{
+    "tabs": {
+        "attempted": "Attempted",
+        "ongoing": "Ongoing",
+        "pending": "Pending"
+    },
+    "participantType": {
+        "internal": "Internal",
+        "external": "External"
+    },
+    "selectionMode": {
+        "batch": "Batch Selection",
+        "individual": "Individual Selection"
+    },
+    "filters": {
+        "evaluationStatus": {
+            "label": "Evaluation Status",
+            "options": {
+                "pending": "Pending",
+                "evaluating": "Evaluating",
+                "evaluated": "Evaluated"
+            }
+        },
+        "submissionStatus": {
+            "label": "Response",
+            "options": {
+                "submitted": "Submitted",
+                "notSubmitted": "Not Submitted"
+            }
+        }
+    },
+    "buttons": {
+        "offlineEntry": "Offline Entry",
+        "revaluate": "Revaluate",
+        "aiEvaluations": "AI Evaluations"
+    },
+    "dialogs": {
+        "revaluate": {
+            "title": "Revaluate Result"
+        }
+    }
+}

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import convert from 'color-convert';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
@@ -26,12 +28,14 @@ const toHex = (h: number, s: number, l: number) => `#${convert.hsl.hex([h, s, l]
 const WHITE_HEX = toHex(0, 0, 100);
 const CUSTOM_NAV_ID = 'custom';
 
-const NAV_COLOR_FIELDS: Array<{ key: keyof NavRoleColors; label: string }> = [
-    { key: 'surface', label: 'Surface' },
-    { key: 'surfaceHover', label: 'Surface hover' },
-    { key: 'active', label: 'Active item' },
-    { key: 'activeText', label: 'Active text' },
-    { key: 'text', label: 'Text' },
+const buildNavColorFields = (
+    t: TFunction
+): Array<{ key: keyof NavRoleColors; label: string }> => [
+    { key: 'surface', label: t('sidebar.colorFields.surface') },
+    { key: 'surfaceHover', label: t('sidebar.colorFields.surfaceHover') },
+    { key: 'active', label: t('sidebar.colorFields.active') },
+    { key: 'activeText', label: t('sidebar.colorFields.activeText') },
+    { key: 'text', label: t('sidebar.colorFields.text') },
 ];
 
 const buildLightNavPreview = (brandHex: string): NavRoleColors => ({
@@ -71,7 +75,8 @@ const buildDefaultTertiaryHex = (brandHex: string): string => {
 };
 
 const buildBackgroundSuggestions = (
-    brandHex: string
+    brandHex: string,
+    t: TFunction
 ): Array<{ hex: string; label: string }> => {
     let brand50 = WHITE_HEX;
     let brand100 = WHITE_HEX;
@@ -83,11 +88,11 @@ const buildBackgroundSuggestions = (
         // fall through to neutrals
     }
     return [
-        { hex: WHITE_HEX, label: 'White' },
-        { hex: brand50, label: 'Brand tint' },
-        { hex: brand100, label: 'Brand tint (deeper)' },
-        { hex: toHex(40, 33, 97), label: 'Warm cream' },
-        { hex: toHex(210, 20, 97), label: 'Cool grey' },
+        { hex: WHITE_HEX, label: t('background.suggestions.white') },
+        { hex: brand50, label: t('background.suggestions.brandTint') },
+        { hex: brand100, label: t('background.suggestions.brandTintDeeper') },
+        { hex: toHex(40, 33, 97), label: t('background.suggestions.warmCream') },
+        { hex: toHex(210, 20, 97), label: t('background.suggestions.coolGrey') },
     ];
 };
 
@@ -110,9 +115,11 @@ const isBackgroundTooDark = (hex: string): boolean => {
  * profile dialog.
  */
 export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
+    const { t } = useTranslation('settingsThemeEditor');
     const queryClient = useQueryClient();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const { setPrimaryColor, getPrimaryColorCode } = useTheme();
+    const NAV_COLOR_FIELDS = buildNavColorFields(t);
 
     const [selectedTheme, setSelectedTheme] = useState(PRESET_THEMES[0]?.code || 'primary');
     const [customBrandHex, setCustomBrandHex] = useState<string | null>(null);
@@ -241,11 +248,11 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                 instituteDetails?.id
             );
             queryClient.invalidateQueries({ queryKey: ['GET_BOTH_INSTITUTE_APIS'] });
-            toast.success('Theme updated', { className: 'success-toast', duration: 2000 });
+            toast.success(t('toasts.themeUpdated'), { className: 'success-toast', duration: 2000 });
             onSaved?.();
         } catch (error) {
             console.error('Failed to save theme', error);
-            toast.error('Could not save the theme. Please try again.', {
+            toast.error(t('toasts.saveFailed'), {
                 className: 'error-toast',
                 duration: 2500,
             });
@@ -260,11 +267,8 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
         <div className="flex flex-col gap-6">
             {/* Brand color */}
             <section>
-                <h2 className="mb-1 text-lg font-semibold">Brand color</h2>
-                <p className="mb-4 text-sm text-neutral-500">
-                    Your primary color — drives buttons, links, and highlights across the learner
-                    app and admin dashboard.
-                </p>
+                <h2 className="mb-1 text-lg font-semibold">{t('brandColor.heading')}</h2>
+                <p className="mb-4 text-sm text-neutral-500">{t('brandColor.description')}</p>
                 <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {PRESET_THEMES.map((theme) => {
                         const shades = getThemeShades(theme.code);
@@ -280,7 +284,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                         ? 'ring-2 ring-primary-500 ring-offset-2'
                                         : 'ring-1 ring-gray-200'
                                 )}
-                                aria-label={`Select ${theme.name} theme`}
+                                aria-label={t('brandColor.selectThemeAriaLabel', { name: theme.name })}
                                 aria-pressed={selectedTheme === theme.code}
                             >
                                 <div className="flex flex-col">
@@ -311,7 +315,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                         ? 'ring-2 ring-primary-500 ring-offset-2'
                                         : 'ring-1 ring-gray-200'
                                 )}
-                                aria-label="Use a custom brand color"
+                                aria-label={t('brandColor.customAriaLabel')}
                                 aria-pressed={isCustom}
                             >
                                 <div className="flex flex-col">
@@ -325,7 +329,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                     ))}
                                 </div>
                                 <span className="absolute inset-x-0 bottom-0 bg-white/85 py-1 text-center text-xs font-medium text-neutral-700">
-                                    Custom
+                                    {t('brandColor.custom')}
                                 </span>
                             </button>
                         );
@@ -340,7 +344,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                             value={customBrandHex ?? getPrimaryColorCode()}
                             onChange={(e) => handleCustomBrandSelect(e.target.value)}
                             className="h-8 w-8 cursor-pointer rounded border border-gray-200 p-0"
-                            aria-label="Custom brand color"
+                            aria-label={t('brandColor.customBrandColorAriaLabel')}
                         />
                         <MyInput
                             inputType="text"
@@ -348,7 +352,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                             onChangeFunction={(e) => handleCustomBrandSelect(e.target.value)}
                             size="small"
                             className="w-28 font-mono text-xs"
-                            inputPlaceholder="Hex color"
+                            inputPlaceholder={t('hexColorPlaceholder')}
                         />
                     </div>
                 )}
@@ -358,10 +362,8 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
 
             {/* Font */}
             <section>
-                <h2 className="mb-1 text-lg font-semibold">Font</h2>
-                <p className="mb-4 text-sm text-neutral-500">
-                    The typeface used across the learner app and admin dashboard.
-                </p>
+                <h2 className="mb-1 text-lg font-semibold">{t('font.heading')}</h2>
+                <p className="mb-4 text-sm text-neutral-500">{t('font.description')}</p>
                 <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {FONT_CHOICES.map((font) => {
                         const active = (fontFamily ?? DEFAULT_FONT_KEY) === font.key;
@@ -384,7 +386,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                     className="text-lg"
                                     style={{ fontFamily: font.previewFamily }} /* design-lint-ignore: renders in the candidate font */
                                 >
-                                    Aa Bb Cc 123
+                                    {t('font.specimen')}
                                 </span>
                                 <span className="text-sm font-medium text-neutral-800">
                                     {font.label}
@@ -404,15 +406,12 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
 
             {/* Page background */}
             <section>
-                <h2 className="mb-1 text-lg font-semibold">Page background</h2>
-                <p className="mb-4 text-sm text-neutral-500">
-                    The canvas behind your content — white by default in both apps. Cards and menus
-                    stay white, so a light brand tint reads as a subtle wash.
-                </p>
+                <h2 className="mb-1 text-lg font-semibold">{t('background.heading')}</h2>
+                <p className="mb-4 text-sm text-neutral-500">{t('background.description')}</p>
                 <div className="rounded-lg border border-gray-200 p-3">
                     <div className="mb-3 flex items-center justify-between">
                         <span className="text-sm font-medium">
-                            {backgroundOverride ? 'Custom' : 'White (default)'}
+                            {backgroundOverride ? t('background.custom') : t('background.whiteDefault')}
                         </span>
                         {backgroundOverride && (
                             <button
@@ -420,12 +419,12 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                 onClick={() => setBackgroundOverride(null)}
                                 className="text-xs font-medium text-primary-500 hover:underline"
                             >
-                                Reset to white
+                                {t('background.resetToWhite')}
                             </button>
                         )}
                     </div>
                     <div className="mb-3 flex flex-wrap gap-2">
-                        {buildBackgroundSuggestions(brandHexForPreview).map(({ hex, label }) => {
+                        {buildBackgroundSuggestions(brandHexForPreview, t).map(({ hex, label }) => {
                             const isWhite = hex.toLowerCase() === WHITE_HEX.toLowerCase();
                             const isActive = isWhite
                                 ? backgroundOverride === null
@@ -461,7 +460,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                             value={backgroundOverride ?? WHITE_HEX}
                             onChange={(e) => setBackgroundOverride(e.target.value)}
                             className="h-8 w-8 cursor-pointer rounded border border-gray-200 p-0"
-                            aria-label="Page background color"
+                            aria-label={t('background.colorAriaLabel')}
                         />
                         <MyInput
                             inputType="text"
@@ -469,13 +468,12 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                             onChangeFunction={(e) => setBackgroundOverride(e.target.value)}
                             size="small"
                             className="w-28 font-mono text-xs"
-                            inputPlaceholder="Hex color"
+                            inputPlaceholder={t('hexColorPlaceholder')}
                         />
                     </div>
                     {backgroundOverride && isBackgroundTooDark(backgroundOverride) && (
                         <p className="mt-2 text-xs text-warning-600">
-                            This is dark for a page background — body text stays dark, so it may be
-                            hard to read. Pick a lighter tint.
+                            {t('background.tooDarkWarning')}
                         </p>
                     )}
                     {/* design-lint-ignore: computed per-institute canvas preview */}
@@ -484,9 +482,11 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                         style={{ backgroundColor: backgroundOverride ?? WHITE_HEX }} /* design-lint-ignore: per-institute canvas preview */
                     >
                         <div className="rounded-md bg-white p-2 shadow-sm">
-                            <div className="text-xs font-medium text-neutral-800">Card</div>
+                            <div className="text-xs font-medium text-neutral-800">
+                                {t('background.cardPreviewTitle')}
+                            </div>
                             <div className="text-xs text-neutral-500">
-                                Stays white on the tinted page.
+                                {t('background.cardPreviewSubtitle')}
                             </div>
                         </div>
                     </div>
@@ -497,25 +497,21 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
 
             {/* Secondary & tertiary */}
             <section>
-                <h2 className="mb-1 text-lg font-semibold">Secondary &amp; tertiary colors</h2>
-                <p className="mb-4 text-sm text-neutral-500">
-                    Supporting accent colors used across the learner app (badges, secondary
-                    highlights). Auto-generated from your brand color unless you set one here — the
-                    admin dashboard doesn&apos;t use these.
-                </p>
+                <h2 className="mb-1 text-lg font-semibold">{t('accentColors.heading')}</h2>
+                <p className="mb-4 text-sm text-neutral-500">{t('accentColors.description')}</p>
                 <div className="flex flex-col gap-4">
                     {(
                         [
                             {
                                 key: 'secondary' as const,
-                                label: 'Secondary color',
+                                label: t('accentColors.secondaryLabel'),
                                 value: secondaryOverride,
                                 setValue: setSecondaryOverride,
                                 buildDefault: buildDefaultSecondaryHex,
                             },
                             {
                                 key: 'tertiary' as const,
-                                label: 'Tertiary color',
+                                label: t('accentColors.tertiaryLabel'),
                                 value: tertiaryOverride,
                                 setValue: setTertiaryOverride,
                                 buildDefault: buildDefaultTertiaryHex,
@@ -536,7 +532,9 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                         }
                                         className="text-xs font-medium text-primary-500 hover:underline"
                                     >
-                                        {isOverridden ? 'Reset to auto' : 'Customize'}
+                                        {isOverridden
+                                            ? t('accentColors.resetToAuto')
+                                            : t('accentColors.customize')}
                                     </button>
                                 </div>
                                 {isOverridden && (
@@ -547,7 +545,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                             value={currentHex}
                                             onChange={(e) => setValue(e.target.value)}
                                             className="h-8 w-8 cursor-pointer rounded border border-gray-200 p-0"
-                                            aria-label={`${label} color`}
+                                            aria-label={t('accentColors.colorAriaLabel', { label })}
                                         />
                                         <MyInput
                                             inputType="text"
@@ -555,7 +553,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                             onChangeFunction={(e) => setValue(e.target.value)}
                                             size="small"
                                             className="w-28 font-mono text-xs"
-                                            inputPlaceholder="Hex color"
+                                            inputPlaceholder={t('hexColorPlaceholder')}
                                         />
                                     </div>
                                 )}
@@ -571,7 +569,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                 </div>
                                 {!isOverridden && (
                                     <p className="mt-1 text-xs text-neutral-400">
-                                        Auto — derived from your brand color.
+                                        {t('accentColors.autoDerived')}
                                     </p>
                                 )}
                             </div>
@@ -584,11 +582,8 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
 
             {/* Sidebar color */}
             <section>
-                <h2 className="mb-1 text-lg font-semibold">Sidebar color</h2>
-                <p className="mb-4 text-sm text-neutral-500">
-                    Give your sidebar its own look, independent of the brand color — like Slack&apos;s
-                    sidebar themes.
-                </p>
+                <h2 className="mb-1 text-lg font-semibold">{t('sidebar.heading')}</h2>
+                <p className="mb-4 text-sm text-neutral-500">{t('sidebar.description')}</p>
                 <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {navPresets.map((preset) => (
                         <button
@@ -603,7 +598,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                     : 'ring-1 ring-gray-200'
                             )}
                             aria-pressed={selectedNavPresetId === preset.id}
-                            aria-label={`Select ${preset.label} sidebar`}
+                            aria-label={t('sidebar.selectPresetAriaLabel', { label: preset.label })}
                         >
                             <span className="text-sm font-medium">{preset.label}</span>
                             <span className="text-xs text-neutral-500">{preset.description}</span>
@@ -623,10 +618,10 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                 : 'ring-1 ring-gray-200'
                         )}
                         aria-pressed={selectedNavPresetId === CUSTOM_NAV_ID}
-                        aria-label="Select Custom sidebar"
+                        aria-label={t('sidebar.selectCustomAriaLabel')}
                     >
-                        <span className="text-sm font-medium">Custom</span>
-                        <span className="text-xs text-neutral-500">Pick every color yourself.</span>
+                        <span className="text-sm font-medium">{t('sidebar.custom')}</span>
+                        <span className="text-xs text-neutral-500">{t('sidebar.customDescription')}</span>
                     </button>
                 </div>
 
@@ -646,7 +641,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                                 setCustomNav({ ...current, [key]: e.target.value })
                                             }
                                             className="h-8 w-8 cursor-pointer rounded border border-gray-200 p-0"
-                                            aria-label={`${label} color`}
+                                            aria-label={t('sidebar.colorAriaLabel', { label })}
                                         />
                                         <MyInput
                                             inputType="text"
@@ -656,7 +651,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                                             }
                                             size="small"
                                             className="w-28 font-mono text-xs"
-                                            inputPlaceholder="Hex color"
+                                            inputPlaceholder={t('hexColorPlaceholder')}
                                         />
                                     </div>
                                 </div>
@@ -680,7 +675,11 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                             className="mt-3 w-48 rounded-lg p-2 shadow-sm"
                             style={{ backgroundColor: nav.surface }} /* design-lint-ignore: per-institute nav preview */
                         >
-                            {['Dashboard', 'Courses', 'Learners'].map((label, i) => (
+                            {[
+                                t('sidebar.previewLabels.dashboard'),
+                                t('sidebar.previewLabels.courses'),
+                                t('sidebar.previewLabels.learners'),
+                            ].map((label, i) => (
                                 <div
                                     key={label}
                                     className="mb-1 rounded-md px-2 py-1.5 text-xs font-medium"
@@ -708,7 +707,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                     onClick={handleSave}
                     disable={isSaving}
                 >
-                    {isSaving ? 'Saving…' : 'Save theme'}
+                    {isSaving ? t('save.saving') : t('save.save')}
                 </MyButton>
             </div>
         </div>

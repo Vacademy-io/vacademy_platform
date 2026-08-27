@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -93,7 +95,7 @@ export interface AiCallActionRule {
     templateLanguage?: string;
     /**
      * WhatsApp only: what fills the template's {{1}}, {{2}}, ... in order. The count must
-     * equal the template's parameter count or Meta rejects the send outright (#132000).
+     * equal the template's parameter count or Meta rejects the send outright (#132000). design-lint-ignore: Meta API error code, not a color literal
      */
     templateParams?: string[];
     /**
@@ -117,12 +119,16 @@ export interface AiCallActionRule {
 
 
 /** Expressiveness presets → Bulbul v3 temperature. */
-const EXPRESSIVENESS_OPTIONS: { label: string; value: string; temperature?: number }[] = [
-    { label: 'Model default', value: 'default' },
-    { label: 'Calm & steady', value: 'calm', temperature: 0.3 },
-    { label: 'Natural', value: 'natural', temperature: 0.6 },
-    { label: 'Expressive', value: 'expressive', temperature: 0.9 },
-];
+function getExpressivenessOptions(
+    t: TFunction
+): { label: string; value: string; temperature?: number }[] {
+    return [
+        { label: t('expressiveness.default'), value: 'default' },
+        { label: t('expressiveness.calm'), value: 'calm', temperature: 0.3 },
+        { label: t('expressiveness.natural'), value: 'natural', temperature: 0.6 },
+        { label: t('expressiveness.expressive'), value: 'expressive', temperature: 0.9 },
+    ];
+}
 
 const DEFAULT_SAMPLE_TEXT =
     'Namaste! Main Aarushi bol rahi hoon. Kya main aapse do minute baat kar sakti hoon?';
@@ -185,8 +191,10 @@ export function AiAgentsCard({
     onBridged: (campaign: Campaign) => void;
     onRemoved: (agentId: string) => void;
 }) {
+    const { t } = useTranslation('settingsAiAgentsCard');
     const instituteId = getCurrentInstituteId() ?? '';
     const queryClient = useQueryClient();
+    const EXPRESSIVENESS_OPTIONS = getExpressivenessOptions(t);
 
     const agentsQuery = useQuery({
         queryKey: ['ai-agents', instituteId],
@@ -256,18 +264,18 @@ export function AiAgentsCard({
         audio.onended = stopPreview;
         audio.onerror = () => {
             stopPreview();
-            toast.error('Could not synthesize the sample — try again in a moment');
+            toast.error(t('toast.previewSynthesisFailed'));
         };
         void audio.play().catch(() => {
             stopPreview();
-            toast.error('Could not play the sample');
+            toast.error(t('toast.previewPlaybackFailed'));
         });
     };
 
     const saveMutation = useMutation({
         mutationFn: saveAgent,
         onSuccess: (saved) => {
-            toast.success('Agent saved');
+            toast.success(t('toast.agentSaved'));
             setEditing(null);
             queryClient.invalidateQueries({ queryKey: ['ai-agents', instituteId] });
             queryClient.invalidateQueries({ queryKey: ['ai-calling-campaign-options', instituteId] });
@@ -286,19 +294,19 @@ export function AiAgentsCard({
         },
         onError: (err: unknown) => {
             const msg = (err as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
-            toast.error(msg ?? 'Failed to save agent');
+            toast.error(msg ?? t('toast.agentSaveFailed'));
         },
     });
 
     const deleteMutation = useMutation({
         mutationFn: (agentId: string) => deleteAgent(agentId, instituteId),
         onSuccess: (_res, agentId) => {
-            toast.success('Agent deleted');
+            toast.success(t('toast.agentDeleted'));
             queryClient.invalidateQueries({ queryKey: ['ai-agents', instituteId] });
             queryClient.invalidateQueries({ queryKey: ['ai-calling-campaign-options', instituteId] });
             onRemoved(agentId);
         },
-        onError: () => toast.error('Failed to delete agent'),
+        onError: () => toast.error(t('toast.agentDeleteFailed')),
     });
 
     const agents = agentsQuery.data ?? [];
@@ -308,23 +316,16 @@ export function AiAgentsCard({
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                    <Robot className="size-5" /> AI Agents (Vacademy AI)
+                    <Robot className="size-5" /> {t('header.title')}
                 </CardTitle>
-                <CardDescription>
-                    Author the personas our own AI caller speaks with — the prompt, opening line,
-                    language, voice and what to find out. Saving an agent automatically registers it
-                    under Campaigns / Agents above, so workflows and the IVR can pick it by name.
-                </CardDescription>
+                <CardDescription>{t('header.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
                 {agentsQuery.isLoading && (
-                    <p className="text-xs text-muted-foreground">Loading agents…</p>
+                    <p className="text-xs text-muted-foreground">{t('loading')}</p>
                 )}
                 {!agentsQuery.isLoading && agents.length === 0 && !editing && (
-                    <p className="text-xs text-muted-foreground">
-                        No agents yet. Create one — e.g. an “Admissions Qualifier” that greets new
-                        leads and finds out the student’s class and course interest.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t('empty')}</p>
                 )}
 
                 {agents.map((a) => (
@@ -337,14 +338,19 @@ export function AiAgentsCard({
                                 {a.name}
                                 {a.enabled === false && (
                                     <span className="ml-2 text-xs text-muted-foreground">
-                                        (disabled)
+                                        {t('list.disabled')}
                                     </span>
                                 )}
                             </p>
                             <p className="truncate text-xs text-muted-foreground">
-                                {a.direction ?? 'OUTBOUND'} · {a.language ?? 'hinglish'} · voice{' '}
-                                {a.voice ?? 'priya'}
-                                {a.maxCallMinutes ? ` · max ${a.maxCallMinutes} min` : ''}
+                                {t('list.summary', {
+                                    direction: a.direction ?? 'OUTBOUND',
+                                    language: a.language ?? 'hinglish',
+                                    voice: a.voice ?? 'priya',
+                                })}
+                                {a.maxCallMinutes
+                                    ? t('list.maxMinutesSuffix', { count: a.maxCallMinutes })
+                                    : ''}
                             </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
@@ -370,15 +376,15 @@ export function AiAgentsCard({
                     <div className="space-y-3 rounded-md border border-dashed p-4">
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                             <div className="space-y-1.5">
-                                <Label>Agent name</Label>
+                                <Label>{t('form.agentName.label')}</Label>
                                 <Input
                                     value={editing.name}
-                                    placeholder="e.g. Admissions Qualifier"
+                                    placeholder={t('form.agentName.placeholder')}
                                     onChange={(e) => patch({ name: e.target.value })}
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Direction</Label>
+                                <Label>{t('form.direction.label')}</Label>
                                 <Select
                                     value={editing.direction ?? 'OUTBOUND'}
                                     onValueChange={(v) =>
@@ -389,15 +395,19 @@ export function AiAgentsCard({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="OUTBOUND">Outbound</SelectItem>
-                                        <SelectItem value="INBOUND">Inbound</SelectItem>
-                                        <SelectItem value="BOTH">Both</SelectItem>
+                                        <SelectItem value="OUTBOUND">
+                                            {t('direction.outbound')}
+                                        </SelectItem>
+                                        <SelectItem value="INBOUND">
+                                            {t('direction.inbound')}
+                                        </SelectItem>
+                                        <SelectItem value="BOTH">{t('direction.both')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="flex items-end justify-between gap-3">
                                 <div className="flex-1 space-y-1.5">
-                                    <Label>Max call minutes</Label>
+                                    <Label>{t('form.maxCallMinutes.label')}</Label>
                                     <Input
                                         type="number"
                                         value={editing.maxCallMinutes ?? ''}
@@ -411,7 +421,7 @@ export function AiAgentsCard({
                                     />
                                 </div>
                                 <div className="flex items-center gap-2 pb-2">
-                                    <Label className="text-xs">Enabled</Label>
+                                    <Label className="text-xs">{t('form.enabled.label')}</Label>
                                     <Switch
                                         checked={editing.enabled !== false}
                                         onCheckedChange={(v) => patch({ enabled: v })}
@@ -422,15 +432,15 @@ export function AiAgentsCard({
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="space-y-1.5">
-                                <Label>Language</Label>
+                                <Label>{t('form.language.label')}</Label>
                                 <Input
                                     value={editing.language ?? ''}
-                                    placeholder="hinglish | hi | en"
+                                    placeholder={t('form.language.placeholder')}
                                     onChange={(e) => patch({ language: e.target.value })}
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Voice engine</Label>
+                                <Label>{t('form.voiceEngine.label')}</Label>
                                 <Select
                                     value={ttsModel}
                                     onValueChange={(v) =>
@@ -464,40 +474,41 @@ export function AiAgentsCard({
                                 </p>
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Voice</Label>
+                                <Label>{t('form.voice.label')}</Label>
                                 <Select
                                     value={editing.voice ?? ''}
                                     onValueChange={(v) => patch({ voice: v })}
                                 >
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Pick a voice…" />
+                                        <SelectValue placeholder={t('form.voice.placeholder')} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {voices.map((v) => (
                                             <SelectItem key={v.id} value={v.id}>
                                                 {v.id.charAt(0).toUpperCase() + v.id.slice(1)} ·{' '}
-                                                {v.gender === 'male' ? 'Male' : 'Female'}
+                                                {v.gender === 'male'
+                                                    ? t('form.voice.genderMale')
+                                                    : t('form.voice.genderFemale')}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    The bot matches its Hindi grammar (kar rahi/raha hoon) to the
-                                    voice&apos;s gender automatically.
+                                    {t('form.voice.genderHint')}
                                 </p>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="space-y-1.5">
-                                <Label>Speaking pace</Label>
+                                <Label>{t('form.speakingPace.label')}</Label>
                                 <Input
                                     type="number"
                                     min={0.5}
                                     max={2}
                                     step={0.05}
                                     value={editing.pace ?? ''}
-                                    placeholder="Platform default · 1.0 natural, 1.1 brisk"
+                                    placeholder={t('form.speakingPace.placeholder')}
                                     onChange={(e) =>
                                         patch({
                                             pace: e.target.value
@@ -507,14 +518,14 @@ export function AiAgentsCard({
                                     }
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    0.5–2.0. 1.0–1.1 suits sales calls; above 1.2 starts to sound
-                                    rushed.{ttsModel === 'rumik'
-                                        ? ' Rumik has no numeric speed control, so this steers its delivery in words — the average pace lands where you set it, but individual sentences vary a little.'
+                                    {t('form.speakingPace.hint')}
+                                    {ttsModel === 'rumik'
+                                        ? t('form.speakingPace.rumikHint')
                                         : ''}
                                 </p>
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Expressiveness</Label>
+                                <Label>{t('form.expressivenessField.label')}</Label>
                                 <Select
                                     value={
                                         EXPRESSIVENESS_OPTIONS.find(
@@ -541,13 +552,13 @@ export function AiAgentsCard({
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    How much the voice varies its intonation and emotion.
+                                    {t('form.expressivenessField.hint')}
                                 </p>
                             </div>
                         </div>
 
                         <div className="space-y-1.5 rounded-md border p-3">
-                            <Label>Test this voice</Label>
+                            <Label>{t('form.voiceTester.label')}</Label>
                             <div className="flex items-center gap-2">
                                 <Input
                                     value={sampleText}
@@ -572,31 +583,31 @@ export function AiAgentsCard({
                                     ) : (
                                         <Play className="size-4" />
                                     )}
-                                    {previewState === 'playing' ? 'Stop' : 'Play'}
+                                    {previewState === 'playing'
+                                        ? t('form.voiceTester.stop')
+                                        : t('form.voiceTester.play')}
                                 </MyButton>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                Speaks the sample with the selected voice, pace and expressiveness —
-                                change the voice above and play again to compare. Phone calls sound
-                                slightly warmer/narrower than this (telephony is 8 kHz audio).
+                                {t('form.voiceTester.hint')}
                             </p>
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label>Opening line</Label>
+                            <Label>{t('form.openingLine.label')}</Label>
                             <Textarea
                                 rows={2}
                                 value={editing.openingLine ?? ''}
-                                placeholder="What the agent says the moment the call connects…"
+                                placeholder={t('form.openingLine.placeholder')}
                                 onChange={(e) => patch({ openingLine: e.target.value })}
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label>System prompt</Label>
+                            <Label>{t('form.systemPrompt.label')}</Label>
                             <Textarea
                                 rows={5}
                                 value={editing.systemPrompt ?? ''}
-                                placeholder="Who the agent is, its goal, tone, and rules…"
+                                placeholder={t('form.systemPrompt.placeholder')}
                                 onChange={(e) => patch({ systemPrompt: e.target.value })}
                             />
                         </div>
@@ -620,13 +631,11 @@ export function AiAgentsCard({
                         />
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="space-y-1.5">
-                                <Label>Questions to find out (one per line)</Label>
+                                <Label>{t('form.extractionQuestions.label')}</Label>
                                 <Textarea
                                     rows={3}
                                     value={(editing.extractionQuestions ?? []).join('\n')}
-                                    placeholder={
-                                        'What class is the student in?\nWhich course are they interested in?'
-                                    }
+                                    placeholder={t('form.extractionQuestions.placeholder')}
                                     onChange={(e) =>
                                         patch({
                                             extractionQuestions: e.target.value
@@ -638,10 +647,10 @@ export function AiAgentsCard({
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Handoff numbers (comma separated)</Label>
+                                <Label>{t('form.handoffNumbers.label')}</Label>
                                 <Input
                                     value={(editing.handoffNumbers ?? []).join(', ')}
-                                    placeholder="+9198xxxxxxxx — who gets the call when the caller asks for a human"
+                                    placeholder={t('form.handoffNumbers.placeholder')}
                                     onChange={(e) =>
                                         patch({
                                             handoffNumbers: e.target.value
@@ -652,13 +661,13 @@ export function AiAgentsCard({
                                     }
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Blank = the voicemail/fallback number from Calling settings.
+                                    {t('form.handoffNumbers.hint')}
                                 </p>
                             </div>
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label>Auto-book meetings on</Label>
+                            <Label>{t('form.bookingPage.label')}</Label>
                             <Select
                                 value={editing.bookingPageId || 'NONE'}
                                 onValueChange={(v) =>
@@ -666,28 +675,26 @@ export function AiAgentsCard({
                                 }
                             >
                                 <SelectTrigger>
-                                    <SelectValue placeholder="No booking page" />
+                                    <SelectValue placeholder={t('form.bookingPage.placeholder')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="NONE">
-                                        Don&apos;t auto-book meetings
+                                        {t('form.bookingPage.none')}
                                     </SelectItem>
                                     {bookingPages.map((bp) => (
                                         <SelectItem key={bp.id} value={bp.id ?? ''}>
                                             {bp.title}
                                             {bp.audience_id
-                                                ? ' · adds lead to its audience list'
-                                                : ' · not linked to a list'}
+                                                ? t('form.bookingPage.audienceSuffix')
+                                                : t('form.bookingPage.noAudienceSuffix')}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
-                                When a call agrees on a demo/visit time, a meeting is booked on
-                                this page (Google Meet link + reminders sent). If the page is
-                                linked to an audience list, the lead is added there too.
+                                {t('form.bookingPage.hint')}
                                 {bookingPages.length === 0 &&
-                                    ' Create a booking page first in CRM → Meetings → Share Booking Link.'}
+                                    t('form.bookingPage.hintNoPages')}
                             </p>
                         </div>
 
@@ -697,7 +704,7 @@ export function AiAgentsCard({
                                 scale="medium"
                                 onClick={() => setEditing(null)}
                             >
-                                Cancel
+                                {t('form.cancel')}
                             </MyButton>
                             <MyButton
                                 buttonType="primary"
@@ -705,7 +712,7 @@ export function AiAgentsCard({
                                 disable={saveMutation.isPending || !editing.name.trim()}
                                 onClick={() => saveMutation.mutate(editing)}
                             >
-                                {saveMutation.isPending ? 'Saving…' : 'Save agent'}
+                                {saveMutation.isPending ? t('form.saving') : t('form.save')}
                             </MyButton>
                         </div>
                     </div>
@@ -716,7 +723,7 @@ export function AiAgentsCard({
                             scale="medium"
                             onClick={() => setEditing(blankAgent(instituteId))}
                         >
-                            <Plus className="size-4" /> New agent
+                            <Plus className="size-4" /> {t('form.newAgent')}
                         </MyButton>
                     </div>
                 )}

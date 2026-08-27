@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { ShoppingBag, BookOpen, ArrowRight, X } from "@phosphor-icons/react";
 
 interface BuyRentSectionProps {
@@ -22,6 +23,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
   rent,
   tagName,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const location = useLocation();
   const [hoveredCard, setHoveredCard] = useState<"buy" | "rent" | null>(null);
@@ -57,7 +59,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
         {/* Heading */}
         <div className="text-center mb-3 sm:mb-4">
           <p className="text-sm sm:text-base text-gray-600">
-            Select the option that best fits your needs
+            {t("buyRentSection.chooseOption")}
           </p>
         </div>
 
@@ -84,11 +86,11 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
 
               {/* Title - dark neutral */}
               <h3 className="text-base sm:text-xl font-bold text-gray-900 mb-0.5 sm:mb-1">
-                Rent a book
+                {t("buyRentSection.rentTitle")}
               </h3>
               {/* Description - NEUTRAL */}
               <p className="text-xs text-gray-600 mb-2 sm:mb-3">
-                Access books at affordable rates
+                {t("buyRentSection.rentDescription")}
               </p>
 
               {/* Button - PRIMARY */}
@@ -120,11 +122,11 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
 
               {/* Title - dark neutral */}
               <h3 className="text-base sm:text-xl font-bold text-gray-900 mb-0.5 sm:mb-1">
-                Buy a book
+                {t("buyRentSection.buyTitle")}
               </h3>
               {/* Description - NEUTRAL */}
               <p className="text-xs text-gray-600 mb-2 sm:mb-3">
-                Own books forever
+                {t("buyRentSection.buyDescription")}
               </p>
 
               {/* Button - PRIMARY */}
@@ -140,16 +142,16 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
         <div className="mt-4 sm:mt-6">
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200">
-              <h3 className="text-sm sm:text-base font-semibold text-gray-900">How it Works</h3>
+              <h3 className="text-sm sm:text-base font-semibold text-gray-900">{t("buyRentSection.howItWorks")}</h3>
             </div>
 
             <div className="p-3 sm:p-4">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {[
-                  { step: 1, title: "Browse & Select", desc: "Explore our collection and choose books." },
-                  { step: 2, title: "Choose Option", desc: "Buy for ownership or Rent for access." },
-                  { step: 3, title: "Complete Purchase", desc: "Add to cart and checkout securely." },
-                  { step: 4, title: "Start Reading", desc: "Access your books instantly." },
+                  { step: 1, title: t("buyRentSection.steps.step1Title"), desc: t("buyRentSection.steps.step1Desc") },
+                  { step: 2, title: t("buyRentSection.steps.step2Title"), desc: t("buyRentSection.steps.step2Desc") },
+                  { step: 3, title: t("buyRentSection.steps.step3Title"), desc: t("buyRentSection.steps.step3Desc") },
+                  { step: 4, title: t("buyRentSection.steps.step4Title"), desc: t("buyRentSection.steps.step4Desc") },
                 ].map(({ step, title, desc }) => (
                   <div key={step} className="flex gap-2 sm:gap-3">
                     {/* PRIMARY ACCENT: Step number */}
@@ -178,17 +180,17 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
             <button
               onClick={handleRentCancel}
               className="absolute top-3 end-3 text-gray-400 hover:text-gray-600 transition-colors"
-              aria-label="Close"
+              aria-label={t("buyRentSection.close")}
             >
               <X className="h-4 w-4" />
             </button>
 
             <div className="mt-1">
               <h3 className="text-base font-semibold text-gray-900 mb-2">
-                Location Restriction
+                {t("buyRentSection.locationRestrictionTitle")}
               </h3>
               <p className="text-sm text-gray-600 mb-4">
-                We only allow renting books in <b>Jabalpur</b>. Do you want to continue?
+                {t("buyRentSection.locationRestrictionMessage", { city: "Jabalpur" })}
               </p>
 
               <div className="flex gap-2">
@@ -197,13 +199,13 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
                   onClick={handleBuyRedirect}
                   className="flex-1 px-3 py-2 text-sm font-medium text-primary-600 border border-primary-400 rounded-md hover:bg-primary-50 transition-colors"
                 >
-                  Buy Instead
+                  {t("buyRentSection.buyInstead")}
                 </button>
                 <button
                   onClick={handleRentConfirm}
                   className="flex-1 px-3 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors"
                 >
-                  Continue
+                  {t("buyRentSection.continue")}
                 </button>
               </div>
             </div>

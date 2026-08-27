@@ -69,6 +69,28 @@ export interface GlobalSettings {
         enabled: boolean;
         requirePayment: boolean;
     };
+    /**
+     * Step-by-step "find your course" wizard, shown once over the catalogue.
+     * The OPTIONS are read live from whichever course block the page renders —
+     * only the wording and the grouping are authored, under Global Settings →
+     * Course Finder Wizard.
+     */
+    courseFinder?: {
+        enabled: boolean;
+        /** Asked in this fixed order; a step with no options is skipped. */
+        steps?: ('level' | 'session' | 'tag')[];
+        /** No skip button — the visitor must answer before seeing courses. */
+        mandatory?: boolean;
+        /** Per-step heading override, e.g. `{ level: 'Class' }`. */
+        stepLabels?: Partial<Record<'level' | 'session' | 'tag', string>>;
+        /**
+         * Folds per-subject level names into one option:
+         * `{ 'Class 6': ['English - Class 6', 'Mathematics - Class 6'] }`.
+         * KEY ORDER IS DISPLAY ORDER — the wizard renders Object.keys()
+         * unsorted, so the editor rebuilds this object rather than mutating it.
+         */
+        levelGroups?: Record<string, string[]>;
+    };
     payment: {
         enabled: boolean;
         provider: 'razorpay' | 'stripe' | 'paypal' | 'PHONEPE';

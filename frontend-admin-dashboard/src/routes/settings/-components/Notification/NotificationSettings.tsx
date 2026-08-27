@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18next from 'i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -22,38 +24,27 @@ import {
 //
 // `UTILITY_EMAIL` is the system-wide fallback used when no type matches, so it
 // stays as the default for new addresses.
-const EMAIL_PURPOSES = [
-    {
-        code: 'UTILITY_EMAIL',
-        label: 'System notifications & updates',
-        hint: 'Account alerts, password resets, reminders',
-    },
-    {
-        code: 'INFO_EMAIL',
-        label: 'Announcements & general info',
-        hint: 'News, newsletters, broadcast updates',
-    },
-    {
-        code: 'TRANSACTIONAL_EMAIL',
-        label: 'Receipts & confirmations',
-        hint: 'Payment receipts, enrollment confirmations',
-    },
-    {
-        code: 'MARKETING_EMAIL',
-        label: 'Marketing & promotions',
-        hint: 'Campaigns, offers, promotional content',
-    },
-    {
-        code: 'SUPPORT_EMAIL',
-        label: 'Support & help',
-        hint: 'Replies to learners or staff who need help',
-    },
+const EMAIL_PURPOSE_DEFS = [
+    { code: 'UTILITY_EMAIL', i18nKey: 'utility' },
+    { code: 'INFO_EMAIL', i18nKey: 'info' },
+    { code: 'TRANSACTIONAL_EMAIL', i18nKey: 'transactional' },
+    { code: 'MARKETING_EMAIL', i18nKey: 'marketing' },
+    { code: 'SUPPORT_EMAIL', i18nKey: 'support' },
 ] as const;
+
+// Resolved lazily (not memoized) so the labels/hints always reflect the active language.
+function getEmailPurposes(): { code: string; label: string; hint: string }[] {
+    return EMAIL_PURPOSE_DEFS.map((p) => ({
+        code: p.code,
+        label: i18next.t(`settingsNotification:emailPurposes.${p.i18nKey}.label`),
+        hint: i18next.t(`settingsNotification:emailPurposes.${p.i18nKey}.hint`),
+    }));
+}
 
 const CUSTOM_PURPOSE_OPTION = '__custom__';
 
 function purposeLabelFor(code: string): string {
-    const match = EMAIL_PURPOSES.find((p) => p.code === code);
+    const match = getEmailPurposes().find((p) => p.code === code);
     if (match) return match.label;
     // Custom / unknown type — turn UTILITY_EMAIL into "Utility email" for display.
     return code
@@ -118,14 +109,15 @@ type Props = { isTab?: boolean };
 
 // Sub-tabs that group the notification cards, mirroring the Display Settings tab pattern.
 type NotificationSubTab = 'general' | 'chat' | 'push' | 'email';
-const SUB_TABS: { key: NotificationSubTab; label: string }[] = [
-    { key: 'general', label: 'General' },
-    { key: 'chat', label: 'Chat & Community' },
-    { key: 'push', label: 'Push Notifications' },
-    { key: 'email', label: 'Email' },
+const SUB_TABS: { key: NotificationSubTab }[] = [
+    { key: 'general' },
+    { key: 'chat' },
+    { key: 'push' },
+    { key: 'email' },
 ];
 
 export default function NotificationSettings({ isTab = false }: Props) {
+    const { t } = useTranslation('settingsNotification');
     const [settings, setSettings] = useState<NotificationSettings | null>(null);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -159,7 +151,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                 }
             } catch (e) {
                 console.error(e);
-                setError('Failed to load settings');
+                setError(t('errors.loadSettings'));
             } finally {
                 setLoading(false);
             }
@@ -177,7 +169,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                 setEmailConfigurations(configs);
             } catch (e) {
                 console.error('Error loading email configurations:', e);
-                setEmailError('Failed to load email configurations');
+                setEmailError(t('errors.loadEmailConfigurations'));
             } finally {
                 setEmailLoading(false);
             }
@@ -204,11 +196,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
             const { emails, ...settingsForApi } = settings;
             const req = createUpsertRequest(settingsForApi);
             await upsertNotificationSettings(req);
-            toast.success('Notification settings saved');
+            toast.success(t('toasts.settingsSaved'));
             setHasChanges(false);
         } catch (e) {
             console.error(e);
-            toast.error('Failed to save notification settings');
+            toast.error(t('errors.saveSettings'));
         } finally {
             setSaving(false);
         }
@@ -234,7 +226,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
     };
 
     if (loading || !settings) {
-        return <div className="flex items-center justify-center p-8">Loading...</div>;
+        return <div className="flex items-center justify-center p-8">{t('loading')}</div>;
     }
 
     return (
@@ -242,9 +234,9 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {isTab && (
                 <div className="flex items-center justify-between">
                     <div>
-                        <h2 className="text-xl font-bold ">Notification Settings</h2>
+                        <h2 className="text-xl font-bold ">{t('header.title')}</h2>
                         <p className="text-sm text-gray-600">
-                            Configure institute-wide announcement permissions
+                            {t('header.subtitle')}
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -253,7 +245,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                             onClick={handleSave}
                             disabled={saving || !hasChanges}
                         >
-                            Save Settings
+                            {t('header.saveSettings')}
                         </MyButton>
                     </div>
                 </div>
@@ -269,18 +261,18 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* Sub-tab navigation */}
             <div
                 role="tablist"
-                aria-label="Notification settings sections"
+                aria-label={t('subTabs.ariaLabel')}
                 className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-muted p-1"
             >
-                {SUB_TABS.map((t) => {
-                    const active = subTab === t.key;
+                {SUB_TABS.map((tab) => {
+                    const active = subTab === tab.key;
                     return (
                         <button
-                            key={t.key}
+                            key={tab.key}
                             type="button"
                             role="tab"
                             aria-selected={active}
-                            onClick={() => setSubTab(t.key)}
+                            onClick={() => setSubTab(tab.key)}
                             className={
                                 'cursor-pointer rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ' +
                                 (active
@@ -288,7 +280,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                                     : 'text-neutral-600 hover:text-neutral-800')
                             }
                         >
-                            {t.label}
+                            {t(`subTabs.${tab.key}`)}
                         </button>
                     );
                 })}
@@ -300,16 +292,16 @@ export default function NotificationSettings({ isTab = false }: Props) {
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
                     <CardTitle className="flex items-center gap-2 text-base">
-                        <Gear className="size-5" /> General
+                        <Gear className="size-5" /> {t('general.title')}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="flex items-center justify-between rounded-md border p-3">
                             <div>
-                                <Label>Approval required</Label>
+                                <Label>{t('general.approvalRequired.label')}</Label>
                                 <div className="text-xs text-muted-foreground">
-                                    Require admin approval before announcements are visible
+                                    {t('general.approvalRequired.hint')}
                                 </div>
                             </div>
                             <Switch
@@ -324,8 +316,8 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         </div>
                         <div className="flex items-center justify-between rounded-md border p-3">
                             <div>
-                                <Label>Max announcements/day</Label>
-                                <div className="text-xs text-muted-foreground">Limit per user</div>
+                                <Label>{t('general.maxAnnouncementsPerDay.label')}</Label>
+                                <div className="text-xs text-muted-foreground">{t('general.maxAnnouncementsPerDay.hint')}</div>
                             </div>
                             <Input
                                 type="number"
@@ -341,9 +333,9 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         </div>
                         <div className="flex items-center justify-between rounded-md border p-3">
                             <div>
-                                <Label>Retention (days)</Label>
+                                <Label>{t('general.retentionDays.label')}</Label>
                                 <div className="text-xs text-muted-foreground">
-                                    Auto cleanup period
+                                    {t('general.retentionDays.hint')}
                                 </div>
                             </div>
                             <Input
@@ -360,9 +352,9 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         </div>
                         <div className="flex items-center justify-between rounded-md border p-3">
                             <div>
-                                <Label>Default timezone</Label>
+                                <Label>{t('general.defaultTimezone.label')}</Label>
                                 <div className="text-xs text-muted-foreground">
-                                    Used for scheduling and reminders
+                                    {t('general.defaultTimezone.hint')}
                                 </div>
                             </div>
                             <Input
@@ -384,27 +376,27 @@ export default function NotificationSettings({ isTab = false }: Props) {
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
                     <CardTitle className="flex items-center gap-2 text-base">
-                        <Bell className="size-5" /> Community
+                        <Bell className="size-5" /> {t('community.title')}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-3">
                         <ToggleRow
-                            label="Students can send"
+                            label={t('community.studentsCanSend')}
                             checked={settings.community.students_can_send}
                             onChange={(checked) =>
                                 update('community', (c) => ({ ...c, students_can_send: checked }))
                             }
                         />
                         <ToggleRow
-                            label="Admins can moderate"
+                            label={t('community.adminsCanModerate')}
                             checked={!!settings.community.moderation_enabled}
                             onChange={(checked) =>
                                 update('community', (c) => ({ ...c, moderation_enabled: checked }))
                             }
                         />
                         <ToggleRow
-                            label="Allow replies"
+                            label={t('community.allowReplies')}
                             checked={!!settings.community.allow_replies}
                             onChange={(checked) =>
                                 update('community', (c) => ({ ...c, allow_replies: checked }))
@@ -412,7 +404,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Allowed tags</Label>
+                        <Label>{t('community.allowedTags')}</Label>
                         <TagEditor
                             value={settings.community.allowed_tags || []}
                             onChange={(tags) =>
@@ -439,18 +431,18 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* System Alerts */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">System Alerts</CardTitle>
+                    <CardTitle className="text-base">{t('systemAlerts.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-3">
                     <ToggleRow
-                        label="Teachers can send"
+                        label={t('systemAlerts.teachersCanSend')}
                         checked={!!settings.systemAlerts.teachers_can_send}
                         onChange={(checked) =>
                             update('systemAlerts', (s) => ({ ...s, teachers_can_send: checked }))
                         }
                     />
                     <ToggleRow
-                        label="Admins can send"
+                        label={t('systemAlerts.adminsCanSend')}
                         checked={!!settings.systemAlerts.admins_can_send}
                         onChange={(checked) =>
                             update('systemAlerts', (s) => ({ ...s, admins_can_send: checked }))
@@ -458,8 +450,8 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     />
                     <div className="flex items-center justify-between rounded-md border p-3">
                         <div>
-                            <Label>Auto dismiss (hours)</Label>
-                            <div className="text-xs text-muted-foreground">Auto clear after</div>
+                            <Label>{t('systemAlerts.autoDismissHours.label')}</Label>
+                            <div className="text-xs text-muted-foreground">{t('systemAlerts.autoDismissHours.hint')}</div>
                         </div>
                         <Input
                             type="number"
@@ -479,15 +471,14 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* App Overlays */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">App Overlays</CardTitle>
+                    <CardTitle className="text-base">{t('appOverlays.title')}</CardTitle>
                     <div className="mt-1 text-xs text-muted-foreground">
-                        Full-screen announcements {chatRoleLabelPlural('student').toLowerCase()}{' '}
-                        see when they open the app
+                        {t('appOverlays.description', { role: chatRoleLabelPlural('student').toLowerCase() })}
                     </div>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-3">
                     <ToggleRow
-                        label={`${chatRoleLabelPlural('student')} can send`}
+                        label={t('appOverlays.canSend', { role: chatRoleLabelPlural('student') })}
                         checked={mergeAppOverlaySettings(settings.appOverlays).students_can_send}
                         onChange={(checked) =>
                             update('appOverlays', (a) => ({
@@ -497,7 +488,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         }
                     />
                     <ToggleRow
-                        label={`${chatRoleLabelPlural('teacher')} can send`}
+                        label={t('appOverlays.canSend', { role: chatRoleLabelPlural('teacher') })}
                         checked={mergeAppOverlaySettings(settings.appOverlays).teachers_can_send}
                         onChange={(checked) =>
                             update('appOverlays', (a) => ({
@@ -507,7 +498,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         }
                     />
                     <ToggleRow
-                        label={`${chatRoleLabelPlural('admin')} can send`}
+                        label={t('appOverlays.canSend', { role: chatRoleLabelPlural('admin') })}
                         checked={mergeAppOverlaySettings(settings.appOverlays).admins_can_send}
                         onChange={(checked) =>
                             update('appOverlays', (a) => ({
@@ -522,25 +513,25 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* Dashboard Pins */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">Dashboard Pins</CardTitle>
+                    <CardTitle className="text-base">{t('dashboardPins.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-3">
                     <ToggleRow
-                        label="Students can create"
+                        label={t('dashboardPins.studentsCanCreate')}
                         checked={settings.dashboardPins.students_can_create}
                         onChange={(checked) =>
                             update('dashboardPins', (d) => ({ ...d, students_can_create: checked }))
                         }
                     />
                     <ToggleRow
-                        label="Teachers can create"
+                        label={t('dashboardPins.teachersCanCreate')}
                         checked={!!settings.dashboardPins.teachers_can_create}
                         onChange={(checked) =>
                             update('dashboardPins', (d) => ({ ...d, teachers_can_create: checked }))
                         }
                     />
                     <ToggleRow
-                        label="Admins can create"
+                        label={t('dashboardPins.adminsCanCreate')}
                         checked={!!settings.dashboardPins.admins_can_create}
                         onChange={(checked) =>
                             update('dashboardPins', (d) => ({ ...d, admins_can_create: checked }))
@@ -548,8 +539,8 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     />
                     <div className="flex items-center justify-between rounded-md border p-3">
                         <div>
-                            <Label>Max duration (hours)</Label>
-                            <div className="text-xs text-muted-foreground">Pin lifetime</div>
+                            <Label>{t('dashboardPins.maxDurationHours.label')}</Label>
+                            <div className="text-xs text-muted-foreground">{t('dashboardPins.maxDurationHours.hint')}</div>
                         </div>
                         <Input
                             type="number"
@@ -565,8 +556,8 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     </div>
                     <div className="flex items-center justify-between rounded-md border p-3">
                         <div>
-                            <Label>Max pins per user</Label>
-                            <div className="text-xs text-muted-foreground">Creation limit</div>
+                            <Label>{t('dashboardPins.maxPinsPerUser.label')}</Label>
+                            <div className="text-xs text-muted-foreground">{t('dashboardPins.maxPinsPerUser.hint')}</div>
                         </div>
                         <Input
                             type="number"
@@ -581,7 +572,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         />
                     </div>
                     <ToggleRow
-                        label="Require approval"
+                        label={t('dashboardPins.requireApproval')}
                         checked={!!settings.dashboardPins.require_approval}
                         onChange={(checked) =>
                             update('dashboardPins', (d) => ({ ...d, require_approval: checked }))
@@ -593,25 +584,25 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* Direct Messages */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">Direct Messages</CardTitle>
+                    <CardTitle className="text-base">{t('directMessages.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-3">
                     <ToggleRow
-                        label="Students can send"
+                        label={t('directMessages.studentsCanSend')}
                         checked={settings.directMessages.students_can_send}
                         onChange={(checked) =>
                             update('directMessages', (s) => ({ ...s, students_can_send: checked }))
                         }
                     />
                     <ToggleRow
-                        label="Allow replies"
+                        label={t('directMessages.allowReplies')}
                         checked={settings.directMessages.allow_replies}
                         onChange={(checked) =>
                             update('directMessages', (s) => ({ ...s, allow_replies: checked }))
                         }
                     />
                     <ToggleRow
-                        label="Moderation enabled"
+                        label={t('directMessages.moderationEnabled')}
                         checked={settings.directMessages.moderation_enabled}
                         onChange={(checked) =>
                             update('directMessages', (s) => ({ ...s, moderation_enabled: checked }))
@@ -628,14 +619,14 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* Push Notifications (Firebase) */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">Push Notifications (Firebase)</CardTitle>
+                    <CardTitle className="text-base">{t('push.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex items-center justify-between rounded-md border p-3">
                         <div>
-                            <Label>Enable Push Notifications</Label>
+                            <Label>{t('push.enable.label')}</Label>
                             <div className="text-xs text-muted-foreground">
-                                Requires valid Firebase service account JSON
+                                {t('push.enable.hint')}
                             </div>
                         </div>
                         <Switch
@@ -713,9 +704,9 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Or paste Base64-encoded JSON</Label>
+                        <Label>{t('push.base64Label')}</Label>
                         <Input
-                            placeholder="Base64 string"
+                            placeholder={t('push.base64Placeholder')}
                             value={settings.firebase?.serviceAccountJsonBase64 || ''}
                             onChange={(e) =>
                                 update(
@@ -736,7 +727,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                             scale="small"
                             onClick={handleValidateAndSaveFirebase}
                         >
-                            Validate & Save
+                            {t('push.validateAndSave')}
                         </MyButton>
                     </div>
                 </CardContent>
@@ -750,18 +741,18 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* Streams */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">Streams</CardTitle>
+                    <CardTitle className="text-base">{t('streams.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-3">
                     <ToggleRow
-                        label="Teachers can send"
+                        label={t('streams.teachersCanSend')}
                         checked={settings.streams.teachers_can_send}
                         onChange={(checked) =>
                             update('streams', (s) => ({ ...s, teachers_can_send: checked }))
                         }
                     />
                     <ToggleRow
-                        label="Allow during class"
+                        label={t('streams.allowDuringClass')}
                         checked={settings.streams.allow_during_class}
                         onChange={(checked) =>
                             update('streams', (s) => ({ ...s, allow_during_class: checked }))
@@ -769,9 +760,9 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     />
                     <div className="flex items-center justify-between rounded-md border p-3">
                         <div>
-                            <Label>Auto archive (hours)</Label>
+                            <Label>{t('streams.autoArchiveHours.label')}</Label>
                             <div className="text-xs text-muted-foreground">
-                                Auto move to archive
+                                {t('streams.autoArchiveHours.hint')}
                             </div>
                         </div>
                         <Input
@@ -791,11 +782,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* Resources */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">Resources</CardTitle>
+                    <CardTitle className="text-base">{t('resources.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-3">
                     <ToggleRow
-                        label="Students can upload"
+                        label={t('resources.studentsCanUpload')}
                         checked={settings.resources.students_can_upload}
                         onChange={(checked) =>
                             update('resources', (r) => ({ ...r, students_can_upload: checked }))
@@ -803,8 +794,8 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     />
                     <div className="flex items-center justify-between rounded-md border p-3">
                         <div>
-                            <Label>Max file size (MB)</Label>
-                            <div className="text-xs text-muted-foreground">Upload limit</div>
+                            <Label>{t('resources.maxFileSizeMb.label')}</Label>
+                            <div className="text-xs text-muted-foreground">{t('resources.maxFileSizeMb.hint')}</div>
                         </div>
                         <Input
                             type="number"
@@ -829,11 +820,9 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* Email Settings */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">Email Addresses</CardTitle>
+                    <CardTitle className="text-base">{t('email.addressesTitle')}</CardTitle>
                     <div className="text-xs text-muted-foreground mt-1">
-                        These are the email addresses your institute uses to send messages
-                        to learners and staff. Each address has a purpose — for example, one
-                        for marketing campaigns, another for support replies.
+                        {t('email.addressesDescription')}
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -847,7 +836,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                                 setEmailConfigurations(prev => [...prev, newConfig]);
                                 // Detailed verification toast is shown by the editor.
                             } catch (error) {
-                                toast.error("Couldn't add this email address. Please try again.");
+                                toast.error(t('email.toastAddFailed'));
                             }
                         }}
                         onUpdate={async (emailType, config) => {
@@ -856,18 +845,18 @@ export default function NotificationSettings({ isTab = false }: Props) {
                                 setEmailConfigurations(prev =>
                                     prev.map(c => c.type === emailType ? updatedConfig : c)
                                 );
-                                toast.success('Saved. New emails sent from this address will use the updated details.');
+                                toast.success(t('email.toastUpdateSuccess'));
                             } catch (error) {
-                                toast.error("Couldn't save your changes. Please try again.");
+                                toast.error(t('email.toastUpdateFailed'));
                             }
                         }}
                         onDelete={async (emailType) => {
                             try {
                                 await deleteEmailConfiguration(emailType);
                                 setEmailConfigurations(prev => prev.filter(c => c.type !== emailType));
-                                toast.success('Email address removed.');
+                                toast.success(t('email.toastDeleteSuccess'));
                             } catch (error) {
-                                toast.error("Couldn't remove this email address. Please try again.");
+                                toast.error(t('email.toastDeleteFailed'));
                             }
                         }}
                     />
@@ -889,7 +878,7 @@ export default function NotificationSettings({ isTab = false }: Props) {
                         onClick={handleSave}
                         disabled={saving || !hasChanges}
                     >
-                        Save
+                        {t('footer.save')}
                     </MyButton>
                 </div>
             )}
@@ -963,6 +952,7 @@ function ChatSection({
     chat: ChatSettings;
     onChange: (updater: (prev: ChatSettings) => ChatSettings) => void;
 }) {
+    const { t } = useTranslation('settingsNotification');
     const batchLabel = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
     const rules = chat.community.rules;
 
@@ -970,13 +960,13 @@ function ChatSection({
         <Card className="rounded-lg border-gray-200">
             <CardHeader className="py-3">
                 <CardTitle className="flex items-center gap-2 text-base">
-                    <Bell className="size-5" /> In-App Messages
+                    <Bell className="size-5" /> {t('chat.title')}
                 </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
                 {/* Master toggle */}
                 <ToggleRow
-                    label="In-App Messages enabled"
+                    label={t('chat.enabled')}
                     checked={chat.enabled}
                     onChange={(checked) => onChange((c) => ({ ...c, enabled: checked }))}
                 />
@@ -984,15 +974,17 @@ function ChatSection({
                 {/* What learners may do to their OWN messages */}
                 <div className="space-y-2">
                     <div className="text-sm font-medium">
-                        {chatRoleLabelPlural('student')} — own messages
+                        {t('chat.ownMessagesTitle', { role: chatRoleLabelPlural('student') })}
                     </div>
                     <p className="text-xs text-neutral-500">
-                        Applies everywhere {chatRoleLabelPlural('student').toLowerCase()} can chat.{' '}
-                        {chatRoleLabelPlural('teacher')} and admins always keep both actions.
+                        {t('chat.ownMessagesDescription', {
+                            studentRoleLower: chatRoleLabelPlural('student').toLowerCase(),
+                            teacherRole: chatRoleLabelPlural('teacher'),
+                        })}
                     </p>
                     <div className="grid gap-4 md:grid-cols-2">
                         <ToggleRow
-                            label={`${chatRoleLabelPlural('student')} can edit their own messages`}
+                            label={t('chat.canEditOwn', { role: chatRoleLabelPlural('student') })}
                             checked={chat.message_actions.students_can_edit_own}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1005,7 +997,7 @@ function ChatSection({
                             }
                         />
                         <ToggleRow
-                            label={`${chatRoleLabelPlural('student')} can delete their own messages`}
+                            label={t('chat.canDeleteOwn', { role: chatRoleLabelPlural('student') })}
                             checked={chat.message_actions.students_can_delete_own}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1022,10 +1014,10 @@ function ChatSection({
 
                 {/* Batch groups */}
                 <div className="space-y-2">
-                    <div className="text-sm font-medium">{batchLabel} groups</div>
+                    <div className="text-sm font-medium">{t('chat.batchGroupsTitle', { batch: batchLabel })}</div>
                     <div className="grid gap-4 md:grid-cols-2">
                         <ToggleRow
-                            label={`${chatRoleLabelPlural('student')} can post`}
+                            label={t('chat.canPost', { role: chatRoleLabelPlural('student') })}
                             checked={chat.batch_group.students_can_post}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1038,7 +1030,7 @@ function ChatSection({
                             }
                         />
                         <ToggleRow
-                            label={`${chatRoleLabelPlural('teacher')} can post`}
+                            label={t('chat.canPost', { role: chatRoleLabelPlural('teacher') })}
                             checked={chat.batch_group.teachers_can_post}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1055,9 +1047,9 @@ function ChatSection({
 
                 {/* Community */}
                 <div className="space-y-2">
-                    <div className="text-sm font-medium">Community</div>
+                    <div className="text-sm font-medium">{t('chat.communityTitle')}</div>
                     <ToggleRow
-                        label="Community channel enabled"
+                        label={t('chat.communityChannelEnabled')}
                         checked={chat.community.enabled}
                         onChange={(checked) =>
                             onChange((c) => ({
@@ -1071,7 +1063,7 @@ function ChatSection({
                     />
                     <div className="grid gap-4 md:grid-cols-3">
                         <ToggleRow
-                            label={`${chatRoleLabelPlural('student')} can post`}
+                            label={t('chat.canPost', { role: chatRoleLabelPlural('student') })}
                             checked={chat.community.students_can_post}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1084,7 +1076,7 @@ function ChatSection({
                             }
                         />
                         <ToggleRow
-                            label={`${chatRoleLabelPlural('teacher')} can post`}
+                            label={t('chat.canPost', { role: chatRoleLabelPlural('teacher') })}
                             checked={chat.community.teachers_can_post}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1097,7 +1089,7 @@ function ChatSection({
                             }
                         />
                         <ToggleRow
-                            label={`${chatRoleLabelPlural('admin')} can post`}
+                            label={t('chat.canPost', { role: chatRoleLabelPlural('admin') })}
                             checked={chat.community.admins_can_post}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1114,10 +1106,10 @@ function ChatSection({
 
                 {/* Community Rules */}
                 <div className="space-y-4 rounded-md border p-4">
-                    <div className="text-sm font-medium">Community rules</div>
+                    <div className="text-sm font-medium">{t('chat.communityRulesTitle')}</div>
 
                     <div className="space-y-2">
-                        <Label>Guidelines title</Label>
+                        <Label>{t('chat.guidelinesTitle')}</Label>
                         <Input
                             value={rules.guidelines.title}
                             onChange={(e) =>
@@ -1135,15 +1127,15 @@ function ChatSection({
                                     },
                                 }))
                             }
-                            placeholder="e.g., Community Guidelines"
+                            placeholder={t('chat.guidelinesTitlePlaceholder')}
                         />
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Guideline items</Label>
+                        <Label>{t('chat.guidelineItems')}</Label>
                         <StringListEditor
                             value={rules.guidelines.items}
-                            placeholder="Add a guideline and press Enter"
+                            placeholder={t('chat.guidelineItemPlaceholder')}
                             onChange={(items) =>
                                 onChange((c) => ({
                                     ...c,
@@ -1163,7 +1155,7 @@ function ChatSection({
                     </div>
 
                     <ToggleRow
-                        label="Acknowledgement required"
+                        label={t('chat.acknowledgementRequired')}
                         checked={rules.acknowledgement_required}
                         onChange={(checked) =>
                             onChange((c) => ({
@@ -1181,8 +1173,8 @@ function ChatSection({
 
                     <div className="grid gap-4 md:grid-cols-2">
                         <NumberRow
-                            label="Slow mode (seconds)"
-                            hint="Delay between posts"
+                            label={t('chat.slowModeSeconds.label')}
+                            hint={t('chat.slowModeSeconds.hint')}
                             value={rules.posting.slow_mode_seconds}
                             onChange={(value) =>
                                 onChange((c) => ({
@@ -1201,8 +1193,8 @@ function ChatSection({
                             }
                         />
                         <NumberRow
-                            label="New member read-only (minutes)"
-                            hint="Mute new members initially"
+                            label={t('chat.newMemberReadonlyMinutes.label')}
+                            hint={t('chat.newMemberReadonlyMinutes.hint')}
                             value={rules.posting.new_member_readonly_minutes}
                             onChange={(value) =>
                                 onChange((c) => ({
@@ -1221,7 +1213,7 @@ function ChatSection({
                             }
                         />
                         <ToggleRow
-                            label="Allow links"
+                            label={t('chat.allowLinks')}
                             checked={rules.posting.allow_links}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1240,7 +1232,7 @@ function ChatSection({
                             }
                         />
                         <ToggleRow
-                            label="Allow attachments"
+                            label={t('chat.allowAttachments')}
                             checked={rules.posting.allow_attachments}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1261,10 +1253,10 @@ function ChatSection({
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Banned keywords</Label>
+                        <Label>{t('chat.bannedKeywords')}</Label>
                         <StringListEditor
                             value={rules.auto_moderation.banned_keywords}
-                            placeholder="Add a keyword and press Enter"
+                            placeholder={t('chat.bannedKeywordPlaceholder')}
                             onChange={(keywords) =>
                                 onChange((c) => ({
                                     ...c,
@@ -1284,7 +1276,7 @@ function ChatSection({
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Auto-moderation action</Label>
+                        <Label>{t('chat.autoModerationAction')}</Label>
                         <Select
                             value={rules.auto_moderation.action}
                             onValueChange={(value) =>
@@ -1304,11 +1296,11 @@ function ChatSection({
                             }
                         >
                             <SelectTrigger className="w-48">
-                                <SelectValue placeholder="Select action" />
+                                <SelectValue placeholder={t('chat.selectActionPlaceholder')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="BLOCK">Block</SelectItem>
-                                <SelectItem value="FLAG">Flag</SelectItem>
+                                <SelectItem value="BLOCK">{t('chat.actionBlock')}</SelectItem>
+                                <SelectItem value="FLAG">{t('chat.actionFlag')}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -1316,9 +1308,9 @@ function ChatSection({
 
                 {/* Direct messages */}
                 <div className="space-y-3">
-                    <div className="text-sm font-medium">Direct messages</div>
+                    <div className="text-sm font-medium">{t('chat.directMessagesTitle')}</div>
                     <ToggleRow
-                        label="Direct messages enabled"
+                        label={t('chat.directMessagesEnabled')}
                         checked={chat.direct.enabled}
                         onChange={(checked) =>
                             onChange((c) => ({
@@ -1332,7 +1324,7 @@ function ChatSection({
                             <thead>
                                 <tr>
                                     <th className="p-3 text-left font-medium text-muted-foreground">
-                                        Sender \ Can message
+                                        {t('chat.senderCanMessage')}
                                     </th>
                                     {CHAT_DIRECT_ROLES.map((target) => (
                                         <th
@@ -1385,10 +1377,10 @@ function ChatSection({
 
                 {/* Attachments */}
                 <div className="space-y-2">
-                    <div className="text-sm font-medium">Attachments</div>
+                    <div className="text-sm font-medium">{t('chat.attachmentsTitle')}</div>
                     <div className="grid gap-4 md:grid-cols-3">
                         <ToggleRow
-                            label="Images enabled"
+                            label={t('chat.imagesEnabled')}
                             checked={chat.attachments.images_enabled}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1401,7 +1393,7 @@ function ChatSection({
                             }
                         />
                         <ToggleRow
-                            label="Files enabled"
+                            label={t('chat.filesEnabled')}
                             checked={chat.attachments.files_enabled}
                             onChange={(checked) =>
                                 onChange((c) => ({
@@ -1414,8 +1406,8 @@ function ChatSection({
                             }
                         />
                         <NumberRow
-                            label="Max file size (MB)"
-                            hint="Upload limit"
+                            label={t('chat.maxFileSizeMb.label')}
+                            hint={t('chat.maxFileSizeMb.hint')}
                             value={chat.attachments.max_file_size_mb}
                             onChange={(value) =>
                                 onChange((c) => ({
@@ -1444,12 +1436,14 @@ function ChatSection({
 // Rejects entries that would silently fail at send time: the backend parses copy addresses with
 // InternetAddress.parse and, on failure, drops the copies and sends anyway — so a typo here would
 // otherwise look configured while never delivering.
-const CC_EMAIL_PLACEHOLDER = 'name@example.com — press Enter to add';
+function getCcEmailPlaceholder(): string {
+    return i18next.t('settingsNotification:emailCc.emailPlaceholder');
+}
 
 function validateCcEmail(candidate: string): string | null {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)
         ? null
-        : `"${candidate}" is not a valid email address.`;
+        : i18next.t('settingsNotification:emailCc.invalidEmail', { value: candidate });
 }
 
 function EmailCcSection({
@@ -1459,6 +1453,7 @@ function EmailCcSection({
     value: EmailCcSettings;
     onChange: (next: EmailCcSettings) => void;
 }) {
+    const { t } = useTranslation('settingsNotification');
     const setTrigger = (key: string, patch: Partial<{ enabled: boolean; cc: string[] }>) => {
         const current = value.triggers[key] ?? { enabled: false, cc: [] };
         onChange({
@@ -1469,30 +1464,28 @@ function EmailCcSection({
 
     // A config can be switched on yet still deliver nothing — no email selected, or none of the
     // selected ones has an address. Both look configured and fail silently, so say so here.
-    const enabledTriggers = EMAIL_CC_TRIGGERS.filter((t) => value.triggers[t.key]?.enabled);
+    const enabledTriggers = EMAIL_CC_TRIGGERS.filter((trig) => value.triggers[trig.key]?.enabled);
     const hasAnyAddress =
         value.global_cc.length > 0 ||
-        enabledTriggers.some((t) => (value.triggers[t.key]?.cc?.length ?? 0) > 0);
+        enabledTriggers.some((trig) => (value.triggers[trig.key]?.cc?.length ?? 0) > 0);
     const inactiveReason =
         enabledTriggers.length === 0
-            ? 'No emails are selected below, so no copies will be sent.'
+            ? t('emailCc.noneSelected')
             : !hasAnyAddress
-              ? 'No addresses have been added, so no copies will be sent. Type an address and press Enter to add it.'
+              ? t('emailCc.noAddresses')
               : null;
 
     return (
         <Card className="rounded-lg border-gray-200">
             <CardHeader className="py-3">
-                <CardTitle className="text-base">Email Copies (CC / BCC)</CardTitle>
+                <CardTitle className="text-base">{t('emailCc.title')}</CardTitle>
                 <div className="mt-1 text-xs text-muted-foreground">
-                    Send a copy of transactional emails to your own team — for example, every
-                    invoice to your accounts inbox. Copies are off unless you turn on both this
-                    setting and the individual emails below.
+                    {t('emailCc.description')}
                 </div>
             </CardHeader>
             <CardContent className="space-y-4">
                 <ToggleRow
-                    label="Send copies of transactional emails"
+                    label={t('emailCc.sendCopies')}
                     checked={value.enabled}
                     onChange={(enabled) => onChange({ ...value, enabled })}
                 />
@@ -1509,11 +1502,9 @@ function EmailCcSection({
                         )}
 
                         <div className="rounded-md border p-3">
-                            <Label>Copy type</Label>
+                            <Label>{t('emailCc.copyType')}</Label>
                             <div className="mt-1 text-xs text-muted-foreground">
-                                BCC keeps your team&apos;s addresses hidden. CC shows them to the
-                                learner on the email — only use CC if the learner should see who
-                                else received it.
+                                {t('emailCc.copyTypeHint')}
                             </div>
                             <div className="mt-3 flex items-center gap-2">
                                 {(['BCC', 'CC'] as const).map((mode) => (
@@ -1531,21 +1522,20 @@ function EmailCcSection({
                         </div>
 
                         <div className="rounded-md border p-3">
-                            <Label>Always copy these addresses</Label>
+                            <Label>{t('emailCc.alwaysCopy')}</Label>
                             <div className="mb-3 mt-1 text-xs text-muted-foreground">
-                                Added to every email you switch on below. Leave empty to set
-                                addresses per email instead.
+                                {t('emailCc.alwaysCopyHint')}
                             </div>
                             <StringListEditor
                                 value={value.global_cc}
                                 onChange={(global_cc) => onChange({ ...value, global_cc })}
-                                placeholder={CC_EMAIL_PLACEHOLDER}
+                                placeholder={getCcEmailPlaceholder()}
                                 validate={validateCcEmail}
                             />
                         </div>
 
                         <div className="space-y-3">
-                            <Label>Which emails to copy</Label>
+                            <Label>{t('emailCc.whichEmails')}</Label>
                             {EMAIL_CC_TRIGGERS.map((trigger) => {
                                 const config = value.triggers[trigger.key] ?? {
                                     enabled: false,
@@ -1570,15 +1560,14 @@ function EmailCcSection({
                                         {config.enabled && (
                                             <div className="mt-3">
                                                 <div className="mb-2 text-xs text-muted-foreground">
-                                                    Also copy to — in addition to the addresses
-                                                    above
+                                                    {t('emailCc.alsoCopyTo')}
                                                 </div>
                                                 <StringListEditor
                                                     value={config.cc}
                                                     onChange={(cc) =>
                                                         setTrigger(trigger.key, { cc })
                                                     }
-                                                    placeholder={CC_EMAIL_PLACEHOLDER}
+                                                    placeholder={getCcEmailPlaceholder()}
                                                     validate={validateCcEmail}
                                                 />
                                             </div>
@@ -1591,8 +1580,7 @@ function EmailCcSection({
                         <Alert>
                             <Info className="size-4" />
                             <AlertDescription className="text-xs">
-                                Copies are not recorded against the recipient in email reports, and
-                                replies from a copied address are not tracked.
+                                {t('emailCc.notRecorded')}
                             </AlertDescription>
                         </Alert>
                     </>
@@ -1614,6 +1602,7 @@ function StringListEditor({
     /** Return an error message to reject the entry, or null to accept it. */
     validate?: (item: string) => string | null;
 }) {
+    const { t } = useTranslation('settingsNotification');
     const [input, setInput] = useState('');
     const addItem = () => {
         const v = input.trim();
@@ -1634,7 +1623,7 @@ function StringListEditor({
         setInput('');
     };
     const removeItem = (item: string) => {
-        onChange(value.filter((t) => t !== item));
+        onChange(value.filter((existing) => existing !== item));
     };
     return (
         <div className="flex flex-wrap items-center gap-2">
@@ -1660,13 +1649,14 @@ function StringListEditor({
                 // Save discards it silently — the field looks filled in, but an empty list is
                 // what gets persisted.
                 onBlur={addItem}
-                placeholder={placeholder ?? 'Add and press Enter'}
+                placeholder={placeholder ?? t('stringListEditor.defaultPlaceholder')}
             />
         </div>
     );
 }
 
 function TagEditor({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
+    const { t } = useTranslation('settingsNotification');
     const [input, setInput] = useState('');
     const addTag = () => {
         const v = input.trim();
@@ -1676,7 +1666,7 @@ function TagEditor({ value, onChange }: { value: string[]; onChange: (tags: stri
         setInput('');
     };
     const removeTag = (tag: string) => {
-        onChange(value.filter((t) => t !== tag));
+        onChange(value.filter((existing) => existing !== tag));
     };
     return (
         <div className="flex flex-wrap items-center gap-2">
@@ -1698,7 +1688,7 @@ function TagEditor({ value, onChange }: { value: string[]; onChange: (tags: stri
                         addTag();
                     }
                 }}
-                placeholder="Add tag and press Enter"
+                placeholder={t('tagEditor.placeholder')}
             />
         </div>
     );
@@ -1719,9 +1709,10 @@ function EmailListEditor({
     onUpdate: (id: string, config: Partial<CreateEmailConfigurationRequest>) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
 }) {
+    const { t } = useTranslation('settingsNotification');
     const [newEmail, setNewEmail] = useState('');
     const [newName, setNewName] = useState('');
-    const [newPurposeCode, setNewPurposeCode] = useState<string>(EMAIL_PURPOSES[0].code);
+    const [newPurposeCode, setNewPurposeCode] = useState<string>(getEmailPurposes()[0]!.code);
     const [newCustomPurpose, setNewCustomPurpose] = useState('');
     const [newDescription, setNewDescription] = useState('');
 
@@ -1760,12 +1751,12 @@ function EmailListEditor({
             (e) => e.email.toLowerCase() === newEmail.trim().toLowerCase()
         );
         if (emailExists) {
-            toast.error('This email address is already added.');
+            toast.error(t('emailList.toasts.emailExists'));
             return;
         }
         const typeExists = emailConfigurations.some((e) => e.type === resolvedNewPurposeCode);
         if (typeExists) {
-            toast.error('You already have an address for this purpose. Edit the existing one or pick a different purpose.');
+            toast.error(t('emailList.toasts.purposeExists'));
             return;
         }
 
@@ -1791,30 +1782,28 @@ function EmailListEditor({
                         type: addedType,
                         mode: 'EMAIL',
                     });
-                    toast.success('Email address added — verification started.', {
+                    toast.success(t('emailList.toasts.addedVerificationStarted'), {
                         description:
                             result.message ||
-                            `AWS sent a confirmation email to ${addedEmail}. Open it and click the link, then refresh the address below.`,
+                            t('emailList.toasts.addedVerificationStartedDescription', { email: addedEmail }),
                         duration: 10000,
                     });
                 } catch {
-                    toast.success('Email address added.', {
-                        description:
-                            "Couldn't start verification automatically. Use the “Verify sender” button on the address below.",
+                    toast.success(t('emailList.toasts.added'), {
+                        description: t('emailList.toasts.addedVerificationFailedDescription'),
                         duration: 10000,
                     });
                 }
             } else {
-                toast.success('Email address added.', {
-                    description:
-                        "Before this address can send emails, our team needs to verify it. Please contact support to get it verified — emails sent before verification won't reach recipients.",
+                toast.success(t('emailList.toasts.added'), {
+                    description: t('emailList.toasts.addedNoVerificationDescription'),
                     duration: 10000,
                 });
             }
 
             setNewEmail('');
             setNewName('');
-            setNewPurposeCode(EMAIL_PURPOSES[0].code);
+            setNewPurposeCode(getEmailPurposes()[0]!.code);
             setNewCustomPurpose('');
             setNewDescription('');
         } catch (error) {
@@ -1826,20 +1815,20 @@ function EmailListEditor({
         <Alert className="border-info-300 bg-info-50 text-info-700">
             <Info className="size-4 text-info-600" />
             <AlertDescription className="text-xs leading-relaxed">
-                Each address must be <strong>verified with the email service</strong> before it
-                can send. Adding an address emails a confirmation link to it — click that link,
-                then press <strong>Refresh status</strong>. Until an address is verified, its
-                messages are sent from the platform's default address.
+                {t('emailList.verifiedNotice.part1')} <strong>{t('emailList.verifiedNotice.verifiedWithService')}</strong>{' '}
+                {t('emailList.verifiedNotice.part2')} <strong>{t('emailList.verifiedNotice.refreshStatus')}</strong>
+                {t('emailList.verifiedNotice.part3')}
             </AlertDescription>
         </Alert>
     ) : (
         <Alert className="border-amber-300 bg-amber-50 text-amber-900">
             <Info className="size-4 text-amber-700" />
             <AlertDescription className="text-xs leading-relaxed">
-                Before any address here can send emails, <strong>our team needs to verify
-                it with the email service</strong>. Until that's done, messages from a new
-                address won't reach recipients. If you've just added or changed an address,
-                please <strong>contact support</strong> so we can verify it for you.
+                {t('emailList.unverifiedNotice.part1')}{' '}
+                <strong>{t('emailList.unverifiedNotice.needsVerification')}</strong>
+                {t('emailList.unverifiedNotice.part2')}{' '}
+                <strong>{t('emailList.unverifiedNotice.contactSupport')}</strong>{' '}
+                {t('emailList.unverifiedNotice.part3')}
             </AlertDescription>
         </Alert>
     );
@@ -1849,7 +1838,7 @@ function EmailListEditor({
             <div className="space-y-4">
                 {verificationNotice}
                 <div className="text-sm text-muted-foreground text-center py-4">
-                    Loading your email addresses…
+                    {t('emailList.loadingAddresses')}
                 </div>
             </div>
         );
@@ -1868,8 +1857,8 @@ function EmailListEditor({
 
     const selectedPurposeHint =
         newPurposeCode !== CUSTOM_PURPOSE_OPTION
-            ? EMAIL_PURPOSES.find((p) => p.code === newPurposeCode)?.hint
-            : 'A custom purpose for emails that don\'t fit the categories above.';
+            ? getEmailPurposes().find((p) => p.code === newPurposeCode)?.hint
+            : t('emailPurposes.customHint');
 
     return (
         <div className="space-y-4">
@@ -1877,60 +1866,58 @@ function EmailListEditor({
 
             {/* Add new email form */}
             <div className="rounded-md border border-dashed border-gray-300 p-4 space-y-3">
-                <div className="text-sm font-medium">Add a new email address</div>
+                <div className="text-sm font-medium">{t('emailList.addNewTitle')}</div>
                 <div className="grid gap-3 md:grid-cols-2">
                     <div>
-                        <Label htmlFor="new-email">Email address</Label>
+                        <Label htmlFor="new-email">{t('emailList.fields.email')}</Label>
                         <Input
                             id="new-email"
                             type="email"
-                            placeholder="e.g., support@yourschool.com"
+                            placeholder={t('emailList.fields.emailPlaceholder')}
                             value={newEmail}
                             onChange={(e) => setNewEmail(e.target.value)}
                         />
                     </div>
                     <div>
-                        <Label htmlFor="new-name">Display name</Label>
+                        <Label htmlFor="new-name">{t('emailList.fields.displayName')}</Label>
                         <Input
                             id="new-name"
-                            placeholder='e.g., "Acme Academy Support"'
+                            placeholder={t('emailList.fields.displayNamePlaceholder')}
                             value={newName}
                             onChange={(e) => setNewName(e.target.value)}
                         />
                         <div className="text-xs text-muted-foreground mt-1">
-                            Shown to recipients next to the email address.
+                            {t('emailList.fields.displayNameHint')}
                         </div>
                     </div>
                     <div>
-                        <Label htmlFor="new-purpose">What is this email for?</Label>
+                        <Label htmlFor="new-purpose">{t('emailList.fields.purpose')}</Label>
                         <Select value={newPurposeCode} onValueChange={setNewPurposeCode}>
                             <SelectTrigger id="new-purpose">
-                                <SelectValue placeholder="Choose a purpose" />
+                                <SelectValue placeholder={t('emailList.fields.purposePlaceholder')} />
                             </SelectTrigger>
                             <SelectContent>
-                                {EMAIL_PURPOSES.map((p) => (
+                                {getEmailPurposes().map((p) => (
                                     <SelectItem key={p.code} value={p.code}>
                                         {p.label}
                                     </SelectItem>
                                 ))}
                                 <SelectItem value={CUSTOM_PURPOSE_OPTION}>
-                                    Other (custom purpose)…
+                                    {t('emailPurposes.other')}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
                         {newPurposeCode === CUSTOM_PURPOSE_OPTION ? (
                             <div className="mt-2 space-y-1">
                                 <Input
-                                    placeholder='e.g., "Newsletter" or "Alumni"'
+                                    placeholder={t('emailList.fields.customPurposePlaceholder')}
                                     value={newCustomPurpose}
                                     onChange={(e) => setNewCustomPurpose(e.target.value)}
                                 />
                                 <div className="text-xs text-muted-foreground">
-                                    Use a short name. We'll save it as{' '}
-                                    <span className="font-mono">
-                                        {resolvedNewPurposeCode || 'YOUR_PURPOSE'}
-                                    </span>{' '}
-                                    internally.
+                                    {t('emailList.fields.customPurposeHint', {
+                                        code: resolvedNewPurposeCode || t('emailList.fields.customPurposeDefaultCode'),
+                                    })}
                                 </div>
                             </div>
                         ) : (
@@ -1940,10 +1927,10 @@ function EmailListEditor({
                         )}
                     </div>
                     <div>
-                        <Label htmlFor="new-description">Notes (optional)</Label>
+                        <Label htmlFor="new-description">{t('emailList.fields.notes')}</Label>
                         <Input
                             id="new-description"
-                            placeholder="For your team's reference"
+                            placeholder={t('emailList.fields.notesPlaceholder')}
                             value={newDescription}
                             onChange={(e) => setNewDescription(e.target.value)}
                         />
@@ -1955,7 +1942,7 @@ function EmailListEditor({
                         onClick={addEmail}
                         disabled={!canSubmit}
                     >
-                        Add email address
+                        {t('emailList.addButton')}
                     </Button>
                 </div>
             </div>
@@ -1963,11 +1950,11 @@ function EmailListEditor({
             {/* Email list */}
             <div className="space-y-2">
                 <div className="text-sm font-medium">
-                    Your email addresses ({emailConfigurations.length})
+                    {t('emailList.yourAddresses', { count: emailConfigurations.length })}
                 </div>
                 {emailConfigurations.length === 0 ? (
                     <div className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-md">
-                        You haven't added any email addresses yet. Use the form above to add one.
+                        {t('emailList.emptyState')}
                     </div>
                 ) : (
                     emailConfigurations.map((config) => (
@@ -1987,11 +1974,12 @@ function EmailListEditor({
 
 // Small status pill for a sender's SES verification state.
 function VerificationBadge({ status }: { status: VerificationStatus | null }) {
+    const { t } = useTranslation('settingsNotification');
     const map: Record<VerificationStatus, { label: string; className: string }> = {
-        VERIFIED: { label: 'Verified', className: 'border-success-200 bg-success-50 text-success-700' },
-        PENDING: { label: 'Pending verification', className: 'border-info-200 bg-info-50 text-info-700' },
-        FAILED: { label: 'Verification failed', className: 'border-danger-200 bg-danger-50 text-danger-600' },
-        NOT_STARTED: { label: 'Not verified', className: 'border-neutral-200 bg-neutral-50 text-neutral-500' },
+        VERIFIED: { label: t('verificationBadge.verified'), className: 'border-success-200 bg-success-50 text-success-700' },
+        PENDING: { label: t('verificationBadge.pending'), className: 'border-info-200 bg-info-50 text-info-700' },
+        FAILED: { label: t('verificationBadge.failed'), className: 'border-danger-200 bg-danger-50 text-danger-600' },
+        NOT_STARTED: { label: t('verificationBadge.notVerified'), className: 'border-neutral-200 bg-neutral-50 text-neutral-500' },
     };
     const s = status ?? 'NOT_STARTED';
     const { label, className } = map[s];
@@ -2004,24 +1992,25 @@ function VerificationBadge({ status }: { status: VerificationStatus | null }) {
 
 // DNS records the institute must publish for DOMAIN-mode (DKIM) verification.
 function DnsRecordsTable({ records }: { records: DnsRecord[] }) {
+    const { t } = useTranslation('settingsNotification');
     const copy = (value: string) => {
         navigator.clipboard?.writeText(value).then(
-            () => toast.success('Copied'),
-            () => toast.error('Could not copy')
+            () => toast.success(t('dnsTable.toastCopied')),
+            () => toast.error(t('dnsTable.toastCopyFailed'))
         );
     };
     return (
         <div className="space-y-2 rounded-md border border-info-200 bg-info-50 p-2">
             <div className="text-xs font-medium text-info-700">
-                Add these DNS records to your domain, then press Refresh status:
+                {t('dnsTable.instructions')}
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                     <thead className="text-muted-foreground">
                         <tr>
-                            <th className="pr-2 font-medium">Type</th>
-                            <th className="pr-2 font-medium">Name / Host</th>
-                            <th className="pr-2 font-medium">Value</th>
+                            <th className="pr-2 font-medium">{t('dnsTable.columnType')}</th>
+                            <th className="pr-2 font-medium">{t('dnsTable.columnName')}</th>
+                            <th className="pr-2 font-medium">{t('dnsTable.columnValue')}</th>
                             <th />
                         </tr>
                     </thead>
@@ -2039,7 +2028,7 @@ function DnsRecordsTable({ records }: { records: DnsRecord[] }) {
                                         className="h-6 px-2"
                                         onClick={() => copy(`${r.name}\t${r.value}`)}
                                     >
-                                        Copy
+                                        {t('dnsTable.copyButton')}
                                     </Button>
                                 </td>
                             </tr>
@@ -2062,6 +2051,7 @@ function EmailConfigurationRow({
     onUpdate: (emailType: string, config: Partial<CreateEmailConfigurationRequest>) => Promise<void>;
     onDelete: (emailType: string) => Promise<void>;
 }) {
+    const { t } = useTranslation('settingsNotification');
     const [email, setEmail] = useState(config.email);
     const [name, setName] = useState(config.name);
     const [description, setDescription] = useState(config.description || '');
@@ -2083,7 +2073,7 @@ function EmailConfigurationRow({
 
     const errorText = (e: unknown) => {
         const err = e as { response?: { data?: { error?: string } } };
-        return err?.response?.data?.error || 'Please try again.';
+        return err?.response?.data?.error || t('emailRow.genericError');
     };
 
     useEffect(() => {
@@ -2123,11 +2113,11 @@ function EmailConfigurationRow({
             });
             applyVerification(r);
             toast.success(
-                mode === 'DOMAIN' ? 'Domain verification started' : 'Verification email sent',
+                mode === 'DOMAIN' ? t('emailRow.toasts.domainVerificationStarted') : t('emailRow.toasts.verificationEmailSent'),
                 { description: r.message, duration: 8000 }
             );
         } catch (e) {
-            toast.error('Could not start verification', { description: errorText(e) });
+            toast.error(t('emailRow.toasts.verificationStartFailed'), { description: errorText(e) });
         } finally {
             setVerifying(false);
         }
@@ -2139,7 +2129,7 @@ function EmailConfigurationRow({
             const r = await getVerificationStatus(config.type);
             applyVerification(r);
         } catch (e) {
-            toast.error('Could not refresh status', { description: errorText(e) });
+            toast.error(t('emailRow.toasts.refreshFailed'), { description: errorText(e) });
         } finally {
             setChecking(false);
         }
@@ -2178,9 +2168,10 @@ function EmailConfigurationRow({
 
     const handleDelete = async () => {
         const ok = confirm(
-            `Remove "${config.email}"?\n\n` +
-                `It will no longer be used for ${purposeLabelFor(config.type).toLowerCase()}.\n` +
-                `You can add it back later if needed.`
+            t('emailRow.confirmDelete', {
+                email: config.email,
+                purpose: purposeLabelFor(config.type).toLowerCase(),
+            })
         );
         if (!ok) return;
         setDeleting(true);
@@ -2199,9 +2190,9 @@ function EmailConfigurationRow({
                 </Badge>
                 <span
                     className="text-xs text-muted-foreground"
-                    title="The purpose can't be changed after the address is added. To use a different purpose, remove this address and add a new one."
+                    title={t('emailRow.purposeLockedTitle')}
                 >
-                    Purpose can't be changed
+                    {t('emailRow.purposeLocked')}
                 </span>
             </div>
 
@@ -2209,7 +2200,7 @@ function EmailConfigurationRow({
                 <div className="space-y-2 rounded-md border bg-muted/30 p-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium">Sending status:</span>
+                            <span className="text-xs font-medium">{t('emailRow.sendingStatus')}</span>
                             <VerificationBadge status={vStatus} />
                         </div>
                         <div className="flex items-center gap-2">
@@ -2221,7 +2212,7 @@ function EmailConfigurationRow({
                                     onClick={() => runVerify('EMAIL')}
                                     disabled={verifying}
                                 >
-                                    {verifying ? 'Working…' : 'Verify sender'}
+                                    {verifying ? t('emailRow.working') : t('emailRow.verifySender')}
                                 </Button>
                             )}
                             <Button
@@ -2231,7 +2222,7 @@ function EmailConfigurationRow({
                                 onClick={refreshStatus}
                                 disabled={checking}
                             >
-                                {checking ? 'Checking…' : 'Refresh status'}
+                                {checking ? t('emailRow.checking') : t('emailRow.refreshStatus')}
                             </Button>
                         </div>
                     </div>
@@ -2248,7 +2239,7 @@ function EmailConfigurationRow({
                             onClick={() => runVerify('DOMAIN')}
                             disabled={verifying}
                         >
-                            Verify your whole domain instead (better deliverability)
+                            {t('emailRow.verifyDomainInstead')}
                         </button>
                     )}
                 </div>
@@ -2256,7 +2247,7 @@ function EmailConfigurationRow({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <div>
-                    <Label className="text-xs">Email address</Label>
+                    <Label className="text-xs">{t('emailList.fields.email')}</Label>
                     <Input
                         type="email"
                         value={email}
@@ -2265,19 +2256,19 @@ function EmailConfigurationRow({
                     />
                 </div>
                 <div>
-                    <Label className="text-xs">Display name</Label>
+                    <Label className="text-xs">{t('emailList.fields.displayName')}</Label>
                     <Input
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder='e.g., "Acme Academy Support"'
+                        placeholder={t('emailList.fields.displayNamePlaceholder')}
                     />
                 </div>
                 <div>
-                    <Label className="text-xs">Notes (optional)</Label>
+                    <Label className="text-xs">{t('emailList.fields.notes')}</Label>
                     <Input
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        placeholder="For your team's reference"
+                        placeholder={t('emailList.fields.notesPlaceholder')}
                     />
                 </div>
             </div>
@@ -2290,7 +2281,7 @@ function EmailConfigurationRow({
                         onClick={handleReset}
                         disabled={saving}
                     >
-                        Cancel
+                        {t('emailRow.cancel')}
                     </Button>
                 )}
                 <Button
@@ -2299,7 +2290,7 @@ function EmailConfigurationRow({
                     onClick={handleUpdate}
                     disabled={!canSave}
                 >
-                    {saving ? 'Saving…' : 'Save changes'}
+                    {saving ? t('emailRow.saving') : t('emailRow.saveChanges')}
                 </Button>
                 <Button
                     type="button"
@@ -2310,7 +2301,7 @@ function EmailConfigurationRow({
                     className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                 >
                     <Trash className="size-4 mr-1" />
-                    {deleting ? 'Removing…' : 'Remove'}
+                    {deleting ? t('emailRow.removing') : t('emailRow.remove')}
                 </Button>
             </div>
         </div>

@@ -53,6 +53,74 @@ export const COMPONENT_LABELS: Record<string, string> = {
     sectionHeading: 'Section Heading',
 };
 
+/**
+ * One line saying what each block DOES, for the insert palette.
+ *
+ * The palette used to print "Click or drag" under every entry, so choosing
+ * between "Course Catalog", "Course Grid (full catalogue)" and "Product Page
+ * Offer" meant adding all three and looking. A name alone cannot separate
+ * blocks that differ by where their data comes from — that is what these say.
+ *
+ * Keep them to one short sentence: the palette row is two lines tall.
+ */
+export const COMPONENT_DESCRIPTIONS: Record<string, string> = {
+    header: 'Site logo, navigation and login buttons',
+    footer: 'Link columns, socials and the copyright line',
+    heroSection: 'Opening banner — headline, image and the main call to action',
+    sectionHeading: 'A heading and lead-in for the blocks below it',
+    spacer: 'Blank vertical gap between two blocks',
+
+    // ── Courses & selling ────────────────────────────────────────────────────
+    courseCatalog: 'Every course in this institute, with filters and search',
+    productCourseGrid: 'Every course in this institute — same data, plain grid',
+    productPageOffer: 'Courses from ONE product page; can collect several into a basket',
+    bookCatalogue: 'Books for sale, with buy/rent options',
+    courseDetails: 'The selected course’s full details (details pages only)',
+    bookDetails: 'The selected book’s full details (book pages only)',
+    cartComponent: 'The visitor’s basket and its checkout button',
+    buyRentSection: 'Buy-or-rent chooser for a single book',
+    pricingTable: 'Hand-written plan columns — prices you type, not live courses',
+
+    // ── Persuasion ───────────────────────────────────────────────────────────
+    featureGrid: 'Short “why us” points as icon cards',
+    detailBlocks: 'One long block per programme — what it covers and who it is for',
+    statsHighlights: 'A row of big numbers (learners, pass rate, years)',
+    testimonialSection: 'Quotes from learners or parents',
+    logoCloud: 'A row of partner or school logos',
+    trustChip: 'A single line of reassurance — certifications, counts, guarantees',
+    teamSection: 'Faculty or staff photos with roles',
+    mediaShowcase: 'A carousel or grid of images and videos',
+    imageGallery: 'A grid of images',
+    videoEmbed: 'One embedded YouTube or uploaded video',
+    stepsProcess: 'Numbered steps — how enrolling or learning works',
+    countdownTimer: 'Counts down to a deadline',
+    marquee: 'A scrolling ticker of announcements',
+
+    // ── Asking for something back ────────────────────────────────────────────
+    leadForm: 'An enquiry form wired to an Audience campaign',
+    contactForm: 'A plain contact form, emailed to you',
+    newsletterSignup: 'Email capture for a mailing list',
+    ctaBanner: 'A full-width band with one big call to action',
+    announcementFeed: 'Your latest announcements, pulled in live',
+
+    // ── Reference ────────────────────────────────────────────────────────────
+    faqSection: 'Questions that open and close',
+    tabsAccordion: 'Your own content split across tabs or accordions',
+    policyRenderer: 'Terms, refund and privacy policy text',
+    mapEmbed: 'A map pin for your campus',
+
+    // ── Raw content ──────────────────────────────────────────────────────────
+    textBlock: 'A block of formatted text',
+    imageBlock: 'A single image',
+    buttonBlock: 'A standalone button',
+    htmlBlock: 'Your own HTML and CSS, sandboxed into one band',
+    htmlPage: 'A whole page pasted in as HTML',
+};
+
+/** One-line description of a component type for the insert palette. */
+export const componentDescription = (type: string): string =>
+    COMPONENT_DESCRIPTIONS[type] ?? 'Click or drag to add';
+
 /** Friendly name for a component type, with a camelCase fallback. */
 export const componentLabel = (type: string): string =>
     COMPONENT_LABELS[type] ??

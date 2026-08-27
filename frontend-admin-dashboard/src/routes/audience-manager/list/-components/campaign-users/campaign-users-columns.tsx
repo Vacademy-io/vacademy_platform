@@ -1,4 +1,5 @@
 import { ColumnDef, Row } from '@tanstack/react-table';
+import type { TFunction } from 'i18next';
 import { Trash, UserPlus, ArrowSquareOut } from '@phosphor-icons/react';
 import { LeadActivityNotesCell } from '@/components/shared/lead-activity-notes-cell';
 import { Badge } from '@/components/ui/badge';
@@ -89,15 +90,15 @@ export interface CampaignUserTable {
 }
 
 // S.No column (index column) - always shown
-const indexColumn: ColumnDef<CampaignUserTable> = {
+const buildIndexColumn = (t: TFunction): ColumnDef<CampaignUserTable> => ({
     accessorKey: 'index',
-    header: 'S.No',
+    header: t('columns.serialNumber'),
     size: 80,
     minSize: 80,
     maxSize: 80,
     enableResizing: false,
     cell: ({ row }) => <div className="p-3 text-sm text-neutral-700">{row.original.index + 1}</div>,
-};
+});
 
 const getFieldFromLookup = (
     lookup: Map<string, CustomFieldSetupItem> | undefined,
@@ -138,6 +139,7 @@ const isEmailField = (fieldKey?: string, fieldName?: string): boolean => {
  * All fields (including Name and Email) are treated dynamically from the API response
  */
 export const generateDynamicColumns = (
+    t: TFunction,
     campaignCustomFields: any[] = [],
     fieldLookup?: Map<string, CustomFieldSetupItem>,
     onDelete?: (responseId: string) => void,
@@ -165,11 +167,11 @@ export const generateDynamicColumns = (
             minSize: 60,
             maxSize: 120,
             enablePinning: true,
-            header: 'Details',
+            header: t('columns.details'),
             cell: ({ row }) => <DetailsCell row={row} onSelect={onSelectRow} />,
         });
     }
-    columns.push(indexColumn); // S.No column
+    columns.push(buildIndexColumn(t)); // S.No column
 
     try {
         const lookup = fieldLookup ?? new Map<string, CustomFieldSetupItem>();
@@ -359,7 +361,7 @@ export const generateDynamicColumns = (
                         );
                     }
 
-                    const displayValue = formatCustomFieldValue(valueAsString, fieldType);
+                    const displayValue = formatCustomFieldValue(valueAsString, fieldType, t);
                     return (
                         <div
                             className={`p-3 text-sm ${isNameFieldCell ? 'font-medium text-neutral-900' : 'text-neutral-700'} ${clickable ? 'cursor-pointer hover:text-primary-600' : ''}`}
@@ -402,7 +404,7 @@ export const generateDynamicColumns = (
     if (hasEditableStatus || (customStatuses && customStatuses.length > 0)) {
         columns.push({
             id: 'lead_status',
-            header: 'Status',
+            header: t('columns.status'),
             size: 160,
             minSize: 120,
             maxSize: 200,
@@ -437,7 +439,7 @@ export const generateDynamicColumns = (
     if (onAssignCounsellor) {
         columns.push({
             id: 'reach_out_by',
-            header: 'Reach out in',
+            header: t('columns.reachOutIn'),
             size: 160,
             minSize: 130,
             maxSize: 200,
@@ -455,7 +457,7 @@ export const generateDynamicColumns = (
         });
         columns.push({
             id: 'follow_up_by',
-            header: 'Follow up at',
+            header: t('columns.followUpAt'),
             size: 150,
             minSize: 120,
             maxSize: 180,
@@ -476,7 +478,7 @@ export const generateDynamicColumns = (
     if (onAssignCounsellor) {
         columns.push({
             id: 'counsellor',
-            header: 'Counsellor',
+            header: t('columns.counsellor'),
             size: 200,
             minSize: 160,
             maxSize: 240,
@@ -510,7 +512,7 @@ export const generateDynamicColumns = (
                                 }}
                                 className="shrink-0 text-xs text-neutral-400 hover:text-primary-600"
                             >
-                                Reassign
+                                {t('actions.reassign')}
                             </button>
                         </div>
                     );
@@ -526,7 +528,7 @@ export const generateDynamicColumns = (
                             className="inline-flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-primary-300 hover:text-primary-600"
                         >
                             <UserPlus className="size-3.5" />
-                            Assign
+                            {t('actions.assign')}
                         </button>
                     </div>
                 );
@@ -540,7 +542,7 @@ export const generateDynamicColumns = (
     if (onAddNote) {
         columns.push({
             id: 'activity_notes',
-            header: 'Activity & Notes',
+            header: t('columns.activityNotes'),
             size: 320,
             minSize: 260,
             maxSize: 420,
@@ -570,7 +572,7 @@ export const generateDynamicColumns = (
     // Add "Submitted On" column at the end
     columns.push({
         accessorKey: 'submittedAt',
-        header: 'Submitted On',
+        header: t('columns.submittedOn'),
         size: 250,
         minSize: 220,
         maxSize: 300,
@@ -592,7 +594,7 @@ export const generateDynamicColumns = (
                     <button
                         onClick={() => onDelete(row.original.id)}
                         className="text-neutral-400 transition-colors hover:text-red-500"
-                        title="Delete lead"
+                        title={t('actions.deleteLead')}
                     >
                         <Trash className="size-4" />
                     </button>
@@ -605,8 +607,8 @@ export const generateDynamicColumns = (
 };
 
 // Default columns (fallback when no custom fields) - uses getCampaignCustomFields() for all columns
-export const campaignUsersColumns: ColumnDef<CampaignUserTable>[] = (() => {
-    const columns: ColumnDef<CampaignUserTable>[] = [indexColumn];
+export const buildCampaignUsersColumns = (t: TFunction): ColumnDef<CampaignUserTable>[] => {
+    const columns: ColumnDef<CampaignUserTable>[] = [buildIndexColumn(t)];
 
     try {
         const campaignCustomFields = getCampaignCustomFields();
@@ -643,7 +645,7 @@ export const campaignUsersColumns: ColumnDef<CampaignUserTable>[] = (() => {
     // Add "Submitted On" column at the end
     columns.push({
         accessorKey: 'submittedAt',
-        header: 'Submitted On',
+        header: t('columns.submittedOn'),
         size: 200,
         minSize: 180,
         cell: ({ row }) => (
@@ -652,4 +654,4 @@ export const campaignUsersColumns: ColumnDef<CampaignUserTable>[] = (() => {
     });
 
     return columns;
-})();
+};

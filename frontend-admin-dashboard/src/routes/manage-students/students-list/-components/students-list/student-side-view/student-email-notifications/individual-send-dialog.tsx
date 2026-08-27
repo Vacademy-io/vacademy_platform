@@ -19,15 +19,15 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
-    MessageSquare,
-    Mail,
-    ChevronRight,
-    ChevronLeft,
-    Loader2,
-    Send,
-    CheckCircle2,
+    ChatCircle,
+    Envelope,
+    CaretRight,
+    CaretLeft,
+    CircleNotch,
+    PaperPlaneTilt,
+    CheckCircle,
     XCircle,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import {
     listTemplates,
     type WhatsAppTemplateDTO,
@@ -47,6 +47,8 @@ import {
 import { StudentTable } from '@/types/student-table-types';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 type Channel = 'EMAIL' | 'WHATSAPP';
 
@@ -59,37 +61,47 @@ interface IndividualSendDialogProps {
 }
 
 // System fields the user can map a variable to. Resolved against the StudentTable.
-const SYSTEM_FIELDS: Array<{ value: string; label: string; resolve: (s: StudentTable) => string }> =
-    [
-        { value: 'system:full_name', label: 'Full Name', resolve: (s) => s.full_name || '' },
-        { value: 'system:email', label: 'Email', resolve: (s) => s.email || '' },
-        {
-            value: 'system:mobile_number',
-            label: 'Mobile Number',
-            resolve: (s) => s.mobile_number || '',
-        },
-        { value: 'system:city', label: 'City', resolve: (s) => s.city || '' },
-        { value: 'system:region', label: 'Region', resolve: (s) => s.region || '' },
-        { value: 'system:gender', label: 'Gender', resolve: (s) => s.gender || '' },
-        {
-            value: 'system:enrollment_id',
-            label: 'Enrollment ID',
-            resolve: (s) => s.institute_enrollment_id || '',
-        },
-        {
-            value: 'system:fathers_name',
-            label: "Father's Name",
-            resolve: (s) => s.fathers_name || '',
-        },
-        {
-            value: 'system:mothers_name',
-            label: "Mother's Name",
-            resolve: (s) => s.mothers_name || '',
-        },
-    ];
+const buildSystemFields = (
+    t: TFunction
+): Array<{ value: string; label: string; resolve: (s: StudentTable) => string }> => [
+    { value: 'system:full_name', label: t('systemFields.fullName'), resolve: (s) => s.full_name || '' },
+    { value: 'system:email', label: t('systemFields.email'), resolve: (s) => s.email || '' },
+    {
+        value: 'system:mobile_number',
+        label: t('systemFields.mobileNumber'),
+        resolve: (s) => s.mobile_number || '',
+    },
+    { value: 'system:city', label: t('systemFields.city'), resolve: (s) => s.city || '' },
+    { value: 'system:region', label: t('systemFields.region'), resolve: (s) => s.region || '' },
+    { value: 'system:gender', label: t('systemFields.gender'), resolve: (s) => s.gender || '' },
+    {
+        value: 'system:enrollment_id',
+        label: t('systemFields.enrollmentId'),
+        resolve: (s) => s.institute_enrollment_id || '',
+    },
+    {
+        value: 'system:fathers_name',
+        label: t('systemFields.fathersName'),
+        resolve: (s) => s.fathers_name || '',
+    },
+    {
+        value: 'system:mothers_name',
+        label: t('systemFields.mothersName'),
+        resolve: (s) => s.mothers_name || '',
+    },
+];
 
-const STEP_TITLES_EMAIL = ['Select Template', 'Compose Content', 'Map Variables', 'Review & Send'];
-const STEP_TITLES_WHATSAPP = ['Select Template', 'Map Variables', 'Review & Send'];
+const buildStepTitlesEmail = (t: TFunction): string[] => [
+    t('steps.selectTemplate'),
+    t('steps.composeContent'),
+    t('steps.mapVariables'),
+    t('steps.reviewSend'),
+];
+const buildStepTitlesWhatsapp = (t: TFunction): string[] => [
+    t('steps.selectTemplate'),
+    t('steps.mapVariables'),
+    t('steps.reviewSend'),
+];
 
 function extractPlaceholders(text: string): string[] {
     const matches = text.match(/\{\{(\w+)\}\}/g);
@@ -121,8 +133,10 @@ export function IndividualSendDialog({
     channel,
     instituteId,
 }: IndividualSendDialogProps) {
-    const STEP_TITLES = channel === 'EMAIL' ? STEP_TITLES_EMAIL : STEP_TITLES_WHATSAPP;
+    const { t } = useTranslation('manageStudentsIndividualSendDialog');
+    const STEP_TITLES = channel === 'EMAIL' ? buildStepTitlesEmail(t) : buildStepTitlesWhatsapp(t);
     const totalSteps = STEP_TITLES.length;
+    const SYSTEM_FIELDS = useMemo(() => buildSystemFields(t), [t]);
     const [step, setStep] = useState(1);
 
     // Email state
@@ -187,7 +201,7 @@ export function IndividualSendDialog({
                     if (!cancelled) setEmailTemplates(res.templates);
                 })
                 .catch(() => {
-                    if (!cancelled) toast.error('Failed to load email templates');
+                    if (!cancelled) toast.error(t('toasts.loadEmailTemplatesFailed'));
                 })
                 .finally(() => {
                     if (!cancelled) setLoadingEmailTemplates(false);
@@ -199,7 +213,7 @@ export function IndividualSendDialog({
                     if (!cancelled) setWaTemplates(data);
                 })
                 .catch(() => {
-                    if (!cancelled) toast.error('Failed to load WhatsApp templates');
+                    if (!cancelled) toast.error(t('toasts.loadWaTemplatesFailed'));
                 })
                 .finally(() => {
                     if (!cancelled) setLoadingWaTemplates(false);
@@ -208,7 +222,7 @@ export function IndividualSendDialog({
         return () => {
             cancelled = true;
         };
-    }, [open, channel, instituteId]);
+    }, [open, channel, instituteId, t]);
 
     // Load custom field setup once per open
     useEffect(() => {
@@ -244,22 +258,22 @@ export function IndividualSendDialog({
             setBody(full.content ?? '');
             setEmailBodyView('preview');
         } catch {
-            toast.error('Failed to load template content');
+            toast.error(t('toasts.loadTemplateContentFailed'));
         } finally {
             setLoadingTemplateContent(false);
         }
-    }, []);
+    }, [t]);
 
     const handleWaTemplateSelect = useCallback(
         (templateName: string) => {
-            const t = waTemplates.find((x) => x.name === templateName) ?? null;
-            setSelectedWaTemplate(t);
-            if (t?.language) setLanguageCode(t.language);
+            const tpl = waTemplates.find((x) => x.name === templateName) ?? null;
+            setSelectedWaTemplate(tpl);
+            if (tpl?.language) setLanguageCode(tpl.language);
             setVariableMapping({});
             setLiteralValues({});
             // Pre-fill with the media approved alongside the template so the common
             // case needs no extra input; still editable before sending.
-            setHeaderMediaUrl(t?.headerSampleUrl ?? '');
+            setHeaderMediaUrl(tpl?.headerSampleUrl ?? '');
         },
         [waTemplates]
     );
@@ -277,7 +291,7 @@ export function IndividualSendDialog({
     }, [selectedWaTemplate]);
 
     const approvedWaTemplates = useMemo(
-        () => waTemplates.filter((t) => t.status === 'APPROVED'),
+        () => waTemplates.filter((tpl) => tpl.status === 'APPROVED'),
         [waTemplates]
     );
 
@@ -319,7 +333,7 @@ export function IndividualSendDialog({
                 label: f.field_name || f.field_key,
             }));
         return [...SYSTEM_FIELDS.map((f) => ({ value: f.value, label: f.label })), ...customs];
-    }, [customFieldSetup]);
+    }, [customFieldSetup, SYSTEM_FIELDS]);
 
     // Resolve a single variable's runtime value from the current student
     const resolveValue = useCallback(
@@ -340,7 +354,7 @@ export function IndividualSendDialog({
             }
             return '';
         },
-        [student, variableMapping, literalValues]
+        [student, variableMapping, literalValues, SYSTEM_FIELDS]
     );
 
     const resolvedVariables = useMemo(() => {
@@ -416,11 +430,11 @@ export function IndividualSendDialog({
 
         // Validate recipient has the right contact for the channel
         if (channel === 'EMAIL' && !student.email) {
-            toast.error('This learner has no email address.');
+            toast.error(t('toasts.noEmailAddress'));
             return;
         }
         if (channel === 'WHATSAPP' && !student.mobile_number) {
-            toast.error('This learner has no mobile number.');
+            toast.error(t('toasts.noMobileNumber'));
             return;
         }
 
@@ -447,10 +461,10 @@ export function IndividualSendDialog({
                     },
                 });
                 setSendResult(result);
-                toast.success('Email sent');
+                toast.success(t('toasts.emailSent'));
             } else {
                 if (!selectedWaTemplate) {
-                    toast.error('Select a WhatsApp template first');
+                    toast.error(t('toasts.selectWaTemplateFirst'));
                     setIsSending(false);
                     return;
                 }
@@ -481,10 +495,10 @@ export function IndividualSendDialog({
                     },
                 });
                 setSendResult(result);
-                toast.success('WhatsApp message sent');
+                toast.success(t('toasts.whatsappSent'));
             }
         } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Failed to send';
+            const msg = err instanceof Error ? err.message : t('toasts.sendFailed');
             toast.error(msg);
         } finally {
             setIsSending(false);
@@ -500,9 +514,10 @@ export function IndividualSendDialog({
         selectedWaTemplate,
         languageCode,
         interpolate,
+        t,
     ]);
 
-    const channelIcon = channel === 'EMAIL' ? Mail : MessageSquare;
+    const channelIcon = channel === 'EMAIL' ? Envelope : ChatCircle;
     const ChannelIcon = channelIcon;
 
     // ------- render helpers -------
@@ -515,7 +530,7 @@ export function IndividualSendDialog({
                 const isDone = stepNum < step;
                 return (
                     <div
-                        key={title}
+                        key={stepNum}
                         className={`flex min-w-0 items-center gap-1.5 ${isActive ? 'flex-1' : 'flex-none'}`}
                     >
                         {i > 0 && (
@@ -532,7 +547,7 @@ export function IndividualSendDialog({
                                       : 'bg-neutral-100 text-neutral-500 ring-neutral-200'
                             }`}
                         >
-                            {isDone ? <CheckCircle2 className="size-3.5" /> : stepNum}
+                            {isDone ? <CheckCircle className="size-3.5" /> : stepNum}
                         </div>
                         {isActive && (
                             <span className="truncate text-xs font-semibold text-primary-600">
@@ -548,28 +563,28 @@ export function IndividualSendDialog({
     const renderEmailTemplateStep = () => (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Label>Template</Label>
+                <Label>{t('emailTemplateStep.templateLabel')}</Label>
                 {loadingEmailTemplates ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="size-4 animate-spin" />
-                        Loading templates...
+                        <CircleNotch className="size-4 animate-spin" />
+                        {t('emailTemplateStep.loadingTemplates')}
                     </div>
                 ) : (
                     <TemplateSearchableSelect
                         options={toTemplateOptions(emailTemplates, 'id')}
                         value={selectedEmailTemplateId}
                         onChange={handleEmailTemplateSelect}
-                        placeholder="Select a template"
-                        emptyText="No template matches your search."
-                        noneOption={{ value: 'custom', label: 'Custom — write from scratch' }}
+                        placeholder={t('emailTemplateStep.selectPlaceholder')}
+                        emptyText={t('emailTemplateStep.emptyText')}
+                        noneOption={{ value: 'custom', label: t('emailTemplateStep.customOption') }}
                         disabled={loadingTemplateContent}
                         portal={false}
                     />
                 )}
                 {loadingTemplateContent && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Loader2 className="size-3 animate-spin" />
-                        Loading template content...
+                        <CircleNotch className="size-3 animate-spin" />
+                        {t('emailTemplateStep.loadingContent')}
                     </div>
                 )}
             </div>
@@ -579,7 +594,7 @@ export function IndividualSendDialog({
     const renderEmailComposeStep = () => (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Label>Email Type</Label>
+                <Label>{t('emailComposeStep.emailTypeLabel')}</Label>
                 <Select
                     value={emailType}
                     onValueChange={(v) => setEmailType(v as typeof emailType)}
@@ -588,40 +603,46 @@ export function IndividualSendDialog({
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="UTILITY_EMAIL">Utility Email</SelectItem>
-                        <SelectItem value="PROMOTIONAL_EMAIL">Promotional Email</SelectItem>
-                        <SelectItem value="TRANSACTIONAL_EMAIL">Transactional Email</SelectItem>
+                        <SelectItem value="UTILITY_EMAIL">
+                            {t('emailComposeStep.emailTypeUtility')}
+                        </SelectItem>
+                        <SelectItem value="PROMOTIONAL_EMAIL">
+                            {t('emailComposeStep.emailTypePromotional')}
+                        </SelectItem>
+                        <SelectItem value="TRANSACTIONAL_EMAIL">
+                            {t('emailComposeStep.emailTypeTransactional')}
+                        </SelectItem>
                     </SelectContent>
                 </Select>
             </div>
             <div className="space-y-2">
-                <Label>Subject</Label>
+                <Label>{t('emailComposeStep.subjectLabel')}</Label>
                 <Input
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    placeholder="Enter email subject..."
+                    placeholder={t('emailComposeStep.subjectPlaceholder')}
                 />
             </div>
             <div className="space-y-2">
-                <Label>Body</Label>
+                <Label>{t('emailComposeStep.bodyLabel')}</Label>
                 <Tabs
                     value={emailBodyView}
                     onValueChange={(v) => setEmailBodyView(v as 'preview' | 'edit')}
                     className="w-full"
                 >
                     <TabsList className="grid w-fit grid-cols-2">
-                        <TabsTrigger value="preview">Preview</TabsTrigger>
-                        <TabsTrigger value="edit">Edit HTML</TabsTrigger>
+                        <TabsTrigger value="preview">{t('emailComposeStep.previewTab')}</TabsTrigger>
+                        <TabsTrigger value="edit">{t('emailComposeStep.editTab')}</TabsTrigger>
                     </TabsList>
                     <TabsContent value="preview" className="mt-2">
                         {body.trim() ? (
                             <div
-                                className="max-h-[420px] min-h-[260px] overflow-auto rounded-md border bg-white p-4 text-sm text-neutral-900"
+                                className="max-h-96 min-h-64 overflow-auto rounded-md border bg-white p-4 text-sm text-neutral-900"
                                 dangerouslySetInnerHTML={{ __html: body }}
                             />
                         ) : (
-                            <div className="flex min-h-[260px] items-center justify-center rounded-md border bg-muted/20 text-sm text-muted-foreground">
-                                Pick a template or switch to Edit HTML to write content.
+                            <div className="flex min-h-64 items-center justify-center rounded-md border bg-muted/20 text-sm text-muted-foreground">
+                                {t('emailComposeStep.emptyBodyPreview')}
                             </div>
                         )}
                     </TabsContent>
@@ -629,14 +650,17 @@ export function IndividualSendDialog({
                         <Textarea
                             value={body}
                             onChange={(e) => setBody(e.target.value)}
-                            placeholder="Enter email body HTML... use {{variable}} for placeholders"
-                            className="min-h-[260px] font-mono text-sm"
+                            placeholder={t('emailComposeStep.bodyPlaceholder', {
+                                varSyntax: '{{variable}}',
+                            })}
+                            className="min-h-64 font-mono text-sm"
                         />
                     </TabsContent>
                 </Tabs>
                 <p className="text-xs text-muted-foreground">
-                    Placeholders like <code className="font-mono">{'{{name}}'}</code> are replaced
-                    with the learner&apos;s data on send. Map them in the next step.
+                    {t('emailComposeStep.bodyHelpPrefix')}{' '}
+                    <code className="font-mono">{'{{name}}'}</code>{' '}
+                    {t('emailComposeStep.bodyHelpSuffix')}
                 </p>
             </div>
         </div>
@@ -645,25 +669,25 @@ export function IndividualSendDialog({
     const renderWaTemplateStep = () => (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Label>Template</Label>
+                <Label>{t('waTemplateStep.templateLabel')}</Label>
                 {loadingWaTemplates ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="size-4 animate-spin" />
-                        Loading templates...
+                        <CircleNotch className="size-4 animate-spin" />
+                        {t('waTemplateStep.loadingTemplates')}
                     </div>
                 ) : (
                     <TemplateSearchableSelect
                         options={toTemplateOptions(approvedWaTemplates)}
                         value={selectedWaTemplate?.name ?? ''}
                         onChange={handleWaTemplateSelect}
-                        placeholder="Select an approved template"
-                        emptyText="No approved template matches your search."
+                        placeholder={t('waTemplateStep.selectPlaceholder')}
+                        emptyText={t('waTemplateStep.emptyText')}
                         portal={false}
                     />
                 )}
             </div>
             <div className="space-y-2">
-                <Label>Language Code</Label>
+                <Label>{t('waTemplateStep.languageCodeLabel')}</Label>
                 <Input
                     value={languageCode}
                     onChange={(e) => setLanguageCode(e.target.value)}
@@ -673,7 +697,7 @@ export function IndividualSendDialog({
             </div>
             {selectedWaTemplate && (
                 <div className="space-y-2">
-                    <Label>Template Preview</Label>
+                    <Label>{t('waTemplateStep.templatePreviewLabel')}</Label>
                     <div className="whitespace-pre-wrap rounded-md border bg-muted/30 p-4 text-sm">
                         {selectedWaTemplate.bodyText}
                     </div>
@@ -687,10 +711,12 @@ export function IndividualSendDialog({
     const renderHeaderMediaField = () => {
         if (!waHeaderKind) return null;
         const url = headerMediaUrl.trim();
+        const kindLabel = t(`mediaKind.${waHeaderKind}`);
         return (
             <div className="mb-4 space-y-2 rounded-md border bg-muted/30 p-4">
                 <Label>
-                    Header {waHeaderKind} URL <span className="text-danger-600">*</span>
+                    {t('headerMediaField.label', { kind: kindLabel })}{' '}
+                    <span className="text-danger-600">*</span>
                 </Label>
                 <Input
                     value={headerMediaUrl}
@@ -698,14 +724,12 @@ export function IndividualSendDialog({
                     placeholder="https://..."
                 />
                 <p className="text-xs text-muted-foreground">
-                    This template has a {waHeaderKind} header, which WhatsApp requires on every
-                    send — the message fails without it. Pre-filled with the media approved
-                    alongside the template.
+                    {t('headerMediaField.helpText', { kind: kindLabel })}
                 </p>
                 {waHeaderKind === 'image' && url && (
                     <img
                         src={url}
-                        alt="Header preview"
+                        alt={t('headerMediaField.previewAlt')}
                         className="max-h-40 rounded-md border object-contain"
                     />
                 )}
@@ -719,8 +743,8 @@ export function IndividualSendDialog({
                 <div>
                     {renderHeaderMediaField()}
                     <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
-                        <CheckCircle2 className="size-8" />
-                        <p className="text-sm">No variables to map. You can proceed.</p>
+                        <CheckCircle className="size-8" />
+                        <p className="text-sm">{t('variableMappingStep.noVariables')}</p>
                     </div>
                 </div>
             );
@@ -729,16 +753,16 @@ export function IndividualSendDialog({
             <div className="space-y-1">
                 {renderHeaderMediaField()}
                 <p className="mb-3 text-sm text-muted-foreground">
-                    Map each placeholder to a learner field, or enter a literal value.
+                    {t('variableMappingStep.mapHint')}
                 </p>
                 <div className="rounded-md border">
                     {/* `minmax(0,...)` on every column lets long content (e.g. emails)
                         truncate inside the cell instead of forcing the row wider than
                         the dialog. The pill column is intentionally narrowest. */}
                     <div className="grid grid-cols-[minmax(0,0.6fr)_minmax(0,1fr)_minmax(0,1.4fr)] gap-3 border-b bg-muted/40 px-4 py-2 text-xs font-semibold text-muted-foreground">
-                        <span>Variable</span>
-                        <span>Source</span>
-                        <span>Resolved Value</span>
+                        <span>{t('variableMappingStep.columnVariable')}</span>
+                        <span>{t('variableMappingStep.columnSource')}</span>
+                        <span>{t('variableMappingStep.columnResolvedValue')}</span>
                     </div>
                     {variableKeys.map((varKey) => {
                         const mapping = variableMapping[varKey] ?? '';
@@ -761,14 +785,18 @@ export function IndividualSendDialog({
                                         onValueChange={(val) => handleMappingChange(varKey, val)}
                                     >
                                         <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select source..." />
+                                            <SelectValue
+                                                placeholder={t(
+                                                    'variableMappingStep.sourcePlaceholder'
+                                                )}
+                                            />
                                         </SelectTrigger>
                                         {/* Cap the popover height to whatever room
                                             Radix has between the trigger and the
                                             viewport edge, so it never overflows the
                                             dialog when flipped above the trigger. */}
                                         <SelectContent
-                                            className="max-h-[var(--radix-select-content-available-height)]"
+                                            className="max-h-[var(--radix-select-content-available-height)]" // design-lint-ignore: dynamic Radix-computed CSS var (available viewport space), not a fixed magic number a token could represent
                                         >
                                             {mappingOptions.map((opt) => (
                                                 <SelectItem key={opt.value} value={opt.value}>
@@ -776,7 +804,7 @@ export function IndividualSendDialog({
                                                 </SelectItem>
                                             ))}
                                             <SelectItem value="literal:value">
-                                                Literal value...
+                                                {t('variableMappingStep.literalOption')}
                                             </SelectItem>
                                         </SelectContent>
                                     </Select>
@@ -786,7 +814,9 @@ export function IndividualSendDialog({
                                             onChange={(e) =>
                                                 handleLiteralChange(varKey, e.target.value)
                                             }
-                                            placeholder="Type a value"
+                                            placeholder={t(
+                                                'variableMappingStep.literalPlaceholder'
+                                            )}
                                             className="h-8 text-xs"
                                         />
                                     )}
@@ -797,7 +827,7 @@ export function IndividualSendDialog({
                                 >
                                     {resolved || (
                                         <span className="italic text-neutral-400">
-                                            (unresolved)
+                                            {t('variableMappingStep.unresolved')}
                                         </span>
                                     )}
                                 </span>
@@ -815,33 +845,39 @@ export function IndividualSendDialog({
             return (
                 <div className="flex flex-col items-center gap-4 py-8">
                     {ok ? (
-                        <CheckCircle2 className="size-12 text-green-500" />
+                        <CheckCircle className="size-12 text-green-500" />
                     ) : (
                         <XCircle className="size-12 text-destructive" />
                     )}
                     <h3 className="text-lg font-semibold">
-                        {ok ? 'Message Sent' : 'Send Completed'}
+                        {ok ? t('reviewStep.messageSent') : t('reviewStep.sendCompleted')}
                     </h3>
                     <div className="w-full max-w-sm space-y-2 rounded-md border p-4 text-sm">
                         <div className="flex justify-between">
-                            <span className="text-muted-foreground">Status</span>
+                            <span className="text-muted-foreground">
+                                {t('reviewStep.statusLabel')}
+                            </span>
                             <span className="font-medium">{sendResult.status}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-muted-foreground">Accepted</span>
+                            <span className="text-muted-foreground">
+                                {t('reviewStep.acceptedLabel')}
+                            </span>
                             <span className="font-medium text-green-600">
                                 {sendResult.accepted}
                             </span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-muted-foreground">Failed</span>
+                            <span className="text-muted-foreground">
+                                {t('reviewStep.failedLabel')}
+                            </span>
                             <span className="font-medium text-destructive">
                                 {sendResult.failed}
                             </span>
                         </div>
                     </div>
                     <Button variant="outline" onClick={() => onOpenChange(false)} className="mt-2">
-                        Close
+                        {t('reviewStep.close')}
                     </Button>
                 </div>
             );
@@ -849,7 +885,7 @@ export function IndividualSendDialog({
 
         const headerLabel =
             channel === 'EMAIL'
-                ? interpolate(subject) || '(no subject)'
+                ? interpolate(subject) || t('reviewStep.noSubject')
                 : selectedWaTemplate?.name || '-';
         const recipient = channel === 'EMAIL' ? student?.email : student?.mobile_number;
 
@@ -860,19 +896,27 @@ export function IndividualSendDialog({
                         <ChannelIcon className="size-5 text-primary-500" />
                         <div>
                             <p className="text-sm font-semibold">
-                                {channel === 'EMAIL' ? 'Email' : 'WhatsApp'}
+                                {channel === 'EMAIL'
+                                    ? t('channelLabel.EMAIL')
+                                    : t('channelLabel.WHATSAPP')}
                             </p>
-                            <p className="text-xs text-muted-foreground">Channel</p>
+                            <p className="text-xs text-muted-foreground">
+                                {t('reviewStep.channelHeading')}
+                            </p>
                         </div>
                     </div>
                     <div className="border-t pt-3">
                         <p className="text-xs text-muted-foreground">
-                            {channel === 'EMAIL' ? 'Subject' : 'Template'}
+                            {channel === 'EMAIL'
+                                ? t('reviewStep.subjectLabel')
+                                : t('reviewStep.templateLabel')}
                         </p>
                         <p className="text-sm font-medium">{headerLabel}</p>
                     </div>
                     <div className="border-t pt-3">
-                        <p className="text-xs text-muted-foreground">Recipient</p>
+                        <p className="text-xs text-muted-foreground">
+                            {t('reviewStep.recipientLabel')}
+                        </p>
                         <p className="text-sm font-medium">
                             {student?.full_name}
                             {recipient && (
@@ -884,18 +928,20 @@ export function IndividualSendDialog({
                     </div>
                     {variableKeys.length > 0 && (
                         <div className="border-t pt-3">
-                            <p className="mb-2 text-xs text-muted-foreground">Variables</p>
+                            <p className="mb-2 text-xs text-muted-foreground">
+                                {t('reviewStep.variablesLabel')}
+                            </p>
                             <div className="space-y-1">
                                 {variableKeys.map((k) => (
                                     <div key={k} className="flex items-center gap-2 text-xs">
                                         <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
                                             {`{{${k}}}`}
                                         </span>
-                                        <ChevronRight className="size-3 text-muted-foreground" />
+                                        <CaretRight className="size-3 text-muted-foreground" />
                                         <span className="truncate">
                                             {resolvedVariables[k] || (
                                                 <span className="italic text-neutral-400">
-                                                    (empty)
+                                                    {t('reviewStep.empty')}
                                                 </span>
                                             )}
                                         </span>
@@ -908,13 +954,13 @@ export function IndividualSendDialog({
                 <Button className="w-full" onClick={handleSend} disabled={isSending}>
                     {isSending ? (
                         <>
-                            <Loader2 className="mr-2 size-4 animate-spin" />
-                            Sending...
+                            <CircleNotch className="me-2 size-4 animate-spin" />
+                            {t('reviewStep.sending')}
                         </>
                     ) : (
                         <>
-                            <Send className="mr-2 size-4" />
-                            Send to {student?.full_name}
+                            <PaperPlaneTilt className="me-2 size-4" />
+                            {t('reviewStep.sendTo', { name: student?.full_name ?? '' })}
                         </>
                     )}
                 </Button>
@@ -938,13 +984,26 @@ export function IndividualSendDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] overflow-y-auto overflow-x-hidden sm:max-w-2xl">
+            <DialogContent className="max-h-dialog-tall w-dialog-md overflow-y-auto overflow-x-hidden">
                 <DialogHeader>
-                    <DialogTitle>Send {channel === 'EMAIL' ? 'Email' : 'WhatsApp'}</DialogTitle>
+                    <DialogTitle>
+                        {t('dialogTitle', {
+                            channelLabel:
+                                channel === 'EMAIL'
+                                    ? t('channelLabel.EMAIL')
+                                    : t('channelLabel.WHATSAPP'),
+                        })}
+                    </DialogTitle>
                     <DialogDescription>
                         {student
-                            ? `Send a ${channel === 'EMAIL' ? 'templated email' : 'templated WhatsApp message'} to ${student.full_name}.`
-                            : 'No learner selected.'}
+                            ? t('dialogDescription.withStudent', {
+                                  contentType:
+                                      channel === 'EMAIL'
+                                          ? t('contentType.EMAIL')
+                                          : t('contentType.WHATSAPP'),
+                                  name: student.full_name,
+                              })
+                            : t('dialogDescription.noStudent')}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -956,16 +1015,16 @@ export function IndividualSendDialog({
                         <div>
                             {step > 1 && (
                                 <Button variant="ghost" size="sm" onClick={handleBack}>
-                                    <ChevronLeft className="mr-1 size-4" />
-                                    Back
+                                    <CaretLeft className="me-1 size-4" />
+                                    {t('footer.back')}
                                 </Button>
                             )}
                         </div>
                         <div>
                             {step < totalSteps && (
                                 <Button size="sm" onClick={handleNext} disabled={!canProceed}>
-                                    Next
-                                    <ChevronRight className="ml-1 size-4" />
+                                    {t('footer.next')}
+                                    <CaretRight className="ms-1 size-4" />
                                 </Button>
                             )}
                         </div>

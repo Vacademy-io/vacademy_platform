@@ -1,0 +1,22 @@
+{
+    "title": "État de l'application",
+    "description": "État d'enregistrement et de publication de votre application sur Android, iOS, Windows et macOS. Configuré par l'équipe de la plateforme — cette vue est en lecture seule.",
+    "refreshStatus": "Actualiser le statut",
+    "errors": {
+        "loadStatus": "Impossible de charger l'état de l'application pour le moment. Réessayez d'actualiser dans un instant."
+    },
+    "loading": "Chargement de l'état de l'application…",
+    "emptyState": {
+        "title": "Aucune application enregistrée pour le moment",
+        "description": "Dès que l'équipe de la plateforme enregistre une application mobile ou de bureau pour votre établissement, son état s'affichera ici."
+    },
+    "untitledApp": "Application sans titre",
+    "noPlatforms": "Aucune plateforme activée pour cette application pour le moment.",
+    "viewInStore": "Voir dans la boutique",
+    "platforms": {
+        "android": "Android",
+        "ios": "iOS",
+        "windows": "Windows",
+        "macos": "macOS"
+    }
+}

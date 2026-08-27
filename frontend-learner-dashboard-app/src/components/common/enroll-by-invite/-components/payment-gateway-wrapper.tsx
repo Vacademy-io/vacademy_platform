@@ -1,4 +1,5 @@
 import { ReactNode, Suspense, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -35,6 +36,7 @@ export const PaymentGatewayWrapper = ({
   instituteId,
   children,
 }: PaymentGatewayWrapperProps) => {
+  const { t } = useTranslation("enrollmentA");
   // Render appropriate payment gateway based on vendor
   switch (vendor) {
     case "STRIPE":
@@ -82,10 +84,10 @@ export const PaymentGatewayWrapper = ({
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-red-600 mb-2">
-              Unsupported Payment Gateway
+              {t("paymentGatewayWrapper.unsupportedTitle")}
             </h2>
             <p className="text-gray-600">
-              The payment gateway "{vendor}" is not supported.
+              {t("paymentGatewayWrapper.unsupportedMessage", { vendor })}
             </p>
           </div>
         </div>

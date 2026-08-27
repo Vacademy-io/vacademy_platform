@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, ClipboardText, Hourglass, PaperPlaneTilt, ChartBar } from '@phosphor-icons/react';
 import { getAdminParticipants, getAttemptsFileStatus } from '../-services/assessment-details-services';
 import { MyFilterOption } from '@/types/assessments/my-filter';
@@ -114,6 +115,8 @@ export const SubmissionsSummaryStrip = ({
     refreshKey = 0,
     isManualEvaluation = false,
 }: SubmissionsSummaryStripProps) => {
+    const { t } = useTranslation('assessmentSubmissionsSummaryStrip');
+
     // Cached via react-query: switching sub-tabs / remounting reuses the cached
     // stats instead of refiring the (large-page) participants call. refreshKey is
     // part of the key, so the existing "bump to refresh" contract (after
@@ -192,45 +195,55 @@ export const SubmissionsSummaryStrip = ({
             {isManualEvaluation && stats.fileSubmissions !== null ? (
                 <StatTile
                     icon={<ClipboardText size={18} />}
-                    label="Submissions / Attempts"
-                    value={`${stats.fileSubmissions} / ${stats.submitted}`}
+                    label={t('tiles.submissionsAttempts.label')}
+                    value={t('tiles.ratio', {
+                        numerator: stats.fileSubmissions,
+                        denominator: stats.submitted,
+                    })}
                     accent="neutral"
                 />
             ) : (
                 <StatTile
                     icon={<ClipboardText size={18} />}
-                    label="Submitted"
+                    label={t('tiles.submitted.label')}
                     value={String(stats.submitted)}
                     accent="neutral"
                 />
             )}
             <StatTile
                 icon={<CheckCircle size={18} weight="fill" />}
-                label="Evaluated"
-                value={`${stats.evaluated} / ${stats.submitted}`}
+                label={t('tiles.evaluated.label')}
+                value={t('tiles.ratio', { numerator: stats.evaluated, denominator: stats.submitted })}
                 accent="success"
             />
             <StatTile
                 icon={<Hourglass size={18} weight="fill" />}
-                label="Pending Evaluation"
+                label={t('tiles.pendingEvaluation.label')}
                 value={String(stats.pendingEvaluation)}
                 accent="warning"
             />
             <StatTile
                 icon={<PaperPlaneTilt size={18} weight="fill" />}
-                label="Results Released"
-                value={`${stats.resultsReleased} / ${stats.submitted}`}
+                label={t('tiles.resultsReleased.label')}
+                value={t('tiles.ratio', {
+                    numerator: stats.resultsReleased,
+                    denominator: stats.submitted,
+                })}
                 accent="primary"
             />
             <StatTile
                 icon={<ChartBar size={18} weight="fill" />}
                 // Label carries the "Avg / High / Low" legend; keep the value a
                 // single compact line (out of / totalMarks) so it never wraps.
-                label={`Avg / High / Low  (/ ${totalMarks})`}
+                label={t('tiles.avgHighLow.label', { totalMarks })}
                 value={
                     stats.avgScore === null
                         ? '—'
-                        : `${stats.avgScore.toFixed(1)} / ${stats.highScore?.toFixed(1)} / ${stats.lowScore?.toFixed(1)}`
+                        : t('tiles.avgHighLow.value', {
+                              avg: stats.avgScore.toFixed(1),
+                              high: stats.highScore?.toFixed(1),
+                              low: stats.lowScore?.toFixed(1),
+                          })
                 }
                 accent="neutral"
             />

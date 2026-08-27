@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { UseFormReturn } from 'react-hook-form';
 import { BellRinging } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import MultiEmailInput, {
     MultiEmailInputHandle,
 } from '@/routes/audience-manager/list/-components/audience-invite/components/MultiEmailInput';
@@ -24,6 +25,7 @@ interface TeamNotificationsCardProps {
  */
 const TeamNotificationsCard = forwardRef<MultiEmailInputHandle, TeamNotificationsCardProps>(
     ({ form }, ref) => {
+        const { t } = useTranslation('manageStudentsTeamNotificationsCard');
         return (
             <Card className="mb-4">
                 <CardHeader>
@@ -32,14 +34,10 @@ const TeamNotificationsCard = forwardRef<MultiEmailInputHandle, TeamNotification
                             <div className="flex items-center gap-2">
                                 <BellRinging size={22} />
                                 <CardTitle className="text-2xl font-bold">
-                                    Team Notifications
+                                    {t('title')}
                                 </CardTitle>
                             </div>
-                            <span className="text-sm text-gray-600">
-                                Enter email addresses of team members who should be notified
-                                whenever someone fills this invite form. Leave empty to send no
-                                notifications.
-                            </span>
+                            <span className="text-sm text-gray-600">{t('description')}</span>
                         </div>
                     </div>
                 </CardHeader>
@@ -54,7 +52,7 @@ const TeamNotificationsCard = forwardRef<MultiEmailInputHandle, TeamNotification
                                         ref={ref}
                                         value={field.value ?? []}
                                         onChange={field.onChange}
-                                        placeholder="Enter email addresses"
+                                        placeholder={t('emailInput.placeholder')}
                                         error={fieldState.error?.message}
                                     />
                                 </FormControl>

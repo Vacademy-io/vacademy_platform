@@ -1,8 +1,16 @@
+import i18next from 'i18next';
 import { getInstituteId } from '@/constants/helper';
 import { InviteLinkFormValues } from '../GenerateInviteLinkSchema';
 import { CustomField } from '../../../-schema/InviteFormSchema';
 import { IndividualInviteLinkDetails } from '@/types/study-library/individual-invite-interface';
 import { PaymentPlanApi } from '@/types/payment';
+
+// This module calls i18next.t('manageStudentsCreateInviteHelper:...') from plain function
+// bodies (not from a React component), so react-i18next never auto-triggers a load for this
+// namespace via useTranslation(). Without an explicit load, every t() call below would return
+// the raw key until something else happens to load it. Fire the load eagerly on import so the
+// namespace is warm well before any of these functions actually run.
+void i18next.loadNamespaces('manageStudentsCreateInviteHelper');
 
 interface DropdownOptionForConversion {
     id: number | string;
@@ -561,7 +569,9 @@ export function splitPlansByType(data: PaymentOption[]): {
             paidPlans.push({
                 id: item.id,
                 name: item.name,
-                description: 'Complex payment option (installments).',
+                description: i18next.t(
+                    'manageStudentsCreateInviteHelper:planDescription.complexPaymentOption'
+                ),
                 price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
                 currency: syntheticPlan?.currency || 'INR',
                 type: item.type,
@@ -575,7 +585,9 @@ export function splitPlansByType(data: PaymentOption[]): {
                 freePlans.push({
                     id: item.id,
                     name: item.name,
-                    description: 'Access to donation plan.',
+                    description: i18next.t(
+                        'manageStudentsCreateInviteHelper:planDescription.donation'
+                    ),
                     suggestedAmount:
                         parsedData?.donationData?.suggestedAmounts
                             ?.split(',')
@@ -588,7 +600,9 @@ export function splitPlansByType(data: PaymentOption[]): {
                 freePlans.push({
                     id: item.id,
                     name: item.name,
-                    description: 'Access to free plan.',
+                    description: i18next.t(
+                        'manageStudentsCreateInviteHelper:planDescription.free'
+                    ),
                     days: parsedData?.freeData?.validityDays || 0,
                     type: item.type,
                 });
@@ -599,7 +613,9 @@ export function splitPlansByType(data: PaymentOption[]): {
                 paidPlans.push({
                     id: item.id,
                     name: item.name,
-                    description: 'Access to one time payment plan.',
+                    description: i18next.t(
+                        'manageStudentsCreateInviteHelper:planDescription.oneTime'
+                    ),
                     price: parsedData?.upfrontData?.fullPrice || '',
                     currency: parsedData?.currency || '',
                     type: item.type,
@@ -608,7 +624,9 @@ export function splitPlansByType(data: PaymentOption[]): {
                 paidPlans.push({
                     id: item.id,
                     name: item.name,
-                    description: 'Access to subscription plan.',
+                    description: i18next.t(
+                        'manageStudentsCreateInviteHelper:planDescription.subscription'
+                    ),
                     currency: parsedData?.currency || '',
                     type: item.type,
                     paymentOption:
@@ -652,7 +670,9 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Complex payment option (installments).',
+            description: i18next.t(
+                'manageStudentsCreateInviteHelper:planDescription.complexPaymentOption'
+            ),
             price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
             currency: syntheticPlan?.currency || 'INR',
             type: item.type,
@@ -664,7 +684,7 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to donation plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.donation'),
             suggestedAmount:
                 parsedData?.donationData?.suggestedAmounts
                     ?.split(',')
@@ -677,7 +697,7 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to free plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.free'),
             days: parsedData?.freeData?.validityDays || 0,
             type: item.type,
         };
@@ -685,7 +705,7 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to one time payment plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.oneTime'),
             price: parsedData?.upfrontData?.fullPrice || '',
             currency: parsedData?.currency || '',
             type: item.type,
@@ -694,7 +714,7 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to subscription plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.subscription'),
             currency: parsedData?.currency || '',
             type: item.type,
             paymentOption:
@@ -734,7 +754,9 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Complex payment option (installments).',
+            description: i18next.t(
+                'manageStudentsCreateInviteHelper:planDescription.complexPaymentOption'
+            ),
             price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
             currency: syntheticPlan?.currency || 'INR',
             type: item.type,
@@ -746,7 +768,7 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to donation plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.donation'),
             suggestedAmount:
                 parsedData?.donationData?.suggestedAmounts
                     ?.split(',')
@@ -759,7 +781,7 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to free plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.free'),
             days: parsedData?.freeData?.validityDays || 0,
             type: item.type,
         };
@@ -767,7 +789,7 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to one time payment plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.oneTime'),
             price: parsedData?.upfrontData?.fullPrice || '',
             currency: parsedData?.currency || '',
             type: item.type,
@@ -776,7 +798,7 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to subscription plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.subscription'),
             currency: parsedData?.currency || '',
             type: item.type,
             paymentOption:
@@ -945,7 +967,9 @@ export function convertReferralData(data: ReferralData[]) {
                         contentUrl: benefitValue?.contentUrl as string,
                         fileIds: benefitValue?.fileIds as string[],
                         template: benefitValue?.templateId as string,
-                        title: (benefit.description as string) || 'Bonus Content',
+                        title:
+                            (benefit.description as string) ||
+                            i18next.t('manageStudentsCreateInviteHelper:referral.defaultBonusContentTitle'),
                     }),
                     ...(type === 'points_system' && {
                         pointsPerReferral: (benefitValue?.points as number) || 0,
@@ -1115,7 +1139,13 @@ export function getPlanDisplayName(selectedPlan: SelectedPlan | null, planId: st
         if (parts.length === 2 && parts[1]) {
             const optionIndex = parseInt(parts[1]);
             const option = selectedPlan.paymentOption[optionIndex];
-            return option?.title || `${selectedPlan.name} - Option ${optionIndex + 1}`;
+            return (
+                option?.title ||
+                i18next.t('manageStudentsCreateInviteHelper:planOption.fallbackTitle', {
+                    name: selectedPlan.name,
+                    number: optionIndex + 1,
+                })
+            );
         }
     }
 

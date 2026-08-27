@@ -36,6 +36,7 @@ import { useParams } from '@tanstack/react-router';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { convertCapitalToTitleCase } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 export function convertDateFormat(dateStr: string) {
     if (dateStr === '') return '';
@@ -88,6 +89,7 @@ const SectionCard = ({
 
 // Helper component for navigation header
 const NavigationHeader = ({ examType, isUpdate = false }: { examType: string; isUpdate?: boolean }) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     const handleBack = () => {
                     useBasicInfoStore.getState().reset();
                     window.history.back();
@@ -98,8 +100,8 @@ const NavigationHeader = ({ examType, isUpdate = false }: { examType: string; is
             <CaretLeft onClick={handleBack} className="cursor-pointer" />
             <h1 className="text-lg">
                 {isUpdate
-                    ? (examType === 'SURVEY' ? 'Update Survey' : 'Update Assessment')
-                    : (examType === 'SURVEY' ? 'Create Survey' : 'Create Assessment')
+                    ? (examType === 'SURVEY' ? t('navigation.updateSurvey') : t('navigation.updateAssessment'))
+                    : (examType === 'SURVEY' ? t('navigation.createSurvey') : t('navigation.createAssessment'))
                 }
             </h1>
         </div>
@@ -108,6 +110,7 @@ const NavigationHeader = ({ examType, isUpdate = false }: { examType: string; is
 
 // Helper component for test creation form fields
 const TestCreationFields = ({ control, form, examType, instituteDetails }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start gap-4">
             <div className="" id={'assessment-details'}>
@@ -119,7 +122,7 @@ const TestCreationFields = ({ control, form, examType, instituteDetails }: any) 
                             <FormControl>
                                 <MyInput
                                     inputType="text"
-                                    inputPlaceholder="Add Title"
+                                    inputPlaceholder={t('unusedFields.testCreation.titlePlaceholder')}
                                     input={field.value}
                                     labelStyle="font-thin"
                                     onChangeFunction={field.onChange}
@@ -129,7 +132,11 @@ const TestCreationFields = ({ control, form, examType, instituteDetails }: any) 
                                     }
                                     required={true}
                                     size="large"
-                                    label={examType === 'SURVEY' ? 'Survey Name' : 'Assessment Name'}
+                                    label={
+                                        examType === 'SURVEY'
+                                            ? t('unusedFields.testCreation.nameLabelSurvey')
+                                            : t('unusedFields.testCreation.nameLabelAssessment')
+                                    }
                                     {...field}
                                 />
                             </FormControl>
@@ -162,6 +169,7 @@ const TestCreationFields = ({ control, form, examType, instituteDetails }: any) 
 
 // Helper component for live date range fields
 const LiveDateRangeFields = ({ control, form }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start gap-4">
             <div className="" id={'live-date-range-start'}>
@@ -182,7 +190,7 @@ const LiveDateRangeFields = ({ control, form }: any) => {
                                     }
                                     required={true}
                                     size="large"
-                                    label="Start Date & Time"
+                                    label={t('unusedFields.liveDateRange.startDateLabel')}
                                     {...field}
                                 />
                             </FormControl>
@@ -208,7 +216,7 @@ const LiveDateRangeFields = ({ control, form }: any) => {
                                     }
                                     required={true}
                                     size="large"
-                                    label="End Date & Time"
+                                    label={t('unusedFields.liveDateRange.endDateLabel')}
                                     {...field}
                                 />
                             </FormControl>
@@ -222,6 +230,7 @@ const LiveDateRangeFields = ({ control, form }: any) => {
 
 // Helper component for assessment instructions
 const AssessmentInstructionsField = ({ control, form, examType }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start">
             <div className="w-full" id={'assessment-instructions'}>
@@ -234,16 +243,16 @@ const AssessmentInstructionsField = ({ control, form, examType }: any) => {
                                 <div>
                                     <FormLabel>
                                         {examType === 'SURVEY'
-                                            ? 'Survey Instructions'
-                                            : 'Assessment Instructions'}
+                                            ? t('unusedFields.assessmentInstructions.labelSurvey')
+                                            : t('unusedFields.assessmentInstructions.labelAssessment')}
                                     </FormLabel>
                                     <RichTextEditor
                                         value={field.value}
                                         onChange={field.onChange}
                                         placeholder={
                                             examType === 'SURVEY'
-                                                ? 'Add Survey Instructions'
-                                                : 'Add Assessment Instructions'
+                                                ? t('unusedFields.assessmentInstructions.placeholderSurvey')
+                                                : t('unusedFields.assessmentInstructions.placeholderAssessment')
                                         }
                                     />
                                 </div>
@@ -258,6 +267,7 @@ const AssessmentInstructionsField = ({ control, form, examType }: any) => {
 
 // Helper component for assessment preview settings
 const AssessmentPreviewSettings = ({ control, form, timeLimit }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start gap-4">
             <div className="" id={'assessment-preview-checkbox'}>
@@ -273,7 +283,7 @@ const AssessmentPreviewSettings = ({ control, form, timeLimit }: any) => {
                                         onCheckedChange={field.onChange}
                                         {...field}
                                     />
-                                    <FormLabel>Enable Assessment Preview</FormLabel>
+                                    <FormLabel>{t('unusedFields.assessmentPreview.enableLabel')}</FormLabel>
                                 </div>
                             </FormControl>
                         </FormItem>
@@ -288,7 +298,7 @@ const AssessmentPreviewSettings = ({ control, form, timeLimit }: any) => {
                         <FormItem>
                             <FormControl>
                                 <SelectField
-                                    label="Preview Time Limit"
+                                    label={t('unusedFields.assessmentPreview.timeLimitLabel')}
                                     name="assessmentPreview.previewTimeLimit"
                                     options={timeLimit}
                                     control={control}
@@ -305,6 +315,7 @@ const AssessmentPreviewSettings = ({ control, form, timeLimit }: any) => {
 
 // Helper component for reattempt count
 const ReattemptCountField = ({ control, form }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start">
             <div className="" id={'reattempt-count'}>
@@ -316,14 +327,14 @@ const ReattemptCountField = ({ control, form }: any) => {
                             <FormControl>
                                 <MyInput
                                     inputType="number"
-                                    inputPlaceholder="Enter Reattempt Count"
+                                    inputPlaceholder={t('unusedFields.reattemptCount.placeholder')}
                                     input={field.value}
                                     labelStyle="font-thin"
                                     onChangeFunction={field.onChange}
                                     error={form.formState.errors.reattemptCount?.message}
                                     required={true}
                                     size="large"
-                                    label="Reattempt Count"
+                                    label={t('unusedFields.reattemptCount.label')}
                                     {...field}
                                 />
                             </FormControl>
@@ -337,6 +348,7 @@ const ReattemptCountField = ({ control, form }: any) => {
 
 // Helper component for submission type
 const SubmissionTypeField = ({ control, form, examType }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start">
             <div className="" id={'submission-type'}>
@@ -347,11 +359,19 @@ const SubmissionTypeField = ({ control, form, examType }: any) => {
                         <FormItem>
                             <FormControl>
                                 <SelectField
-                                    label="Submission Type"
+                                    label={t('unusedFields.submissionType.label')}
                                     name="submissionType"
                                     options={[
-                                        { value: 'AUTO_SUBMIT', label: 'Auto Submit', _id: 1 },
-                                        { value: 'MANUAL_SUBMIT', label: 'Manual Submit', _id: 2 }
+                                        {
+                                            value: 'AUTO_SUBMIT',
+                                            label: t('unusedFields.submissionType.options.autoSubmit'),
+                                            _id: 1,
+                                        },
+                                        {
+                                            value: 'MANUAL_SUBMIT',
+                                            label: t('unusedFields.submissionType.options.manualSubmit'),
+                                            _id: 2,
+                                        },
                                     ]}
                                     control={control}
                                     required
@@ -367,6 +387,7 @@ const SubmissionTypeField = ({ control, form, examType }: any) => {
 
 // Helper component for duration distribution
 const DurationDistributionField = ({ control, form }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start">
             <div className="" id={'duration-distribution'}>
@@ -377,19 +398,36 @@ const DurationDistributionField = ({ control, form }: any) => {
                         <FormItem>
                             <FormControl>
                                 <SelectField
-                                    label="Duration Distribution"
+                                    label={t('unusedFields.durationDistribution.label')}
                                     name="durationDistribution"
                                     options={[
-                                        { value: 'ASSESSMENT', label: 'Entire Assessment', _id: 1 },
-                                        { value: 'SECTION', label: 'Section Wise', _id: 2 },
-                                        { value: 'QUESTION', label: 'Question Wise', _id: 3 }
+                                        {
+                                            value: 'ASSESSMENT',
+                                            label: t(
+                                                'unusedFields.durationDistribution.options.entireAssessment'
+                                            ),
+                                            _id: 1,
+                                        },
+                                        {
+                                            value: 'SECTION',
+                                            label: t(
+                                                'unusedFields.durationDistribution.options.sectionWise'
+                                            ),
+                                            _id: 2,
+                                        },
+                                        {
+                                            value: 'QUESTION',
+                                            label: t(
+                                                'unusedFields.durationDistribution.options.questionWise'
+                                            ),
+                                            _id: 3,
+                                        },
                                     ]}
                                     control={control}
                                     required
                                 />
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    Choose whether time limits apply to the whole test, per
-                                    section, or per question.
+                                    {t('unusedFields.durationDistribution.helper')}
                                 </p>
                             </FormControl>
                         </FormItem>
@@ -402,6 +440,7 @@ const DurationDistributionField = ({ control, form }: any) => {
 
 // Helper component for evaluation type
 const EvaluationTypeField = ({ control, form }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start">
             <div className="" id={'evaluation-type'}>
@@ -412,11 +451,19 @@ const EvaluationTypeField = ({ control, form }: any) => {
                         <FormItem>
                             <FormControl>
                                 <SelectField
-                                    label="Evaluation Type"
+                                    label={t('unusedFields.evaluationType.label')}
                                     name="evaluationType"
                                     options={[
-                                        { value: 'AUTO', label: 'Auto Evaluation', _id: 1 },
-                                        { value: 'MANUAL', label: 'Manual Evaluation', _id: 2 }
+                                        {
+                                            value: 'AUTO',
+                                            label: t('unusedFields.evaluationType.options.auto'),
+                                            _id: 1,
+                                        },
+                                        {
+                                            value: 'MANUAL',
+                                            label: t('unusedFields.evaluationType.options.manual'),
+                                            _id: 2,
+                                        },
                                     ]}
                                     control={control}
                                     required
@@ -432,6 +479,7 @@ const EvaluationTypeField = ({ control, form }: any) => {
 
 // Helper component for switch sections checkbox
 const SwitchSectionsField = ({ control }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start">
             <div className="" id={'switch-sections'}>
@@ -447,7 +495,7 @@ const SwitchSectionsField = ({ control }: any) => {
                                         onCheckedChange={field.onChange}
                                         {...field}
                                     />
-                                    <FormLabel>Allow Switching Between Sections</FormLabel>
+                                    <FormLabel>{t('unusedFields.switchSections.label')}</FormLabel>
                                 </div>
                             </FormControl>
                         </FormItem>
@@ -460,6 +508,7 @@ const SwitchSectionsField = ({ control }: any) => {
 
 // Helper component for reattempt request checkbox
 const ReattemptRequestField = ({ control }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start">
             <div className="" id={'raise-reattempt-request'}>
@@ -475,7 +524,7 @@ const ReattemptRequestField = ({ control }: any) => {
                                         onCheckedChange={field.onChange}
                                         {...field}
                                     />
-                                    <FormLabel>Allow Students to Raise Reattempt Request</FormLabel>
+                                    <FormLabel>{t('unusedFields.reattemptRequest.label')}</FormLabel>
                                 </div>
                             </FormControl>
                         </FormItem>
@@ -488,6 +537,7 @@ const ReattemptRequestField = ({ control }: any) => {
 
 // Helper component for time increase request checkbox
 const TimeIncreaseRequestField = ({ control }: any) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     return (
         <div className="flex w-full items-start justify-start">
             <div className="" id={'raise-time-increase-request'}>
@@ -503,7 +553,7 @@ const TimeIncreaseRequestField = ({ control }: any) => {
                                         onCheckedChange={field.onChange}
                                         {...field}
                                     />
-                                    <FormLabel>Allow Students to Raise Time Increase Request</FormLabel>
+                                    <FormLabel>{t('unusedFields.timeIncreaseRequest.label')}</FormLabel>
                                 </div>
                             </FormControl>
                         </FormItem>
@@ -519,6 +569,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     handleCompleteCurrentStep,
     completedSteps,
 }) => {
+    const { t } = useTranslation('assessmentStep1BasicInfo');
     const queryClient = useQueryClient();
     const params = useParams({ strict: false });
     const examType = params.examtype || 'EXAM';
@@ -598,7 +649,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             if (assessmentId !== 'defaultId') {
                 useBasicInfoStore.getState().reset();
                 window.history.back();
-                toast.success('Step 1 data has been updated successfully!', {
+                toast.success(t('toasts.updateSuccess'), {
                     className: 'success-toast',
                     duration: 2000,
                 });
@@ -606,7 +657,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             } else {
                 setSavedAssessmentId(data.assessment_id);
                 syncStep1DataWithStore(form);
-                toast.success('Step 1 data has been saved successfully!', {
+                toast.success(t('toasts.saveSuccess'), {
                     className: 'success-toast',
                     duration: 2000,
                 });
@@ -618,7 +669,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                 feature: 'assessment-step1-basic-info',
                 tags: { actionType: assessmentId !== 'defaultId' ? 'update' : 'create' },
                 extra: { assessmentId, instituteId: instituteDetails?.id, examType },
-                fallbackMessage: 'Failed to save basic info.',
+                fallbackMessage: t('errors.saveFailed'),
             });
         },
     });
@@ -759,10 +810,9 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             <form>
                 <div className="m-0 flex items-center justify-between p-0">
                     <div>
-                        <h1>Basic Information</h1>
+                        <h1>{t('header.title')}</h1>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Configure the basic details for your assessment including name,
-                            schedule, evaluation method, and result release preferences.
+                            {t('header.description')}
                         </p>
                     </div>
                     <MyButton
@@ -772,15 +822,19 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                         disable={assessmentId === 'defaultId' ? !isFormValid : false}
                         onClick={handleSubmit(onSubmit, onInvalid)}
                     >
-                        {assessmentId !== 'defaultId' ? 'Update' : 'Next'}
+                        {assessmentId !== 'defaultId' ? t('header.updateButton') : t('header.nextButton')}
                     </MyButton>
                 </div>
                 <Separator className="my-4" />
                 <div className="flex flex-col gap-5">
                     <SectionCard
                         icon={Info}
-                        title={examType === 'SURVEY' ? 'Survey Information' : 'Basic Information'}
-                        description="Name, subject, and instructions shown to participants."
+                        title={
+                            examType === 'SURVEY'
+                                ? t('basicInfoSection.titleSurvey')
+                                : t('basicInfoSection.titleAssessment')
+                        }
+                        description={t('basicInfoSection.description')}
                     >
                         <div
                             className="flex flex-wrap items-start gap-4"
@@ -794,7 +848,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                         <FormControl>
                                             <MyInput
                                                 inputType="text"
-                                                inputPlaceholder="Add Title"
+                                                inputPlaceholder={t('basicInfoSection.titlePlaceholder')}
                                                 input={field.value}
                                                 labelStyle="font-thin"
                                                 onChangeFunction={field.onChange}
@@ -806,8 +860,8 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                 size="large"
                                                 label={
                                                     examType === 'SURVEY'
-                                                        ? 'Survey Name'
-                                                        : 'Assessment Name'
+                                                        ? t('basicInfoSection.nameLabelSurvey')
+                                                        : t('basicInfoSection.nameLabelAssessment')
                                                 }
                                                 {...field}
                                                 className="!w-full"
@@ -837,8 +891,8 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                         <div className="flex flex-col gap-2" id="assessment-instructions">
                             <label className="text-sm font-medium text-slate-700">
                                 {examType === 'SURVEY'
-                                    ? 'Survey Instructions'
-                                    : 'Assessment Instructions'}
+                                    ? t('basicInfoSection.instructionsLabelSurvey')
+                                    : t('basicInfoSection.instructionsLabelAssessment')}
                             </label>
                             <FormField
                                 control={control}
@@ -853,8 +907,12 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                 value={field.value}
                                                 placeholder={
                                                     examType === 'SURVEY'
-                                                        ? 'Write the survey instructions'
-                                                        : 'Write the assessment instructions'
+                                                        ? t(
+                                                              'basicInfoSection.instructionsPlaceholderSurvey'
+                                                          )
+                                                        : t(
+                                                              'basicInfoSection.instructionsPlaceholderAssessment'
+                                                          )
                                                 }
                                                 minHeight={160}
                                             />
@@ -877,8 +935,8 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                         })) && (
                         <SectionCard
                             icon={CalendarBlank}
-                            title="Live Date Range"
-                            description="When participants can start and must finish the assessment."
+                            title={t('liveDateRangeSection.title')}
+                            description={t('liveDateRangeSection.description')}
                         >
                             <div
                                 className="flex flex-wrap items-start gap-4"
@@ -911,7 +969,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                             }) === 'REQUIRED'
                                                         }
                                                         size="large"
-                                                        label="Start Date & Time"
+                                                        label={t('liveDateRangeSection.startDateLabel')}
                                                         labelStyle="font-thin"
                                                         {...field}
                                                         className="!w-full"
@@ -948,7 +1006,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                             }) === 'REQUIRED'
                                                         }
                                                         size="large"
-                                                        label="End Date & Time"
+                                                        label={t('liveDateRangeSection.endDateLabel')}
                                                         labelStyle="font-thin"
                                                         {...field}
                                                         className="!w-full"
@@ -964,8 +1022,8 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
 
                     <SectionCard
                         icon={Gear}
-                        title="Attempt Settings"
-                        description="Control how participants take this assessment."
+                        title={t('attemptSettingsSection.title')}
+                        description={t('attemptSettingsSection.description')}
                     >
                     {(examType === 'EXAM' || examType === 'SURVEY') && (
                         <FormField
@@ -976,14 +1034,16 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                     <FormControl>
                                         <MyInput
                                             inputType="number"
-                                            inputPlaceholder="Reattempt Count"
+                                            inputPlaceholder={t(
+                                                'attemptSettingsSection.reattemptCountPlaceholder'
+                                            )}
                                             input={field.value}
                                             labelStyle="text-xs"
                                             onChangeFunction={field.onChange}
                                             error={form.formState.errors?.reattemptCount?.message}
                                             required={true}
                                             size="large"
-                                            label="Reattempt Count"
+                                            label={t('attemptSettingsSection.reattemptCountLabel')}
                                             {...field}
                                             min={0}
                                             onKeyDown={(e) => {
@@ -1000,7 +1060,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                     <div className="flex flex-col gap-6" id="evaluation-type">
                         <div className="flex flex-col gap-3">
                             <p className="text-sm font-medium">
-                                Result &amp; Evaluation Type
+                                {t('attemptSettingsSection.resultEvaluationType.label')}
                                 <span className="ml-0.5 text-danger-500">*</span>
                             </p>
                             <FormField
@@ -1017,23 +1077,39 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                 {[
                                                     {
                                                         value: 'AUTO_AFTER_SUBMISSION',
-                                                        label: 'Auto — Release after submission',
-                                                        help: 'System grades automatically. Results are visible to the learner immediately after they submit.',
+                                                        label: t(
+                                                            'attemptSettingsSection.resultEvaluationType.options.autoAfterSubmission.label'
+                                                        ),
+                                                        help: t(
+                                                            'attemptSettingsSection.resultEvaluationType.options.autoAfterSubmission.help'
+                                                        ),
                                                     },
                                                     {
                                                         value: 'AUTO_AFTER_ASSESSMENT_END',
-                                                        label: 'Auto — Release after exam ends',
-                                                        help: 'System grades automatically. Results become visible only after the assessment end time passes.',
+                                                        label: t(
+                                                            'attemptSettingsSection.resultEvaluationType.options.autoAfterAssessmentEnd.label'
+                                                        ),
+                                                        help: t(
+                                                            'attemptSettingsSection.resultEvaluationType.options.autoAfterAssessmentEnd.help'
+                                                        ),
                                                     },
                                                     {
                                                         value: 'NO_AUTO_RELEASE',
-                                                        label: 'Auto — Release manually',
-                                                        help: 'System grades automatically. Results stay hidden until you click "Release Result" in the submissions tab.',
+                                                        label: t(
+                                                            'attemptSettingsSection.resultEvaluationType.options.noAutoRelease.label'
+                                                        ),
+                                                        help: t(
+                                                            'attemptSettingsSection.resultEvaluationType.options.noAutoRelease.help'
+                                                        ),
                                                     },
                                                     {
                                                         value: 'MANUAL',
-                                                        label: 'Manual evaluation & release',
-                                                        help: 'Teacher grades each submission by hand. Results stay hidden until you manually evaluate and release them.',
+                                                        label: t(
+                                                            'attemptSettingsSection.resultEvaluationType.options.manual.label'
+                                                        ),
+                                                        help: t(
+                                                            'attemptSettingsSection.resultEvaluationType.options.manual.help'
+                                                        ),
                                                     },
                                                 ].map((option) => (
                                                     <label
@@ -1072,7 +1148,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                             }) && (
                                 <div>
                                     <SelectField
-                                        label="Submission Type"
+                                        label={t('attemptSettingsSection.submissionType.label')}
                                         name="submissionType"
                                         options={
                                             assessmentDetails[
@@ -1096,8 +1172,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                         }
                                     />
                                     <p className="mt-1 text-xs text-muted-foreground">
-                                        How students submit their answers (e.g., file upload,
-                                        PDF).
+                                        {t('attemptSettingsSection.submissionType.helper')}
                                     </p>
                                 </div>
                             )}
@@ -1121,8 +1196,12 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                             <div className="flex flex-col">
                                                 <FormLabel className="text-sm font-semibold text-slate-900">
                                                     {examType === 'SURVEY'
-                                                        ? 'Allow Survey Preview'
-                                                        : 'Allow Assessment Preview'}
+                                                        ? t(
+                                                              'attemptSettingsSection.assessmentPreview.labelSurvey'
+                                                          )
+                                                        : t(
+                                                              'attemptSettingsSection.assessmentPreview.labelAssessment'
+                                                          )}
                                                     {getStepKey({
                                                         assessmentDetails,
                                                         currentStep,
@@ -1134,8 +1213,9 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                     )}
                                                 </FormLabel>
                                                 <span className="text-xs text-slate-500">
-                                                    Let participants preview the assessment before
-                                                    starting.
+                                                    {t(
+                                                        'attemptSettingsSection.assessmentPreview.description'
+                                                    )}
                                                 </span>
                                             </div>
                                         </div>
@@ -1151,7 +1231,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                         )}
                         {watch('assessmentPreview.checked') && examType !== 'SURVEY' && (
                             <SelectField
-                                label="Preview Time Limit"
+                                label={t('attemptSettingsSection.assessmentPreview.timeLimitLabel')}
                                 labelStyle="font-thin"
                                 name="assessmentPreview.previewTimeLimit"
                                 options={timeLimit.map((option, index) => ({
@@ -1180,12 +1260,12 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                             </div>
                                             <div className="flex flex-col">
                                                 <FormLabel className="text-sm font-semibold text-slate-900">
-                                                    Allow{' '}
-                                                    {getTerminology(
-                                                        RoleTerms.Learner,
-                                                        SystemTerms.Learner
-                                                    ).toLocaleLowerCase()}
-                                                    s to switch between sections
+                                                    {t('attemptSettingsSection.switchSections.label', {
+                                                        role: getTerminology(
+                                                            RoleTerms.Learner,
+                                                            SystemTerms.Learner
+                                                        ).toLocaleLowerCase(),
+                                                    })}
                                                     {getStepKey({
                                                         assessmentDetails,
                                                         currentStep,
@@ -1197,8 +1277,9 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                                     )}
                                                 </FormLabel>
                                                 <span className="text-xs text-slate-500">
-                                                    Participants can jump back and forth between
-                                                    sections.
+                                                    {t(
+                                                        'attemptSettingsSection.switchSections.description'
+                                                    )}
                                                 </span>
                                             </div>
                                         </div>

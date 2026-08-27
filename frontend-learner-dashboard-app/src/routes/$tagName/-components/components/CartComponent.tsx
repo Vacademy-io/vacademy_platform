@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { CartComponentProps } from "../../-types/course-catalogue-types";
@@ -64,6 +65,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
   onRemove,
   quantityMin,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(imageUrl || null);
   const [imageLoading, setImageLoading] = useState(true);
 
@@ -104,7 +106,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
             />
           ) : (
             <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-              <div className="text-gray-400 text-xs">No Img</div>
+              <div className="text-gray-400 text-xs">{t("cart.noImage")}</div>
             </div>
           )}
         </div>
@@ -174,7 +176,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
               disabled={!item.enrollInviteId}
             >
               <Trash className="h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform group-hover:scale-110" />
-              <span className="text-xs font-medium hidden sm:inline">Remove</span>
+              <span className="text-xs font-medium hidden sm:inline">{t("common.remove")}</span>
             </button>
           )}
         </div>
@@ -189,6 +191,7 @@ interface MembershipPlanCardProps {
 }
 
 const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
+  const { t } = useTranslation("coursePlayerB");
   const { setMembershipPlan, membershipPlan } = useCartStore();
   const isSelected = membershipPlan?.id === (plan.enroll_invite_id || plan.id);
 
@@ -206,12 +209,12 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
   };
 
   // Extract fields - handle various possible field names
-  const planName = plan.package_name || "Plan";
+  const planName = plan.package_name || t("cart.plan.defaultName");
   const numberOfBooks = plan.available_slots;
   const maxSeats = plan.max_seats;
   const description = maxSeats
-    ? `Maximum ${maxSeats} books can be rented in this period`
-    : "No limit on total number of books in this period";
+    ? t("cart.plan.maxBooksDescription", { max: maxSeats })
+    : t("cart.plan.noLimitDescription");
   const price = plan.min_plan_actual_price || 0;
   const elevatedPrice = plan.min_plan_elevated_price;
 
@@ -255,7 +258,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
           <div className="flex flex-col gap-0.5 sm:gap-1">
             {/* Max books at one time */}
             <div className="flex items-center gap-1">
-              <span className="text-caption sm:text-xs text-gray-500">Books at once:</span>
+              <span className="text-caption sm:text-xs text-gray-500">{t("cart.plan.booksAtOnce")}</span>
               <span className={`font-semibold text-gray-700 ${numberOfBooks ? 'text-caption sm:text-xs' : 'text-sm sm:text-base'}`}>
                 {numberOfBooks ?? '∞'}
               </span>
@@ -263,7 +266,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
 
             {/* Max books in period - always show */}
             <div className="flex items-center gap-1">
-              <span className="text-caption sm:text-xs text-gray-500">Books in period:</span>
+              <span className="text-caption sm:text-xs text-gray-500">{t("cart.plan.booksInPeriod")}</span>
               <span className={`font-semibold text-gray-700 ${maxSeats ? 'text-caption sm:text-xs' : 'text-sm sm:text-base'}`}>
                 {maxSeats ?? '∞'}
               </span>
@@ -282,7 +285,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
           `}
           onClick={handleSelectPlan}
         >
-          {isSelected ? 'Selected' : 'Select'}
+          {isSelected ? t("cart.plan.selected") : t("cart.plan.select")}
         </button>
       </div>
     </div>
@@ -295,6 +298,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
  * localStorage (set by the catalogue page) and listens for changes.
  */
 const CrossStoreWarning: React.FC<{ items: CartItem[] }> = ({ items }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [storeFilter, setStoreFilter] = useState<string | null>(() =>
     typeof window === "undefined" ? null : localStorage.getItem("storeFilter")
   );
@@ -325,9 +329,10 @@ const CrossStoreWarning: React.FC<{ items: CartItem[] }> = ({ items }) => {
   if (distinctStoresInCart.length > 1) {
     return (
       <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        Your cart contains items from {distinctStoresInCart.length} different stores
-        ({distinctStoresInCart.map((s) => s.name).join(", ")}). Each store handles its
-        own fulfillment, so you may need to check out separately.
+        {t("cart.crossStore.multiple", {
+          count: distinctStoresInCart.length,
+          stores: distinctStoresInCart.map((s) => s.name).join(", "),
+        })}
       </div>
     );
   }
@@ -337,9 +342,7 @@ const CrossStoreWarning: React.FC<{ items: CartItem[] }> = ({ items }) => {
   if (storeFilter && storeFilter !== cartStore.id) {
     return (
       <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        Your cart items are from <span className="font-semibold">{cartStore.name}</span>,
-        but your active store is different. Switch stores or remove these items to keep
-        things consistent.
+        {t("cart.crossStore.mismatch", { store: cartStore.name })}
       </div>
     );
   }
@@ -355,13 +358,14 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   showRemoveButton = true,
   showPrice = true,
   showEmptyState = true,
-  emptyStateMessage = "Your cart is empty. Add some books!",
+  emptyStateMessage,
   styles = {},
   instituteId, // Accept instituteId prop
   globalSettings,
   onlyLogic = false,
 }) => {
-
+  const { t } = useTranslation("coursePlayerB");
+  const resolvedEmptyStateMessage = emptyStateMessage || t("cart.emptyDefault");
   const { items, removeItem, updateQuantity, membershipPlan, getItemCount, getTotal, syncCart } = useCartStore();
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [isRentMode, setIsRentMode] = useState(false);
@@ -430,7 +434,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
             const currentToken = await getTokenFromStorage(TokenKey.accessToken);
             if (!currentToken) {
               console.error("[CartComponent] User is NOT authenticated. Redirecting to login instead of courses.");
-              toast.success("Payment successful! Please log in to access your courses.");
+              toast.success(t("cart.toast.loginRequiredAfterPayment"));
 
               // Redirect to Login if we couldn't auth
               localStorage.removeItem("pendingOrderId");
@@ -440,7 +444,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
               return;
             }
 
-            toast.success("Payment successful. Redirecting...");
+            toast.success(t("cart.toast.redirecting"));
             localStorage.removeItem("pendingOrderId");
             setTimeout(() => {
               window.location.href = targetCoursesUrl;
@@ -480,7 +484,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         localStorage.removeItem("pendingUserPassword");
         localStorage.removeItem("pendingAccessToken");
         localStorage.removeItem("pendingRefreshToken");
-        toast.success("Login automated successfully. Welcome!");
+        toast.success(t("cart.toast.loginAutomated"));
 
         // Verify persistence before redirecting to avoid race conditions
         console.log("[CartComponent] Verifying persistence before redirect...");
@@ -646,13 +650,13 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         'bg-blue-50 text-blue-700 border border-blue-200'
       }`}>
       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-        <span className="font-bold whitespace-nowrap">Payment Status:</span>
+        <span className="font-bold whitespace-nowrap">{t("cart.paymentStatus")}</span>
         <span className="font-medium">{paymentMessage.text}</span>
       </div>
       <button
         onClick={() => setPaymentMessage(null)}
         className="p-1 hover:bg-black/5 rounded-full transition-colors flex-shrink-0"
-        aria-label="Dismiss"
+        aria-label={t("cart.dismiss")}
       >
         <X className="h-4 w-4" />
       </button>
@@ -668,7 +672,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         {paymentBanner}
         <div className="text-center">
           <div className="text-5xl mb-2">🛒</div>
-          <p className="text-gray-600 text-sm sm:text-base">{emptyStateMessage}</p>
+          <p className="text-gray-600 text-sm sm:text-base">{resolvedEmptyStateMessage}</p>
         </div>
       </div>
     );
@@ -702,7 +706,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
           {paymentBanner}
           {/* Cart Items Section */}
           <div>
-            <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-3">Your Books</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-3">{t("cart.yourBooks")}</h2>
             <div className="flex overflow-x-auto gap-3 pb-4 snap-x pe-4 scrollbar-hide">
               {items.map((item) => (
                 <div
@@ -746,7 +750,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
           {/* Membership Plans Section */}
           <div className="mt-5">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3">Subscription Plans</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3">{t("cart.subscriptionPlans")}</h2>
 
             {isLoadingPlans ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -762,14 +766,14 @@ export const CartComponent: React.FC<CartComponentProps> = ({
               </div>
             ) : (
               <div className="text-center py-6 text-gray-500">
-                <p className="text-sm">No membership plans available at the moment.</p>
+                <p className="text-sm">{t("cart.noPlansAvailable")}</p>
               </div>
             )}
 
             {/* Security Deposit Notice */}
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-xs sm:text-sm text-blue-700">
-                <span className="font-semibold">Note:</span> A refundable security deposit of <span className="font-semibold">₹300</span> is included in all subscription plan prices and will be returned upon membership completion.
+                {t("cart.securityDeposit")}
               </p>
             </div>
           </div>
@@ -779,14 +783,14 @@ export const CartComponent: React.FC<CartComponentProps> = ({
             <div className="mt-5 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
 
               <div className="flex justify-between items-center pt-3 border-t border-gray-200 mb-3">
-                <span className="text-base sm:text-lg font-semibold text-gray-900">Total</span>
+                <span className="text-base sm:text-lg font-semibold text-gray-900">{t("cart.total")}</span>
                 <span className="text-base sm:text-lg font-bold text-gray-900">₹{getTotal().toFixed(2)}</span>
               </div>
 
               <Button
                 onClick={() => {
                   if (!membershipPlan) {
-                    toast.error("Please select a membership plan before checkout", {
+                    toast.error(t("cart.selectPlanFirst"), {
                       duration: 2000,
                     });
                     return;
@@ -797,7 +801,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
                   if (maxBooksAllowed && totalBooksInCart > maxBooksAllowed) {
                     toast.error(
-                      `You can rent a maximum of ${maxBooksAllowed} books in this period`,
+                      t("cart.maxBooksExceeded", { max: maxBooksAllowed }),
                       {
                         duration: 4000,
                       }
@@ -811,7 +815,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                 className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
                 size="lg"
               >
-                Checkout
+                {t("cart.checkout")}
               </Button>
             </div>
           )}
@@ -859,7 +863,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         <div className="mt-5 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
           <div className="space-y-1.5 pt-2 mb-3">
             <div className="flex justify-between items-center text-sm text-gray-700">
-              <span>Subtotal ({buyModeItemQty} {buyModeItemQty === 1 ? "book" : "books"})</span>
+              <span>{t("cart.subtotalCount", { count: buyModeItemQty })}</span>
               <span className="font-medium">₹{buyModeSubtotal.toFixed(2)}</span>
             </div>
             {resolvedAdditionalCharges.map((charge) => (
@@ -869,7 +873,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
               </div>
             ))}
             <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-              <span className="text-base sm:text-lg font-semibold text-gray-900">Total</span>
+              <span className="text-base sm:text-lg font-semibold text-gray-900">{t("cart.total")}</span>
               <span className="text-base sm:text-lg font-bold text-gray-900">₹{buyModeGrandTotal.toFixed(2)}</span>
             </div>
           </div>
@@ -882,7 +886,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
             className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
             size="lg"
           >
-            Checkout
+            {t("cart.checkout")}
           </Button>
         </div>
       )}

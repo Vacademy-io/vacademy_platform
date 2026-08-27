@@ -23,12 +23,20 @@ interface CatalogueChromeProps {
   /** Catalogue slug the visitor came from — the chrome's source. */
   tagName?: string;
   instituteId: string;
+  /**
+   * Render the catalogue's footer below the page. Off for buying flows: the
+   * footer is a wall of site navigation ("Our Philosophy", "FAQs", "Rewards")
+   * sitting directly under the cart bar, and every link in it leads out of the
+   * purchase the visitor is midway through.
+   */
+  showFooter?: boolean;
   children: React.ReactNode;
 }
 
 export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
   tagName,
   instituteId,
+  showFooter = true,
   children,
 }) => {
   const themeRootRef = useRef<HTMLDivElement>(null);
@@ -97,7 +105,7 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
           same offset; mirror it here. */}
       <div className={headerEnabled ? "pt-16 md:pt-20" : ""}>{children}</div>
 
-      {footer && footer.enabled !== false && renderBlock("footer", footer)}
+      {showFooter && footer && footer.enabled !== false && renderBlock("footer", footer)}
     </div>
   );
 };

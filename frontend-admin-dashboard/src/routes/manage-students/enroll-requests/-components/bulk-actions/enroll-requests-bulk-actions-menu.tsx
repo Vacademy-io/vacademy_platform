@@ -1,10 +1,12 @@
 // components/BulkActionsMenu.tsx
 import { MyDropdown } from '@/components/design-system/dropdown';
+import { DropdownItem } from '@/components/design-system/utils/types/dropdown-types';
 import { BulkActionInfo } from '@/routes/manage-students/students-list/-types/bulk-actions-types';
 import { StudentTable } from '@/types/student-table-types';
 import { ReactNode } from 'react';
-import { EnrollRequestsBulkActionDropdownList } from '@/routes/manage-students/students-list/-constants/bulk-actions-menu-options';
 import { useEnrollRequestsDialogStore } from './bulk-actions-store';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 interface BulkActionsMenuProps {
     selectedCount: number;
@@ -13,10 +15,29 @@ interface BulkActionsMenuProps {
     trigger: ReactNode;
 }
 
+// Internal action-type constants used for dispatch logic. These must never be
+// swapped for translated display text — see handleMenuOptionsChange below.
+const MENU_ACTION = {
+    SHARE_CREDENTIALS: 'SHARE_CREDENTIALS',
+    SEND_WHATSAPP_MESSAGE: 'SEND_WHATSAPP_MESSAGE',
+    SEND_EMAIL: 'SEND_EMAIL',
+    ACCEPT_REQUEST: 'ACCEPT_REQUEST',
+    DECLINE_REQUEST: 'DECLINE_REQUEST',
+} as const;
+
+const buildEnrollRequestsBulkActionDropdownList = (t: TFunction): DropdownItem[] => [
+    { label: t('menu.shareCredentials'), value: MENU_ACTION.SHARE_CREDENTIALS },
+    { label: t('menu.sendWhatsappMessage'), value: MENU_ACTION.SEND_WHATSAPP_MESSAGE },
+    { label: t('menu.sendEmail'), value: MENU_ACTION.SEND_EMAIL },
+    { label: t('menu.acceptRequest'), value: MENU_ACTION.ACCEPT_REQUEST },
+    { label: t('menu.declineRequest'), value: MENU_ACTION.DECLINE_REQUEST },
+];
+
 export const EnrollRequestsBulkActionsMenu = ({
     selectedStudents,
     trigger,
 }: BulkActionsMenuProps) => {
+    const { t } = useTranslation('manageStudentsEnrollRequestsBulkActionsMenu');
     const {
         openBulkShareCredentialsDialog,
         openBulkSendMessageDialog,
@@ -38,23 +59,23 @@ export const EnrollRequestsBulkActionsMenu = ({
         const bulkActionInfo: BulkActionInfo = {
             selectedStudentIds: validStudents.map((student) => student.id),
             selectedStudents: validStudents,
-            displayText: `${validStudents.length} students`,
+            displayText: t('actionInfo.selectedStudents', { count: validStudents.length }),
         };
 
         switch (value) {
-            case 'Share Credentials':
+            case MENU_ACTION.SHARE_CREDENTIALS:
                 openBulkShareCredentialsDialog(bulkActionInfo);
                 break;
-            case 'Send WhatsApp Message':
+            case MENU_ACTION.SEND_WHATSAPP_MESSAGE:
                 openBulkSendMessageDialog(bulkActionInfo);
                 break;
-            case 'Send Email':
+            case MENU_ACTION.SEND_EMAIL:
                 openBulkSendEmailDialog(bulkActionInfo);
                 break;
-            case 'Accept Request':
+            case MENU_ACTION.ACCEPT_REQUEST:
                 openBulkAcceptRequestDialog(bulkActionInfo);
                 break;
-            case 'Decline Request':
+            case MENU_ACTION.DECLINE_REQUEST:
                 openBulkDeclineRequestDialog(bulkActionInfo);
                 break;
         }
@@ -62,7 +83,7 @@ export const EnrollRequestsBulkActionsMenu = ({
 
     return (
         <MyDropdown
-            dropdownList={EnrollRequestsBulkActionDropdownList}
+            dropdownList={buildEnrollRequestsBulkActionDropdownList(t)}
             onSelect={handleMenuOptionsChange}
         >
             {trigger}

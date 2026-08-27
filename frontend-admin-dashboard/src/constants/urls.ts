@@ -1458,6 +1458,10 @@ export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFi
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
 export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;
+export const REORDER_PRODUCT_PAGE_CUSTOM_FIELDS = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/order`;
+export const UPDATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
 
 // Institute-scoped coupon management (backend V308/V309). The CRUD endpoints
 // are admin-gated via JWT + clientId header (auto-injected by axiosInstance);

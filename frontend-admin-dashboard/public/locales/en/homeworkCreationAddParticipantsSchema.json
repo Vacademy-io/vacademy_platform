@@ -1,0 +1,5 @@
+{
+    "validation": {
+        "endDateAfterStartDate": "End date must be greater than start date."
+    }
+}

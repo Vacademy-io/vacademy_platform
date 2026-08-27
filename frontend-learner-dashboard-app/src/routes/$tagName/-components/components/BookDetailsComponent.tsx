@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { User, ShoppingCart, Plus, Minus, ShoppingBag, CheckCircle } from "@phosphor-icons/react";
 import { useCartStore } from "../../-stores/cart-store";
@@ -37,6 +38,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
     // If courseData is missing, we can't do much (it usually comes from the parent page fetching it)
     if (!courseData) return null;
 
+    const { t } = useTranslation("coursePlayerB");
     const [coverUrl, setCoverUrl] = useState("");
     const navigate = useNavigate();
     const { addItem, getItemByEnrollInviteId, updateQuantity, getCartMode, syncCart } = useCartStore();
@@ -116,7 +118,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
     };
 
     // Get author name from course_html_description_html (extract text from HTML)
-    const authorName = extractTextFromHtml(courseData.course_html_description_html) || "Unknown Author";
+    const authorName = extractTextFromHtml(courseData.course_html_description_html) || t("bookDetails.unknownAuthor");
 
     // Get about book content from about_the_course_html
     const aboutBook = courseData.about_the_course_html || "";
@@ -149,17 +151,17 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                     {courseData.available_slots > 5 ? (
                                         <>
                                             <div className="w-2 h-2 rounded-full bg-green-500 shadow-glow-live-green" />
-                                            <span className="text-green-700 uppercase tracking-wider">In Stock</span>
+                                            <span className="text-green-700 uppercase tracking-wider">{t("common.inStock")}</span>
                                         </>
                                     ) : courseData.available_slots > 0 ? (
                                         <>
                                             <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-glow-live-orange" />
-                                            <span className="text-orange-700 uppercase tracking-wider">Only {courseData.available_slots} Left</span>
+                                            <span className="text-orange-700 uppercase tracking-wider">{t("common.onlyLeft", { count: courseData.available_slots })}</span>
                                         </>
                                     ) : (
                                         <>
                                             <div className="w-2 h-2 rounded-full bg-gray-400" />
-                                            <span className="text-gray-600 uppercase tracking-wider">Out of Stock</span>
+                                            <span className="text-gray-600 uppercase tracking-wider">{t("common.outOfStock")}</span>
                                         </>
                                     )}
                                 </div>
@@ -181,11 +183,11 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                             {coverUrl ? (
                                 <img
                                     src={coverUrl}
-                                    alt={courseData.title || "Book"}
+                                    alt={courseData.title || t("bookDetails.bookAltFallback")}
                                     className="w-full h-full object-cover transition-transform duration-300 hover:scale-[1.02]"
                                 />
                             ) : (
-                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">Loading Cover...</div>
+                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">{t("bookDetails.loadingCover")}</div>
                             )}
                         </div>
                     </div>
@@ -204,7 +206,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                 ? 'text-blue-600 bg-blue-50'
                                 : 'text-green-600 bg-green-50'
                             }`}>
-                              [{cartMode === 'rent' ? 'Rent' : 'Buy'}]
+                              [{cartMode === 'rent' ? t("bookDetails.modeTag.rent") : t("bookDetails.modeTag.buy")}]
                             </span>
                         </div>
                     </div>
@@ -219,7 +221,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                     {tags && tags.length > 0 && (
                         <div className="pb-3 border-b border-gray-200">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-xs sm:text-sm font-medium text-gray-600">Genre:</span>
+                                <span className="text-xs sm:text-sm font-medium text-gray-600">{t("bookDetails.genre")}</span>
                                 {tags.map((tag: string, index: number) => (
                                     <span
                                         key={index}
@@ -237,7 +239,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                         {/* Show Price for Buy mode */}
                         {cartMode === 'buy' && (
                             <div className="mb-4 pb-3 border-b border-gray-200">
-                                <p className="text-sm text-gray-500 mb-1">Price</p>
+                                <p className="text-sm text-gray-500 mb-1">{t("bookDetails.price")}</p>
                                 <PriceWithMrp
                                     actual={courseData.price}
                                     elevated={courseData.elevatedPrice}
@@ -296,7 +298,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             }}
                                         >
                                             <ShoppingBag className="h-4 w-4" />
-                                            Go to Cart
+                                            {t("bookDetails.goToCart")}
                                         </Button>
                                     </div>
                                 );
@@ -311,7 +313,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             className="flex-1 bg-green-100 text-green-700 font-semibold text-sm py-2.5 px-6 rounded-lg border border-green-200 flex items-center justify-center gap-2 shadow-sm"
                                         >
                                             <CheckCircle className="h-4 w-4" />
-                                            Added
+                                            {t("bookDetails.added")}
                                         </Button>
                                         {/* Go to Cart button */}
                                         <Button
@@ -322,7 +324,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             }}
                                         >
                                             <ShoppingBag className="h-4 w-4" />
-                                            Go to Cart
+                                            {t("bookDetails.goToCart")}
                                         </Button>
                                     </div>
                                 );
@@ -351,15 +353,15 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             });
                                             // Dispatch event to update cart count in header
                                             window.dispatchEvent(new CustomEvent('cartUpdated'));
-                                            toast.success("Added to cart", { duration: 2000 });
+                                            toast.success(t("bookDetails.toast.addedToCart"), { duration: 2000 });
                                         } else {
-                                            toast.error("Cannot add to cart: Missing enrollment info", { duration: 2000 });
+                                            toast.error(t("bookDetails.toast.missingEnrollInfo"), { duration: 2000 });
                                         }
                                     }}
                                     disabled={!courseData.enrollInviteId || courseData.available_slots === 0}
                                 >
                                     <ShoppingCart className="h-4 w-4" />
-                                    {courseData.available_slots === 0 ? "Out of Stock" : "Add to Cart"}
+                                    {courseData.available_slots === 0 ? t("common.outOfStock") : t("common.addToCart")}
                                 </Button>
                             );
                         })()}
@@ -368,7 +370,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                     {/* About Book Section */}
                     <div className="pt-2">
                         <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 pb-2 border-b border-gray-200">
-                            About this Book
+                            {t("bookDetails.aboutThisBook")}
                         </h3>
                         <div
                             className="prose prose-sm sm:prose-base max-w-none text-gray-700 leading-relaxed text-sm sm:text-base"

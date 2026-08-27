@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import {
     ConvertedCustomField,
     CustomFieldStep3,
@@ -19,9 +20,9 @@ import {
 } from '@/types/assessments/assessment-steps';
 import { z } from 'zod';
 import sectionDetailsSchema from './section-details-schema';
-import { BasicInfoFormSchema as HomeworkBasicInfoFormSchema } from './basic-info-form-schema';
+import type { BasicInfoFormSchemaType } from './basic-info-form-schema';
 import { convertCustomFields } from '../-services/assessment-services';
-import testAccessSchema from './add-participants-schema';
+import type { TestAccessFormValues } from './add-participants-schema';
 import { CourseWithSessionsType } from '@/stores/study-library/use-study-library-store';
 import { BatchData } from '@/types/assessments/batch-details';
 
@@ -124,10 +125,10 @@ export const getQuestionTypeCounts = (questions: AdaptiveMarkingQuestion[]) => {
     };
 };
 
-export const handleDownloadQRCode = (elementName: string) => {
+export const handleDownloadQRCode = (elementName: string, t: TFunction) => {
     const svg = document.getElementById(elementName);
     if (!svg) {
-        alert('QR code not found!');
+        alert(t('qrCodeNotFound'));
         return;
     }
 
@@ -311,7 +312,7 @@ export function calculateTotalMarks(questions: AdaptiveMarkingQuestion[]) {
 }
 
 export const syncStep1DataWithStore = (
-    form: UseFormReturn<z.infer<typeof HomeworkBasicInfoFormSchema>>
+    form: UseFormReturn<BasicInfoFormSchemaType>
 ) => {
     const setBasicInfo = useBasicInfoStore.getState().setBasicInfo;
     const { getValues } = form;
@@ -643,12 +644,12 @@ export function convertToCustomFieldsData(data: RegistrationFormField[] | undefi
         }));
 }
 
-export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
+export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps, t: TFunction) {
     const defaultFields = [
         {
             id: '0',
             type: 'textfield',
-            name: 'Full Name',
+            name: t('defaultRegistrationFields.fullName'),
             oldKey: true,
             isRequired: true,
             key: 'full_name',
@@ -656,7 +657,7 @@ export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
         {
             id: '1',
             type: 'textfield',
-            name: 'Email',
+            name: t('defaultRegistrationFields.email'),
             oldKey: true,
             isRequired: true,
             key: 'email',
@@ -664,7 +665,7 @@ export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
         {
             id: '2',
             type: 'textfield',
-            name: 'Phone Number',
+            name: t('defaultRegistrationFields.phoneNumber'),
             oldKey: true,
             isRequired: true,
             key: 'phone_number',
@@ -676,7 +677,10 @@ export function getCustomFieldsWhileEditStep3(assessmentDetails: Steps) {
     // Extract field names from registrationFields
     const existingFieldNames = new Set(registrationFields.map((field) => field.field_name));
 
-    // Check if all three fields exist
+    // Check if all three fields exist. These three literals are the historical, English-only
+    // field_name values the backend has always stored for these defaults (set at save time,
+    // independent of the viewer's current UI language) — this is a data-identity comparison,
+    // not display text, so it intentionally does NOT use the translated `name` above.
     const hasAllDefaults = ['Full Name', 'Email', 'Phone Number'].every((field) =>
         existingFieldNames.has(field)
     );
@@ -704,7 +708,7 @@ export const convertToCustomFieldSchema = (field: CustomFieldStep3): ConvertedCu
 
 export const convertDataToStep3 = (
     oldData: TestAccessFormType | null,
-    newData: z.infer<typeof testAccessSchema>
+    newData: TestAccessFormValues
 ) => {
     const convertedData: {
         closed_test: boolean;

@@ -29,6 +29,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getComponentTemplate } from '../-utils/component-templates';
 
 // Converts arbitrary text into a safe URL slug: lowercase, hyphens, no special chars
@@ -42,6 +43,7 @@ const toSlug = (value: string) =>
         .replace(/^-|-$/g, '');
 
 export const PageTabs = () => {
+    const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
     const {
         config,
         selectPage,
@@ -75,7 +77,7 @@ export const PageTabs = () => {
             route: slugPreview,
             title: newPageTitle.trim() || undefined,
             components: newPageIsHtml
-                ? [{ ...getComponentTemplate('htmlPage'), id: `htmlpage-${Date.now()}` }]
+                ? [{ ...getComponentTemplate('htmlPage', tTemplates), id: `htmlpage-${Date.now()}` }]
                 : [],
             // A pasted page nearly always brings its own nav and footer.
             ...(newPageIsHtml ? { hideSiteChrome: true } : {}),

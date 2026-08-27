@@ -24,6 +24,8 @@ import {
 import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import AssessmentPreview from './-components/AssessmentPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReattemptRequestsTab } from './-components/ReattemptRequestsTab';
@@ -47,10 +49,10 @@ export const Route = createLazyFileRoute(
     ),
 });
 
-const heading = (
+const buildHeading = (t: TFunction) => (
     <div className="flex items-center gap-4">
         <CaretLeft onClick={() => window.history.back()} className="cursor-pointer" />
-        <h1 className="text-lg">Assessment Details</h1>
+        <h1 className="text-lg">{t('heading.title')}</h1>
     </div>
 );
 
@@ -130,11 +132,12 @@ const AssessmentActions = ({
     questionsDataSectionWise: any;
     assessmentId: string;
 }) => {
+    const { t } = useTranslation('assessmentTabIndex');
     const navigate = useNavigate();
 
     const handleOpenDialog = () => {
         if (Object.keys(questionsDataSectionWise).length === 0) {
-            toast.error('No sections have been added for this assessment.');
+            toast.error(t('actions.noSectionsError'));
         } else {
             setIsPreviewAssessmentDialogOpen(true);
         }
@@ -142,7 +145,7 @@ const AssessmentActions = ({
 
     const handleExportAssessment = () => {
         if (Object.keys(questionsDataSectionWise).length === 0) {
-            toast.error('No sections have been added for this assessment.');
+            toast.error(t('actions.noSectionsError'));
         } else {
             navigate({
                 to: '/assessment/export/$assessmentId',
@@ -166,11 +169,11 @@ const AssessmentActions = ({
                         buttonType="secondary"
                         onClick={handleOpenDialog}
                     >
-                        Preview Assessment
+                        {t('actions.previewAssessment')}
                     </MyButton>
                 </DialogTrigger>
                 {Object.keys(questionsDataSectionWise).length > 0 && (
-                    <DialogContent className="no-scrollbar !m-0 h-[90vh] !w-[95vw] !max-w-full !gap-0 overflow-y-auto !p-0 sm:!w-[90vw] [&>button]:hidden">
+                    <DialogContent className="no-scrollbar !m-0 max-h-dialog-tall !w-dialog-xl !max-w-full !gap-0 overflow-y-auto !p-0 [&>button]:hidden">
                         <AssessmentPreview
                             handleCloseDialog={() => setIsPreviewAssessmentDialogOpen(false)}
                         />
@@ -178,13 +181,14 @@ const AssessmentActions = ({
                 )}
             </Dialog>
             <MyButton scale="large" onClick={handleExportAssessment} className="py-4">
-                Export Offline
+                {t('actions.exportOffline')}
             </MyButton>
         </div>
     );
 };
 
 const AssessmentDetailsComponent = () => {
+    const { t } = useTranslation('assessmentTabIndex');
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
     const { canEdit } = useAssessmentActionVisibility();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
@@ -255,7 +259,8 @@ const AssessmentDetailsComponent = () => {
     const [isPreviewAssessmentDialogOpen, setIsPreviewAssessmentDialogOpen] = useState(false);
 
     useEffect(() => {
-        setNavHeading(heading);
+        setNavHeading(buildHeading(t));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     if (isLoading || isQuestionsLoading) return <DashboardLoader />;
@@ -263,11 +268,8 @@ const AssessmentDetailsComponent = () => {
     return (
         <>
             <Helmet>
-                <title>Assessment Details</title>
-                <meta
-                    name="description"
-                    content="This page shows all details related to an assessment."
-                />
+                <title>{t('helmet.title')}</title>
+                <meta name="description" content={t('helmet.description')} />
             </Helmet>
             <div>
                 <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
@@ -296,7 +298,7 @@ const AssessmentDetailsComponent = () => {
                                         selectedTab === 'overview' ? 'text-primary-500' : ''
                                     }`}
                                 >
-                                    Overview
+                                    {t('tabs.overview')}
                                 </span>
                             </TabsTrigger>
                             {assessmentTab !== 'upcomingTests' && (
@@ -314,8 +316,8 @@ const AssessmentDetailsComponent = () => {
                                         }`}
                                     >
                                         {examType === 'SURVEY'
-                                            ? 'Individual Respondents'
-                                            : 'Submissions'}
+                                            ? t('tabs.individualRespondents')
+                                            : t('tabs.submissions')}
                                     </span>
                                 </TabsTrigger>
                             )}
@@ -332,7 +334,7 @@ const AssessmentDetailsComponent = () => {
                                         selectedTab === 'basicInfo' ? 'text-primary-500' : ''
                                     }`}
                                 >
-                                    Basic Info
+                                    {t('tabs.basicInfo')}
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
@@ -348,7 +350,7 @@ const AssessmentDetailsComponent = () => {
                                         selectedTab === 'questions' ? 'text-primary-500' : ''
                                     }`}
                                 >
-                                    Questions
+                                    {t('tabs.questions')}
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
@@ -364,7 +366,7 @@ const AssessmentDetailsComponent = () => {
                                         selectedTab === 'participants' ? 'text-primary-500' : ''
                                     }`}
                                 >
-                                    Participants
+                                    {t('tabs.participants')}
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
@@ -380,7 +382,7 @@ const AssessmentDetailsComponent = () => {
                                         selectedTab === 'accessControl' ? 'text-primary-500' : ''
                                     }`}
                                 >
-                                    Access Control
+                                    {t('tabs.accessControl')}
                                 </span>
                             </TabsTrigger>
                             <TabsTrigger
@@ -396,7 +398,7 @@ const AssessmentDetailsComponent = () => {
                                         selectedTab === 'reattemptRequests' ? 'text-primary-500' : ''
                                     }`}
                                 >
-                                    Reattempt Requests
+                                    {t('tabs.reattemptRequests')}
                                 </span>
                                 {/* The in-app alert that learners are waiting. Without it an
                                     admin only finds out via whatever the workflow emails them. */}
@@ -419,7 +421,7 @@ const AssessmentDetailsComponent = () => {
                             </MyButton>
                         )}
                     </div>
-                    <div className="scrollbar-hide max-h-[72vh] overflow-y-auto pr-8">
+                    <div className="scrollbar-hide max-h-dialog-tall overflow-y-auto pe-8">
                         <TabsContent value="overview">
                             {examType === 'SURVEY' ? (
                                 <SurveyMainOverviewTab

@@ -11,7 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { MyFilterOption, MyFilterProps } from '@/types/assessments/my-filter';
-import { Check, ChevronDown, ListFilter, X } from 'lucide-react';
+import { Check, CaretDown, FunnelSimple, X } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 // Show the actual choices rather than a bare count — "Biology, Physics" tells an admin
 // what the list is showing, "2 selected" makes them open the menu to find out. Past two
@@ -24,6 +25,8 @@ export const ScheduleTestFilters = ({
     selectedItems,
     onSelectionChange,
 }: MyFilterProps) => {
+    const { t } = useTranslation('assessmentScheduleTestFilters');
+
     const toggleSelection = (option: MyFilterOption) => {
         const updatedItems = selectedItems.some((item) => item.id === option.id)
             ? selectedItems.filter((item) => item.id !== option.id)
@@ -46,8 +49,11 @@ export const ScheduleTestFilters = ({
                     // keyboard user something opens here.
                     aria-label={
                         hasSelection
-                            ? `${label}: ${selectedItems.map((item) => item.name).join(', ')}`
-                            : `Filter by ${label}`
+                            ? t('trigger.ariaLabelSelected', {
+                                  label,
+                                  selection: selectedItems.map((item) => item.name).join(', '),
+                              })
+                            : t('trigger.ariaLabelEmpty', { label })
                     }
                     className={cn(
                         'h-9 shrink-0 cursor-pointer gap-1.5 rounded-lg border-neutral-300 px-2.5 text-sm font-normal text-neutral-600',
@@ -57,7 +63,7 @@ export const ScheduleTestFilters = ({
                             'border-primary-500 bg-primary-50 text-primary-600 hover:border-primary-500 hover:bg-primary-100'
                     )}
                 >
-                    <ListFilter className="size-4 shrink-0" aria-hidden="true" />
+                    <FunnelSimple className="size-4 shrink-0" aria-hidden="true" />
                     <span className="whitespace-nowrap">{label}</span>
 
                     {hasSelection && (
@@ -87,7 +93,7 @@ export const ScheduleTestFilters = ({
                             <span
                                 role="button"
                                 tabIndex={0}
-                                aria-label={`Clear ${label} filter`}
+                                aria-label={t('trigger.clearAriaLabel', { label })}
                                 className="ml-0.5 rounded p-0.5 text-primary-500 hover:bg-primary-200 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                                 onClick={(event) => {
                                     event.preventDefault();
@@ -107,26 +113,28 @@ export const ScheduleTestFilters = ({
                     )}
 
                     {!hasSelection && (
-                        <ChevronDown
+                        <CaretDown
                             className="size-4 shrink-0 text-neutral-400"
                             aria-hidden="true"
                         />
                     )}
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[220px] p-0" align="start">
+            <PopoverContent className="w-56 p-0" align="start">
                 <Command>
-                    <CommandInput placeholder={`Search ${label.toLowerCase()}...`} />
+                    <CommandInput
+                        placeholder={t('search.placeholder', { label: label.toLowerCase() })}
+                    />
                     <CommandList>
-                        <CommandEmpty>No results found.</CommandEmpty>
+                        <CommandEmpty>{t('search.noResults')}</CommandEmpty>
                         <CommandGroup heading={label}>
-                            {data?.map((option, index) => {
+                            {data?.map((option, idx) => {
                                 const isSelected = selectedItems.some(
                                     (item) => item.id === option.id
                                 );
                                 return (
                                     <CommandItem
-                                        key={index}
+                                        key={idx}
                                         onSelect={() => toggleSelection(option)}
                                         className="cursor-pointer gap-2"
                                     >

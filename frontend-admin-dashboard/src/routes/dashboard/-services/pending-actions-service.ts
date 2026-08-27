@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { fetchPendingAdjustments } from '@/services/manage-finances';
 import { fetchSystemAlerts, stripHtml } from '@/services/notifications/system-alerts';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -50,17 +51,24 @@ const safeSettled = async <T>(p: Promise<T>): Promise<T | null> => {
 
 // Map fetchPendingAdjustments rows into overdue-payment actions.
 // An item is "overdue" when is_overdue=true OR status='OVERDUE'.
-const buildOverduePaymentActions = async (): Promise<PendingAction[]> => {
+const buildOverduePaymentActions = async (t: TFunction): Promise<PendingAction[]> => {
     const rows = await safeSettled(fetchPendingAdjustments());
     if (!rows) return [];
     const learnerLabel = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+    const defaultFeeType = t('dashboardPendingActionsService:overduePayment.defaultFeeType');
     return rows
         .filter((r) => r.is_overdue || r.status === 'OVERDUE')
         .map((r) => ({
             id: `overdue:${r.id}`,
             type: 'OVERDUE_PAYMENT' as const,
-            title: `${r.student_name || learnerLabel} — ${formatMoney(r.amount_due || 0)} overdue`,
-            subtitle: `${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} late · ${r.fee_type_name || r.cpo_name || 'Fee'}`,
+            title: t('dashboardPendingActionsService:overduePayment.title', {
+                name: r.student_name || learnerLabel,
+                amount: formatMoney(r.amount_due || 0),
+            }),
+            subtitle: t('dashboardPendingActionsService:overduePayment.subtitle', {
+                count: r.days_overdue,
+                feeType: r.fee_type_name || r.cpo_name || defaultFeeType,
+            }),
             ageHours: Math.max(r.days_overdue * 24, hoursSince(r.due_date)),
             deepLink: '/financial-management/collection-dashboard',
             severity: r.days_overdue >= 14 ? 'high' : r.days_overdue >= 7 ? 'medium' : 'low',
@@ -68,17 +76,23 @@ const buildOverduePaymentActions = async (): Promise<PendingAction[]> => {
 };
 
 // Same source, different slice: items awaiting concession/adjustment approval.
-const buildPendingApprovalActions = async (): Promise<PendingAction[]> => {
+const buildPendingApprovalActions = async (t: TFunction): Promise<PendingAction[]> => {
     const rows = await safeSettled(fetchPendingAdjustments());
     if (!rows) return [];
     const learnerLabel = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+    const defaultAdjustmentType = t('dashboardPendingActionsService:pendingApproval.defaultType');
     return rows
         .filter((r) => r.adjustment_status === 'PENDING_APPROVAL')
         .map((r) => ({
             id: `approval:${r.id}`,
             type: 'PENDING_APPROVAL' as const,
-            title: `Approve adjustment for ${r.student_name || learnerLabel}`,
-            subtitle: `${r.adjustment_type || 'Adjustment'} · ${formatMoney(r.adjustment_amount || 0)}`,
+            title: t('dashboardPendingActionsService:pendingApproval.title', {
+                name: r.student_name || learnerLabel,
+            }),
+            subtitle: t('dashboardPendingActionsService:pendingApproval.subtitle', {
+                type: r.adjustment_type || defaultAdjustmentType,
+                amount: formatMoney(r.adjustment_amount || 0),
+            }),
             ageHours: hoursSince(r.due_date),
             deepLink: '/financial-management/collection-dashboard',
             severity: 'medium',
@@ -86,7 +100,7 @@ const buildPendingApprovalActions = async (): Promise<PendingAction[]> => {
 };
 
 // Unread system alerts (top 5) — clicking opens the existing alerts modal.
-const buildUnreadAlertActions = async (userId: string): Promise<PendingAction[]> => {
+const buildUnreadAlertActions = async (userId: string, t: TFunction): Promise<PendingAction[]> => {
     if (!userId) return [];
     const page = await safeSettled(fetchSystemAlerts({ userId, page: 0, size: 10 }));
     if (!page) return [];
@@ -101,7 +115,7 @@ const buildUnreadAlertActions = async (userId: string): Promise<PendingAction[]>
             return {
                 id: `alert:${a.messageId}`,
                 type: 'UNREAD_ALERT' as const,
-                title: a.title || 'Notification',
+                title: a.title || t('dashboardPendingActionsService:unreadAlert.defaultTitle'),
                 subtitle: preview ? preview.slice(0, 80) : undefined,
                 ageHours: hoursSince(a.createdAt),
                 deepLink: '/dashboard?alerts=open',
@@ -120,14 +134,17 @@ export interface GetPendingActionsArgs {
     instituteId: string;
     userId: string;
     limit?: number;
+    t: TFunction;
+    /** Current i18next language — included so the query cache re-fetches on language switch. */
+    language: string;
 }
 
 export const getPendingActions = async (args: GetPendingActionsArgs): Promise<PendingAction[]> => {
-    const { userId, limit = 20 } = args;
+    const { userId, limit = 20, t } = args;
     const groups = await Promise.all([
-        buildOverduePaymentActions(),
-        buildPendingApprovalActions(),
-        buildUnreadAlertActions(userId),
+        buildOverduePaymentActions(t),
+        buildPendingApprovalActions(t),
+        buildUnreadAlertActions(userId, t),
     ]);
     const all = groups.flat();
     all.sort((a, b) => {
@@ -139,10 +156,10 @@ export const getPendingActions = async (args: GetPendingActionsArgs): Promise<Pe
 };
 
 export const getPendingActionsQuery = (args: GetPendingActionsArgs) => {
-    const { instituteId, userId, limit } = args;
+    const { instituteId, userId, limit, t, language } = args;
     return {
-        queryKey: ['PENDING_ACTIONS', instituteId, userId, limit ?? null] as const,
-        queryFn: () => getPendingActions({ instituteId, userId, limit }),
+        queryKey: ['PENDING_ACTIONS', instituteId, userId, limit ?? null, language] as const,
+        queryFn: () => getPendingActions({ instituteId, userId, limit, t, language }),
         staleTime: 60_000,
         retry: false,
     };

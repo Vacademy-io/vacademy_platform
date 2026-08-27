@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScheduleTestTab } from '@/types/assessments/assessment-list';
+import { useTranslation } from 'react-i18next';
 
 const ScheduleTestTabList = ({
     selectedTab,
@@ -13,6 +14,7 @@ const ScheduleTestTabList = ({
     // null = not fetched yet; fall back to the loaded list's total when present.
     tabCounts?: Record<string, number | null>;
 }) => {
+    const { t } = useTranslation('assessmentScheduleTestTabList');
     // Prefer the independently-fetched count; fall back to the tab's loaded list
     // total, then 0. Keeps badges correct before a tab is ever opened.
     const countFor = (tabValue: string, tabData: ScheduleTestTab | undefined) => {
@@ -34,10 +36,10 @@ const ScheduleTestTabList = ({
                 }`}
             >
                 <span className={`${selectedTab === 'liveTests' ? 'text-primary-500' : ''}`}>
-                    Live
+                    {t('tabs.live')}
                 </span>
                 <Badge
-                    className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                    className="rounded-full bg-primary-500 p-0 px-2 text-caption text-white"
                     variant="outline"
                 >
                     {countFor('liveTests', scheduleTestTabsData[0])}
@@ -52,10 +54,10 @@ const ScheduleTestTabList = ({
                 }`}
             >
                 <span className={`${selectedTab === 'upcomingTests' ? 'text-primary-500' : ''}`}>
-                    Upcoming
+                    {t('tabs.upcoming')}
                 </span>
                 <Badge
-                    className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                    className="rounded-full bg-primary-500 p-0 px-2 text-caption text-white"
                     variant="outline"
                 >
                     {countFor('upcomingTests', scheduleTestTabsData[1])}
@@ -70,10 +72,10 @@ const ScheduleTestTabList = ({
                 }`}
             >
                 <span className={`${selectedTab === 'previousTests' ? 'text-primary-500' : ''}`}>
-                    Previous
+                    {t('tabs.previous')}
                 </span>
                 <Badge
-                    className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                    className="rounded-full bg-primary-500 p-0 px-2 text-caption text-white"
                     variant="outline"
                 >
                     {countFor('previousTests', scheduleTestTabsData[2])}
@@ -88,10 +90,10 @@ const ScheduleTestTabList = ({
                 }`}
             >
                 <span className={`${selectedTab === 'draftTests' ? 'text-primary-500' : ''}`}>
-                    Drafts
+                    {t('tabs.drafts')}
                 </span>
                 <Badge
-                    className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                    className="rounded-full bg-primary-500 p-0 px-2 text-caption text-white"
                     variant="outline"
                 >
                     {countFor('draftTests', scheduleTestTabsData[3])}

@@ -4,6 +4,7 @@ import {
     GraduationCap,
     ChalkboardTeacher,
 } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { extractTextFromHTML } from "@/components/common/helper";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -35,6 +36,16 @@ const getInitials = (email: string) => {
 };
 
 export const CourseContentSections = ({ courseData }: CourseContentSectionsProps) => {
+    const { t } = useTranslation("courseDetailsB");
+    const courseLower = getTerminology(
+        ContentTerms.Course,
+        SystemTerms.Course
+    ).toLocaleLowerCase();
+    const teacherLower = getTerminology(
+        RoleTerms.Teacher,
+        SystemTerms.Teacher
+    ).toLocaleLowerCase();
+
     return (
         <div className="space-y-4">
             {/* What You'll Learn Section */}
@@ -54,7 +65,7 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                What you'll learn
+                                {t("courseContent.whatYoullLearn")}
                             </h2>
                         </div>
                         <div
@@ -84,11 +95,9 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                About this{" "}
-                                {getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                ).toLocaleLowerCase()}
+                                {t("courseContent.aboutThisCourse", {
+                                    course: courseLower,
+                                })}
                             </h2>
                         </div>
                         <div
@@ -118,7 +127,7 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                Who should join
+                                {t("courseContent.whoShouldJoin")}
                             </h2>
                         </div>
                         <div
@@ -148,11 +157,9 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                {getTerminology(
-                                    RoleTerms.Teacher,
-                                    SystemTerms.Teacher
-                                ).toLocaleLowerCase()}
-                                s
+                                {t("courseContent.instructorsHeading", {
+                                    teacher: teacherLower,
+                                })}
                             </h2>
                         </div>
                         <div className="space-y-2">

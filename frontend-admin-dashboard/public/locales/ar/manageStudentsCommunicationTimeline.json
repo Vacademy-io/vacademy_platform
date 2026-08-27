@@ -1,0 +1,67 @@
+{
+    "channels": {
+        "EMAIL": "البريد الإلكتروني",
+        "WHATSAPP": "واتساب",
+        "PUSH": "إشعار فوري",
+        "SMS": "رسالة نصية"
+    },
+    "statuses": {
+        "PENDING": "قيد الانتظار",
+        "SENT": "تم الإرسال",
+        "DELIVERED": "تم التسليم",
+        "READ": "تمت القراءة",
+        "CLICKED": "تم النقر",
+        "FAILED": "فشل",
+        "BOUNCED": "مرتد",
+        "COMPLAINT": "شكوى",
+        "RECEIVED": "تم الاستلام"
+    },
+    "filters": {
+        "all": "الكل"
+    },
+    "headerMedia": {
+        "viewDocument": "عرض المستند",
+        "attachmentAlt": "مرفق"
+    },
+    "expandedDetail": {
+        "senderFallback": "البريد الإلكتروني",
+        "toRecipient": "إلى {{recipient}}",
+        "messageHeading": "الرسالة",
+        "templateLabel": "القالب:",
+        "fromLabel": "من:",
+        "toLabel": "إلى:",
+        "sourceLabel": "المصدر:",
+        "deliveryTimelineHeading": "الجدول الزمني للتسليم",
+        "collapse": "طي"
+    },
+    "direction": {
+        "received": "تم الاستلام عبر {{channel}}",
+        "sent": "تم الإرسال عبر {{channel}}"
+    },
+    "noSubject": "(بدون موضوع)",
+    "emptyStates": {
+        "noContactTitle": "لا توجد بيانات اتصال",
+        "noContactHint": "اختر طالبًا لديه بريد إلكتروني أو رقم هاتف لعرض مراسلاته.",
+        "loadErrorTitle": "تعذر تحميل المراسلات",
+        "loadErrorHint": "حدث خطأ أثناء جلب الرسائل. يرجى المحاولة مرة أخرى.",
+        "noCommunicationsTitle": "لا توجد مراسلات",
+        "noChannelMessages": "لا توجد رسائل {{channel}} حتى الآن. جرّب اختيار \"{{allLabel}}\" لعرض القنوات الأخرى.",
+        "noMessagesYet": "لم يتم إرسال أو استلام أي رسائل من هذا الطالب أو إليه بعد.",
+        "sendFirstMessage": "إرسال أول رسالة"
+    },
+    "sendCard": {
+        "heading": "إرسال إشعار",
+        "subheading": "رسالة عبر البريد الإلكتروني أو واتساب"
+    },
+    "pagination": {
+        "previous": "السابق",
+        "next": "التالي",
+        "pageOf": "صفحة {{current}} من {{total}}"
+    },
+    "totalCount_zero": "{{count}} رسالة إجمالاً",
+    "totalCount_one": "{{count}} رسالة إجمالاً",
+    "totalCount_two": "{{count}} رسالتان إجمالاً",
+    "totalCount_few": "{{count}} رسائل إجمالاً",
+    "totalCount_many": "{{count}} رسالة إجمالاً",
+    "totalCount_other": "{{count}} رسالة إجمالاً"
+}

@@ -1,0 +1,11 @@
+{
+    "trigger": {
+        "label": "Export"
+    },
+    "settingsButton": "Export Settings",
+    "close": "Close",
+    "letterhead": {
+        "upload": "Letterhead",
+        "delete": "Delete Letterhead"
+    }
+}

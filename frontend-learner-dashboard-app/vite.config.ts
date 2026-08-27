@@ -25,6 +25,13 @@ export default defineConfig({
         // approach silently compiles to `false`. Build with
         // VITE_MAC_APP_STORE=true to turn on reader mode for the MAS package.
         __MAC_APP_STORE__: JSON.stringify(process.env.VITE_MAC_APP_STORE === "true"),
+        // Which white-label flavor an Electron build is. Same trap as above: the
+        // build scripts export VITE_ELECTRON_APP_ID, but with no .env* files that
+        // never reaches import.meta.env — it read back as `undefined`, so every
+        // desktop flavor fell through to the "io.vacademy.student.app" default and
+        // resolved SSDC Horizon's domain. Empty string on web/mobile, where the
+        // appId comes from Capacitor instead.
+        __ELECTRON_APP_ID__: JSON.stringify(process.env.VITE_ELECTRON_APP_ID || ""),
     },
     plugins: [
         TanStackRouterVite(),

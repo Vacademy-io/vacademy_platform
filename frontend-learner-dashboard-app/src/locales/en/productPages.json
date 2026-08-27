@@ -207,6 +207,7 @@
     "stepProgress": {
         "ariaLabel": "Enrollment progress",
         "steps": {
+            "catalog": "Select {{courses}}",
             "cart": "Cart",
             "details": "Details",
             "payment": "Payment",

@@ -665,7 +665,11 @@ public class LiveSessionProviderController {
                         }
                     }
                 }
-                attendanceCriteriaEvaluator.evaluate(criteriaSession, schedule, roster, adminMarked);
+                // callback.getDuration() is how long the meeting really ran, in
+                // seconds — the threshold is capped to it so an early finish
+                // cannot fail learners who stayed for the whole class.
+                attendanceCriteriaEvaluator.evaluate(criteriaSession, schedule, roster, adminMarked,
+                        callback.getDuration());
             }
 
             schedule.setLastAttendanceSyncAt(new java.util.Date());
@@ -689,13 +693,14 @@ public class LiveSessionProviderController {
         Optional<LiveSessionLogs> existing = liveSessionLogsRepository
                 .findExistingAttendanceRecord(scheduleId, attendee.getExtUserId());
 
-        // Round, don't floor. The minutes column is what reports, CSV exports and
-        // the workflow query layer read; flooring discarded up to 59 seconds and
-        // always against the learner. Rounding halves the worst case and removes
-        // the bias. The attendance rule itself compares the exact seconds below,
-        // so this value is presentational.
+        // Floored, as it always has been. Rounding would have shifted the minutes
+        // reported for every BBB class on the platform — including institutes
+        // that never enabled the attendance rule — and those figures are read by
+        // reports, CSV exports and the workflow query layer. Precision now lives
+        // in provider_total_duration_seconds, which is what the rule compares and
+        // what the learner's mail renders, so this column has no need to change.
         int durationMinutes = attendee.getDuration() != null
-                ? (int) Math.round(attendee.getDuration() / 60.0) : 0;
+                ? (int) (attendee.getDuration() / 60) : 0;
         // Keep the exact seconds too — the minutes value above floors away up to
         // 59 seconds, which decides borderline minimum-attendance verdicts.
         int durationSeconds = attendee.getDuration() != null
@@ -719,8 +724,13 @@ public class LiveSessionProviderController {
             // per-callback floors compounded the loss: floor(90s)+floor(90s) = 2
             // minutes for 3 minutes of attendance. floor(total) is both correct
             // and impossible to disagree with the seconds column.
+            // floor(total) rather than sum-of-floors: identical for the single
+            // callback that virtually every meeting produces, and it stops a
+            // retry from compounding the truncation (floor(90s) + floor(90s)
+            // reported 2 minutes for 3 minutes of attendance). Still a floor, so
+            // no institute sees its existing figures move.
             log.setProviderTotalDurationMinutes(
-                    totalSeconds > 0 ? (int) Math.round(totalSeconds / 60.0)
+                    totalSeconds > 0 ? totalSeconds / 60
                                      : existingDuration + durationMinutes);
 
             // Merge engagement data (sum counts)

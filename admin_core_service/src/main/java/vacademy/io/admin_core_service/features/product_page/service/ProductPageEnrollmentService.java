@@ -325,13 +325,32 @@ public class ProductPageEnrollmentService {
 
         // Free payment options (amount = 0) must never reach a payment gateway
         if (isRazorpay && !isRazorpayPhase2 && finalTotal > 0.0) {
-            // Phase 1: create Razorpay order + payment log (PAYMENT_PENDING) — do NOT
-            // enroll yet
+            // Phase 1: create the Razorpay order + payment log (PAYMENT_PENDING), then
+            // provision the enrollment in INVITED state — exactly like the redirect-gateway
+            // branch below, and like /v1/learner/enroll does for the invite flow.
+            //
+            // Fulfilment used to live ONLY in Phase 2, which the learner's browser calls
+            // after Razorpay Checkout succeeds. If that call never happened — tab closed,
+            // redirect lost, network dropped between capture and callback — the money was
+            // collected and nothing else: no UserPlan, an unlinked PaymentLog (so the
+            // payment was invisible in Manage Payments), and the learner left sitting in the
+            // ABANDONED_CART placeholder session with no course. The webhook could not
+            // repair it either, because handlePostPaymentLogic() keys post-payment
+            // processing off paymentLog.getUserPlan(), which was null.
+            //
+            // Creating the plan up-front makes the webhook self-sufficient: order.paid /
+            // payment.captured now finds a linked plan and completes the enrollment on its
+            // own. The Phase 2 callback stays the fast path, but it is no longer the only
+            // path, so a lost browser can no longer cost a learner their course.
             PaymentResponseDTO gatewayResponse = paymentService.handlePaymentWithUser(
                     payReq, request.getInstituteId(), user, null);
 
             String paymentLogId = payReq.getOrderId();
             log.info("Razorpay Phase 1: order created, paymentLogId={}", paymentLogId);
+
+            List<String> pendingEnrolledSessionIds = provisionPendingEnrollments(
+                    request, selectedMappings, planByMappingId, couponDiscount, discountAmount,
+                    offer, offerDiscount, basketPrice, user, payReq, paymentLogId);
 
             String razorpayKeyId = null;
             String razorpayOrderId = null;
@@ -350,6 +369,7 @@ public class ProductPageEnrollmentService {
                     .status(PaymentStatusEnum.PAYMENT_PENDING.name())
                     .orderId(razorpayOrderId)
                     .razorpayKeyId(razorpayKeyId)
+                    .enrolledPackageSessionIds(pendingEnrolledSessionIds)
                     .message("Razorpay order created. Please complete payment.")
                     .build();
         }
@@ -361,6 +381,55 @@ public class ProductPageEnrollmentService {
         String parentPaymentLogId;
         if (isRazorpayPhase2) {
             verifyRazorpaySignature(payReq, request.getInstituteId(), firstInvite);
+
+            // Phase 1 already created the plan and linked it to the order's payment log, so
+            // this callback must COMPLETE that enrollment rather than start a second one —
+            // otherwise every paid learner ends up with a duplicate UserPlan and an orphan
+            // gateway order. Mirrors completeGatewayPaymentConfirmation() in
+            // LearnerEnrollRequestService, which solves the same problem for the invite flow.
+            String gatewayOrderRef = payReq.getRazorpayRequest().getRazorpayOrderId();
+            PaymentLog phase1Log = findPhase1PaymentLog(gatewayOrderRef);
+            if (phase1Log != null) {
+                log.info("Razorpay Phase 2: completing Phase 1 enrollment, parentPaymentLog={}", phase1Log.getId());
+
+                // Drive this through the gateway order reference, exactly as the webhook
+                // does, so the parent AND every child log it registered are marked PAID and
+                // each child activates its own UserPlan. Idempotent with the webhook:
+                // whichever of the two arrives second is a no-op, because
+                // updatePaymentLogsByOrderId claims the PAID transition conditionally.
+                paymentLogService.updatePaymentLog(
+                        gatewayOrderRef, PaymentStatusEnum.PAID.name(), request.getInstituteId());
+
+                // Activation (batch shift, credential mail, enrollment notifications, workflow)
+                // is driven from applyOperationsOnFirstPayment via the line above. The coupon
+                // code is the one post-enrollment action it does not cover, and generating it
+                // is idempotent, so issue it here.
+                try {
+                    String inviteCode = selectedMappings.isEmpty() ? null
+                            : selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite().getInviteCode();
+                    learnerCouponService.generateCouponCodeForLearner(
+                            user.getId(), request.getInstituteId(), inviteCode);
+                } catch (Exception e) {
+                    log.error("Failed to generate coupon code for user={}: {}", user.getId(), e.getMessage(), e);
+                }
+
+                return ProductPageEnrollResponse.builder()
+                        .paymentLogId(phase1Log.getId())
+                        .userId(user.getId())
+                        .status(PaymentStatusEnum.PAID.name())
+                        .enrolledPackageSessionIds(selectedMappings.stream()
+                                .map(m -> m.getPsInvitePaymentOption().getPackageSession().getId())
+                                .collect(Collectors.toList()))
+                        .message("Enrollment successful")
+                        .build();
+            }
+
+            // No provisioned Phase 1 order to complete — an order created before this
+            // two-phase provisioning shipped, or one whose Phase 1 enrollment failed. Fall
+            // back to the original behaviour so those payments still enrol.
+            log.warn("Razorpay Phase 2: no provisioned Phase 1 enrollment found for razorpayOrderId={}. "
+                    + "Falling back to enrolling from the confirmation call.",
+                    payReq.getRazorpayRequest().getRazorpayOrderId());
 
             // Create a payment log with PAID status (payment already collected by Razorpay)
             parentPaymentLogId = paymentLogService.createPaymentLog(
@@ -421,106 +490,9 @@ public class ProductPageEnrollmentService {
                 // Redirect-based gateway (Cashfree/PhonePe): create UserPlan + SSIGM entries
                 // in INVITED status now so the webhook can activate them when the gateway
                 // confirms payment via applyOperationsOnFirstPayment().
-                List<String> redirectEnrolledSessionIds = new ArrayList<>();
-                List<String> childPaymentLogIds = new ArrayList<>();
-                vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan firstUserPlan = null;
-
-                for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
-                    ProductPageInviteMapping rdMapping = selectedMappings.stream()
-                            .filter(m -> m.getPsInvitePaymentOption().getId().equals(sel.getPsInvitePaymentOptionId()))
-                            .findFirst().orElseThrow();
-
-                    PackageSessionLearnerInvitationToPaymentOption rdBridge = rdMapping.getPsInvitePaymentOption();
-                    EnrollInvite rdInvite = rdBridge.getEnrollInvite();
-                    PaymentPlan rdPlan = planByMappingId.get(sel.getPsInvitePaymentOptionId());
-
-                    PaymentInitiationRequestDTO rdPayReq = clonePaymentRequest(payReq);
-                    rdPayReq.setAmount(rdPlan.getActualPrice());
-
-                    LearnerPackageSessionsEnrollDTO rdEnrollDTO = new LearnerPackageSessionsEnrollDTO();
-                    rdEnrollDTO.setPackageSessionIds(List.of(rdBridge.getPackageSession().getId()));
-                    rdEnrollDTO.setPlanId(rdPlan.getId());
-                    rdEnrollDTO.setPaymentOptionId(rdBridge.getPaymentOption().getId());
-                    rdEnrollDTO.setEnrollInviteId(rdInvite.getId());
-                    rdEnrollDTO.setReferRequest(request.getReferRequest());
-                    rdEnrollDTO.setCustomFieldValues(
-                            filterFieldsForInvite(request.getCustomFieldValues(), rdInvite.getId()));
-                    rdEnrollDTO.setPaymentInitiationRequest(rdPayReq);
-
-                    vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan rdUserPlan =
-                            userPlanService.createUserPlan(
-                                    user.getId(), rdPlan, couponDiscount, rdInvite,
-                                    rdBridge.getPaymentOption(), rdPayReq, "INVITED");
-
-                    Map<String, Object> rdExtraData = new HashMap<>();
-                    rdExtraData.put("SKIP_PAYMENT_INITIATION", true);
-                    rdExtraData.put("PARENT_PAYMENT_LOG_ID", parentPaymentLogId);
-
-                    LearnerEnrollResponseDTO rdEnrollResp = oneTimePaymentOptionOperation.enrollLearnerToBatch(
-                            user, rdEnrollDTO, request.getInstituteId(),
-                            rdInvite, rdBridge.getPaymentOption(), rdUserPlan, rdExtraData,
-                            request.getLearnerExtraDetails());
-
-                    redirectEnrolledSessionIds.add(rdBridge.getPackageSession().getId());
-
-                    if (firstUserPlan == null) {
-                        firstUserPlan = rdUserPlan;
-                    } else {
-                        // Subsequent mappings: collect child PaymentLog IDs so the webhook
-                        // can process them via the childPaymentLogIds multi-package mechanism.
-                        if (rdEnrollResp.getPaymentResponse() != null
-                                && StringUtils.hasText(rdEnrollResp.getPaymentResponse().getOrderId())) {
-                            childPaymentLogIds.add(rdEnrollResp.getPaymentResponse().getOrderId());
-                        }
-                    }
-
-                    if (parentPaymentLogId != null) {
-                        createLineItem(parentPaymentLogId, rdInvite.getId(), (int) Math.round(rdPlan.getActualPrice()));
-                    }
-                }
-
-                if (parentPaymentLogId != null && offer != null && offerDiscount > 0) {
-                    createLineItem(parentPaymentLogId, "OFFER:" + offer.getId(),
-                            -(int) Math.round(offerDiscount));
-                }
-
-                if (parentPaymentLogId != null && offer != null && offerDiscount > 0) {
-            createLineItem(parentPaymentLogId, "OFFER:" + offer.getId(),
-                    -(int) Math.round(offerDiscount));
-        }
-
-        if (parentPaymentLogId != null && basketPrice != null) {
-                    createLineItem(parentPaymentLogId,
-                            "BASKET:" + request.getSelectedMappings().size() + "_COURSES",
-                            (int) Math.round(basketPrice.getTotal()));
-                }
-
-                if (parentPaymentLogId != null && discountAmount > 0 && request.getCouponCode() != null) {
-                    createLineItem(parentPaymentLogId, "COUPON:" + request.getCouponCode(),
-                            -(int) Math.round(discountAmount));
-                }
-
-                appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
-
-                // Link the first UserPlan to the parent PaymentLog. Without this link,
-                // handlePostPaymentLogic() treats the payment as a donation (userPlan == null)
-                // and skips applyOperationsOnFirstPayment().
-                if (firstUserPlan != null) {
-                    final vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan planToLink =
-                            firstUserPlan;
-                    paymentLogRepository.findById(parentPaymentLogId).ifPresent(parentLog -> {
-                        parentLog.setUserPlan(planToLink);
-                        if (!childPaymentLogIds.isEmpty()) {
-                            String existingData = parentLog.getPaymentSpecificData();
-                            Map<String, Object> data = existingData != null
-                                    ? JsonUtil.fromJson(existingData, Map.class) : new HashMap<>();
-                            if (data == null) data = new HashMap<>();
-                            data.put("childPaymentLogIds", childPaymentLogIds);
-                            parentLog.setPaymentSpecificData(JsonUtil.toJson(data));
-                        }
-                        paymentLogRepository.save(parentLog);
-                    });
-                }
+                List<String> redirectEnrolledSessionIds = provisionPendingEnrollments(
+                        request, selectedMappings, planByMappingId, couponDiscount, discountAmount,
+                        offer, offerDiscount, basketPrice, user, payReq, parentPaymentLogId);
 
                 log.info("Redirect gateway: created {} enrollment entries, linked userPlan to paymentLog={}",
                         redirectEnrolledSessionIds.size(), parentPaymentLogId);
@@ -703,6 +675,183 @@ public class ProductPageEnrollmentService {
                 .status("CPO_ENROLLED")
                 .message("CPO enrollment created. Please select installments to pay.")
                 .build();
+    }
+
+    /**
+     * Creates the UserPlan + enrollment entries for a payment that has been initiated
+     * but not yet confirmed, and links the first plan to the order's PaymentLog.
+     *
+     * <p>Plans are created in {@code INVITED} rather than {@code PENDING_FOR_PAYMENT}
+     * deliberately: the learner has no access and no ledger obligation until the gateway
+     * confirms, so an abandoned checkout leaves no phantom Due behind. The link to the
+     * PaymentLog is what makes the payment webhook self-sufficient — without it
+     * {@code handlePostPaymentLogic()} sees a null UserPlan, treats the payment as a
+     * donation, and skips {@code applyOperationsOnFirstPayment()} entirely.
+     *
+     * @return the package session ids the learner was provisionally enrolled into
+     */
+    private List<String> provisionPendingEnrollments(
+            ProductPageEnrollRequest request,
+            List<ProductPageInviteMapping> selectedMappings,
+            Map<String, PaymentPlan> planByMappingId,
+            AppliedCouponDiscount couponDiscount,
+            double discountAmount,
+            OfferCalculator.AppliedOffer offer,
+            double offerDiscount,
+            BasketPricingCalculator.BasketPrice basketPrice,
+            UserDTO user,
+            PaymentInitiationRequestDTO payReq,
+            String parentPaymentLogId) {
+
+        List<String> enrolledSessionIds = new ArrayList<>();
+        List<String> childPaymentLogIds = new ArrayList<>();
+
+        for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
+            ProductPageInviteMapping mapping = selectedMappings.stream()
+                    .filter(m -> m.getPsInvitePaymentOption().getId().equals(sel.getPsInvitePaymentOptionId()))
+                    .findFirst().orElseThrow();
+
+            PackageSessionLearnerInvitationToPaymentOption bridge = mapping.getPsInvitePaymentOption();
+            EnrollInvite invite = bridge.getEnrollInvite();
+            PaymentPlan plan = planByMappingId.get(sel.getPsInvitePaymentOptionId());
+
+            PaymentInitiationRequestDTO invitePayReq = clonePaymentRequest(payReq);
+            invitePayReq.setAmount(plan.getActualPrice());
+
+            LearnerPackageSessionsEnrollDTO enrollDTO = new LearnerPackageSessionsEnrollDTO();
+            enrollDTO.setPackageSessionIds(List.of(bridge.getPackageSession().getId()));
+            enrollDTO.setPlanId(plan.getId());
+            enrollDTO.setPaymentOptionId(bridge.getPaymentOption().getId());
+            enrollDTO.setEnrollInviteId(invite.getId());
+            enrollDTO.setReferRequest(request.getReferRequest());
+            enrollDTO.setCustomFieldValues(
+                    filterFieldsForInvite(request.getCustomFieldValues(), invite.getId()));
+            enrollDTO.setPaymentInitiationRequest(invitePayReq);
+
+            vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan userPlan =
+                    userPlanService.createUserPlan(
+                            user.getId(), plan, couponDiscount, invite,
+                            bridge.getPaymentOption(), invitePayReq, "INVITED");
+
+            Map<String, Object> extraData = new HashMap<>();
+            extraData.put("SKIP_PAYMENT_INITIATION", true);
+            extraData.put("PARENT_PAYMENT_LOG_ID", parentPaymentLogId);
+
+            LearnerEnrollResponseDTO enrollResp = oneTimePaymentOptionOperation.enrollLearnerToBatch(
+                    user, enrollDTO, request.getInstituteId(),
+                    invite, bridge.getPaymentOption(), userPlan, extraData,
+                    request.getLearnerExtraDetails());
+
+            enrolledSessionIds.add(bridge.getPackageSession().getId());
+
+            // Register EVERY child PaymentLog — including the first mapping's — on the
+            // parent, so updatePaymentLogsByOrderId cascades the PAID transition to all
+            // of them and each one activates its own UserPlan.
+            //
+            // The parent is deliberately left unlinked to a plan. It is tempting to link
+            // it (that is what the redirect-gateway branch used to do for its first
+            // mapping), but a linked PAID log posts a ledger CREDIT_PAYMENT, and
+            // recordCreditPayment de-duplicates on the PaymentLog id — not the plan. A
+            // linked parent carrying the ORDER TOTAL plus one linked child per course
+            // therefore credits the learner total + every extra course price on a
+            // multi-course checkout. Crediting only the children sums to exactly the
+            // order total, and leaves the same row shape a successful checkout produces
+            // today: parent PAID/unlinked, one PAID/linked child per course.
+            if (enrollResp.getPaymentResponse() != null
+                    && StringUtils.hasText(enrollResp.getPaymentResponse().getOrderId())) {
+                childPaymentLogIds.add(enrollResp.getPaymentResponse().getOrderId());
+            }
+
+            if (parentPaymentLogId != null) {
+                createLineItem(parentPaymentLogId, invite.getId(), (int) Math.round(plan.getActualPrice()));
+            }
+        }
+
+        // Pricing breakdown on the parent, in the order the money was computed:
+        // basket total, then the page offer, then the coupon.
+        if (parentPaymentLogId != null && basketPrice != null) {
+            createLineItem(parentPaymentLogId,
+                    "BASKET:" + request.getSelectedMappings().size() + "_COURSES",
+                    (int) Math.round(basketPrice.getTotal()));
+        }
+
+        if (parentPaymentLogId != null && offer != null && offerDiscount > 0) {
+            createLineItem(parentPaymentLogId, "OFFER:" + offer.getId(),
+                    -(int) Math.round(offerDiscount));
+        }
+
+        if (parentPaymentLogId != null && discountAmount > 0 && request.getCouponCode() != null) {
+            createLineItem(parentPaymentLogId, "COUPON:" + request.getCouponCode(),
+                    -(int) Math.round(discountAmount));
+        }
+
+        appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
+
+        // Record the children on the parent. This is what lets the payment webhook reach
+        // them: updatePaymentLogsByOrderId resolves the parent from the gateway order
+        // reference, reads childPaymentLogIds out of its payment_specific_data, and marks
+        // the whole set PAID — at which point each child drives applyOperationsOnFirstPayment
+        // for its own UserPlan. Without this the webhook would see a parent with no plan,
+        // treat the payment as a donation, and enrol nobody.
+        if (!childPaymentLogIds.isEmpty() && parentPaymentLogId != null) {
+            paymentLogRepository.findById(parentPaymentLogId).ifPresent(parentLog -> {
+                String existingData = parentLog.getPaymentSpecificData();
+                Map<String, Object> data = existingData != null
+                        ? JsonUtil.fromJson(existingData, Map.class) : new HashMap<>();
+                if (data == null) data = new HashMap<>();
+                data.put("childPaymentLogIds", childPaymentLogIds);
+                parentLog.setPaymentSpecificData(JsonUtil.toJson(data));
+                paymentLogRepository.save(parentLog);
+            });
+        }
+
+        return enrolledSessionIds;
+    }
+
+    /**
+     * Finds the parent PaymentLog of a gateway order that already carries a provisioned
+     * enrollment, so the confirmation call can complete it instead of duplicating it.
+     *
+     * <p>The gateway order reference lives inside {@code payment_specific_data}, and the
+     * parent is the earliest log mentioning it. Provisioning is recognised by the
+     * {@code childPaymentLogIds} entry that {@link #provisionPendingEnrollments} writes
+     * there — that, not a linked UserPlan, is what the parent carries.
+     *
+     * <p>Returns {@code null} when there is nothing to complete: an order opened before
+     * this provisioning shipped, or one whose Phase 1 enrollment failed. The caller then
+     * falls back to enrolling from the confirmation call itself.
+     */
+    private PaymentLog findPhase1PaymentLog(String gatewayOrderRef) {
+        if (!StringUtils.hasText(gatewayOrderRef)) {
+            return null;
+        }
+        try {
+            return paymentLogRepository.findAllByOrderIdInJson(gatewayOrderRef)
+                    .stream()
+                    .filter(pl -> hasProvisionedChildren(pl))
+                    .min(Comparator.comparing(PaymentLog::getCreatedAt))
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Could not look up the originating payment log for gateway order {}: {}",
+                    gatewayOrderRef, e.getMessage());
+            return null;
+        }
+    }
+
+    private boolean hasProvisionedChildren(PaymentLog paymentLog) {
+        if (!StringUtils.hasText(paymentLog.getPaymentSpecificData())) {
+            return false;
+        }
+        try {
+            Map<String, Object> data = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
+            if (data == null) {
+                return false;
+            }
+            Object children = data.get("childPaymentLogIds");
+            return children instanceof List && !((List<?>) children).isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void verifyRazorpaySignature(PaymentInitiationRequestDTO payReq, String instituteId,

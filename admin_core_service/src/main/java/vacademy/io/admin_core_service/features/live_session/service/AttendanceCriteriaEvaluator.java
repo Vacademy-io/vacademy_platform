@@ -109,6 +109,19 @@ public class AttendanceCriteriaEvaluator {
      */
     public void evaluate(LiveSession session, SessionSchedule schedule,
                          Map<String, Boolean> roster, Set<String> adminMarked) {
+        evaluate(session, schedule, roster, adminMarked, null);
+    }
+
+    /**
+     * @param providerMeetingSeconds how long the meeting actually ran, when the
+     *        provider reports it (BBB does). The threshold is measured against
+     *        whichever is SHORTER, this or the scheduled slot — a teacher who
+     *        ends a 60-minute class after 30 must not make every learner who
+     *        stayed the whole time fall short of a 36-minute bar.
+     */
+    public void evaluate(LiveSession session, SessionSchedule schedule,
+                         Map<String, Boolean> roster, Set<String> adminMarked,
+                         Long providerMeetingSeconds) {
         String scheduleId = schedule != null ? schedule.getId() : null;
         try {
             AttendanceCriteriaConfigDTO config = attendanceCriteriaService.resolve(session);
@@ -138,7 +151,19 @@ public class AttendanceCriteriaEvaluator {
             // learner present for 4m50s of a 7-minute class (69%) was truncated to
             // 4 and failed a 4.2-minute bar — an absence for a class they attended.
             int scheduledSeconds = scheduledMinutes * 60;
-            double requiredSeconds = scheduledSeconds * (config.getMinDurationPercent() / 100.0);
+            // Measure against the class that actually happened. A 60-minute slot
+            // finished in 30 would otherwise demand 36 minutes of a 30-minute
+            // class, failing every learner who stayed to the end. Only ever
+            // shortens the bar, never lengthens it — a class that overruns is
+            // still judged against the slot the learners were promised.
+            int effectiveSeconds = scheduledSeconds;
+            boolean cappedToActual = false;
+            if (providerMeetingSeconds != null && providerMeetingSeconds > 0
+                    && providerMeetingSeconds < scheduledSeconds) {
+                effectiveSeconds = providerMeetingSeconds.intValue();
+                cappedToActual = true;
+            }
+            double requiredSeconds = effectiveSeconds * (config.getMinDurationPercent() / 100.0);
             double requiredMinutes = requiredSeconds / 60.0;
 
             List<LiveSessionLogs> rows =
@@ -170,7 +195,8 @@ public class AttendanceCriteriaEvaluator {
                     // The provider says they were here but gave no minutes; we
                     // cannot judge how long, and they demonstrably attended.
                     writeAudit(row, config, STATUS_PRESENT, "NO_DURATION_DATA",
-                            null, scheduledMinutes, requiredMinutes, null, requiredSeconds, false);
+                            null, scheduledMinutes, requiredMinutes, null, requiredSeconds, false,
+                            effectiveSeconds, cappedToActual);
                     liveSessionLogsRepository.save(row);
                     continue;
                 }
@@ -208,7 +234,8 @@ public class AttendanceCriteriaEvaluator {
                         || !verdict.equalsIgnoreCase(previousVerdict);
 
                 writeAudit(row, config, verdict, reason, attendedMinutes, scheduledMinutes,
-                        requiredMinutes, attendedSeconds, requiredSeconds, exactSeconds != null);
+                        requiredMinutes, attendedSeconds, requiredSeconds, exactSeconds != null,
+                        effectiveSeconds, cappedToActual);
 
                 if (!verdict.equalsIgnoreCase(previousStatus)) {
                     row.setStatus(verdict);
@@ -219,7 +246,7 @@ public class AttendanceCriteriaEvaluator {
 
                 if (verdictMoved) {
                     notify(session, row, verdict,
-                            explain(verdict, reason, attendedSeconds, scheduledSeconds,
+                            explain(verdict, reason, attendedSeconds, effectiveSeconds,
                                     requiredSeconds, config.getMinDurationPercent()));
                 }
             }
@@ -253,7 +280,7 @@ public class AttendanceCriteriaEvaluator {
     private void writeAudit(LiveSessionLogs row, AttendanceCriteriaConfigDTO config, String verdict,
                             String reason, Integer attendedMinutes, Integer scheduledMinutes,
                             double requiredMinutes, Integer attendedSeconds, Double requiredSeconds,
-                            boolean exact) {
+                            boolean exact, int effectiveSeconds, boolean cappedToActual) {
         Map<String, Object> audit = new LinkedHashMap<>();
         audit.put("verdict", verdict);
         audit.put("reason", reason);
@@ -261,15 +288,17 @@ public class AttendanceCriteriaEvaluator {
         audit.put("scheduledMinutes", scheduledMinutes);
         audit.put("thresholdPercent", config.getMinDurationPercent());
         audit.put("requiredMinutes", Math.round(requiredMinutes));
-        if (attendedSeconds != null && scheduledMinutes != null && scheduledMinutes > 0) {
+        if (attendedSeconds != null && effectiveSeconds > 0) {
             audit.put("attendedPercent",
-                    Math.round(attendedSeconds * 1000.0 / (scheduledMinutes * 60)) / 10.0);
+                    Math.round(attendedSeconds * 1000.0 / effectiveSeconds) / 10.0);
         }
         audit.put("attendedSeconds", attendedSeconds);
         audit.put("requiredSeconds", requiredSeconds == null ? null : Math.round(requiredSeconds));
         audit.put("attendedDisplay", attendedSeconds == null ? null : hms(attendedSeconds));
         // false = provider gave only whole minutes, so the figures are floored.
         audit.put("exactSeconds", exact);
+        audit.put("effectiveSeconds", effectiveSeconds);
+        audit.put("cappedToActualMeeting", cappedToActual);
         audit.put("previousStatus", row.getStatus());
         audit.put("evaluatedAt", Instant.now().toString());
         try {
@@ -334,15 +363,15 @@ public class AttendanceCriteriaEvaluator {
             return "You were in the class for " + hms(attendedSeconds)
                     + " of its " + hms(scheduledSeconds) + ".";
         }
-        String required = hms((int) Math.round(requiredSeconds));
+        // The threshold itself is deliberately not disclosed to learners — telling
+        // them the exact bar invites gaming it. The audit JSON keeps the full
+        // numbers so an admin can always justify the verdict.
         if ("NO_SHOW".equals(reason)) {
-            return "Our records show you did not join the class. At least " + required
-                    + " of the " + hms(scheduledSeconds) + " class (" + pct + "%) was required"
-                    + " to be marked present.";
+            return "Our records show you did not join the class.";
         }
         return "You were in the class for " + hms(attendedSeconds) + " of its "
-                + hms(scheduledSeconds) + ". At least " + required + " (" + pct + "%) was"
-                + " required to be marked present.";
+                + hms(scheduledSeconds) + ", which is below the minimum attendance"
+                + " required for this class.";
     }
 
     /** "4m 50s", or "50s" under a minute — the learner-facing form of a duration. */

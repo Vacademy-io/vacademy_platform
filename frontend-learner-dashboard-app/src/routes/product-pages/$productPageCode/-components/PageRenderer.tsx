@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ShoppingCart, CheckCircle, SlidersHorizontal, X, Star, CaretDown, BookOpen, Users, Lightbulb, MagnifyingGlass, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { BASE_URL } from "@/constants/urls";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { pushCourseSelectionChanged } from "@/components/common/enroll-by-invite/-utils/gtm";
@@ -26,6 +26,30 @@ import type {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * A logo value is either an http(s) URL — what the page builder's image upload
+ * writes — or a file id, which is what the catalogue's own header stores. The
+ * two have always been the same field name with different meanings, so a config
+ * copied from one to the other rendered a broken image. Accept both.
+ */
+const looksLikeFileId = (value: string) =>
+  !!value && !/^(https?:)?\/\//.test(value) && !value.startsWith("data:");
+
+const useImageSrc = (value: string) => {
+  const resolved = useFileUrl(looksLikeFileId(value) ? value : "");
+  return looksLikeFileId(value) ? resolved : value;
+};
+
+/**
+ * Resolves a media file id to a URL.
+ *
+ * The PUBLIC endpoint, not the authenticated one: a product page is a buying
+ * surface for people who are not logged in, and getPublicUrl goes through
+ * authenticatedAxiosInstance — so every logo and hero image configured by file
+ * id failed for exactly the visitors the page exists to serve, and the catch
+ * below turned that into a silently missing image. The catalogue's own header
+ * has always used the public endpoint; this matches it.
+ */
 const useFileUrl = (fileId: string) => {
   const [url, setUrl] = useState("");
   useEffect(() => {
@@ -33,9 +57,17 @@ const useFileUrl = (fileId: string) => {
       setUrl("");
       return;
     }
-    getPublicUrl(fileId)
-      .then(setUrl)
-      .catch(() => setUrl(""));
+    let cancelled = false;
+    getPublicUrlWithoutLogin(fileId)
+      .then((resolved) => {
+        if (!cancelled) setUrl(resolved);
+      })
+      .catch(() => {
+        if (!cancelled) setUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [fileId]);
   return url;
 };
@@ -1532,7 +1564,7 @@ export const NewHeaderBlock = ({
 }) => {
   const { t } = useTranslation("productPages");
   const title = (props.title as string) || pageName || "";
-  const logoUrl = (props.logo as string) || "";
+  const logoUrl = useImageSrc((props.logo as string) || "");
   const navigation = (props.navigation as Array<{ label: string; url?: string; route?: string }>) || [];
   const ctaButton = (props.ctaButton as { enabled?: boolean; text?: string; url?: string; bgColor?: string; textColor?: string }) || {};
   const bg = (props.backgroundColor as string) || primaryColor;

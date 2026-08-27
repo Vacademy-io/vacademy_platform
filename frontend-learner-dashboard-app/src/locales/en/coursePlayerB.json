@@ -14,6 +14,8 @@
         "nextPage": "Next page"
     },
     "productPageOffer": {
+        "addMoreForTier": "Add {{count}} more {{course}} to get {{offer}}.",
+        "savedAmount": "saved {{amount}} · {{percent}}%",
         "emptyConfig": "Pick a product page in the properties panel to show its {{courses}} here.",
         "errorLoad": "Couldn't load this product page. Check that it is ACTIVE and belongs to this institute.",
         "emptyCourses": "This product page has no {{courses}} yet — add them in its {{courses}} tab.",

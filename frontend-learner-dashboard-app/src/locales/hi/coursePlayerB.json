@@ -14,6 +14,8 @@
         "nextPage": "अगला पेज"
     },
     "productPageOffer": {
+        "addMoreForTier": "{{offer}} पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "savedAmount": "{{amount}} · {{percent}}% की बचत",
         "emptyConfig": "यहाँ {{courses}} दिखाने के लिए प्रॉपर्टीज़ पैनल में एक प्रोडक्ट पेज चुनें।",
         "errorLoad": "यह प्रोडक्ट पेज लोड नहीं हो सका। जांचें कि यह सक्रिय है और इसी इंस्टिट्यूट से जुड़ा है।",
         "emptyCourses": "इस प्रोडक्ट पेज में अभी तक कोई {{courses}} नहीं है — इन्हें इसके {{courses}} टैब में जोड़ें।",

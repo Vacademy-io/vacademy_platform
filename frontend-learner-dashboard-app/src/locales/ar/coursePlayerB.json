@@ -14,6 +14,8 @@
         "nextPage": "الصفحة التالية"
     },
     "productPageOffer": {
+        "addMoreForTier": "أضف {{count}} {{course}} أخرى للحصول على {{offer}}.",
+        "savedAmount": "وفّرت {{amount}} · {{percent}}٪",
         "emptyConfig": "اختر صفحة منتج من لوحة الخصائص لعرض {{courses}} الخاصة بها هنا.",
         "errorLoad": "تعذّر تحميل صفحة المنتج هذه. تأكد من أنها نشطة وتابعة لهذه المؤسسة.",
         "emptyCourses": "لا تحتوي صفحة المنتج هذه على {{courses}} بعد — أضفها في علامة تبويب {{courses}}.",

@@ -14,6 +14,8 @@
         "nextPage": "Page suivante"
     },
     "productPageOffer": {
+        "addMoreForTier": "Ajoutez {{count}} {{course}} de plus pour obtenir {{offer}}.",
+        "savedAmount": "{{amount}} · {{percent}} % économisés",
         "emptyConfig": "Choisissez une page produit dans le panneau des propriétés pour afficher ses {{courses}} ici.",
         "errorLoad": "Impossible de charger cette page produit. Vérifiez qu'elle est active et appartient à cet établissement.",
         "emptyCourses": "Cette page produit n'a pas encore de {{courses}} — ajoutez-en dans son onglet {{courses}}.",

@@ -453,6 +453,8 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                         onSave={onSave}
                         onCancel={onClose}
                         isSaving={isSaving}
+                        requireApproval={requireApproval}
+                        setRequireApproval={onApprovalChange}
                     />
                 </DialogContent>
             </Dialog>

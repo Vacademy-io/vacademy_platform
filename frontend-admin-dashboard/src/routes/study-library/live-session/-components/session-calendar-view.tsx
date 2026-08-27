@@ -42,6 +42,8 @@ interface Session {
         text_color: string;
         visible: boolean;
     } | null;
+    /** Per-schedule platform ('zoom', 'google meet', …) — decides the host entry point. */
+    linkType?: string | null;
 }
 
 interface DaySchedule {
@@ -51,9 +53,16 @@ interface DaySchedule {
 
 interface SessionCalendarViewProps {
     schedules: DaySchedule[];
+    /**
+     * Returns the "Start as Host" handler for a schedule, or null when that
+     * platform has no host entry point. Without it the calendar would only
+     * offer the participant Join link, which is how a recurring Zoom class
+     * left its host with no way to start the meeting.
+     */
+    getHostAction?: (session: Session) => (() => void) | null;
 }
 
-export function SessionCalendarView({ schedules }: SessionCalendarViewProps) {
+export function SessionCalendarView({ schedules, getHostAction }: SessionCalendarViewProps) {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -355,7 +364,21 @@ export function SessionCalendarView({ schedules }: SessionCalendarViewProps) {
                                     </Badge>
                                 </div>
 
-                                <div className="mt-1 pt-3 border-t">
+                                <div className="mt-1 flex flex-col gap-2 border-t pt-3">
+                                    {(() => {
+                                        const startAsHost = getHostAction?.(session);
+                                        if (!startAsHost) return null;
+                                        return (
+                                            <button
+                                                type="button"
+                                                onClick={startAsHost}
+                                                className="flex w-full items-center justify-center gap-2 rounded-md bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white shadow transition-colors hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                            >
+                                                <span>Start as Host</span>
+                                                <ArrowUpRight className="size-3.5" />
+                                            </button>
+                                        );
+                                    })()}
                                     <a
                                         href={session.link}
                                         target="_blank"

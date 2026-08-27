@@ -120,8 +120,8 @@ import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./route
 import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/communication/notification-hub/index"
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
-import { Route as CallingAiAgentsIndexRouteImport } from "./routes/calling/ai-agents/index"
 import { Route as CallingCallQueueIndexRouteImport } from "./routes/calling/call-queue/index"
+import { Route as CallingAiAgentsIndexRouteImport } from "./routes/calling/ai-agents/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
@@ -1056,19 +1056,19 @@ const CertificateGenerationStudentDataIndexRoute =
       (d) => d.Route,
     ),
   )
-const CallingAiAgentsIndexRoute = CallingAiAgentsIndexRouteImport.update({
-  id: "/calling/ai-agents/",
-  path: "/calling/ai-agents/",
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() =>
-  import("./routes/calling/ai-agents/index.lazy").then((d) => d.Route),
-)
 const CallingCallQueueIndexRoute = CallingCallQueueIndexRouteImport.update({
   id: "/calling/call-queue/",
   path: "/calling/call-queue/",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/calling/call-queue/index.lazy").then((d) => d.Route),
+)
+const CallingAiAgentsIndexRoute = CallingAiAgentsIndexRouteImport.update({
+  id: "/calling/ai-agents/",
+  path: "/calling/ai-agents/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/calling/ai-agents/index.lazy").then((d) => d.Route),
 )
 const AutomationChatbotFlowsIndexRoute =
   AutomationChatbotFlowsIndexRouteImport.update({
@@ -2591,6 +2591,7 @@ export interface FileRouteTypes {
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
     | "/calling/ai-agents/"
+    | "/calling/call-queue/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
@@ -2801,6 +2802,7 @@ export interface FileRouteTypes {
     | "/audience-manager/reports"
     | "/automation/chatbot-flows"
     | "/calling/ai-agents"
+    | "/calling/call-queue"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
     | "/communication/notification-hub"
@@ -3012,6 +3014,7 @@ export interface FileRouteTypes {
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
     | "/calling/ai-agents/"
+    | "/calling/call-queue/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
@@ -4133,18 +4136,18 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CertificateGenerationStudentDataIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/calling/ai-agents/": {
-      id: "/calling/ai-agents/"
-      path: "/calling/ai-agents"
-      fullPath: "/calling/ai-agents/"
-      preLoaderRoute: typeof CallingAiAgentsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     "/calling/call-queue/": {
       id: "/calling/call-queue/"
       path: "/calling/call-queue"
       fullPath: "/calling/call-queue/"
       preLoaderRoute: typeof CallingCallQueueIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/calling/ai-agents/": {
+      id: "/calling/ai-agents/"
+      path: "/calling/ai-agents"
+      fullPath: "/calling/ai-agents/"
+      preLoaderRoute: typeof CallingAiAgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/automation/chatbot-flows/": {

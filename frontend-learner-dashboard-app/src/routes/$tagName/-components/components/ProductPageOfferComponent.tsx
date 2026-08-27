@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
+  Gift,
   ArrowRight,
   BookOpen,
   CaretLeft,
@@ -19,11 +20,16 @@ import { cn } from "@/lib/utils";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { PriceWithMrp, formatPriceAmount } from "@/components/common/price-with-mrp";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
+import {
+  accentFromTheme,
+  celebrateSaving,
+} from "@/routes/product-pages/$productPageCode/-utils/celebrate-saving";
 import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-services/product-page-service";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import {
   parseBasketPricing,
+  nextTier,
   quoteBasket,
 } from "@/routes/product-pages/$productPageCode/-utils/basket-pricing";
 import {
@@ -474,15 +480,52 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     // a whole ("any 3 for ₹799"), and on such a page the courses cost nothing
     // individually — so summing item prices here would quote a total the next
     // screen contradicts. Falls back to the sum when the page prices per course.
+    // The plan price rides along: a page priced on the DISCOUNT basis reduces
+    // what the courses cost on their enroll invites rather than replacing it,
+    // so omitting it left the engine falling back to the ladder's first rung —
+    // right only for as long as a ladder happens to still be configured.
+    const basket = parseBasketPricing(data?.settings_json);
     const quote = quoteBasket(
-      parseBasketPricing(data?.settings_json),
-      selectedMappings.map((m) => ({ levelName: m.level_name, packageName: m.package_name })),
+      basket,
+      selectedMappings.map((m) => ({
+        levelName: m.level_name,
+        packageName: m.package_name,
+        price: m.payment_plan?.actual_price ?? 0,
+      })),
     );
-    if (quote) return { amount: quote.total, currency };
-
-    const amount = selectedMappings.reduce((sum, m) => sum + (m.payment_plan?.actual_price || 0), 0);
-    return { amount, currency };
+    const itemsSum = selectedMappings.reduce(
+      (sum, m) => sum + (m.payment_plan?.actual_price || 0),
+      0,
+    );
+    if (quote) {
+      return {
+        amount: quote.total,
+        currency,
+        // What the same courses cost bought separately, so the bar can show the
+        // saving instead of a bare discounted figure the visitor cannot judge.
+        itemTotal: quote.itemTotal,
+        saved: Math.max(0, Math.round(quote.itemTotal - quote.total)),
+      };
+    }
+    return { amount: itemsSum, currency, itemTotal: itemsSum, saved: 0 };
   }, [selectedMappings, data?.settings_json]);
+
+  const savedPercent =
+    cartTotal && cartTotal.itemTotal > 0
+      ? Math.round((cartTotal.saved / cartTotal.itemTotal) * 100)
+      : 0;
+
+  // What one more subject would unlock, on a page that prices by tier.
+  const tierAhead = useMemo(
+    () =>
+      nextTier(
+        parseBasketPricing(data?.settings_json),
+        selectedMappings.length,
+        cartTotal?.itemTotal ?? 0,
+      ),
+    [data?.settings_json, selectedMappings.length, cartTotal?.itemTotal],
+  );
+
 
   const checkoutBarOpen = enableCart && selectedMappings.length > 0 && !!productPageCode;
 
@@ -501,6 +544,21 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     if (!node) return;
     setPortalHost((node.closest("[data-catalogue-theme]") as HTMLElement) || document.body);
   }, []);
+
+  // Celebrate a saving that GREW. Seeded on first render so restoring a page
+  // with a basket already filled does not fire a burst at nobody, and skipped
+  // where prices are hidden — there is no saving on screen to celebrate.
+  // The accent is read off the catalogue's own theme wrapper (the portal host),
+  // so the burst is the institute's colour rather than ours.
+  const lastSavedRef = useRef<number | null>(null);
+  useEffect(() => {
+    const saved = cartTotal?.saved ?? 0;
+    const previous = lastSavedRef.current;
+    lastSavedRef.current = saved;
+    if (previous !== null && saved > previous && !hidePrices) {
+      celebrateSaving(accentFromTheme(portalHost));
+    }
+  }, [cartTotal?.saved, hidePrices, portalHost]);
 
   // Two bars pinned to the bottom of a phone screen would sit on top of each
   // other, and a half-filled basket is the more urgent of the two — so while it
@@ -1068,6 +1126,21 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     checkoutBarOpen && portalHost
       ? createPortal(
           <div className="catalogue-checkout-bar fixed inset-x-0 bottom-0 z-60 border-t border-catalogue-border bg-catalogue-bg-elevated/95 backdrop-blur-sm">
+            {/* What one more subject unlocks. A threshold rather than a rupee
+                figure, because the next course's price is not known until it
+                is picked. */}
+            {!hidePrices && tierAhead && (
+              <div className="border-b border-catalogue-border bg-primary-50">
+                <p className="catalogue-shell flex items-center gap-2 py-1.5 text-xs font-semibold text-primary-500">
+                  <Gift className="size-4 shrink-0" aria-hidden="true" />
+                  {t("productPageOffer.addMoreForTier", {
+                    count: tierAhead.coursesAway,
+                    course: tierAhead.coursesAway === 1 ? courseTerm : coursesTerm,
+                    offer: tierAhead.label,
+                  })}
+                </p>
+              </div>
+            )}
             <div className="catalogue-shell flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-500">
@@ -1099,14 +1172,31 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                     <p className="text-3xs font-medium uppercase tracking-wide text-catalogue-text-muted">
                       {t("productPageOffer.total")}
                     </p>
-                    <p className="text-base font-bold text-catalogue-text-primary">
-                      {/* A basket of free courses reads better as "Free" than
-                          as a formatted zero — same rule PriceWithMrp applies
-                          to a single card. */}
-                      {cartTotal.amount === 0
-                        ? t("productPageOffer.free")
-                        : formatPriceAmount(cartTotal.amount, cartTotal.currency)}
+                    <p className="flex items-baseline justify-end gap-1.5">
+                      {/* Struck price is what these same courses cost bought
+                          separately — never an invented MRP. */}
+                      {cartTotal.saved > 0 && (
+                        <span className="text-xs text-catalogue-text-muted line-through">
+                          {formatPriceAmount(cartTotal.itemTotal, cartTotal.currency)}
+                        </span>
+                      )}
+                      <span className="text-base font-bold text-catalogue-text-primary">
+                        {/* A basket of free courses reads better as "Free" than
+                            as a formatted zero — same rule PriceWithMrp applies
+                            to a single card. */}
+                        {cartTotal.amount === 0
+                          ? t("productPageOffer.free")
+                          : formatPriceAmount(cartTotal.amount, cartTotal.currency)}
+                      </span>
                     </p>
+                    {cartTotal.saved > 0 && (
+                      <p className="text-3xs font-bold text-success-600">
+                        {t("productPageOffer.savedAmount", {
+                          amount: formatPriceAmount(cartTotal.saved, cartTotal.currency),
+                          percent: savedPercent,
+                        })}
+                      </p>
+                    )}
                   </div>
                 )}
                 <button

@@ -67,7 +67,7 @@
   "extraMetadata": {
     "version": "1.0"
   },
-  "buildVersion": "4",
+  "buildVersion": "5",
   "mac": {
     "category": "public.app-category.education",
     "icon": "assets/shiksha_nation.icns",

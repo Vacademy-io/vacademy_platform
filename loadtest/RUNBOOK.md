@@ -203,3 +203,45 @@ DELETE FROM student_attempt WHERE registration_id IN
   (SELECT id FROM assessment_user_registration WHERE institute_id = '<loadtest institute>');
 ```
 Run row counts first; never run either statement without the institute filter.
+
+---
+
+## 9. Measured results — 2026-08-27 ramp (first full run)
+
+All levels: full exam journey (login → preview → start → 60s autosaves →
+submit), 30-MCQ AUTO-evaluated paper, run against prod during evening IST.
+
+| VUs | Replicas | Journeys | Req errors | p95 login | p95 start | p95 sync | p95 submit | Verdict |
+|-----|----------|----------|-----------|-----------|-----------|----------|-----------|---------|
+| 50   | 1 | 50/50     | 0%    | 195ms | 128ms | 124ms | 327ms | pass |
+| 150  | 1 | 149/150   | 0.06% | 138ms | 102ms | 116ms | 360ms | pass |
+| 300  | 1 | 300/300   | 0%    | 137ms | 102ms | 111ms | 639ms | pass |
+| 500  | 2 | 500/500   | 0%    | 133ms | 124ms | 120ms | 2209ms | pass |
+| 1000 | 2 | 700/1000  | 2.5%  | 144ms | 745ms | 16420ms | 60002ms | **FAIL** (pre-fix) |
+| 1000 | 2 | 1000/1000 | 0%    | 146ms | 134ms | 140ms | 139ms | **pass** (post-fix) |
+
+Infrastructure was never the constraint: PgBouncer `cl_waiting` stayed 0 at
+every level, auth-service sat at 3–5m CPU, assessment CPU peaked ~320m of
+2000m. Both walls were application-level serialization.
+
+**Bug 1 — analytics ran sync on the request thread** (fixed 76c0af31e1).
+`sendAssessmentDataForAnalysisAsync` was named/documented async but had no
+`@Async`: every submit built the enriched payload, ran the comparison/rank
+query and called admin-core over HTTP on its Tomcat thread. The 1000-learner
+submit wave serialized the request pool (submit p95 60s; innocent autosaves
+starved to 16s). Now on a dedicated 3-thread DiscardOldest executor.
+
+**Bug 2 — live-sync recalc clobbered concurrent submits** (fixed b52a9edde3).
+Only visible by cross-checking the DB against k6: 66/1000 attempts (6.6%) sat
+`status=LIVE` with NULL submit_time/result_marks while every submit returned
+200. The async recalc holds a pre-submit snapshot; `StudentAttempt` has no
+`@Version`, so its save rewrote the whole row and erased the submit. Now
+re-reads and skips the write once the attempt is ENDED/submitted.
+
+**Verification bar to reuse:** k6 green is NOT sufficient. Always cross-check
+`SELECT status, count(submit_time) ... GROUP BY status` — the last clean run
+shows 1000 ENDED/COMPLETED, 1000 with submit_time.
+
+**Capacity conclusion:** 1000 concurrent test-takers pass on 2 replicas with
+p95 ≤ 465ms on every step. Applying the runbook's 1.5 safety factor →
+**650–700 is the number to quote**, with 300 safe on a single replica.

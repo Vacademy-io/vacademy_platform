@@ -32,7 +32,7 @@ if ('serviceWorker' in navigator) {
 }
 import { SidebarProvider } from './components/ui/sidebar';
 import { routeTree } from './routeTree.gen';
-import './i18n';
+import { catalogsReady } from './i18n';
 import { Toaster } from './components/ui/sonner';
 import { ThemeProvider } from './providers/theme/theme-provider';
 import { CourseSettingsProvider } from './providers/course-settings-provider';
@@ -367,6 +367,13 @@ if (!rootElement.innerHTML) {
     };
 
     await initializeBranding();
+
+    // Hold first render until the active language's catalogs are seeded (see
+    // src/i18n.ts) — otherwise components that freeze t() output (useMemo with
+    // [] deps, react-query fetchers) capture raw keys for good. The timeout is
+    // the escape hatch: a CDN hiccup degrades to the old flash-of-keys
+    // behaviour instead of a blank page.
+    await Promise.race([catalogsReady, new Promise((resolve) => setTimeout(resolve, 4000))]);
 
     const root = ReactDOM.createRoot(rootElement);
     const app = (

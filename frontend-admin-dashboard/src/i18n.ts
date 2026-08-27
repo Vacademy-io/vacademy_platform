@@ -40,8 +40,18 @@ const initialLocale = normalizeLocale(
 );
 
 /**
- * Inline lazy backend — fetches public/locales/<lng>/<ns>.json on demand.
- * Written inline instead of adding i18next-http-backend as a dependency.
+ * Inline lazy backend. Production builds carry one merged catalog per locale
+ * (locales/_merged/<lng>.json, emitted by the merged-locale-catalogs plugin in
+ * vite.config.ts); it is fetched ONCE per language and every namespace read
+ * resolves from it. Per-namespace files (public/locales/<lng>/<ns>.json) are
+ * the fallback — that's what dev serves, and what production degrades to if
+ * the merged file is ever missing.
+ *
+ * Why merged-first matters: namespace loads used to race first render, and
+ * anything that captured t() output before its catalog arrived — useMemo with
+ * [] deps, react-query fetchers passed t — froze raw keys permanently.
+ * index.tsx awaits `catalogsReady` before mounting, so with the merged file
+ * the race no longer exists.
  *
  * The `?v=` cache-bust matters: files under public/ are copied to dist
  * verbatim, so unlike hashed bundle assets their URLs never change between
@@ -53,16 +63,33 @@ const initialLocale = normalizeLocale(
  * with index.html — so without the exclusion these fetches would resolve to
  * HTML and every namespace would fail to parse.
  */
+const mergedCatalogs = new Map<string, Promise<Record<string, unknown> | null>>();
+
+function loadMergedCatalog(lng: string): Promise<Record<string, unknown> | null> {
+    let promise = mergedCatalogs.get(lng);
+    if (!promise) {
+        promise = fetch(`/locales/_merged/${lng}.json?v=${__VERSION__}`)
+            .then((res) => (res.ok ? (res.json() as Promise<Record<string, unknown>>) : null))
+            .catch(() => null);
+        mergedCatalogs.set(lng, promise);
+    }
+    return promise;
+}
+
 const lazyLocaleBackend: BackendModule = {
     type: 'backend',
     init() {
         // No options needed.
     },
     read(lng: string, ns: string, callback: ReadCallback) {
-        fetch(`/locales/${lng}/${ns}.json?v=${__VERSION__}`)
-            .then((res) => {
-                if (!res.ok) throw new Error(`${res.status} loading ${lng}/${ns}`);
-                return res.json();
+        loadMergedCatalog(lng)
+            .then((merged): Record<string, unknown> | Promise<Record<string, unknown>> => {
+                if (merged && ns in merged) return merged[ns] as Record<string, unknown>;
+                // Dev, or a namespace/locale absent from the merged file.
+                return fetch(`/locales/${lng}/${ns}.json?v=${__VERSION__}`).then((res) => {
+                    if (!res.ok) throw new Error(`${res.status} loading ${lng}/${ns}`);
+                    return res.json() as Promise<Record<string, unknown>>;
+                });
             })
             .then((data) => callback(null, data))
             .catch((error) => callback(error as Error, null));
@@ -88,5 +115,37 @@ i18n.use(lazyLocaleBackend)
             useSuspense: false,
         },
     });
+
+/**
+ * Fetch a language's merged catalog and seed every namespace into i18next's
+ * store. Seeding (not just fetching) is the load-bearing part: with resources
+ * already present, useTranslation(ns) is ready on the component's FIRST
+ * render — an async backend read, however fast, resolves a microtask after
+ * mount, which is exactly the window where useMemo(..., []) and query-cached
+ * t() captures froze raw keys.
+ */
+async function seedLanguage(lng: string): Promise<void> {
+    const merged = await loadMergedCatalog(lng);
+    if (!merged) return; // dev, or locale without a merged file — lazy path handles it
+    for (const [ns, data] of Object.entries(merged)) {
+        i18n.addResourceBundle(lng, ns, data as Record<string, unknown>, true, true);
+    }
+}
+
+/**
+ * Resolves when the active language (and English, for fallback resolution) is
+ * fully seeded — or immediately in dev. index.tsx awaits this, with a timeout
+ * guard, before the first render.
+ *
+ * Runtime language SWITCHES still load namespaces from the (already cached)
+ * merged file per-read; components with frozen [] memos keep the previous
+ * language's strings until remount rather than showing raw keys — same
+ * behaviour as before, and the remaining reason those dep arrays are still
+ * worth fixing when touched.
+ */
+export const catalogsReady: Promise<unknown> = Promise.all([
+    seedLanguage(initialLocale),
+    initialLocale === DEFAULT_LOCALE ? null : seedLanguage(DEFAULT_LOCALE),
+]);
 
 export default i18n;

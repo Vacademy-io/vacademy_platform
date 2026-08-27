@@ -1,6 +1,7 @@
 /// <reference types="vitest" />
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
+import fs from 'fs';
 import { defineConfig, loadEnv } from 'vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite';
@@ -67,6 +68,38 @@ export default defineConfig(({ mode }) => {
             //     },
             // }),
             svgr({ include: '**/*.svg' }),
+            // Emit one merged catalog per locale (locales/_merged/<lng>.json)
+            // alongside the per-namespace files public/ already copies over.
+            // src/i18n.ts fetches the merged file once and first render waits
+            // for it — killing the load race where components (useMemo with []
+            // deps, react-query fetchers capturing t() output) rendered before
+            // their namespace arrived and froze raw keys permanently. Build-time
+            // only: dev serves public/locales/* per-namespace and the backend
+            // falls back to that automatically.
+            {
+                name: 'merged-locale-catalogs',
+                apply: 'build' as const,
+                generateBundle() {
+                    const localesRoot = path.resolve(__dirname, 'public/locales');
+                    if (!fs.existsSync(localesRoot)) return;
+                    for (const lng of fs.readdirSync(localesRoot)) {
+                        const dir = path.join(localesRoot, lng);
+                        if (!fs.statSync(dir).isDirectory()) continue;
+                        const merged: Record<string, unknown> = {};
+                        for (const file of fs.readdirSync(dir)) {
+                            if (!file.endsWith('.json')) continue;
+                            merged[file.replace(/\.json$/, '')] = JSON.parse(
+                                fs.readFileSync(path.join(dir, file), 'utf8')
+                            );
+                        }
+                        this.emitFile({
+                            type: 'asset',
+                            fileName: `locales/_merged/${lng}.json`,
+                            source: JSON.stringify(merged),
+                        });
+                    }
+                },
+            },
             // flowbiteReact(),
             // Replace CORS-blocked easy-email default images with local SVG placeholders.
             // Each preset thumbnail (IMAGE_08–IMAGE_71) maps to a unique wireframe SVG.

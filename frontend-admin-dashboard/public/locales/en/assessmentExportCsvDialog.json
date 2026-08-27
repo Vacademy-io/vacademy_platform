@@ -1,6 +1,7 @@
 {
     "trigger": {
-        "label": "Export"
+        "label": "Export",
+        "tooltip": "Export the submissions list as a CSV spreadsheet"
     },
     "dialog": {
         "heading": "Export CSV"
@@ -23,6 +24,10 @@
     "toasts": {
         "noData": "No data returned. Please try again.",
         "exportSuccess": "Results exported successfully.",
-        "exportFailed": "Failed to export CSV. Please try again."
-    }
+        "exportFailed": "Failed to export CSV. Please try again.",
+        "noSubmissions": "No submitted attempts to put on a result sheet yet.",
+        "pdfFailed": "Could not build the result sheet. Please try again."
+    },
+    "resultSheetButton": "Result Sheet (PDF)",
+    "buildingPdf": "Building…"
 }

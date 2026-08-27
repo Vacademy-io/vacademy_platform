@@ -3,16 +3,23 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import { useTranslation } from 'react-i18next';
-import { Export, Warning } from '@phosphor-icons/react';
+import { Export, FilePdf, Warning } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import {
+    getAdminParticipants,
     getResultExportColumns,
     handleExportResultCSV,
+    handleGetAssessmentTotalMarksData,
     ResultExportCustomFieldColumn,
 } from '../-services/assessment-details-services';
+import { getAssessmentDetails } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
+import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import { convertToLocalDateTime, extractDateTime } from '@/constants/helper';
+import { getBatchNameById } from '../-utils/helper';
+import { SubmissionStudentData } from '@/types/assessments/assessment-overview';
 
 interface AssessmentExportCsvDialogProps {
     assessmentId: string;
@@ -25,6 +32,14 @@ interface AssessmentExportCsvDialogProps {
      * at when they clicked. Ignored unless notAttempted.
      */
     notAttemptedScope?: { batches: string[]; name: string };
+    /**
+     * The participants slice currently on screen — 'BATCH_PREVIEW_REGISTRATION',
+     * 'ADMIN_PRE_REGISTRATION' or 'OPEN_REGISTRATION'. The participants endpoint rejects
+     * anything else with 510 "Invalid Source Request", so it cannot be defaulted here.
+     */
+    registrationSource: string;
+    /** Batch filter in force on screen, so the result sheet matches what is listed. */
+    scopedBatches?: Array<{ id: string; name: string }>;
 }
 
 const labelForCustomField = (field: ResultExportCustomFieldColumn) =>
@@ -47,12 +62,77 @@ export const AssessmentExportCsvDialog = ({
     assessmentType,
     notAttempted = false,
     notAttemptedScope,
+    registrationSource,
+    scopedBatches = [],
 }: AssessmentExportCsvDialogProps) => {
     const { t } = useTranslation('assessmentExportCsvDialog');
     const [open, setOpen] = useState(false);
     const [selectedBaseColumns, setSelectedBaseColumns] = useState<string[]>([]);
     const [selectedCustomFieldIds, setSelectedCustomFieldIds] = useState<string[]>([]);
     const [isExporting, setIsExporting] = useState(false);
+    const [isBuildingPdf, setIsBuildingPdf] = useState(false);
+
+    const { data: instituteData } = useQuery({ ...useInstituteQuery(), enabled: open });
+    const { data: assessmentDetails } = useQuery({
+        ...getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' }),
+        enabled: open,
+    });
+    const instituteName = instituteData?.institute_name ?? '';
+    const assessmentName = assessmentDetails?.[0]?.saved_data?.name ?? '';
+    const batchesForSessions = instituteData?.batches_for_sessions ?? [];
+
+    /**
+     * Result Sheet (PDF) — the ranked cohort document. Pulls one large page of attempted
+     * submissions (assessments are bounded, and the summary strip already does the same)
+     * and lays them out with the shared builder.
+     */
+    const handleDownloadResultSheet = async () => {
+        setIsBuildingPdf(true);
+        try {
+            const [{ buildResultSheetPdf }, data, marks] = await Promise.all([
+                import('../-utils/result-sheet-pdf'),
+                getAdminParticipants(assessmentId, instituteId, 0, 1000, {
+                    name: '',
+                    assessment_type: assessmentType,
+                    attempt_type: ['ENDED'],
+                    registration_source: registrationSource,
+                    batches: scopedBatches,
+                    status: ['ACTIVE'],
+                    sort_columns: {},
+                }),
+                handleGetAssessmentTotalMarksData({ assessmentId }).queryFn(),
+            ]);
+
+            const rows = (data?.content ?? []).map((r: SubmissionStudentData) => ({
+                studentName: r.student_name ?? '',
+                email: r.user_email ?? '',
+                batch: getBatchNameById(batchesForSessions, r.batch_id) ?? '',
+                score: r.score ?? null,
+                durationMinutes:
+                    typeof r.duration === 'number' ? Math.round(r.duration / 60) : null,
+                submittedAt: r.end_time
+                    ? extractDateTime(convertToLocalDateTime(r.end_time)).time
+                    : null,
+            }));
+
+            if (rows.length === 0) {
+                toast.error(t('toasts.noSubmissions'));
+                return;
+            }
+
+            const doc = buildResultSheetPdf(rows, {
+                instituteName: instituteName ?? '',
+                assessmentName: assessmentName ?? '',
+                totalMarks: marks?.total_achievable_marks ?? 0,
+            });
+            doc.save(`${assessmentName || 'assessment'} - Result Sheet.pdf`);
+        } catch (error) {
+            console.error('Failed to build the result sheet:', error);
+            toast.error(t('toasts.pdfFailed'));
+        } finally {
+            setIsBuildingPdf(false);
+        }
+    };
 
     const columnsQuery = useQuery({
         // notAttempted is part of the key: the two sheets offer different columns, so a
@@ -165,13 +245,16 @@ export const AssessmentExportCsvDialog = ({
             open={open}
             onOpenChange={setOpen}
             heading={t('dialog.heading')}
+            triggerTooltip={t('trigger.tooltip')}
             dialogWidth="max-w-lg"
             trigger={
                 <MyButton
                     type="button"
                     scale="small"
                     buttonType="secondary"
-                    className="font-medium"
+                    className="!h-10 !min-w-0 gap-1.5 px-3 font-medium"
+                    title={t('trigger.label')}
+                    aria-label={t('trigger.label')}
                 >
                     <Export size={16} />
                     {t('trigger.label')}
@@ -262,17 +345,36 @@ export const AssessmentExportCsvDialog = ({
                 )}
 
                 {!columnsQuery.isLoading && (
-                    <MyButton
-                        type="button"
-                        scale="medium"
-                        buttonType="primary"
-                        disable={
-                            isExporting || (!columnsQuery.isError && selectedColumnCount === 0)
-                        }
-                        onClick={handleExport}
-                    >
-                        {isExporting ? t('exporting') : t('exportCsvButton')}
-                    </MyButton>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        {/* The ranked cohort sheet — one printable document, as opposed to
+                            the CSV (spreadsheet data) or Export Reports (a ZIP of one PDF
+                            per student). Column selection does not apply to it: the sheet
+                            has a fixed layout. */}
+                        {!notAttempted && (
+                            <MyButton
+                                type="button"
+                                scale="medium"
+                                buttonType="secondary"
+                                className="gap-1.5"
+                                disable={isBuildingPdf || isExporting}
+                                onClick={handleDownloadResultSheet}
+                            >
+                                <FilePdf size={16} />
+                                {isBuildingPdf ? t('buildingPdf') : t('resultSheetButton')}
+                            </MyButton>
+                        )}
+                        <MyButton
+                            type="button"
+                            scale="medium"
+                            buttonType="primary"
+                            disable={
+                                isExporting || (!columnsQuery.isError && selectedColumnCount === 0)
+                            }
+                            onClick={handleExport}
+                        >
+                            {isExporting ? t('exporting') : t('exportCsvButton')}
+                        </MyButton>
+                    </div>
                 )}
             </div>
         </MyDialog>

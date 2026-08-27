@@ -9,7 +9,9 @@
     "actions": {
         "previewAssessment": "Preview Assessment",
         "exportOffline": "Export Offline",
-        "noSectionsError": "No sections have been added for this assessment."
+        "noSectionsError": "No sections have been added for this assessment.",
+        "preview": "Preview",
+        "editAssessment": "Edit this assessment"
     },
     "tabs": {
         "overview": "Overview",
@@ -19,6 +21,7 @@
         "questions": "Questions",
         "participants": "Participants",
         "accessControl": "Access Control",
-        "reattemptRequests": "Reattempt Requests"
+        "reattemptRequests": "Reattempt Requests",
+        "settings": "Settings"
     }
 }

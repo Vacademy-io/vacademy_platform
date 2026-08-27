@@ -227,6 +227,7 @@ export const AssessmentReportZipExportDialog = ({
             open={open}
             onOpenChange={setOpen}
             heading={t('dialog.heading')}
+            triggerTooltip={t('trigger.tooltip')}
             dialogWidth="max-w-xl"
             trigger={
                 isControlled ? undefined : (
@@ -234,10 +235,12 @@ export const AssessmentReportZipExportDialog = ({
                         type="button"
                         scale="small"
                         buttonType="secondary"
-                        className="font-medium"
+                        className="!h-10 !min-w-0 gap-1.5 px-3 font-medium"
+                        title={t('trigger.label')}
+                        aria-label={t('trigger.label')}
                     >
                         <FileZip size={16} />
-                        {t('trigger.label')}
+                        {t('trigger.short')}
                     </MyButton>
                 )
             }

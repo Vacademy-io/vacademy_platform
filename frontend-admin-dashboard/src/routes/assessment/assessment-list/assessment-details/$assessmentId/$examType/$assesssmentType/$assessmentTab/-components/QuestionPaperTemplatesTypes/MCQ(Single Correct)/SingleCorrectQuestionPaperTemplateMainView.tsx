@@ -147,20 +147,20 @@ export const SingleCorrectQuestionPaperTemplateMainView = ({
                 />
             </div>
 
-            <div className="flex w-full grow flex-col gap-4">
-                <span className="-mb-3">{t('answer')}</span>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex w-full grow flex-col gap-2">
+                <span className="text-caption font-semibold text-neutral-600">{t('answer')}</span>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     {options.map((opt, optionIndex) => {
                         const letter = String.fromCharCode(97 + optionIndex);
                         return (
                             <div
                                 key={optionIndex}
-                                className={`flex items-center justify-between gap-4 rounded-md bg-neutral-100 p-4 ${
+                                className={`flex items-center justify-between gap-3 rounded-lg bg-neutral-100 p-2.5 ${
                                     opt?.isSelected ? 'border border-primary-300 bg-primary-50' : ''
                                 }`}
                             >
-                                <div className="flex w-full items-center gap-4">
-                                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white px-3">
+                                <div className="flex w-full items-center gap-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white">
                                         <span className="!p-0 text-sm">({letter}.)</span>
                                     </div>
                                     <FormField
@@ -173,7 +173,8 @@ export const SingleCorrectQuestionPaperTemplateMainView = ({
                                                         value={field.value}
                                                         onBlur={field.onBlur}
                                                         onChange={field.onChange}
-                                                        minHeight={60}
+                                                        minHeight={40}
+                                                        minimalToolbar
                                                         placeholder={t('optionPlaceholder', {
                                                             letter: letter.toUpperCase(),
                                                         })}
@@ -184,7 +185,7 @@ export const SingleCorrectQuestionPaperTemplateMainView = ({
                                         )}
                                     />
                                 </div>
-                                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white px-4">
+                                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white">
                                     <FormField
                                         control={control}
                                         name={`${basePath}.singleChoiceOptions.${optionIndex}.isSelected` as any}

@@ -21,7 +21,8 @@
     "status": {
         "released": "Released",
         "pending": "Pending",
-        "notAvailable": "N/A"
+        "notAvailable": "N/A",
+        "notReleased": "Not Released"
     },
     "tooltip": {
         "instantSubmit": "Instant submit — no measurable time spent. Possible non-attempt or auto-submit."

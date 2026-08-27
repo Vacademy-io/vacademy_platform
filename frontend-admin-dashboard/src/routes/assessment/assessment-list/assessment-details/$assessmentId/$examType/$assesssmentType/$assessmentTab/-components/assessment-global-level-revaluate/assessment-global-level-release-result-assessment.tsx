@@ -7,7 +7,8 @@ import { Route } from '../..';
 import { getInstituteId } from '@/constants/helper';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
-import { WarningCircle } from '@phosphor-icons/react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { PaperPlaneTilt, WarningCircle } from '@phosphor-icons/react';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { useTranslation } from 'react-i18next';
@@ -53,16 +54,24 @@ export const AssessmentGlobalLevelReleaseResultAssessment = () => {
     };
     return (
         <Dialog open={releaseResultDialog} onOpenChange={setReleaseResultDialog}>
+            <Tooltip>
             <DialogTrigger asChild>
+                <TooltipTrigger asChild>
+                {/* The one action on this row that publishes something to learners, so it
+                    is the only solid button — the rest stay outline. */}
                 <MyButton
                     type="button"
                     scale="small"
-                    buttonType="secondary"
-                    className="font-medium"
+                    buttonType="primary"
+                    className="gap-1.5 font-medium"
                 >
+                    <PaperPlaneTilt size={16} weight="fill" />
                     {t('trigger.releaseResult')}
                 </MyButton>
+                </TooltipTrigger>
             </DialogTrigger>
+            <TooltipContent side="bottom">{t('trigger.tooltip')}</TooltipContent>
+            </Tooltip>
             <DialogContent className="flex flex-col p-0">
                 <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
                     {t('dialog.title', {

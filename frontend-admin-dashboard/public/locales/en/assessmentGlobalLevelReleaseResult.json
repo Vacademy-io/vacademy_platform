@@ -1,6 +1,7 @@
 {
     "trigger": {
-        "releaseResult": "Release Result"
+        "releaseResult": "Release Result",
+        "tooltip": "Publish results to learners for this assessment"
     },
     "dialog": {
         "title": "Release Result For All {{learnerPlural}}",

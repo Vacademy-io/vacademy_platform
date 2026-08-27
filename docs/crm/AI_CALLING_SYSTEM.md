@@ -11,6 +11,9 @@ the repo cannot tell you what production is actually running.
 
 **Companion docs**
 - [`VACADEMY_AI_AGENT.md`](./VACADEMY_AI_AGENT.md) — the original design + phase plan.
+- [`AI_CALL_QUEUE.md`](./AI_CALL_QUEUE.md) — what happens BEFORE step 2 below: every AI dial
+  is now queued and placed by a single fleet-wide drainer, so the pre-dial throttles in §2.4
+  are re-evaluated at dial time rather than at request time.
 - [`AI_CALL_DEEP_REVIEW.md`](./AI_CALL_DEEP_REVIEW.md) — humanness/latency review (2026-07-14). Some of its "not done yet" items have since shipped; this doc is the current state.
 - [`VACADEMY_VOICE_INTEGRATION.md`](./VACADEMY_VOICE_INTEGRATION.md) — Plivo telephony + IVR.
 - [`AAVTAAR_AI_CALLING.md`](./AAVTAAR_AI_CALLING.md) — the third-party AI provider that shares this pipeline.

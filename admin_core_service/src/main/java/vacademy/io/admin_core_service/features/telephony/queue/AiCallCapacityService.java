@@ -58,6 +58,8 @@ public class AiCallCapacityService {
     static final String KEY_AVG_SECS = "ai_call_avg_secs";
     static final String KEY_RESERVED_INTERACTIVE = "ai_call_reserved_interactive";
     static final String KEY_DRAIN_BATCH = "ai_call_drain_batch";
+    /** Ops ceiling on simultaneous calls. Caps the box sum; blank = no limit. */
+    public static final String KEY_FLEET_LIMIT = "ai_call_fleet_limit";
 
     /**
      * Effectively unlimited. Used for MOCK, and for AAVTAAR when its limit is set to 0
@@ -121,10 +123,7 @@ public class AiCallCapacityService {
             int configured = appConfigRepository.getIntConfig(KEY_AAVTAAR_MAX, 20);
             return configured <= 0 ? UNLIMITED : configured;
         }
-        int sum = boxRepository.findAll().stream()
-                .filter(AiVoiceBox::countsTowardCapacity)
-                .mapToInt(AiVoiceBox::getMaxConcurrent)
-                .sum();
+        int sum = physicalCapacity();
         // Zero boxes (all deleted or all DOWN) means genuinely no capacity, and the
         // drainer will correctly dial nothing. Logged because it is indistinguishable
         // from a bug when you are staring at a queue that will not move.
@@ -132,7 +131,45 @@ public class AiCallCapacityService {
             log.warn("AI call queue: no voice box is lending capacity — {} calls will not dial "
                     + "until a box is enabled or its health recovers", ProviderType.VACADEMY_AI);
         }
+        // The ops limit CAPS the hardware, never raises it: a limit above what the
+        // boxes can carry is simply non-binding, so setting one can never promise
+        // capacity that does not exist. 0 is a real answer — dial nothing — and the
+        // queue goes on accepting work, so a pause defers calls rather than losing them.
+        Integer limit = fleetLimit();
+        if (limit != null) return Math.max(0, Math.min(sum, limit));
         return Math.max(0, sum);
+    }
+
+    /** What the hardware can carry, before any ops limit is applied. */
+    public int physicalCapacity() {
+        return boxRepository.findAll().stream()
+                .filter(AiVoiceBox::countsTowardCapacity)
+                .mapToInt(AiVoiceBox::getMaxConcurrent)
+                .sum();
+    }
+
+    /**
+     * The ops ceiling, or null when none is set and the hardware decides.
+     *
+     * <p>Blank rather than a sentinel number means "no limit", so the absence of a
+     * policy is distinguishable from a policy of zero — which is a real and very
+     * different instruction.
+     */
+    public Integer fleetLimit() {
+        return appConfigRepository.findByConfigKey(KEY_FLEET_LIMIT)
+                .map(c -> {
+                    String raw = c.getConfigValue() == null ? "" : c.getConfigValue().trim();
+                    if (raw.isEmpty()) return null;
+                    try {
+                        return Integer.valueOf(raw);
+                    } catch (NumberFormatException e) {
+                        // An unparseable limit must not silently uncap the fleet.
+                        log.warn("AI call queue: ai_call_fleet_limit is not a number ({}) — "
+                                + "ignoring it and using the boxes", raw);
+                        return null;
+                    }
+                })
+                .orElse(null);
     }
 
     /** Whether this provider's ceiling is effectively absent (MOCK, or an uncapped Aavtaar). */

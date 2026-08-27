@@ -107,13 +107,28 @@ public final class AiCallQueueDTOs {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CapacityView {
-        /** Sum of max_concurrent over enabled, non-DOWN boxes. */
+        /** What is ACTUALLY enforced right now: min(hardware, ops limit). */
         private int vacademyAiCapacity;
         private int vacademyAiInFlight;
+        /** What the boxes could carry, before any ops limit. */
+        private int physicalCapacity;
+        /**
+         * The ops ceiling, or null when none is set and the hardware decides.
+         * 0 means dialing is paused — the queue still accepts and holds calls.
+         */
+        private Integer fleetLimit;
         private int aavtaarCapacity;
         private int aavtaarInFlight;
-        /** False = the concurrency limit is switched off (emergency lever). */
-        private boolean capacityEnabled;
+        /**
+         * True when the concurrency limit is BYPASSED entirely (unlimited calls).
+         *
+         * <p>Named for what it does. The underlying flag reads
+         * {@code ai_call_capacity_enabled=false}, which looks like an off switch for AI
+         * calling and is the opposite — surfacing it as "capacityEnabled" invited an
+         * operator wanting to stop calls to uncap the fleet instead. To stop or throttle
+         * calling, set {@code fleetLimit}; never this.
+         */
+        private boolean concurrencyLimitBypassed;
         private long totalQueued;
         private int lanesWithWork;
         /** The cap an institute with no override currently gets. */

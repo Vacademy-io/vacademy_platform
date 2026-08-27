@@ -211,6 +211,7 @@
     "stepProgress": {
         "ariaLabel": "تقدّم التسجيل",
         "steps": {
+            "catalog": "اختر {{courses}}",
             "cart": "السلة",
             "details": "التفاصيل",
             "payment": "الدفع",

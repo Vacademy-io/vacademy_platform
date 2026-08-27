@@ -208,6 +208,7 @@
     "stepProgress": {
         "ariaLabel": "Progression de l'inscription",
         "steps": {
+            "catalog": "Choisir les {{courses}}",
             "cart": "Panier",
             "details": "Détails",
             "payment": "Paiement",

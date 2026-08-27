@@ -207,6 +207,7 @@
     "stepProgress": {
         "ariaLabel": "नामांकन प्रगति",
         "steps": {
+            "catalog": "{{courses}} चुनें",
             "cart": "कार्ट",
             "details": "विवरण",
             "payment": "भुगतान",

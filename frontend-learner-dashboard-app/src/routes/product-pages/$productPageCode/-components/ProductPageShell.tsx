@@ -18,6 +18,7 @@ import type {
   ProductPageSettings,
   PageJson,
   ProductPageData,
+  ProductPageStep,
 } from "../-types/product-page-types";
 
 interface ProductPageShellProps {
@@ -83,16 +84,35 @@ export const ProductPageShell = ({
    *
    * Once they have actually visited this page's catalogue step, that becomes
    * the honest destination again.
+   *
+   * Set from the RESOLVED start step in the layout effect below, not from the
+   * store: the store initialises to CATALOG and is corrected to CART before
+   * paint, but a passive effect reading `step` still sees that first CATALOG
+   * and would mark the visitor as having been somewhere they never went —
+   * which sent every Back to this page's own catalogue instead of theirs.
    */
-  const enteredAtCart = useRef(defaultTab === "CART").current;
-  const sawOwnCatalog = useRef(defaultTab !== "CART");
+  const sawOwnCatalog = useRef(false);
+  const prevStep = useRef<ProductPageStep | null>(null);
   useEffect(() => {
-    if (step === "CATALOG") sawOwnCatalog.current = true;
+    const previous = prevStep.current;
+    prevStep.current = step;
+    // Only a real navigation INTO the catalogue counts; the initial value is
+    // not a place anyone has been.
+    if (previous !== null && previous !== "CATALOG" && step === "CATALOG") {
+      sawOwnCatalog.current = true;
+    }
   }, [step]);
 
   const backFromCart = () => {
-    if (enteredAtCart && !sawOwnCatalog.current && tagName) {
-      navigate({ to: `/${tagName}` });
+    // Any visitor who arrived from a catalogue carries its slug. If they have
+    // not since browsed THIS page's catalogue step, that slug is where Back
+    // belongs — the catalogue restores their basket from sessionStorage.
+    if (tagName && !sawOwnCatalog.current) {
+      // The params form, not a template path: real catalogue tags contain
+      // spaces, parentheses and even leading slashes ("Home Page", "Arabian
+      // International Stem Hub (AISH)", "/cement-factory"), which the router
+      // encodes here and a hand-built `/${tagName}` would not.
+      navigate({ to: "/$tagName", params: { tagName } });
       return;
     }
     setStep("CATALOG");
@@ -120,6 +140,11 @@ export const ProductPageShell = ({
         : resolvedStep === "PAYMENT"
           ? "FORM"
           : "CATALOG";
+
+    // Starting ON this page's catalogue means it IS where Back belongs. Recorded
+    // here, in the layout effect, because it runs before any passive effect can
+    // misread the store's transient initial step.
+    sawOwnCatalog.current = startStep === "CATALOG";
 
     // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
     setSelection(resolveInitialSelection(pageData.mappings, courseIds));

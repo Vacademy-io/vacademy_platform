@@ -14,6 +14,11 @@
         "nextPage": "الصفحة التالية"
     },
     "productPageOffer": {
+        "addMoreForTierAmount": "أضف {{count}} {{course}} أخرى للحصول على خصم {{amount}}.",
+        "addMoreForTierAmountMore": "أضف {{count}} {{course}} أخرى للحصول على خصم إضافي قدره {{amount}}.",
+        "addMoreForTierPercent": "أضف {{count}} {{course}} أخرى للحصول على خصم {{percent}}٪.",
+        "finderShowing": "عرض",
+        "finderShowAll": "عرض كل {{courses}}",
         "addMoreForTier": "أضف {{count}} {{course}} أخرى للحصول على {{offer}}.",
         "savedAmount": "وفّرت {{amount}} · {{percent}}٪",
         "emptyConfig": "اختر صفحة منتج من لوحة الخصائص لعرض {{courses}} الخاصة بها هنا.",

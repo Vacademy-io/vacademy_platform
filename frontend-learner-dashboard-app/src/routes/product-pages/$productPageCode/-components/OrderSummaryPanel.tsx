@@ -1,4 +1,10 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import {
   Gift,
   Lock,
@@ -56,6 +62,15 @@ export const OrderSummaryPanel = ({
   variant = "full",
   className,
 }: OrderSummaryPanelProps) => {
+  const { t } = useTranslation("productPages");
+  // The institute's own word, so nothing here says "subject" on a page that
+  // calls them Programmes.
+  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
+  const coursesTerm = getTerminologyPlural(
+    ContentTerms.Course,
+    SystemTerms.Course,
+  ).toLocaleLowerCase();
+
   const {
     selectedPsOptionIds,
     setSelection,
@@ -120,11 +135,23 @@ export const OrderSummaryPanel = ({
    */
   const tierAhead = nextTier(basketSettings, items.length, itemTotal);
   const upsell = tierAhead
-    ? `Add ${tierAhead.coursesAway} more subject${tierAhead.coursesAway === 1 ? "" : "s"} to get ${tierAhead.label}.`
+    ? t("cartStep.basket.addForTier", {
+        count: tierAhead.coursesAway,
+        course: courseTerm,
+        courses: coursesTerm,
+        offer: tierAhead.label,
+      })
     : quote && perNext !== null && perNext.amount > 0 && items.length > 0
       ? perNext.group
-        ? `Add another ${perNext.group} subject for ${money(perNext.amount)}.`
-        : `Add one more subject for ${money(perNext.amount)}.`
+        ? t("cartStep.basket.addAnotherGroup", {
+            group: perNext.group,
+            course: courseTerm,
+            amount: money(perNext.amount),
+          })
+        : t("cartStep.basket.addOneMore", {
+            course: courseTerm,
+            amount: money(perNext.amount),
+          })
       : null;
 
   // Predefined page offers. Shown as a list rather than applied silently: an
@@ -158,7 +185,7 @@ export const OrderSummaryPanel = ({
         <div className="flex min-w-0 items-center gap-2">
           <ShoppingCartSimple className="size-4 shrink-0 text-gray-500" aria-hidden="true" />
           <h2 className="truncate text-sm font-bold text-gray-900">
-            Order Summary
+            {t("common.orderSummaryTitle")}
           </h2>
         </div>
         <span className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-caption font-semibold text-gray-600 ring-1 ring-gray-200">
@@ -171,9 +198,11 @@ export const OrderSummaryPanel = ({
           <div className="mx-auto mb-3 flex size-11 items-center justify-center rounded-full bg-gray-100">
             <ShoppingCartSimple className="size-5 text-gray-400" aria-hidden="true" />
           </div>
-          <p className="text-sm font-medium text-gray-700">Your cart is empty</p>
+          <p className="text-sm font-medium text-gray-700">
+            {t("cartStep.basket.emptyCart")}
+          </p>
           <p className="mt-1 text-caption text-gray-400">
-            Pick a course to see your total here.
+            {t("cartStep.basket.emptyCartBody", { course: courseTerm })}
           </p>
         </div>
       ) : (
@@ -183,7 +212,7 @@ export const OrderSummaryPanel = ({
           <>
           <div className="flex items-center justify-between px-5 pb-1 pt-4">
             <span className="text-caption font-semibold uppercase tracking-wide text-gray-400">
-              Selected
+              {t("cartStep.basket.selectedLabel")}
             </span>
             {canRemove && items.length > 1 && (
               <button
@@ -191,7 +220,7 @@ export const OrderSummaryPanel = ({
                 onClick={() => setSelection([])}
                 className="text-caption font-semibold text-danger-600 transition-opacity hover:opacity-80"
               >
-                Remove all
+                {t("cartStep.basket.removeAll")}
               </button>
             )}
           </div>
@@ -226,7 +255,7 @@ export const OrderSummaryPanel = ({
                   </div>
 
                   <span className="shrink-0 text-caption font-semibold text-gray-900">
-                    {price > 0 ? money(price) : "Free"}
+                    {price > 0 ? money(price) : t("common.free")}
                   </span>
 
                   {canRemove && (
@@ -251,7 +280,7 @@ export const OrderSummaryPanel = ({
           {variant === "full" && offers.length > 0 && (
             <div className="mx-5 mb-4 space-y-1.5 rounded-xl border border-dashed border-primary-200 bg-primary-50/50 p-3">
               <p className="text-2xs font-bold uppercase tracking-wide text-primary-500">
-                Offers
+                {t("cartStep.basket.offersHeading")}
               </p>
               {offers.map((o) => (
                 <div key={o.rule.id} className="flex items-start gap-1.5 text-2xs">
@@ -298,14 +327,18 @@ export const OrderSummaryPanel = ({
               "you pay ₹799" is not something anyone can check. */}
           <div className="space-y-2 border-t border-gray-100 px-5 py-4">
             <p className="text-caption font-semibold uppercase tracking-wide text-gray-400">
-              Price details
+              {t("cartStep.basket.priceDetails")}
             </p>
 
             {/* What the courses cost bought separately. Always the first line,
                 so every discount below has something to be a discount FROM. */}
             <div className="flex justify-between text-sm text-gray-700">
               <span>
-                Item total ({items.length} subject{items.length === 1 ? "" : "s"})
+                {t("cartStep.basket.itemTotal", {
+                  count: items.length,
+                  course: courseTerm,
+                  courses: coursesTerm,
+                })}
               </span>
               <span className="tabular-nums">{money(itemTotal)}</span>
             </div>
@@ -338,9 +371,12 @@ export const OrderSummaryPanel = ({
             {basketDiscount > 0 && (
               <div className="flex justify-between text-sm font-medium text-success-600">
                 <span className="truncate">
-                  Basket discount
+                  {t("cartStep.basket.basketDiscount")}
                   {basketPercent > 0 && (
-                    <span className="text-success-500"> ({basketPercent}% off)</span>
+                    <span className="text-success-500">
+                      {" "}
+                      {t("cartStep.basket.percentOff", { percent: basketPercent })}
+                    </span>
                   )}
                 </span>
                 <span className="shrink-0 tabular-nums">− {money(basketDiscount)}</span>
@@ -349,14 +385,16 @@ export const OrderSummaryPanel = ({
 
             {!quote && planSavings > 0 && (
               <div className="flex justify-between text-sm font-medium text-success-600">
-                <span>Plan savings</span>
+                <span>{t("cartStep.basket.planSavings")}</span>
                 <span className="tabular-nums">− {money(planSavings)}</span>
               </div>
             )}
 
             {offer && (
               <div className="flex justify-between text-sm font-medium text-success-600">
-                <span className="truncate">Offer · {offer.rule.label}</span>
+                <span className="truncate">
+                  {t("cartStep.basket.offerLine", { label: offer.rule.label })}
+                </span>
                 <span className="shrink-0 tabular-nums">− {money(offer.amount)}</span>
               </div>
             )}
@@ -372,8 +410,7 @@ export const OrderSummaryPanel = ({
 
             {variant === "full" && pricedPerGroup && (
               <p className="text-caption text-gray-500">
-                Each class is priced on its own, so subjects for different children
-                don&apos;t combine.
+                {t("cartStep.basket.pricedPerGroup", { courses: coursesTerm })}
               </p>
             )}
 
@@ -392,8 +429,12 @@ export const OrderSummaryPanel = ({
           <div className="border-t border-dashed border-gray-200 px-5 py-4">
             <div className="flex items-end justify-between gap-2">
               <div>
-                <p className="text-sm font-bold text-gray-900">Total Payable</p>
-                <p className="text-caption text-gray-500">Inclusive of all taxes</p>
+                <p className="text-sm font-bold text-gray-900">
+                  {t("cartStep.basket.totalPayable")}
+                </p>
+                <p className="text-caption text-gray-500">
+                  {t("cartStep.basket.inclusiveTaxes")}
+                </p>
               </div>
               <div className="text-right">
                 {/* The struck-through figure is what the SAME courses cost apart,
@@ -405,14 +446,18 @@ export const OrderSummaryPanel = ({
                   </p>
                 )}
                 <span className="text-h3-semibold font-bold tabular-nums text-gray-900">
-                  {total > 0 ? money(total) : "Free"}
+                  {total > 0 ? money(total) : t("common.free")}
                 </span>
               </div>
             </div>
             {totalSaved > 0 && (
               <p className="mt-2 rounded-lg bg-success-50 px-3 py-1.5 text-caption font-bold text-success-700">
-                You save {money(totalSaved)}
-                {totalPercent > 0 && ` (${totalPercent}%)`}
+                {totalPercent > 0
+                  ? t("cartStep.basket.youSaveWithPercent", {
+                      amount: money(totalSaved),
+                      percent: totalPercent,
+                    })
+                  : t("cartStep.basket.youSave", { amount: money(totalSaved) })}
               </p>
             )}
           </div>
@@ -420,7 +465,7 @@ export const OrderSummaryPanel = ({
           <div className="flex items-center justify-center gap-1.5 border-t border-gray-100 bg-gray-50 px-5 py-3">
             <Lock className="size-3 text-gray-400" aria-hidden="true" />
             <span className="text-caption font-medium text-gray-500">
-              100% secure payment
+              {t("cartStep.basket.securePayment")}
             </span>
           </div>
         </>

@@ -30,7 +30,10 @@ import { PlanTiles } from './PlanTiles';
 import { pushCartViewed, pushCouponApplied } from '@/components/common/enroll-by-invite/-utils/gtm';
 import { useCouponsEnabled } from '@/components/common/coupon/use-coupons-enabled';
 import { Tag, X, ArrowLeft, ArrowRight, CheckCircle, SpinnerGap } from "@phosphor-icons/react";
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 import { cn } from '@/lib/utils';
 import { CartItemList } from './CartItemList';
@@ -64,6 +67,11 @@ interface CartStepProps {
 export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack, onNext }: CartStepProps) => { // design-lint-ignore: page-builder default color
     const { t, i18n } = useTranslation('productPages');
     const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const courseTerm = course.toLocaleLowerCase();
+    const coursesTerm = getTerminologyPlural(
+        ContentTerms.Course,
+        SystemTerms.Course
+    ).toLocaleLowerCase();
     const {
         selectedPsOptionIds, couponCode, discountAmount,
         setCouponCode, applyCoupon, clearCoupon, totalPrice, toggleSelection, setSelection, utmParams,
@@ -210,7 +218,11 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                     </div>
                     {!isEmpty && (
                         <span className="shrink-0 rounded-full bg-gray-100 px-3 py-1 text-caption font-semibold text-gray-600">
-                            {selectedPsOptionIds.length} subject{selectedPsOptionIds.length === 1 ? '' : 's'}
+                            {t('cartStep.basket.groupCount', {
+                                count: selectedPsOptionIds.length,
+                                course: courseTerm,
+                                courses: coursesTerm,
+                            })}
                         </span>
                     )}
                 </div>
@@ -251,7 +263,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                         type="button"
                                         onClick={handleRemoveCoupon}
                                         className="shrink-0 text-gray-400 transition-colors hover:text-danger-600"
-                                        aria-label="Remove coupon"
+                                        aria-label={t('cartStep.item.removeTooltip')}
                                     >
                                         <X className="size-4" aria-hidden="true" />
                                     </button>
@@ -267,7 +279,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                             setCouponError('');
                                         }}
                                         className="min-h-11 flex-1 rounded-lg border border-gray-200 px-3 font-mono text-sm uppercase placeholder:normal-case focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-                                        aria-label="Coupon code"
+                                        aria-label={t('cartStep.couponCard.title')}
                                     />
                                     <button
                                         type="button"
@@ -387,9 +399,13 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
             {/* Below lg the total and the CTA would both scroll away behind a
                 cart that runs longer than the screen, so they are pinned. */}
             <MobileCheckoutBar
-                totalLabel={total > 0 ? money(total) : 'Free'}
-                caption={saved > 0 ? `You save ${money(saved)}` : undefined}
-                ctaLabel="Continue"
+                totalLabel={total > 0 ? money(total) : t('common.free')}
+                caption={
+                    saved > 0
+                        ? t('cartStep.basket.youSave', { amount: money(saved) })
+                        : undefined
+                }
+                ctaLabel={t('common.next')}
                 onContinue={onNext}
                 disabled={isEmpty}
                 primaryColor={primaryColor}

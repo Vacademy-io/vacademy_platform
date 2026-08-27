@@ -14,6 +14,11 @@
         "nextPage": "अगला पेज"
     },
     "productPageOffer": {
+        "addMoreForTierAmount": "{{amount}} की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "addMoreForTierAmountMore": "{{amount}} की अतिरिक्त छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "addMoreForTierPercent": "{{percent}}% की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
+        "finderShowing": "दिखा रहे हैं",
+        "finderShowAll": "सभी {{courses}} दिखाएं",
         "addMoreForTier": "{{offer}} पाने के लिए {{count}} और {{course}} जोड़ें।",
         "savedAmount": "{{amount}} · {{percent}}% की बचत",
         "emptyConfig": "यहाँ {{courses}} दिखाने के लिए प्रॉपर्टीज़ पैनल में एक प्रोडक्ट पेज चुनें।",

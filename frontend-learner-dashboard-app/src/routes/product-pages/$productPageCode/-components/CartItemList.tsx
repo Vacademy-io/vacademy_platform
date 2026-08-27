@@ -1,4 +1,10 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 import { Gift, ShoppingCartSimple, Trash, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useProductPageStore } from '../-stores/product-page-store';
@@ -59,6 +65,15 @@ export const CartItemList = ({
     onAddMore,
     primaryColor,
 }: CartItemListProps) => {
+    const { t } = useTranslation('productPages');
+    // The institute's own word for a course — "subject" was baked in, which is
+    // wrong anywhere the admin renamed it (Programme, Paper, Module).
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
+    const coursesTerm = getTerminologyPlural(
+        ContentTerms.Course,
+        SystemTerms.Course
+    ).toLocaleLowerCase();
+
     const { selectedPsOptionIds, setSelection, basketQuote } = useProductPageStore();
 
     const items = useMemo(
@@ -116,9 +131,11 @@ export const CartItemList = ({
                 <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-white ring-1 ring-gray-200">
                     <ShoppingCartSimple className="size-6 text-gray-400" aria-hidden="true" />
                 </div>
-                <p className="text-base font-semibold text-gray-900">Nothing in your cart yet</p>
+                <p className="text-base font-semibold text-gray-900">
+                    {t('cartStep.basket.emptyTitle')}
+                </p>
                 <p className="mx-auto mt-1 max-w-xs text-sm text-gray-500">
-                    Choose at least one subject to continue to checkout.
+                    {t('cartStep.basket.emptyBody', { course: courseTerm })}
                 </p>
                 {onAddMore && (
                 <button
@@ -129,7 +146,7 @@ export const CartItemList = ({
                     style={{ backgroundColor: primaryColor }}
                 >
                     <Plus className="size-4" aria-hidden="true" />
-                    Browse subjects
+                    {t('cartStep.basket.browse', { courses: coursesTerm })}
                 </button>
                 )}
             </div>
@@ -137,7 +154,10 @@ export const CartItemList = ({
     }
 
     return (
-        <section aria-label="Courses in your cart" className="space-y-4">
+        <section
+            aria-label={t('cartStep.basket.cartItems', { courses: coursesTerm })}
+            className="space-y-4"
+        >
             {groups.map((group, gi) => {
                 // Measured against what these same courses cost apart — the
                 // figure the group header strikes through. Never an invented
@@ -179,7 +199,11 @@ export const CartItemList = ({
                                 <p className="mt-0.5 truncate text-caption text-gray-500">
                                     {line
                                         ? line.how
-                                        : `${group.items.length} course${group.items.length === 1 ? '' : 's'}`}
+                                        : t('cartStep.basket.groupCount', {
+                                              count: group.items.length,
+                                              course: courseTerm,
+                                              courses: coursesTerm,
+                                          })}
                                 </p>
                             </div>
                             {line && (
@@ -241,10 +265,10 @@ export const CartItemList = ({
                                             ₹799 total reads as a bug, not a bargain. */}
                                         <span className="shrink-0 text-caption font-medium text-gray-500">
                                             {line
-                                                ? 'Included'
+                                                ? t('cartStep.basket.included')
                                                 : price > 0
                                                   ? money(price)
-                                                  : 'Free'}
+                                                  : t('common.free')}
                                         </span>
 
                                         {canRemove && (
@@ -269,8 +293,13 @@ export const CartItemList = ({
                             <div className="flex items-center gap-2 border-t border-gray-100 bg-primary-50/60 px-4 py-2.5 text-caption font-medium text-primary-500 sm:px-5">
                                 <Gift className="size-4 shrink-0" aria-hidden="true" />
                                 <span className="min-w-0">
-                                    One more subject for {group.label || 'this selection'} adds only{' '}
-                                    {money(nextHere)}.
+                                    {t('cartStep.basket.oneMoreForGroup', {
+                                        course: courseTerm,
+                                        group:
+                                            group.label ||
+                                            t('cartStep.basket.thisSelection'),
+                                        amount: money(nextHere),
+                                    })}
                                 </span>
                             </div>
                         )}
@@ -285,9 +314,12 @@ export const CartItemList = ({
                 <div className="flex items-center gap-2.5 rounded-2xl border border-primary-200 bg-primary-50 px-4 py-3">
                     <Gift className="size-5 shrink-0 text-primary-500" aria-hidden="true" />
                     <p className="min-w-0 text-sm font-semibold text-primary-500">
-                        Add {tierAhead.coursesAway} more subject
-                        {tierAhead.coursesAway === 1 ? '' : 's'} to get {tierAhead.label} the
-                        whole basket.
+                        {t('cartStep.basket.addForTier', {
+                            count: tierAhead.coursesAway,
+                            course: courseTerm,
+                            courses: coursesTerm,
+                            offer: tierAhead.label,
+                        })}
                     </p>
                 </div>
             )}
@@ -299,7 +331,7 @@ export const CartItemList = ({
                 className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white text-sm font-semibold text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
             >
                 <Plus className="size-4" aria-hidden="true" />
-                Add another subject
+                {t('cartStep.basket.addAnother', { course: courseTerm })}
             </button>
             )}
         </section>

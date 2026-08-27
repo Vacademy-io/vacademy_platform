@@ -108,10 +108,16 @@ export interface BasketPricingCombo {
  */
 export interface BasketPricingTier {
     /** Applies once the basket reaches this many courses. */
-    minCourses: number;
+    minCourses?: number;
+    /** Applies once the courses cost at least this much. */
+    minAmount?: number;
+    /** Closes the band at the top. Absent or zero means open-ended. */
+    maxAmount?: number;
     type: 'PERCENT' | 'AMOUNT';
     /** Percent off the course prices, or a flat currency amount. */
     value: number;
+    /** Ceiling in currency for a percentage tier. Absent or zero means no cap. */
+    maxDiscount?: number;
 }
 
 export interface BasketPricingSettings {

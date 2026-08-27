@@ -60,10 +60,19 @@ export interface BasketPricingCombo {
 
 export interface BasketPricingTier {
     /** Applies once the basket reaches this many courses. */
-    minCourses: number;
+    minCourses?: number;
+    /** Applies once the courses cost at least this much. */
+    minAmount?: number;
+    /**
+     * Closes the band at the top, so "₹500–₹999 → 10%" is expressible without
+     * fighting the next rule. Absent or zero means open-ended.
+     */
+    maxAmount?: number;
     type: 'PERCENT' | 'AMOUNT';
     /** Percent of the item total, or a flat currency amount. */
     value: number;
+    /** Ceiling in currency for a PERCENT tier. Absent or zero means no cap. */
+    maxDiscount?: number;
 }
 
 export interface BasketPricingSettings {
@@ -164,14 +173,51 @@ const baseFor = (settings: BasketPricingSettings, picked: BasketItem[]): number 
 };
 
 /**
- * The discount for a basket of this size: the BEST of every tier the count
- * qualifies for. A PERCENT tier keeps scaling as the basket grows, which is why
- * it needs no rung per count; an AMOUNT tier stays flat.
+ * Whether a basket of this size and value reaches a tier's conditions.
+ *
+ * A tier with neither condition would fire on any basket at all, including a
+ * single free course — treat it as unconfigured rather than as "always on".
+ */
+export const tierApplies = (
+    tier: BasketPricingTier,
+    base: number,
+    count: number
+): boolean => {
+    const minCourses = tier.minCourses ?? 0;
+    const minAmount = tier.minAmount ?? 0;
+    if (minCourses <= 0 && minAmount <= 0) return false;
+    if (minCourses > 0 && count < minCourses) return false;
+    if (minAmount > 0 && base < minAmount) return false;
+    const maxAmount = tier.maxAmount ?? 0;
+    // Zero means open-ended, so only a positive ceiling closes the band.
+    return !(maxAmount > 0 && base > maxAmount);
+};
+
+/** What a qualifying tier takes off, before the caller caps it at the base. */
+export const tierAmount = (tier: BasketPricingTier, base: number): number => {
+    const value = tier.value ?? 0;
+    if (value <= 0) return 0;
+    let off = tier.type === 'AMOUNT' ? value : (base * value) / 100;
+    const cap = tier.maxDiscount ?? 0;
+    if (cap > 0) off = Math.min(off, cap);
+    return Math.max(0, off);
+};
+
+/**
+ * The discount for this basket: the BEST of every tier it qualifies for.
+ *
+ * A tier is gated on how MANY courses, on how MUCH they cost, or on both — and
+ * when both are set both must hold, the same reading the page's offers give the
+ * same two field names.
  *
  * Best, not highest-threshold: a tier list where a later rung happens to be
  * worth less ("2+ → ₹500 off, 5+ → 10% off") would otherwise take the discount
  * AWAY from a parent for adding a fifth subject. Identical for the normal
  * increasing ladder.
+ *
+ * `base` is the group's own item total under GROUP scope, so an amount
+ * threshold is judged against what THAT class costs — the same figure the tier
+ * then discounts.
  */
 export const tierDiscount = (
     settings: BasketPricingSettings,
@@ -180,10 +226,8 @@ export const tierDiscount = (
 ): number => {
     let best = 0;
     for (const tier of settings.tiers ?? []) {
-        const min = tier.minCourses ?? 0;
-        if (min <= 0 || count < min) continue;
-        const amount = tier.type === 'AMOUNT' ? tier.value : (base * tier.value) / 100;
-        best = Math.max(best, amount);
+        if (!tierApplies(tier, base, count)) continue;
+        best = Math.max(best, tierAmount(tier, base));
     }
     return Math.min(Math.max(0, best), base);
 };
@@ -313,11 +357,17 @@ export const savingsVsSingles = (
 };
 
 /**
- * The next discount tier the basket has not reached, and how far away it is.
+ * The next discount tier the basket has not reached, and exactly how far away.
  *
- * This is the nudge a DISCOUNT page can make honestly: the threshold is a
- * course count, so "add 1 more subject for 25% off" is exact, where quoting a
- * rupee figure would depend on which course gets picked.
+ * Two gaps, because a tier can be gated on either or both: `coursesAway` is how
+ * many more courses it needs, `amountAway` how much more spend. Whichever is
+ * non-zero is what the visitor must actually do, so the UI can say "add 1 more
+ * subject" or "spend ₹120 more" rather than guessing.
+ *
+ * Only tiers that would BEAT the discount already applied are returned —
+ * nudging someone toward a rung worth less than what they have is worse than
+ * saying nothing. And a tier is only offered when reaching it is possible:
+ * an unreachable band (maxAmount already exceeded) is skipped.
  *
  * `base` lets the label quote the EXTRA saving rather than the new total. A
  * basket already holding ₹99 off does not gain ₹248 by adding one more — it
@@ -330,31 +380,78 @@ export const nextTier = (
     base = 0
 ): {
     coursesAway: number;
+    amountAway: number;
     /** English, for the surfaces that are not translated yet. */
     label: string;
     /** The same fact as data, so a translated surface can phrase it itself. */
     offer: { type: 'PERCENT' | 'AMOUNT'; value: number; incremental: boolean };
 } | null => {
     if (!settings || !isDiscountBasis(settings)) return null;
-    const ahead = (settings.tiers ?? [])
-        .filter((t) => (t.minCourses ?? 0) > count)
-        .sort((a, b) => a.minCourses - b.minCourses);
-    const next = ahead[0];
-    if (!next) return null;
 
     const alreadyOff = base > 0 ? tierDiscount(settings, base, count) : 0;
+
+    // A gap in rupees and a gap in courses are not directly comparable, so
+    // convert spend into "courses to add" at what this basket's courses
+    // actually cost. Without that, a tier needing ₹1,300 more looked NEARER
+    // than one needing a single subject, purely because its course gap was 0.
+    const avgPrice = count > 0 && base > 0 ? base / count : 0;
+
+    let best: {
+        tier: BasketPricingTier;
+        coursesAway: number;
+        amountAway: number;
+        effort: number;
+    } | null = null;
+    for (const tier of settings.tiers ?? []) {
+        if (tierApplies(tier, base, count)) continue;
+        const minCourses = tier.minCourses ?? 0;
+        const minAmount = tier.minAmount ?? 0;
+        if (minCourses <= 0 && minAmount <= 0) continue; // unconfigured
+
+        const maxAmount = tier.maxAmount ?? 0;
+        // Already past the top of this band — no amount of adding gets back in.
+        if (maxAmount > 0 && base > maxAmount) continue;
+
+        const coursesAway = Math.max(0, minCourses - count);
+        const amountAway = Math.max(0, Math.ceil(minAmount - base));
+        if (coursesAway === 0 && amountAway === 0) continue;
+
+        // Worth reaching? Compare at the base it would be judged on. Skipped
+        // when there is no basket yet: a PERCENT tier of nothing is nothing,
+        // and filtering on that would hide every percentage tier from an empty
+        // or unpriced cart.
+        const projected = Math.max(base, minAmount);
+        if (base > 0 && tierAmount(tier, projected) <= alreadyOff) continue;
+
+        const spendAsCourses =
+            amountAway > 0 ? (avgPrice > 0 ? Math.ceil(amountAway / avgPrice) : Infinity) : 0;
+        const effort = Math.max(coursesAway, spendAsCourses);
+
+        if (
+            best === null ||
+            effort < best.effort ||
+            (effort === best.effort && amountAway < best.amountAway)
+        ) {
+            best = { tier, coursesAway, amountAway, effort };
+        }
+    }
+    if (!best) return null;
+
+    const { tier, coursesAway, amountAway } = best;
+    const projected = Math.max(base, tier.minAmount ?? 0);
     let label: string;
     let offer: { type: 'PERCENT' | 'AMOUNT'; value: number; incremental: boolean };
-    if (next.type === 'AMOUNT') {
-        const extra = Math.round(next.value - alreadyOff);
+    if (tier.type === 'AMOUNT') {
+        const full = tierAmount(tier, projected);
+        const extra = Math.round(full - alreadyOff);
         const incremental = alreadyOff > 0 && extra > 0;
-        offer = { type: 'AMOUNT', value: incremental ? extra : next.value, incremental };
-        label = incremental ? `₹${extra} more off` : `₹${next.value} off`;
+        offer = { type: 'AMOUNT', value: incremental ? extra : Math.round(full), incremental };
+        label = incremental ? `₹${extra} more off` : `₹${Math.round(full)} off`;
     } else {
-        offer = { type: 'PERCENT', value: next.value, incremental: false };
-        label = `${next.value}% off`;
+        offer = { type: 'PERCENT', value: tier.value, incremental: false };
+        label = `${tier.value}% off`;
     }
-    return { coursesAway: next.minCourses - count, label, offer };
+    return { coursesAway, amountAway, label, offer };
 };
 
 /** The saving as a percentage of what the courses cost apart. 0 when there is none. */

@@ -62,22 +62,27 @@ export const BasketSummaryBar = ({ pageData, onNext, primaryColor }: BasketSumma
                 <div className="border-b border-primary-100 bg-primary-50">
                     <p className="mx-auto flex max-w-screen-2xl items-center gap-2 px-4 py-2 text-caption font-semibold text-primary-500">
                         <Gift className="size-4 shrink-0" aria-hidden="true" />
-                        {t(
-                            tierAhead.offer.type === 'PERCENT'
-                                ? 'common.basketNextTierPercent'
-                                : tierAhead.offer.incremental
-                                  ? 'common.basketNextTierAmountMore'
-                                  : 'common.basketNextTierAmount',
-                            {
-                                count: tierAhead.coursesAway,
-                                course: (tierAhead.coursesAway === 1
-                                    ? courseTerm
-                                    : coursesTerm
-                                ).toLocaleLowerCase(),
-                                amount: money(tierAhead.offer.value),
-                                percent: tierAhead.offer.value,
-                            }
-                        )}
+                        {tierAhead.coursesAway > 0
+                            ? t(
+                                  tierAhead.offer.type === 'PERCENT'
+                                      ? 'common.basketNextTierPercent'
+                                      : tierAhead.offer.incremental
+                                        ? 'common.basketNextTierAmountMore'
+                                        : 'common.basketNextTierAmount',
+                                  {
+                                      count: tierAhead.coursesAway,
+                                      course: (tierAhead.coursesAway === 1
+                                          ? courseTerm
+                                          : coursesTerm
+                                      ).toLocaleLowerCase(),
+                                      amount: money(tierAhead.offer.value),
+                                      percent: tierAhead.offer.value,
+                                  }
+                              )
+                            : t('cartStep.basket.spendForTier', {
+                                  amount: money(tierAhead.amountAway),
+                                  offer: tierAhead.label,
+                              })}
                     </p>
                 </div>
             )}

@@ -33,10 +33,13 @@ import java.util.Set;
  *                     payment plan. Prefer DISCOUNT wherever the courses are
  *                     priced — under FLAT the single-subject rate is written
  *                     down twice (here and on the plan) and the two drift.
- *   tiers             [{minCourses, type: PERCENT|AMOUNT, value}] for DISCOUNT.
- *                     The highest minCourses at or below the count wins, so a
- *                     tier at 3 also covers 4, 5, … — which is the point of a
- *                     percentage: it keeps scaling without a new rung.
+ *   tiers             for DISCOUNT. Each is
+ *                       {minCourses?, minAmount?, maxAmount?,
+ *                        type: PERCENT|AMOUNT, value, maxDiscount?}
+ *                     gated on count, on spend, or on both (both must hold
+ *                     when both are set). maxAmount closes a band; maxDiscount
+ *                     caps a percentage. The BEST qualifying tier wins, so a
+ *                     bigger basket never loses a discount it had.
  *   ladder            prices[] for a basket of 1, 2, 3 … plus perExtra for each
  *                     one beyond the last listed price. FLAT basis only.
  *   groups            label → the level names belonging to it. No groups
@@ -232,30 +235,74 @@ public class BasketPricingCalculator {
     }
 
     /**
-     * The discount for a basket of this size: the BEST of every tier the count
-     * qualifies for. A PERCENT tier keeps scaling as the basket grows, which is
-     * why it needs no rung per count; an AMOUNT tier stays flat.
+     * The discount for this basket: the BEST of every tier it qualifies for.
+     *
+     * A tier is gated on how MANY courses (minCourses), on how MUCH they cost
+     * (minAmount / maxAmount), or on both — and when both are set both must
+     * hold, the same reading OfferCalculator gives the same two field names. A
+     * closed band makes "₹500–₹999 → 10%, ₹1,000+ → 15%" expressible without
+     * the two rules fighting.
+     *
+     * A PERCENT tier may carry maxDiscount, a ceiling in currency; absent or
+     * zero means no ceiling, again matching OfferCalculator.
      *
      * Best, not highest-threshold: a tier list where a later rung happens to be
      * worth less ("2+ → ₹500 off, 5+ → 10% off") would otherwise take the
      * discount AWAY from a parent for adding a fifth subject. Picking the best
      * qualifying tier makes that misconfiguration merely useless rather than
      * punitive, and is identical for the normal increasing ladder.
+     *
+     * `base` is the group's own item total under GROUP scope, so an amount
+     * threshold is judged against what THAT class costs — the same figure the
+     * tier then discounts. Judging it against the whole basket would let one
+     * child's subjects unlock a band for another's.
      */
     private double tierDiscount(JsonNode cfg, double base, int count) {
         double best = 0;
         for (JsonNode tier : cfg.path("tiers")) {
-            int min = tier.path("minCourses").asInt(0);
-            if (min <= 0 || count < min) {
+            if (!tierApplies(tier, base, count)) {
                 continue;
             }
-            double value = tier.path("value").asDouble(0);
-            double amount = "PERCENT".equalsIgnoreCase(tier.path("type").asText("PERCENT"))
-                    ? base * value / 100.0
-                    : value;
-            best = Math.max(best, amount);
+            best = Math.max(best, tierAmount(tier, base));
         }
         return Math.min(Math.max(0, best), base);
+    }
+
+    /** Whether a basket of this size and value reaches a tier's conditions. */
+    private boolean tierApplies(JsonNode tier, double base, int count) {
+        int minCourses = tier.path("minCourses").asInt(0);
+        double minAmount = tier.path("minAmount").asDouble(0);
+        // A tier with neither condition would fire on any basket at all,
+        // including a single free course. Treat it as unconfigured rather than
+        // as "always on" — an admin who wants that writes minCourses 1.
+        if (minCourses <= 0 && minAmount <= 0) {
+            return false;
+        }
+        if (minCourses > 0 && count < minCourses) {
+            return false;
+        }
+        if (minAmount > 0 && base < minAmount) {
+            return false;
+        }
+        double maxAmount = tier.path("maxAmount").asDouble(0);
+        // Zero means open-ended, so only a positive ceiling closes the band.
+        return !(maxAmount > 0 && base > maxAmount);
+    }
+
+    /** What a qualifying tier takes off, before the caller caps it at the base. */
+    private double tierAmount(JsonNode tier, double base) {
+        double value = tier.path("value").asDouble(0);
+        if (value <= 0) {
+            return 0;
+        }
+        double off = "PERCENT".equalsIgnoreCase(tier.path("type").asText("PERCENT"))
+                ? base * value / 100.0
+                : value;
+        double cap = tier.path("maxDiscount").asDouble(0);
+        if (cap > 0) {
+            off = Math.min(off, cap);
+        }
+        return Math.max(0, off);
     }
 
     private GroupQuote priceGroup(JsonNode cfg, String groupLabel, List<BasketItem> picked,

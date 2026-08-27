@@ -3,6 +3,8 @@ import {
     nextTier,
     quoteBasket,
     savingsPercent,
+    tierAmount,
+    tierApplies,
     tierDiscount,
     type BasketPricingSettings,
 } from './basket-pricing';
@@ -88,11 +90,13 @@ describe('percentage tiers', () => {
     it('names how far the next tier is, in courses rather than rupees', () => {
         expect(nextTier(PCT, 1)).toEqual({
             coursesAway: 1,
+            amountAway: 0,
             label: '15% off',
             offer: { type: 'PERCENT', value: 15, incremental: false },
         });
         expect(nextTier(PCT, 3)).toEqual({
             coursesAway: 1,
+            amountAway: 0,
             label: '25% off',
             offer: { type: 'PERCENT', value: 25, incremental: false },
         });
@@ -104,12 +108,14 @@ describe('percentage tiers', () => {
         // which is ₹149 MORE — promising ₹248 would overstate the gain.
         expect(nextTier(DISCOUNT, 2, 698)).toEqual({
             coursesAway: 1,
+            amountAway: 0,
             label: '₹149 more off',
             offer: { type: 'AMOUNT', value: 149, incremental: true },
         });
         // Nothing applied yet, so the tier's own figure is the honest one.
         expect(nextTier(DISCOUNT, 1, 349)).toEqual({
             coursesAway: 1,
+            amountAway: 0,
             label: '₹99 off',
             offer: { type: 'AMOUNT', value: 99, incremental: false },
         });
@@ -166,5 +172,128 @@ describe('guardrails', () => {
             groups: [{ label: 'Class 5', levels: ['Class 5'], packPrice: 499 }],
         };
         expect(quoteBasket(withPack, items(3))!.total).toBe(499);
+    });
+});
+
+describe('amount-gated tiers', () => {
+    const spend = (tiers: BasketPricingSettings['tiers']): BasketPricingSettings => ({
+        enabled: true,
+        pricingBasis: 'DISCOUNT',
+        ladder: { prices: [], perExtra: 0 },
+        tiers,
+        groups: GROUPS,
+    });
+
+    it('applies once the basket is worth enough, whatever the count', () => {
+        const s = spend([{ minAmount: 1000, type: 'PERCENT', value: 10 }]);
+        expect(tierDiscount(s, 900, 5)).toBe(0); // under the threshold
+        expect(tierDiscount(s, 1000, 1)).toBe(100); // exactly on it, one course
+        expect(tierDiscount(s, 2000, 2)).toBe(200);
+    });
+
+    it('requires BOTH conditions when both are set', () => {
+        const s = spend([{ minCourses: 3, minAmount: 1000, type: 'PERCENT', value: 10 }]);
+        expect(tierDiscount(s, 1200, 2)).toBe(0); // enough money, too few courses
+        expect(tierDiscount(s, 800, 4)).toBe(0); // enough courses, too little money
+        expect(tierDiscount(s, 1200, 3)).toBe(120);
+    });
+
+    it('caps a percentage at maxDiscount', () => {
+        const s = spend([{ minAmount: 1000, type: 'PERCENT', value: 50, maxDiscount: 300 }]);
+        expect(tierDiscount(s, 1000, 3)).toBe(300); // 500 capped to 300
+        expect(tierDiscount(s, 1100, 3)).toBe(300);
+        // Under the cap it behaves normally.
+        expect(tierDiscount(spend([{ minAmount: 1000, type: 'PERCENT', value: 10, maxDiscount: 300 }]), 1000, 3)).toBe(100);
+    });
+
+    it('treats a zero or absent cap as no cap', () => {
+        expect(tierAmount({ minAmount: 1, type: 'PERCENT', value: 50, maxDiscount: 0 }, 1000)).toBe(500);
+        expect(tierAmount({ minAmount: 1, type: 'PERCENT', value: 50 }, 1000)).toBe(500);
+    });
+
+    it('closes a band at the top so two rules do not fight', () => {
+        const s = spend([
+            { minAmount: 500, maxAmount: 999, type: 'PERCENT', value: 10 },
+            { minAmount: 1000, type: 'PERCENT', value: 20 },
+        ]);
+        expect(tierDiscount(s, 600, 2)).toBe(60); // in the low band
+        expect(tierDiscount(s, 1500, 4)).toBe(300); // only the high band applies
+    });
+
+    it('ignores a tier with no condition at all rather than firing on everything', () => {
+        expect(tierApplies({ type: 'PERCENT', value: 50 }, 1000, 3)).toBe(false);
+        expect(tierDiscount(spend([{ type: 'PERCENT', value: 50 }]), 1000, 3)).toBe(0);
+    });
+
+    it('never discounts more than the courses cost', () => {
+        expect(tierDiscount(spend([{ minAmount: 1, type: 'AMOUNT', value: 99999 }]), 500, 2)).toBe(500);
+        expect(tierDiscount(spend([{ minAmount: 1, type: 'PERCENT', value: 300 }]), 500, 2)).toBe(500);
+    });
+
+    it('ignores negative and zero values', () => {
+        expect(tierDiscount(spend([{ minAmount: 1, type: 'AMOUNT', value: -100 }]), 500, 2)).toBe(0);
+        expect(tierDiscount(spend([{ minAmount: 1, type: 'PERCENT', value: 0 }]), 500, 2)).toBe(0);
+    });
+
+    it('still takes the best of a count tier and an amount tier', () => {
+        const s = spend([
+            { minCourses: 2, type: 'AMOUNT', value: 99 },
+            { minAmount: 600, type: 'PERCENT', value: 25 },
+        ]);
+        // 698 qualifies for both: 99 flat vs 174.5 percent — the better wins.
+        expect(tierDiscount(s, 698, 2)).toBeCloseTo(174.5, 5);
+    });
+});
+
+describe('nextTier with amount gates', () => {
+    const s: BasketPricingSettings = {
+        enabled: true,
+        pricingBasis: 'DISCOUNT',
+        ladder: { prices: [], perExtra: 0 },
+        tiers: [
+            { minCourses: 3, type: 'AMOUNT', value: 200 },
+            { minAmount: 2000, type: 'PERCENT', value: 20 },
+        ],
+        groups: GROUPS,
+    };
+
+    it('reports a course gap when courses are what is missing', () => {
+        const ahead = nextTier(s, 2, 698)!;
+        expect(ahead.coursesAway).toBe(1);
+        expect(ahead.amountAway).toBe(0);
+    });
+
+    it('reports an amount gap when only spend is missing', () => {
+        const onlySpend: BasketPricingSettings = {
+            ...s,
+            tiers: [{ minAmount: 2000, type: 'PERCENT', value: 20 }],
+        };
+        const ahead = nextTier(onlySpend, 4, 1500)!;
+        expect(ahead.coursesAway).toBe(0);
+        expect(ahead.amountAway).toBe(500);
+    });
+
+    it('never promises a tier already worth less than what is applied', () => {
+        const worse: BasketPricingSettings = {
+            ...s,
+            tiers: [
+                { minCourses: 2, type: 'AMOUNT', value: 500 },
+                { minCourses: 5, type: 'AMOUNT', value: 100 },
+            ],
+        };
+        // At 2 courses the 500 tier is live; the 5-course tier is worth less.
+        expect(nextTier(worse, 2, 698)).toBeNull();
+    });
+
+    it('never promises a band the basket has already priced past', () => {
+        const past: BasketPricingSettings = {
+            ...s,
+            tiers: [{ minAmount: 100, maxAmount: 500, type: 'PERCENT', value: 50 }],
+        };
+        expect(nextTier(past, 4, 900)).toBeNull();
+    });
+
+    it('returns null once every tier is reached', () => {
+        expect(nextTier(s, 5, 3000)).toBeNull();
     });
 });

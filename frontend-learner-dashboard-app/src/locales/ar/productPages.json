@@ -42,6 +42,7 @@
     },
     "cartStep": {
         "basket": {
+            "spendForTier": "أنفق {{amount}} إضافية للحصول على {{offer}} على السلة كاملة.",
             "cartItems": "{{courses}} في سلتك",
             "emptyTitle": "لا يوجد شيء في سلتك بعد",
             "emptyBody": "اختر {{course}} واحدًا على الأقل لمتابعة الدفع.",

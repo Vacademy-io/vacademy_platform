@@ -99,6 +99,98 @@ class BasketPricingCalculatorTest {
     }
 
     @Nested
+    @DisplayName("amount-gated tiers")
+    class AmountGates {
+
+        /** A DISCOUNT page whose tiers are the argument, as raw settings JSON. */
+        private String spend(String tiers) {
+            return "{\"basketPricing\":{\"enabled\":true,\"pricingBasis\":\"DISCOUNT\","
+                    + "\"ladder\":{\"prices\":[],\"perExtra\":0},\"tiers\":[" + tiers + "],"
+                    + GROUPS + "}}";
+        }
+
+        /** n courses priced so the group's base lands exactly on `total`. */
+        private List<BasketPricingCalculator.BasketItem> worth(double total, int n) {
+            return items(n, total / n);
+        }
+
+        @Test
+        @DisplayName("apply once the basket is worth enough, whatever the count")
+        void byAmountAlone() {
+            String s = spend("{\"minAmount\":1000,\"type\":\"PERCENT\",\"value\":10}");
+            assertEquals(900, calculator.price(s, worth(900, 5)).getTotal());
+            assertEquals(900, calculator.price(s, worth(1000, 1)).getTotal());
+            assertEquals(1800, calculator.price(s, worth(2000, 2)).getTotal());
+        }
+
+        @Test
+        @DisplayName("require BOTH conditions when both are set")
+        void bothConditions() {
+            String s = spend("{\"minCourses\":3,\"minAmount\":1000,\"type\":\"PERCENT\",\"value\":10}");
+            assertEquals(1200, calculator.price(s, worth(1200, 2)).getTotal());
+            assertEquals(800, calculator.price(s, worth(800, 4)).getTotal());
+            assertEquals(1080, calculator.price(s, worth(1200, 3)).getTotal());
+        }
+
+        @Test
+        @DisplayName("cap a percentage at maxDiscount")
+        void capped() {
+            String s = spend("{\"minAmount\":1000,\"type\":\"PERCENT\",\"value\":50,\"maxDiscount\":300}");
+            assertEquals(700, calculator.price(s, worth(1000, 3)).getTotal());
+        }
+
+        @Test
+        @DisplayName("treat a zero cap as no cap")
+        void zeroCapIsNoCap() {
+            String s = spend("{\"minAmount\":1000,\"type\":\"PERCENT\",\"value\":50,\"maxDiscount\":0}");
+            assertEquals(500, calculator.price(s, worth(1000, 2)).getTotal());
+        }
+
+        @Test
+        @DisplayName("close a band at the top so two rules do not fight")
+        void closedBand() {
+            String s = spend("{\"minAmount\":500,\"maxAmount\":999,\"type\":\"PERCENT\",\"value\":10},"
+                    + "{\"minAmount\":1000,\"type\":\"PERCENT\",\"value\":20}");
+            assertEquals(540, calculator.price(s, worth(600, 2)).getTotal());
+            assertEquals(1200, calculator.price(s, worth(1500, 4)).getTotal());
+        }
+
+        @Test
+        @DisplayName("ignore a tier with no condition rather than firing on everything")
+        void unconditionalIsIgnored() {
+            String s = spend("{\"type\":\"PERCENT\",\"value\":50}");
+            assertEquals(1000, calculator.price(s, worth(1000, 3)).getTotal());
+        }
+
+        @Test
+        @DisplayName("never discount more than the courses cost")
+        void neverBelowZero() {
+            assertEquals(0, calculator.price(spend("{\"minAmount\":1,\"type\":\"AMOUNT\",\"value\":99999}"),
+                    worth(500, 2)).getTotal());
+            assertEquals(0, calculator.price(spend("{\"minAmount\":1,\"type\":\"PERCENT\",\"value\":300}"),
+                    worth(500, 2)).getTotal());
+        }
+
+        @Test
+        @DisplayName("ignore negative and zero values")
+        void ignoresNonPositiveValues() {
+            assertEquals(500, calculator.price(spend("{\"minAmount\":1,\"type\":\"AMOUNT\",\"value\":-100}"),
+                    worth(500, 2)).getTotal());
+            assertEquals(500, calculator.price(spend("{\"minAmount\":1,\"type\":\"PERCENT\",\"value\":0}"),
+                    worth(500, 2)).getTotal());
+        }
+
+        @Test
+        @DisplayName("take the best of a count tier and an amount tier")
+        void bestOfBoth() {
+            String s = spend("{\"minCourses\":2,\"type\":\"AMOUNT\",\"value\":99},"
+                    + "{\"minAmount\":600,\"type\":\"PERCENT\",\"value\":25}");
+            // 698 qualifies for both: 99 flat vs 174.5 percent — the better wins.
+            assertEquals(Math.round(698 - 174.5), calculator.price(s, worth(698, 2)).getTotal());
+        }
+    }
+
+    @Nested
     @DisplayName("guardrails")
     class Guardrails {
 

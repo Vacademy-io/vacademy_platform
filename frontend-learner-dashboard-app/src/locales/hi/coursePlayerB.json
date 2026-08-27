@@ -14,6 +14,8 @@
         "nextPage": "अगला पेज"
     },
     "productPageOffer": {
+        "spendMoreForTierAmount": "{{amount}} की छूट पाने के लिए {{spend}} और खर्च करें।",
+        "spendMoreForTierPercent": "{{percent}}% की छूट पाने के लिए {{spend}} और खर्च करें।",
         "addMoreForTierAmount": "{{amount}} की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
         "addMoreForTierAmountMore": "{{amount}} की अतिरिक्त छूट पाने के लिए {{count}} और {{course}} जोड़ें।",
         "addMoreForTierPercent": "{{percent}}% की छूट पाने के लिए {{count}} और {{course}} जोड़ें।",

@@ -42,6 +42,7 @@
     },
     "cartStep": {
         "basket": {
+            "spendForTier": "पूरी बास्केट पर {{offer}} पाने के लिए {{amount}} और खर्च करें।",
             "cartItems": "आपकी कार्ट में {{courses}}",
             "emptyTitle": "आपकी कार्ट अभी खाली है",
             "emptyBody": "चेकआउट जारी रखने के लिए कम से कम एक {{course}} चुनें।",

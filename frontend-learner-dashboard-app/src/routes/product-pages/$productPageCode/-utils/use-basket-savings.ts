@@ -30,12 +30,12 @@ export interface BasketSavings {
     totalBeforeCoupon: number;
     saved: number;
     savedPercent: number;
-    /** The next discount threshold, on pages that price by tier. */
-    tierAhead: {
-        coursesAway: number;
-        label: string;
-        offer: { type: 'PERCENT' | 'AMOUNT'; value: number; incremental: boolean };
-    } | null;
+    /**
+     * The next discount threshold, on pages that price by tier. Derived from
+     * nextTier rather than restated, so the two cannot drift — a hand-copied
+     * shape here is what hid `amountAway` from every caller.
+     */
+    tierAhead: ReturnType<typeof nextTier>;
     symbol: string;
     money: (n: number) => string;
 }

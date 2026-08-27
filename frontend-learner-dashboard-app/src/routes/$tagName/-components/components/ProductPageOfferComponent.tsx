@@ -1138,22 +1138,36 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                   {/* Phrased from the offer DATA. tierAhead.label is English
                       built in JS ("₹149 more off"), so using it here would
                       strand ar / fr / hi on an English fragment. */}
-                  {t(
-                    tierAhead.offer.type === "PERCENT"
-                      ? "productPageOffer.addMoreForTierPercent"
-                      : tierAhead.offer.incremental
-                        ? "productPageOffer.addMoreForTierAmountMore"
-                        : "productPageOffer.addMoreForTierAmount",
-                    {
-                      count: tierAhead.coursesAway,
-                      course: (tierAhead.coursesAway === 1
-                        ? courseTerm
-                        : coursesTerm
-                      ).toLocaleLowerCase(),
-                      amount: formatPriceAmount(tierAhead.offer.value, cartTotal?.currency),
-                      percent: tierAhead.offer.value,
-                    },
-                  )}
+                  {/* Whichever gap is real: a tier gated on spend cannot be
+                      reached by adding one more course, so promising that
+                      would be a promise the basket cannot keep. */}
+                  {tierAhead.coursesAway > 0
+                    ? t(
+                        tierAhead.offer.type === "PERCENT"
+                          ? "productPageOffer.addMoreForTierPercent"
+                          : tierAhead.offer.incremental
+                            ? "productPageOffer.addMoreForTierAmountMore"
+                            : "productPageOffer.addMoreForTierAmount",
+                        {
+                          count: tierAhead.coursesAway,
+                          course: (tierAhead.coursesAway === 1
+                            ? courseTerm
+                            : coursesTerm
+                          ).toLocaleLowerCase(),
+                          amount: formatPriceAmount(tierAhead.offer.value, cartTotal?.currency),
+                          percent: tierAhead.offer.value,
+                        },
+                      )
+                    : t(
+                        tierAhead.offer.type === "PERCENT"
+                          ? "productPageOffer.spendMoreForTierPercent"
+                          : "productPageOffer.spendMoreForTierAmount",
+                        {
+                          spend: formatPriceAmount(tierAhead.amountAway, cartTotal?.currency),
+                          amount: formatPriceAmount(tierAhead.offer.value, cartTotal?.currency),
+                          percent: tierAhead.offer.value,
+                        },
+                      )}
                 </p>
               </div>
             )}

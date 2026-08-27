@@ -42,6 +42,7 @@
     },
     "cartStep": {
         "basket": {
+            "spendForTier": "Spend {{amount}} more to get {{offer}} the whole basket.",
             "cartItems": "{{courses}} in your cart",
             "emptyTitle": "Nothing in your cart yet",
             "emptyBody": "Choose at least one {{course}} to continue to checkout.",

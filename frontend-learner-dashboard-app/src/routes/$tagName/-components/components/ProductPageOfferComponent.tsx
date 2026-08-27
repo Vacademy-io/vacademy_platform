@@ -737,7 +737,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-catalogue-text-muted">
           <Funnel className="size-3.5" weight="bold" aria-hidden="true" />
-          Showing
+          {t("productPageOffer.finderShowing")}
         </span>
         {finderLabels.map((label) => (
           <span
@@ -753,7 +753,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           className="inline-flex items-center gap-1 text-xs font-semibold text-catalogue-text-muted underline-offset-2 hover:underline"
         >
           <X className="size-3" weight="bold" aria-hidden="true" />
-          Show all courses
+          {t("productPageOffer.finderShowAll", {
+            courses: coursesTerm.toLocaleLowerCase(),
+          })}
         </button>
       </div>
     ) : null;
@@ -1133,11 +1135,25 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
               <div className="border-b border-catalogue-border bg-primary-50">
                 <p className="catalogue-shell flex items-center gap-2 py-1.5 text-xs font-semibold text-primary-500">
                   <Gift className="size-4 shrink-0" aria-hidden="true" />
-                  {t("productPageOffer.addMoreForTier", {
-                    count: tierAhead.coursesAway,
-                    course: tierAhead.coursesAway === 1 ? courseTerm : coursesTerm,
-                    offer: tierAhead.label,
-                  })}
+                  {/* Phrased from the offer DATA. tierAhead.label is English
+                      built in JS ("₹149 more off"), so using it here would
+                      strand ar / fr / hi on an English fragment. */}
+                  {t(
+                    tierAhead.offer.type === "PERCENT"
+                      ? "productPageOffer.addMoreForTierPercent"
+                      : tierAhead.offer.incremental
+                        ? "productPageOffer.addMoreForTierAmountMore"
+                        : "productPageOffer.addMoreForTierAmount",
+                    {
+                      count: tierAhead.coursesAway,
+                      course: (tierAhead.coursesAway === 1
+                        ? courseTerm
+                        : coursesTerm
+                      ).toLocaleLowerCase(),
+                      amount: formatPriceAmount(tierAhead.offer.value, cartTotal?.currency),
+                      percent: tierAhead.offer.value,
+                    },
+                  )}
                 </p>
               </div>
             )}

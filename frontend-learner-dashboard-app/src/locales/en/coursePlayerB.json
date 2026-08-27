@@ -14,6 +14,11 @@
         "nextPage": "Next page"
     },
     "productPageOffer": {
+        "addMoreForTierAmount": "Add {{count}} more {{course}} to get {{amount}} off.",
+        "addMoreForTierAmountMore": "Add {{count}} more {{course}} to get {{amount}} more off.",
+        "addMoreForTierPercent": "Add {{count}} more {{course}} to get {{percent}}% off.",
+        "finderShowing": "Showing",
+        "finderShowAll": "Show all {{courses}}",
         "addMoreForTier": "Add {{count}} more {{course}} to get {{offer}}.",
         "savedAmount": "saved {{amount}} · {{percent}}%",
         "emptyConfig": "Pick a product page in the properties panel to show its {{courses}} here.",

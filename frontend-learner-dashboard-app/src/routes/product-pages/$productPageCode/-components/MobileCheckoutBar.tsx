@@ -1,4 +1,5 @@
 import { ArrowRight, CaretUp, Lock } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * The total and the way forward, pinned to the bottom of small screens.
@@ -29,7 +30,9 @@ export const MobileCheckoutBar = ({
     disabled = false,
     primaryColor,
     onShowSummary,
-}: MobileCheckoutBarProps) => (
+}: MobileCheckoutBarProps) => {
+    const { t } = useTranslation('productPages');
+    return (
     <>
         {/* Clearance is the page's job, not this card's — CheckoutLayout pads the
             column bottom, because content below this component (the mobile order
@@ -41,7 +44,7 @@ export const MobileCheckoutBar = ({
                     onClick={onShowSummary}
                     disabled={!onShowSummary}
                     className="min-w-0 flex-1 text-left disabled:cursor-default"
-                    aria-label={onShowSummary ? 'View order summary' : undefined}
+                    aria-label={onShowSummary ? t('cartStep.basket.viewSummary') : undefined}
                 >
                     <span className="flex items-center gap-1 text-2xl font-bold tabular-nums text-gray-900">
                         {totalLabel}
@@ -51,7 +54,7 @@ export const MobileCheckoutBar = ({
                     </span>
                     <span className="mt-0.5 flex items-center gap-1 text-caption text-gray-500">
                         <Lock className="size-3 shrink-0" aria-hidden="true" />
-                        {caption ?? 'Inclusive of all taxes'}
+                        {caption ?? t('cartStep.basket.inclusiveTaxes')}
                     </span>
                 </button>
 
@@ -70,3 +73,4 @@ export const MobileCheckoutBar = ({
         </div>
     </>
 );
+};

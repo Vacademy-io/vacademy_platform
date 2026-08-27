@@ -1,4 +1,10 @@
 import { CheckCircle, Tag } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/types/naming-settings';
 import { cn } from '@/lib/utils';
 import type { OfferStatus } from '../-utils/offers';
 
@@ -16,19 +22,34 @@ interface OffersStripProps {
 }
 
 export const OffersStrip = ({ offers, money }: OffersStripProps) => {
+    const { t } = useTranslation('productPages');
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
+    const coursesTerm = getTerminologyPlural(
+        ContentTerms.Course,
+        SystemTerms.Course
+    ).toLocaleLowerCase();
+
     if (offers.length === 0) return null;
 
     return (
-        <section aria-label="Available offers">
-            <h2 className="mb-2 text-sm font-bold text-gray-900">Offers for you</h2>
+        <section aria-label={t('cartStep.basket.offersLabel')}>
+            <h2 className="mb-2 text-sm font-bold text-gray-900">
+                {t('cartStep.basket.offersHeading')}
+            </h2>
             {/* Scrolls inside itself so a long offer list never widens the page. */}
             <ul className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-2">
                 {offers.map((o) => {
                     const gap =
                         o.amountShort > 0
-                            ? `Add ${money(o.amountShort)} more to unlock`
+                            ? t('cartStep.basket.offerAddAmount', {
+                                  amount: money(o.amountShort),
+                              })
                             : o.coursesShort > 0
-                              ? `Add ${o.coursesShort} more subject${o.coursesShort === 1 ? '' : 's'} to unlock`
+                              ? t('cartStep.basket.offerAddCourses', {
+                                    count: o.coursesShort,
+                                    course: courseTerm,
+                                    courses: coursesTerm,
+                                })
                               : null;
                     return (
                         <li
@@ -73,7 +94,9 @@ export const OffersStrip = ({ offers, money }: OffersStripProps) => {
                                         o.applied ? 'text-success-600' : 'text-gray-500'
                                     )}
                                 >
-                                    {o.applied ? 'Applied to your order' : (gap ?? 'Ready to apply')}
+                                    {o.applied
+                                        ? t('cartStep.basket.offerApplied')
+                                        : (gap ?? t('cartStep.basket.offerReady'))}
                                 </p>
                             </div>
                         </li>

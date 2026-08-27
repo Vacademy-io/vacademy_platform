@@ -18,9 +18,13 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, String> 
 
     Optional<PayrollRun> findByIdAndInstituteId(String id, String instituteId);
 
-    /** Duplicate check for creating a run: CANCELLED runs don't block the month (V200 partial unique). */
+    /** Duplicate check for creating a run: CANCELLED runs don't block the month (V480 partial unique). */
     boolean existsByInstituteIdAndMonthAndYearAndRunTypeAndStatusNot(
             String instituteId, Integer month, Integer year, String runType, String status);
+
+    /** Month-lock check: a REGULAR run past DRAFT locks that month's attendance/leave. */
+    boolean existsByInstituteIdAndMonthAndYearAndRunTypeAndStatusIn(
+            String instituteId, Integer month, Integer year, String runType, List<String> statuses);
 
     /** Row-locks the run so two concurrent /process calls serialize instead of double-calculating. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

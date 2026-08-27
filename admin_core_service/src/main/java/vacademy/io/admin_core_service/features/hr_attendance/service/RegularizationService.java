@@ -9,10 +9,13 @@ import vacademy.io.admin_core_service.features.hr_attendance.dto.RegularizationD
 import vacademy.io.admin_core_service.features.hr_attendance.entity.AttendanceConfig;
 import vacademy.io.admin_core_service.features.hr_attendance.entity.AttendanceRecord;
 import vacademy.io.admin_core_service.features.hr_attendance.entity.AttendanceRegularization;
+import vacademy.io.admin_core_service.features.hr_attendance.enums.AttendanceStatus;
 import vacademy.io.admin_core_service.features.hr_attendance.repository.AttendanceConfigRepository;
 import vacademy.io.admin_core_service.features.hr_attendance.repository.AttendanceRecordRepository;
 import vacademy.io.admin_core_service.features.hr_attendance.repository.AttendanceRegularizationRepository;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
+import vacademy.io.admin_core_service.features.hr_employee.service.HrNotificationService;
+import vacademy.io.admin_core_service.features.hr_payroll.service.HrMonthLockService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
@@ -33,6 +36,12 @@ public class RegularizationService {
 
     @Autowired
     private HrAccessGuard hrAccessGuard;
+
+    @Autowired
+    private HrMonthLockService hrMonthLockService;
+
+    @Autowired
+    private HrNotificationService hrNotificationService;
 
     /**
      * The employee is resolved and authorized by HrAccessGuard in the controller
@@ -87,14 +96,27 @@ public class RegularizationService {
         }
 
         if (Boolean.TRUE.equals(actionDTO.getApproved())) {
+            // Payroll month-lock: approving a regularization rewrites the
+            // attendance record — refuse when its month is already processed.
+            AttendanceRecord lockedCheckRecord = regularization.getAttendanceRecord();
+            if (lockedCheckRecord != null) {
+                hrMonthLockService.requireUnlocked(lockedCheckRecord.getInstituteId(),
+                        lockedCheckRecord.getAttendanceDate(), "approve regularization");
+            }
+
             regularization.setApprovalStatus("APPROVED");
             regularization.setApprovedBy(approverUserId);
             regularization.setApprovedAt(LocalDateTime.now());
             regularization.setRemarks(actionDTO.getRemarks());
 
-            // Update the original attendance record with the requested changes
+            // Update the original attendance record with the requested changes.
+            // When times were changed the final status is RE-DERIVED from the
+            // recalculated hours below instead of blindly trusting requestedStatus;
+            // a pure status-change request (no times) still applies requestedStatus.
             AttendanceRecord record = regularization.getAttendanceRecord();
-            if (regularization.getRequestedStatus() != null) {
+            boolean timesChanged = regularization.getRequestedCheckIn() != null
+                    || regularization.getRequestedCheckOut() != null;
+            if (!timesChanged && regularization.getRequestedStatus() != null) {
                 record.setStatus(regularization.getRequestedStatus());
             }
             if (regularization.getRequestedCheckIn() != null) {
@@ -112,6 +134,8 @@ public class RegularizationService {
                 throw new VacademyException("Regularized check-out time must be after check-in time");
             }
 
+            AttendanceConfig config = attendanceConfigRepository.findByInstituteId(record.getInstituteId()).orElse(null);
+
             // Recalculate total hours if both check-in and check-out are present
             if (record.getCheckInTime() != null && record.getCheckOutTime() != null) {
                 long minutesWorked = java.time.temporal.ChronoUnit.MINUTES.between(
@@ -119,12 +143,23 @@ public class RegularizationService {
                 if (record.getBreakDurationMin() != null) {
                     minutesWorked -= record.getBreakDurationMin();
                 }
+                minutesWorked = Math.max(0, minutesWorked);
                 record.setTotalHours(java.math.BigDecimal.valueOf(minutesWorked)
                         .divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP));
+
+                // Re-derive status from the recalculated hours using the institute's
+                // half-day threshold (HALF_DAY below it, PRESENT otherwise).
+                if (timesChanged) {
+                    if (config != null && config.getHalfDayThresholdMin() != null
+                            && minutesWorked < config.getHalfDayThresholdMin()) {
+                        record.setStatus(AttendanceStatus.HALF_DAY.name());
+                    } else {
+                        record.setStatus(AttendanceStatus.PRESENT.name());
+                    }
+                }
             }
 
             // Recalculate overtime
-            AttendanceConfig config = attendanceConfigRepository.findByInstituteId(record.getInstituteId()).orElse(null);
             if (config != null && Boolean.TRUE.equals(config.getOvertimeEnabled()) && config.getOvertimeThresholdMin() != null) {
                 if (record.getTotalHours() != null) {
                     long totalMinutes = (long) (record.getTotalHours().doubleValue() * 60);
@@ -146,9 +181,36 @@ public class RegularizationService {
         }
 
         regularizationRepository.save(regularization);
+
+        notifyRegularizationDecision(regularization, Boolean.TRUE.equals(actionDTO.getApproved()), instituteId);
+
         return Boolean.TRUE.equals(actionDTO.getApproved())
                 ? "Regularization request approved successfully"
                 : "Regularization request rejected";
+    }
+
+    /** Best-effort employee email on a regularization decision (never breaks the operation). */
+    private void notifyRegularizationDecision(AttendanceRegularization regularization,
+                                              boolean approved, String instituteId) {
+        try {
+            String date = regularization.getAttendanceRecord() != null
+                    && regularization.getAttendanceRecord().getAttendanceDate() != null
+                    ? regularization.getAttendanceRecord().getAttendanceDate().toString() : null;
+            String subject = approved
+                    ? "Attendance regularization approved"
+                    : "Attendance regularization rejected";
+            String body = hrNotificationService.buildEmailBody(subject,
+                    "Date", date,
+                    "Status", approved ? "APPROVED" : "REJECTED",
+                    "Remarks", regularization.getRemarks());
+            EmployeeProfile employee = regularization.getEmployee();
+            // The employee's profile may live outside the record's institute id;
+            // sends are attributed to the validated institute.
+            hrNotificationService.emailUser(employee != null ? employee.getUserId() : null,
+                    instituteId, subject, body);
+        } catch (Exception e) {
+            // emailUser already swallows send failures; this guards lazy-load surprises
+        }
     }
 
     private void validateRequestedTimes(LocalDateTime requestedCheckIn, LocalDateTime requestedCheckOut) {

@@ -10,11 +10,12 @@ import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.hr_payslip.dto.BankExportDTO;
 import vacademy.io.admin_core_service.features.hr_payslip.dto.BankExportRequestDTO;
+import vacademy.io.admin_core_service.features.hr_payslip.dto.BankExportResultDTO;
+import vacademy.io.admin_core_service.features.hr_payslip.dto.FileDownloadDTO;
 import vacademy.io.admin_core_service.features.hr_payslip.service.BankExportService;
 import vacademy.io.admin_core_service.features.hr_payslip.service.HrReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -37,17 +38,33 @@ public class ReportsController {
             action = "GENERATE",
             entityIdExpr = "#requestDTO?.payrollRunId",
             descriptionExpr = "'generated bank export for payroll run ' + #requestDTO?.payrollRunId")
-    public ResponseEntity<byte[]> generateBankExport(
+    public ResponseEntity<BankExportResultDTO> generateBankExport(
             @RequestBody BankExportRequestDTO requestDTO,
             @RequestParam("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
         // Plaintext bank account numbers + net pay for all staff — HR admin ONLY
         hrAccessGuard.requireHrAdmin(user, instituteId);
-        String csvContent = bankExportService.generateBankExport(requestDTO, user.getUserId(), instituteId);
+        BankExportResultDTO result = bankExportService.generateBankExport(requestDTO, user.getUserId(), instituteId);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/bank-export/{id}/download")
+    @Auditable(
+            entityType = "HR_BANK_EXPORT",
+            action = "DOWNLOAD",
+            entityIdExpr = "#id",
+            descriptionExpr = "'downloaded bank export ' + #id")
+    public ResponseEntity<byte[]> downloadBankExport(
+            @PathVariable("id") String id,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        // Plaintext bank account numbers + net pay for all staff — HR admin ONLY
+        hrAccessGuard.requireHrAdmin(user, instituteId);
+        FileDownloadDTO file = bankExportService.downloadBankExport(id, instituteId);
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("text/csv"));
-        headers.setContentDispositionFormData("attachment", "bank_export.csv");
-        return new ResponseEntity<>(csvContent.getBytes(StandardCharsets.UTF_8), headers, HttpStatus.OK);
+        headers.setContentType(MediaType.parseMediaType(file.getContentType()));
+        headers.setContentDispositionFormData("attachment", file.getFileName());
+        return new ResponseEntity<>(file.getBytes(), headers, HttpStatus.OK);
     }
 
     @GetMapping("/bank-export")

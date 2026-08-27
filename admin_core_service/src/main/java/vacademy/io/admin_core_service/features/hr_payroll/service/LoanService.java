@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
 import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
+import vacademy.io.admin_core_service.features.hr_employee.service.HrNotificationService;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.CreateLoanDTO;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.EmployeeLoanDTO;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.LoanRepaymentDTO;
@@ -40,6 +41,9 @@ public class LoanService {
     @Autowired
     private HrAccessGuard hrAccessGuard;
 
+    @Autowired
+    private HrNotificationService hrNotificationService;
+
     @Transactional
     public String createLoan(CreateLoanDTO dto, String instituteId) {
         EmployeeProfile employee = employeeProfileRepository.findById(dto.getEmployeeId())
@@ -54,6 +58,8 @@ public class LoanService {
         loan.setInterestRate(dto.getInterestRate() != null ? dto.getInterestRate() : BigDecimal.ZERO);
         loan.setTenureMonths(dto.getTenureMonths());
         loan.setNotes(dto.getNotes());
+        // Currency defaults to INR unless an explicit 3-letter code is supplied
+        loan.setCurrency(normalizeCurrency(dto.getCurrency()));
         loan.setStatus(LoanStatus.PENDING.name());
         loan.setDisbursedAmount(BigDecimal.ZERO);
         loan.setBalanceAmount(BigDecimal.ZERO);
@@ -106,6 +112,22 @@ public class LoanService {
         loan.setBalanceAmount(loan.getEmiAmount().multiply(new BigDecimal(loan.getTenureMonths())));
 
         loanRepository.save(loan);
+
+        // Best-effort employee email on approval (send failures never break the operation)
+        try {
+            String currency = loan.getCurrency() != null ? loan.getCurrency() : "INR";
+            String subject = "Your loan was approved";
+            String body = hrNotificationService.buildEmailBody(subject,
+                    "Loan type", loan.getLoanType(),
+                    "Amount", currency + " " + loan.getPrincipalAmount().toPlainString(),
+                    "Monthly EMI", currency + " " + loan.getEmiAmount().toPlainString(),
+                    "Tenure", loan.getTenureMonths() + " month(s)",
+                    "Deductions start", loan.getStartMonth() + "/" + loan.getStartYear());
+            hrNotificationService.emailEmployee(loan.getEmployee(), subject, body);
+        } catch (Exception e) {
+            // emailEmployee already swallows send failures; this guards lazy-load surprises
+        }
+
         return loan.getId();
     }
 
@@ -163,6 +185,18 @@ public class LoanService {
         return numerator.divide(denominator, 2, RoundingMode.HALF_UP);
     }
 
+    /** Defaults to INR; validates the 3-letter ISO-4217 shape when provided. */
+    private String normalizeCurrency(String currency) {
+        if (currency == null || currency.trim().isEmpty()) {
+            return "INR";
+        }
+        String normalized = currency.trim().toUpperCase();
+        if (!normalized.matches("[A-Z]{3}")) {
+            throw new VacademyException("Invalid currency code: " + currency + ". Expected a 3-letter code like INR or USD.");
+        }
+        return normalized;
+    }
+
     private EmployeeLoanDTO toDTO(EmployeeLoan loan) {
         return EmployeeLoanDTO.builder()
                 .id(loan.getId())
@@ -180,6 +214,7 @@ public class LoanService {
                 .startYear(loan.getStartYear())
                 .status(loan.getStatus())
                 .notes(loan.getNotes())
+                .currency(loan.getCurrency() != null ? loan.getCurrency() : "INR")
                 .build();
     }
 }

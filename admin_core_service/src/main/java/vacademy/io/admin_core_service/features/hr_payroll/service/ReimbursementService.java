@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
+import vacademy.io.admin_core_service.features.hr_employee.service.HrNotificationService;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.CreateReimbursementDTO;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.ReimbursementActionDTO;
 import vacademy.io.admin_core_service.features.hr_payroll.dto.ReimbursementDTO;
@@ -27,6 +28,9 @@ public class ReimbursementService {
     @Autowired
     private HrAccessGuard hrAccessGuard;
 
+    @Autowired
+    private HrNotificationService hrNotificationService;
+
     @Transactional
     public String submitReimbursement(CreateReimbursementDTO dto, String instituteId, CustomUserDetails user) {
         // Resolves the employee, verifies it belongs to the validated institute, and
@@ -41,6 +45,8 @@ public class ReimbursementService {
         reimbursement.setDescription(dto.getDescription());
         reimbursement.setReceiptFileId(dto.getReceiptFileId());
         reimbursement.setExpenseDate(dto.getExpenseDate());
+        // Currency defaults to INR unless an explicit 3-letter code is supplied
+        reimbursement.setCurrency(normalizeCurrency(dto.getCurrency()));
         reimbursement.setStatus("PENDING");
 
         reimbursement = reimbursementRepository.save(reimbursement);
@@ -83,7 +89,40 @@ public class ReimbursementService {
         }
 
         reimbursementRepository.save(reimbursement);
+
+        // Best-effort employee email on the decision (send failures never break the operation)
+        try {
+            boolean approved = "APPROVED".equals(reimbursement.getStatus());
+            String currency = reimbursement.getCurrency() != null ? reimbursement.getCurrency() : "INR";
+            String subject = approved
+                    ? "Your reimbursement was approved"
+                    : "Your reimbursement was rejected";
+            String body = hrNotificationService.buildEmailBody(subject,
+                    "Type", reimbursement.getType(),
+                    "Amount", reimbursement.getAmount() != null
+                            ? currency + " " + reimbursement.getAmount().toPlainString() : null,
+                    "Expense date", reimbursement.getExpenseDate() != null
+                            ? reimbursement.getExpenseDate().toString() : null,
+                    "Status", reimbursement.getStatus(),
+                    "Reason", approved ? null : reimbursement.getRejectionReason());
+            hrNotificationService.emailEmployee(reimbursement.getEmployee(), subject, body);
+        } catch (Exception e) {
+            // emailEmployee already swallows send failures; this guards lazy-load surprises
+        }
+
         return reimbursement.getId();
+    }
+
+    /** Defaults to INR; validates the 3-letter ISO-4217 shape when provided. */
+    private String normalizeCurrency(String currency) {
+        if (currency == null || currency.trim().isEmpty()) {
+            return "INR";
+        }
+        String normalized = currency.trim().toUpperCase();
+        if (!normalized.matches("[A-Z]{3}")) {
+            throw new VacademyException("Invalid currency code: " + currency + ". Expected a 3-letter code like INR or USD.");
+        }
+        return normalized;
     }
 
     private ReimbursementDTO toDTO(Reimbursement r) {
@@ -100,6 +139,7 @@ public class ReimbursementService {
                 .status(r.getStatus())
                 .approvedBy(r.getApprovedBy())
                 .rejectionReason(r.getRejectionReason())
+                .currency(r.getCurrency() != null ? r.getCurrency() : "INR")
                 .build();
     }
 }

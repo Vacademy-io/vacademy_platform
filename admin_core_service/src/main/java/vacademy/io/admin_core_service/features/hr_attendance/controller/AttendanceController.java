@@ -1,7 +1,9 @@
 package vacademy.io.admin_core_service.features.hr_attendance.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
@@ -62,18 +64,20 @@ public class AttendanceController {
     public ResponseEntity<String> checkIn(
             @RequestBody CheckInDTO checkInDTO,
             @RequestParam("instituteId") String instituteId,
-            @RequestAttribute("user") CustomUserDetails user) {
+            @RequestAttribute("user") CustomUserDetails user,
+            HttpServletRequest request) {
         EmployeeProfile employee = resolveTargetEmployee(user, instituteId, checkInDTO.getEmployeeId());
-        return ResponseEntity.ok(attendanceService.checkIn(checkInDTO, employee));
+        return ResponseEntity.ok(attendanceService.checkIn(checkInDTO, employee, resolveClientIp(request)));
     }
 
     @PostMapping("/check-out")
     public ResponseEntity<String> checkOut(
             @RequestBody CheckOutDTO checkOutDTO,
             @RequestParam("instituteId") String instituteId,
-            @RequestAttribute("user") CustomUserDetails user) {
+            @RequestAttribute("user") CustomUserDetails user,
+            HttpServletRequest request) {
         EmployeeProfile employee = resolveTargetEmployee(user, instituteId, checkOutDTO.getEmployeeId());
-        return ResponseEntity.ok(attendanceService.checkOut(checkOutDTO, employee));
+        return ResponseEntity.ok(attendanceService.checkOut(checkOutDTO, employee, resolveClientIp(request)));
     }
 
     @PostMapping("/mark")
@@ -147,5 +151,18 @@ public class AttendanceController {
             return hrAccessGuard.resolveSelfEmployee(user, instituteId);
         }
         return hrAccessGuard.requireSelfOrHrStaff(user, instituteId, employeeId);
+    }
+
+    /**
+     * Derives the caller's IP server-side: first hop of X-Forwarded-For when
+     * present (set by the ingress), otherwise the socket remote address. The
+     * client-supplied ip_address in the request body is never trusted.
+     */
+    private String resolveClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (StringUtils.hasText(forwarded)) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }

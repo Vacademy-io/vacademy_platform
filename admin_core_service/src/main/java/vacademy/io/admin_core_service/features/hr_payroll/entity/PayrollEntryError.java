@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 
 /**
  * One row per employee whose payroll entry could not be calculated in a run
- * (V200). Replaces the former silent empty-catch: the run still completes for
+ * (V480). Replaces the former silent empty-catch: the run still completes for
  * everyone else, but failures are visible and reportable instead of vanishing.
  * Rows for a run are cleared when the run is reprocessed, rejected, or cancelled.
  */

@@ -103,7 +103,7 @@ public class EmployeeProfile {
     @Column(name = "uan_number", length = 512)
     private String uanNumber;
 
-    // Encrypted at rest as TEXT (V200 converted jsonb -> text); legacy plaintext
+    // Encrypted at rest as TEXT (V480 converted jsonb -> text); legacy plaintext
     // JSON rows read through the converter unchanged.
     @Convert(converter = vacademy.io.admin_core_service.core.crypto.EncryptedJsonMapConverter.class)
     @Column(name = "statutory_info", columnDefinition = "TEXT")

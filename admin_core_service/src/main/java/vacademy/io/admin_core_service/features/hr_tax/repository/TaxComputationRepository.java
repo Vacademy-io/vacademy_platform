@@ -14,7 +14,7 @@ public interface TaxComputationRepository extends JpaRepository<TaxComputation, 
 
     List<TaxComputation> findByEmployee_IdAndFinancialYearOrderByMonthAsc(String employeeId, String financialYear);
 
-    /** One row per employee per period (V200 unique) — payroll upserts instead of appending. */
+    /** One row per employee per period (V480 unique) — payroll upserts instead of appending. */
     Optional<TaxComputation> findByEmployee_IdAndFinancialYearAndMonthAndYear(
             String employeeId, String financialYear, Integer month, Integer year);
 

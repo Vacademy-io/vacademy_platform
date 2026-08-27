@@ -8,9 +8,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.core.security.HrAccessGuard;
+import vacademy.io.admin_core_service.features.hr_attendance.entity.AttendanceConfig;
+import vacademy.io.admin_core_service.features.hr_attendance.entity.AttendanceRecord;
 import vacademy.io.admin_core_service.features.hr_attendance.entity.Holiday;
+import vacademy.io.admin_core_service.features.hr_attendance.enums.AttendanceSource;
+import vacademy.io.admin_core_service.features.hr_attendance.enums.AttendanceStatus;
+import vacademy.io.admin_core_service.features.hr_attendance.repository.AttendanceConfigRepository;
+import vacademy.io.admin_core_service.features.hr_attendance.repository.AttendanceRecordRepository;
 import vacademy.io.admin_core_service.features.hr_attendance.repository.HolidayRepository;
+import vacademy.io.admin_core_service.features.hr_attendance.util.HrTimeUtil;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
+import vacademy.io.admin_core_service.features.hr_employee.service.HrNotificationService;
+import vacademy.io.admin_core_service.features.hr_payroll.service.HrMonthLockService;
 import vacademy.io.admin_core_service.features.hr_leave.dto.LeaveActionDTO;
 import vacademy.io.admin_core_service.features.hr_leave.dto.LeaveApplicationDTO;
 import vacademy.io.admin_core_service.features.hr_leave.dto.LeaveApplyDTO;
@@ -30,7 +39,10 @@ import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -50,7 +62,19 @@ public class LeaveApplicationService {
     private HolidayRepository holidayRepository;
 
     @Autowired
+    private AttendanceConfigRepository attendanceConfigRepository;
+
+    @Autowired
+    private AttendanceRecordRepository attendanceRecordRepository;
+
+    @Autowired
     private HrAccessGuard hrAccessGuard;
+
+    @Autowired
+    private HrMonthLockService hrMonthLockService;
+
+    @Autowired
+    private HrNotificationService hrNotificationService;
 
     @Transactional
     public String applyLeave(LeaveApplyDTO dto, String instituteId, CustomUserDetails user) {
@@ -85,6 +109,11 @@ public class LeaveApplicationService {
                 .orElseThrow(() -> new VacademyException("Leave type not found"));
         hrAccessGuard.requireInstituteMatch(leaveType.getInstituteId(), instituteId, "Leave type");
 
+        // Inactive leave types cannot be applied for
+        if (leaveType.getStatus() != null && !"ACTIVE".equals(leaveType.getStatus())) {
+            throw new VacademyException("This leave type is not active");
+        }
+
         // BUG 1 FIX: Check for overlapping leaves (PENDING or APPROVED)
         List<LeaveApplication> overlapping = leaveApplicationRepository.findOverlappingLeaves(
                 employee.getId(), dto.getFromDate(), dto.getToDate());
@@ -92,16 +121,20 @@ public class LeaveApplicationService {
             throw new VacademyException("Leave application overlaps with an existing leave");
         }
 
-        // Calculate working days (exclude weekends and holidays)
-        BigDecimal calculatedDays = calculateWorkingDays(
-                dto.getFromDate(), dto.getToDate(), instituteId);
+        // Calculate working days (exclude the institute's configured weekend
+        // days and mandatory holidays)
+        List<LocalDate> workingDates = getWorkingDates(dto.getFromDate(), dto.getToDate(), instituteId);
+        BigDecimal calculatedDays = new BigDecimal(workingDates.size());
 
-        // If half day, count as 0.5
         if (Boolean.TRUE.equals(dto.getIsHalfDay())) {
+            // The half-day date must itself be a working day — previously the
+            // 0.5 override ran before the working-days check, letting a
+            // half-day on a weekend/holiday slip through.
+            if (!workingDates.contains(dto.getFromDate())) {
+                throw new VacademyException("Half-day leave cannot be applied on a weekend or holiday");
+            }
             calculatedDays = new BigDecimal("0.5");
-        }
-
-        if (calculatedDays.compareTo(BigDecimal.ZERO) <= 0) {
+        } else if (calculatedDays.compareTo(BigDecimal.ZERO) <= 0) {
             throw new VacademyException("No working days in the selected date range");
         }
 
@@ -113,20 +146,23 @@ public class LeaveApplicationService {
             }
         }
 
-        // Validate leave balance
-        int year = dto.getFromDate().getYear();
-        LeaveBalance balance = leaveBalanceRepository
-                .findByEmployee_IdAndLeaveType_IdAndYear(employee.getId(), leaveType.getId(), year)
-                .orElse(null);
+        // Validate leave balance. UNPAID leave types (isPaid=false) are LOP:
+        // they require no balance and payroll handles them separately.
+        if (isPaidLeaveType(leaveType)) {
+            int year = dto.getFromDate().getYear();
+            LeaveBalance balance = leaveBalanceRepository
+                    .findByEmployee_IdAndLeaveType_IdAndYear(employee.getId(), leaveType.getId(), year)
+                    .orElse(null);
 
-        if (balance != null) {
-            BigDecimal availableBalance = balance.getClosingBalance();
-            if (availableBalance.compareTo(calculatedDays) < 0) {
-                throw new VacademyException("Insufficient leave balance. Available: "
-                        + availableBalance + ", Requested: " + calculatedDays);
+            if (balance != null) {
+                BigDecimal availableBalance = balance.getClosingBalance();
+                if (availableBalance.compareTo(calculatedDays) < 0) {
+                    throw new VacademyException("Insufficient leave balance. Available: "
+                            + availableBalance + ", Requested: " + calculatedDays);
+                }
+            } else {
+                throw new VacademyException("No leave balance found for the selected leave type and year");
             }
-        } else {
-            throw new VacademyException("No leave balance found for the selected leave type and year");
         }
 
         // Validate halfDayType enum
@@ -160,6 +196,21 @@ public class LeaveApplicationService {
         application.setAppliedTo(appliedTo);
 
         application = leaveApplicationRepository.save(application);
+
+        // Best-effort heads-up to the reporting manager the request is addressed to
+        if (appliedTo != null) {
+            String applicantName = hrNotificationService.resolveUserName(employee.getUserId());
+            hrNotificationService.emailUser(appliedTo, instituteId,
+                    "Leave application awaiting your review",
+                    hrNotificationService.buildEmailBody("Leave application awaiting your review",
+                            "Employee", applicantName,
+                            "Leave type", leaveType.getName(),
+                            "From", dto.getFromDate().toString(),
+                            "To", dto.getToDate().toString(),
+                            "Days", calculatedDays.toPlainString(),
+                            "Reason", dto.getReason()));
+        }
+
         return application.getId();
     }
 
@@ -191,30 +242,40 @@ public class LeaveApplicationService {
         }
 
         if (LeaveStatus.APPROVED.name().equals(action)) {
-            // Deduct from leave balance
-            int year = application.getFromDate().getYear();
-            LeaveBalance balance = leaveBalanceRepository
-                    .findByEmployee_IdAndLeaveType_IdAndYear(
-                            application.getEmployee().getId(),
-                            application.getLeaveType().getId(),
-                            year)
-                    .orElseThrow(() -> new VacademyException("Leave balance not found"));
+            // Payroll month-lock: approving writes balances + attendance for the
+            // leave's dates — refuse when any month it touches is already processed.
+            requireLeaveMonthsUnlocked(application, "approve leave");
 
-            // Re-validate at approval time: the balance may have changed since the
-            // application was submitted (other approvals, adjustments, encashment).
-            BigDecimal availableBalance = balance.getClosingBalance();
-            if (availableBalance.compareTo(application.getTotalDays()) < 0) {
-                throw new VacademyException("Insufficient leave balance to approve. Available: "
-                        + availableBalance + ", Requested: " + application.getTotalDays());
+            // Deduct from leave balance — only for PAID leave types. UNPAID
+            // leave is LOP with no balance to deduct (payroll handles it).
+            if (isPaidLeaveType(application.getLeaveType())) {
+                int year = application.getFromDate().getYear();
+                LeaveBalance balance = leaveBalanceRepository
+                        .findByEmployee_IdAndLeaveType_IdAndYear(
+                                application.getEmployee().getId(),
+                                application.getLeaveType().getId(),
+                                year)
+                        .orElseThrow(() -> new VacademyException("Leave balance not found"));
+
+                // Re-validate at approval time: the balance may have changed since the
+                // application was submitted (other approvals, adjustments, encashment).
+                BigDecimal availableBalance = balance.getClosingBalance();
+                if (availableBalance.compareTo(application.getTotalDays()) < 0) {
+                    throw new VacademyException("Insufficient leave balance to approve. Available: "
+                            + availableBalance + ", Requested: " + application.getTotalDays());
+                }
+
+                BigDecimal currentUsed = balance.getUsed() != null ? balance.getUsed() : BigDecimal.ZERO;
+                balance.setUsed(currentUsed.add(application.getTotalDays()));
+                leaveBalanceRepository.save(balance);
             }
-
-            BigDecimal currentUsed = balance.getUsed() != null ? balance.getUsed() : BigDecimal.ZERO;
-            balance.setUsed(currentUsed.add(application.getTotalDays()));
-            leaveBalanceRepository.save(balance);
 
             application.setStatus(LeaveStatus.APPROVED.name());
             application.setApprovedBy(user.getUserId());
             application.setApprovedAt(LocalDateTime.now());
+
+            // Reflect the approved leave on the attendance calendar
+            markAttendanceForApprovedLeave(application);
         } else {
             // Rejected
             if (!StringUtils.hasText(actionDTO.getRejectionReason())) {
@@ -225,7 +286,43 @@ public class LeaveApplicationService {
         }
 
         leaveApplicationRepository.save(application);
+
+        notifyLeaveDecision(application);
+
         return application.getId();
+    }
+
+    /**
+     * Payroll month-lock across the leave's whole range: any month the
+     * from→to span touches must still be open (cross-year applications are
+     * rejected at apply time, so the span is at most 12 months).
+     */
+    private void requireLeaveMonthsUnlocked(LeaveApplication application, String actionLabel) {
+        YearMonth from = YearMonth.from(application.getFromDate());
+        YearMonth to = YearMonth.from(application.getToDate());
+        for (YearMonth ym = from; !ym.isAfter(to); ym = ym.plusMonths(1)) {
+            hrMonthLockService.requireUnlocked(application.getInstituteId(), ym.atDay(1), actionLabel);
+        }
+    }
+
+    /** Best-effort employee email on a leave decision (never breaks the operation). */
+    private void notifyLeaveDecision(LeaveApplication application) {
+        try {
+            boolean approved = LeaveStatus.APPROVED.name().equals(application.getStatus());
+            String subject = approved ? "Your leave application was approved"
+                    : "Your leave application was rejected";
+            String body = hrNotificationService.buildEmailBody(subject,
+                    "Leave type", application.getLeaveType().getName(),
+                    "From", application.getFromDate().toString(),
+                    "To", application.getToDate().toString(),
+                    "Days", application.getTotalDays() != null
+                            ? application.getTotalDays().toPlainString() : null,
+                    "Status", application.getStatus(),
+                    "Reason", approved ? null : application.getRejectionReason());
+            hrNotificationService.emailEmployee(application.getEmployee(), subject, body);
+        } catch (Exception e) {
+            // emailEmployee already swallows send failures; this guards lazy-load surprises
+        }
     }
 
     @Transactional
@@ -244,22 +341,32 @@ public class LeaveApplicationService {
             throw new VacademyException("Only pending or approved leave applications can be cancelled");
         }
 
-        // If it was approved, restore the leave balance
+        // If it was approved, restore the leave balance (paid types only — no
+        // balance was deducted for UNPAID/LOP leave) and revert the attendance
+        // records the approval wrote.
         if (LeaveStatus.APPROVED.name().equals(currentStatus)) {
-            int year = application.getFromDate().getYear();
-            LeaveBalance balance = leaveBalanceRepository
-                    .findByEmployee_IdAndLeaveType_IdAndYear(
-                            application.getEmployee().getId(),
-                            application.getLeaveType().getId(),
-                            year)
-                    .orElse(null);
+            // Payroll month-lock: cancelling an approved leave rewrites balances
+            // and attendance for its dates — refuse once payroll is processed.
+            requireLeaveMonthsUnlocked(application, "cancel approved leave");
 
-            if (balance != null) {
-                BigDecimal currentUsed = balance.getUsed() != null ? balance.getUsed() : BigDecimal.ZERO;
-                BigDecimal restoredUsed = currentUsed.subtract(application.getTotalDays());
-                balance.setUsed(restoredUsed.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : restoredUsed);
-                leaveBalanceRepository.save(balance);
+            if (isPaidLeaveType(application.getLeaveType())) {
+                int year = application.getFromDate().getYear();
+                LeaveBalance balance = leaveBalanceRepository
+                        .findByEmployee_IdAndLeaveType_IdAndYear(
+                                application.getEmployee().getId(),
+                                application.getLeaveType().getId(),
+                                year)
+                        .orElse(null);
+
+                if (balance != null) {
+                    BigDecimal currentUsed = balance.getUsed() != null ? balance.getUsed() : BigDecimal.ZERO;
+                    BigDecimal restoredUsed = currentUsed.subtract(application.getTotalDays());
+                    balance.setUsed(restoredUsed.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : restoredUsed);
+                    leaveBalanceRepository.save(balance);
+                }
             }
+
+            revertAttendanceForCancelledLeave(application);
         }
 
         application.setStatus(LeaveStatus.CANCELLED.name());
@@ -301,10 +408,14 @@ public class LeaveApplicationService {
     }
 
     /**
-     * Calculates the number of working days between two dates (inclusive),
-     * excluding weekends (Saturday and Sunday) and holidays.
+     * Returns the working dates between two dates (inclusive), excluding the
+     * institute's configured weekend days (default Saturday/Sunday) and
+     * mandatory holidays.
      */
-    private BigDecimal calculateWorkingDays(LocalDate fromDate, LocalDate toDate, String instituteId) {
+    private List<LocalDate> getWorkingDates(LocalDate fromDate, LocalDate toDate, String instituteId) {
+        AttendanceConfig config = attendanceConfigRepository.findByInstituteId(instituteId).orElse(null);
+        Set<DayOfWeek> weekendDays = HrTimeUtil.resolveWeekendDays(config);
+
         // Fetch holidays in the date range
         List<Holiday> holidays = holidayRepository.findByInstituteIdAndDateRange(instituteId, fromDate, toDate);
         Set<LocalDate> holidayDates = holidays.stream()
@@ -312,20 +423,104 @@ public class LeaveApplicationService {
                 .map(Holiday::getDate)
                 .collect(Collectors.toSet());
 
-        int workingDays = 0;
+        List<LocalDate> workingDates = new ArrayList<>();
         LocalDate current = fromDate;
         while (!current.isAfter(toDate)) {
-            DayOfWeek dayOfWeek = current.getDayOfWeek();
-            boolean isWeekend = dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY;
-            boolean isHoliday = holidayDates.contains(current);
-
-            if (!isWeekend && !isHoliday) {
-                workingDays++;
+            if (!weekendDays.contains(current.getDayOfWeek()) && !holidayDates.contains(current)) {
+                workingDates.add(current);
             }
             current = current.plusDays(1);
         }
+        return workingDates;
+    }
 
-        return new BigDecimal(workingDays);
+    /**
+     * UNPAID leave types (isPaid=false) are loss-of-pay: no balance is
+     * required, deducted or restored for them. A null isPaid is treated as
+     * paid (the previous behavior).
+     */
+    private boolean isPaidLeaveType(LeaveType leaveType) {
+        return !Boolean.FALSE.equals(leaveType.getIsPaid());
+    }
+
+    /**
+     * Leave → attendance link: on approval, upsert an hr_attendance_record row
+     * for each working day of the leave. Existing rows for a day are UPDATED
+     * (the unique (employee, date) constraint forbids a second insert).
+     *
+     * Full-day leave marks the day ON_LEAVE (source ADMIN), overwriting any
+     * prior status — approving a leave is the authoritative statement that the
+     * employee is on leave that day. Half-day leave marks the day HALF_DAY
+     * only when the day has no PRESENT record: a day already clocked PRESENT
+     * is left untouched (simplest correct behavior — presence wins over a
+     * half-day marking).
+     */
+    private void markAttendanceForApprovedLeave(LeaveApplication application) {
+        List<LocalDate> workingDates = getWorkingDates(
+                application.getFromDate(), application.getToDate(), application.getInstituteId());
+        boolean halfDay = Boolean.TRUE.equals(application.getIsHalfDay());
+
+        for (LocalDate date : workingDates) {
+            Optional<AttendanceRecord> existingOpt = attendanceRecordRepository
+                    .findByEmployeeIdAndAttendanceDate(application.getEmployee().getId(), date);
+
+            if (halfDay && existingOpt.isPresent()
+                    && AttendanceStatus.PRESENT.name().equals(existingOpt.get().getStatus())) {
+                continue;
+            }
+
+            AttendanceRecord record;
+            if (existingOpt.isPresent()) {
+                record = existingOpt.get();
+            } else {
+                record = new AttendanceRecord();
+                record.setEmployee(application.getEmployee());
+                record.setInstituteId(application.getInstituteId());
+                record.setAttendanceDate(date);
+            }
+            record.setStatus(halfDay ? AttendanceStatus.HALF_DAY.name() : AttendanceStatus.ON_LEAVE.name());
+            record.setSource(AttendanceSource.ADMIN.name());
+            attendanceRecordRepository.save(record);
+        }
+    }
+
+    /**
+     * On cancel of an APPROVED leave, revert the attendance rows the approval
+     * wrote. Only rows still carrying the leave marking are touched:
+     * - full-day: rows still ON_LEAVE — deleted when created by the approval
+     *   (no check-in), restored to PRESENT when the employee had clocked in
+     *   before the leave overwrote the day;
+     * - half-day: the admin-sourced HALF_DAY row with no check-in is deleted;
+     *   a HALF_DAY row with clock data is a genuine short day and is kept.
+     */
+    private void revertAttendanceForCancelledLeave(LeaveApplication application) {
+        List<LocalDate> workingDates = getWorkingDates(
+                application.getFromDate(), application.getToDate(), application.getInstituteId());
+        boolean halfDay = Boolean.TRUE.equals(application.getIsHalfDay());
+
+        for (LocalDate date : workingDates) {
+            Optional<AttendanceRecord> existingOpt = attendanceRecordRepository
+                    .findByEmployeeIdAndAttendanceDate(application.getEmployee().getId(), date);
+            if (existingOpt.isEmpty()) {
+                continue;
+            }
+            AttendanceRecord record = existingOpt.get();
+
+            if (halfDay) {
+                if (AttendanceStatus.HALF_DAY.name().equals(record.getStatus())
+                        && AttendanceSource.ADMIN.name().equals(record.getSource())
+                        && record.getCheckInTime() == null) {
+                    attendanceRecordRepository.delete(record);
+                }
+            } else if (AttendanceStatus.ON_LEAVE.name().equals(record.getStatus())) {
+                if (record.getCheckInTime() != null) {
+                    record.setStatus(AttendanceStatus.PRESENT.name());
+                    attendanceRecordRepository.save(record);
+                } else {
+                    attendanceRecordRepository.delete(record);
+                }
+            }
+        }
     }
 
     private LeaveApplicationDTO toDTO(LeaveApplication entity) {

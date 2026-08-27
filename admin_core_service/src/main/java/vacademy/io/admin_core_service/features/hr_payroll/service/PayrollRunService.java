@@ -48,10 +48,19 @@ public class PayrollRunService {
             throw new VacademyException("Invalid year");
         }
 
-        boolean exists = payrollRunRepository.existsByInstituteIdAndMonthAndYearAndRunTypeAndStatusNot(
-                instituteId, dto.getMonth(), dto.getYear(), RUN_TYPE_REGULAR, PayrollStatus.CANCELLED.name());
-        if (exists) {
-            throw new VacademyException("Payroll run already exists for " + dto.getMonth() + "/" + dto.getYear());
+        String runType = dto.getRunType() == null || dto.getRunType().isBlank()
+                ? RUN_TYPE_REGULAR : dto.getRunType().toUpperCase();
+        if (!List.of("REGULAR", "OFF_CYCLE", "FNF", "BONUS").contains(runType)) {
+            throw new VacademyException("run_type must be REGULAR, OFF_CYCLE, FNF or BONUS");
+        }
+
+        // Only REGULAR runs are one-per-month; off-cycle/FNF/bonus runs coexist.
+        if (RUN_TYPE_REGULAR.equals(runType)) {
+            boolean exists = payrollRunRepository.existsByInstituteIdAndMonthAndYearAndRunTypeAndStatusNot(
+                    instituteId, dto.getMonth(), dto.getYear(), RUN_TYPE_REGULAR, PayrollStatus.CANCELLED.name());
+            if (exists) {
+                throw new VacademyException("Payroll run already exists for " + dto.getMonth() + "/" + dto.getYear());
+            }
         }
 
         PayrollRun run = new PayrollRun();
@@ -60,7 +69,7 @@ public class PayrollRunService {
         run.setYear(dto.getYear());
         run.setRunDate(LocalDate.now());
         run.setStatus(PayrollStatus.DRAFT.name());
-        run.setRunType(RUN_TYPE_REGULAR);
+        run.setRunType(runType);
         run.setTotalEmployees(0);
         run.setTotalGross(BigDecimal.ZERO);
         run.setTotalDeductions(BigDecimal.ZERO);
@@ -71,7 +80,7 @@ public class PayrollRunService {
         try {
             run = payrollRunRepository.save(run);
         } catch (DataIntegrityViolationException e) {
-            // V200 partial unique index: concurrent create for the same month
+            // V480 partial unique index: concurrent create for the same month
             throw new VacademyException("Payroll run already exists for " + dto.getMonth() + "/" + dto.getYear());
         }
         return run.getId();
@@ -171,7 +180,7 @@ public class PayrollRunService {
     /**
      * Cancels a run AND reverses its financial side effects (previously the
      * entries kept their loan deductions and consumed reimbursements forever).
-     * The V200 partial unique index lets a new run be created for the month.
+     * The V480 partial unique index lets a new run be created for the month.
      */
     @Transactional
     public String cancelPayroll(String id, String instituteId) {
@@ -237,11 +246,13 @@ public class PayrollRunService {
                 .year(run.getYear())
                 .runDate(run.getRunDate())
                 .status(run.getStatus())
+                .runType(run.getRunType() != null ? run.getRunType() : "REGULAR")
                 .totalEmployees(run.getTotalEmployees())
                 .totalGross(run.getTotalGross())
                 .totalDeductions(run.getTotalDeductions())
                 .totalNetPay(run.getTotalNetPay())
                 .totalEmployerCost(run.getTotalEmployerCost())
+                .currency(run.getCurrency() != null ? run.getCurrency() : "INR")
                 .processedBy(run.getProcessedBy())
                 .processedAt(run.getProcessedAt())
                 .approvedBy(run.getApprovedBy())

@@ -6,8 +6,10 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.hr_attendance.dto.AttendanceConfigDTO;
 import vacademy.io.admin_core_service.features.hr_attendance.entity.AttendanceConfig;
 import vacademy.io.admin_core_service.features.hr_attendance.repository.AttendanceConfigRepository;
+import vacademy.io.admin_core_service.features.hr_attendance.util.HrTimeUtil;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.time.ZoneId;
 import java.util.Optional;
 
 @Service
@@ -34,6 +36,19 @@ public class AttendanceConfigService {
         }
 
         config.setMode(dto.getMode());
+        // Timezone: validate when supplied; keep the existing value (or the
+        // Asia/Kolkata default for new configs) when absent.
+        if (dto.getTimezone() != null && !dto.getTimezone().isBlank()) {
+            String tz = dto.getTimezone().trim();
+            try {
+                ZoneId.of(tz);
+            } catch (Exception e) {
+                throw new VacademyException("Invalid timezone: " + tz);
+            }
+            config.setTimezone(tz);
+        } else if (config.getTimezone() == null) {
+            config.setTimezone(HrTimeUtil.DEFAULT_TIMEZONE);
+        }
         config.setAutoCheckoutEnabled(dto.getAutoCheckoutEnabled());
         config.setAutoCheckoutTime(dto.getAutoCheckoutTime());
         config.setGeoFenceEnabled(dto.getGeoFenceEnabled());
@@ -64,6 +79,7 @@ public class AttendanceConfigService {
         dto.setId(config.getId());
         dto.setInstituteId(config.getInstituteId());
         dto.setMode(config.getMode());
+        dto.setTimezone(config.getTimezone());
         dto.setAutoCheckoutEnabled(config.getAutoCheckoutEnabled());
         dto.setAutoCheckoutTime(config.getAutoCheckoutTime());
         dto.setGeoFenceEnabled(config.getGeoFenceEnabled());

@@ -128,6 +128,7 @@ public class PayrollEntryService {
                 .arrears(entry.getArrears())
                 .reimbursements(entry.getReimbursements())
                 .loanDeduction(entry.getLoanDeduction())
+                .currency(entry.getCurrency() != null ? entry.getCurrency() : "INR")
                 .status(entry.getStatus())
                 .components(componentDTOs)
                 .build();

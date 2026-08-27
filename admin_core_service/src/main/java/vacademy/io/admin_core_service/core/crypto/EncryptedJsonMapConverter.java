@@ -10,7 +10,7 @@ import java.util.Map;
 
 /**
  * JPA converter storing a {@code Map<String,Object>} as an encrypted JSON TEXT
- * column (used for hr_employee_profile.statutory_info, which V200 converted
+ * column (used for hr_employee_profile.statutory_info, which V480 converted
  * from jsonb to TEXT). Legacy rows holding plaintext JSON parse through
  * unchanged and are encrypted on next write.
  */

@@ -164,7 +164,9 @@ export default function () {
     res = http.post(previewUrl, JSON.stringify({
         username: username,
         user_id: userId,
-        email: `${username}@loadtest.invalid`,
+        // @vacademy.com is filtered by the notification layer — load-test
+        // traffic must never trigger real outbound email.
+        email: `${username}@vacademy.com`,
         full_name: `Load Test ${username}`,
     }), { headers: jsonHeaders(token), tags: { step: 'preview' } });
     previewMs.add(res.timings.duration);

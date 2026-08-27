@@ -12,5 +12,6 @@ PASSWORD="${3:-LoadTest@123}"
 echo "FULL_NAME,USERNAME,PASSWORD,EMAIL,MOBILE_NUMBER"
 for i in $(seq 1 "$COUNT"); do
   n=$(printf '%04d' "$i")
-  echo "Load Test ${n},${PREFIX}${n},${PASSWORD},${PREFIX}${n}@loadtest.invalid,99900${n}0"
+  # @vacademy.com is filtered by the notification layer — no real email goes out
+  echo "Load Test ${n},${PREFIX}${n},${PASSWORD},${PREFIX}${n}@vacademy.com,99900${n}0"
 done

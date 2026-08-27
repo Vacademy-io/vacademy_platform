@@ -403,6 +403,31 @@ function ViewLiveSession() {
     };
 
     // Group schedules by date for calendar view
+    /**
+     * Single source of truth for "which host entry point does this schedule
+     * get?", so the list and calendar views of a recurring session cannot
+     * disagree. Returns null for platforms we cannot host into (the caller
+     * falls back to the participant join link).
+     */
+    const resolveHostAction = useCallback(
+        (session: { id: string; linkType?: string | null }) => {
+            if (isBbbSession) return () => handleJoinAsHost(session.id);
+            const linkType = session.linkType;
+            if (linkType === 'zoom' || linkType === 'ZOOM_MEETING') {
+                return () => handleZoomStartAsHost(session.id);
+            }
+            if (
+                linkType === 'google meet' ||
+                linkType === 'GOOGLE_MEET' ||
+                linkType === 'googleMeet'
+            ) {
+                return () => handleMeetStartAsHost(session.id);
+            }
+            return null;
+        },
+        [isBbbSession, handleJoinAsHost, handleZoomStartAsHost, handleMeetStartAsHost]
+    );
+
     const groupedSchedules = useMemo(() => {
         if (!sessionData?.schedule?.added_schedules) return [];
 
@@ -1685,37 +1710,26 @@ function ViewLiveSession() {
                                                                                             {session.duration} mins
                                                                                             </span>
                                                                                         </div>
-                                                                                        {isBbbSession ? (
-                                                                                            <button
-                                                                                                onClick={() => handleJoinAsHost(session.id)}
-                                                                                                className="text-xs font-medium text-primary hover:underline"
-                                                                                            >
-                                                                                                Start as Host →
-                                                                                            </button>
-                                                                                        ) : ((session as any).linkType === 'zoom' || (session as any).linkType === 'ZOOM_MEETING') ? (
-                                                                                            <button
-                                                                                                onClick={() => handleZoomStartAsHost(session.id)}
-                                                                                                className="text-xs font-medium text-primary hover:underline"
-                                                                                            >
-                                                                                                Start as Host →
-                                                                                            </button>
-                                                                                        ) : ((session as any).linkType === 'google meet' || (session as any).linkType === 'GOOGLE_MEET' || (session as any).linkType === 'googleMeet') ? (
-                                                                                            <button
-                                                                                                onClick={() => handleMeetStartAsHost(session.id)}
-                                                                                                className="text-xs font-medium text-primary hover:underline"
-                                                                                            >
-                                                                                                Start as Host →
-                                                                                            </button>
-                                                                                        ) : (
-                                                                                            <a
-                                                                                                href={session.link}
-                                                                                                target="_blank"
-                                                                                                rel="noopener noreferrer"
-                                                                                                className="text-xs font-medium text-primary hover:underline"
-                                                                                            >
-                                                                                                Join →
-                                                                                            </a>
-                                                                                        )}
+                                                                                        {(() => {
+                                                                                            const startAsHost = resolveHostAction(session as any);
+                                                                                            return startAsHost ? (
+                                                                                                <button
+                                                                                                    onClick={startAsHost}
+                                                                                                    className="text-xs font-medium text-primary hover:underline"
+                                                                                                >
+                                                                                                    Start as Host →
+                                                                                                </button>
+                                                                                            ) : (
+                                                                                                <a
+                                                                                                    href={session.link}
+                                                                                                    target="_blank"
+                                                                                                    rel="noopener noreferrer"
+                                                                                                    className="text-xs font-medium text-primary hover:underline"
+                                                                                                >
+                                                                                                    Join →
+                                                                                                </a>
+                                                                                            );
+                                                                                        })()}
                                                                                     </div>
                                                                                 </div>
                                                                         ))}
@@ -1809,7 +1823,7 @@ function ViewLiveSession() {
                                                 })()}
                                         </>
                                     ) : (
-                                        <SessionCalendarView schedules={groupedSchedules} />
+                                        <SessionCalendarView schedules={groupedSchedules} getHostAction={resolveHostAction} />
                                     )}
                                 </CardContent>
                             </Card>

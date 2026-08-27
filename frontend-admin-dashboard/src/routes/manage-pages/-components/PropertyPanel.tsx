@@ -24,7 +24,7 @@ import {
     Anchor,
     Sparkle,
 } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
@@ -4707,6 +4707,184 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
     );
 };
 
+/* ─── HTML-page link manager ─────────────────────────────────────────────
+   Wiring a pasted page's buttons previously meant editing raw HTML — the enrol
+   CTAs on a real import could only be pointed at the invitation flow by hand.
+   This scans the blob, lists every link with a plain-language destination,
+   flags ones that go nowhere, and writes edits back STRUCTURALLY via
+   DOMParser (regex rewrites of attributes created an injection once already). */
+
+type HtmlLinkKind = 'page' | 'section' | 'url' | 'lead' | 'none';
+
+interface HtmlLinkRow {
+    index: number;
+    tag: string;
+    label: string;
+    kind: HtmlLinkKind;
+    value: string;
+}
+
+const HTML_LINK_HOOK_ATTRS = ['data-vacademy', 'data-route', 'data-target', 'data-audience', 'data-course'];
+
+const parseHtmlLinks = (html: string): { rows: HtmlLinkRow[]; sectionIds: string[] } => {
+    const doc = new DOMParser().parseFromString(html || '', 'text/html');
+    const rows: HtmlLinkRow[] = [];
+    const els = doc.querySelectorAll('a, button');
+    els.forEach((el, index) => {
+        const verb = el.getAttribute('data-vacademy');
+        const href = el.getAttribute('href') || '';
+        let kind: HtmlLinkKind = 'none';
+        let value = '';
+        if (verb === 'lead-form') { kind = 'lead'; value = el.getAttribute('data-audience') || ''; }
+        else if (verb === 'scroll') { kind = 'section'; value = el.getAttribute('data-target') || ''; }
+        else if (verb === 'route') { kind = 'page'; value = el.getAttribute('data-route') || ''; }
+        else if (/^(https?:|mailto:|tel:)/i.test(href)) { kind = 'url'; value = href; }
+        else if (href.startsWith('#') && href.length > 1) { kind = 'section'; value = href.slice(1); }
+        const label = (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 44);
+        // Rows with no text and no action are decoration, not links to manage.
+        if (label || kind !== 'none') rows.push({ index, tag: el.tagName.toLowerCase(), label: label || '(no text)', kind, value });
+    });
+    const sectionIds = [...doc.querySelectorAll('[id]')].map((n) => n.id).filter(Boolean);
+    return { rows, sectionIds };
+};
+
+const applyHtmlLink = (html: string, index: number, kind: HtmlLinkKind, value: string): string => {
+    const doc = new DOMParser().parseFromString(html || '', 'text/html');
+    const el = doc.querySelectorAll('a, button')[index];
+    if (!el) return html;
+    HTML_LINK_HOOK_ATTRS.forEach((a) => el.removeAttribute(a));
+    if (kind === 'page') {
+        el.setAttribute('data-vacademy', 'route');
+        el.setAttribute('data-route', value);
+        if (el.tagName === 'A') el.setAttribute('href', value ? `${value}/` : './');
+    } else if (kind === 'section') {
+        el.setAttribute('data-vacademy', 'scroll');
+        el.setAttribute('data-target', value);
+        if (el.tagName === 'A') el.setAttribute('href', `#${value}`);
+    } else if (kind === 'url') {
+        if (el.tagName === 'A') el.setAttribute('href', value);
+        else { el.setAttribute('data-vacademy', 'link'); el.setAttribute('data-href', value); }
+    } else if (kind === 'lead') {
+        el.setAttribute('data-vacademy', 'lead-form');
+        if (value) el.setAttribute('data-audience', value);
+        if (el.tagName === 'A') el.removeAttribute('href');
+    } else if (el.tagName === 'A') {
+        el.removeAttribute('href');
+    }
+    return doc.body.innerHTML;
+};
+
+const HTML_LINK_KIND_LABELS: Record<HtmlLinkKind, string> = {
+    page: 'Page on this site',
+    section: 'Scroll to section',
+    url: 'Web address',
+    lead: 'Lead form',
+    none: 'No action',
+};
+
+const HtmlLinkRowEditor = ({
+    row, pages, sectionIds, onApply,
+}: {
+    row: HtmlLinkRow;
+    pages: { route: string; title?: string }[];
+    sectionIds: string[];
+    onApply: (kind: HtmlLinkKind, value: string) => void;
+}) => {
+    const [editing, setEditing] = useState(false);
+    const [kind, setKind] = useState<HtmlLinkKind>(row.kind);
+    const [value, setValue] = useState(row.value);
+    const pageMissing = row.kind === 'page' && row.value !== '' && !pages.some((pg) => pg.route === row.value);
+    const leadUnbound = row.kind === 'lead' && !row.value;
+    const summary =
+        row.kind === 'page' ? `→ ${row.value || 'home'}` :
+        row.kind === 'section' ? `↓ #${row.value}` :
+        row.kind === 'url' ? `→ ${row.value.slice(0, 40)}` :
+        row.kind === 'lead' ? '→ lead form' : 'no action';
+    return (
+        <div className="rounded border border-gray-200 p-2">
+            <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                    <p className="truncate text-caption font-medium text-gray-700">{row.label}</p>
+                    <p className="truncate text-caption text-gray-400">
+                        {summary}
+                        {pageMissing && <span className="ms-1.5 text-warning-700">— page doesn&apos;t exist</span>}
+                        {leadUnbound && <span className="ms-1.5 text-warning-700">— no campaign chosen</span>}
+                    </p>
+                </div>
+                <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => setEditing(!editing)}>
+                    {editing ? 'Close' : 'Edit'}
+                </Button>
+            </div>
+            {editing && (
+                <div className="mt-2 space-y-2 border-t pt-2">
+                    <div className="flex flex-wrap gap-1">
+                        {(Object.keys(HTML_LINK_KIND_LABELS) as HtmlLinkKind[]).map((k) => (
+                            <button
+                                key={k}
+                                onClick={() => { setKind(k); setValue(''); }}
+                                className={`rounded-full border px-2.5 py-0.5 text-caption ${
+                                    kind === k ? 'border-primary-400 bg-primary-50 text-primary-500' : 'border-gray-200 text-gray-600'
+                                }`}
+                            >
+                                {HTML_LINK_KIND_LABELS[k]}
+                            </button>
+                        ))}
+                    </div>
+                    {kind === 'page' && (
+                        <div className="flex flex-wrap gap-1">
+                            {pages.map((pg) => (
+                                <button
+                                    key={pg.route}
+                                    onClick={() => setValue(pg.route)}
+                                    className={`rounded border px-2 py-0.5 text-caption ${
+                                        value === pg.route ? 'border-primary-400 bg-primary-50 text-primary-500' : 'border-gray-200 text-gray-600'
+                                    }`}
+                                >
+                                    {pg.title || pg.route || 'home'}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {kind === 'section' && (
+                        <div className="flex flex-wrap gap-1">
+                            {sectionIds.map((sid) => (
+                                <button
+                                    key={sid}
+                                    onClick={() => setValue(sid)}
+                                    className={`rounded border px-2 py-0.5 font-mono text-caption ${
+                                        value === sid ? 'border-primary-400 bg-primary-50 text-primary-500' : 'border-gray-200 text-gray-600'
+                                    }`}
+                                >
+                                    #{sid}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {kind === 'url' && (
+                        <Input
+                            value={value}
+                            onChange={(e) => setValue(e.target.value)}
+                            placeholder="https://… (any address, e.g. an invite link)"
+                            className="h-7 text-caption"
+                        />
+                    )}
+                    {kind === 'lead' && (
+                        <CampaignPicker value={value} onChange={setValue} label="Campaign" allowEmpty={false} />
+                    )}
+                    <Button
+                        size="sm"
+                        className="text-xs"
+                        disabled={kind !== 'none' && kind !== 'lead' && !value && kind !== 'page'}
+                        onClick={() => { onApply(kind, value); setEditing(false); }}
+                    >
+                        Apply
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+};
+
 /** The whole-page paste editor. Deliberately not a canvas: an HTML page is
  *  someone else's markup and we do not pretend to understand its structure. */
 const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
@@ -4798,6 +4976,28 @@ const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
                     {t('htmlPage.cssSharedHint')}
                 </p>
             </div>
+            {linkRows.length > 0 && (
+                <div>
+                    <Label className="text-xs">Buttons &amp; links on this page ({linkRows.length})</Label>
+                    <p className="mb-2 mt-0.5 text-caption text-gray-400">
+                        Point each one at a page, a section, a lead form, or any web address — no
+                        HTML editing needed.
+                    </p>
+                    <div className="space-y-1.5">
+                        {linkRows.map((row) => (
+                            <HtmlLinkRowEditor
+                                key={`${row.index}-${row.kind}-${row.value}`}
+                                row={row}
+                                pages={sitePages}
+                                sectionIds={sectionIds}
+                                onApply={(kind, value) =>
+                                    updateProp('html', applyHtmlLink(props.html || '', row.index, kind, value))
+                                }
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-600">
                 <p className="font-medium text-gray-700">{t('htmlPage.makingLinksWork')}</p>
                 <p className="mt-1">

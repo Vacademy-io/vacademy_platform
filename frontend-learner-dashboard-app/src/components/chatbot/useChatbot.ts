@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { ChatMessage, ChatbotContext, QuizSubmission } from "./types";
+import { getCachedInstituteBranding } from "@/services/domain-routing";
 import {
   chatbotAPI,
   ContextType,
@@ -29,6 +31,7 @@ import {
 import { isChatbotVisibleOnRoute, setChatbotPages } from "@/config/chatbot-routes";
 
 export const useChatbot = () => {
+  const { t } = useTranslation("chatFeatureB");
   // Check if parent portal is active
   const parentPortal = useParentPortalStore();
   const location = useLocation();
@@ -39,7 +42,13 @@ export const useChatbot = () => {
   const [chatbotSettings, setChatbotSettings] = useState<ChatbotSettingsData>(
     DEFAULT_CHATBOT_SETTINGS,
   );
-  const [instituteName, setInstituteName] = useState<string>("Vacademy");
+  // Rendered in the chatbot header. Seeding it with "Vacademy" meant every
+  // white-label learner saw the Vacademy name until getChatbotSettings resolved
+  // — and permanently if that call failed. Start from the branding already
+  // resolved for this hostname instead.
+  const [instituteName, setInstituteName] = useState<string>(
+    () => getCachedInstituteBranding()?.instituteName || "",
+  );
   const [isExpanded, setIsExpanded] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<AIStatus>("idle");
@@ -148,7 +157,16 @@ export const useChatbot = () => {
       try {
         getChatbotSettings(true).then((settings) => {
           setChatbotSettings(settings);
-          setInstituteName(settings.institute_name);
+          // An admin-set name wins, but the untouched default is the literal
+          // "Vacademy" — and it is also what a failed fetch returns. Fall back
+          // to this hostname's branding rather than re-branding a white-label
+          // institute's chatbot as Vacademy.
+          setInstituteName(
+            settings.institute_name &&
+              settings.institute_name !== DEFAULT_CHATBOT_SETTINGS.institute_name
+              ? settings.institute_name
+              : getCachedInstituteBranding()?.instituteName || "",
+          );
           // Update chatbot page visibility from admin settings
           if (settings.chatbot_pages) {
             setChatbotPages(settings.chatbot_pages);
@@ -457,7 +475,7 @@ export const useChatbot = () => {
               id: Date.now(),
               role: "assistant",
               content:
-                "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+                t("common.creditsExhausted"),
               timestamp: Date.now(),
             };
             setMessages((prev) => [...prev, creditsMessage]);
@@ -554,7 +572,7 @@ export const useChatbot = () => {
                 id: Date.now(),
                 role: "assistant",
                 content:
-                  "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+                  t("common.creditsExhausted"),
                 timestamp: Date.now(),
               };
               setMessages((prev) => [...prev, creditsMessage]);
@@ -593,25 +611,26 @@ export const useChatbot = () => {
       console.error("Failed to initialize session:", error);
       setHasError(true);
 
-      let errorMessage = `Hi! I'm ${chatbotSettings.assistant_name}, your AI assistant. `;
+      const assistantName = chatbotSettings.assistant_name;
+      let errorMessage: string;
       if (axios.isAxiosError(error)) {
         if (error.code === "ERR_NETWORK") {
-          errorMessage +=
-            "I'm having trouble connecting to the server. Please check your network connection.";
+          errorMessage = t("useChatbot.initErrorNetwork", { assistantName });
         } else if (error.response?.status === 404) {
-          errorMessage +=
-            "The AI service endpoint was not found. Please check the configuration.";
+          errorMessage = t("useChatbot.initErrorNotFound", { assistantName });
         } else if (
           error.response?.status === 403 ||
           error.response?.status === 401
         ) {
-          errorMessage += "Authentication failed. Please try logging in again.";
+          errorMessage = t("useChatbot.initErrorAuth", { assistantName });
         } else {
-          errorMessage += `I'm having trouble connecting right now (Error: ${error.message}). How can I help you?`;
+          errorMessage = t("useChatbot.initErrorGeneric", {
+            assistantName,
+            errorMessage: error.message,
+          });
         }
       } else {
-        errorMessage +=
-          "I'm having trouble connecting right now. How can I help you?";
+        errorMessage = t("useChatbot.initErrorFallback", { assistantName });
       }
 
       setMessages([
@@ -632,6 +651,7 @@ export const useChatbot = () => {
     getContextType,
     getContext,
     buildContextMeta,
+    t,
   ]);
 
   // Initialize session when chatbot opens
@@ -678,8 +698,7 @@ export const useChatbot = () => {
       const creditsMessage: ChatMessage = {
         id: Date.now(),
         role: "assistant",
-        content:
-          "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+        content: t("common.creditsExhausted"),
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, creditsMessage]);
@@ -730,8 +749,7 @@ export const useChatbot = () => {
         const creditsMsg: ChatMessage = {
           id: Date.now(),
           role: "assistant",
-          content:
-            "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+          content: t("common.creditsExhausted"),
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, creditsMsg]);
@@ -741,8 +759,7 @@ export const useChatbot = () => {
         const errorMessage: ChatMessage = {
           id: Date.now(),
           role: "assistant",
-          content:
-            "I'm sorry, I encountered an error while processing your request. Please try again.",
+          content: t("useChatbot.processingFailed"),
           timestamp: Date.now(),
         };
         setMessages((prev) => [...prev, errorMessage]);
@@ -773,7 +790,7 @@ export const useChatbot = () => {
       const errorMessage: ChatMessage = {
         id: Date.now(),
         role: "assistant",
-        content: "I'm sorry, I couldn't submit your quiz. Please try again.",
+        content: t("useChatbot.quizSubmitFailed"),
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);

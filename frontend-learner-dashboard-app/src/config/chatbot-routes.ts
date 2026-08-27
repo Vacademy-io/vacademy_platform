@@ -17,6 +17,12 @@ const ALWAYS_HIDDEN_ROUTES = [
   '/delete-user', '/change-password', '/logout',
   '/learner-invitation-response', '/payment-result', '/audience-response',
   '/live-class-guest',
+  // Assessment brief → preview → live test. An AI assistant floating over a
+  // proctored paper is an integrity problem, and its launcher sits exactly
+  // where the exam's own bottom-right controls are. The catalogue fallback
+  // below would otherwise match '/assessment' for institutes that enable the
+  // catalogue page category.
+  '/assessment',
 ];
 
 // Active enabled page categories (set from admin settings)

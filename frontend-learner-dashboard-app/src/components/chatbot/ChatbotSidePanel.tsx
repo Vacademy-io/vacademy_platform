@@ -14,6 +14,7 @@ import {
   Microphone,
 } from "@phosphor-icons/react";
 import { Link, useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -49,6 +50,7 @@ import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
 
 export const ChatbotSidePanel: React.FC = () => {
+  const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
     isOpen,
@@ -267,7 +269,7 @@ export const ChatbotSidePanel: React.FC = () => {
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
             onClick={startNewChat}
-            title="Start new chat"
+            title={t("common.startNewChat")}
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>
@@ -276,7 +278,7 @@ export const ChatbotSidePanel: React.FC = () => {
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
             onClick={closeSession}
-            title="Close session"
+            title={t("common.closeSession")}
           >
             <Trash className="h-3.5 w-3.5" />
           </Button>
@@ -285,7 +287,7 @@ export const ChatbotSidePanel: React.FC = () => {
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
-              title="AI Gear"
+              title={t("common.aiGear")}
             >
               <Gear className="h-3.5 w-3.5" />
             </Button>
@@ -295,7 +297,7 @@ export const ChatbotSidePanel: React.FC = () => {
             size="icon"
             className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-destructive/80 hover:text-destructive-foreground"
             onClick={handleClose}
-            title="Close panel"
+            title={t("common.closePanel")}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -310,7 +312,7 @@ export const ChatbotSidePanel: React.FC = () => {
               <div className="w-full bg-muted/40 backdrop-blur-sm border border-border/50 rounded-lg px-3 py-2 text-center">
                 <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                   <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                  <span>Initializing...</span>
+                  <span>{t("sidePanel.initializing")}</span>
                 </div>
               </div>
             )}
@@ -423,7 +425,7 @@ export const ChatbotSidePanel: React.FC = () => {
                       {msg.role === "user" ? (
                         <div>
                           {msg.attachments?.filter(a => a.type === 'image').map((att, i) => (
-                            <img key={i} src={att.url} alt="attached" className="max-w-48 max-h-36 rounded-lg mb-1" />
+                            <img key={i} src={att.url} alt={t("common.attachedImageAlt")} className="max-w-48 max-h-36 rounded-lg mb-1" />
                           ))}
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
@@ -434,7 +436,7 @@ export const ChatbotSidePanel: React.FC = () => {
                             onClick={() =>
                               handleCopyMessage(msg.content, msg.id)
                             }
-                            title="Copy"
+                            title={t("common.copy")}
                           >
                             {copiedMessageId === msg.id ? (
                               <Check className="size-3 text-green-500" />
@@ -582,7 +584,7 @@ export const ChatbotSidePanel: React.FC = () => {
                     {aiStatus === "generating_quiz" ? (
                       <span className="text-caption text-muted-foreground flex items-center gap-1.5">
                         <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                        Generating...
+                        {t("sidePanel.generating")}
                       </span>
                     ) : (
                       <>
@@ -605,14 +607,14 @@ export const ChatbotSidePanel: React.FC = () => {
             {isCreditsExhausted && (
               <div className="w-full bg-amber-50 border border-amber-300 rounded-lg px-2.5 py-2 text-center">
                 <p className="text-xs text-amber-800">
-                  Your OpenRouter credits have been exhausted. Please recharge your credits to continue.
+                  {t("sidePanel.creditsExhaustedShort")}
                 </p>
               </div>
             )}
 
             {hasError && !isCreditsExhausted && (
               <div className="w-full bg-destructive/10 border border-destructive/30 rounded-lg px-2.5 py-2 text-center space-y-1">
-                <p className="text-xs text-destructive">Something went wrong.</p>
+                <p className="text-xs text-destructive">{t("sidePanel.errorTitle")}</p>
                 <div className="flex gap-2 justify-center">
                   <button
                     onClick={() => {
@@ -621,10 +623,10 @@ export const ChatbotSidePanel: React.FC = () => {
                     }}
                     className="text-xs text-primary underline"
                   >
-                    Retry
+                    {t("common.retry")}
                   </button>
                   <button onClick={startNewChat} className="text-xs text-muted-foreground underline">
-                    New chat
+                    {t("common.newChat")}
                   </button>
                 </div>
               </div>
@@ -633,7 +635,7 @@ export const ChatbotSidePanel: React.FC = () => {
             {isSessionClosed && (
               <div className="w-full bg-muted/40 border border-border/50 rounded-lg px-2.5 py-1.5 text-center">
                 <p className="text-xs text-muted-foreground">
-                  Session ended. Start a new chat.
+                  {t("sidePanel.sessionEnded")}
                 </p>
               </div>
             )}
@@ -649,7 +651,7 @@ export const ChatbotSidePanel: React.FC = () => {
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 backdrop-blur-[2px] pointer-events-none">
           <div className="flex flex-col items-center gap-2 text-primary">
             <ImageSquare className="h-8 w-8" />
-            <span className="text-sm font-medium">Drop image here</span>
+            <span className="text-sm font-medium">{t("common.dropImageHere")}</span>
           </div>
         </div>
       )}
@@ -675,11 +677,11 @@ export const ChatbotSidePanel: React.FC = () => {
               <button
                 onClick={() => setShowVoiceSelector(true)}
                 disabled={isLoading || !sessionId}
-                title="Start a voice conversation"
+                title={t("common.startVoiceConversation")}
                 className="inline-flex items-center h-6 px-2.5 text-caption font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
               >
                 <Microphone className="h-3 w-3 me-1" />
-                Voice Chat
+                {t("common.voiceChatLabel")}
               </button>
             )}
           </div>
@@ -692,7 +694,7 @@ export const ChatbotSidePanel: React.FC = () => {
           <div className="flex gap-1.5 w-full px-1 py-1">
             {pendingAttachments.map((att, i) => (
               <div key={i} className="relative size-10 rounded border overflow-hidden">
-                <img src={att.previewUrl || att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
+                <img src={att.previewUrl || att.url} alt={att.name || t("common.attachmentAlt")} className="size-full object-cover" />
                 {!att.url && (
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                     <SpinnerGap className="h-3 w-3 text-white animate-spin" />
@@ -763,7 +765,7 @@ export const ChatbotSidePanel: React.FC = () => {
         {/* LaTeX preview */}
         {inputValue.includes('$') && (
           <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
-            <span className="text-muted-foreground text-caption block mb-0.5">Preview:</span>
+            <span className="text-muted-foreground text-caption block mb-0.5">{t("common.preview")}</span>
             <ReactMarkdown
               remarkPlugins={[remarkMath]}
               rehypePlugins={[rehypeKatex]}
@@ -776,7 +778,7 @@ export const ChatbotSidePanel: React.FC = () => {
         {/* Unified Input Box */}
         <div className="w-full flex items-end gap-1 bg-muted/40 rounded-xl p-1 ring-1 ring-border/50 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
           <textarea
-            placeholder="Ask a question... ($ for math)"
+            placeholder={t("sidePanel.inputPlaceholder")}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -796,7 +798,7 @@ export const ChatbotSidePanel: React.FC = () => {
               showLatexHelper ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
             )}
             onClick={() => setShowLatexHelper(prev => !prev)}
-            title="Math symbols"
+            title={t("common.mathSymbols")}
           >
             <Sigma className="h-3.5 w-3.5" />
           </button>
@@ -804,7 +806,7 @@ export const ChatbotSidePanel: React.FC = () => {
             className="h-7 w-7 shrink-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             onClick={() => fileInputRef.current?.click()}
             disabled={!sessionId || isLoading || isUploadingImage}
-            title="Attach image"
+            title={t("sidePanel.attachImageTitle")}
           >
             {isUploadingImage ? (
               <SpinnerGap className="h-3.5 w-3.5 animate-spin" />

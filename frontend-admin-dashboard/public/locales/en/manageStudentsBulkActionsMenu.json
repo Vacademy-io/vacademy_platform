@@ -1,0 +1,17 @@
+{
+    "menu": {
+        "acceptRequest": "Accept Request",
+        "changeBatch": "Change Batch",
+        "extendCourseAccess": "Extend Course Access",
+        "reRegisterForNextSession": "Re-register for Next Session",
+        "terminateRegistration": "Terminate Registration",
+        "shareCredentials": "Share Credentials",
+        "sendWhatsappMessage": "Send WhatsApp Message",
+        "sendEmail": "Send Email",
+        "createCertificate": "Create Certificate"
+    },
+    "actionInfo": {
+        "selectedStudents_one": "{{count}} student",
+        "selectedStudents_other": "{{count}} students"
+    }
+}

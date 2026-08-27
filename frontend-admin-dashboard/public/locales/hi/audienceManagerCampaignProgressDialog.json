@@ -1,0 +1,35 @@
+{
+    "dialog": {
+        "heading": "AI कॉल जारी हैं"
+    },
+    "status": {
+        "completed": "पूर्ण",
+        "noAnswer": "जवाब नहीं मिला",
+        "busy": "व्यस्त",
+        "failed": "असफल",
+        "cancelled": "रद्द",
+        "onCall": "कॉल पर",
+        "ringing": "घंटी बज रही है",
+        "dialing": "डायल हो रहा है"
+    },
+    "header": {
+        "allFinished_one": "सभी {{count}} कॉल पूरी हो गई",
+        "allFinished_other": "सभी {{count}} कॉल पूरी हो गईं",
+        "progress": "{{total}} में से {{done}} पूरी हुईं",
+        "liveSuffix_one": " · {{count}} चल रही है",
+        "liveSuffix_other": " · {{count}} चल रही हैं",
+        "parallelLabel_one": "एक बार में {{count}}",
+        "parallelLabel_other": "एक बार में {{count}}"
+    },
+    "list": {
+        "dialingFirst": "पहली लीड को डायल किया जा रहा है…",
+        "defaultLeadName": "लीड",
+        "duration": "{{minutes}} मिनट {{seconds}} सेकंड"
+    },
+    "error": {
+        "pollPaused": "लाइव अपडेट रुक गए हैं (फिर से कोशिश की जा रही है) — कॉल सर्वर पर चलती रहती हैं।"
+    },
+    "footer": {
+        "backgroundNotice": "यह बैकग्राउंड में चलता है — इस विंडो को बंद करने से कॉल नहीं रुकतीं। हर कॉल के बाद परिणाम और काउंसलर असाइनमेंट अपने आप हो जाता है।"
+    }
+}

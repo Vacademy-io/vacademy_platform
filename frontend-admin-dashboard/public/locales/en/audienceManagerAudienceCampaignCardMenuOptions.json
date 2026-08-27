@@ -1,0 +1,32 @@
+{
+    "menu": {
+        "openMenu": "Open menu",
+        "edit": "Edit",
+        "addResponse": "Add Response",
+        "bulkImportCsv": "Bulk Import CSV",
+        "sendMessage": "Send Message",
+        "configureWorkflow": "Configure Workflow",
+        "viewLinkedWorkflows": "View Linked Workflows",
+        "bookingSettings": "Booking Settings",
+        "apiIntegration": "API Integration",
+        "getEmbedCode": "Get Embed Code",
+        "delete": "Delete"
+    },
+    "deleteDialog": {
+        "title": "Delete {{term}}",
+        "description": "Are you sure you want to delete the campaign \"{{campaignName}}\"? This action cannot be undone.",
+        "cancel": "Cancel",
+        "deleting": "Deleting...",
+        "confirm": "Delete"
+    },
+    "toast": {
+        "deleteSuccess": "Campaign deleted successfully",
+        "deleteError": "Failed to delete the campaign",
+        "editComingSoon": "Edit campaign functionality coming soon",
+        "campaignIdMissing": "Campaign ID is missing"
+    },
+    "defaults": {
+        "campaignName": "Campaign",
+        "thisCampaign": "this campaign"
+    }
+}

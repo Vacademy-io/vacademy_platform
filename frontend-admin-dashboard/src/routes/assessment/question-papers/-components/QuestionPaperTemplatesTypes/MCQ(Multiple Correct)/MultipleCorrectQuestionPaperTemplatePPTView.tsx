@@ -13,6 +13,7 @@ import 'react-quill/dist/quill.snow.css';
 import { PPTViewQuillEditor } from '@/components/quill/PPTViewQuillEditor';
 import { QuestionPaperTemplateFormProps } from '../../../-utils/question-paper-template-form';
 import { formatStructure } from '../../../-utils/helper';
+import { useTranslation } from 'react-i18next';
 
 export const MultipleCorrectQuestionPaperTemplatePPTView = ({
     form,
@@ -20,6 +21,7 @@ export const MultipleCorrectQuestionPaperTemplatePPTView = ({
     setCurrentQuestionIndex,
     className,
 }: QuestionPaperTemplateFormProps) => {
+    const { t } = useTranslation('assessmentMultipleCorrectPPTQP');
     const { control, getValues, setValue } = form;
 
     const [isDropdownVisible, setIsDropdownVisible] = useState(false); // State to track dropdown visibility
@@ -88,7 +90,7 @@ export const MultipleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'a') : '(a.)'}
+                                    {optionsType ? formatStructure(optionsType, 'a') : t('optionLabels.a')}
                                 </span>
                             </div>
                         </div>
@@ -123,7 +125,7 @@ export const MultipleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'b') : '(b.)'}
+                                    {optionsType ? formatStructure(optionsType, 'b') : t('optionLabels.b')}
                                 </span>
                             </div>
                         </div>
@@ -160,7 +162,7 @@ export const MultipleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'c') : '(c.)'}
+                                    {optionsType ? formatStructure(optionsType, 'c') : t('optionLabels.c')}
                                 </span>
                             </div>
                         </div>
@@ -195,7 +197,7 @@ export const MultipleCorrectQuestionPaperTemplatePPTView = ({
                         <div className="flex w-full items-center gap-4">
                             <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
                                 <span className="!p-0 text-sm">
-                                    {optionsType ? formatStructure(optionsType, 'd') : '(d.)'}
+                                    {optionsType ? formatStructure(optionsType, 'd') : t('optionLabels.d')}
                                 </span>
                             </div>
                         </div>
@@ -243,10 +245,10 @@ export const MultipleCorrectQuestionPaperTemplatePPTView = ({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="mt-1">
                             <DropdownMenuItem onClick={handleDuplicateSlide}>
-                                Duplicate Slide
+                                {t('menu.duplicateSlide')}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={handleDeleteSlide}>
-                                Delete Slide
+                                {t('menu.deleteSlide')}
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

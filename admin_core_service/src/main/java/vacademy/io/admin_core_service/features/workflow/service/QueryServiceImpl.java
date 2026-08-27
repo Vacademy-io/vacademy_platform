@@ -710,9 +710,13 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         String source = params.get("source") == null ? "WORKFLOW" : String.valueOf(params.get("source"));
         String sourceId = params.get("sourceId") == null ? null : String.valueOf(params.get("sourceId"));
         String instituteId = params.get("instituteId") == null ? null : String.valueOf(params.get("instituteId"));
+        // Optional. Lets a workflow ask for a readable code — a learner's mobile
+        // number, say — instead of a random one. Ignored when the learner already
+        // has a link, and falls back to a random code if the value is taken.
+        String shortCode = params.get("shortCode") == null ? null : String.valueOf(params.get("shortCode"));
 
         String shortUrl = shortLinkIntegrationService.getOrCreateShortLink(
-                source, sourceId, destinationUrl, instituteId);
+                source, sourceId, destinationUrl, instituteId, shortCode);
 
         Map<String, Object> result = new HashMap<>();
         if (shortUrl == null || shortUrl.isBlank()) {

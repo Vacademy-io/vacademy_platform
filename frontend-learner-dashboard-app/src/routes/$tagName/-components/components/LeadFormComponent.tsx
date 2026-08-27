@@ -1,13 +1,27 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { CheckCircle, PaperPlaneTilt } from "@phosphor-icons/react";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
+import { getFieldVerification } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
+import { FieldVerification } from "@/routes/product-pages/$productPageCode/-components/FieldVerification";
 import { getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
+  extractRespondentIdentity,
   handleGetAudienceCampaign,
   handleSubmitAudienceLead,
   submitAudienceLead,
 } from "@/routes/audience-response/-services/audience-campaign-services";
+import {
+  applyPostSubmitTokens,
+  isDefaultPostSubmitConfiguration,
+  isExternalPostSubmitUrl,
+  parsePostSubmitConfiguration,
+  resolvePostSubmitButtons,
+  sanitizePostSubmitHtml,
+  type PostSubmitTokens,
+} from "@/routes/audience-response/-utils/post-submit-config";
+import { usePostSubmitRedirect } from "@/routes/audience-response/-utils/use-post-submit-redirect";
 import { isSpamSubmission } from "../../-utils/website-lead";
 import { emitLeadCaptured } from "../../-utils/catalogue-tracking";
 
@@ -70,6 +84,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   instituteId,
   isPreviewMode = false,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const { data: campaign, isLoading, isError } = useQuery({
     ...handleGetAudienceCampaign({
       instituteId: instituteId || "",
@@ -82,6 +97,10 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  const [respondent, setRespondent] = useState<PostSubmitTokens>({});
+  // The VALUE that was verified per field, not a boolean — editing a verified
+  // number has to re-arm the gate. Same contract as the checkout form.
+  const [verifiedValues, setVerifiedValues] = useState<Record<string, string>>({});
   const mountedAt = useRef(Date.now());
 
   const fields: FormFieldDef[] = useMemo(() => {
@@ -98,6 +117,25 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         mandatory: !!f.custom_field.isMandatory,
       }));
   }, [campaign]);
+
+  // Post-submit behaviour (thank-you copy, CTA, redirect) is authored once per
+  // campaign in Audience Manager and applies to every placement of its form —
+  // this inline/modal one included. The builder's own `successMessage` prop
+  // still wins when set, since that is a deliberate per-placement override.
+  const postSubmitConfig = useMemo(
+    () => parsePostSubmitConfiguration(campaign?.setting_json),
+    [campaign?.setting_json]
+  );
+  const postSubmitTokens: PostSubmitTokens = useMemo(
+    () => ({ ...respondent, campaignName: campaign?.campaign_name }),
+    [respondent, campaign?.campaign_name]
+  );
+  const { redirectUrl, secondsLeft } = usePostSubmitRedirect(
+    postSubmitConfig,
+    postSubmitTokens,
+    // Gated on the master switch, and never for the admin previewing the page.
+    done && !isPreviewMode && postSubmitConfig.enabled
+  );
 
   const isLeft = align === "left";
 
@@ -130,7 +168,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     if (!isPreviewMode) return null;
     return section(
       <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
-        Pick an audience campaign in the properties panel — its form fields render here.
+        {t("leadForm.emptyConfig")}
       </div>
     );
   }
@@ -153,8 +191,8 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     return section(
       <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
         {isError
-          ? "Couldn't load this campaign. Check that it is ACTIVE and belongs to this institute."
-          : "This campaign has no form fields yet — add them in Audience Manager."}
+          ? t("leadForm.errorLoad")
+          : t("leadForm.emptyFields")}
       </div>
     );
   }
@@ -166,7 +204,19 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
 
     const missing = fields.filter((f) => f.mandatory && !(values[f.key] || "").trim());
     if (missing.length > 0) {
-      setError(`Please fill in: ${missing.map((f) => f.name).join(", ")}`);
+      setError(t("leadForm.missingFields", { fields: missing.map((f) => f.name).join(", ") }));
+      return;
+    }
+
+    // Checked here as well as in the UI — a hidden button is not a guarantee.
+    const unverified = fields.filter(
+      (f) =>
+        getFieldVerification(f.config) &&
+        (values[f.key] || "").trim() &&
+        verifiedValues[f.key] !== values[f.key],
+    );
+    if (unverified.length > 0) {
+      setError(`Please verify: ${unverified.map((f) => f.name).join(", ")}`);
       return;
     }
 
@@ -190,24 +240,131 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
       );
       await submitAudienceLead(payload);
       emitLeadCaptured({ audienceId, sourceType: "AUDIENCE_CAMPAIGN", sourceId: audienceId });
+      // Identity feeds the {{name}} / {{email}} tokens on the thank-you screen
+      // and in the redirect query string.
+      setRespondent(extractRespondentIdentity(formValues));
       setDone(true);
     } catch {
-      setError("Something went wrong — please try again.");
+      setError(t("leadForm.genericError"));
     } finally {
       setSubmitting(false);
     }
   };
 
   if (done) {
+    // Campaigns that never opened the Post Submit Configuration card keep the
+    // exact block this section rendered before the feature existed — no
+    // heading, catalogue check icon, original fallback copy. Imposing default
+    // copy on live catalogue pages nobody edited would be a silent regression.
+    const untouched = isDefaultPostSubmitConfiguration(postSubmitConfig);
+
+    if (untouched) {
+      return section(
+        <div
+          className="catalogue-card-elevated flex flex-col items-center gap-3 p-8 text-center"
+          role="status"
+        >
+          <CheckCircle
+            weight="duotone"
+            className="size-10 text-catalogue-brand-ink"
+            aria-hidden="true"
+          />
+          <p className="text-base font-semibold text-catalogue-text-primary">
+            {successMessage || t("leadForm.defaultThankYou")}
+          </p>
+        </div>
+      );
+    }
+
+    // Precedence: the page-builder's per-placement `successMessage` wins, then
+    // the campaign's Post Submit Configuration, then the original fallback copy.
+    const heading = applyPostSubmitTokens(
+      postSubmitConfig.successTitle,
+      postSubmitTokens
+    );
+    const configuredHtml = postSubmitConfig.content.trim()
+      ? sanitizePostSubmitHtml(
+          applyPostSubmitTokens(postSubmitConfig.content, postSubmitTokens)
+        )
+      : "";
+    const configuredMessage = applyPostSubmitTokens(
+      postSubmitConfig.successMessage,
+      postSubmitTokens
+    );
+    const body =
+      successMessage || configuredMessage || t("leadForm.defaultThankYou");
+    const actionButtons = resolvePostSubmitButtons(postSubmitConfig, postSubmitTokens);
+    const anotherLabel =
+      applyPostSubmitTokens(postSubmitConfig.anotherResponseText, postSubmitTokens) ||
+      t("leadForm.defaultAnotherResponse");
+
+    const resetForm = () => {
+      setValues({});
+      setHoneypot("");
+      setRespondent({});
+      setError("");
+      setDone(false);
+    };
+
     return section(
       <div
         className="catalogue-card-elevated flex flex-col items-center gap-3 p-8 text-center"
         role="status"
       >
-        <CheckCircle weight="duotone" className="size-10 text-catalogue-brand-ink" aria-hidden="true" />
-        <p className="text-base font-semibold text-catalogue-text-primary">
-          {successMessage || "Thank you! We've received your details."}
-        </p>
+        <CheckCircle
+          weight="duotone"
+          className="size-10 text-catalogue-brand-ink"
+          aria-hidden="true"
+        />
+        {heading && (
+          <p className="catalogue-h3 text-catalogue-text-primary">{heading}</p>
+        )}
+        {!successMessage && configuredHtml ? (
+          <div
+            className="text-base text-catalogue-text-secondary [&_a]:underline [&_h1]:catalogue-h3 [&_h2]:catalogue-h3 [&_img]:mx-auto [&_img]:max-w-full [&_li]:list-inside [&_ol]:list-decimal [&_ul]:list-disc"
+            dangerouslySetInnerHTML={{ __html: configuredHtml }}
+          />
+        ) : (
+          <p className="whitespace-pre-line text-base font-semibold text-catalogue-text-primary">
+            {body}
+          </p>
+        )}
+        {redirectUrl && secondsLeft !== null && (
+          <p className="text-sm text-catalogue-text-muted">
+            {t("leadForm.redirectingIn", { count: secondsLeft })}
+          </p>
+        )}
+        {(actionButtons.length > 0 || postSubmitConfig.allowAnotherResponse) && (
+          <div className="mt-2 flex flex-col flex-wrap justify-center gap-3 sm:flex-row">
+            {actionButtons.map((button) => (
+              <a
+                key={button.id}
+                href={button.href}
+                {...(isExternalPostSubmitUrl(button.href)
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+                // Catalogue buttons keep catalogue tokens rather than the
+                // config's accent, so they stay on the page's own theme.
+                className={`catalogue-btn justify-center ${
+                  button.variant === "primary"
+                    ? "catalogue-btn-primary"
+                    : "catalogue-btn-secondary"
+                }`}
+              >
+                {button.text}
+              </a>
+            ))}
+            {postSubmitConfig.allowAnotherResponse && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="catalogue-btn catalogue-btn-secondary justify-center"
+              >
+                {anotherLabel}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -230,8 +387,33 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
             // Without this the renderer falls back to `Enter ${name}` where
             // name is the raw field KEY — visitors saw "Enter full_name" and
             // "Enter details_inst_<uuid>". Use the human label.
-            placeholder={`Enter ${f.name.toLowerCase()}`}
+            placeholder={t("leadForm.placeholderPrefix", { name: f.name.toLowerCase() })}
           />
+          {/* Same gate the product-page checkout uses, driven by the same
+              per-field config — so a form built here can ask a visitor to prove
+              they own the number before the lead is accepted. */}
+          {(() => {
+            const verification = getFieldVerification(f.config);
+            if (!verification || !instituteId) return null;
+            return (
+              <div className="mt-2">
+                <FieldVerification
+                  verification={verification}
+                  value={values[f.key] || ""}
+                  instituteId={instituteId}
+                  label={f.name}
+                  verified={
+                    !!values[f.key] && verifiedValues[f.key] === values[f.key]
+                  }
+                  onVerified={(verifiedValue) => {
+                    setVerifiedValues((prev) => ({ ...prev, [f.key]: verifiedValue }));
+                    setError("");
+                  }}
+                  disabled={isPreviewMode}
+                />
+              </div>
+            );
+          })()}
         </div>
       ))}
 
@@ -239,7 +421,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
           aria-hidden + tabIndex -1 keep it out of assistive tech and tabbing. */}
       <div className="sr-only" aria-hidden="true">
         <label>
-          Company website
+          {t("leadForm.companyWebsite")}
           <input
             type="text"
             tabIndex={-1}
@@ -261,7 +443,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         disabled={submitting}
         className="catalogue-btn catalogue-btn-primary w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {submitting ? "Sending…" : submitLabel || "Submit"}
+        {submitting ? t("leadForm.sending") : submitLabel || t("leadForm.submit")}
         {!submitting && <PaperPlaneTilt className="size-4" weight="bold" aria-hidden="true" />}
       </button>
     </form>

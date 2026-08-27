@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSour
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.product_page.dto.*;
+import vacademy.io.admin_core_service.features.product_page.entity.ProductPage;
 import vacademy.io.admin_core_service.features.product_page.entity.ProductPageInviteMapping;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.product_page.repository.ProductPageInviteMappingRepository;
@@ -103,6 +104,12 @@ public class ProductPageEnrollmentService {
 
     @Autowired
     private AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+
+    @Autowired
+    private BasketPricingCalculator basketPricingCalculator;
+
+    @Autowired
+    private OfferCalculator offerCalculator;
 
     @Autowired
     private ProductPageService coursePageService;
@@ -219,12 +226,49 @@ public class ProductPageEnrollmentService {
             serverTotal += plan.getActualPrice();
         }
 
+        // Basket pricing. On a page that sells "any 3 for ₹799" the money is a
+        // function of HOW MANY courses were picked, not of what each costs — so
+        // when it is configured it REPLACES the sum above rather than
+        // discounting it. Recomputed here because the client's figure is never
+        // trusted; see BasketPricingCalculator.
+        ProductPage pricingPage = coursePageRepository.findByCode(request.getProductPageCode())
+                .orElseThrow(() -> new VacademyException(
+                        "Course page not found: " + request.getProductPageCode()));
+
+        // Each course's own price rides along: a DISCOUNT-basis page reduces
+        // that sum rather than replacing it, so the single-subject rate is read
+        // from the enroll invite's payment plan instead of being written down a
+        // second time in the page settings.
+        List<BasketPricingCalculator.BasketItem> basketItems = selectedMappings.stream()
+                .map(m -> {
+                    var ps = m.getPsInvitePaymentOption().getPackageSession();
+                    PaymentPlan plan = planByMappingId.get(m.getPsInvitePaymentOption().getId());
+                    return new BasketPricingCalculator.BasketItem(
+                            ps.getLevel() != null ? ps.getLevel().getLevelName() : null,
+                            ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null,
+                            plan != null ? plan.getActualPrice() : 0d);
+                })
+                .collect(Collectors.toList());
+
+        BasketPricingCalculator.BasketPrice basketPrice = basketPricingCalculator.price(
+                pricingPage.getSettingsJson(), basketItems);
+
+        double afterBundle = basketPrice != null ? basketPrice.getTotal() : serverTotal;
+
+        // Predefined page offers ("₹99 off above ₹500"). Best one only, applied
+        // before any coupon so a coupon discounts what would actually be paid.
+        OfferCalculator.AppliedOffer offer = offerCalculator.bestOffer(
+                pricingPage.getSettingsJson(), afterBundle, request.getSelectedMappings().size());
+        double offerDiscount = offer != null ? offer.getAmount() : 0.0;
+        double afterOffer = Math.max(0.0, afterBundle - offerDiscount);
+
         // Apply coupon discount if provided
         AppliedCouponDiscount couponDiscount = null;
         double discountAmount = 0.0;
         if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
             ProductPageCouponValidateResponse couponResp = coursePageService.validateCoupon(
-                    request.getProductPageCode(), request.getCouponCode(), serverTotal);
+                    request.getProductPageCode(), request.getCouponCode(), afterOffer,
+                    request.getSelectedMappings().size());
             if (!couponResp.isValid()) {
                 throw new VacademyException("Coupon invalid: " + couponResp.getMessage());
             }
@@ -233,7 +277,7 @@ public class ProductPageEnrollmentService {
             discountAmount = couponResp.getDiscountValue() != null ? couponResp.getDiscountValue() : 0.0;
         }
 
-        double finalTotal = serverTotal - discountAmount;
+        double finalTotal = Math.max(0.0, afterOffer - discountAmount);
 
         PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
         payReq.setAmount(finalTotal);
@@ -306,7 +350,7 @@ public class ProductPageEnrollmentService {
 
             List<String> pendingEnrolledSessionIds = provisionPendingEnrollments(
                     request, selectedMappings, planByMappingId, couponDiscount, discountAmount,
-                    user, payReq, paymentLogId);
+                    offer, offerDiscount, basketPrice, user, payReq, paymentLogId);
 
             String razorpayKeyId = null;
             String razorpayOrderId = null;
@@ -448,7 +492,7 @@ public class ProductPageEnrollmentService {
                 // confirms payment via applyOperationsOnFirstPayment().
                 List<String> redirectEnrolledSessionIds = provisionPendingEnrollments(
                         request, selectedMappings, planByMappingId, couponDiscount, discountAmount,
-                        user, payReq, parentPaymentLogId);
+                        offer, offerDiscount, basketPrice, user, payReq, parentPaymentLogId);
 
                 log.info("Redirect gateway: created {} enrollment entries, linked userPlan to paymentLog={}",
                         redirectEnrolledSessionIds.size(), parentPaymentLogId);
@@ -517,6 +561,12 @@ public class ProductPageEnrollmentService {
             if (parentPaymentLogId != null) {
                 createLineItem(parentPaymentLogId, invite.getId(), (int) Math.round(plan.getActualPrice()));
             }
+        }
+
+        if (parentPaymentLogId != null && basketPrice != null) {
+            createLineItem(parentPaymentLogId,
+                    "BASKET:" + request.getSelectedMappings().size() + "_COURSES",
+                    (int) Math.round(basketPrice.getTotal()));
         }
 
         if (parentPaymentLogId != null && discountAmount > 0 && request.getCouponCode() != null) {
@@ -646,6 +696,9 @@ public class ProductPageEnrollmentService {
             Map<String, PaymentPlan> planByMappingId,
             AppliedCouponDiscount couponDiscount,
             double discountAmount,
+            OfferCalculator.AppliedOffer offer,
+            double offerDiscount,
+            BasketPricingCalculator.BasketPrice basketPrice,
             UserDTO user,
             PaymentInitiationRequestDTO payReq,
             String parentPaymentLogId) {
@@ -712,6 +765,19 @@ public class ProductPageEnrollmentService {
             if (parentPaymentLogId != null) {
                 createLineItem(parentPaymentLogId, invite.getId(), (int) Math.round(plan.getActualPrice()));
             }
+        }
+
+        // Pricing breakdown on the parent, in the order the money was computed:
+        // basket total, then the page offer, then the coupon.
+        if (parentPaymentLogId != null && basketPrice != null) {
+            createLineItem(parentPaymentLogId,
+                    "BASKET:" + request.getSelectedMappings().size() + "_COURSES",
+                    (int) Math.round(basketPrice.getTotal()));
+        }
+
+        if (parentPaymentLogId != null && offer != null && offerDiscount > 0) {
+            createLineItem(parentPaymentLogId, "OFFER:" + offer.getId(),
+                    -(int) Math.round(offerDiscount));
         }
 
         if (parentPaymentLogId != null && discountAmount > 0 && request.getCouponCode() != null) {

@@ -74,7 +74,10 @@ public class CourseCertificateService {
                 .courseOverride(override)
                 .enabledOverriddenByCourse(effective.isEnabledOverriddenByCourse())
                 .thresholdOverriddenByCourse(effective.isThresholdOverriddenByCourse())
-                .hasCourseTemplate(override != null && StringUtils.hasText(override.getTemplateHtml()))
+                // True for either kind of course design: one of the institute's
+                // saved templates, or HTML uploaded for this course alone.
+                .hasCourseTemplate(effective.isTemplateOverriddenByCourse())
+                .courseTemplateId(effective.getTemplateId())
                 .build();
     }
 

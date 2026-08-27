@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { USER_LINKED_DATA } from "@/constants/urls";
@@ -17,6 +18,7 @@ interface LinkedData {
 }
 
 const ProgressStats = ({ userId }: { userId: string }) => {
+  const { t } = useTranslation("userProfileExtra");
   const [strengths, setStrengths] = useState<LinkedData[]>([]);
   const [weaknesses, setWeaknesses] = useState<LinkedData[]>([]);
   const [showAllStrengths, setShowAllStrengths] = useState(false);
@@ -63,9 +65,11 @@ const ProgressStats = ({ userId }: { userId: string }) => {
     const displayedItems = showAll ? items : items.slice(0, limit);
     return (
       <div className="space-y-3">
-        <h4 className="text-sm font-medium text-foreground">{title}</h4>
+        <h4 className="text-sm font-medium text-foreground">
+          {title === "Strengths" ? t("progressStats.strengths") : t("progressStats.weaknesses")}
+        </h4>
         {displayedItems.length === 0 ? (
-          <div className="text-muted-foreground">No stats available.</div>
+          <div className="text-muted-foreground">{t("progressStats.empty")}</div>
         ) : (
           displayedItems.map((item) => (
             <div key={item.id} className="">
@@ -96,7 +100,9 @@ const ProgressStats = ({ userId }: { userId: string }) => {
             onClick={() => setShowAll(!showAll)}
             className="w-full text-sm font-medium text-foreground"
           >
-            {showAll ? "Show Less" : `View More (${items.length - limit})`}
+            {showAll
+              ? t("progressStats.showLess")
+              : t("progressStats.viewMore", { count: items.length - limit })}
           </MyButton>
         )}
       </div>
@@ -107,9 +113,9 @@ const ProgressStats = ({ userId }: { userId: string }) => {
     return (
       <div className="bg-card rounded-xl border shadow p-6">
         <h3 className="text-sm font-semibold text-foreground mb-4">
-          Progress Stats
+          {t("progressStats.title")}
         </h3>
-        <div className="text-center text-muted-foreground">Loading...</div>
+        <div className="text-center text-muted-foreground">{t("progressStats.loading")}</div>
       </div>
     );
   }
@@ -117,7 +123,7 @@ const ProgressStats = ({ userId }: { userId: string }) => {
   return (
     <div className="bg-card rounded-xl border shadow p-6">
       <h3 className="text-sm font-semibold text-foreground mb-4">
-        Progress Stats
+        {t("progressStats.title")}
       </h3>
       <div className="space-y-6">
         {renderStats(

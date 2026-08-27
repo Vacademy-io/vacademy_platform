@@ -1,0 +1,32 @@
+{
+    "toast": {
+        "copiedToClipboard": "تم نسخ {{field}} إلى الحافظة!",
+        "copyFailed": "فشل نسخ {{field}}"
+    },
+    "password": {
+        "notFound": "كلمة المرور غير موجودة"
+    },
+    "empty": {
+        "noOverviewData": "لا تتوفر بيانات نظرة عامة"
+    },
+    "errors": {
+        "fetchStudentDetails": "خطأ في جلب بيانات الطالب"
+    },
+    "sections": {
+        "customFields": "الحقول المخصصة",
+        "termsAndConditions": "الشروط والأحكام"
+    },
+    "fields": {
+        "status": "الحالة",
+        "signedOn": "تاريخ التوقيع",
+        "signedPdf": "ملف PDF الموقّع",
+        "notAvailable": "غير متوفر"
+    },
+    "status": {
+        "signed": "تم التوقيع",
+        "notSigned": "لم يتم التوقيع"
+    },
+    "actions": {
+        "download": "تنزيل"
+    }
+}

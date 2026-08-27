@@ -9,7 +9,7 @@ import { ArrowLeft, PaperPlaneTilt, Spinner, UsersThree } from '@phosphor-icons/
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { submitAudienceLead, SubmitLeadRequest } from '../../-services/submit-audience-lead';
+import { submitAudienceLeadAsAdmin, SubmitLeadRequest } from '../../-services/submit-audience-lead';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -17,12 +17,29 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import i18n from '@/i18n';
 
-const addResponseSearchSchema = z.object({
-    campaignId: z.string().min(1, 'Campaign ID is required'),
-    campaignName: z.string().optional(),
-    customFields: z.string().optional(), // JSON string of custom fields
-});
+const NAMESPACE = 'audienceManagerCampaignUsersAdd';
+
+/**
+ * Fallback translate function for the zod search-param schema, which is
+ * built at module scope (outside any React render tree) so it cannot use
+ * the `useTranslation` hook. Uses the shared i18next singleton directly.
+ */
+const globalT: TFunction = ((key: string, options?: Record<string, unknown>) =>
+    i18n.t(key, { ns: NAMESPACE, ...options })) as TFunction;
+
+function buildAddResponseSearchSchema(t: TFunction) {
+    return z.object({
+        campaignId: z.string().min(1, t('schema.campaignIdRequired')),
+        campaignName: z.string().optional(),
+        customFields: z.string().optional(), // JSON string of custom fields
+    });
+}
+
+const addResponseSearchSchema = buildAddResponseSearchSchema(globalT);
 
 export const Route = createFileRoute('/audience-manager/list/campaign-users/add/')({
     component: AddResponsePage,
@@ -46,6 +63,8 @@ interface CustomFieldConfig {
 }
 
 export function AddResponsePage() {
+    const { t } = useTranslation(NAMESPACE);
+    const { t: tSubmitLead } = useTranslation('audienceManagerSubmitAudienceLead');
     const { setNavHeading } = useNavHeadingStore();
     const search = useSearch({ from: Route.id });
     const navigate = useNavigate();
@@ -58,8 +77,8 @@ export function AddResponsePage() {
     const instituteId = instituteDetails?.id;
 
     useEffect(() => {
-        setNavHeading('Add Response');
-    }, [setNavHeading]);
+        setNavHeading(t('navHeading'));
+    }, [setNavHeading, t]);
 
     // Fetch custom fields from backend if not in URL params
     const { data: fetchedFields } = useQuery({
@@ -78,7 +97,7 @@ export function AddResponsePage() {
 
     const parseFields = (raw: any[]): CustomFieldConfig[] => {
         return raw
-            .map((field: any) => {
+            .map((field: any, index: number) => {
                 const customField = field.custom_field || field;
                 const configStr = customField.config || field.config || '';
 
@@ -147,14 +166,25 @@ export function AddResponsePage() {
                     isMandatory: customField.isMandatory ?? field.isMandatory ?? true,
                     defaultValue:
                         customField.defaultValue || field.defaultValue || defaultFromConfig || '',
-                    formOrder: customField.formOrder || field.formOrder || 0,
+                    // The per-form mapping order is what the admin arranged and what the
+                    // public form renders; the master formOrder is the shared catalog
+                    // position every other form inherits. Sorting by the master made this
+                    // page show the fields in a different sequence to the respondent's.
+                    // `??` not `||`: a seeded field's master order is NULL, and `|| 0`
+                    // floated all of those to the top.
+                    formOrder:
+                        field.individual_order ??
+                        customField.individualOrder ??
+                        customField.formOrder ??
+                        field.formOrder ??
+                        index,
                     config: configStr,
                     options,
                     fileConfig,
                 };
             })
             .filter((f: CustomFieldConfig) => f.id && f.fieldName)
-            .sort((a, b) => (a.formOrder || 0) - (b.formOrder || 0));
+            .sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0));
     };
 
     // Parse custom fields from URL params OR from API fetch
@@ -207,7 +237,7 @@ export function AddResponsePage() {
         });
 
         if (missingFields.length > 0) {
-            toast.error(`Please fill required fields: ${missingFields.join(', ')}`);
+            toast.error(t('validation.missingFields', { fields: missingFields.join(', ') }));
             return false;
         }
 
@@ -307,9 +337,14 @@ export function AddResponsePage() {
                 },
             };
 
-            await submitAudienceLead(payload);
+            // Authenticated twin of the open submit endpoint: the token tells the
+            // backend who added this lead, which the "only leads assigned to
+            // <ROLE>" audience-access option needs in order to stamp the creator
+            // as its counsellor. Without it the creator saves a lead and it
+            // immediately drops out of their own list.
+            await submitAudienceLeadAsAdmin(payload, tSubmitLead);
 
-            toast.success('Response submitted successfully!');
+            toast.success(t('toast.success'));
 
             // Invalidate the campaign users query to refresh the list
             queryClient.invalidateQueries({ queryKey: ['campaignUsers'] });
@@ -318,11 +353,7 @@ export function AddResponsePage() {
             handleBack();
         } catch (error) {
             console.error('Error submitting response:', error);
-            toast.error(
-                error instanceof Error
-                    ? error.message
-                    : 'Failed to submit response. Please try again.'
-            );
+            toast.error(error instanceof Error ? error.message : t('toast.genericError'));
         } finally {
             setIsSubmitting(false);
         }
@@ -342,19 +373,20 @@ export function AddResponsePage() {
     };
 
     const audienceTerm = getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList);
-    const audienceName = search.campaignName || `this ${audienceTerm.toLowerCase()}`;
+    const audienceName =
+        search.campaignName || t('audienceFallbackName', { audienceTerm: audienceTerm.toLowerCase() });
     const mandatoryCount = customFields.filter((f) => f.isMandatory).length;
 
     return (
         <LayoutContainer>
             <Helmet>
-                <title>{`Add Response - ${search.campaignName || audienceTerm}`}</title>
-                <meta name="description" content="Add a response on behalf of a respondent." />
+                <title>{t('helmet.title', { name: search.campaignName || audienceTerm })}</title>
+                <meta name="description" content={t('helmet.description')} />
             </Helmet>
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 py-2">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="w-fit">
                     <ArrowLeft className="mr-2 size-4" />
-                    {`Back to ${audienceTerm} Users`}
+                    {t('backButton', { audienceTerm })}
                 </Button>
 
                 <Card className="overflow-hidden border-neutral-200 shadow-sm">
@@ -371,8 +403,7 @@ export function AddResponsePage() {
                                     {search.campaignName || audienceTerm}
                                 </h2>
                                 <p className="text-body text-neutral-600">
-                                    Fill in the details below to submit a response on behalf of a
-                                    respondent.
+                                    {t('header.description')}
                                 </p>
                             </div>
                         </div>
@@ -381,11 +412,9 @@ export function AddResponsePage() {
                         {customFields.length === 0 ? (
                             <div className="flex flex-col items-center gap-2 py-10 text-center text-neutral-500">
                                 <p className="font-medium text-neutral-700">
-                                    No form fields configured for this {audienceTerm.toLowerCase()}.
+                                    {t('emptyState.title', { audienceTerm: audienceTerm.toLowerCase() })}
                                 </p>
-                                <p className="text-sm">
-                                    Please add custom fields first to start collecting responses.
-                                </p>
+                                <p className="text-sm">{t('emptyState.hint')}</p>
                             </div>
                         ) : (
                             <form
@@ -397,12 +426,12 @@ export function AddResponsePage() {
                             >
                                 <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
                                     <h3 className="text-subtitle font-semibold text-neutral-900">
-                                        Respondent details
+                                        {t('form.sectionTitle')}
                                     </h3>
                                     {mandatoryCount > 0 && (
                                         <span className="text-caption text-neutral-500">
-                                            <span className="text-danger-600">*</span> Required
-                                            fields
+                                            <span className="text-danger-600">*</span>{' '}
+                                            {t('form.requiredFields')}
                                         </span>
                                     )}
                                 </div>
@@ -438,18 +467,18 @@ export function AddResponsePage() {
                                         onClick={handleBack}
                                         disabled={isSubmitting}
                                     >
-                                        Cancel
+                                        {t('form.cancel')}
                                     </Button>
                                     <Button type="submit" disabled={isSubmitting}>
                                         {isSubmitting ? (
                                             <>
                                                 <Spinner className="mr-2 size-4 animate-spin" />
-                                                Submitting...
+                                                {t('form.submitting')}
                                             </>
                                         ) : (
                                             <>
                                                 <PaperPlaneTilt className="mr-2 size-4" />
-                                                Submit Response
+                                                {t('form.submit')}
                                             </>
                                         )}
                                     </Button>
@@ -460,8 +489,12 @@ export function AddResponsePage() {
                 </Card>
 
                 <p className="text-center text-caption text-neutral-500">
-                    Responses appear under <span className="font-medium">{audienceName}</span> in
-                    your {audienceTerm} list.
+                    <Trans
+                        t={t}
+                        i18nKey="footer.responsesAppearUnder"
+                        values={{ audienceName, audienceTerm }}
+                        components={{ bold: <span className="font-medium" /> }}
+                    />
                 </p>
             </div>
         </LayoutContainer>

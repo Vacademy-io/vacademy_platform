@@ -7,6 +7,7 @@ import {
     GET_EXPORT_CSV_URL_LEADERBOARD,
     GET_EXPORT_CSV_URL_RANK_MARK,
     GET_EXPORT_CSV_URL_RESPONDENT_LIST,
+    GET_EXPORT_CSV_COLUMNS_SUBMISSIONS_LIST,
     GET_EXPORT_CSV_URL_SUBMISSIONS_LIST,
     GET_EXPORT_PDF_URL_LEADERBOARD,
     GET_EXPORT_PDF_URL_QUESTION_INSIGHTS,
@@ -318,13 +319,21 @@ export const handleGetSubmissionsExportCSV = async (
 
 // Export ALL participants (batch + open registration) as a result CSV.
 // Sends registration_source: '' so the backend returns every submission
-// regardless of how the learner enrolled. Backend is expected to return
-// columns: Name, Email, Marks Obtained, Total Marks, Percentage, Rank,
-// Duration, Attempt Date.
+// regardless of how the learner enrolled. Backend returns columns: Name, Email,
+// Marks Obtained, Total Marks, Percentage, Rank, Duration, Attempt Date, plus
+// one column per registration-form custom field in `customFieldIds` (what
+// external participants answered when registering for a public assessment).
+// Omitting customFieldIds keeps every field; passing [] drops them all.
 export const handleExportResultCSV = async (
     instituteId: string | undefined,
     assessmentId: string,
-    assessmentType: string
+    assessmentType: string,
+    customFieldIds?: string[],
+    // Present only for the not-attempted sheet, which is not a slice of the attempt
+    // tables at all and so needs the tab's own scope (batch source + PENDING, plus
+    // whatever batch chips and name search are on screen) rather than the
+    // all-sources result scope below.
+    notAttemptedScope?: { batches: string[]; name: string }
 ) => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
@@ -333,15 +342,59 @@ export const handleExportResultCSV = async (
             instituteId,
             assessmentId,
         },
-        data: {
-            name: '',
-            assessment_type: assessmentType,
-            attempt_type: ['ENDED'],
-            registration_source: '', // empty = all sources (batch + open)
-            batches: [],
-            status: ['ACTIVE'],
-            sort_columns: {},
-        },
+        data: notAttemptedScope
+            ? {
+                  name: notAttemptedScope.name,
+                  assessment_type: assessmentType,
+                  attempt_type: ['PENDING'],
+                  registration_source: 'BATCH_PREVIEW_REGISTRATION',
+                  batches: notAttemptedScope.batches,
+                  status: ['ACTIVE'],
+                  custom_field_ids: null,
+                  sort_columns: {},
+              }
+            : {
+                  name: '',
+                  assessment_type: assessmentType,
+                  attempt_type: ['ENDED'],
+                  registration_source: '', // empty = all sources (batch + open)
+                  batches: [],
+                  status: ['ACTIVE'],
+                  custom_field_ids: customFieldIds ?? null,
+                  sort_columns: {},
+              },
+    });
+    return response?.data;
+};
+
+export interface ResultExportCustomFieldColumn {
+    id: string;
+    field_name: string | null;
+    field_key: string | null;
+    field_type: string | null;
+    field_order: number | null;
+    is_mandatory: boolean | null;
+    // Exact CSV header this field produces — the backend de-duplicates names that
+    // clash with a result column (an "Email" form field becomes "Email (Form)").
+    column_label: string;
+}
+
+export interface ResultExportColumns {
+    base_columns: string[];
+    custom_fields: ResultExportCustomFieldColumn[];
+}
+
+export const getResultExportColumns = async (
+    instituteId: string | undefined,
+    assessmentId: string,
+    // Which sheet the dialog is about to export. The not-attempted sheet carries
+    // contact columns instead of marks, and no registration fields at all.
+    notAttempted = false
+): Promise<ResultExportColumns> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_EXPORT_CSV_COLUMNS_SUBMISSIONS_LIST,
+        params: { instituteId, assessmentId, notAttempted },
     });
     return response?.data;
 };

@@ -11,6 +11,7 @@
  */
 
 import type { Slide } from "@/hooks/study-library/use-slides";
+import { resolveVideoSourceType } from "@/utils/study-library/video-source-type";
 
 const ONLINE_ONLY_SOURCE_TYPES = new Set([
   "AI_VIDEO",
@@ -25,10 +26,14 @@ export function isOnlineOnlySlide(slide: Pick<Slide, "source_type" | "video_slid
   if (ONLINE_ONLY_SOURCE_TYPES.has(type)) return true;
 
   if (type === "VIDEO") {
-    const videoSourceType = slide.video_slide?.source_type?.toUpperCase();
+    const videoSlide = slide.video_slide;
+    // Without any video payload we cannot classify it; stay permissive.
+    if (!videoSlide) return false;
     // Only FILE_ID-backed video is S3-hosted (downloadable); everything else
-    // (YouTube/Vimeo/Drive/embeds) is third-party-hosted.
-    return !!videoSourceType && videoSourceType !== "FILE_ID";
+    // (YouTube/Vimeo/Drive/embeds) is third-party-hosted. Resolving through the
+    // shared helper means a blank source_type on a Vimeo link is still gated as
+    // online-only instead of being mistaken for a downloadable file.
+    return resolveVideoSourceType(videoSlide) !== "FILE_ID";
   }
 
   if (type === "DOCUMENT") {

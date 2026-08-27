@@ -1,0 +1,64 @@
+{
+    "channels": {
+        "EMAIL": "E-mail",
+        "WHATSAPP": "WhatsApp",
+        "PUSH": "Notification push",
+        "SMS": "SMS"
+    },
+    "statuses": {
+        "PENDING": "En attente",
+        "SENT": "Envoyé",
+        "DELIVERED": "Distribué",
+        "READ": "Lu",
+        "CLICKED": "Cliqué",
+        "FAILED": "Échec",
+        "BOUNCED": "Rejeté",
+        "COMPLAINT": "Plainte",
+        "RECEIVED": "Reçu"
+    },
+    "filters": {
+        "all": "Tous"
+    },
+    "headerMedia": {
+        "viewDocument": "Voir le document",
+        "attachmentAlt": "pièce jointe"
+    },
+    "expandedDetail": {
+        "senderFallback": "E-mail",
+        "toRecipient": "à {{recipient}}",
+        "messageHeading": "Message",
+        "templateLabel": "Modèle :",
+        "fromLabel": "De :",
+        "toLabel": "À :",
+        "sourceLabel": "Source :",
+        "deliveryTimelineHeading": "Chronologie de livraison",
+        "collapse": "Réduire"
+    },
+    "direction": {
+        "received": "Reçu via {{channel}}",
+        "sent": "Envoyé via {{channel}}"
+    },
+    "noSubject": "(aucun objet)",
+    "emptyStates": {
+        "noContactTitle": "Aucune coordonnée",
+        "noContactHint": "Sélectionnez un élève ayant un e-mail ou un numéro de téléphone pour voir ses échanges.",
+        "loadErrorTitle": "Échec du chargement des échanges",
+        "loadErrorHint": "Une erreur est survenue lors du chargement des messages. Veuillez réessayer.",
+        "noCommunicationsTitle": "Aucun échange trouvé",
+        "noChannelMessages": "Aucun message {{channel}} pour l'instant. Essayez de sélectionner « {{allLabel}} » pour voir les autres canaux.",
+        "noMessagesYet": "Aucun message n'a encore été envoyé à cet élève ou reçu de sa part.",
+        "sendFirstMessage": "Envoyer le premier message"
+    },
+    "sendCard": {
+        "heading": "Envoyer une notification",
+        "subheading": "Message e-mail ou WhatsApp"
+    },
+    "pagination": {
+        "previous": "Précédent",
+        "next": "Suivant",
+        "pageOf": "Page {{current}} sur {{total}}"
+    },
+    "totalCount_one": "{{count}} message au total",
+    "totalCount_many": "{{count}} de messages au total",
+    "totalCount_other": "{{count}} messages au total"
+}

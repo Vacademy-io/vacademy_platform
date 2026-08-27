@@ -41,6 +41,7 @@ import {
 } from "../-services/enquiry-campaign-services";
 import { toast } from "sonner";
 import axios from "axios";
+import { useTranslation } from "react-i18next";
 import { BASE_URL } from "@/constants/urls";
 
 interface AudienceResponseFormProps {
@@ -78,6 +79,7 @@ const AudienceResponseForm = ({
   instituteId,
   audienceId,
 }: AudienceResponseFormProps) => {
+  const { t } = useTranslation("miscRoutesB");
   const domainRouting = useDomainRouting();
   const { setInstituteDetails } = useInstituteDetailsStore();
   const [loading, setLoading] = useState(false);
@@ -137,10 +139,17 @@ const AudienceResponseForm = ({
   // Create dynamic schema and extend it with additional fields
   const baseSchema = getDynamicSchema(formFields);
   const zodSchema = baseSchema.extend({
-    parentMobile: phoneSchema({ required: true, label: "Mobile number" }),
+    parentMobile: phoneSchema({
+      required: true,
+      label: t("enquiryResponse.form.validation.mobileLabel"),
+    }),
     gender: z.string().optional(),
-    parentRelationWithChild: z.string().min(1, "Relation with child is required"),
-    packageSessionId: z.string().min(1, "Class is required"),
+    parentRelationWithChild: z
+      .string()
+      .min(1, t("enquiryResponse.form.validation.relationRequired")),
+    packageSessionId: z
+      .string()
+      .min(1, t("enquiryResponse.form.validation.classRequired")),
   });
   type FormValues = z.infer<typeof zodSchema>;
 
@@ -282,16 +291,16 @@ const AudienceResponseForm = ({
   const onSubmit = async (values: FormValues) => {
     // Validate required fields
     if (!studentName.trim()) {
-      toast.error("Student name is required");
+      toast.error(t("enquiryResponse.toast.studentNameRequired"));
       return;
     }
     if (!parentEmail.trim()) {
-      toast.error("Parent email is required");
+      toast.error(t("enquiryResponse.toast.parentEmailRequired"));
       return;
     }
     const mobileValue = (values as any).parentMobile || "";
     if (!mobileValue.trim()) {
-      toast.error("Parent mobile number is required");
+      toast.error(t("enquiryResponse.toast.parentMobileRequired"));
       return;
     }
 
@@ -342,7 +351,7 @@ const AudienceResponseForm = ({
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         error?.message ||
-        "Failed to submit enquiry. Please try again.";
+        t("enquiryResponse.toast.submitFailed");
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -417,15 +426,14 @@ const AudienceResponseForm = ({
                 {/* Success Message */}
                 <div className="space-y-3">
                   <h2 className="text-2xl sm:text-3xl font-bold text-neutral-800">
-                    Enquiry Submitted Successfully!
+                    {t("enquiryResponse.success.title")}
                   </h2>
                   <p className="text-lg text-neutral-600">
-                    Thank you for your response. Your enquiry has been submitted
-                    successfully.
+                    {t("enquiryResponse.success.description")}
                   </p>
                   {campaignData.send_respondent_email && (
                     <p className="text-sm text-neutral-500">
-                      A confirmation email will be sent to you shortly.
+                      {t("enquiryResponse.success.emailNotice")}
                     </p>
                   )}
                 </div>
@@ -433,7 +441,7 @@ const AudienceResponseForm = ({
                 {/* Campaign Info */}
                 <div className="mt-8 pt-6 border-t border-neutral-200">
                   <p className="text-sm text-neutral-600">
-                    <span className="font-semibold">Campaign:</span>{" "}
+                    <span className="font-semibold">{t("enquiryResponse.success.campaignLabel")}</span>{" "}
                     {campaignData.campaign_name}
                   </p>
                 </div>
@@ -502,7 +510,7 @@ const AudienceResponseForm = ({
             {campaignData.campaign_objective && (
               <div className="mt-4">
                 <p className="text-sm font-semibold text-neutral-700 mb-2">
-                  Objective:
+                  {t("enquiryResponse.form.objectiveLabel")}
                 </p>
                 <p className="text-neutral-600">
                   {campaignData.campaign_objective}
@@ -524,10 +532,10 @@ const AudienceResponseForm = ({
                 size="md"
                 className="text-neutral-800 text-xl sm:text-2xl mb-2"
               >
-                Please fill in your details
+                {t("enquiryResponse.form.heading")}
               </ModernCardTitle>
               <p className="text-neutral-600 text-sm">
-                This information will be used to contact you about the enquiry.
+                {t("enquiryResponse.form.description")}
               </p>
             </ModernCardHeader>
 
@@ -539,36 +547,36 @@ const AudienceResponseForm = ({
                 {/* Student Details Section */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-neutral-700 border-b pb-2">
-                    Student Details
+                    {t("enquiryResponse.form.student.sectionTitle")}
                   </h3>
 
                   <MyInput
                     inputType="text"
-                    inputPlaceholder="Enter student's full name"
+                    inputPlaceholder={t("enquiryResponse.form.student.fullNamePlaceholder")}
                     input={studentName}
                     onChangeFunction={(e) => setStudentName(e.target.value)}
                     required={true}
                     size="large"
-                    label="Full Name"
+                    label={t("enquiryResponse.form.student.fullName")}
                   />
 
                   <MyInput
                     inputType="date"
-                    inputPlaceholder="Select date of birth"
+                    inputPlaceholder={t("enquiryResponse.form.student.dobPlaceholder")}
                     input={studentDob}
                     onChangeFunction={(e) => setStudentDob(e.target.value)}
                     required={false}
                     size="large"
-                    label="Date of Birth"
+                    label={t("enquiryResponse.form.student.dob")}
                   />
 
                   <SelectField
-                    label="Gender"
+                    label={t("enquiryResponse.form.student.gender.label")}
                     name="gender"
                     options={[
-                      { label: "Male", value: "MALE", _id: "MALE" },
-                      { label: "Female", value: "FEMALE", _id: "FEMALE" },
-                      { label: "Other", value: "OTHER", _id: "OTHER" },
+                      { label: t("enquiryResponse.form.student.gender.male"), value: "MALE", _id: "MALE" },
+                      { label: t("enquiryResponse.form.student.gender.female"), value: "FEMALE", _id: "FEMALE" },
+                      { label: t("enquiryResponse.form.student.gender.other"), value: "OTHER", _id: "OTHER" },
                     ]}
                     control={form.control}
                     required={false}
@@ -577,10 +585,10 @@ const AudienceResponseForm = ({
 
                   {packageSessions.length > 0 && (
                     <SelectField
-                      label="Class"
+                      label={t("enquiryResponse.form.student.class")}
                       name="packageSessionId"
                       options={packageSessions.map((session) => ({
-                        label: `${session.package_name} - ${session.level_name || "N/A"}`,
+                        label: `${session.package_name} - ${session.level_name || t("enquiryResponse.form.notAvailable")}`,
                         value: session.package_session_id,
                         _id: session.package_session_id,
                       }))}
@@ -594,44 +602,45 @@ const AudienceResponseForm = ({
                 {/* Parent Details Section */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-neutral-700 border-b pb-2">
-                    Parent Details
+                    {t("enquiryResponse.form.parent.sectionTitle")}
                   </h3>
 
                   <MyInput
                     inputType="text"
-                    inputPlaceholder="Enter parent's full name"
+                    inputPlaceholder={t("enquiryResponse.form.parent.fullNamePlaceholder")}
                     input={parentName}
                     onChangeFunction={(e) => setParentName(e.target.value)}
                     required={true}
                     size="large"
-                    label="Full Name"
+                    label={t("enquiryResponse.form.parent.fullName")}
                   />
 
                   <MyInput
                     inputType="email"
-                    inputPlaceholder="example@email.com"
+                    inputPlaceholder={t("enquiryResponse.form.parent.emailPlaceholder")}
                     input={parentEmail}
                     onChangeFunction={(e) => setParentEmail(e.target.value)}
                     required={true}
                     size="large"
-                    label="Email"
+                    label={t("enquiryResponse.form.parent.email")}
                   />
 
                   <PhoneInputField
-                    label="Mobile Number"
-                    placeholder="123 456 7890"
+                    label={t("enquiryResponse.form.parent.mobile")}
+                    placeholder={t("enquiryResponse.form.parent.mobilePlaceholder")}
                     name="parentMobile"
                     control={form.control}
                     required={true}
+                    inputClassName="!text-subtitle placeholder:!text-body"
                   />
 
                   <SelectField
-                    label="Relation with Child"
+                    label={t("enquiryResponse.form.parent.relation.label")}
                     name="parentRelationWithChild"
                     options={[
-                      { label: "Father", value: "FATHER", _id: "FATHER" },
-                      { label: "Mother", value: "MOTHER", _id: "MOTHER" },
-                      { label: "Guardian", value: "GUARDIAN", _id: "GUARDIAN" },
+                      { label: t("enquiryResponse.form.parent.relation.father"), value: "FATHER", _id: "FATHER" },
+                      { label: t("enquiryResponse.form.parent.relation.mother"), value: "MOTHER", _id: "MOTHER" },
+                      { label: t("enquiryResponse.form.parent.relation.guardian"), value: "GUARDIAN", _id: "GUARDIAN" },
                     ]}
                     control={form.control}
                     required={true}
@@ -640,49 +649,49 @@ const AudienceResponseForm = ({
 
                   <MyInput
                     inputType="text"
-                    inputPlaceholder="Enter address"
+                    inputPlaceholder={t("enquiryResponse.form.parent.addressPlaceholder")}
                     input={addressLine}
                     onChangeFunction={(e) => setAddressLine(e.target.value)}
                     required={false}
                     size="large"
-                    label="Address"
+                    label={t("enquiryResponse.form.parent.address")}
                   />
 
                   <MyInput
                     inputType="text"
-                    inputPlaceholder="Enter city"
+                    inputPlaceholder={t("enquiryResponse.form.parent.cityPlaceholder")}
                     input={city}
                     onChangeFunction={(e) => setCity(e.target.value)}
                     required={false}
                     size="large"
-                    label="City"
+                    label={t("enquiryResponse.form.parent.city")}
                   />
 
                   <MyInput
                     inputType="text"
-                    inputPlaceholder="Enter state or region"
+                    inputPlaceholder={t("enquiryResponse.form.parent.regionPlaceholder")}
                     input={region}
                     onChangeFunction={(e) => setRegion(e.target.value)}
                     required={false}
                     size="large"
-                    label="State/Region"
+                    label={t("enquiryResponse.form.parent.region")}
                   />
 
                   <MyInput
                     inputType="text"
-                    inputPlaceholder="Enter pin code"
+                    inputPlaceholder={t("enquiryResponse.form.parent.pinCodePlaceholder")}
                     input={pinCode}
                     onChangeFunction={(e) => setPinCode(e.target.value)}
                     required={false}
                     size="large"
-                    label="Pin Code"
+                    label={t("enquiryResponse.form.parent.pinCode")}
                   />
                 </div>
 
                 {formFields.length > 0 && (
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-neutral-700 border-b pb-2">
-                      Additional Information
+                      {t("enquiryResponse.form.additionalInfo")}
                     </h3>
 
                     {formFields.map((field) => {
@@ -755,6 +764,8 @@ const AudienceResponseForm = ({
                                     control={form.control}
                                     country={phoneCountryCode}
                                     required={value.is_mandatory}
+                                    labelClassName="text-subtitle font-regular"
+                                    inputClassName="!text-subtitle placeholder:!text-body"
                                   />
                                 </FormControl>
                               </FormItem>
@@ -808,7 +819,9 @@ const AudienceResponseForm = ({
                     disabled={loading}
                     className="min-w-32"
                   >
-                    {loading ? "Submitting..." : "Submit Response"}
+                    {loading
+                      ? t("enquiryResponse.form.submitting")
+                      : t("enquiryResponse.form.submit")}
                   </MyButton>
                 </div>
               </form>

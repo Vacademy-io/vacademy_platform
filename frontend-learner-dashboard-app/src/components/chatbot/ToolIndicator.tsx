@@ -1,21 +1,27 @@
 import React from "react";
 import { MagnifyingGlass, BookOpen, ChartBar, SpinnerGap } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
-
-const TOOL_DISPLAY_MAP: Record<string, { label: string; icon: React.ElementType }> = {
-  get_learning_progress: { label: "Checking your learning progress...", icon: ChartBar },
-  get_student_feedback: { label: "Reviewing your performance data...", icon: BookOpen },
-  search_related_resources: { label: "Searching for related content...", icon: MagnifyingGlass },
-  semantic_search_content: { label: "Searching your course materials...", icon: MagnifyingGlass },
-};
+import { useTranslation } from "react-i18next";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface ToolIndicatorProps {
   toolName: string;
 }
 
 export const ToolIndicator: React.FC<ToolIndicatorProps> = ({ toolName }) => {
+  const { t } = useTranslation("chatFeatureB");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+
+  const TOOL_DISPLAY_MAP: Record<string, { label: string; icon: React.ElementType }> = {
+    get_learning_progress: { label: t("toolIndicator.checkingProgress"), icon: ChartBar },
+    get_student_feedback: { label: t("toolIndicator.reviewingPerformance"), icon: BookOpen },
+    search_related_resources: { label: t("toolIndicator.searchingResources"), icon: MagnifyingGlass },
+    semantic_search_content: { label: t("toolIndicator.searchingCourseMaterials", { course }), icon: MagnifyingGlass },
+  };
+
   const display = TOOL_DISPLAY_MAP[toolName] || {
-    label: "Working on it...",
+    label: t("toolIndicator.workingOnIt"),
     icon: SpinnerGap,
   };
   const Icon = display.icon;

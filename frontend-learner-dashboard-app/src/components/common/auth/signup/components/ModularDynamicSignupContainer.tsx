@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { isIOSNative } from "@/utils/ios-iap-compliance";
+import { isIOSNative, shouldHideThirdPartyLogin } from "@/utils/ios-iap-compliance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,6 +110,13 @@ export function ModularDynamicSignupContainer({
     passwordStrategy: "manual",
     passwordDelivery: "none",
   };
+
+  // Apple 4.8 — same rule as the login container: no third-party signup on Mac
+  // App Store builds (the fallback above defaults google/github to TRUE).
+  if (shouldHideThirdPartyLogin()) {
+    effectiveSettings.providers.google = false;
+    effectiveSettings.providers.github = false;
+  }
 
   // Check for OAuth signup data from login flow on mount
   useEffect(() => {

@@ -56,8 +56,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 const INVOICES_PER_PAGE = 10;
 
@@ -97,7 +99,23 @@ function shortInvoiceLabel(invoiceNumber: string | null | undefined, fallbackId:
     return raw;
 }
 
-function getStatusBadge(status: string) {
+/**
+ * Display labels for invoice status codes. The Record keys are the raw
+ * backend enum values used for style lookup and MUST NOT be translated —
+ * only the rendered `label` text below changes per-locale.
+ */
+function buildInvoiceStatusLabels(t: TFunction): Record<string, string> {
+    return {
+        GENERATED: t('invoiceStatus.generated'),
+        SENT: t('invoiceStatus.sent'),
+        VIEWED: t('invoiceStatus.viewed'),
+        PENDING_PAYMENT: t('invoiceStatus.pendingPayment'),
+        PAID: t('invoiceStatus.paid'),
+        REJECTED: t('invoiceStatus.rejected'),
+    };
+}
+
+function getStatusBadge(status: string, label: string) {
     const styles: Record<string, string> = {
         GENERATED: 'bg-blue-50 text-blue-700 border-blue-200',
         SENT: 'bg-green-50 text-green-700 border-green-200',
@@ -108,7 +126,7 @@ function getStatusBadge(status: string) {
     };
     return (
         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${styles[status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-            {status}
+            {label}
         </span>
     );
 }
@@ -121,24 +139,25 @@ function getStatusBadge(status: string) {
  * plan identity (matches the per-plan card pattern in CpoInstallmentsEditor).
  */
 const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
+    const { t } = useTranslation('manageStudentsPaymentHistory');
     const net = summary.net_total ?? 0;
     const paid = summary.paid_total ?? 0;
     const pct = net > 0 ? Math.round((paid / net) * 100) : 0;
-    const planLabel = summary.cpo_name || summary.payment_option_name || 'Fee Plan';
+    const planLabel = summary.cpo_name || summary.payment_option_name || t('feePlan.planLabelFallback');
     return (
-        <ProfileSectionCard icon={Wallet} heading="Fee Plan">
+        <ProfileSectionCard icon={Wallet} heading={t('feePlan.heading')}>
             <div className="flex flex-wrap items-center gap-4">
                 <div className="min-w-0 flex-1">
                     <div className="text-subtitle font-bold text-card-foreground">
-                        {planLabel} · {summary.installment_count} installments
+                        {planLabel} · {t('feePlan.installments', { count: summary.installment_count })}
                     </div>
                     <div className="mt-0.5 text-caption text-muted-foreground">
-                        Net {formatCurrency(net)} · Paid {formatCurrency(paid)}
+                        {t('feePlan.netPaid', { net: formatCurrency(net), paid: formatCurrency(paid) })}
                     </div>
                 </div>
                 <div className="text-right">
                     <div className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                        Outstanding
+                        {t('feePlan.outstanding')}
                     </div>
                     <div className="text-h2 font-bold leading-tight text-danger-600">
                         {formatCurrency(summary.outstanding_total ?? 0)}
@@ -154,19 +173,20 @@ const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
 
 /** Account summary grid — shows total accrued, paid, balance, overdue from the ledger. */
 const AccountSummaryGrid = ({ summary }: { summary: UserAccountSummaryDTO }) => {
+    const { t } = useTranslation('manageStudentsPaymentHistory');
     const sym = summary.currency === 'USD' ? '$' : summary.currency === 'EUR' ? '€' : '₹';
     const fmt = (v: number) =>
         `${sym}${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
     return (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
-                { label: 'Total accrued', value: fmt(summary.total_accrued), tone: 'neutral' },
-                { label: 'Total paid', value: fmt(summary.total_paid), tone: 'success' },
-                { label: 'Due', value: fmt(summary.balance), tone: summary.balance > 0 ? 'danger' : 'neutral' },
-                { label: 'Past Due', value: fmt(summary.overdue), tone: summary.overdue > 0 ? 'danger' : 'neutral' },
+                { label: t('accountSummary.totalAccrued'), value: fmt(summary.total_accrued), tone: 'neutral' },
+                { label: t('accountSummary.totalPaid'), value: fmt(summary.total_paid), tone: 'success' },
+                { label: t('accountSummary.due'), value: fmt(summary.balance), tone: summary.balance > 0 ? 'danger' : 'neutral' },
+                { label: t('accountSummary.pastDue'), value: fmt(summary.overdue), tone: summary.overdue > 0 ? 'danger' : 'neutral' },
             ].map(({ label, value, tone }) => (
                 <div key={label} className="rounded-lg border border-neutral-200 bg-white p-3">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+                    <p className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</p>
                     <p className={`mt-0.5 text-sm font-bold ${tone === 'danger' ? 'text-danger-600' : tone === 'success' ? 'text-success-600' : 'text-neutral-900'}`}>
                         {value}
                     </p>
@@ -190,6 +210,7 @@ const StudentMarkPaidDialog = ({
     invoiceNumber?: string;
     onSuccess?: () => void;
 }) => {
+    const { t } = useTranslation('manageStudentsPaymentHistory');
     const [txnId, setTxnId] = useState('');
     const [notes, setNotes] = useState('');
     const mutation = useMutation({
@@ -199,40 +220,45 @@ const StudentMarkPaidDialog = ({
                 notes: notes.trim() || undefined,
             }),
         onSuccess: () => {
-            toast.success(`Invoice ${invoiceNumber || invoiceId} marked as paid`);
+            toast.success(t('markPaidDialog.successToast', { invoice: invoiceNumber || invoiceId }));
             onSuccess?.();
             onOpenChange(false);
         },
         onError: (err: any) => {
-            toast.error(err?.response?.data?.message || 'Failed to mark as paid');
+            toast.error(err?.response?.data?.message || t('markPaidDialog.errorToast'));
         },
     });
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[400px]">
+            <DialogContent className="sm:max-w-sm">
                 <DialogHeader>
-                    <DialogTitle>Mark invoice paid</DialogTitle>
+                    <DialogTitle>{t('markPaidDialog.title')}</DialogTitle>
                     <DialogDescription>
-                        Records an offline payment against{' '}
-                        {invoiceNumber ? <strong>{invoiceNumber}</strong> : 'this invoice'}.
+                        {invoiceNumber ? (
+                            <>
+                                {t('markPaidDialog.descriptionPrefix')} <strong>{invoiceNumber}</strong>.
+                            </>
+                        ) : (
+                            t('markPaidDialog.descriptionFallback')
+                        )}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 py-1">
                     <div className="space-y-1">
-                        <Label>Transaction reference</Label>
-                        <Input value={txnId} onChange={(e) => setTxnId(e.target.value)} placeholder="cheque #, UPI ref, receipt no." />
+                        <Label>{t('markPaidDialog.transactionReference')}</Label>
+                        <Input value={txnId} onChange={(e) => setTxnId(e.target.value)} placeholder={t('markPaidDialog.transactionReferencePlaceholder')} />
                     </div>
                     <div className="space-y-1">
-                        <Label>Notes</Label>
-                        <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note" />
+                        <Label>{t('markPaidDialog.notes')}</Label>
+                        <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('markPaidDialog.notesPlaceholder')} />
                     </div>
                 </div>
                 <DialogFooter className="gap-2">
                     <MyButton type="button" buttonType="secondary" scale="small" onClick={() => onOpenChange(false)} disable={mutation.isPending}>
-                        Cancel
+                        {t('markPaidDialog.cancel')}
                     </MyButton>
                     <MyButton type="button" buttonType="primary" scale="small" onClick={() => mutation.mutate()} disable={mutation.isPending}>
-                        {mutation.isPending ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : 'Mark as paid'}
+                        {mutation.isPending ? <><CircleNotch className="size-4 animate-spin" /> {t('markPaidDialog.saving')}</> : t('markPaidDialog.submit')}
                     </MyButton>
                 </DialogFooter>
             </DialogContent>
@@ -253,6 +279,8 @@ const InvoicesList = ({
     /** Opens the Create-Invoice dialog in edit mode for an unpaid admin invoice. */
     onEdit?: (invoiceId: string) => void;
 }) => {
+    const { t } = useTranslation('manageStudentsPaymentHistory');
+    const statusLabels = buildInvoiceStatusLabels(t);
     const [page, setPage] = useState(0);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [markPaidTarget, setMarkPaidTarget] = useState<{ id: string; number?: string } | null>(null);
@@ -272,13 +300,13 @@ const InvoicesList = ({
         onMutate: (invoiceId) => setCancellingId(invoiceId),
         onSettled: () => setCancellingId(null),
         onSuccess: () => {
-            toast.success('Invoice cancelled');
+            toast.success(t('invoicesList.cancelSuccessToast'));
             onRefresh?.();
         },
         onError: (err: unknown) => {
             const message = (err as { response?: { data?: { message?: string } } })?.response?.data
                 ?.message;
-            toast.error(message || 'Could not cancel invoice');
+            toast.error(message || t('invoicesList.cancelErrorToast'));
         },
     });
 
@@ -290,10 +318,10 @@ const InvoicesList = ({
         try {
             await navigator.clipboard.writeText(link);
             setCopiedId(invoiceId);
-            toast.success('Payment link copied');
+            toast.success(t('invoicesList.copyLinkSuccessToast'));
             window.setTimeout(() => setCopiedId((p) => (p === invoiceId ? null : p)), 2000);
         } catch {
-            toast.error('Could not copy to clipboard');
+            toast.error(t('invoicesList.copyLinkErrorToast'));
         }
     };
 
@@ -301,8 +329,8 @@ const InvoicesList = ({
         return (
             <ProfileEmpty
                 icon={FileText}
-                title="No invoices yet"
-                hint="Invoices generated for this learner will appear here."
+                title={t('invoicesList.emptyTitle')}
+                hint={t('invoicesList.emptyHint')}
             />
         );
     }
@@ -335,7 +363,19 @@ const InvoicesList = ({
                                             >
                                                 {shortInvoiceLabel(inv.invoice_number, inv.id)}
                                             </span>
-                                            <span className="shrink-0">{getStatusBadge(inv.status)}</span>
+                                            <span className="shrink-0">{getStatusBadge(inv.status, statusLabels[inv.status] ?? inv.status)}</span>
+                                            {/* A proforma is not a tax invoice yet — it holds a
+                                                number from the separate PRO- series and gets a real
+                                                invoice number only once it is paid. Worth calling
+                                                out on the row so admins don't quote it as one. */}
+                                            {inv.proforma && (
+                                                <span
+                                                    className="inline-flex shrink-0 items-center rounded-full border border-neutral-300 bg-neutral-50 px-2 py-0.5 text-xs font-medium text-neutral-600"
+                                                    title={t('invoicesList.proformaTitle')}
+                                                >
+                                                    {t('invoicesList.proforma')}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
                                             <span>{formatDate(inv.due_date || inv.invoice_date)}</span>
@@ -361,7 +401,7 @@ const InvoicesList = ({
                                                             li.item_type?.includes('DISCOUNT') ||
                                                             li.item_type?.includes('REFERRAL')
                                                     );
-                                                    const label = couponItem?.description || 'Discount';
+                                                    const label = couponItem?.description || t('invoicesList.discountFallback');
                                                     return (
                                                         <span
                                                             className="inline-flex shrink-0 items-center rounded border border-success-200 bg-success-50 px-1.5 py-0.5 text-caption font-medium text-success-700"
@@ -374,13 +414,13 @@ const InvoicesList = ({
                                                 })()}
                                             {inv.source && (() => {
                                                 const srcMeta: Record<string, { label: string; cls: string }> = {
-                                                    ADMIN_MANUAL: { label: 'Admin Invoice', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
-                                                    USER_PLAN: { label: 'Subscription', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-                                                    STUDENT_FEE_PAYMENT: { label: 'Fee Payment', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                                                    ADMIN_MANUAL: { label: t('invoicesList.sourceAdminInvoice'), cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+                                                    USER_PLAN: { label: t('invoicesList.sourceSubscription'), cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                                                    STUDENT_FEE_PAYMENT: { label: t('invoicesList.sourceFeePayment'), cls: 'bg-amber-50 text-amber-700 border-amber-200' },
                                                 };
                                                 const m = srcMeta[inv.source] || { label: inv.source.replace(/_/g, ' '), cls: 'bg-gray-50 text-gray-600 border-gray-200' };
                                                 return (
-                                                    <span className={`inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${m.cls}`}>
+                                                    <span className={`inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-2xs font-medium ${m.cls}`}>
                                                         {m.label}
                                                     </span>
                                                 );
@@ -392,18 +432,18 @@ const InvoicesList = ({
                                             <button
                                                 onClick={() => setPreviewTarget(inv)}
                                                 className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-                                                title="Preview the invoice PDF without downloading it"
+                                                title={t('invoicesList.previewTitle')}
                                             >
                                                 <Eye className="size-3.5" />
-                                                Preview
+                                                {t('invoicesList.preview')}
                                             </button>
                                             <button
                                                 onClick={() => void handleDownload(inv)}
                                                 className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
-                                                title="Download Invoice PDF"
+                                                title={t('invoicesList.downloadTitle')}
                                             >
                                                 <DownloadSimple className="size-3.5" />
-                                                Download
+                                                {t('invoicesList.download')}
                                             </button>
                                         </>
                                     )}
@@ -415,12 +455,12 @@ const InvoicesList = ({
                                             <button
                                                 onClick={() => handleCopyLink(inv.id, paymentLink)}
                                                 className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
-                                                title="Copy payment link to share with learner"
+                                                title={t('invoicesList.copyPaymentLinkTitle')}
                                             >
                                                 {copiedId === inv.id ? (
-                                                    <><Check className="size-3 text-success-600" /> Copied</>
+                                                    <><Check className="size-3 text-success-600" /> {t('invoicesList.copied')}</>
                                                 ) : (
-                                                    <><Copy className="size-3" /> Copy Payment Link</>
+                                                    <><Copy className="size-3" /> {t('invoicesList.copyPaymentLink')}</>
                                                 )}
                                             </button>
                                         )}
@@ -428,19 +468,19 @@ const InvoicesList = ({
                                             <button
                                                 onClick={() => onEdit(inv.id)}
                                                 className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-2xs uppercase tracking-wide text-neutral-600 hover:bg-neutral-50"
-                                                title="Edit this unpaid invoice — keeps the same invoice number"
+                                                title={t('invoicesList.editTitle')}
                                             >
                                                 <PencilSimple className="size-3" />
-                                                Edit
+                                                {t('invoicesList.edit')}
                                             </button>
                                         )}
                                         {isAdminManual && isPending && (
                                             <button
                                                 onClick={() => setMarkPaidTarget({ id: inv.id, number: inv.invoice_number || inv.id })}
                                                 className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-2xs uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                title="Record an offline / manual payment"
+                                                title={t('invoicesList.markPaidTitle')}
                                             >
-                                                Mark Paid
+                                                {t('invoicesList.markPaid')}
                                             </button>
                                         )}
                                         {canCancel && (
@@ -453,10 +493,10 @@ const InvoicesList = ({
                                                 }
                                                 disabled={cancellingId === inv.id}
                                                 className="inline-flex items-center gap-1 rounded border border-danger-300 bg-danger-50 px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-100 disabled:opacity-50"
-                                                title="Void this invoice — the payment link stops working"
+                                                title={t('invoicesList.cancelInvoiceTitle')}
                                             >
                                                 <XCircle className="size-3" />
-                                                {cancellingId === inv.id ? 'Cancelling…' : 'Cancel'}
+                                                {cancellingId === inv.id ? t('invoicesList.cancelling') : t('invoicesList.cancelAction')}
                                             </button>
                                         )}
                                     </div>
@@ -468,7 +508,11 @@ const InvoicesList = ({
                 {totalPages > 1 && (
                     <div className="flex items-center justify-between border-t border-neutral-200 bg-neutral-50 px-3 py-2">
                         <span className="text-xs text-neutral-500">
-                            {page * INVOICES_PER_PAGE + 1}–{Math.min((page + 1) * INVOICES_PER_PAGE, invoices.length)} of {invoices.length}
+                            {t('invoicesList.paginationRange', {
+                                from: page * INVOICES_PER_PAGE + 1,
+                                to: Math.min((page + 1) * INVOICES_PER_PAGE, invoices.length),
+                                total: invoices.length,
+                            })}
                         </span>
                         <div className="flex gap-1">
                             <button
@@ -504,15 +548,13 @@ const InvoicesList = ({
             <AlertDialog open={!!cancelTarget} onOpenChange={(o) => !o && setCancelTarget(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Cancel invoice {cancelTarget?.number}?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('invoicesList.cancelDialog.title', { number: cancelTarget?.number })}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This voids the invoice permanently — the payment link stops working and
-                            it can never be marked paid. This cannot be undone. To correct a
-                            mistake, raise a new invoice afterwards.
+                            {t('invoicesList.cancelDialog.description')}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
+                        <AlertDialogCancel>{t('invoicesList.cancelDialog.keep')}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={() => {
                                 if (cancelTarget) cancelMutation.mutate(cancelTarget.id);
@@ -520,7 +562,7 @@ const InvoicesList = ({
                             }}
                             className="bg-danger-600 hover:bg-danger-700"
                         >
-                            Cancel Invoice
+                            {t('invoicesList.cancelDialog.confirm')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -539,17 +581,23 @@ const InvoicesList = ({
  * obligation that was raised in error, so painting it green like a real payment would
  * read as money received.
  */
-const LEDGER_EVENT_META: Record<
-    string,
-    { label: string; cls: string; isCredit: boolean; neutral?: boolean }
-> = {
-    DEBIT_ACCRUAL:     { label: 'Invoice raised',    cls: 'bg-red-50 text-red-700 border-red-200',          isCredit: false },
-    CREDIT_PAYMENT:    { label: 'Payment received',  cls: 'bg-green-50 text-green-700 border-green-200',    isCredit: true  },
-    CREDIT_WAIVER:     { label: 'Waiver',            cls: 'bg-blue-50 text-blue-700 border-blue-200',       isCredit: true  },
-    CREDIT_ADJUSTMENT: { label: 'Adjustment',        cls: 'bg-amber-50 text-amber-700 border-amber-200',    isCredit: true  },
-    DEBIT_PENALTY:     { label: 'Penalty',           cls: 'bg-orange-50 text-orange-700 border-orange-200', isCredit: false },
-    DEBIT_REVERSAL:    { label: 'Invoice cancelled', cls: 'bg-gray-50 text-gray-600 border-gray-200',       isCredit: true, neutral: true },
-};
+/**
+ * Display metadata for ledger event types. Record keys are the raw backend
+ * `event_type` enum values used to look up the entry's meta — they MUST NOT
+ * be translated, only the rendered `label` text changes per-locale.
+ */
+function buildLedgerEventMeta(
+    t: TFunction
+): Record<string, { label: string; cls: string; isCredit: boolean; neutral?: boolean }> {
+    return {
+        DEBIT_ACCRUAL:     { label: t('transactionHistory.event.debitAccrual'),     cls: 'bg-red-50 text-red-700 border-red-200',          isCredit: false },
+        CREDIT_PAYMENT:    { label: t('transactionHistory.event.creditPayment'),    cls: 'bg-green-50 text-green-700 border-green-200',    isCredit: true  },
+        CREDIT_WAIVER:     { label: t('transactionHistory.event.creditWaiver'),     cls: 'bg-blue-50 text-blue-700 border-blue-200',       isCredit: true  },
+        CREDIT_ADJUSTMENT: { label: t('transactionHistory.event.creditAdjustment'), cls: 'bg-amber-50 text-amber-700 border-amber-200',    isCredit: true  },
+        DEBIT_PENALTY:     { label: t('transactionHistory.event.debitPenalty'),     cls: 'bg-orange-50 text-orange-700 border-orange-200', isCredit: false },
+        DEBIT_REVERSAL:    { label: t('transactionHistory.event.debitReversal'),    cls: 'bg-gray-50 text-gray-600 border-gray-200',       isCredit: true, neutral: true },
+    };
+}
 
 const TransactionHistory = ({
     userId,
@@ -558,6 +606,8 @@ const TransactionHistory = ({
     userId: string;
     instituteId: string;
 }) => {
+    const { t } = useTranslation('manageStudentsPaymentHistory');
+    const ledgerEventMeta = buildLedgerEventMeta(t);
     const [page, setPage] = useState(0);
     const PAGE_SIZE = 10;
 
@@ -575,14 +625,14 @@ const TransactionHistory = ({
         return (
             <div className="flex items-center justify-center p-4">
                 <div className="size-4 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground" />
-                <span className="ml-2 text-xs text-muted-foreground">Loading transactions…</span>
+                <span className="ms-2 text-xs text-muted-foreground">{t('transactionHistory.loading')}</span>
             </div>
         );
     }
 
     if (!isLoading && entries.length === 0) {
         return (
-            <p className="text-xs text-muted-foreground">No transaction history yet.</p>
+            <p className="text-xs text-muted-foreground">{t('transactionHistory.empty')}</p>
         );
     }
 
@@ -590,7 +640,7 @@ const TransactionHistory = ({
         <div className="space-y-2">
             <ul className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200">
                 {entries.map((entry) => {
-                    const meta = LEDGER_EVENT_META[entry.event_type] ?? {
+                    const meta = ledgerEventMeta[entry.event_type] ?? {
                         label: entry.event_type,
                         cls: 'bg-gray-50 text-gray-600 border-gray-200',
                         isCredit: false,
@@ -616,16 +666,16 @@ const TransactionHistory = ({
                             </span>
                             <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
+                                    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-2xs font-medium ${meta.cls}`}>
                                         {meta.label}
                                     </span>
                                     {entry.remarks && (
-                                        <span className="truncate text-[11px] text-muted-foreground" title={entry.remarks}>
+                                        <span className="truncate text-2xs text-muted-foreground" title={entry.remarks}>
                                             {entry.remarks}
                                         </span>
                                     )}
                                 </div>
-                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                <p className="mt-0.5 text-2xs text-muted-foreground">
                                     {formatDate(entry.created_at)}
                                     {entry.source_type && <> · {entry.source_type.replace(/_/g, ' ')}</>}
                                 </p>
@@ -647,7 +697,7 @@ const TransactionHistory = ({
             {totalPages > 1 && (
                 <div className="flex items-center justify-between px-1">
                     <span className="text-xs text-muted-foreground">
-                        Page {page + 1} of {totalPages}
+                        {t('transactionHistory.pageOf', { page: page + 1, total: totalPages })}
                     </span>
                     <div className="flex gap-1">
                         <button
@@ -672,6 +722,7 @@ const TransactionHistory = ({
 };
 
 export const StudentPaymentHistory = () => {
+    const { t } = useTranslation('manageStudentsPaymentHistory');
     const { selectedStudent } = useStudentSidebar();
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
     const queryClient = useQueryClient();
@@ -684,7 +735,7 @@ export const StudentPaymentHistory = () => {
             setEditSource(await fetchInvoiceById(invoiceId));
             setCreateInvoiceOpen(true);
         } catch {
-            toast.error('Could not load invoice to edit');
+            toast.error(t('main.loadInvoiceError'));
         }
     };
 
@@ -758,8 +809,8 @@ export const StudentPaymentHistory = () => {
         return (
             <ProfileEmpty
                 icon={Wallet}
-                title="No learner selected"
-                hint="Select a learner to view their payment history."
+                title={t('main.noLearnerTitle')}
+                hint={t('main.noLearnerHint')}
             />
         );
     }
@@ -772,7 +823,7 @@ export const StudentPaymentHistory = () => {
                 before the migration writes ledger rows). Hidden only when there
                 are no invoices at all. */}
             {effectiveSummary && (
-                <ProfileSectionCard icon={Wallet} heading="Account Summary">
+                <ProfileSectionCard icon={Wallet} heading={t('accountSummary.heading')}>
                     <AccountSummaryGrid summary={effectiveSummary} />
                 </ProfileSectionCard>
             )}
@@ -789,7 +840,7 @@ export const StudentPaymentHistory = () => {
                 Renamed from 'Fee Plan & Installments' so the new Fee Plan
                 summary card above owns plan-level identity, and given the
                 Receipt icon to differentiate from the wallet headline. */}
-            <ProfileSectionCard icon={Receipt} heading="Installments">
+            <ProfileSectionCard icon={Receipt} heading={t('main.installmentsHeading')}>
                 <CpoInstallmentsEditor userId={selectedStudent.user_id} />
             </ProfileSectionCard>
 
@@ -799,8 +850,8 @@ export const StudentPaymentHistory = () => {
                 icon={FileText}
                 heading={
                     invoicesData && invoicesData.length > 0
-                        ? `Invoices (${invoicesData.length})`
-                        : 'Invoices'
+                        ? t('main.invoicesHeadingCount', { count: invoicesData.length })
+                        : t('main.invoicesHeading')
                 }
                 action={
                     <MyButton
@@ -809,7 +860,7 @@ export const StudentPaymentHistory = () => {
                         onClick={() => setCreateInvoiceOpen(true)}
                     >
                         <Plus className="mr-1 size-3.5" />
-                        Create Invoice
+                        {t('main.createInvoice')}
                     </MyButton>
                 }
             >
@@ -830,7 +881,7 @@ export const StudentPaymentHistory = () => {
                 {isLoadingInvoices ? (
                     <div className="flex items-center justify-center rounded-lg border border-border bg-muted p-6">
                         <div className="size-5 animate-spin rounded-full border-2 border-muted-foreground border-t-card-foreground" />
-                        <span className="ml-2 text-sm text-muted-foreground">Loading invoices...</span>
+                        <span className="ms-2 text-sm text-muted-foreground">{t('main.loadingInvoices')}</span>
                     </div>
                 ) : (
                     <InvoicesList
@@ -846,7 +897,7 @@ export const StudentPaymentHistory = () => {
                 Shows every debit (invoice raised, penalty) and credit (payment, waiver,
                 adjustment) with sign-coded colours. Newest-first, server-paginated. */}
             {selectedStudent?.user_id && instituteDetails?.id && (
-                <ProfileSectionCard icon={ClockCounterClockwise} heading="Transaction History">
+                <ProfileSectionCard icon={ClockCounterClockwise} heading={t('transactionHistory.heading')}>
                     <TransactionHistory
                         userId={selectedStudent.user_id}
                         instituteId={instituteDetails.id}

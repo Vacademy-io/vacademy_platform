@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @NoArgsConstructor
@@ -15,14 +15,15 @@ public class ChatReportResponse {
     private String id;
     private String instituteId;
     private String conversationId;
+    private String conversationType;  // DIRECT / BATCH_GROUP / COMMUNITY — gates moderation actions
     private String messageId;
     private String reporterId;
     private String reason;
     private String details;
     private String status;
     private String reviewedBy;
-    private LocalDateTime reviewedAt;
-    private LocalDateTime createdAt;
+    private Instant reviewedAt;
+    private Instant createdAt;
     // Only the reported message's content is exposed (never arbitrary DM history).
     private ChatMessageResponse reportedMessage;
 }

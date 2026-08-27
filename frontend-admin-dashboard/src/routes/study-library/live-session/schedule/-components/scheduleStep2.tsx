@@ -21,6 +21,7 @@ import {
     TrashSimple,
     XCircle, PencilSimple } from '@phosphor-icons/react';
 import QRCode from 'react-qr-code';
+import { useTranslation } from 'react-i18next';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { Checkbox } from '@/components/ui/checkbox';
 import { addCustomFiledSchema, addParticipantsSchema } from '../-schema/schema';
@@ -59,7 +60,7 @@ import {
 } from '@/components/templates/TemplateSearchableSelect';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/report-api-error';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -153,6 +154,7 @@ const parseFieldOptions = (config?: string | null): { label: string; name: strin
 };
 
 export default function ScheduleStep2() {
+    const { t: tHelper } = useTranslation('homeworkCreationCreateAssessmentHelper');
     const { clearSessionId, clearStep1Data, clearBulkSessionIds, clearDeepLink } =
         useLiveSessionStore();
     const preselectedBatchIds = useLiveSessionStore((state) => state.preselectedBatchIds);
@@ -1283,7 +1285,7 @@ export default function ScheduleStep2() {
         <>
             <FormProvider {...form}>
                 <form onSubmit={handleOpenPreview} className="flex flex-col gap-5">
-                    <div className="sticky top-0 z-[9] -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
+                    <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
                         <div className="flex items-center gap-3">
                             <MyButton
                                 type="button"
@@ -1312,7 +1314,7 @@ export default function ScheduleStep2() {
                             onClick={handleOpenPreview}
                         >
                             {isSubmitting ? (
-                                <Loader2 className="animate-spin text-white" />
+                                <CircleNotch className="animate-spin text-white" />
                             ) : (
                                 'Preview & create'
                             )}
@@ -1492,7 +1494,7 @@ export default function ScheduleStep2() {
                             description="Pick a session, then choose batches or individual learners to enroll."
                         >
                             <div className="flex flex-col gap-4">
-                                <div className="w-full sm:max-w-[280px]">
+                                <div className="w-full sm:max-w-72">
                                     <MyDropdown
                                         currentValue={currentSession ?? undefined}
                                         dropdownList={sessionList}
@@ -1938,7 +1940,7 @@ export default function ScheduleStep2() {
                                         scale="small"
                                         buttonType="secondary"
                                         className="h-9"
-                                        onClick={() => handleDownloadQRCode('qr-code-svg')}
+                                        onClick={() => handleDownloadQRCode('qr-code-svg', tHelper)}
                                     >
                                         <DownloadSimple size={16} />
                                         <span className="ml-1 text-xs">Download</span>
@@ -2076,7 +2078,7 @@ export default function ScheduleStep2() {
                                                         }`}
                                                     />
                                                 </FormControl>
-                                                <FormLabel className="!mb-[3px] font-thin">
+                                                <FormLabel className="!mb-1 font-thin">
                                                     When Live Class is created
                                                 </FormLabel>
                                             </FormItem>
@@ -2100,7 +2102,7 @@ export default function ScheduleStep2() {
                                                             }`}
                                                         />
                                                     </FormControl>
-                                                    <FormLabel className="!mb-[3px] font-thin">
+                                                    <FormLabel className="!mb-1 font-thin">
                                                         Send Reschedule/Edit Email
                                                     </FormLabel>
                                                 </FormItem>
@@ -2123,7 +2125,7 @@ export default function ScheduleStep2() {
                                                         _id: index,
                                                     }))}
                                                     control={form.control}
-                                                    className="mt-[8px] w-56 font-thin"
+                                                    className="mt-2 w-56 font-thin"
                                                 />
                                                 <MyButton
                                                     type="button"
@@ -2162,7 +2164,7 @@ export default function ScheduleStep2() {
                                                         }`}
                                                     />
                                                 </FormControl>
-                                                <FormLabel className="!mb-[3px] font-thin">
+                                                <FormLabel className="!mb-1 font-thin">
                                                     When class goes live
                                                 </FormLabel>
                                             </FormItem>
@@ -2185,7 +2187,7 @@ export default function ScheduleStep2() {
                                                         }`}
                                                     />
                                                 </FormControl>
-                                                <FormLabel className="!mb-[3px] font-thin">
+                                                <FormLabel className="!mb-1 font-thin">
                                                     When attendance is marked (present/absent)
                                                 </FormLabel>
                                             </FormItem>
@@ -2205,7 +2207,7 @@ export default function ScheduleStep2() {
                     {fields?.map((testInputFields, idx) => {
                         return (
                             <div className="flex flex-col items-start gap-4" key={idx}>
-                                <div className="flex w-full flex-col gap-[0.4rem]">
+                                <div className="flex w-full flex-col gap-1.5">
                                     <h1 className="text-sm">
                                         {testInputFields.label}
                                         {testInputFields.required && (

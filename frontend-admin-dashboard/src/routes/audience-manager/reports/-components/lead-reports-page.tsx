@@ -18,6 +18,7 @@
  * Every tab is read-only; this page never writes anything.
  */
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import {
@@ -96,11 +97,12 @@ const computeRange = (days: number) => {
     return { from: toDateInput(start), to: toDateInput(now) };
 };
 
-/** Quick presets — last N days (inclusive of today). */
+/** Quick presets — last N days (inclusive of today). Display label is built at
+ *  render time via t('filters.presetLabel', { days }). */
 const PRESETS = [
-    { key: '7', label: '7d', days: 7 },
-    { key: '30', label: '30d', days: 30 },
-    { key: '90', label: '90d', days: 90 },
+    { key: '7', days: 7 },
+    { key: '30', days: 30 },
+    { key: '90', days: 90 },
 ] as const;
 
 // Sentinel for "no counsellor filter" — the backend keeps its default RBAC scoping.
@@ -127,10 +129,11 @@ const CAMPAIGN_FILTERABLE_TABS = new Set<string>([
 // ── Main page ──────────────────────────────────────────────────────────
 
 export function LeadReportsPage() {
+    const { t } = useTranslation('audienceManagerLeadReportsPage');
     const setNavHeading = useNavHeadingStore((s) => s.setNavHeading);
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Reports Center</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('header.navTitle')}</h1>);
+    }, [setNavHeading, t]);
 
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
@@ -226,12 +229,9 @@ export function LeadReportsPage() {
             <header className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
                     <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
-                        Reports Center
+                        {t('header.title')}
                     </h1>
-                    <p className="text-sm text-neutral-600">
-                        Pipeline health, sources, calling activity, funnel velocity and follow-up
-                        hygiene — one place.
-                    </p>
+                    <p className="text-sm text-neutral-600">{t('header.subtitle')}</p>
                 </div>
                 <Button
                     onClick={refresh}
@@ -241,7 +241,7 @@ export function LeadReportsPage() {
                     className="gap-2"
                 >
                     <ArrowsClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
-                    Refresh
+                    {t('header.refresh')}
                 </Button>
             </header>
 
@@ -260,13 +260,13 @@ export function LeadReportsPage() {
                                     : 'text-neutral-600 hover:bg-neutral-50'
                             )}
                         >
-                            {p.label}
+                            {t('filters.presetLabel', { days: p.days })}
                         </button>
                     ))}
                 </div>
                 <div className="flex flex-col gap-1">
                     <Label htmlFor="rep-from" className="text-xs text-neutral-600">
-                        From
+                        {t('filters.from')}
                     </Label>
                     <Input
                         id="rep-from"
@@ -278,7 +278,7 @@ export function LeadReportsPage() {
                 </div>
                 <div className="flex flex-col gap-1">
                     <Label htmlFor="rep-to" className="text-xs text-neutral-600">
-                        To
+                        {t('filters.to')}
                     </Label>
                     <Input
                         id="rep-to"
@@ -289,10 +289,10 @@ export function LeadReportsPage() {
                     />
                 </div>
                 <Button onClick={apply} size="sm" className="h-9 self-end" disabled={!instituteId}>
-                    Apply
+                    {t('filters.apply')}
                 </Button>
                 <Button onClick={reset} size="sm" variant="ghost" className="h-9 self-end">
-                    Reset
+                    {t('filters.reset')}
                 </Button>
                 {/* Scope filters — flow inline as equal-height items so they share the
                     date controls' baseline, and wrap together (left-aligned) when the
@@ -317,7 +317,7 @@ export function LeadReportsPage() {
 
             {!instituteId && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                    Pick an institute to view reports.
+                    {t('filters.noInstitute')}
                 </div>
             )}
 
@@ -325,65 +325,65 @@ export function LeadReportsPage() {
                 <TabsList className="grid h-auto w-full max-w-6xl grid-cols-3 sm:grid-cols-5 lg:grid-cols-7">
                     <TabsTrigger value="overview" className="gap-1.5">
                         <ChartLineUp size={14} weight="bold" />
-                        Overview
+                        {t('tabs.overview')}
                     </TabsTrigger>
                     <TabsTrigger value="sources" className="gap-1.5">
                         <Megaphone size={14} weight="bold" />
-                        Sources
+                        {t('tabs.sources')}
                     </TabsTrigger>
                     <TabsTrigger value="funnel" className="gap-1.5">
                         <Funnel size={14} weight="bold" />
-                        Funnel
+                        {t('tabs.funnel')}
                     </TabsTrigger>
                     <TabsTrigger value="dispositions" className="gap-1.5">
                         <ArrowsLeftRight size={14} weight="bold" />
-                        Dispositions
+                        {t('tabs.dispositions')}
                     </TabsTrigger>
                     <TabsTrigger value="calling" className="gap-1.5">
                         <Phone size={14} weight="bold" />
-                        Calling
+                        {t('tabs.calling')}
                     </TabsTrigger>
                     <TabsTrigger value="lead-calls" className="gap-1.5">
                         <AddressBook size={14} weight="bold" />
-                        Lead Calls
+                        {t('tabs.leadCalls')}
                     </TabsTrigger>
                     {callIntelligenceEnabled && (
                         <TabsTrigger value="call-intelligence" className="gap-1.5">
                             <Sparkle size={14} weight="bold" />
-                            CRM Intelligence
+                            {t('tabs.callIntelligence')}
                         </TabsTrigger>
                     )}
                     <TabsTrigger value="activity" className="gap-1.5">
                         <ListChecks size={14} weight="bold" />
-                        Activity
+                        {t('tabs.activity')}
                     </TabsTrigger>
                     <TabsTrigger value="followups" className="gap-1.5">
                         <CalendarCheck size={14} weight="bold" />
-                        Follow-ups
+                        {t('tabs.followups')}
                     </TabsTrigger>
                     <TabsTrigger value="counsellors" className="gap-1.5">
                         <Users size={14} weight="bold" />
-                        Counsellors
+                        {t('tabs.counsellors')}
                     </TabsTrigger>
                     <TabsTrigger value="manager" className="gap-1.5">
                         <UsersThree size={14} weight="bold" />
-                        Manager
+                        {t('tabs.manager')}
                     </TabsTrigger>
                     <TabsTrigger value="revenue" className="gap-1.5">
                         <CurrencyCircleDollar size={14} weight="bold" />
-                        Revenue
+                        {t('tabs.revenue')}
                     </TabsTrigger>
                     <TabsTrigger value="cohort" className="gap-1.5">
                         <Stack size={14} weight="bold" />
-                        Cohort
+                        {t('tabs.cohort')}
                     </TabsTrigger>
                     <TabsTrigger value="forecast" className="gap-1.5">
                         <TrendUp size={14} weight="bold" />
-                        Forecast
+                        {t('tabs.forecast')}
                     </TabsTrigger>
                     <TabsTrigger value="custom" className="gap-1.5">
                         <Table size={14} weight="bold" />
-                        Builder
+                        {t('tabs.custom')}
                     </TabsTrigger>
                 </TabsList>
 
@@ -466,6 +466,7 @@ function CounsellorScopePicker({
     value: string | undefined;
     onChange: (userId: string | undefined) => void;
 }) {
+    const { t } = useTranslation('audienceManagerLeadReportsPage');
     // Role-based roster: every COUNSELLOR-role user the caller may see —
     // hierarchy scope for scoped callers, institute-wide for pure admins.
     const rosterQuery = useQuery({
@@ -492,12 +493,17 @@ function CounsellorScopePicker({
             value={value ?? ALL_COUNSELLORS_VALUE}
             onValueChange={(v) => onChange(v === ALL_COUNSELLORS_VALUE ? undefined : v)}
         >
-            <SelectTrigger className="h-9 w-48 bg-white" aria-label="Filter by counsellor">
+            <SelectTrigger
+                className="h-9 w-48 bg-white"
+                aria-label={t('counsellorPicker.ariaLabel')}
+            >
                 <User className="mr-1.5 size-4 shrink-0 text-neutral-400" />
-                <SelectValue placeholder="All counsellors" />
+                <SelectValue placeholder={t('counsellorPicker.allCounsellors')} />
             </SelectTrigger>
             <SelectContent>
-                <SelectItem value={ALL_COUNSELLORS_VALUE}>All counsellors</SelectItem>
+                <SelectItem value={ALL_COUNSELLORS_VALUE}>
+                    {t('counsellorPicker.allCounsellors')}
+                </SelectItem>
                 {options.map((o) => (
                     <SelectItem key={o.id} value={o.id}>
                         {o.name}
@@ -526,6 +532,7 @@ function CampaignScopePicker({
     value: string | undefined;
     onChange: (audienceId: string | undefined) => void;
 }) {
+    const { t } = useTranslation('audienceManagerLeadReportsPage');
     const campaignsQuery = useQuery({
         ...handleFetchCampaignsList({ institute_id: instituteId, page: 0, size: 200 }),
         enabled: !!instituteId,
@@ -537,10 +544,10 @@ function CampaignScopePicker({
             (campaignsQuery.data?.content ?? [])
                 .map((c) => ({
                     id: c.id || c.campaign_id || c.audience_id || '',
-                    name: c.campaign_name || 'Untitled campaign',
+                    name: c.campaign_name || t('campaignPicker.untitledCampaign'),
                 }))
                 .filter((o) => o.id !== ''),
-        [campaignsQuery.data]
+        [campaignsQuery.data, t]
     );
 
     return (
@@ -548,12 +555,17 @@ function CampaignScopePicker({
             value={value ?? ALL_AUDIENCES_VALUE}
             onValueChange={(v) => onChange(v === ALL_AUDIENCES_VALUE ? undefined : v)}
         >
-            <SelectTrigger className="h-9 w-48 bg-white" aria-label="Filter by campaign">
+            <SelectTrigger
+                className="h-9 w-48 bg-white"
+                aria-label={t('campaignPicker.ariaLabel')}
+            >
                 <Megaphone className="mr-1.5 size-4 shrink-0 text-neutral-400" />
-                <SelectValue placeholder="All campaigns" />
+                <SelectValue placeholder={t('campaignPicker.allCampaigns')} />
             </SelectTrigger>
             <SelectContent>
-                <SelectItem value={ALL_AUDIENCES_VALUE}>All campaigns</SelectItem>
+                <SelectItem value={ALL_AUDIENCES_VALUE}>
+                    {t('campaignPicker.allCampaigns')}
+                </SelectItem>
                 {options.map((o) => (
                     <SelectItem key={o.id} value={o.id}>
                         {o.name}

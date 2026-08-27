@@ -480,7 +480,7 @@
     <div class="invoice-container">
         <!-- Invoice Title - Top Right -->
         <div class="invoice-title-row">
-            <h1>INVOICE</h1>
+            <h1>{{document_title}}</h1>
         </div>
         
         <!-- Top Header: BILL TO (50%) and Invoice Details (50%) -->
@@ -494,9 +494,10 @@
             <div class="invoice-details-section">
                 <div class="invoice-details">
                     <div class="invoice-details-row">
-                        <div class="invoice-details-label">Invoice Number:</div>
+                        <div class="invoice-details-label">{{document_number_label}}:</div>
                         <div class="invoice-details-value">{{invoice_number}}</div>
                     </div>
+                    {{proforma_reference}}
                     <div class="invoice-details-row">
                         <div class="invoice-details-label">Date:</div>
                         <div class="invoice-details-value">{{invoice_date}}</div>

@@ -7,10 +7,8 @@
     "/svgs/*",
     "/vendor/*",
     "/badge-library/*",
-    "/favicon.ico",
     "/robots.txt",
     "/styles.css",
-    "/manifest.webmanifest",
     "/sw.js",
     "/firebase-messaging-sw.js",
     "/firebase-messaging-sw.seven_cs.js"

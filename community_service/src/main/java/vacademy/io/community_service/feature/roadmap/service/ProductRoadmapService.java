@@ -13,6 +13,18 @@ public class ProductRoadmapService {
     @Autowired
     private ProductRoadmapRepository repository;
 
+    /**
+     * Timestamp only, for the dock's "new" dot. Deliberately does not reuse get():
+     * the point is to avoid transferring the ~1MB htmlContent on every page load.
+     * Returns a DTO with a null htmlContent so the shape stays familiar to callers.
+     */
+    @Transactional(readOnly = true)
+    public RoadmapDto getMeta() {
+        return RoadmapDto.builder()
+                .updatedAt(repository.findUpdatedAtById(ProductRoadmap.SINGLETON_ID).orElse(null))
+                .build();
+    }
+
     @Transactional(readOnly = true)
     public RoadmapDto get() {
         return repository.findById(ProductRoadmap.SINGLETON_ID)

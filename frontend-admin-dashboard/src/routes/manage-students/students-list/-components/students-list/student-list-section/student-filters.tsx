@@ -7,7 +7,7 @@ import { fetchStudentCustomFieldValues } from '@/routes/manage-students/students
 import { StudentSearchBox } from '../../../../../../components/common/student-search-box';
 import { StudentFiltersProps } from '@/routes/manage-students/students-list/-types/students-list-types';
 import { useMemo, useRef, useState } from 'react';
-import { exportAccountDetails } from '../../../-services/exportAccountDetails';
+import { buildExportAccountDetails } from '../../../-services/exportAccountDetails';
 import { ExportColumnsDialog } from './export-columns-dialog';
 import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
 import { AddSessionDialog } from '@/routes/manage-institute/sessions/-components/session-operations/add-session/add-session-dialog';
@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
 import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
 import { sentinelLabel } from '@/components/shared/leads/custom-field-filter-encoding';
+import { useTranslation } from 'react-i18next';
 
 export const StudentFilters = ({
     currentSession,
@@ -52,6 +53,7 @@ export const StudentFilters = ({
     const [disableAddButton, setDisableAddButton] = useState(true);
     const { instituteDetails } = useInstituteDetailsStore();
     const { isCompact } = useCompactMode();
+    const { t } = useTranslation('manageStudentsFilters');
 
     const handleAddSession = (sessionData: AddSessionDataType) => {
         const processedData = structuredClone(sessionData);
@@ -74,20 +76,21 @@ export const StudentFilters = ({
             {
                 onSuccess: () => {
                     toast.success(
-                        ` ${getTerminology(
-                            ContentTerms.Session,
-                            SystemTerms.Session
-                        )} added successfully`
+                        t('session.addedSuccess', {
+                            term: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                        })
                     );
                     setIsAddSessionDiaogOpen(false);
                 },
                 onError: (error) => {
                     toast.error(
                         error.message ||
-                        `Failed to add ${getTerminology(
-                            ContentTerms.Session,
-                            SystemTerms.Session
-                        ).toLocaleLowerCase()}`
+                        t('session.addError', {
+                            term: getTerminology(
+                                ContentTerms.Session,
+                                SystemTerms.Session
+                            ).toLocaleLowerCase(),
+                        })
                     );
                 },
             }
@@ -103,11 +106,11 @@ export const StudentFilters = ({
                 buttonType="primary"
                 layoutVariant="default"
                 scale="large"
-                className="w-[140px]"
+                className="w-36"
                 disable={disableAddButton}
                 onClick={() => formSubmitRef.current()}
             >
-                Add
+                {t('session.addButton')}
             </MyButton>
         </div>
     );
@@ -125,7 +128,7 @@ export const StudentFilters = ({
     };
 
     const handleExportAccountDetails = async () => {
-        await exportAccountDetails({ pageNo: 0, pageSize: totalElements || 0, filters: appliedFilters });
+        await buildExportAccountDetails(t)({ pageNo: 0, pageSize: totalElements || 0, filters: appliedFilters });
     };
 
     return (
@@ -152,12 +155,12 @@ export const StudentFilters = ({
                                         disable={!instituteDetails?.batches_for_sessions.length}
                                     >
                                         <Plus className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-3" : "size-4")} />
-                                        <span className="hidden sm:inline">Add New Session</span>
-                                        <span className="sm:hidden">Add Session</span>
+                                        <span className="hidden sm:inline">{t('session.addNewSession')}</span>
+                                        <span className="sm:hidden">{t('session.addSessionShort')}</span>
                                     </MyButton>
                                     {!instituteDetails?.batches_for_sessions.length && (
-                                        <p className="-mt-1 text-center text-[10px] text-neutral-400">
-                                            (Create a course first)
+                                        <p className="-mt-1 text-center text-2xs text-neutral-400">
+                                            {t('session.createCourseFirst')}
                                         </p>
                                     )}
                                 </div>
@@ -171,7 +174,7 @@ export const StudentFilters = ({
                             <MyDropdown
                                 currentValue={currentSession}
                                 dropdownList={sessionList}
-                                placeholder="Select Session"
+                                placeholder={t('session.selectPlaceholder')}
                                 handleChange={onSessionChange}
                             />
                         </div>
@@ -185,16 +188,16 @@ export const StudentFilters = ({
                         buttonType="secondary"
                         layoutVariant="default"
                         onAsyncClick={handleExportAccountDetails}
-                        loadingText="Exporting..."
+                        loadingText={t('export.exportingLoading')}
                         className={cn(
                             "hover:scale-102 group flex items-center justify-center gap-1.5 bg-gradient-to-r from-neutral-50 to-neutral-100 transition-all duration-200 hover:from-neutral-100 hover:to-neutral-200",
                             isCompact ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
                         )}
                     >
                         <Export className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110", isCompact ? "size-3" : "size-3.5 sm:size-4")} />
-                        <span className="truncate sm:hidden">Account Details</span>
-                        <span className="hidden truncate sm:inline md:hidden">Account</span>
-                        <span className="hidden truncate md:inline">Export account details</span>
+                        <span className="truncate sm:hidden">{t('export.accountDetails.short')}</span>
+                        <span className="hidden truncate sm:inline md:hidden">{t('export.accountDetails.medium')}</span>
+                        <span className="hidden truncate md:inline">{t('export.accountDetails.full')}</span>
                     </MyButton>
                     <MyButton
                         scale="medium"
@@ -208,9 +211,9 @@ export const StudentFilters = ({
                         )}
                     >
                         <Export className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110", isCompact ? "size-3" : "size-3.5 sm:size-4")} />
-                        <span className="truncate sm:hidden">Export</span>
-                        <span className="hidden truncate sm:inline md:hidden">Export</span>
-                        <span className="hidden truncate md:inline">Export Data</span>
+                        <span className="truncate sm:hidden">{t('export.data.short')}</span>
+                        <span className="hidden truncate sm:inline md:hidden">{t('export.data.medium')}</span>
+                        <span className="hidden truncate md:inline">{t('export.data.full')}</span>
                     </MyButton>
                 </div>
             </div>
@@ -314,7 +317,7 @@ export const StudentFilters = ({
                                 onClick={onFilterClick}
                             >
                                 <Funnel className="size-3.5 transition-transform duration-200 group-hover:scale-110" />
-                                Apply Filters
+                                {t('actions.applyFilters')}
                             </MyButton>
                             <MyButton
                                 buttonType="secondary"
@@ -324,7 +327,7 @@ export const StudentFilters = ({
                                 onClick={onClearFilters}
                             >
                                 <X className="size-3.5 transition-transform duration-200 group-hover:scale-110" />
-                                Reset All
+                                {t('actions.resetAll')}
                             </MyButton>
                         </div>
                     )}

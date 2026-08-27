@@ -1,0 +1,52 @@
+{
+    "tabs": {
+        "attempted": "Attempted",
+        "ongoing": "Ongoing",
+        "pending": "Pending",
+        "attemptedSubtitle": "Students who have submitted",
+        "pendingSubtitle": "Students who haven't submitted",
+        "ongoingSubtitle": "Students currently attempting"
+    },
+    "participantType": {
+        "internal": "Internal",
+        "external": "External"
+    },
+    "selectionMode": {
+        "batch": "Batch Selection",
+        "individual": "Individual Selection"
+    },
+    "filters": {
+        "evaluationStatus": {
+            "label": "Evaluation Status",
+            "options": {
+                "pending": "Pending",
+                "evaluating": "Evaluating",
+                "evaluated": "Evaluated"
+            }
+        },
+        "submissionStatus": {
+            "label": "Response",
+            "options": {
+                "submitted": "Submitted",
+                "notSubmitted": "Not Submitted"
+            }
+        }
+    },
+    "buttons": {
+        "offlineEntry": "Offline Entry",
+        "revaluate": "Reevaluate",
+        "aiEvaluations": "AI Evaluations",
+        "refresh": "Refresh",
+        "refreshTooltip": "Reload submissions and recalculate the summary",
+        "revaluateTooltip": "Re-run evaluation for the selected submissions",
+        "aiEvaluationsTooltip": "Open AI evaluation for this assessment"
+    },
+    "dialogs": {
+        "revaluate": {
+            "title": "Reevaluate Result"
+        }
+    },
+    "search": {
+        "placeholder": "Search students..."
+    }
+}

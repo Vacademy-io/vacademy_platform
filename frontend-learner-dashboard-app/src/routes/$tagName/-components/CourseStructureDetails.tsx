@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { BASE_URL } from "@/constants/urls";
 import {
   TreeStructure,
@@ -21,7 +22,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getAuthoredChapterDescription } from "@/constants/chapter-description";
 
@@ -93,6 +94,14 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   packageSessionId,
   levelId,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
+  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const moduleTerm = getTerminology(ContentTerms.Modules, SystemTerms.Modules);
+  const chapterTerm = getTerminology(ContentTerms.Chapters, SystemTerms.Chapters);
+  const chaptersTerm = getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters);
+  const modulesTerm = getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules);
+  const slidesTerm = getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides);
+  const subjectTerm = getTerminology(ContentTerms.Subjects, SystemTerms.Subjects);
   const [isLoading, setIsLoading] = useState(true);
   const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
   const [subjectModulesMap, setSubjectModulesMap] = useState<SubjectModulesMap>(
@@ -112,12 +121,12 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   const getSlideIcon = (slide: Slide) => {
     // Check for video slides first
     if (slide.video_slide) {
-      return { Icon: Play, color: "text-red-500", label: "Video" };
+      return { Icon: Play, color: "text-red-500", label: t("courseStructureDetails.slideType.video") };
     }
 
     // Check for question slides
     if (slide.question_slide) {
-      return { Icon: Question, color: "text-blue-500", label: "Question" };
+      return { Icon: Question, color: "text-blue-500", label: t("courseStructureDetails.slideType.question") };
     }
 
     // Check for assignment slides
@@ -125,22 +134,22 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       return {
         Icon: ClipboardText,
         color: "text-orange-500",
-        label: "Assignment",
+        label: t("courseStructureDetails.slideType.assignment"),
       };
     }
 
     // Check for quiz slides
     if (slide.quiz_slide) {
-      return { Icon: Exam, color: "text-purple-500", label: "Quiz" };
+      return { Icon: Exam, color: "text-purple-500", label: t("courseStructureDetails.slideType.quiz") };
     }
 
     // Check for document slides
     if (slide.document_slide) {
       const docType = slide.document_slide.type;
       if (docType === "PDF") {
-        return { Icon: FilePdf, color: "text-red-600", label: "PDF" };
+        return { Icon: FilePdf, color: "text-red-600", label: t("courseStructureDetails.slideType.pdf") };
       } else if (docType === "DOC" || docType === "DOCX") {
-        return { Icon: FileDoc, color: "text-blue-600", label: "Document" };
+        return { Icon: FileDoc, color: "text-blue-600", label: t("courseStructureDetails.slideType.document") };
       }
     }
 
@@ -298,7 +307,9 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             if (subject.id) {
               const transformedSubject: SubjectType = {
                 id: subject.id,
-                subject_name: subject.subject_name || `Subject ${index + 1}`,
+                subject_name:
+                  subject.subject_name ||
+                  t("courseStructureDetails.unnamedSubject", { subject: subjectTerm, index: index + 1 }),
                 subject_order: subject.subject_order || index,
                 description: subject.description || "",
               };
@@ -491,7 +502,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     if (filteredChapters.length === 0) {
       return (
         <div className="text-sm text-catalogue-text-muted italic">
-          No chapters available for this module.
+          {t("courseStructureDetails.noChaptersForModule", { chapters: chaptersTerm, module: moduleTerm })}
         </div>
       );
     }
@@ -514,7 +525,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   className="me-2 text-green-500 flex-shrink-0"
                 />
                 <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
-                  {chapter.chapter_name || "Unnamed Chapter"}
+                  {chapter.chapter_name || t("courseStructureDetails.unnamedChapter", { chapter: chapterTerm })}
                 </span>
                 <div className="flex-shrink-0 ms-2">
                   {openChapters.has(chapter.id) ? (
@@ -568,14 +579,14 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     // If slides haven't been fetched yet, show loading state
     if (!slidesMap[chapterId]) {
       return (
-        <div className="text-sm text-catalogue-text-muted italic">Loading slides...</div>
+        <div className="text-sm text-catalogue-text-muted italic">{t("courseStructureDetails.loadingSlides", { slides: slidesTerm })}</div>
       );
     }
 
     if (slides.length === 0) {
       return (
         <div className="text-sm text-catalogue-text-muted italic">
-          No slides available for this chapter.
+          {t("courseStructureDetails.noSlidesForChapter", { slides: slidesTerm, chapter: chapterTerm })}
         </div>
       );
     }
@@ -647,7 +658,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   className="me-2 text-orange-500 flex-shrink-0"
                 />
                 <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
-                  {moduleWithChapters.module?.module_name || "Unnamed Module"}
+                  {moduleWithChapters.module?.module_name || t("courseStructureDetails.unnamedModule", { module: moduleTerm })}
                 </span>
                 <div className="flex-shrink-0 ms-2">
                   {openModules.has(moduleWithChapters.module?.id) ? (
@@ -700,7 +711,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                       className="me-2 text-green-500 flex-shrink-0"
                     />
                     <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
-                      {chapter.chapter_name || "Unnamed Chapter"}
+                      {chapter.chapter_name || t("courseStructureDetails.unnamedChapter", { chapter: chapterTerm })}
                     </span>
                     <div className="flex-shrink-0 ms-2">
                       {openChapters.has(chapter.id) ? (
@@ -755,7 +766,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     if (result.length === 0) {
       return (
         <div className="text-sm text-catalogue-text-muted italic">
-          Loading course content...
+          {t("courseStructureDetails.loadingCourseContent", { course: courseTerm })}
         </div>
       );
     }
@@ -792,7 +803,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                       className="me-2 text-green-500 flex-shrink-0"
                     />
                     <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
-                      {chapter.chapter_name || "Unnamed Chapter"}
+                      {chapter.chapter_name || t("courseStructureDetails.unnamedChapter", { chapter: chapterTerm })}
                     </span>
                     <div className="flex-shrink-0 ms-2">
                       {openChapters.has(chapter.id) ? (
@@ -841,7 +852,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     if (result.length === 0) {
       return (
         <div className="text-sm text-catalogue-text-muted italic">
-          No content available for this course.
+          {t("courseStructureDetails.noContentForCourse", { course: courseTerm })}
         </div>
       );
     }
@@ -877,7 +888,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                     className="me-2 text-blue-500 flex-shrink-0"
                   />
                   <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
-                    {moduleWithChapters.module?.module_name || "Unnamed Module"}
+                    {moduleWithChapters.module?.module_name || t("courseStructureDetails.unnamedModule", { module: moduleTerm })}
                   </span>
                   <div className="flex-shrink-0 ms-2">
                     {openModules.has(moduleWithChapters.module?.id) ? (
@@ -903,7 +914,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   if (filteredChapters.length === 0) {
                     return (
                       <div className="text-sm text-catalogue-text-muted italic">
-                        No chapters available for this module.
+                        {t("courseStructureDetails.noChaptersForModule", { chapters: chaptersTerm, module: moduleTerm })}
                       </div>
                     );
                   }
@@ -925,7 +936,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                                 className="me-2 text-green-500 flex-shrink-0"
                               />
                               <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
-                                {chapter.chapter_name || "Unnamed Chapter"}
+                                {chapter.chapter_name || t("courseStructureDetails.unnamedChapter", { chapter: chapterTerm })}
                               </span>
                               <div className="flex-shrink-0 ms-2">
                                 {openChapters.has(chapter.id) ? (
@@ -971,7 +982,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                         className="me-2 text-green-500 flex-shrink-0"
                       />
                       <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
-                        {chapter.chapter_name || "Unnamed Chapter"}
+                        {chapter.chapter_name || t("courseStructureDetails.unnamedChapter", { chapter: chapterTerm })}
                       </span>
                       <div className="flex-shrink-0 ms-2">
                         {openChapters.has(chapter.id) ? (
@@ -1021,7 +1032,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     if (result.length === 0) {
       return (
         <div className="text-sm text-catalogue-text-muted italic">
-          No content available for this course.
+          {t("courseStructureDetails.noContentForCourse", { course: courseTerm })}
         </div>
       );
     }
@@ -1104,7 +1115,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                     />
                     <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
                       {moduleWithChapters.module?.module_name ||
-                        "Unnamed Module"}
+                        t("courseStructureDetails.unnamedModule", { module: moduleTerm })}
                     </span>
                     <div className="flex-shrink-0 ms-2">
                       {openModules.has(moduleWithChapters.module?.id) ? (
@@ -1150,7 +1161,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                           className="me-2 text-green-500 flex-shrink-0"
                         />
                         <span className="text-sm font-medium text-catalogue-text-primary break-words truncate flex-1 min-w-0">
-                          {chapter.chapter_name || "Unnamed Chapter"}
+                          {chapter.chapter_name || t("courseStructureDetails.unnamedChapter", { chapter: chapterTerm })}
                         </span>
                         <div className="flex-shrink-0 ms-2">
                           {openChapters.has(chapter.id) ? (
@@ -1201,7 +1212,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     if (result.length === 0) {
       return (
         <div className="text-sm text-catalogue-text-muted italic">
-          No content available for this course.
+          {t("courseStructureDetails.noContentForCourse", { course: courseTerm })}
         </div>
       );
     }
@@ -1229,10 +1240,10 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
       <div className="bg-catalogue-bg-elevated rounded-lg shadow-sm border border-catalogue-border p-6">
         <div className="text-center">
           <h3 className="text-lg font-medium text-catalogue-text-primary mb-2">
-            Course Structure
+            {t("courseStructureDetails.courseStructure", { course: courseTerm })}
           </h3>
           <p className="text-catalogue-text-muted mb-4">
-            No course structure data available
+            {t("courseStructureDetails.noStructureData", { course: courseTerm })}
           </p>
         </div>
       </div>
@@ -1247,7 +1258,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           <div className="flex items-center gap-2">
             <TreeStructure size={18} className="text-primary-600" />
             <span className="text-sm font-medium text-catalogue-text-primary">
-              Course Structure
+              {t("courseStructureDetails.courseStructure", { course: courseTerm })}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1260,7 +1271,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               className="border-catalogue-border bg-catalogue-bg-elevated text-catalogue-text-primary hover:bg-catalogue-bg-subtle hover:text-catalogue-text-primary"
               onClick={isAllExpanded ? collapseAll : expandAll}
             >
-              {isAllExpanded ? "Collapse All" : "Expand All"}
+              {isAllExpanded ? t("courseStructureDetails.collapseAll") : t("courseStructureDetails.expandAll")}
             </Button>
           </div>
         </div>
@@ -1270,7 +1281,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           {courseDepth === 2 && (
             <div className="space-y-2">
               <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
-                Course Content (Slides Only)
+                {t("courseStructureDetails.contentHeading.slidesOnly", { course: courseTerm, slides: slidesTerm })}
               </h3>
               {renderSlidesForDepth2()}
             </div>
@@ -1279,7 +1290,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           {courseDepth === 3 && (
             <div className="space-y-2">
               <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
-                Course Content (Chapters & Slides)
+                {t("courseStructureDetails.contentHeading.chaptersAndSlides", { course: courseTerm, chapters: chaptersTerm, slides: slidesTerm })}
               </h3>
               {renderAllChaptersForDepth3()}
             </div>
@@ -1288,7 +1299,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           {courseDepth === 4 && (
             <div className="space-y-2">
               <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
-                Course Content (Modules, Chapters & Slides)
+                {t("courseStructureDetails.contentHeading.modulesChaptersSlides", { course: courseTerm, modules: modulesTerm, chapters: chaptersTerm, slides: slidesTerm })}
               </h3>
               {renderModulesForDepth4()}
             </div>
@@ -1297,7 +1308,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           {courseDepth === 5 && (
             <div className="space-y-2">
               <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
-                Course Content (Full Structure)
+                {t("courseStructureDetails.contentHeading.fullStructure", { course: courseTerm })}
               </h3>
               {renderSubjectsForDepth5()}
             </div>

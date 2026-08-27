@@ -1,0 +1,30 @@
+{
+    "loading": "GTM सेटिंग्स लोड हो रही हैं…",
+    "card": {
+        "title": "Google टैग मैनेजर",
+        "description": {
+            "part1": "शिक्षार्थी नामांकन पृष्ठों पर अपना GTM कंटेनर इंजेक्ट करें। यह रूपांतरण ट्रैकिंग, रीमार्केटिंग पिक्सेल, और आपके GTM वर्कस्पेस में कॉन्फ़िगर किए गए किसी भी टैग को सक्षम करता है। सफल पंजीकरण पर dataLayer पर एक ",
+            "part2": " इवेंट भेजा जाता है।"
+        }
+    },
+    "toggle": {
+        "enabled": "सक्षम",
+        "disabled": "अक्षम"
+    },
+    "containerId": {
+        "label": "कंटेनर आईडी",
+        "placeholder": "GTM-XXXXXXX",
+        "hint": "अपना कंटेनर आईडी GTM → Admin → Container Settings में खोजें।"
+    },
+    "errors": {
+        "invalidContainerId": "अमान्य GTM कंटेनर आईडी। अपेक्षित प्रारूप: GTM-XXXXXXX"
+    },
+    "toasts": {
+        "saveSuccess": "GTM सेटिंग्स सहेजी गईं",
+        "saveError": "GTM सेटिंग्स सहेजने में विफल"
+    },
+    "footer": {
+        "save": "GTM सेटिंग्स सहेजें",
+        "saving": "सहेजा जा रहा है…"
+    }
+}

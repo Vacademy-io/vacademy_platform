@@ -8,6 +8,10 @@
  *                      page is unaffected (still sees all campaigns).
  *  3. AUDIENCE_LIST  — role only sees the explicitly granted audience lists,
  *                      and only those lists' responses on Recent Leads.
+ *                      Optionally (assigned_only) narrowed further to the leads
+ *                      the user owns, with leads they add by hand stamped to
+ *                      them — active only while the institute runs no
+ *                      counsellor pool.
  *
  * Persists into the institute setting key
  * {@code ROLE_DISPLAY_SETTINGS.audienceRoleAccess}, read on the backend by
@@ -17,11 +21,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Check } from 'lucide-react';
+import { CircleNotch, Check } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
 // Auto-save debounce — long enough that toggling several checkboxes in the
@@ -34,6 +40,7 @@ import {
     type AudienceAccessMode,
     type RoleAccessConfig,
 } from '@/hooks/use-audience-role-access';
+import { useCounselorPools } from '@/services/counselor-pool';
 
 interface AudienceAccessCardProps {
     /** Uppercase role name as stored in JWT authorities, e.g. "ADMIN", "TEACHER", "COUNSELOR". */
@@ -47,28 +54,35 @@ interface AudienceAccessCardProps {
 // admin configuring this is not the future user, so a role-named label is
 // less confusing.
 const buildModeOptions = (
+    t: TFunction,
     roleDisplayName: string
 ): Array<{ value: AudienceAccessMode; title: string; description: string }> => [
     {
         value: 'DEFAULT',
-        title: 'Default — see everything',
-        description:
-            'All audience lists and responses are visible. This is the default for any role.',
+        title: t('modes.default.title'),
+        description: t('modes.default.description'),
     },
     {
         value: 'COUNSELOR',
-        title: `Only leads assigned to ${roleDisplayName}`,
-        description: `Recent Leads and per-campaign Lead List only show responses where a user with the ${roleDisplayName} role has been assigned as the counselor (via the lead's profile). The list of audience-list cards is unaffected.`,
+        title: t('modes.counselor.title', { role: roleDisplayName }),
+        description: t('modes.counselor.description', { role: roleDisplayName }),
     },
     {
         value: 'AUDIENCE_LIST',
-        title: 'Specific audience lists',
-        description:
-            'Restrict this role to specific audience lists. Recent Leads only includes responses from those lists; the audience-list cards page only shows the granted lists.',
+        title: t('modes.audienceList.title'),
+        description: t('modes.audienceList.description'),
     },
 ];
 
+// Copy for the AUDIENCE_LIST sub-option. Spelled out rather than summarised
+// because both halves surprise admins otherwise: the visibility narrowing is
+// what they asked for, the auto-assign is what keeps a counsellor from losing
+// sight of a lead the moment they save it.
+const buildAssignedOnlyDescription = (t: TFunction, roleDisplayName: string) =>
+    t('assignedOnly.description', { role: roleDisplayName });
+
 export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardProps) => {
+    const { t } = useTranslation('settingsAudienceAccessCard');
     const normalizedRole = roleName.toUpperCase();
     const { config, isLoading, saving, save } = useAudienceRoleAccess();
     const { instituteDetails } = useInstituteDetailsStore();
@@ -79,6 +93,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
     // toggle several checkboxes before the auto-save flush.
     const [mode, setMode] = useState<AudienceAccessMode>('DEFAULT');
     const [selectedAudienceIds, setSelectedAudienceIds] = useState<string[]>([]);
+    const [assignedOnly, setAssignedOnly] = useState(false);
     const [dirty, setDirty] = useState(false);
     // Briefly show "Saved" after a successful flush so the admin has feedback
     // even though there's no Save button.
@@ -88,6 +103,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         const existing: RoleAccessConfig | undefined = config.roles?.[normalizedRole];
         setMode(existing?.mode ?? 'DEFAULT');
         setSelectedAudienceIds(existing?.audience_ids ?? []);
+        setAssignedOnly(existing?.assigned_only === true);
         setDirty(false);
     }, [config, normalizedRole]);
 
@@ -106,11 +122,17 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
             (audiencesQuery.data?.content ?? [])
                 .map((c) => ({
                     id: c.id || c.campaign_id || c.audience_id || '',
-                    name: c.campaign_name || 'Untitled audience',
+                    name: c.campaign_name || t('grantedLists.untitledFallback'),
                 }))
                 .filter((opt) => opt.id !== ''),
-        [audiencesQuery.data]
+        [audiencesQuery.data, t]
     );
+
+    // Counsellor pools decide whether the assigned-only option does anything.
+    // The backend enforces the same gate; this read is purely so the admin sees
+    // "configured but inert" instead of a switch that silently does nothing.
+    const poolsQuery = useCounselorPools();
+    const hasCounsellorPool = (poolsQuery.data?.length ?? 0) > 0;
 
     const handleModeChange = (value: string) => {
         setMode(value as AudienceAccessMode);
@@ -119,7 +141,13 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         // silently persist stale ids.
         if (value !== 'AUDIENCE_LIST') {
             setSelectedAudienceIds([]);
+            setAssignedOnly(false);
         }
+    };
+
+    const handleAssignedOnlyChange = (checked: boolean) => {
+        setAssignedOnly(checked);
+        setDirty(true);
     };
 
     const toggleAudience = (id: string, checked: boolean) => {
@@ -135,15 +163,15 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
     // Auto-save with a debounce. Capture the latest mode + selection in a ref
     // so the timer's flush picks up whatever the user clicked last (avoids
     // stale-closure bugs on rapid toggles).
-    const latestRef = useRef({ mode, selectedAudienceIds });
+    const latestRef = useRef({ mode, selectedAudienceIds, assignedOnly });
     useEffect(() => {
-        latestRef.current = { mode, selectedAudienceIds };
-    }, [mode, selectedAudienceIds]);
+        latestRef.current = { mode, selectedAudienceIds, assignedOnly };
+    }, [mode, selectedAudienceIds, assignedOnly]);
 
     useEffect(() => {
         if (!dirty) return;
         const timer = window.setTimeout(async () => {
-            const { mode: m, selectedAudienceIds: ids } = latestRef.current;
+            const { mode: m, selectedAudienceIds: ids, assignedOnly: onlyMine } = latestRef.current;
             const nextRoles = { ...(config.roles ?? {}) };
             if (m === 'DEFAULT') {
                 nextRoles[normalizedRole] = { mode: 'DEFAULT' };
@@ -153,6 +181,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                 nextRoles[normalizedRole] = {
                     mode: 'AUDIENCE_LIST',
                     audience_ids: ids,
+                    assigned_only: onlyMine,
                 };
             }
             try {
@@ -162,7 +191,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                 window.setTimeout(() => setShowJustSaved(false), 1500);
             } catch (err) {
                 console.error('Failed to save audience access', err);
-                toast.error('Failed to save audience access');
+                toast.error(t('toasts.saveFailed'));
             }
         }, AUTOSAVE_DEBOUNCE_MS);
         return () => window.clearTimeout(timer);
@@ -171,7 +200,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         // timer — config/save are stable from React Query and don't need
         // to retrigger flushes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dirty, mode, selectedAudienceIds, normalizedRole]);
+    }, [dirty, mode, selectedAudienceIds, assignedOnly, normalizedRole]);
 
     const showAudienceMultiSelect = mode === 'AUDIENCE_LIST';
     const audienceListEmpty =
@@ -183,12 +212,12 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         <Card>
             <CardHeader>
                 <CardTitle className="text-base">
-                    Audience access — {roleLabel ?? normalizedRole}
+                    {t('title', { role: roleLabel ?? normalizedRole })}
                 </CardTitle>
                 <CardDescription>
-                    Controls which audience lists and responses a user with the{' '}
-                    <span className="font-medium">{normalizedRole}</span> role can see across the
-                    Recent Leads page, the per-campaign Lead List, and the audience-list cards.
+                    {t('description.part1')}{' '}
+                    <span className="font-medium">{normalizedRole}</span>{' '}
+                    {t('description.part2')}
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-5">
@@ -196,9 +225,9 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                     value={mode}
                     onValueChange={handleModeChange}
                     className="flex flex-col gap-3"
-                    aria-label="Audience access mode"
+                    aria-label={t('ariaLabel')}
                 >
-                    {buildModeOptions(roleLabel ?? normalizedRole).map((opt) => (
+                    {buildModeOptions(t, roleLabel ?? normalizedRole).map((opt) => (
                         <label
                             key={opt.value}
                             htmlFor={`audience-access-${normalizedRole}-${opt.value}`}
@@ -224,14 +253,15 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                 {showAudienceMultiSelect && (
                     <div className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-neutral-50/40 p-3">
                         <Label className="text-sm font-medium text-neutral-800">
-                            Granted audience lists
+                            {t('grantedLists.label')}
                         </Label>
                         {audiencesQuery.isLoading ? (
-                            <p className="text-xs text-neutral-500">Loading audience lists…</p>
+                            <p className="text-xs text-neutral-500">
+                                {t('grantedLists.loading')}
+                            </p>
                         ) : audienceListEmpty ? (
                             <p className="text-xs text-neutral-500">
-                                No audience lists exist yet. Create one first under Leads → Lead
-                                List.
+                                {t('grantedLists.empty')}
                             </p>
                         ) : (
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -259,8 +289,40 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                         )}
                         {showAudienceMultiSelect && selectedAudienceIds.length === 0 && (
                             <p className="text-xs text-warning-600">
-                                Saving with zero lists selected will hide all leads from this
-                                role.
+                                {t('grantedLists.zeroSelectedWarning')}
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {showAudienceMultiSelect && (
+                    <div className="flex flex-col gap-2 rounded-md border border-neutral-200 p-3">
+                        <label
+                            htmlFor={`audience-assigned-only-${normalizedRole}`}
+                            className="flex cursor-pointer items-start gap-3"
+                        >
+                            <Checkbox
+                                id={`audience-assigned-only-${normalizedRole}`}
+                                checked={assignedOnly}
+                                onCheckedChange={(v) => handleAssignedOnlyChange(v === true)}
+                                className="mt-0.5"
+                            />
+                            <div className="flex flex-col gap-1">
+                                <span className="text-sm font-medium text-neutral-900">
+                                    {t('assignedOnly.title', {
+                                        role: roleLabel ?? normalizedRole,
+                                    })}
+                                </span>
+                                <span className="text-xs text-neutral-600">
+                                    {buildAssignedOnlyDescription(t, roleLabel ?? normalizedRole)}
+                                </span>
+                            </div>
+                        </label>
+                        {assignedOnly && hasCounsellorPool && (
+                            <p className="text-xs text-warning-600">
+                                {t('assignedOnly.inertWarning', {
+                                    count: poolsQuery.data?.length ?? 0,
+                                })}
                             </p>
                         )}
                     </div>
@@ -268,19 +330,19 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
 
                 <div className="flex h-5 items-center justify-end gap-1.5 text-xs text-neutral-500">
                     {isLoading ? (
-                        <span>Loading current setting…</span>
+                        <span>{t('status.loading')}</span>
                     ) : saving ? (
                         <>
-                            <Loader2 className="size-3.5 animate-spin" />
-                            <span>Saving…</span>
+                            <CircleNotch className="size-3.5 animate-spin" />
+                            <span>{t('status.saving')}</span>
                         </>
                     ) : showJustSaved ? (
                         <>
                             <Check className="size-3.5 text-success-600" />
-                            <span className="text-success-700">Saved</span>
+                            <span className="text-success-700">{t('status.saved')}</span>
                         </>
                     ) : dirty ? (
-                        <span>Unsaved changes…</span>
+                        <span>{t('status.unsaved')}</span>
                     ) : null}
                 </div>
             </CardContent>

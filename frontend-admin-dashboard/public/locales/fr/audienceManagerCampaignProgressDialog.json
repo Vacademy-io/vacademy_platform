@@ -1,0 +1,38 @@
+{
+    "dialog": {
+        "heading": "Appels IA en cours"
+    },
+    "status": {
+        "completed": "Terminé",
+        "noAnswer": "Pas de réponse",
+        "busy": "Occupé",
+        "failed": "Échoué",
+        "cancelled": "Annulé",
+        "onCall": "En communication",
+        "ringing": "Sonnerie",
+        "dialing": "Composition en cours"
+    },
+    "header": {
+        "allFinished_one": "Le {{count}} appel est terminé",
+        "allFinished_many": "Les {{count}} d'appels sont terminés",
+        "allFinished_other": "Les {{count}} appels sont terminés",
+        "progress": "{{done}} sur {{total}} terminés",
+        "liveSuffix_one": " · {{count}} en cours",
+        "liveSuffix_many": " · {{count}} d'appels en cours",
+        "liveSuffix_other": " · {{count}} en cours",
+        "parallelLabel_one": "{{count}} à la fois",
+        "parallelLabel_many": "{{count}} d'appels à la fois",
+        "parallelLabel_other": "{{count}} à la fois"
+    },
+    "list": {
+        "dialingFirst": "Composition du premier prospect…",
+        "defaultLeadName": "Prospect",
+        "duration": "{{minutes}} min {{seconds}} s"
+    },
+    "error": {
+        "pollPaused": "Mises à jour en direct suspendues (nouvelle tentative en cours) — les appels continuent de se dérouler côté serveur."
+    },
+    "footer": {
+        "backgroundNotice": "S'exécute en arrière-plan — fermer cette fenêtre n'arrête pas les appels. Le résultat et l'attribution du conseiller de chaque appel se font automatiquement."
+    }
+}

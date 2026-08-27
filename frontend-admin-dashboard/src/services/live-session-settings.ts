@@ -195,6 +195,14 @@ export interface LiveSessionSettings {
     defaultBbbWebcamsOnlyForModerator: boolean;
     /** Default guest admission policy. */
     defaultBbbGuestPolicy: LiveSessionGuestPolicy;
+    /**
+     * Default "participants join in listen-only mode" toggle. Pins viewers to the
+     * shared listen-only audio path so no participant can take an individual mic
+     * channel — the setting to use for broadcast-style classes.
+     */
+    defaultBbbDisableMic: boolean;
+    /** Default "participants can't turn on their camera" toggle. */
+    defaultBbbDisableCam: boolean;
     /** Default "disable private chat for students" toggle (host is unaffected). */
     defaultBbbDisablePrivateChat: boolean;
     /** Default "disable public chat for students" toggle (host is unaffected). */
@@ -323,6 +331,8 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultBbbMuteOnStart: true,
     defaultBbbWebcamsOnlyForModerator: false,
     defaultBbbGuestPolicy: 'ALWAYS_ACCEPT',
+    defaultBbbDisableMic: false,
+    defaultBbbDisableCam: false,
     defaultBbbDisablePrivateChat: false,
     defaultBbbDisablePublicChat: false,
     defaultBbbDisableSharedNotes: false,

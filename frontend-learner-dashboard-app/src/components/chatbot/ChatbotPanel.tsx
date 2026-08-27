@@ -19,6 +19,7 @@ import {
 } from "@phosphor-icons/react";
 import { Capacitor } from "@capacitor/core";
 import { Link, useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -63,6 +64,7 @@ const DEFAULT_WIDTH = 380;
 const DEFAULT_HEIGHT = 520;
 
 export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
+  const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
     isOpen,
@@ -408,7 +410,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 backdrop-blur-[2px] pointer-events-none">
                   <div className="flex flex-col items-center gap-2 text-primary">
                     <ImageSquare className="h-10 w-10" />
-                    <span className="text-sm font-medium">Drop image here</span>
+                    <span className="text-sm font-medium">{t("common.dropImageHere")}</span>
                   </div>
                 </div>
               )}
@@ -474,7 +476,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); startNewChat(); }}
-                    title="Start new chat"
+                    title={t("common.startNewChat")}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -483,7 +485,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); closeSession(); }}
-                    title="Close session"
+                    title={t("common.closeSession")}
                   >
                     <Trash className="h-4 w-4" />
                   </Button>
@@ -492,7 +494,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-                      title="AI Gear"
+                      title={t("common.aiGear")}
                     >
                       <Gear className="h-4 w-4" />
                     </Button>
@@ -502,7 +504,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); toggleFullScreen(); }}
-                    title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
+                    title={isFullScreen ? t("panel.exitFullscreen") : t("panel.fullscreen")}
                   >
                     {isFullScreen ? (
                       <ArrowsIn className="h-4 w-4" />
@@ -515,7 +517,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); setIsOpen(false); }}
-                    title="Close panel"
+                    title={t("common.closePanel")}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -529,13 +531,13 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     {isOffline && (
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs rounded-md">
                         <WifiSlash className="size-3.5 shrink-0" />
-                        <span>You're offline. Messages will be sent when you reconnect.</span>
+                        <span>{t("panel.offlineNotice")}</span>
                       </div>
                     )}
 
                     {isInitializing && messages.length === 0 && (
                       <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
-                        Initialising chat...
+                        {t("panel.initializing")}
                       </div>
                     )}
 
@@ -644,12 +646,12 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                             {msg.role === "user" ? (
                               <div>
                                 {msg.attachments?.filter((a: any) => a.type === 'image').map((att: any, i: number) => (
-                                  <img key={i} src={att.url} alt="attached" className="max-w-48 max-h-36 rounded-lg mb-1.5 border" />
+                                  <img key={i} src={att.url} alt={t("common.attachedImageAlt")} className="max-w-48 max-h-36 rounded-lg mb-1.5 border" />
                                 ))}
                                 <p className="whitespace-pre-wrap">
                                   {msg.content}
                                   {msg.status === "pending" && (
-                                    <span className="text-xs text-primary-foreground/60 ms-1" title="Queued - will send when online">&#x23F3;</span>
+                                    <span className="text-xs text-primary-foreground/60 ms-1" title={t("panel.queuedTooltip")}>&#x23F3;</span>
                                   )}
                                 </p>
                               </div>
@@ -660,7 +662,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                   onClick={() =>
                                     handleCopyMessage(msg.content, msg.id)
                                   }
-                                  title="Copy message"
+                                  title={t("panel.copyMessage")}
                                 >
                                   {copiedMessageId === msg.id ? (
                                     <Check className="size-4 text-green-600" />
@@ -800,7 +802,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         <div className="rounded-lg bg-muted px-4 py-3 text-sm text-foreground">
                           <div className="flex space-x-2 items-center h-4">
                             {aiStatus === "generating_quiz" ? (
-                              <span className="text-xs text-muted-foreground animate-pulse">Generating quiz...</span>
+                              <span className="text-xs text-muted-foreground animate-pulse">{t("panel.generatingQuiz")}</span>
                             ) : (
                               <>
                                 <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />
@@ -821,13 +823,13 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                     {isCreditsExhausted && (
                       <div className="w-full bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-center text-sm text-amber-800">
-                        Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.
+                        {t("common.creditsExhausted")}
                       </div>
                     )}
 
                     {hasError && !isCreditsExhausted && (
                       <div className="w-full bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-2 text-center space-y-1.5">
-                        <p className="text-sm text-destructive">Something went wrong</p>
+                        <p className="text-sm text-destructive">{t("panel.errorTitle")}</p>
                         <div className="flex gap-3 justify-center">
                           <button
                             onClick={() => {
@@ -836,10 +838,10 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                             }}
                             className="text-xs text-primary underline hover:text-primary/80"
                           >
-                            Retry
+                            {t("common.retry")}
                           </button>
                           <button onClick={startNewChat} className="text-xs text-muted-foreground underline hover:text-muted-foreground/80">
-                            New chat
+                            {t("common.newChat")}
                           </button>
                         </div>
                       </div>
@@ -847,7 +849,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                     {isSessionClosed && (
                       <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
-                        This chat has ended
+                        {t("panel.sessionEnded")}
                       </div>
                     )}
 
@@ -878,11 +880,11 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       <button
                         onClick={() => setShowVoiceSelector(true)}
                         disabled={isLoading || !sessionId}
-                        title="Start a voice conversation"
+                        title={t("common.startVoiceConversation")}
                         className="inline-flex items-center h-7 px-3 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
                       >
                         <Microphone className="h-3 w-3 me-1.5" />
-                        Voice Chat
+                        {t("common.voiceChatLabel")}
                       </button>
                     )}
                   </div>
@@ -893,7 +895,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   <div className="flex gap-2 w-full px-1 py-1.5">
                     {pendingAttachments.map((att, i) => (
                       <div key={i} className="relative size-12 rounded border overflow-hidden">
-                        <img src={att.previewUrl || att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
+                        <img src={att.previewUrl || att.url} alt={att.name || t("common.attachmentAlt")} className="size-full object-cover" />
                         {!att.url && (
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                             <SpinnerGap className="h-4 w-4 text-white animate-spin" />
@@ -969,7 +971,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 {/* LaTeX preview — show rendered formula when user types $ */}
                 {inputValue.includes('$') && (
                   <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
-                    <span className="text-muted-foreground text-caption block mb-0.5">Preview:</span>
+                    <span className="text-muted-foreground text-caption block mb-0.5">{t("common.preview")}</span>
                     <ReactMarkdown
                       remarkPlugins={[remarkMath]}
                       rehypePlugins={[rehypeKatex]}
@@ -982,7 +984,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 {/* Input Row */}
                 <div className="w-full flex items-end gap-1.5">
                   <textarea
-                    placeholder="Type message... (use $ for math)"
+                    placeholder={t("panel.inputPlaceholder")}
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -1004,7 +1006,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       showLatexHelper && "bg-primary/10 text-primary"
                     )}
                     onClick={() => setShowLatexHelper(prev => !prev)}
-                    title="Math symbols"
+                    title={t("common.mathSymbols")}
                   >
                     <Sigma className="h-4 w-4" />
                   </Button>
@@ -1014,7 +1016,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     className="h-8 w-8 shrink-0 rounded-lg"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!sessionId || isLoading || isUploadingImage}
-                    title="Attach image (math photos auto-detected)"
+                    title={t("panel.attachImageTitle")}
                   >
                     {isUploadingImage ? (
                       <SpinnerGap className="h-4 w-4 animate-spin" />

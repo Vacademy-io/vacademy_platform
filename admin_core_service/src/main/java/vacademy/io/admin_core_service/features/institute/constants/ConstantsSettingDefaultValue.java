@@ -224,6 +224,11 @@ public class ConstantsSettingDefaultValue {
                             border-bottom: 2px solid #a7c7e7;
                             padding-bottom: 10px;
                             display: inline-block;
+                            /* A long name wraps at the page width already, but a
+                               single unbroken token has nowhere to break and would
+                               run off the edge of the certificate. */
+                            max-width: 100%;
+                            overflow-wrap: break-word;
                         }
                 
                         .completion-text {
@@ -238,6 +243,10 @@ public class ConstantsSettingDefaultValue {
                             font-size: 32px;
                             font-weight: 600;
                             color: #1f3b64;
+                            /* Course titles are the longest values on a
+                               certificate; keep them inside the page. */
+                            max-width: 100%;
+                            overflow-wrap: break-word;
                         }
                 
                         .course-level {

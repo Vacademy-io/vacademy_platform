@@ -11,3 +11,6 @@ interface ImportMeta {
 
 // Injected by Vite `define` from package.json — the embedded JS bundle version.
 declare const __APP_VERSION__: string;
+
+// Injected by Vite `define`. True only in a Mac App Store build.
+declare const __MAC_APP_STORE__: boolean;

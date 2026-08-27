@@ -16,6 +16,7 @@ import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/auth-service/internal/user")
@@ -56,6 +57,34 @@ public class UserInternalController {
     public ResponseEntity<List<UserDTO>> getUserDetailsByIds(@RequestBody List<String> userIds) {
         List<UserDTO> users = userService.getUserDetailsByIds(userIds);
         return ResponseEntity.ok(users);
+    }
+
+    /**
+     * userId -> roles held AT THIS INSTITUTE. Authorisation decisions must use this
+     * rather than UserDTO.roles, which spans every institute and includes INVITED.
+     */
+    @GetMapping("/v1/institute-roles")
+    public ResponseEntity<Map<String, List<String>>> getInstituteRoles(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("userIds") List<String> userIds) {
+        return ResponseEntity.ok(userService.getInstituteRoles(instituteId, userIds));
+    }
+
+    /**
+     * Every ACTIVE holder of the given roles at an institute.
+     *
+     * Added for scheduled reporting: a schedule says "send to ADMINs" and the
+     * reporting tick has to turn that into real addresses. Roles live in this
+     * service's database, so admin_core cannot resolve them itself.
+     *
+     * Only ACTIVE memberships are returned — an INVITED or DISABLED user must never
+     * be mailed institute data, and reports can name learners.
+     */
+    @GetMapping("/v1/users-by-institute-role")
+    public ResponseEntity<List<UserDTO>> getUsersByInstituteAndRoles(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("roles") List<String> roles) {
+        return ResponseEntity.ok(userService.getUsersByInstituteAndRoles(instituteId, roles));
     }
 
     @GetMapping("/user-by-id-with-password")

@@ -1,0 +1,13 @@
+{
+    "menu": {
+        "shareCredentials": "क्रेडेंशियल साझा करें",
+        "sendWhatsappMessage": "व्हाट्सएप संदेश भेजें",
+        "sendEmail": "ईमेल भेजें",
+        "acceptRequest": "अनुरोध स्वीकार करें",
+        "declineRequest": "अनुरोध अस्वीकार करें"
+    },
+    "actionInfo": {
+        "selectedStudents_one": "{{count}} विद्यार्थी चयनित",
+        "selectedStudents_other": "{{count}} विद्यार्थी चयनित"
+    }
+}

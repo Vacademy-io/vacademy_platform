@@ -11,6 +11,7 @@
  * Auth (`user`) is injected automatically by authenticatedAxiosInstance's
  * interceptor — never add it here.
  */
+import type { TFunction } from 'i18next';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     ONBOARDING_FLOWS_BASE,
@@ -576,11 +577,25 @@ export type OnboardingStepTriggerEvent =
     | 'ONBOARDING_STEP_COMPLETED'
     | 'ONBOARDING_STEP_SKIPPED';
 
-export const ONBOARDING_STEP_TRIGGER_EVENTS: { key: OnboardingStepTriggerEvent; label: string }[] = [
-    { key: 'ONBOARDING_STEP_ENTERED', label: 'When a subject enters this step' },
-    { key: 'ONBOARDING_STEP_COMPLETED', label: 'When this step is completed' },
-    { key: 'ONBOARDING_STEP_SKIPPED', label: 'When this step is skipped' },
-];
+/** UI labels for the fixed ONBOARDING_STEP_* trigger-event set (StepWorkflowTriggersCard's event picker). */
+export function buildOnboardingStepTriggerEvents(
+    t: TFunction
+): { key: OnboardingStepTriggerEvent; label: string }[] {
+    return [
+        {
+            key: 'ONBOARDING_STEP_ENTERED',
+            label: t('audienceManagerOnboardingService:triggerEvents.entered'),
+        },
+        {
+            key: 'ONBOARDING_STEP_COMPLETED',
+            label: t('audienceManagerOnboardingService:triggerEvents.completed'),
+        },
+        {
+            key: 'ONBOARDING_STEP_SKIPPED',
+            label: t('audienceManagerOnboardingService:triggerEvents.skipped'),
+        },
+    ];
+}
 
 export interface OnboardingStepTrigger {
     trigger_event_name: OnboardingStepTriggerEvent | string;

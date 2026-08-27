@@ -1,0 +1,17 @@
+{
+    "menu": {
+        "shareCredentials": "مشاركة بيانات الاعتماد",
+        "sendWhatsappMessage": "إرسال رسالة واتساب",
+        "sendEmail": "إرسال بريد إلكتروني",
+        "acceptRequest": "قبول الطلب",
+        "declineRequest": "رفض الطلب"
+    },
+    "actionInfo": {
+        "selectedStudents_zero": "لا يوجد طلاب محددون ({{count}})",
+        "selectedStudents_one": "طالب واحد محدد ({{count}})",
+        "selectedStudents_two": "طالبان محددان ({{count}})",
+        "selectedStudents_few": "{{count}} طلاب محددون",
+        "selectedStudents_many": "{{count}} طالبًا محددًا",
+        "selectedStudents_other": "{{count}} طالب محدد"
+    }
+}

@@ -308,6 +308,18 @@ function ViewLiveSession() {
                 return;
             }
 
+            // The backend refuses a recreate that would strand people: either
+            // someone is already in the room, or it was created moments ago and
+            // only looks "ended" because nobody has connected yet. Surface the
+            // reason and stop — the host should join the existing class instead.
+            if (response.data?.status === 'RECREATE_BLOCKED') {
+                toast.error(
+                    response.data?.message ||
+                        'This class is still active. Please join the existing class instead of starting a new one.'
+                );
+                return;
+            }
+
             const joinUrl = response.data?.joinUrl;
             if (joinUrl) {
                 window.open(joinUrl, '_blank', 'noopener,noreferrer');
@@ -391,6 +403,31 @@ function ViewLiveSession() {
     };
 
     // Group schedules by date for calendar view
+    /**
+     * Single source of truth for "which host entry point does this schedule
+     * get?", so the list and calendar views of a recurring session cannot
+     * disagree. Returns null for platforms we cannot host into (the caller
+     * falls back to the participant join link).
+     */
+    const resolveHostAction = useCallback(
+        (session: { id: string; linkType?: string | null }) => {
+            if (isBbbSession) return () => handleJoinAsHost(session.id);
+            const linkType = session.linkType;
+            if (linkType === 'zoom' || linkType === 'ZOOM_MEETING') {
+                return () => handleZoomStartAsHost(session.id);
+            }
+            if (
+                linkType === 'google meet' ||
+                linkType === 'GOOGLE_MEET' ||
+                linkType === 'googleMeet'
+            ) {
+                return () => handleMeetStartAsHost(session.id);
+            }
+            return null;
+        },
+        [isBbbSession, handleJoinAsHost, handleZoomStartAsHost, handleMeetStartAsHost]
+    );
+
     const groupedSchedules = useMemo(() => {
         if (!sessionData?.schedule?.added_schedules) return [];
 
@@ -453,6 +490,22 @@ function ViewLiveSession() {
             }))
             .sort((a, b) => a.date.localeCompare(b.date));
     }, [sessionData]);
+
+    /**
+     * The occurrence a host would actually want to start right now: the one in
+     * progress, else the next upcoming one. A recurring session has no single
+     * meeting, which is why the details card offered no host entry point at all
+     * and left the teacher holding only the participant join link.
+     */
+    const currentOrNextSession = useMemo(() => {
+        const all = groupedSchedules.flatMap((day) => day.sessions);
+        const live = all.find((s) => s.status === 'live');
+        if (live) return live;
+        const upcoming = all
+            .filter((s) => s.status === 'upcoming')
+            .sort((a, b) => (a.startDate?.getTime() ?? 0) - (b.startDate?.getTime() ?? 0));
+        return upcoming[0] ?? null;
+    }, [groupedSchedules]);
 
     // Collect all recordings across all schedules
     const allRecordings = useMemo(() => {
@@ -985,6 +1038,62 @@ function ViewLiveSession() {
                                         )}
 
                                         {zoomProvisionBadge}
+
+                                        {/*
+                                          * Recurring sessions get a host entry point here too. Burying it in
+                                          * the Scheduled Sessions calendar at the foot of the page meant a
+                                          * teacher looking at this card saw no way to start her own class.
+                                          */}
+                                        {isRecurring &&
+                                            currentOrNextSession &&
+                                            (() => {
+                                                const startAsHost = resolveHostAction(
+                                                    currentOrNextSession as { id: string; linkType?: string | null }
+                                                );
+                                                if (!startAsHost) return null;
+                                                const isLive = currentOrNextSession.status === 'live';
+                                                return (
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                                            <MonitorPlay className="size-3.5 text-primary" />
+                                                            {isLive ? 'Class in progress' : 'Next class'}
+                                                        </div>
+                                                        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
+                                                            <div className="flex flex-wrap items-center gap-3">
+                                                                <div className="flex items-center gap-2 text-sm">
+                                                                    <Timer className="size-4 text-primary" />
+                                                                    <span className="font-medium">
+                                                                        {currentOrNextSession.startDate
+                                                                            ? `${format(currentOrNextSession.startDate, 'EEE, MMM d')} · `
+                                                                            : ''}
+                                                                        {currentOrNextSession.time}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {currentOrNextSession.duration} mins
+                                                                </span>
+                                                                {isLive && (
+                                                                    <Badge
+                                                                        variant="default"
+                                                                        className="bg-green-500 text-white text-xs"
+                                                                    >
+                                                                        Live
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                            <MyButton
+                                                                onClick={startAsHost}
+                                                                buttonType="primary"
+                                                                scale="small"
+                                                                type="button"
+                                                                className="shrink-0"
+                                                            >
+                                                                Start as Host
+                                                            </MyButton>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
 
                                         {isZoomSession && !isRecurring && groupedSchedules.length > 0 && (
                                             <div className="space-y-2">
@@ -1673,37 +1782,26 @@ function ViewLiveSession() {
                                                                                             {session.duration} mins
                                                                                             </span>
                                                                                         </div>
-                                                                                        {isBbbSession ? (
-                                                                                            <button
-                                                                                                onClick={() => handleJoinAsHost(session.id)}
-                                                                                                className="text-xs font-medium text-primary hover:underline"
-                                                                                            >
-                                                                                                Start as Host →
-                                                                                            </button>
-                                                                                        ) : ((session as any).linkType === 'zoom' || (session as any).linkType === 'ZOOM_MEETING') ? (
-                                                                                            <button
-                                                                                                onClick={() => handleZoomStartAsHost(session.id)}
-                                                                                                className="text-xs font-medium text-primary hover:underline"
-                                                                                            >
-                                                                                                Start as Host →
-                                                                                            </button>
-                                                                                        ) : ((session as any).linkType === 'google meet' || (session as any).linkType === 'GOOGLE_MEET' || (session as any).linkType === 'googleMeet') ? (
-                                                                                            <button
-                                                                                                onClick={() => handleMeetStartAsHost(session.id)}
-                                                                                                className="text-xs font-medium text-primary hover:underline"
-                                                                                            >
-                                                                                                Start as Host →
-                                                                                            </button>
-                                                                                        ) : (
-                                                                                            <a
-                                                                                                href={session.link}
-                                                                                                target="_blank"
-                                                                                                rel="noopener noreferrer"
-                                                                                                className="text-xs font-medium text-primary hover:underline"
-                                                                                            >
-                                                                                                Join →
-                                                                                            </a>
-                                                                                        )}
+                                                                                        {(() => {
+                                                                                            const startAsHost = resolveHostAction(session as any);
+                                                                                            return startAsHost ? (
+                                                                                                <button
+                                                                                                    onClick={startAsHost}
+                                                                                                    className="text-xs font-medium text-primary hover:underline"
+                                                                                                >
+                                                                                                    Start as Host →
+                                                                                                </button>
+                                                                                            ) : (
+                                                                                                <a
+                                                                                                    href={session.link}
+                                                                                                    target="_blank"
+                                                                                                    rel="noopener noreferrer"
+                                                                                                    className="text-xs font-medium text-primary hover:underline"
+                                                                                                >
+                                                                                                    Join →
+                                                                                                </a>
+                                                                                            );
+                                                                                        })()}
                                                                                     </div>
                                                                                 </div>
                                                                         ))}
@@ -1797,7 +1895,7 @@ function ViewLiveSession() {
                                                 })()}
                                         </>
                                     ) : (
-                                        <SessionCalendarView schedules={groupedSchedules} />
+                                        <SessionCalendarView schedules={groupedSchedules} getHostAction={resolveHostAction} />
                                     )}
                                 </CardContent>
                             </Card>

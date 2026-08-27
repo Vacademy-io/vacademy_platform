@@ -244,7 +244,11 @@ public class AssessmentDataEnrichmentService {
 
             JsonNode questionsNode = sectionNode.get("questions");
             if (questionsNode != null && questionsNode.isArray()) {
-                enrichedSection.put("questions", enrichQuestions(questionsNode, qwmMap));
+                // Per-question max marks live on the section, not on the question or on
+                // question_wise_marks, so they have to be carried down - without them the
+                // model sees marks_obtained with nothing to weigh it against.
+                Double marksPerQuestion = section != null ? section.getMarksPerQuestion() : null;
+                enrichedSection.put("questions", enrichQuestions(questionsNode, qwmMap, marksPerQuestion));
             }
 
         } catch (Exception e) {
@@ -258,7 +262,8 @@ public class AssessmentDataEnrichmentService {
      * Enrich questions with full text content
      */
     private List<Map<String, Object>> enrichQuestions(JsonNode questionsNode,
-                                                       Map<String, QuestionWiseMarks> qwmMap) {
+                                                       Map<String, QuestionWiseMarks> qwmMap,
+                                                       Double marksPerQuestion) {
         List<Map<String, Object>> enrichedQuestions = new ArrayList<>();
 
         try {
@@ -278,7 +283,8 @@ public class AssessmentDataEnrichmentService {
 
             for (JsonNode questionNode : questionsNode) {
                 String qId = questionNode.get("questionId").asText();
-                enrichedQuestions.add(enrichQuestion(questionNode, questionMap, qwmMap, optionsByQuestion.getOrDefault(qId, List.of())));
+                enrichedQuestions.add(enrichQuestion(questionNode, questionMap, qwmMap,
+                        optionsByQuestion.getOrDefault(qId, List.of()), marksPerQuestion));
             }
 
         } catch (Exception e) {
@@ -289,10 +295,18 @@ public class AssessmentDataEnrichmentService {
     }
 
     /**
-     * Enrich a single question with full text and options
+     * Enrich a single question with full text, options, the answer key and what the
+     * learner actually chose.
+     *
+     * <p>The correct answer used to be missing entirely: the payload carried the
+     * question, the options, the learner's answer and a CORRECT/INCORRECT status, but
+     * never what the right answer was. The prompt asks for a
+     * {@code misconception_analysis} with a {@code correct_answer} field per wrong
+     * question, so the model had to infer it from the explanation text - or invent it.
      */
     private Map<String, Object> enrichQuestion(JsonNode questionNode, Map<String, Question> questionMap,
-                                                Map<String, QuestionWiseMarks> qwmMap, List<Option> options) {
+                                                Map<String, QuestionWiseMarks> qwmMap, List<Option> options,
+                                                Double marksPerQuestion) {
         Map<String, Object> eq = new LinkedHashMap<>();
 
         try {
@@ -310,44 +324,44 @@ public class AssessmentDataEnrichmentService {
                 if (question.getParentRichText() != null) {
                     eq.put("parent_text", stripForAI(question.getParentRichText().getContent()));
                 }
-                if (question.getExplanationTextData() != null) {
-                    eq.put("explanation", stripForAI(question.getExplanationTextData().getContent()));
-                }
 
-                // Options as readable text (not IDs)
+                // Options as readable text, one string each — the model never refers to an
+                // option by id, so wrapping each label in its own object earned nothing.
                 if (!options.isEmpty()) {
-                    List<Map<String, String>> optList = new ArrayList<>();
+                    List<String> optList = new ArrayList<>();
                     for (Option opt : options) {
-                        Map<String, String> o = new LinkedHashMap<>();
-                        o.put("label", opt.getText() != null ? stripForAI(opt.getText().getContent()) : "");
-                        optList.add(o);
+                        optList.add(opt.getText() != null ? stripForAI(opt.getText().getContent()) : "");
                     }
                     eq.put("options", optList);
                 }
+
+                String correctAnswer = extractCorrectAnswer(question.getAutoEvaluationJson(), options);
+                if (!correctAnswer.isBlank()) {
+                    eq.put("correct_answer", correctAnswer);
+                }
+
+                if (question.getExplanationTextData() != null) {
+                    eq.put("explanation", stripForAI(question.getExplanationTextData().getContent()));
+                }
             }
+
+            // Student's selected answer as readable text
+            String studentAnswer = extractStudentAnswer(questionNode.get("responseData"), options);
+            eq.put("student_answer", studentAnswer);
 
             // Marks status from question_wise_marks
             QuestionWiseMarks qwm = qwmMap.get(questionId);
             if (qwm != null) {
                 eq.put("status", qwm.getStatus()); // CORRECT, INCORRECT, PARTIAL_CORRECT, PENDING
                 eq.put("marks_obtained", qwm.getMarks());
+            } else {
+                // No marks row at all: unanswered, or not yet evaluated. Say so rather than
+                // leaving the field out, which reads as a wrong answer to the model.
+                eq.put("status", studentAnswer.isBlank() ? "SKIPPED" : "PENDING");
+                eq.put("marks_obtained", 0);
             }
-
-            // Student's selected answer as readable text
-            JsonNode responseData = questionNode.get("responseData");
-            if (responseData != null && responseData.has("optionIds") && !options.isEmpty()) {
-                List<String> selectedTexts = new ArrayList<>();
-                Map<String, String> optionIdToText = new HashMap<>();
-                for (Option opt : options) {
-                    optionIdToText.put(opt.getId(), opt.getText() != null ? stripForAI(opt.getText().getContent()) : "");
-                }
-                for (JsonNode optId : responseData.get("optionIds")) {
-                    String text = optionIdToText.get(optId.asText());
-                    if (text != null) selectedTexts.add(text);
-                }
-                eq.put("student_answer", String.join(", ", selectedTexts));
-            } else if (responseData != null && responseData.has("answer")) {
-                eq.put("student_answer", responseData.get("answer").asText());
+            if (marksPerQuestion != null) {
+                eq.put("marks", marksPerQuestion);
             }
 
             eq.put("time_taken_seconds",
@@ -360,6 +374,124 @@ public class AssessmentDataEnrichmentService {
         }
 
         return eq;
+    }
+
+    /**
+     * The question's answer key as readable text.
+     *
+     * <p>Mirrors {@link HtmlBuilderService#extractContent} but resolves option ids
+     * against the already-loaded option list instead of issuing a findById per option.
+     * Returns "" for anything with no single right answer (CODING) or an unparseable key,
+     * so the field is simply omitted rather than filled with something misleading.
+     */
+    private String extractCorrectAnswer(String autoEvaluationJson, List<Option> options) {
+        if (autoEvaluationJson == null || autoEvaluationJson.isBlank()) {
+            return "";
+        }
+        try {
+            JsonNode root = objectMapper.readTree(autoEvaluationJson);
+            JsonNode data = root.path("data");
+            String type = root.path("type").asText("");
+
+            switch (type) {
+                case "MCQS", "MCQM", "TRUE_FALSE" -> {
+                    return joinOptionText(data.path("correctOptionIds"), options);
+                }
+                case "ONE_WORD" -> {
+                    return stripForAI(data.path("answer").asText(""));
+                }
+                case "LONG_ANSWER" -> {
+                    return stripForAI(data.path("answer").path("content").asText(""));
+                }
+                case "NUMERIC" -> {
+                    JsonNode valid = data.path("validAnswers");
+                    return valid.isArray() && !valid.isEmpty() ? valid.get(0).asText() : "";
+                }
+                default -> {
+                    return "";
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[DataEnrichment] Could not read the answer key: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * What the learner submitted, as readable text.
+     *
+     * <p>Previously only MCQ option ids and a bare {@code answer} field were handled, so
+     * NUMERIC responses (which use {@code validAnswer}) and CODING submissions reached the
+     * model as no answer at all — indistinguishable from a skipped question.
+     */
+    private String extractStudentAnswer(JsonNode responseData, List<Option> options) {
+        if (responseData == null || responseData.isNull()) {
+            return "";
+        }
+        try {
+            String type = responseData.path("type").asText("");
+            if (responseData.has("optionIds")) {
+                return joinOptionText(responseData.get("optionIds"), options);
+            }
+            if ("NUMERIC".equals(type) || responseData.has("validAnswer")) {
+                return responseData.path("validAnswer").asText("");
+            }
+            if ("CODING".equals(type)) {
+                return summariseCodingAnswer(responseData);
+            }
+            return stripForAI(responseData.path("answer").asText(""));
+        } catch (Exception e) {
+            log.warn("[DataEnrichment] Could not read the learner response: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /** A CODING submission as one line: the verdict and how many tests passed. */
+    private String summariseCodingAnswer(JsonNode responseData) {
+        String language = responseData.path("language").asText("");
+        String verdict = responseData.path("verdict").asText("");
+        int passed = 0;
+        int total = 0;
+        JsonNode results = responseData.path("testCaseResults");
+        if (results.isArray()) {
+            for (JsonNode testCase : results) {
+                total++;
+                if (testCase.path("passed").asBoolean(false)) {
+                    passed++;
+                }
+            }
+        }
+        if (total == 0) {
+            passed = responseData.path("passedCount").asInt(0);
+            total = responseData.path("totalCount").asInt(0);
+        }
+        StringBuilder summary = new StringBuilder();
+        if (!language.isEmpty()) {
+            summary.append(language).append(" | ");
+        }
+        if (!verdict.isEmpty()) {
+            summary.append(verdict).append(" | ");
+        }
+        summary.append(passed).append("/").append(total).append(" tests passed");
+        return summary.toString();
+    }
+
+    private String joinOptionText(JsonNode optionIds, List<Option> options) {
+        if (optionIds == null || !optionIds.isArray() || optionIds.isEmpty()) {
+            return "";
+        }
+        Map<String, String> textById = new LinkedHashMap<>();
+        for (Option option : options) {
+            textById.put(option.getId(), option.getText() != null ? stripForAI(option.getText().getContent()) : "");
+        }
+        List<String> labels = new ArrayList<>();
+        for (JsonNode idNode : optionIds) {
+            String label = textById.get(idNode.asText());
+            if (label != null && !label.isBlank()) {
+                labels.add(label);
+            }
+        }
+        return String.join(", ", labels);
     }
 
     /**

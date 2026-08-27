@@ -1,0 +1,137 @@
+{
+    "navigation": {
+        "updateSurvey": "Mettre à jour le sondage",
+        "updateAssessment": "Mettre à jour l'évaluation",
+        "createSurvey": "Créer un sondage",
+        "createAssessment": "Créer une évaluation"
+    },
+    "toasts": {
+        "updateSuccess": "Les données de l'étape 1 ont été mises à jour avec succès !",
+        "saveSuccess": "Les données de l'étape 1 ont été enregistrées avec succès !"
+    },
+    "errors": {
+        "saveFailed": "Échec de l'enregistrement des informations de base."
+    },
+    "header": {
+        "title": "Informations de base",
+        "description": "Configurez les détails de base de votre évaluation, notamment le nom, le calendrier, la méthode d'évaluation et les préférences de publication des résultats.",
+        "updateButton": "Mettre à jour",
+        "nextButton": "Suivant"
+    },
+    "basicInfoSection": {
+        "titleSurvey": "Informations sur le sondage",
+        "titleAssessment": "Informations de base",
+        "description": "Nom, matière et instructions affichés aux participants.",
+        "titlePlaceholder": "Ajouter un titre",
+        "nameLabelSurvey": "Nom du sondage",
+        "nameLabelAssessment": "Nom de l'évaluation",
+        "instructionsLabelSurvey": "Instructions du sondage",
+        "instructionsLabelAssessment": "Instructions de l'évaluation",
+        "instructionsPlaceholderSurvey": "Rédigez les instructions du sondage",
+        "instructionsPlaceholderAssessment": "Rédigez les instructions de l'évaluation"
+    },
+    "liveDateRangeSection": {
+        "title": "Plage de dates en direct",
+        "description": "Quand les participants peuvent commencer et doivent terminer l'évaluation.",
+        "startDateLabel": "Date et heure de début",
+        "endDateLabel": "Date et heure de fin"
+    },
+    "attemptSettingsSection": {
+        "title": "Paramètres de tentative",
+        "description": "Contrôlez la façon dont les participants passent cette évaluation.",
+        "reattemptCountPlaceholder": "Nombre de tentatives",
+        "reattemptCountLabel": "Nombre de tentatives",
+        "resultEvaluationType": {
+            "label": "Type de résultat et d'évaluation",
+            "options": {
+                "autoAfterSubmission": {
+                    "label": "Automatique — Publication après la soumission",
+                    "help": "Le système note automatiquement. Les résultats sont visibles par l'apprenant immédiatement après sa soumission."
+                },
+                "autoAfterAssessmentEnd": {
+                    "label": "Automatique — Publication après la fin de l'examen",
+                    "help": "Le système note automatiquement. Les résultats ne deviennent visibles qu'après la fin de l'évaluation."
+                },
+                "noAutoRelease": {
+                    "label": "Automatique — Publication manuelle",
+                    "help": "Le système note automatiquement. Les résultats restent masqués jusqu'à ce que vous cliquiez sur « Publier le résultat » dans l'onglet des soumissions."
+                },
+                "manual": {
+                    "label": "Évaluation et publication manuelles",
+                    "help": "L'enseignant note chaque soumission à la main. Les résultats restent masqués jusqu'à ce que vous les évaluiez et les publiiez manuellement."
+                }
+            }
+        },
+        "submissionType": {
+            "label": "Type de soumission",
+            "helper": "Comment les étudiants soumettent leurs réponses (par ex., téléversement de fichier, PDF)."
+        },
+        "assessmentPreview": {
+            "labelSurvey": "Autoriser l'aperçu du sondage",
+            "labelAssessment": "Autoriser l'aperçu de l'évaluation",
+            "description": "Permettre aux participants d'apercevoir l'évaluation avant de commencer.",
+            "timeLimitLabel": "Limite de temps de l'aperçu"
+        },
+        "switchSections": {
+            "label": "Autoriser les {{role}}s à changer de section",
+            "description": "Les participants peuvent naviguer librement entre les sections."
+        }
+    },
+    "unusedFields": {
+        "testCreation": {
+            "titlePlaceholder": "Ajouter un titre",
+            "nameLabelSurvey": "Nom du sondage",
+            "nameLabelAssessment": "Nom de l'évaluation"
+        },
+        "liveDateRange": {
+            "startDateLabel": "Date et heure de début",
+            "endDateLabel": "Date et heure de fin"
+        },
+        "assessmentInstructions": {
+            "labelSurvey": "Instructions du sondage",
+            "labelAssessment": "Instructions de l'évaluation",
+            "placeholderSurvey": "Ajouter les instructions du sondage",
+            "placeholderAssessment": "Ajouter les instructions de l'évaluation"
+        },
+        "assessmentPreview": {
+            "enableLabel": "Activer l'aperçu de l'évaluation",
+            "timeLimitLabel": "Limite de temps de l'aperçu"
+        },
+        "reattemptCount": {
+            "placeholder": "Saisir le nombre de tentatives",
+            "label": "Nombre de tentatives"
+        },
+        "submissionType": {
+            "label": "Type de soumission",
+            "options": {
+                "autoSubmit": "Soumission automatique",
+                "manualSubmit": "Soumission manuelle"
+            }
+        },
+        "durationDistribution": {
+            "label": "Répartition de la durée",
+            "helper": "Choisissez si les limites de temps s'appliquent à l'ensemble du test, par section, ou par question.",
+            "options": {
+                "entireAssessment": "Évaluation entière",
+                "sectionWise": "Par section",
+                "questionWise": "Par question"
+            }
+        },
+        "evaluationType": {
+            "label": "Type d'évaluation",
+            "options": {
+                "auto": "Évaluation automatique",
+                "manual": "Évaluation manuelle"
+            }
+        },
+        "switchSections": {
+            "label": "Autoriser le changement de section"
+        },
+        "reattemptRequest": {
+            "label": "Autoriser les étudiants à demander une nouvelle tentative"
+        },
+        "timeIncreaseRequest": {
+            "label": "Autoriser les étudiants à demander une prolongation du temps"
+        }
+    }
+}

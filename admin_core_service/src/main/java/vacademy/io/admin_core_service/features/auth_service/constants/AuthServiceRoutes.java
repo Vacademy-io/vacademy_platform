@@ -8,6 +8,8 @@ public class AuthServiceRoutes {
 
     public static final String INVITE_USER_ROUTE = "/auth-service/internal/v1/user-invitation/invite";
     public static final String GET_USERS_FROM_AUTH_SERVICE = "/auth-service/internal/user/user-details-list";
+    public static final String GET_USERS_BY_INSTITUTE_ROLE = "/auth-service/internal/user/v1/users-by-institute-role";
+    public static final String GET_INSTITUTE_ROLES = "/auth-service/internal/user/v1/institute-roles";
     public static final String UPDATE_USER_ROUTE = "/auth-service/v1/user/internal/update-user";
     public static final String UPDATE_PASSWORD_ROUTE = "/auth-service/v1/user-operation/update-password";
     public static final String GET_USER_BY_ID_WITH_PASSWORD = "/auth-service/internal/user/user-by-id-with-password";

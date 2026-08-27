@@ -112,6 +112,7 @@ Return STRICT JSON, no prose, no markdown fence:
       "subtopics": [
         {{
           "title": "a narrower testable area, e.g. 'Definite integrals and properties'",
+          "summary": "one line NAMING the specific tests, tables, named methods and concepts this subtopic covers in the material — e.g. 'Snellen chart, Ishihara plates, accommodation reflex, fundoscopy'. Course slides are generated from these names; a vague summary loses content.",
           "keywords": ["the concepts a question on this would use"]
         }}
       ]
@@ -132,7 +133,156 @@ RULES THAT MATTER:
 - At most {MAX_TOPICS} topics. If the material is broad, group at the level a syllabus would —
   prefer "Thermodynamics" over fifteen separate laws.
 - Order topics the way a syllabus would, not the way the files happened to be uploaded.
+- SINGLE COHERENT TEXT (one book/chapter rather than many mixed papers): keep the material's OWN
+  section headings as subtopic titles, in the material's own order — teachers review these titles
+  against their book, and re-themed names read as missing content. Re-theme titles only when
+  merging genuinely overlapping sources.
+- GRANULARITY for a single text: aim for roughly ONE subtopic per section heading of the material
+  (each becomes one course page) — do NOT compress a chapter's sections into 2 broad subtopics;
+  a reviewer comparing against the book reads merged subtopics as dropped content. Never merge
+  two different nerves/organs/procedures into one subtopic when the material treats them
+  separately.
 """
+
+
+
+
+# ── Heading-derived tree (single-source KBs) ─────────────────────────────────
+# Prompt guidance could not stop the model re-theming/merging a textbook's
+# structure (three ingests of the same chapter produced 25, 12 and 8 subtopics).
+# Same cure as the deterministic course outline: the LLM is demoted from
+# ARCHITECT to QUOTER — it may only list the source's headings verbatim, every
+# heading is verified as a literal substring of the corpus (invented or renamed
+# ones are dropped), and the tree is assembled mechanically from the survivors.
+
+MAX_HEADING_CORPUS_CHARS = 200_000
+MIN_VALID_HEADINGS = 4
+
+
+def _norm(text: str) -> str:
+    return " ".join((text or "").split()).casefold()
+
+
+def _heading_prompt(corpus: str) -> str:
+    return f"""Below is a teaching document with [PAGE n] markers.
+
+List its SECTION HEADINGS — the printed titles that divide the material into sections.
+
+Return STRICT JSON, no prose, no markdown fence:
+{{"headings": [{{"title": "the heading EXACTLY as printed", "page": 3, "level": 1}}]}}
+
+RULES:
+- COPY each heading VERBATIM, character for character, as it appears in the text. Never rename,
+  merge, shorten, or invent. Headings that are not exact copies will be discarded.
+- In document order.
+- "level": 1 for a major section heading, 2 for a sub-heading inside a major section.
+- SKIP: figure/table captions (Fig., Table), running page headers/footers, the document title,
+  learning-objective bullets, and references.
+
+DOCUMENT:
+{corpus}
+"""
+
+
+async def _heading_topics(
+    db: Session, repo: KbRepository, kb: Dict[str, Any], kb_id: str
+) -> Optional[List[TopicNode]]:
+    """Verbatim-verified heading tree, or None to fall back to the LLM tree."""
+    sources = [s for s in repo.list_sources(kb_id) if s.get("is_active")]
+    if len(sources) != 1:
+        return None  # multi-source KBs genuinely need the merging LLM view
+
+    chunks = repo.get_all_chunk_summaries(
+        kb_id=kb_id, institute_id=kb["institute_id"], limit=400
+    )
+    if not chunks:
+        return None
+    pages: Dict[int, List[str]] = {}
+    for c in chunks:
+        pages.setdefault(c.get("page_start") or 0, []).append(c.get("content_text") or "")
+    corpus = "\n\n".join(
+        f"[PAGE {p}]\n" + "\n".join(texts) for p, texts in sorted(pages.items())
+    )
+    if len(corpus) > MAX_HEADING_CORPUS_CHARS:
+        return None  # windowing not implemented; the merge view handles big books
+
+    primary, fallbacks = resolve_models(db, USE_CASE)
+    raw, _model, _usage = await generate_json(
+        _heading_prompt(corpus), [primary, *fallbacks], label="kb-headings"
+    )
+    parsed = json.loads(raw)
+
+    corpus_norm = _norm(corpus)
+    valid: List[Dict[str, Any]] = []
+    seen = set()
+    for h in parsed.get("headings") or []:
+        title = str(h.get("title") or "").strip()
+        key = _norm(title)
+        # The verbatim gate: quoting is the ONLY power the model has here.
+        if not (3 <= len(title) <= 120) or key in seen or key not in corpus_norm:
+            continue
+        seen.add(key)
+        try:
+            page = int(h.get("page")) or None
+        except (TypeError, ValueError):
+            page = None
+        level = 1 if h.get("level") == 1 else 2
+        valid.append({"title": title, "page": page, "level": level})
+    if len(valid) < MIN_VALID_HEADINGS:
+        logger.info(
+            "Heading tree: only %d verbatim headings for kb=%s; falling back", len(valid), kb_id
+        )
+        return None
+
+    # Page span: a heading's section runs to the next heading's page.
+    for i, h in enumerate(valid):
+        nxt = next((v["page"] for v in valid[i + 1:] if v["page"]), None)
+        h["page_end"] = max(h["page"] or 0, (nxt or h["page"] or 0)) or None
+
+    topics: List[TopicNode] = []
+    if not any(h["level"] == 1 for h in valid):
+        for h in valid:
+            h["level"] = 1  # flat document: every heading is a major section
+    for h in valid:
+        if h["level"] == 1 or not topics:
+            topics.append(
+                TopicNode(
+                    title=h["title"][:300], page_start=h["page"], page_end=h["page_end"]
+                )
+            )
+        else:
+            topics[-1].subtopics.append(
+                TopicNode(
+                    title=h["title"][:300], page_start=h["page"], page_end=h["page_end"]
+                )
+            )
+    # A major section with no sub-headings still teaches itself (the course
+    # builder makes one slide from a childless topic), and topic spans widen to
+    # cover their children.
+    for t in topics:
+        spans = [s for n in [t, *t.subtopics] for s in (n.page_start, n.page_end) if s]
+        if spans:
+            t.page_start, t.page_end = min(spans), max(spans)
+    logger.info(
+        "Heading tree for kb=%s: %d topics / %d headings, all verbatim-verified",
+        kb_id, len(topics), len(valid),
+    )
+    return topics
+
+
+
+def _relink_chunks(repo: KbRepository, kb_id: str) -> None:
+    """Re-attach chunks now the topic tree exists.
+
+    Ingest links chunks BEFORE this tree is built (subtopic nodes do not exist
+    yet), so on first linking everything lands on summary-tree sections and
+    node-scoped slide grounding starts blind. Best-effort: linkage failure must
+    never fail a tree rebuild."""
+    for src in repo.list_sources(kb_id):
+        try:
+            repo.link_chunks_to_nodes(src["id"])
+        except Exception:  # noqa: BLE001
+            logger.warning("Chunk relink failed for source %s", src.get("id"), exc_info=True)
 
 
 async def build_topic_tree(
@@ -152,6 +302,20 @@ async def build_topic_tree(
     kb = repo.get_kb(kb_id, institute_id)
     if not kb:
         raise ValueError("Knowledge base not found")
+
+    # Single-source KBs get the mechanical, verbatim-verified heading tree —
+    # structure the reviewer can check against their own book. Any failure
+    # falls through to the merging LLM view unchanged.
+    try:
+        heading_topics = await _heading_topics(db, repo, kb, kb_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Heading tree failed for kb=%s (%s); using LLM tree", kb_id, exc)
+        heading_topics = None
+    if heading_topics:
+        repo.replace_topic_tree(kb_id, institute_id, heading_topics)
+        _relink_chunks(repo, kb_id)
+        result.topics = heading_topics
+        return result
 
     sections = [
         node for node in repo.get_structure_outline(kb_id, max_nodes=1000)
@@ -223,6 +387,7 @@ async def build_topic_tree(
         result.topics.append(topic)
 
     repo.replace_topic_tree(kb_id, institute_id, result.topics)
+    _relink_chunks(repo, kb_id)
     logger.info(
         "Topic tree for kb=%s: %s topic(s), %s node(s) total, %s prompt/%s completion tokens",
         kb_id, len(result.topics), result.total_nodes,

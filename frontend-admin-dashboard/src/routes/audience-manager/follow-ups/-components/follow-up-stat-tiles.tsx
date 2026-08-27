@@ -1,4 +1,6 @@
 import { Warning, Sun, CalendarBlank, ListChecks } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
 import type { FollowUpBucket } from './follow-up-buckets';
 
@@ -27,32 +29,32 @@ interface TileSpec {
     tone: 'danger' | 'warning' | 'info' | 'neutral';
 }
 
-const TILES: TileSpec[] = [
+const buildTiles = (t: TFunction): TileSpec[] => [
     {
         bucket: 'overdue',
-        label: 'Pending',
-        caption: 'Overdue',
+        label: t('tiles.overdue.label'),
+        caption: t('tiles.overdue.caption'),
         Icon: Warning,
         tone: 'danger',
     },
     {
         bucket: 'today',
-        label: 'Today',
-        caption: 'Due today',
+        label: t('tiles.today.label'),
+        caption: t('tiles.today.caption'),
         Icon: Sun,
         tone: 'warning',
     },
     {
         bucket: 'upcoming',
-        label: 'Upcoming',
-        caption: 'Next 7 days',
+        label: t('tiles.upcoming.label'),
+        caption: t('tiles.upcoming.caption'),
         Icon: CalendarBlank,
         tone: 'info',
     },
     {
         bucket: 'all',
-        label: 'All',
-        caption: 'All follow-ups',
+        label: t('tiles.all.label'),
+        caption: t('tiles.all.caption'),
         Icon: ListChecks,
         tone: 'neutral',
     },
@@ -79,9 +81,11 @@ const TONE_BORDER: Record<TileSpec['tone'], string> = {
 };
 
 export function FollowUpStatTiles({ counts, active, onChange }: FollowUpStatTilesProps) {
+    const { t } = useTranslation('audienceManagerFollowUpStatTiles');
+    const tiles = buildTiles(t);
     return (
         <div className="flex flex-wrap gap-3">
-            {TILES.map(({ bucket, label, caption, Icon, tone }) => {
+            {tiles.map(({ bucket, label, caption, Icon, tone }) => {
                 const isActive = active === bucket;
                 const count = counts[bucket] ?? 0;
                 return (

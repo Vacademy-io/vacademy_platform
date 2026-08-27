@@ -11,6 +11,13 @@ from ..schemas.chat_agent import MessageIntent
 
 logger = logging.getLogger(__name__)
 
+# A bare media fileId must never be mistaken for a study topic — see
+# get_practice_topic.
+_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
 
 # Keyword patterns for quick classification
 PRACTICE_PATTERNS = [
@@ -172,8 +179,18 @@ class IntentClassifierService:
         if context_data.get("course"):
             return context_data["course"]
 
-        # Last resort: extract a topic hint from slide content
+        # Last resort: extract a topic hint from slide content.
+        #
+        # Two things must never become a "topic" here. A bare media fileId, which
+        # is what a PDF slide's content used to be — a 36-char UUID clears both
+        # length checks below and was handed to the quiz generator as the topic.
+        # And the bracketed system note that now replaces unreadable slide
+        # content, which would otherwise become an even longer nonsense topic.
         content = context_data.get("content", "")
+        if content.lstrip().startswith("["):
+            content = ""
+        elif _UUID_RE.match(content.strip()):
+            content = ""
         if content and len(content) > 20:
             # Use first meaningful line as topic hint (up to 100 chars)
             first_line = content.strip().split("\n")[0][:100].strip()

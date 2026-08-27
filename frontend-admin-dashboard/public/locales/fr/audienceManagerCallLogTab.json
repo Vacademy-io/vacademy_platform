@@ -1,0 +1,126 @@
+{
+    "kpi": {
+        "totalCalls": "Appels totaux",
+        "connected": "Connectés",
+        "talkTime": "Temps de conversation",
+        "talkTimeUnit": "h : min",
+        "uniqueLeads": "Prospects uniques",
+        "aiVsHuman": "IA vs humain",
+        "aiVsHumanUnit": "IA / humain"
+    },
+    "chips": {
+        "allCalls": "Tous les appels",
+        "missedInbound": "Appels entrants manqués",
+        "callbacksDue": "Rappels à effectuer"
+    },
+    "filters": {
+        "leadName": "Nom du prospect",
+        "leadNamePlaceholder": "Rechercher un nom",
+        "number": "Numéro",
+        "numberPlaceholder": "Chiffres du numéro",
+        "direction": "Sens",
+        "directionOutbound": "Sortant",
+        "directionInbound": "Entrant",
+        "type": "Type",
+        "typeHuman": "Humain",
+        "typeAi": "IA",
+        "provider": "Fournisseur",
+        "status": "Statut",
+        "disposition": "Résultat",
+        "all": "Tous",
+        "searchPlaceholder": "Rechercher {{label}}…"
+    },
+    "providers": {
+        "exotel": "Exotel",
+        "aavtaarAi": "IA (Aavtaar)",
+        "airtel": "Airtel"
+    },
+    "table": {
+        "heading": "Appels",
+        "empty": "Aucun appel ne correspond à ces filtres.",
+        "columns": {
+            "time": "Heure",
+            "lead": "Prospect",
+            "direction": "Sens",
+            "type": "Type",
+            "status": "Statut",
+            "health": "État technique",
+            "healthTooltip": "Verdict technique de l'agent vocal IA",
+            "duration": "Durée",
+            "counsellor": "Conseiller",
+            "disposition": "Résultat",
+            "recording": "Enregistrement",
+            "ai": "IA"
+        },
+        "openLeadProfile": "Ouvrir le profil du prospect",
+        "viewLead": "Voir le prospect",
+        "ivrOptionChosen": "Option SVI choisie"
+    },
+    "directionBadge": {
+        "in": "Entrant",
+        "out": "Sortant"
+    },
+    "typeBadge": {
+        "ai": "IA",
+        "human": "Humain"
+    },
+    "statusDetail": {
+        "whyEnded": "Pourquoi cet appel s'est-il terminé ainsi ?",
+        "loading": "Chargement des détails…",
+        "reasonPrefix": "Motif : {{reason}}",
+        "noDetail": "Aucun détail supplémentaire disponible.",
+        "reason": "Motif",
+        "provider": "Fournisseur",
+        "attempted": "Tenté",
+        "answered": "Répondu",
+        "duration": "Durée",
+        "cost": "Coût",
+        "viewRawResponse": "Voir la réponse brute du fournisseur"
+    },
+    "disposition": {
+        "edit": "Modifier",
+        "set": "Définir"
+    },
+    "recording": {
+        "loading": "Chargement…",
+        "play": "Lire"
+    },
+    "export": {
+        "csv": "CSV",
+        "excel": "Excel",
+        "successToast": "{{format}} exporté",
+        "errorToast": "Échec de l'export. Veuillez réessayer."
+    },
+    "dispositionDialog": {
+        "heading": "Définir le résultat de l'appel",
+        "save": "Enregistrer",
+        "outcome": "Résultat",
+        "noOutcomes": "Aucun résultat configuré.",
+        "mapsToStatus": "→ statut",
+        "callbackAt": "Rappeler le",
+        "notes": "Notes (facultatif)",
+        "notesPlaceholder": "Ajouter une note",
+        "savedStatusUpdated": "Enregistré — statut du prospect mis à jour",
+        "saved": "Résultat enregistré",
+        "saveError": "Impossible d'enregistrer le résultat."
+    },
+    "intelligenceDialog": {
+        "heading": "Transcription et intelligence IA",
+        "analyzeHeading": "Analyser cet appel ?",
+        "analyzeConfirm": "Analyser"
+    },
+    "empty": {
+        "pickInstitute": "Choisissez un établissement pour voir le journal des appels."
+    },
+    "deployPending": {
+        "title": "Le tableau de bord des appels n'est pas encore disponible sur ce serveur",
+        "description": "Les points de terminaison du tableau de bord de téléphonie n'ont pas encore été déployés dans cet environnement. Revenez après la prochaine publication du backend."
+    },
+    "error": {
+        "loadFailed": "Impossible de charger le journal des appels."
+    },
+    "common": {
+        "retry": "Réessayer",
+        "leadFallback": "Prospect"
+    }
+}

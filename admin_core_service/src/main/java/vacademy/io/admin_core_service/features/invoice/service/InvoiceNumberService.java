@@ -201,9 +201,20 @@ public class InvoiceNumberService {
                 .build();
     }
 
+    /**
+     * The {@code invoice.seq_scope_key} this allocation counts within.
+     *
+     * <p>A context carrying a {@link InvoiceNumberContext#getSeqNamespace() seqNamespace}
+     * gets {@code "<namespace>:<scopeKey>"}, which is simply a scope key no date can ever
+     * produce — so that document kind counts on its own and leaves the institute's main
+     * series untouched. Every read of the counter goes through here, so preview,
+     * allocation and collision-retry all agree on which series they are in.
+     */
     private String scopeKeyFor(InvoiceNumberConfig config, InvoiceNumberContext context) {
         LocalDate date = context.getDate() != null ? context.getDate() : LocalDate.now();
-        return config.getSeqScope().scopeKey(date);
+        String scopeKey = config.getSeqScope().scopeKey(date);
+        String namespace = context.getSeqNamespace();
+        return StringUtils.hasText(namespace) ? namespace + ":" + scopeKey : scopeKey;
     }
 
     /**

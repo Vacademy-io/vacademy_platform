@@ -1,0 +1,13 @@
+-- A CPO fee type with has_installment = false has no aft_installments row to point
+-- at, but student_fee_payment.i_id was NOT NULL and carries FK fk_sfp_installment
+-- (i_id -> aft_installments.id, added in V119). The generator worked around the
+-- NOT NULL by writing the AssignedFeeValue id into i_id as a sentinel, which could
+-- only ever violate the FK -- and because Hibernate batches the inserts, that one
+-- bad row aborted the whole batch and took the sibling installment rows with it.
+-- The learner ended up enrolled, with ledger accruals (posted REQUIRES_NEW, so they
+-- survived the rollback) but zero fee bills and nothing an admin could collect against.
+--
+-- Allow i_id to be null so a one-off fee can simply have no installment. asv_id
+-- (NOT NULL) still links the row back to its AssignedFeeValue, and every reader of
+-- i_id already tolerates null or looks the id up defensively.
+ALTER TABLE student_fee_payment ALTER COLUMN i_id DROP NOT NULL;

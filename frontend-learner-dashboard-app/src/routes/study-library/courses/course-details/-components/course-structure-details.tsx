@@ -4,8 +4,10 @@ import { PullToRefreshWrapper } from "@/components/design-system/pull-to-refresh
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn, toTitleCase } from "@/lib/utils";
 import { useDripConditions } from "@/hooks/use-drip-conditions";
-import { LockedBadge } from "@/components/drip-conditions";
+import { LockedBadge, LockNotice } from "@/components/drip-conditions";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
+import { useCourseDripSchedule } from "@/hooks/use-course-drip-schedule";
+import type { ContentCardImageFit } from "@/types/student-display-settings";
 import { evaluateDripCondition } from "@/utils/drip-conditions";
 import type {
   LearnerProgressData,
@@ -16,6 +18,7 @@ import {
   shouldFilterItem,
 } from "@/components/drip-conditions/helpers";
 import {
+  CaretLeft,
   CaretRight,
   CheckCircle,
   Circle,
@@ -137,6 +140,69 @@ export type CourseInitSubject = {
   subject_order?: number;
 };
 
+/**
+ * Column counts for the content-only drill-down grid. Exported so the page's
+ * loading skeleton lays out identically — a skeleton that promises two columns
+ * and resolves into one is worse than no skeleton.
+ */
+export const CONTENT_ONLY_CARD_GRID =
+  "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
+
+/**
+ * Content Structure card chrome, matched to the admin dashboard.
+ *
+ * The admin card is a padded shell with the thumbnail inset and rounded on all
+ * four sides; the learner grid used a full-bleed image running to the card
+ * edge. Same content, two different-looking screens — so this follows the
+ * admin, which is the one authors design against.
+ */
+const CONTENT_CARD_SHELL =
+  "group h-full rounded-lg border-neutral-200 bg-card p-2 transition-shadow duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2";
+
+/**
+ * Inset thumbnail for a Content Structure card.
+ *
+ * A locked item gets the padlock centred ON the artwork behind a scrim, not a
+ * small glyph tucked under the title: on a card whose image is the whole
+ * visual, that is the only place the lock actually reads as "this is shut".
+ */
+const ContentCardThumb = ({
+  url,
+  fallback,
+  locked,
+  fit = "cover",
+}: {
+  url?: string;
+  fallback: React.ReactNode;
+  locked?: boolean;
+  fit?: ContentCardImageFit;
+}) => (
+  <div className="relative mb-2 flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-neutral-50">
+    {url ? (
+      <img
+        src={url}
+        alt=""
+        className={cn(
+          "size-full",
+          fit === "contain" ? "object-contain" : "object-cover",
+        )}
+        crossOrigin="anonymous"
+        referrerPolicy="no-referrer"
+        loading="eager"
+      />
+    ) : (
+      fallback
+    )}
+    {locked && (
+      <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/45">
+        <span className="flex size-11 items-center justify-center rounded-full bg-white/95 shadow-sm">
+          <Lock size={22} weight="fill" className="text-neutral-700" />
+        </span>
+      </div>
+    )}
+  </div>
+);
+
 export const CourseStructureDetails = ({
   selectedSession,
   selectedLevel,
@@ -145,6 +211,9 @@ export const CourseStructureDetails = ({
   packageSessionId,
   selectedTab,
   isEnrolledInCourse,
+  contentOnly,
+  chapterOpensFirstSlide,
+  contentCardImageFit = "cover",
   onLoadingChange,
   updateModuleStats,
   paymentType,
@@ -158,6 +227,17 @@ export const CourseStructureDetails = ({
   packageSessionId: string;
   selectedTab: string;
   isEnrolledInCourse?: boolean;
+  /** "contentOnly" course-details layout: this card is the whole page, so the
+   *  tab strip collapses to Content Structure regardless of what the tab
+   *  settings say. See EnrolledCourseLayout in student-display-settings. */
+  contentOnly?: boolean;
+  /** Tapping a chapter card opens its first available slide in the viewer
+   *  instead of listing the chapter's slides. Resolved by the page from
+   *  courseDetails.chapterOpensFirstSlide. */
+  chapterOpensFirstSlide?: boolean;
+  /** How Content Structure card thumbnails fit their frame. Default "cover",
+   *  which crops to fill and matches the admin dashboard. */
+  contentCardImageFit?: ContentCardImageFit;
   onLoadingChange?: (loading: boolean) => void;
   updateModuleStats?: (
     modulesData: Record<string, Array<{ chapters?: Array<unknown> }>>,
@@ -442,6 +522,21 @@ export const CourseStructureDetails = ({
   }, []);
 
   const renderTabs = useMemo(() => {
+    // Content-only layout: one tab, so the strip hides itself (the render
+    // below only draws it for 2+). Keep the settings label if the institute
+    // renamed the tab, since the terminology carries over to the card header.
+    if (contentOnly) {
+      const configured = filteredTabs.find(
+        (t) => t.value === TabType.CONTENT_STRUCTURE,
+      );
+      return [
+        {
+          label: configured?.label || "Content Structure",
+          value: TabType.CONTENT_STRUCTURE as string,
+        },
+      ];
+    }
+
     const priorityOrder = [
       TabType.OUTLINE,
       TabType.CONTENT_STRUCTURE,
@@ -457,7 +552,26 @@ export const CourseStructureDetails = ({
     const finalArr = [...prioritized, ...rest];
 
     return finalArr;
-  }, [filteredTabs]);
+  }, [filteredTabs, contentOnly]);
+
+  // With one tab and no strip to change it from, the settings-driven default
+  // (usually OUTLINE) would leave the card rendering the wrong view forever.
+  const activeStructureTab = contentOnly
+    ? (TabType.CONTENT_STRUCTURE as string)
+    : selectedStructureTab;
+
+  // Card grid for the Content Structure drill-down. The default layout squeezes
+  // this card into two thirds of the page, so it packs two cards per row even on
+  // a phone. In the content-only layout the grid IS the page — full width and
+  // the learner's only way into the course — so the cards get room to breathe:
+  // one per row on phones, and no drop back to two columns at lg.
+  const contentGridClass = cn(
+    "grid gap-4",
+    contentOnly
+      ? CONTENT_ONLY_CARD_GRID
+      : "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
+  );
+
   const [subjectModulesMap, setSubjectModulesMap] = useState<SubjectModulesMap>(
     {},
   );
@@ -516,6 +630,30 @@ export const CourseStructureDetails = ({
   const { condition: slideCondition, hasConditions: hasSlideConditions } =
     useDripConditions(effectiveDripConditionJson, "slide");
 
+  // Conditions the admin actually configured (they are saved into the
+  // institute's course settings, not onto the content rows), plus the
+  // learner's own day-1 anchor for day-wise schedules.
+  const dripSchedule = useCourseDripSchedule(
+    searchParams.courseId,
+    packageSessionId,
+  );
+  const { conditionFor: dripConditionFor, now: dripNow } = dripSchedule;
+  // Anchors plus the first-item strictness flag, spread into every
+  // LearnerProgressData below. strictFirstItem rides the same opt-in as the
+  // rest: institutes that have not turned this on keep today's behaviour.
+  const dripAnchors = useMemo(
+    () => ({
+      enrollmentDate: dripSchedule.enrollmentDate,
+      sessionStartDate: dripSchedule.sessionStartDate,
+      strictFirstItem: dripSchedule.applyConfiguredRules,
+    }),
+    [
+      dripSchedule.enrollmentDate,
+      dripSchedule.sessionStartDate,
+      dripSchedule.applyConfiguredRules,
+    ],
+  );
+
   // Drill-down state for Content Structure tab
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(
     null,
@@ -544,6 +682,45 @@ export const CourseStructureDetails = ({
   // Log enrollment status changes
   useEffect(() => {}, [instituteId, userHasDonated, isEnrolledInCourse]);
   // const [thumbUrlById, setThumbUrlById] = useState<Record<string, string>>({});
+
+  // course_depth decides which levels a course exposes: 5 shows
+  // subject -> module -> chapter -> slide, 4 drops the subject, 3 also drops
+  // the module, and 2 is slides only. The hidden levels still exist in the
+  // data — a course created below depth 5 gets a seeded subject/module/chapter
+  // named "DEFAULT" to hang content off — which is why a 2-level course used
+  // to render three "Default" rows above every slide.
+  //
+  // Depth alone is NOT enough to hide a level, though: a level is only safe to
+  // drop when it collapses to that single placeholder. Some older depth-3
+  // courses really do carry several subjects/modules, and there the crumbs are
+  // the learner's only route to the siblings the preselect effect skipped —
+  // hiding them would strand that content.
+  const allModulesFlat = useMemo(
+    () => Object.values(subjectModulesMap).flat(),
+    [subjectModulesMap],
+  );
+  const allChaptersFlat = useMemo(
+    () => allModulesFlat.flatMap((mod) => mod.chapters ?? []),
+    [allModulesFlat],
+  );
+  const isPlaceholderName = (name?: string | null) =>
+    (name || "").trim().toLowerCase() === "default";
+
+  const showsSubjectLevel = !(
+    courseStructure < 5 &&
+    studyLibraryData.length === 1 &&
+    isPlaceholderName(studyLibraryData[0]?.subject_name)
+  );
+  const showsModuleLevel = !(
+    courseStructure < 4 &&
+    allModulesFlat.length === 1 &&
+    isPlaceholderName(allModulesFlat[0]?.module.module_name)
+  );
+  const chapterLevelIsPlaceholder =
+    courseStructure < 3 &&
+    allChaptersFlat.length === 1 &&
+    isPlaceholderName(allChaptersFlat[0]?.chapter_name);
+  const showsChapterLevel = !chapterLevelIsPlaceholder;
 
   // Evaluate drip conditions for chapters
   const chapterEvaluations = useMemo(() => {
@@ -575,6 +752,7 @@ export const CourseStructureDetails = ({
         recentScores: allChapters
           .slice(0, index)
           .map((prev) => calculateChapterProgress(prev.id)),
+        ...dripAnchors,
       };
     });
 
@@ -617,19 +795,31 @@ export const CourseStructureDetails = ({
         }
       }
 
-      // Use chapter-specific condition if available, otherwise fall back to package-level
-      const conditionToUse = chapterDripCondition || chapterCondition;
-      const hasCondition = !!chapterDripCondition || hasChapterConditions;
+      // What the admin configured wins: those conditions live in the institute's
+      // course settings, which is the only place the dashboard writes them.
+      // The row's own drip_condition and the package-level fallback are kept
+      // for anything saved before that path existed.
+      const configuredCondition = dripConditionFor("chapter", chapter.id);
+      const conditionToUse =
+        configuredCondition || chapterDripCondition || chapterCondition;
+      const hasCondition =
+        !!configuredCondition || !!chapterDripCondition || hasChapterConditions;
 
-      // Check global flag first, then per-item condition's is_enabled flag
+      // Two independent switches, deliberately not merged: `isDrippingEnable`
+      // owns the original row-level path, while a configured condition has
+      // already passed the new path's own opt-in inside conditionFor.
       const shouldEvaluate =
-        isDrippingEnable &&
+        (isDrippingEnable || !!configuredCondition) &&
         hasCondition &&
         conditionToUse?.is_enabled !== false;
 
       const evaluation =
         shouldEvaluate && conditionToUse
-          ? evaluateDripCondition(conditionToUse, progressData)
+          ? evaluateDripCondition(
+              conditionToUse,
+              progressData,
+              dripNow ? new Date(dripNow) : new Date(),
+            )
           : {
               isLocked: false,
               isHidden: false,
@@ -644,6 +834,9 @@ export const CourseStructureDetails = ({
     subjectModulesMap,
     calculateChapterProgress,
     isDrippingEnable,
+    dripConditionFor,
+    dripAnchors,
+    dripNow,
   ]);
 
   // Evaluate drip conditions for slides
@@ -683,6 +876,7 @@ export const CourseStructureDetails = ({
           recentScores: slides
             .slice(0, index)
             .map((s) => s.percentage_completed || 0),
+          ...dripAnchors,
         };
 
         // Check if this slide has its own drip condition (check both fields)
@@ -719,19 +913,27 @@ export const CourseStructureDetails = ({
           }
         }
 
-        // Use slide-specific condition if available, otherwise fall back to package-level
-        const conditionToUse = slideDripCondition || slideCondition;
-        const hasCondition = !!slideDripCondition || hasSlideConditions;
+        // Admin-configured conditions win over anything stamped on the row —
+        // see the chapter evaluation above for why.
+        const configuredCondition = dripConditionFor("slide", slide.id);
+        const conditionToUse =
+          configuredCondition || slideDripCondition || slideCondition;
+        const hasCondition =
+          !!configuredCondition || !!slideDripCondition || hasSlideConditions;
 
-        // Check global flag first, then per-item condition's is_enabled flag
+        // See the chapter evaluation above for why these stay separate.
         const shouldEvaluate =
-          isDrippingEnable &&
+          (isDrippingEnable || !!configuredCondition) &&
           hasCondition &&
           conditionToUse?.is_enabled !== false;
 
         const evaluation =
           shouldEvaluate && conditionToUse
-            ? evaluateDripCondition(conditionToUse, progressData)
+            ? evaluateDripCondition(
+                conditionToUse,
+                progressData,
+                dripNow ? new Date(dripNow) : new Date(),
+              )
             : {
                 isLocked: false,
                 isHidden: false,
@@ -749,7 +951,91 @@ export const CourseStructureDetails = ({
     isDrippingEnable,
     subjectModulesMap,
     calculateChapterProgress,
+    dripConditionFor,
+    dripAnchors,
+    dripNow,
   ]);
+
+  /**
+   * Locks for the two levels above a chapter.
+   *
+   * Subjects and modules carry no progress of their own, so their rules are
+   * evaluated against the rolled-up percentage the cards already show. Ordering
+   * is course order, which is what a "one module per day" schedule counts in.
+   */
+  const buildContainerEvaluations = useCallback(
+    (
+      level: "subject" | "module",
+      items: Array<{ id: string; percentage: number }>,
+    ): Record<string, DripConditionEvaluation> => {
+      const evaluations: Record<string, DripConditionEvaluation> = {};
+      const prerequisiteCompletions: Record<string, number> = {};
+      items.forEach((item) => {
+        prerequisiteCompletions[item.id] = item.percentage;
+      });
+
+      items.forEach((item, index) => {
+        // Subject and module locking exists only on the new path, so
+        // conditionFor's opt-in is the whole gate — the old row-level switch
+        // never governed these levels and must not be consulted here.
+        const condition = dripConditionFor(level, item.id);
+        if (!condition || condition.is_enabled === false) {
+          evaluations[item.id] = {
+            isLocked: false,
+            isHidden: false,
+            unlockMessage: null,
+          };
+          return;
+        }
+        evaluations[item.id] = evaluateDripCondition(
+          condition,
+          {
+          percentageCompleted: item.percentage,
+          previousItemId: index > 0 ? items[index - 1]?.id : undefined,
+          previousItemCompletion:
+            index > 0 ? (items[index - 1]?.percentage ?? 0) : 0,
+          itemIndex: index,
+          prerequisiteCompletions,
+          recentScores: items.slice(0, index).map((prev) => prev.percentage),
+          ...dripAnchors,
+          },
+          dripNow ? new Date(dripNow) : new Date(),
+        );
+      });
+      return evaluations;
+    },
+    [dripConditionFor, dripAnchors, dripNow],
+  );
+
+  const subjectEvaluations = useMemo(
+    () =>
+      buildContainerEvaluations(
+        "subject",
+        (studyLibraryData ?? []).map((subject) => ({
+          id: subject.id,
+          percentage: calculateSubjectProgress(subject.id),
+        })),
+      ),
+    // calculateSubjectProgress reads subjectModulesMap, so that map is the
+    // real input here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [buildContainerEvaluations, studyLibraryData, subjectModulesMap],
+  );
+
+  const moduleEvaluations = useMemo(
+    () =>
+      buildContainerEvaluations(
+        "module",
+        Object.values(subjectModulesMap)
+          .flatMap((modules) => modules)
+          .map((mod) => ({
+            id: mod.module.id,
+            percentage: calculateModuleProgress(mod),
+          })),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [buildContainerEvaluations, subjectModulesMap],
+  );
 
   // Helpers to safely extract optional thumbnail IDs without using any
   const getSubjectThumbnailId = (subject: SubjectType): string | undefined => {
@@ -930,6 +1216,58 @@ export const CourseStructureDetails = ({
       }
     },
     [queryClient],
+  );
+
+  /**
+   * Content-only layout: a chapter card opens the first slide in the viewer
+   * instead of drilling into a slide list. That list was a dead stop in this
+   * layout — the viewer's own Prev/Next already walks the chapter, so the
+   * extra screen only added a tap between the learner and the content.
+   *
+   * Returns false when it could not resolve a slide to open (nothing loaded,
+   * empty chapter, or everything drip-locked); the caller then falls back to
+   * the slide list, which is the only surface that can explain why.
+   */
+  const openFirstSlideInChapter = useCallback(
+    async (
+      subjectId: string,
+      moduleId: string,
+      chapterId: string
+    ): Promise<boolean> => {
+      let slides = slidesMap[chapterId];
+      if (!slides) {
+        try {
+          const raw = await queryClient.fetchQuery({
+            queryKey: ["slides", chapterId],
+            queryFn: () => fetchSlidesByChapterId(chapterId),
+            staleTime: 15_000,
+          });
+          slides = Array.isArray(raw)
+            ? (raw as Slide[])
+            : ((raw as { data?: Slide[] } | null | undefined)?.data ?? []);
+          // Seed the map so the fallback list has data if we bail out below.
+          const loaded = slides;
+          setSlidesMap((prev) => ({ ...prev, [chapterId]: loaded }));
+          setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "loaded" }));
+        } catch {
+          return false;
+        }
+      }
+
+      const target = (slides || []).find((sl) => {
+        const evaluation = slideEvaluations[sl.id];
+        return !evaluation?.isHidden && !evaluation?.isLocked;
+      });
+      if (!target) return false;
+
+      await handleSlideNavigation(subjectId, moduleId, chapterId, target.id);
+      return true;
+    },
+    // handleSlideNavigation is re-created every render (it closes over dialog
+    // state); referencing it here would defeat the memo, and it is stable in
+    // behaviour, so it is deliberately not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slidesMap, slideEvaluations, queryClient]
   );
 
   const loadAllSlidesBulk = useCallback(
@@ -1274,11 +1612,17 @@ export const CourseStructureDetails = ({
                 </label>
               </div>
             </div>
+            {/* Hidden only when the outline really is a flat slide list —
+                the depth-2 courses that fall back to the chapter view still
+                have collapsibles to expand. */}
             <Button
               variant="outline"
               size="sm"
               onClick={isAllExpanded ? collapseAll : expandAll}
-              className="h-7 px-3 text-xs border-neutral-300 hover:border-primary-300 hover:bg-primary-50/50"
+              className={cn(
+                "h-7 px-3 text-xs border-neutral-300 hover:border-primary-300 hover:bg-primary-50/50",
+                courseStructure === 2 && chapterLevelIsPlaceholder && "hidden",
+              )}
             >
               {isAllExpanded ? (
                 <>
@@ -1339,15 +1683,25 @@ export const CourseStructureDetails = ({
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
               const subjectContentIndent = "ps-1 sm:ps-6";
+              const subjectEval = subjectEvaluations[subject.id];
+              if (shouldFilterItem(subjectEval)) return null;
+              const isSubjectLocked = isItemLocked(subjectEval);
               return (
                 <Collapsible
                   key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
+                  open={isSubjectOpen && !isSubjectLocked}
+                  onOpenChange={() => {
+                    if (isSubjectLocked) return;
+                    toggleSubject(subject.id);
+                  }}
                 >
                   <CollapsibleTrigger
+                    disabled={isSubjectLocked}
                     className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      isSubjectLocked
+                        ? "cursor-not-allowed opacity-60"
+                        : "hover:bg-muted/60",
                       // Vibrant Styles
                       "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
                       "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40",
@@ -1364,6 +1718,7 @@ export const CourseStructureDetails = ({
                       />
                       {renderStatusIcon(calculateSubjectProgress(subject.id), {
                         size: 18,
+                        locked: isSubjectLocked,
                       })}
                       {thumbUrlById[`subject:${subject.id}`] && (
                         <img
@@ -1403,15 +1758,23 @@ export const CourseStructureDetails = ({
                             </>
                           );
                         })()}
-                        {/* Download the whole subject. The structure page offered offline
-                            controls only at chapter and slide level, so "save this subject"
-                            meant tapping every chapter inside it. */}
-                        <DownloadNodeButton
-                          nodeId={subject.id}
-                          nodeType="SUBJECT"
-                          packageSessionId={packageSessionId}
-                          compact
-                        />
+                        {isSubjectLocked ? (
+                          <LockedBadge
+                            size="sm"
+                            showText={false}
+                            unlockMessage={subjectEval?.unlockMessage}
+                          />
+                        ) : (
+                          /* Download the whole subject. The structure page offered offline
+                             controls only at chapter and slide level, so "save this subject"
+                             meant tapping every chapter inside it. */
+                          <DownloadNodeButton
+                            nodeId={subject.id}
+                            nodeType="SUBJECT"
+                            packageSessionId={packageSessionId}
+                            compact
+                          />
+                        )}
                       </div>
                     </div>
                   </CollapsibleTrigger>
@@ -1423,17 +1786,28 @@ export const CourseStructureDetails = ({
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
                           const moduleContentIndent = `ps-1 sm:ps-5`;
+                          const moduleEval = moduleEvaluations[mod.module.id];
+                          if (shouldFilterItem(moduleEval)) return null;
+                          const isModuleLocked = isItemLocked(moduleEval);
                           return (
                             <Collapsible
                               key={mod.module.id}
-                              open={isModuleOpen}
-                              onOpenChange={() => toggleModule(mod.module.id)}
+                              open={isModuleOpen && !isModuleLocked}
+                              onOpenChange={() => {
+                                if (isModuleLocked) return;
+                                toggleModule(mod.module.id);
+                              }}
                             >
                               <CollapsibleTrigger
+                                disabled={isModuleLocked}
                                 className={cn(
-                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors hover:bg-muted/60 data-[state=open]:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors data-[state=open]:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                  isModuleLocked
+                                    ? "cursor-not-allowed opacity-60"
+                                    : "hover:bg-muted/60",
                                   // Vibrant Styles
-                                  "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
+                                  !isModuleLocked &&
+                                    "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
                                   // Play Styles — quiet hover, ink text
                                   "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink",
                                 )}
@@ -1446,6 +1820,7 @@ export const CourseStructureDetails = ({
                                   />
                                   {renderStatusIcon(
                                     calculateModuleProgress(mod),
+                                    { locked: isModuleLocked },
                                   )}
                                   {thumbUrlById[`module:${mod.module.id}`] && (
                                     <img
@@ -1475,14 +1850,22 @@ export const CourseStructureDetails = ({
                                     {renderCompletionBadge(
                                       calculateModuleProgress(mod),
                                     )}
-                                    {/* Download the whole module — same reasoning as the subject
-                                        control above. */}
-                                    <DownloadNodeButton
-                                      nodeId={mod.module.id}
-                                      nodeType="MODULE"
-                                      packageSessionId={packageSessionId}
-                                      compact
-                                    />
+                                    {isModuleLocked ? (
+                                      <LockedBadge
+                                        size="sm"
+                                        showText={false}
+                                        unlockMessage={moduleEval?.unlockMessage}
+                                      />
+                                    ) : (
+                                      /* Download the whole module — same reasoning as the
+                                         subject control above. */
+                                      <DownloadNodeButton
+                                        nodeId={mod.module.id}
+                                        nodeType="MODULE"
+                                        packageSessionId={packageSessionId}
+                                        compact
+                                      />
+                                    )}
                                   </span>
                                 </div>
                               </CollapsibleTrigger>
@@ -1625,13 +2008,17 @@ export const CourseStructureDetails = ({
                                               })()}
                                               {/* Offline download for the whole chapter (plan B7). Renders
                                                   nothing on unsupported platforms; stops propagation itself
-                                                  so it never toggles the collapsible. */}
-                                              <DownloadNodeButton
-                                                nodeId={ch.id}
-                                                nodeType="CHAPTER"
-                                                packageSessionId={packageSessionId}
-                                                compact
-                                              />
+                                                  so it never toggles the collapsible. Hidden while the
+                                                  chapter is drip-locked — downloading it would hand over
+                                                  exactly the content the lock is withholding. */}
+                                              {!isChapterLocked && (
+                                                <DownloadNodeButton
+                                                  nodeId={ch.id}
+                                                  nodeType="CHAPTER"
+                                                  packageSessionId={packageSessionId}
+                                                  compact
+                                                />
+                                              )}
                                             </span>
                                           </div>
                                         </CollapsibleTrigger>
@@ -2115,8 +2502,12 @@ export const CourseStructureDetails = ({
                 );
               });
             })()}
-          {/* Depth 3: chapters only (no subject, no module) */}
-          {courseStructure === 3 && (
+          {/* Depth 3: chapters only (no subject, no module). Also the fallback
+              for the handful of depth-2 courses that carry more than the one
+              seeded chapter — flattening those to a bare slide list would drop
+              the only grouping they have. */}
+          {(courseStructure === 3 ||
+            (courseStructure === 2 && !chapterLevelIsPlaceholder)) && (
             <div className="space-y-0.5">
               {(() => {
                 const chaptersWithContext: Array<{
@@ -2357,324 +2748,183 @@ export const CourseStructureDetails = ({
             </div>
           )}
 
-          {courseStructure === 2 &&
-            studyLibraryData?.map((subject: SubjectType, idx: number) => {
-              const isSubjectOpen = openSubjects.has(subject.id);
-              return (
-                <Collapsible
-                  key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
-                >
-                  <CollapsibleTrigger
-                    className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
-                      // Play Styles — solid, bold, Duolingo-style
-                      "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                      "[.ui-play_&]:shadow-none [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink",
-                    )}
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                      <CaretRight
-                        size={18}
-                        weight="bold"
-                        className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90 [.ui-play_&]:text-white/90"
-                      />
-                      {renderStatusIcon(calculateSubjectProgress(subject.id), {
-                        size: 18,
-                      })}
-                      {showContentPrefixes && (
-                        <span className="w-7 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
-                          S{idx + 1}
-                        </span>
-                      )}
-                      <span
-                        className="min-w-0 flex-1 break-words"
-                        title={toTitleCase(subject.subject_name)}
-                      >
-                        {toTitleCase(subject.subject_name)}
-                      </span>
-                      {/* Subject keeps the ONLY progress bar in its branch. */}
-                      <div className="flex items-center gap-2 ms-auto shrink-0">
-                        {(() => {
-                          const progress = calculateSubjectProgress(subject.id);
-                          return (
-                            <>
-                              <div className="w-16 hidden sm:block">
-                                {renderProgressBar(progress, "sm")}
-                              </div>
-                              {renderCompletionBadge(progress, {
-                                onDark: true,
-                              })}
-                            </>
-                          );
-                        })()}
-                        {/* Download the whole subject. The structure page offered offline
-                            controls only at chapter and slide level, so "save this subject"
-                            meant tapping every chapter inside it. */}
-                        <DownloadNodeButton
-                          nodeId={subject.id}
-                          nodeType="SUBJECT"
-                          packageSessionId={packageSessionId}
-                          compact
-                        />
-                      </div>
-                    </div>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative ps-3 border-s border-border">
-                      {(subjectModulesMap[subject.id] ?? []).map(
-                        (mod, modIdx) => {
-                          const isModuleOpen = openModules.has(mod.module.id);
-                          return (
-                            <Collapsible
-                              key={mod.module.id}
-                              open={isModuleOpen}
-                              onOpenChange={() => toggleModule(mod.module.id)}
-                            >
-                              <CollapsibleTrigger
-                                className={cn(
-                                  "group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-start text-sm font-medium hover:bg-muted/60 data-[state=open]:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                  "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink",
-                                )}
-                              >
-                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                  <CaretRight
-                                    size={16}
-                                    weight="bold"
-                                    className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
-                                  />
-                                  {renderStatusIcon(
-                                    calculateModuleProgress(mod),
-                                  )}
-                                  {showContentPrefixes && (
-                                    <span className="w-6 shrink-0 text-center text-caption font-medium tabular-nums text-muted-foreground">
-                                      M{modIdx + 1}
-                                    </span>
-                                  )}
-                                  <span
-                                    className="min-w-0 flex-1 break-words text-sm font-medium text-foreground"
-                                    title={toTitleCase(mod.module.module_name)}
-                                  >
-                                    {toTitleCase(mod.module.module_name)}
-                                  </span>
-                                  {/* Module progress: % text only */}
-                                  <span className="ms-auto flex shrink-0 items-center gap-2">
-                                    {renderCompletionBadge(
-                                      calculateModuleProgress(mod),
-                                    )}
-                                    {/* Download the whole module — same reasoning as the subject
-                                        control above. */}
-                                    <DownloadNodeButton
-                                      nodeId={mod.module.id}
-                                      nodeType="MODULE"
-                                      packageSessionId={packageSessionId}
-                                      compact
-                                    />
-                                  </span>
-                                </div>
-                              </CollapsibleTrigger>
-                              <CollapsibleContent className={`py-1 ps-2`}>
-                                <div className="space-y-0.5 border-s border-border ps-2.5">
-                                  {(mod.chapters ?? []).map((ch, chIdx) => {
-                                    const isChapterOpen = openChapters.has(
-                                      ch.id,
-                                    );
+          {/* Depth 2: slides only — no subject, module or chapter row.
+              A 2-level course still stores its slides under a seeded
+              subject/module/chapter all literally named "DEFAULT" (see
+              add-course-form on the admin side); rendering those placeholder
+              rows is what made a 2-level course read as a 5-level one, with
+              three "Default" headers above every slide. */}
+          {!isModulesLoading && courseStructure === 2 && chapterLevelIsPlaceholder && (
+            <div className="space-y-px">
+              {(() => {
+                const slidesWithContext: Array<{
+                  subject: SubjectType;
+                  mod: ModuleWithChapters;
+                  ch: Chapter;
+                  slide: Slide;
+                  chapterLocked: boolean;
+                  chapterUnlockMessage?: string;
+                }> = [];
+                const chapterIds: string[] = [];
+                studyLibraryData?.forEach((subject: SubjectType) => {
+                  (subjectModulesMap[subject.id] ?? []).forEach((mod) => {
+                    (mod.chapters ?? []).forEach((ch) => {
+                      const chapterEval = chapterEvaluations[ch.id];
+                      if (chapterEval && shouldFilterItem(chapterEval)) return;
+                      // There is no chapter row left to carry a drip lock at
+                      // this depth, so it moves onto the slides themselves —
+                      // dropping them instead would leave the learner staring
+                      // at "No slides" with nothing explaining why.
+                      const chapterLocked = !!(
+                        chapterEval && isItemLocked(chapterEval)
+                      );
+                      chapterIds.push(ch.id);
+                      filterSlides(slidesMap[ch.id] ?? []).forEach((slide) => {
+                        const slideEval = slideEvaluations[slide.id];
+                        if (slideEval && shouldFilterItem(slideEval)) return;
+                        slidesWithContext.push({
+                          subject,
+                          mod,
+                          ch,
+                          slide,
+                          chapterLocked,
+                          ...(chapterEval?.unlockMessage && {
+                            chapterUnlockMessage: chapterEval.unlockMessage,
+                          }),
+                        });
+                      });
+                    });
+                  });
+                });
 
-                                    return (
-                                      <Collapsible
-                                        key={ch.id}
-                                        open={isChapterOpen}
-                                        onOpenChange={() => {
-                                          toggleChapter(ch.id);
-                                          getSlidesWithChapterId(ch.id);
-                                        }}
-                                      >
-                                        <CollapsibleTrigger
-                                          className={cn(
-                                            "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm hover:bg-muted/60 data-[state=open]:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                                            "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink [.ui-play_&]:data-[state=open]:bg-play-navy-soft [.ui-play_&]:data-[state=open]:text-play-navy-soft-ink",
-                                          )}
-                                        >
-                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                            <CaretRight
-                                              size={14}
-                                              weight="bold"
-                                              className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
-                                            />
-                                            {renderStatusIcon(
-                                              calculateChapterProgress(ch.id),
-                                            )}
-                                            {showContentPrefixes && (
-                                              <span className="w-5 shrink-0 text-center text-caption tabular-nums text-muted-foreground">
-                                                C{chIdx + 1}
-                                              </span>
-                                            )}
-                                            <span
-                                              className="min-w-0 flex-1 break-words text-sm font-medium text-foreground"
-                                              title={toTitleCase(
-                                                ch.chapter_name,
-                                              )}
-                                            >
-                                              {toTitleCase(ch.chapter_name)}
-                                            </span>
-                                            {/* Earned-only slide count */}
-                                            <span className="ms-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-                                              {(() => {
-                                                const slidesForChapter =
-                                                  slidesMap[ch.id] || [];
-                                                const completedSlides =
-                                                  slidesForChapter.filter(
-                                                    (slide) =>
-                                                      (slide.percentage_completed ||
-                                                        0) >=
-                                                      getSlideCompletionThreshold(),
-                                                  ).length;
-                                                const totalSlides =
-                                                  slidesForChapter.length;
-                                                return (
-                                                  slidesMap[ch.id] !==
-                                                    undefined &&
-                                                  totalSlides > 0 &&
-                                                  completedSlides > 0 && (
-                                                    <span
-                                                      className={cn(
-                                                        "min-w-8 text-end text-caption tabular-nums",
-                                                        completedSlides ===
-                                                          totalSlides
-                                                          ? "text-success-500"
-                                                          : "text-muted-foreground",
-                                                        "[.ui-play_&]:text-play-navy-soft-ink",
-                                                      )}
-                                                    >
-                                                      {completedSlides}/
-                                                      {totalSlides}
-                                                    </span>
-                                                  )
-                                                );
-                                              })()}
-                                              {/* Offline download for the whole chapter (plan B7). Renders
-                                                  nothing on unsupported platforms; stops propagation itself
-                                                  so it never toggles the collapsible. */}
-                                              <DownloadNodeButton
-                                                nodeId={ch.id}
-                                                nodeType="CHAPTER"
-                                                packageSessionId={packageSessionId}
-                                                compact
-                                              />
-                                            </span>
-                                          </div>
-                                        </CollapsibleTrigger>
-                                        <CollapsibleContent>
-                                          <div className="space-y-px ps-2 relative">
-                                            {(slidesMap[ch.id] ?? []).length ===
-                                            0 ? (
-                                              <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                                No{" "}
-                                                {getTerminologyPlural(
-                                                  ContentTerms.Slides,
-                                                  SystemTerms.Slides,
-                                                )}{" "}
-                                                in this{" "}
-                                                {getTerminology(
-                                                  ContentTerms.Chapters,
-                                                  SystemTerms.Chapters,
-                                                )}
-                                                .
-                                              </div>
-                                            ) : (
-                                              (slidesMap[ch.id] ?? []).map(
-                                                (slide, sIdx) => (
-                                                  <div
-                                                    key={slide.id}
-                                                    className={cn(
-                                                      getSlideStyling(),
-                                                      "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors",
-                                                    )}
-                                                    onClick={() => {
-                                                      handleSlideNavigation(
-                                                        subject.id,
-                                                        mod.module.id,
-                                                        ch.id,
-                                                        slide.id,
-                                                      );
-                                                    }}
-                                                  >
-                                                    {showContentPrefixes && (
-                                                      <span className="w-5 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
-                                                        {sIdx + 1}
-                                                      </span>
-                                                    )}
-                                                    <span
-                                                      className="shrink-0"
-                                                      title={
-                                                        getSlideTypeDisplay(
-                                                          slide,
-                                                        ) || undefined
-                                                      }
-                                                    >
-                                                      {getIcon(slide, "4")}
-                                                    </span>
-                                                    <span
-                                                      className="min-w-0 flex-1 truncate text-sm text-foreground"
-                                                      title={slide.title}
-                                                    >
-                                                      {slide.title}
-                                                    </span>
-                                                    {renderContinueChip(
-                                                      slide.id,
-                                                    )}
-                                                    {/* Slide Meta */}
-                                                    <span className="ms-auto flex shrink-0 items-center gap-1.5 ps-2 text-caption tabular-nums text-muted-foreground whitespace-nowrap">
-                                                      {getSlideMetaText(
-                                                        slide,
-                                                      ) && (
-                                                        <span>
-                                                          {getSlideMetaText(
-                                                            slide,
-                                                          )}
-                                                        </span>
-                                                      )}
-                                                      {renderStatusIcon(
-                                                        slide.percentage_completed ||
-                                                          0,
-                                                        {
-                                                          size: 14,
-                                                          hideEmpty: true,
-                                                        },
-                                                      )}
-                                                      {/* Offline download for this single slide, mirroring the chapter
-                                                          control above. Renders nothing on unsupported platforms or when
-                                                          the admin hasn't allowed this slide offline; stops propagation
-                                                          itself so tapping it never navigates into the slide. */}
-                                                      <DownloadNodeButton
-                                                        nodeId={slide.id}
-                                                        nodeType="SLIDE"
-                                                        packageSessionId={packageSessionId}
-                                                        compact
-                                                      />
-                                                    </span>
-                                                  </div>
-                                                ),
-                                              )
-                                            )}
-                                          </div>
-                                        </CollapsibleContent>
-                                      </Collapsible>
-                                    );
-                                  })}
-                                </div>
-                              </CollapsibleContent>
-                            </Collapsible>
-                          );
-                        },
+                const stillLoading = chapterIds.some((id) => {
+                  const status = slidesLoadingStatus[id] ?? "idle";
+                  return status === "idle" || status === "loading";
+                });
+
+                if (slidesWithContext.length === 0 && stillLoading) {
+                  return (
+                    <div className="pe-2">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2 px-2 py-1"
+                        >
+                          <Skeleton className="w-5 h-5 rounded" />
+                          <Skeleton className="h-4 w-32" />
+                          <div className="ms-auto flex items-center gap-2">
+                            <Skeleton className="h-3 w-16" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
+                if (slidesWithContext.length === 0) {
+                  return (
+                    <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
+                      No{" "}
+                      {getTerminologyPlural(
+                        ContentTerms.Slides,
+                        SystemTerms.Slides,
                       )}
                     </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            })}
+                  );
+                }
+
+                return slidesWithContext.map(
+                  (
+                    {
+                      subject,
+                      mod,
+                      ch,
+                      slide,
+                      chapterLocked,
+                      chapterUnlockMessage,
+                    },
+                    sIdx,
+                  ) => {
+                    const slideEval = slideEvaluations[slide.id];
+                    const isSlideLocked =
+                      chapterLocked || !!(slideEval && isItemLocked(slideEval));
+
+                    return (
+                      <div
+                        key={slide.id}
+                        className={cn(
+                          getSlideStyling(),
+                          // Vibrant Styles
+                          "[.ui-vibrant_&]:hover:bg-primary/5",
+                          // Play Styles — solid, bold, Duolingo-style
+                          "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors",
+                        )}
+                        onClick={
+                          isSlideClickable() && !isSlideLocked
+                            ? () => {
+                                handleSlideNavigation(
+                                  subject.id,
+                                  mod.module.id,
+                                  ch.id,
+                                  slide.id,
+                                );
+                              }
+                            : undefined
+                        }
+                      >
+                        {showContentPrefixes && (
+                          <span className="w-5 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
+                            {sIdx + 1}
+                          </span>
+                        )}
+                        <span
+                          className="shrink-0"
+                          title={getSlideTypeDisplay(slide) || undefined}
+                        >
+                          {getIcon(slide, "4")}
+                        </span>
+                        <span
+                          className="min-w-0 flex-1 truncate text-sm text-foreground"
+                          title={slide.title}
+                        >
+                          {slide.title}
+                        </span>
+                        {renderContinueChip(slide.id)}
+                        {isSlideLocked && (
+                          <LockedBadge
+                            size="sm"
+                            unlockMessage={
+                              slideEval?.unlockMessage ?? chapterUnlockMessage
+                            }
+                          />
+                        )}
+                        {/* Meta: one quiet fact + earned-only status */}
+                        <span className="ms-auto flex shrink-0 items-center gap-1.5 ps-2 text-caption tabular-nums text-muted-foreground whitespace-nowrap">
+                          {getSlideMetaText(slide) && (
+                            <span>{getSlideMetaText(slide)}</span>
+                          )}
+                          {renderStatusIcon(slide.percentage_completed || 0, {
+                            size: 14,
+                            hideEmpty: true,
+                          })}
+                          {/* Offline download for this single slide. Renders
+                              nothing on unsupported platforms; stops
+                              propagation itself so tapping it never
+                              navigates into the slide. */}
+                          <DownloadNodeButton
+                            nodeId={slide.id}
+                            nodeType="SLIDE"
+                            packageSessionId={packageSessionId}
+                            compact
+                          />
+                        </span>
+                      </div>
+                    );
+                  },
+                );
+              })()}
+            </div>
+          )}
         </div>
       </div>
     ),
@@ -2697,92 +2947,136 @@ export const CourseStructureDetails = ({
           </div>
         </div>
 
-        {/* Breadcrumbs */}
-        <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-600 mb-6 bg-neutral-50/50 p-2.5 rounded-lg border border-neutral-100">
+        {/* Content-only replaces the breadcrumb trail with one Back control.
+            The trail was pure chrome here: at the top level it rendered a lone
+            "Subjects" pill pointing at the screen you were already on. It is
+            not dropped outright, though — it was also the ONLY way back up the
+            drill-down, so removing it with nothing in its place would strand a
+            learner one level deep in a course. This shows only when there is
+            somewhere to go back to. */}
+        {contentOnly && !isModulesLoading && (selectedSubjectId || selectedModuleId) && (
           <button
             type="button"
-            className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
-              !selectedSubjectId && !selectedModuleId && !selectedChapterId
-                ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
-                : "hover:bg-neutral-200/60 hover:text-neutral-900"
-            }`}
+            className="mb-4 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             onClick={() => {
-              setSelectedSubjectId(null);
-              setSelectedModuleId(null);
+              if (selectedModuleId) setSelectedModuleId(null);
+              else setSelectedSubjectId(null);
               setSelectedChapterId(null);
             }}
           >
-            {getTerminologyPlural(ContentTerms.Subjects, SystemTerms.Subjects)}
+            <CaretLeft size={14} />
+            <span>Back</span>
           </button>
+        )}
 
-          {selectedSubjectId && (
-            <CaretRight size={14} className="text-neutral-400" />
-          )}
+        {/* Breadcrumbs — only for the levels this course actually exposes.
+            The full subject > module > chapter trail on a shallower course put
+            the seeded "DEFAULT" levels back in front of the learner: the crumbs
+            claimed a hierarchy that isn't theirs, and clicking one dropped them
+            into a grid holding a single card called "Default". A flat 2-level
+            course has no trail left, so the bar goes away entirely; the last
+            condition keeps it from rendering as an empty strip. */}
+        {!contentOnly &&
+          !isModulesLoading &&
+          showsChapterLevel &&
+          (showsSubjectLevel ||
+            (showsModuleLevel && selectedSubjectId) ||
+            selectedModuleId ||
+            selectedChapterId) && (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-600 mb-6 bg-neutral-50/50 p-2.5 rounded-lg border border-neutral-100">
+            {showsSubjectLevel && (
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
+                  !selectedSubjectId && !selectedModuleId && !selectedChapterId
+                    ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+                    : "hover:bg-neutral-200/60 hover:text-neutral-900"
+                }`}
+                onClick={() => {
+                  setSelectedSubjectId(null);
+                  setSelectedModuleId(null);
+                  setSelectedChapterId(null);
+                }}
+              >
+                {getTerminologyPlural(
+                  ContentTerms.Subjects,
+                  SystemTerms.Subjects,
+                )}
+              </button>
+            )}
 
-          {selectedSubjectId && (
-            <button
-              type="button"
-              className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
-                selectedSubjectId && !selectedModuleId
-                  ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
-                  : "hover:bg-neutral-200/60 hover:text-neutral-900"
-              }`}
-              onClick={() => {
-                setSelectedModuleId(null);
-                setSelectedChapterId(null);
-              }}
-            >
-              {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}
-            </button>
-          )}
+            {showsSubjectLevel && showsModuleLevel && selectedSubjectId && (
+              <CaretRight size={14} className="text-neutral-400" />
+            )}
 
-          {selectedModuleId && (
-            <CaretRight size={14} className="text-neutral-400" />
-          )}
+            {showsModuleLevel && selectedSubjectId && (
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
+                  selectedSubjectId && !selectedModuleId
+                    ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+                    : "hover:bg-neutral-200/60 hover:text-neutral-900"
+                }`}
+                onClick={() => {
+                  setSelectedModuleId(null);
+                  setSelectedChapterId(null);
+                }}
+              >
+                {getTerminologyPlural(
+                  ContentTerms.Modules,
+                  SystemTerms.Modules,
+                )}
+              </button>
+            )}
 
-          {selectedModuleId && (
-            <button
-              type="button"
-              className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
-                selectedModuleId && !selectedChapterId
-                  ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
-                  : "hover:bg-neutral-200/60 hover:text-neutral-900"
-              }`}
-              onClick={() => {
-                setSelectedChapterId(null);
-              }}
-            >
-              {getTerminologyPlural(
-                ContentTerms.Chapters,
-                SystemTerms.Chapters,
-              )}
-            </button>
-          )}
+            {showsModuleLevel && selectedModuleId && (
+              <CaretRight size={14} className="text-neutral-400" />
+            )}
 
-          {selectedChapterId && (
-            <CaretRight size={14} className="text-neutral-400" />
-          )}
+            {selectedModuleId && (
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
+                  selectedModuleId && !selectedChapterId
+                    ? "bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5"
+                    : "hover:bg-neutral-200/60 hover:text-neutral-900"
+                }`}
+                onClick={() => {
+                  setSelectedChapterId(null);
+                }}
+              >
+                {getTerminologyPlural(
+                  ContentTerms.Chapters,
+                  SystemTerms.Chapters,
+                )}
+              </button>
+            )}
 
-          {selectedChapterId && (
-            <span className="px-3 py-1.5 rounded-md bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5 text-sm">
-              {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}
-            </span>
-          )}
-        </div>
+            {selectedChapterId && (
+              <CaretRight size={14} className="text-neutral-400" />
+            )}
+
+            {selectedChapterId && (
+              <span className="px-3 py-1.5 rounded-md bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5 text-sm">
+                {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Card-grid shimmer while modules load — mirrors the Outline tab's
             skeleton; every drill-down grid below is gated on !isModulesLoading,
             so without this the section renders empty during the fetch. */}
         {isModulesLoading && (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+          <div className={contentGridClass}>
             {Array.from({ length: 6 }).map((_, i) => (
               <Card
                 key={i}
-                className="h-full overflow-hidden border-neutral-200 bg-card rounded-xl"
+                className="h-full rounded-lg border-neutral-200 bg-card p-2"
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <Skeleton className="aspect-video w-full rounded-none" />
-                  <div className="flex flex-col gap-2 p-3 flex-1">
+                  <Skeleton className="mb-2 aspect-video w-full rounded-lg" />
+                  <div className="flex flex-1 flex-col gap-2">
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-3 w-1/3" />
                   </div>
@@ -2792,53 +3086,64 @@ export const CourseStructureDetails = ({
           </div>
         )}
 
-        {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth */}
-        {!isModulesLoading && !selectedSubjectId && (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-            {studyLibraryData?.map((subject, idx) => (
+        {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth.
+            Each grid is also gated on its level being visible at this depth,
+            so the seeded "DEFAULT" subject/module/chapter can never surface
+            as a card — not even for the frame before the preselect effect
+            runs. */}
+        {!isModulesLoading && showsSubjectLevel && !selectedSubjectId && (
+          <div className={contentGridClass}>
+            {studyLibraryData
+              ?.filter((subject) => !subjectEvaluations[subject.id]?.isHidden)
+              .map((subject, idx) => {
+              const subjectEval = subjectEvaluations[subject.id];
+              const isSubjectLocked = isItemLocked(subjectEval);
+              return (
               <Card
                 key={subject.id}
                 role="button"
-                tabIndex={0}
-                aria-label={toTitleCase(subject.subject_name)}
-                className="group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                tabIndex={isSubjectLocked ? -1 : 0}
+                aria-label={
+                  toTitleCase(subject.subject_name) +
+                  (isSubjectLocked ? " (locked)" : "")
+                }
+                aria-disabled={isSubjectLocked}
+                className={cn(
+                  CONTENT_CARD_SHELL,
+                  isSubjectLocked
+                    ? "cursor-not-allowed"
+                    : "cursor-pointer hover:shadow-md",
+                )}
                 onClick={() => {
+                  if (isSubjectLocked) return;
                   setSelectedSubjectId(subject.id);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if (
+                    (e.key === "Enter" || e.key === " ") &&
+                    !isSubjectLocked
+                  ) {
                     e.preventDefault();
                     setSelectedSubjectId(subject.id);
                   }
                 }}
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
-                    {thumbUrlById[`subject:${subject.id}`] ? (
-                      <img
-                        src={thumbUrlById[`subject:${subject.id}`]}
-                        alt=""
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        crossOrigin="anonymous"
-                        referrerPolicy="no-referrer"
-                        loading="eager"
-                        onError={(e) => {
-                          e.currentTarget.classList.add("border-red-400");
-                        }}
+                  <ContentCardThumb
+                    url={thumbUrlById[`subject:${subject.id}`]}
+                    locked={isSubjectLocked}
+                    fit={contentCardImageFit}
+                    fallback={
+                      <Folder
+                        size={40}
+                        weight="duotone"
+                        className="text-primary-500"
                       />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Folder
-                          size={40}
-                          weight="duotone"
-                          className="text-primary-500"
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1 p-3 flex-1">
+                    }
+                  />
+                  <div className="flex flex-1 flex-col gap-1">
                     <h3
-                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
+                      className="truncate text-sm font-medium text-neutral-800"
                       title={toTitleCase(subject.subject_name)}
                     >
                       {toTitleCase(subject.subject_name)}
@@ -2852,71 +3157,81 @@ export const CourseStructureDetails = ({
                         {idx + 1}
                       </p>
                     )}
+                    {isSubjectLocked && (
+                      <LockNotice message={subjectEval?.unlockMessage} />
+                    )}
                     {/* Download the whole subject. This tab drills down
                         subject -> module -> chapter -> slide as cards, so each
                         level needs its own control; without it the only way to
                         save a subject was to open every chapter in it. */}
-                    <div className="flex items-center gap-1.5">
-                      <DownloadNodeButton
-                        nodeId={subject.id}
-                        nodeType="SUBJECT"
-                        packageSessionId={packageSessionId}
-                      />
-                    </div>
+                    {!isSubjectLocked && (
+                      <div className="flex items-center gap-1.5">
+                        <DownloadNodeButton
+                          nodeId={subject.id}
+                          nodeType="SUBJECT"
+                          packageSessionId={packageSessionId}
+                        />
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {/* Modules */}
-        {!isModulesLoading && selectedSubjectId && !selectedModuleId && (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-            {(subjectModulesMap[selectedSubjectId] || []).map((m, idx) => (
+        {!isModulesLoading && showsModuleLevel && selectedSubjectId && !selectedModuleId && (
+          <div className={contentGridClass}>
+            {(subjectModulesMap[selectedSubjectId] || [])
+              .filter((m) => !moduleEvaluations[m.module.id]?.isHidden)
+              .map((m, idx) => {
+              const moduleEval = moduleEvaluations[m.module.id];
+              const isModuleLocked = isItemLocked(moduleEval);
+              return (
               <Card
                 key={m.module.id}
                 role="button"
-                tabIndex={0}
-                aria-label={toTitleCase(m.module.module_name)}
-                className="group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                tabIndex={isModuleLocked ? -1 : 0}
+                aria-label={
+                  toTitleCase(m.module.module_name) +
+                  (isModuleLocked ? " (locked)" : "")
+                }
+                aria-disabled={isModuleLocked}
+                className={cn(
+                  CONTENT_CARD_SHELL,
+                  isModuleLocked
+                    ? "cursor-not-allowed"
+                    : "cursor-pointer hover:shadow-md",
+                )}
                 onClick={() => {
+                  if (isModuleLocked) return;
                   setSelectedModuleId(m.module.id);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if ((e.key === "Enter" || e.key === " ") && !isModuleLocked) {
                     e.preventDefault();
                     setSelectedModuleId(m.module.id);
                   }
                 }}
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
-                    {thumbUrlById[`module:${m.module.id}`] ? (
-                      <img
-                        src={thumbUrlById[`module:${m.module.id}`]}
-                        alt=""
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        crossOrigin="anonymous"
-                        referrerPolicy="no-referrer"
-                        loading="eager"
-                        onError={(e) => {
-                          e.currentTarget.classList.add("border-red-400");
-                        }}
+                  <ContentCardThumb
+                    url={thumbUrlById[`module:${m.module.id}`]}
+                    locked={isModuleLocked}
+                    fit={contentCardImageFit}
+                    fallback={
+                      <Folder
+                        size={40}
+                        weight="duotone"
+                        className="text-primary-500"
                       />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Folder
-                          size={40}
-                          weight="duotone"
-                          className="text-primary-500"
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1 p-3 flex-1">
+                    }
+                  />
+                  <div className="flex flex-1 flex-col gap-1">
                     <h3
-                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
+                      className="truncate text-sm font-medium text-neutral-800"
                       title={toTitleCase(m.module.module_name)}
                     >
                       {toTitleCase(m.module.module_name)}
@@ -2930,28 +3245,35 @@ export const CourseStructureDetails = ({
                         {idx + 1}
                       </p>
                     )}
+                    {isModuleLocked && (
+                      <LockNotice message={moduleEval?.unlockMessage} />
+                    )}
                     {/* Download the whole module — same reasoning as the
                         subject card. */}
-                    <div className="flex items-center gap-1.5">
-                      <DownloadNodeButton
-                        nodeId={m.module.id}
-                        nodeType="MODULE"
-                        packageSessionId={packageSessionId}
-                      />
-                    </div>
+                    {!isModuleLocked && (
+                      <div className="flex items-center gap-1.5">
+                        <DownloadNodeButton
+                          nodeId={m.module.id}
+                          nodeType="MODULE"
+                          packageSessionId={packageSessionId}
+                        />
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {/* Chapters */}
         {!isModulesLoading &&
+          showsChapterLevel &&
           selectedSubjectId &&
           selectedModuleId &&
           !selectedChapterId && (
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+            <div className={contentGridClass}>
               {(subjectModulesMap[selectedSubjectId] || [])
                 .filter((m) => m.module.id === selectedModuleId)
                 .flatMap((m) => m.chapters)
@@ -2962,6 +3284,23 @@ export const CourseStructureDetails = ({
                 .map((ch, idx) => {
                   const evaluation = chapterEvaluations[ch.id];
                   const isChapterLocked = evaluation?.isLocked ?? false;
+                  // When the institute has opted in, a chapter card sends the
+                  // learner straight into the viewer; the slide list only
+                  // appears as a fallback when no slide can be opened (empty
+                  // chapter, or every slide drip-locked), because that screen
+                  // is what explains the reason.
+                  const openChapter = async (chapterId: string) => {
+                    if (chapterOpensFirstSlide && isSlideClickable()) {
+                      const opened = await openFirstSlideInChapter(
+                        selectedSubjectId || "",
+                        selectedModuleId || "",
+                        chapterId,
+                      );
+                      if (opened) return;
+                    }
+                    setSelectedChapterId(chapterId);
+                    await getSlidesWithChapterId(chapterId);
+                  };
                   return (
                     <Card
                       key={ch.id}
@@ -2973,15 +3312,14 @@ export const CourseStructureDetails = ({
                       }
                       aria-disabled={isChapterLocked}
                       className={cn(
-                        "group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
+                        CONTENT_CARD_SHELL,
                         isChapterLocked
-                          ? "opacity-70 cursor-not-allowed"
-                          : "cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5",
+                          ? "cursor-not-allowed"
+                          : "cursor-pointer hover:shadow-md",
                       )}
                       onClick={async () => {
                         if (isChapterLocked) return;
-                        setSelectedChapterId(ch.id);
-                        await getSlidesWithChapterId(ch.id);
+                        await openChapter(ch.id);
                       }}
                       onKeyDown={async (e) => {
                         if (
@@ -2989,38 +3327,26 @@ export const CourseStructureDetails = ({
                           !isChapterLocked
                         ) {
                           e.preventDefault();
-                          setSelectedChapterId(ch.id);
-                          await getSlidesWithChapterId(ch.id);
+                          await openChapter(ch.id);
                         }
                       }}
                     >
                       <CardContent className="p-0 flex flex-col h-full">
-                        <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
-                          {thumbUrlById[`chapter:${ch.id}`] ? (
-                            <img
-                              src={thumbUrlById[`chapter:${ch.id}`]}
-                              alt=""
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              crossOrigin="anonymous"
-                              referrerPolicy="no-referrer"
-                              loading="eager"
-                              onError={(e) => {
-                                e.currentTarget.classList.add("border-red-400");
-                              }}
+                        <ContentCardThumb
+                          url={thumbUrlById[`chapter:${ch.id}`]}
+                          locked={isChapterLocked}
+                          fit={contentCardImageFit}
+                          fallback={
+                            <PresentationChart
+                              size={40}
+                              weight="duotone"
+                              className="text-primary-500"
                             />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <PresentationChart
-                                size={40}
-                                weight="duotone"
-                                className="text-primary-500"
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-1 p-3 flex-1">
+                          }
+                        />
+                        <div className="flex flex-1 flex-col gap-1">
                           <h3
-                            className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
+                            className="truncate text-sm font-medium text-neutral-800"
                             title={toTitleCase(ch.chapter_name)}
                           >
                             {toTitleCase(ch.chapter_name)}
@@ -3034,16 +3360,17 @@ export const CourseStructureDetails = ({
                               {idx + 1}
                             </p>
                           )}
-                          <div className="flex items-center gap-1.5">
-                            {isChapterLocked && (
-                              <LockedBadge size="sm" unlockMessage="" />
-                            )}
-                            <DownloadNodeButton
-                              nodeId={ch.id}
-                              nodeType="CHAPTER"
-                              packageSessionId={packageSessionId}
-                            />
-                          </div>
+                          {isChapterLocked ? (
+                            <LockNotice message={evaluation?.unlockMessage} />
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <DownloadNodeButton
+                                nodeId={ch.id}
+                                nodeType="CHAPTER"
+                                packageSessionId={packageSessionId}
+                              />
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -3165,6 +3492,21 @@ export const CourseStructureDetails = ({
             })()}
           </div>
         )}
+
+        {/* Every drill-down above is gated on both the selection state and the
+            level being visible at this depth, so a course whose content was
+            never created (a 2-level course with no chapter, say) would land on
+            all four gates closed and render a blank tab. */}
+        {!isModulesLoading &&
+          !selectedChapterId &&
+          !(showsSubjectLevel && !selectedSubjectId) &&
+          !(showsModuleLevel && selectedSubjectId && !selectedModuleId) &&
+          !(showsChapterLevel && selectedSubjectId && selectedModuleId) && (
+            <div className="text-sm px-2 py-6 text-center text-neutral-400 italic">
+              No{" "}
+              {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}
+            </div>
+          )}
       </div>
     ),
     [TabType.TEACHERS]: (
@@ -3253,6 +3595,29 @@ export const CourseStructureDetails = ({
       }
     });
   }, [openChapters, slidesLoadingStatus, getSlidesWithChapterId]);
+
+  // A 2-level outline is a flat slide list, so no chapter ever opens and the
+  // effect above never fires. The bulk load in fetchModules normally covers
+  // every chapter already; this is the fallback for when it didn't, without
+  // which the list would sit empty.
+  useEffect(() => {
+    if (courseStructure !== 2) return;
+    Object.values(subjectModulesMap).forEach((modules) => {
+      modules.forEach((mod) => {
+        (mod.chapters ?? []).forEach((ch) => {
+          const status = slidesLoadingStatus[ch.id] ?? "idle";
+          if (status === "idle") {
+            getSlidesWithChapterId(ch.id);
+          }
+        });
+      });
+    });
+  }, [
+    courseStructure,
+    subjectModulesMap,
+    slidesLoadingStatus,
+    getSlidesWithChapterId,
+  ]);
 
   useEffect(() => {
     handleLoadingChangeRef.current = handleLoadingChange;
@@ -3670,7 +4035,7 @@ export const CourseStructureDetails = ({
       <PullToRefreshWrapper onRefresh={refreshData}>
         <div className="flex size-full flex-col gap-3 rounded-lg bg-card pt-0 pb-3 text-neutral-700">
           <Tabs
-            value={selectedStructureTab}
+            value={activeStructureTab}
             onValueChange={handleTabChange}
             className="w-full"
           >
@@ -3698,13 +4063,13 @@ export const CourseStructureDetails = ({
               </TabsList>
             )}
             <TabsContent
-              key={selectedStructureTab}
-              value={selectedStructureTab}
+              key={activeStructureTab}
+              value={activeStructureTab}
               className={`${
                 renderTabs.length > 1 ? "mt-3" : ""
               } rounded-lg bg-white border border-neutral-200/60 p-3 md:p-4`}
             >
-              {tabContent[selectedStructureTab as TabType]}
+              {tabContent[activeStructureTab as TabType]}
             </TabsContent>
           </Tabs>
         </div>

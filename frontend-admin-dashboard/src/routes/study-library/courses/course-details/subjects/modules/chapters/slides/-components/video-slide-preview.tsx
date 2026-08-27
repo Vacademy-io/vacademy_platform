@@ -13,12 +13,16 @@ import { SplitScreenSlide } from './split-screen-slide';
 import { FileVideoPlayer } from './file-video-player';
 import { FileVideoQuestionsEditor } from './file-video-questions-editor';
 import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
+import { resolveVideoSourceType, extractVimeoId } from '@/utils/video-source-type';
 
 const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedUrl?: string }) => {
     const { videoSeekTime, clearVideoSeekTime } = useMediaNavigationStore();
     // Per-role enforcement: keep native video download off unless this role is allowed.
     const { canDownload } = useSlideDownloadAccess();
     const allowVideoDownload = canDownload('VIDEO');
+    // Raw value: it still has to carry slide-level types such as HTML_VIDEO.
+    // Player choice between Vimeo/YouTube goes through resolveVideoSourceType
+    // below, because the `||` fallback turns a blank source_type into 'VIDEO'.
     const videoSourceType = activeItem.video_slide?.source_type || (activeItem as any).source_type;
     const videoStatus = activeItem.status;
     // const videoTitle = activeItem.video_slide?.title || 'Video';
@@ -398,14 +402,15 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
         );
     }
 
-    // Vimeo embed
-    if (videoSourceType === 'VIMEO') {
+    // Vimeo embed. HTML_VIDEO and FILE_ID have already returned above, so
+    // whatever reaches here is a linked video and the resolver picks the host
+    // from the URL when source_type doesn't say.
+    if (resolveVideoSourceType(activeItem.video_slide) === 'VIMEO') {
         const vimeoUrl =
             activeItem.video_slide?.published_url ||
             activeItem.video_slide?.url ||
             '';
-        const vimeoIdMatch = vimeoUrl.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/);
-        const vimeoId = vimeoIdMatch?.[1] || '';
+        const vimeoId = extractVimeoId(vimeoUrl);
         return (
             <div key={`video-${activeItem.id}`} className="size-full">
                 <iframe

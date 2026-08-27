@@ -64,6 +64,10 @@ public class WorkflowAiCatalogController {
                 "params: sessionId, sourceId (the packageSessionId), sourceType ('BATCH' uppercase, or 'USER').",
                 "getOrCreateShortLink",
                 "params: destinationUrl (required — the long URL), source (e.g. 'LEARNER_JOIN'), sourceId "
+                        + "(optional shortCode asks for a readable code, e.g. the learner's mobile number, "
+                        + "giving u.<host>/s/919829227181; ignored once a link exists, and a taken code "
+                        + "gets a random suffix. Only use it where the destination needs a login — a "
+                        + "readable code is a guessable one.) "
                         + "(e.g. the learner's userId), instituteId (pass #ctx['instituteId'] explicitly inside "
                         + "an iterator). Idempotent per (source,sourceId): the same learner keeps the same URL "
                         + "across daily runs instead of minting a code per send. OUTPUT: shortUrl — inside an "

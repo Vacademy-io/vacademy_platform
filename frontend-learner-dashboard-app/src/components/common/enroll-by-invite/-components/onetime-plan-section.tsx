@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { useTranslation } from "react-i18next";
 import { PaymentPlan } from "../-utils/helper";
 import { cn } from "@/lib/utils";
 import { SelectedPayment } from "./types";
@@ -16,6 +17,7 @@ export const OneTimePlanSection = ({
   selectedPayment: SelectedPayment | null;
   onSelect: (payment: SelectedPayment) => void;
 }) => {
+  const { t } = useTranslation("enrollmentA");
   const calculateDiscountedPrice = (
     originalPrice: number,
     elevatedPrice?: number
@@ -41,9 +43,9 @@ export const OneTimePlanSection = ({
     if (!discount_json) return null;
 
     if (discount_json.type === "percentage") {
-      return `${discount_json.amount}% off`;
+      return t("onetimePlan.percentOff", { amount: discount_json.amount });
     } else if (discount_json.type === "fixed") {
-      return `${currency}${discount_json.amount} off`;
+      return t("onetimePlan.fixedOff", { currency, amount: discount_json.amount });
     }
   };
 

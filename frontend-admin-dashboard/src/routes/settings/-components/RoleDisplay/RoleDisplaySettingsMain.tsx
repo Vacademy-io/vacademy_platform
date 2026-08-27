@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, X, CircleNotch } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import AdminDisplaySettings from './AdminDisplaySettings';
 import TeacherDisplaySettings from './TeacherDisplaySettings';
 import CustomRoleDisplaySettings from './CustomRoleDisplaySettings';
@@ -24,18 +26,21 @@ import { SettingsPageShell } from '@/components/settings/shell';
 
 type RoleKey = 'admin' | 'teacher' | 'custom';
 
-const ROLE_OPTIONS: { value: RoleKey; label: string }[] = [
-    { value: 'admin', label: 'Admin' },
-    { value: 'teacher', label: 'Teacher' },
-    { value: 'custom', label: 'Custom Role' },
+const buildRoleOptions = (t: TFunction): { value: RoleKey; label: string }[] => [
+    { value: 'admin', label: t('roleTabs.admin') },
+    { value: 'teacher', label: t('roleTabs.teacher') },
+    { value: 'custom', label: t('roleTabs.custom') },
 ];
 
 export default function RoleDisplaySettingsMain() {
+    const { t } = useTranslation('settingsRoleDisplayMain');
     const queryClient = useQueryClient();
     const [selectedRole, setSelectedRole] = useState<RoleKey>('admin');
     const [selectedCustomRoleId, setSelectedCustomRoleId] = useState<string>('');
     const [showNewRoleInput, setShowNewRoleInput] = useState(false);
     const [newRoleName, setNewRoleName] = useState('');
+
+    const ROLE_OPTIONS = buildRoleOptions(t);
 
     const { data: customRoles } = useQuery({
         queryKey: ['custom-roles'],
@@ -61,20 +66,20 @@ export default function RoleDisplaySettingsMain() {
     const createRoleMutation = useMutation({
         mutationFn: (name: string) => createCustomRole({ name, permissionIds: ['109'] }),
         onSuccess: () => {
-            toast.success('Role created successfully');
+            toast.success(t('toasts.roleCreated'));
             queryClient.invalidateQueries({ queryKey: ['custom-roles'] });
             setNewRoleName('');
             setShowNewRoleInput(false);
         },
         onError: (error: any) => {
-            toast.error(error?.response?.data?.message || 'Failed to create role');
+            toast.error(error?.response?.data?.message || t('toasts.roleCreateFailed'));
         },
     });
 
     const handleCreateRole = () => {
         const trimmed = newRoleName.trim();
         if (!trimmed) {
-            toast.error('Role name is required');
+            toast.error(t('toasts.roleNameRequired'));
             return;
         }
         createRoleMutation.mutate(trimmed);
@@ -88,19 +93,19 @@ export default function RoleDisplaySettingsMain() {
         <SettingsPageShell
             title={
                 selectedRole === 'admin'
-                    ? 'Admin Display Settings'
+                    ? t('title.admin')
                     : selectedRole === 'teacher'
-                      ? 'Teacher Display Settings'
+                      ? t('title.teacher')
                       : selectedCustomRoleName
-                        ? `${selectedCustomRoleName} Display Settings`
-                        : 'Custom Role Display Settings'
+                        ? t('title.customNamed', { name: selectedCustomRoleName })
+                        : t('title.customDefault')
             }
-            description="Control what this role sees and can do — courses, sidebar, dashboard, permissions and more."
+            description={t('description')}
             maxWidth="max-w-7xl"
             actions={
                 <div
                     role="tablist"
-                    aria-label="Select role to configure"
+                    aria-label={t('tabs.ariaLabel')}
                     className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted p-1"
                 >
                     {ROLE_OPTIONS.map((opt) => {
@@ -132,12 +137,12 @@ export default function RoleDisplaySettingsMain() {
                 <div className="space-y-6">
                     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
                         <span className="text-sm font-semibold text-neutral-700">
-                            Custom role to configure
+                            {t('customRole.label')}
                         </span>
                         {showNewRoleInput ? (
                             <div className="flex items-center gap-2">
                                 <Input
-                                    placeholder="Enter role name"
+                                    placeholder={t('customRole.newRoleInput.placeholder')}
                                     value={newRoleName}
                                     onChange={(e) => setNewRoleName(e.target.value)}
                                     onKeyDown={(e) => {
@@ -158,7 +163,7 @@ export default function RoleDisplaySettingsMain() {
                                     {createRoleMutation.isPending ? (
                                         <CircleNotch className="size-3 animate-spin" />
                                     ) : (
-                                        'Create'
+                                        t('customRole.newRoleInput.create')
                                     )}
                                 </MyButton>
                                 <MyButton
@@ -166,7 +171,7 @@ export default function RoleDisplaySettingsMain() {
                                     buttonType="secondary"
                                     scale="small"
                                     layoutVariant="icon"
-                                    aria-label="Cancel"
+                                    aria-label={t('customRole.newRoleInput.cancel')}
                                     onClick={() => {
                                         setShowNewRoleInput(false);
                                         setNewRoleName('');
@@ -185,12 +190,14 @@ export default function RoleDisplaySettingsMain() {
                                     }
                                 >
                                     <SelectTrigger className="h-9 w-72">
-                                        <SelectValue placeholder="Choose a custom role…" />
+                                        <SelectValue
+                                            placeholder={t('customRole.select.placeholder')}
+                                        />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {filteredCustomRoles.length === 0 ? (
                                             <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                                                No custom roles yet. Create one with the + button.
+                                                {t('customRole.select.empty')}
                                             </div>
                                         ) : (
                                             filteredCustomRoles.map((r: CustomRole) => (
@@ -206,7 +213,7 @@ export default function RoleDisplaySettingsMain() {
                                     buttonType="secondary"
                                     scale="small"
                                     layoutVariant="icon"
-                                    aria-label="Add new role"
+                                    aria-label={t('customRole.select.addAriaLabel')}
                                     onClick={() => setShowNewRoleInput(true)}
                                 >
                                     <Plus className="size-4" />
@@ -223,7 +230,7 @@ export default function RoleDisplaySettingsMain() {
                         />
                     ) : (
                         <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-neutral-500">
-                            Select a custom role above to view or edit its display settings.
+                            {t('customRole.emptyState')}
                         </div>
                     )}
                 </div>

@@ -81,6 +81,11 @@ class CourseOutlineGenerationService:
                     institute_id=request.institute_id,
                     node_ids=grounding.node_ids,
                     mode=grounding.mode,
+                    # How closely the course must mirror the source, and whether
+                    # every source section must become a slide. Chosen in the
+                    # create-course UI; defaults replicate the material.
+                    fidelity=getattr(grounding, "fidelity", None) or "REPLICATE",
+                    coverage=getattr(grounding, "coverage", None) or "FULL",
                 )
             if not block:
                 return False
@@ -93,6 +98,162 @@ class CourseOutlineGenerationService:
         except Exception as e:  # noqa: BLE001
             logger.warning(f"KB outline grounding failed (continuing): {str(e)}")
             return False
+
+    def _deterministic_outline_from_kb(self, request) -> Optional[CourseOutlineResponse]:
+        """Build the outline DIRECTLY from the knowledge base's topic tree.
+
+        For REPLICATE + FULL the client's requirement is "mirror the material":
+        two feedback rounds showed that ASKING the LLM to follow the section
+        list still lets it rename, re-theme and drop sections. So in that mode
+        the outline is constructed deterministically — topics become chapters
+        and subtopics become slides, verbatim and in source order — and no LLM
+        is involved at outline time at all (the per-slide content pass still
+        writes the actual teaching material from the section's own passages).
+
+        Returns None whenever this mode does not apply (no KB grounding, ADAPT
+        fidelity, HIGHLIGHTS coverage, no DB, or an unusable/tree-less KB) so
+        the caller falls back to the existing LLM outline unchanged.
+        """
+        # NOTE: module-level `CourseMetadata` (line 9) is the DOMAIN class; the
+        # outline response needs the SCHEMA one, so alias it locally.
+        from ..schemas.course_outline import (
+            CourseMetadata as OutlineCourseMetadata,
+            CourseNode,
+        )
+
+        grounding = getattr(request, "kb_grounding", None)
+        if not grounding or not self._db_session:
+            return None
+        if (getattr(grounding, "fidelity", None) or "REPLICATE") != "REPLICATE":
+            return None
+        if (getattr(grounding, "coverage", None) or "FULL") != "FULL":
+            return None
+        try:
+            from ..db import db_session
+            from .kb import course_grounding
+
+            with db_session() as db:
+                picked = course_grounding.deterministic_sections(
+                    db,
+                    kb_id=grounding.knowledge_base_id,
+                    institute_id=request.institute_id,
+                    node_ids=grounding.node_ids,
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Deterministic KB outline unavailable ({e}); using LLM outline")
+            return None
+        if not picked:
+            return None
+
+        sections = picked["sections"]
+        course_name = (
+            sections[0]["title"] if len(sections) == 1 else picked["kb_name"]
+        )
+
+        tree_children: list = []
+        todos: list = []
+        for ci, topic in enumerate(sections, start=1):
+            chapter_title = (topic.get("title") or "").strip() or f"Section {ci}"
+            # A topic with no subtopics still becomes a chapter with one slide
+            # teaching the topic itself.
+            slides = topic.get("subtopics") or [topic]
+            slide_nodes: list = []
+            for si, node in enumerate(slides, start=1):
+                title = (node.get("title") or "").strip() or f"{chapter_title} — part {si}"
+                pages = ""
+                if node.get("page_start"):
+                    pages = (
+                        f" (pages {node['page_start']}-{node['page_end']})"
+                        if node.get("page_end") and node["page_end"] != node["page_start"]
+                        else f" (page {node['page_start']})"
+                    )
+                summary = (node.get("summary") or "").strip()
+                slide_nodes.append(
+                    CourseNode(
+                        type="SLIDE",
+                        title=title,
+                        path=f"COURSE/chapter-{ci}/slide-{si}",
+                        order=si,
+                        chapter_name=chapter_title,
+                    )
+                )
+                todos.append(
+                    Todo(
+                        name=f"Generate {title} slide content",
+                        title=title,
+                        type="DOCUMENT",
+                        path=f"C1.CH{ci}.SL{si}",
+                        keyword=title,
+                        action_type="ADD",
+                        prompt=(
+                            f"Create a DOCUMENT slide titled exactly '{title}'. "
+                            f"Teach this section of the institute's material{pages} "
+                            "faithfully and completely — present its own definitions, "
+                            "lists, steps and classifications in full, in the section's "
+                            "own order and terminology, and do not add topics from "
+                            "outside it."
+                            + (f" Section overview: {summary}" if summary else "")
+                        ),
+                        order=len(todos) + 1,
+                        chapter_name=chapter_title,
+                        metadata={
+                            "node_id": node.get("id"),
+                            "kb_page_start": node.get("page_start"),
+                            "kb_page_end": node.get("page_end"),
+                        },
+                    )
+                )
+            tree_children.append(
+                CourseNode(
+                    type="CHAPTER",
+                    title=chapter_title,
+                    path=f"COURSE/chapter-{ci}",
+                    order=ci,
+                    children=slide_nodes,
+                )
+            )
+
+        section_list_html = "".join(f"<li>{t['title']}</li>" for t in sections)
+        response = CourseOutlineResponse(
+            explanation=(
+                f"Outline built directly from the material's own structure: "
+                f"{len(sections)} section(s), {len(todos)} slide(s), in the "
+                "source's order with its original titles."
+            ),
+            tree=[
+                CourseNode(
+                    type="COURSE",
+                    title=course_name,
+                    path="COURSE",
+                    order=1,
+                    children=tree_children,
+                )
+            ],
+            todos=todos,
+            course_metadata=OutlineCourseMetadata(
+                course_name=course_name,
+                about_the_course_html=(
+                    f"<p>Built from the institute's own material, section by "
+                    f"section:</p><ul>{section_list_html}</ul>"
+                ),
+                why_learn_html=(
+                    "<p>Every page is written from the institute's own material, "
+                    "in its original order and terminology.</p>"
+                ),
+                who_should_learn_html=(
+                    "<p>Learners following this institute's curriculum.</p>"
+                ),
+                course_banner_media_id="banner.png",
+                course_preview_image_media_id="preview.png",
+                tags=[],
+                course_depth=3,
+            ),
+        )
+        logger.info(
+            "Deterministic KB outline: %d chapters / %d slides from %s",
+            len(sections), len(todos), picked["kb_name"],
+        )
+        return response
 
     async def _ground_slides_from_kb(
         self,
@@ -112,6 +273,12 @@ class CourseOutlineGenerationService:
         if not kb_id or not institute_id:
             return
         mode = (kb_grounding or {}).get("mode") or "STRICT"
+        # Faithful runs retrieve more passages per slide so prescribed
+        # sub-sections don't fall outside a narrow top-k and vanish.
+        faithful = (
+            ((kb_grounding or {}).get("coverage") or "FULL") == "FULL"
+            or ((kb_grounding or {}).get("fidelity") or "REPLICATE") == "REPLICATE"
+        )
 
         try:
             from ..db import db_session
@@ -122,6 +289,9 @@ class CourseOutlineGenerationService:
 
         semaphore = asyncio.Semaphore(4)
         service = self._content_generation_service
+        # Grounding objects by path — the coverage sweep below diffs what the
+        # slides retrieved against the KB's full chunk census.
+        groundings: dict = {}
 
         async def one(todo) -> None:
             # Chapter + title: specific enough to retrieve the right pages,
@@ -141,12 +311,20 @@ class CourseOutlineGenerationService:
                     with db_session() as db:
                         grounding = await course_grounding.ground_slide(
                             db, kb_id=kb_id, institute_id=institute_id,
-                            query=query, mode=mode,
+                            query=query, mode=mode, faithful=faithful,
+                            # Deterministic outlines stamp the section's tree id
+                            # onto the todo → whole-section grounding; the page
+                            # span is the fallback when that node has no linked
+                            # chunks (section-only linkage shipped twice).
+                            node_id=(todo.metadata or {}).get("node_id"),
+                            page_start=(todo.metadata or {}).get("kb_page_start"),
+                            page_end=(todo.metadata or {}).get("kb_page_end"),
                         )
                 except Exception:  # noqa: BLE001
                     logger.warning("KB grounding failed for %s", todo.path, exc_info=True)
                     return
 
+            groundings[todo.path] = grounding
             service._kb_grounding_by_path[todo.path] = (
                 course_grounding.slide_prompt_block(grounding, mode)
             )
@@ -161,6 +339,42 @@ class CourseOutlineGenerationService:
                 service._kb_unsupported_paths.append(todo.path)
 
         await asyncio.gather(*(one(t) for t in content_todos), return_exceptions=True)
+
+        # ── Coverage sweep (faithful runs): no chunk may be invisible to every
+        # slide. Retrieval reaches only what node linkage / similarity ranking
+        # offer it — the client's "Physical inactivity"/"People-like-me" audit
+        # gaps were chunks NO slide retrieved. Diff the census, hand each
+        # dropped chunk to the page-nearest slide as explicit extra material.
+        if faithful and groundings:
+            try:
+                from .kb.repository import KbRepository
+
+                with db_session() as db:
+                    repo = KbRepository(db)
+                    kb = repo.get_kb(kb_id, institute_id)
+                    all_chunks = (
+                        repo.get_all_chunk_summaries(
+                            kb_id=kb_id,
+                            institute_id=kb["institute_id"],
+                            limit=course_grounding.MAX_SWEEP_CHUNKS,
+                        )
+                        if kb
+                        else []
+                    )
+                assignments = course_grounding.assign_uncovered_chunks(all_chunks, groundings)
+                for path, chunks in assignments.items():
+                    block = course_grounding.supplement_block(chunks)
+                    if block:
+                        service._kb_grounding_by_path[path] = (
+                            service._kb_grounding_by_path.get(path, "") + block
+                        )
+                if assignments:
+                    logger.info(
+                        "Coverage sweep: %d uncovered chunk(s) supplemented onto %d slide(s)",
+                        sum(len(c) for c in assignments.values()), len(assignments),
+                    )
+            except Exception:  # noqa: BLE001
+                logger.warning("Coverage sweep failed (continuing without it)", exc_info=True)
 
         supported = len(content_todos) - len(service._kb_unsupported_paths)
         logger.info(
@@ -223,6 +437,18 @@ class CourseOutlineGenerationService:
         # before grounding appends the document text (which almost always
         # contains "exercise"/"assignment" and would spuriously trigger it).
         original_user_prompt = request.user_prompt
+
+        # REPLICATE+FULL KB courses: build the outline directly from the
+        # material's own section tree — no LLM, so it cannot rename, reorder
+        # or drop sections (both client feedback rounds hit exactly that).
+        det_response = self._deterministic_outline_from_kb(request)
+        if det_response is not None:
+            det_response = self._add_homework_slides_if_needed(
+                det_response, original_user_prompt, skip_llm_todo_filter=True,
+                force_homework=getattr(request.generation_options, 'include_assignment', None) if request.generation_options else None,
+            )
+            return self._apply_structure_options(det_response, request)
+
         await self._apply_reference_grounding(request)
         metadata: Optional[CourseMetadata] = None
 
@@ -315,7 +541,11 @@ class CourseOutlineGenerationService:
         outline_response = self._parser.parse(raw_output)
 
         # Check if practice problems/solutions are requested and add homework slides
-        outline_response = self._add_homework_slides_if_needed(outline_response, original_user_prompt)
+        outline_response = self._add_homework_slides_if_needed(
+            outline_response, original_user_prompt,
+            force_homework=getattr(request.generation_options, 'include_assignment', None) if request.generation_options else None,
+        )
+        outline_response = self._apply_structure_options(outline_response, request)
 
         # Generate images if requested AND parsing was successful
         # Skip image generation if course_name is "Error" (indicates parsing failure)
@@ -374,6 +604,33 @@ class CourseOutlineGenerationService:
         # Capture the user's own words before grounding appends document text
         # (which would spuriously trigger homework-slide injection).
         original_user_prompt = request.user_prompt
+
+        # REPLICATE+FULL KB courses: deterministic outline straight from the
+        # material's section tree (no LLM — it cannot rename/reorder/drop
+        # sections). Mirrors the exact final-emission format of the LLM path.
+        det_response = self._deterministic_outline_from_kb(request)
+        if det_response is not None:
+            yield "[Generating...]\nBuilding the outline directly from the material's own structure..."
+            det_response = self._add_homework_slides_if_needed(
+                det_response, original_user_prompt, skip_llm_todo_filter=True,
+                force_homework=getattr(request.generation_options, 'include_assignment', None) if request.generation_options else None,
+            )
+            det_response = self._apply_structure_options(det_response, request)
+            det_meta = det_response.course_metadata.model_dump()
+            det_meta.pop('banner_image_url', None)
+            det_meta.pop('preview_image_url', None)
+            det_meta.pop('media_image_url', None)
+            det_meta["bannerImageUrl"] = None
+            det_meta["previewImageUrl"] = None
+            det_meta["mediaImageUrl"] = None
+            yield json.dumps({
+                "explanation": det_response.explanation,
+                "tree": [node.model_dump() for node in det_response.tree],
+                "todos": [todo.model_dump() for todo in det_response.todos],
+                "courseMetadata": det_meta,
+            })
+            return
+
         await self._apply_reference_grounding(request)
         metadata: Optional[CourseMetadata] = None
 
@@ -476,7 +733,11 @@ class CourseOutlineGenerationService:
             outline_response = self._parser.parse(full_content)
 
             # Check if practice problems/solutions are requested and add homework slides
-            outline_response = self._add_homework_slides_if_needed(outline_response, original_user_prompt)
+            outline_response = self._add_homework_slides_if_needed(
+                outline_response, original_user_prompt,
+                force_homework=getattr(request.generation_options, 'include_assignment', None) if request.generation_options else None,
+            )
+            outline_response = self._apply_structure_options(outline_response, request)
 
             # Generate images if requested AND parsing was successful
             # Skip image generation if course_name is "Error" (indicates parsing failure)
@@ -582,7 +843,9 @@ class CourseOutlineGenerationService:
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
         language: Optional[str] = "English",
+        model: Optional[str] = None,
         video_settings: Optional[dict] = None,
+        document_settings: Optional[dict] = None,
         reference_document_file_ids: Optional[list] = None,
         kb_grounding: Optional[dict] = None,
     ) -> AsyncGenerator[str, None]:
@@ -731,6 +994,12 @@ class CourseOutlineGenerationService:
                 except Exception as e:  # noqa: BLE001
                     logger.warning(f"Reference figure ingest failed (continuing): {str(e)}")
             
+            # The model the user chose for this course drives every content leg.
+            # Per-todo / per-family overrides (below) still win; when absent each
+            # content type falls back to its own tuned default.
+            if model and model != "auto":
+                self._content_generation_service._course_model = model
+
             # Inject request-level language into todo metadata if not already set
             effective_language = language or "English"
             for todo in content_todos:
@@ -738,6 +1007,27 @@ class CourseOutlineGenerationService:
                     todo.metadata = {}
                 if not todo.metadata.get("language"):
                     todo.metadata["language"] = effective_language
+
+            # Repetition control: slides generate in parallel and independently,
+            # so no slide knows what its siblings teach — which is how the same
+            # definition (and near-identical MCQs) ended up on several slides of
+            # one chapter. Cheapest counter with zero extra LLM calls: tell each
+            # DOCUMENT slide what else its chapter covers.
+            _titles_by_ch: dict = {}
+            for todo in content_todos:
+                if todo.type == "DOCUMENT":
+                    _ck = (todo.path or "").rsplit(".SL", 1)[0]
+                    _titles_by_ch.setdefault(_ck, []).append(todo.title or todo.name or "")
+            for todo in content_todos:
+                if todo.type != "DOCUMENT":
+                    continue
+                _ck = (todo.path or "").rsplit(".SL", 1)[0]
+                _siblings = [
+                    t for t in _titles_by_ch.get(_ck, [])
+                    if t and t != (todo.title or todo.name or "")
+                ]
+                if _siblings:
+                    todo.metadata["sibling_titles"] = _siblings[:12]
 
             # Inject course-level AI-video settings (from the wizard) into the
             # video-pipeline todos' metadata. These are the user's EXPLICIT
@@ -758,6 +1048,23 @@ class CourseOutlineGenerationService:
                         value = video_settings.get(key)
                         if value:
                             todo.metadata[key] = value
+
+            # Course-wide document content-type selection (from the wizard):
+            # inject the chosen enrichments (Notes/Flashcards/Quiz/…) onto every
+            # DOCUMENT todo so build_document_prompt weaves them into the page.
+            if document_settings:
+                _content_types = document_settings.get("content_types")
+                _doc_model = document_settings.get("model")  # wizard's explicit pick
+                _figures_policy = document_settings.get("figures_policy")  # REQUIRE | PREFER | GENERATED_ONLY
+                for todo in content_todos:
+                    if todo.type != "DOCUMENT":
+                        continue
+                    if _content_types:
+                        todo.metadata["content_types"] = _content_types
+                    if _doc_model:
+                        todo.metadata["model"] = _doc_model
+                    if _figures_policy:
+                        todo.metadata["figures_policy"] = _figures_policy
 
             # ── Parallel content generation with dependency awareness ──
             # Separate independent todos from dependent homework→solution pairs.
@@ -948,8 +1255,90 @@ class CourseOutlineGenerationService:
                             "contentData": "Error generating content for this slide.",
                         })
 
+            # ── Phase 3 (opt-in): repetition dedupe post-pass ──
+            # Slides generate independently, so the same definition or MCQ can
+            # appear on several slides of one chapter. Detection is pure text
+            # processing (free); only flagged slides are regenerated, with an
+            # explicit "already covered" block. Per-slide billing is idempotent
+            # per run, so a regeneration does not re-charge the slide.
+            if document_settings and document_settings.get("dedupe_repetition"):
+                try:
+                    from . import content_dedupe
+
+                    slides = content_dedupe.group_document_slides(
+                        content_todos, generated_content_by_path
+                    )
+                    flagged = content_dedupe.find_repetition(slides)
+                    if len(flagged) > content_dedupe.MAX_REGENERATIONS_PER_COURSE:
+                        logger.warning(
+                            f"Dedupe pass: {len(flagged)} slides flagged, regenerating only the first "
+                            f"{content_dedupe.MAX_REGENERATIONS_PER_COURSE}"
+                        )
+                    regen_paths = list(flagged)[: content_dedupe.MAX_REGENERATIONS_PER_COURSE]
+                    todos_by_path = {t.path: t for t in content_todos}
+                    regen_paths = [p for p in regen_paths if p in todos_by_path]
+                    if regen_paths:
+                        # Tell the FE the pass is running: by now every slide has
+                        # completed, so without this the UI reads "done" and the
+                        # user could persist the course before rewrites land.
+                        # The FE flips these paths back to 'generating'; each
+                        # rewrite (or the original re-emit on failure) completes
+                        # them again through the normal update path.
+                        yield json.dumps({
+                            "type": "CONTENT_POSTPASS",
+                            "status": "STARTED",
+                            "paths": regen_paths,
+                        })
+                    for path in regen_paths:
+                        todo = todos_by_path[path]
+                        logger.info(
+                            f"Dedupe pass: regenerating {path} (repeats material owned by "
+                            f"{flagged[path]['owner_titles']})"
+                        )
+                        regen_todo = todo.model_copy(deep=True)
+                        regen_todo.prompt = (regen_todo.prompt or "") + content_dedupe.dedupe_prompt_block(
+                            flagged[path]
+                        )
+                        # A failed rewrite must never damage the slide: the
+                        # original already streamed successfully, so both a
+                        # raised exception AND a yielded SLIDE_CONTENT_ERROR
+                        # (generate_content_for_todo reports failures as events,
+                        # not exceptions) are replaced by re-emitting the
+                        # ORIGINAL content — the FE flipped this path back to
+                        # 'generating' and needs an update to complete it again.
+                        regen_failed = False
+                        try:
+                            async for event in self._content_generation_service.generate_content_for_todo(
+                                regen_todo, generated_content_by_path
+                            ):
+                                try:
+                                    if json.loads(event).get("type") == "SLIDE_CONTENT_ERROR":
+                                        regen_failed = True
+                                        continue
+                                except (json.JSONDecodeError, TypeError, AttributeError):
+                                    pass
+                                yield event
+                        except Exception as regen_err:
+                            logger.error(f"Dedupe regeneration failed for {path}: {regen_err}")
+                            regen_failed = True
+                        if regen_failed:
+                            logger.warning(f"Dedupe pass: keeping original content for {path}")
+                            yield json.dumps({
+                                "type": "SLIDE_CONTENT_UPDATE",
+                                "path": path,
+                                "status": True,
+                                "actionType": todo.action_type,
+                                "slideType": todo.type,
+                                "title": todo.title,
+                                "contentData": generated_content_by_path.get(path, ""),
+                            })
+                    if regen_paths:
+                        yield json.dumps({"type": "CONTENT_POSTPASS", "status": "DONE"})
+                except Exception as dedupe_err:
+                    logger.error(f"Dedupe post-pass skipped due to error: {dedupe_err}")
+
             logger.info("All 'todo' content generation tasks have completed.")
-            
+
         except PaymentRequiredError:
             # Re-raise so the router can return a proper 402 response to the caller
             raise
@@ -960,8 +1349,104 @@ class CourseOutlineGenerationService:
                 "message": f"Failed to generate content: {str(e)}"
             })
 
+    def _apply_structure_options(self, outline_response: CourseOutlineResponse, request) -> CourseOutlineResponse:
+        """Chapter-level deliverables chosen in the create-course UI.
+
+        quiz_placement CHAPTER/BOTH appends ONE consolidated ASSESSMENT per
+        chapter (the client asked for a proper chapter quiz instead of only
+        per-slide minis); include_chapter_video appends one AI_VIDEO overview
+        per chapter. Injected as TODOS with unique paths/titles — the FE builds
+        its slide list from todos (the homework injection has always worked
+        this way), so nothing else is needed for them to appear.
+        """
+        opts = getattr(request, "generation_options", None)
+        if not opts:
+            return outline_response
+        quiz_placement = getattr(opts, "quiz_placement", None)
+        include_video = bool(getattr(opts, "include_chapter_video", False))
+        if quiz_placement not in ("CHAPTER", "BOTH") and not include_video:
+            return outline_response
+
+        chapters: dict = {}
+        for t in outline_response.todos:
+            ck = (t.path or "").rsplit(".SL", 1)[0]
+            if ck:
+                chapters.setdefault(ck, []).append(t)
+
+        def _next_sl(ch_todos: list) -> int:
+            mx = 0
+            for t in ch_todos:
+                try:
+                    mx = max(mx, int((t.path or "").rsplit(".SL", 1)[1]))
+                except Exception:  # noqa: BLE001
+                    continue
+            return mx + 1
+
+        additions: list = []  # (chapter_key, todo)
+        for ck, ch_todos in chapters.items():
+            chapter_name = next((t.chapter_name for t in ch_todos if t.chapter_name), None) or ck
+            refs = ", ".join(
+                [x for x in ((t.title or t.name) for t in ch_todos if t.type == "DOCUMENT") if x][:12]
+            )
+            sl = _next_sl(ch_todos)
+            max_order = max((t.order or 0) for t in ch_todos) if ch_todos else 0
+            if quiz_placement in ("CHAPTER", "BOTH"):
+                additions.append((ck, Todo(
+                    name=f"Generate chapter quiz for {chapter_name}",
+                    title=f"Chapter Quiz — {chapter_name}",
+                    type="ASSESSMENT",
+                    path=f"{ck}.SL{sl}",
+                    keyword=chapter_name,
+                    action_type="ADD",
+                    prompt=(
+                        f"Create ONE consolidated end-of-chapter quiz for '{chapter_name}', "
+                        f"covering ALL of its topics: {refs}. 8-10 multiple-choice questions "
+                        "spread across the topics (application over recall where possible), "
+                        "four options each, one correct answer, a short explanation per "
+                        "question, and difficulty labels. Use only the institute material; "
+                        "do not repeat a question that a single topic's mini quiz would ask "
+                        "verbatim."
+                    ),
+                    order=max_order + 1,
+                    chapter_name=chapter_name,
+                    metadata={},
+                )))
+                sl += 1
+                max_order += 1
+            if include_video:
+                additions.append((ck, Todo(
+                    name=f"Generate chapter video for {chapter_name}",
+                    title=f"Chapter Video — {chapter_name}",
+                    type="AI_VIDEO",
+                    path=f"{ck}.SL{sl}",
+                    keyword=chapter_name,
+                    action_type="ADD",
+                    prompt=(
+                        f"Create a chapter overview video for '{chapter_name}' that walks "
+                        f"through its topics in order: {refs}. Follow the material's own "
+                        "flow and terminology; this is a recap the learner watches after "
+                        "the chapter's pages."
+                    ),
+                    order=max_order + 1,
+                    chapter_name=chapter_name,
+                    metadata={},
+                )))
+
+        for ck, todo in additions:
+            idxs = [
+                i for i, t in enumerate(outline_response.todos)
+                if (t.path or "").rsplit(".SL", 1)[0] == ck
+            ]
+            insert_at = (idxs[-1] + 1) if idxs else len(outline_response.todos)
+            outline_response.todos.insert(insert_at, todo)
+        if additions:
+            logger.info("Structure options added %d chapter-level todos", len(additions))
+        return outline_response
+
     def _add_homework_slides_if_needed(
-        self, outline_response: CourseOutlineResponse, user_prompt: str
+        self, outline_response: CourseOutlineResponse, user_prompt: str,
+        skip_llm_todo_filter: bool = False,
+        force_homework: Optional[bool] = None,
     ) -> CourseOutlineResponse:
         """
         Check if user prompt mentions practice problems/solutions and add two homework slides 
@@ -989,7 +1474,9 @@ class CourseOutlineGenerationService:
         
         has_practice_keywords = any(keyword in prompt_lower for keyword in keywords)
         
-        if not has_practice_keywords:
+        if force_homework is False:
+            return outline_response
+        if not (force_homework or has_practice_keywords):
             return outline_response
         
         logger.info("Detected practice problems/solutions keywords. Adding homework slides to each chapter.")
@@ -1025,8 +1512,65 @@ class CourseOutlineGenerationService:
                 return True
             return False
 
-        outline_response.todos = [t for t in outline_response.todos if not _is_llm_homework_or_solution_todo(t)]
-        
+        # Deterministic KB outlines take their titles from the SOURCE — a real
+        # section named 'Student Assignment' is content the client wants, not an
+        # LLM-invented homework slide, so the filter must not eat it.
+        if not skip_llm_todo_filter:
+            outline_response.todos = [t for t in outline_response.todos if not _is_llm_homework_or_solution_todo(t)]
+
+        # Every slide is addressed by todo.path — the backend keys generated
+        # content by it and the frontend maps content back onto slides by it.
+        # The outline LLM sometimes emits the SAME path twice (e.g. a DOCUMENT
+        # and an ASSESSMENT both at C1.CH5.SL5), and the second one then never
+        # receives its content: that is how a course shipped with an empty
+        # "No quiz questions available" slide that had even inherited the
+        # document's title. Re-number duplicates onto free slots in their own
+        # chapter so every todo is uniquely addressable.
+        _seen_paths: set[str] = set()
+        for _t in outline_response.todos:
+            _path = _t.path or ""
+            if _path and _path not in _seen_paths:
+                _seen_paths.add(_path)
+                continue
+            _base = _path.rsplit(".SL", 1)[0] if ".SL" in _path else (_path or "C1.CH1")
+            _n = 1
+            while f"{_base}.SL{_n}" in _seen_paths:
+                _n += 1
+            _new_path = f"{_base}.SL{_n}"
+            logger.warning(
+                "Duplicate todo path %r (%s '%s') — reassigned to %r",
+                _path, _t.type, _t.title or _t.name or "", _new_path,
+            )
+            _t.path = _new_path
+            _seen_paths.add(_new_path)
+
+        # Titles must ALSO be unique within a chapter. The frontend matches a
+        # generated slide back to its outline slide by fuzzy TITLE match, so two
+        # slides sharing a title collapse onto one map entry: the extra slides
+        # never map, their todos are filtered out as "removed", and they spin
+        # "generating" forever (seen live: a chapter whose 6 slides all carried
+        # the parent chapter's heading generated only 1 of 6).
+        _titles_by_chapter: dict = {}
+        for _t in outline_response.todos:
+            _chapter_key = (_t.path or "").rsplit(".SL", 1)[0]
+            _title = (_t.title or _t.name or "").strip()
+            if not _title:
+                continue
+            _used = _titles_by_chapter.setdefault(_chapter_key, set())
+            if _title.casefold() not in _used:
+                _used.add(_title.casefold())
+                continue
+            _part = 2
+            while f"{_title} (part {_part})".casefold() in _used:
+                _part += 1
+            _unique = f"{_title} (part {_part})"
+            logger.warning(
+                "Duplicate slide title %r in chapter %s — renamed to %r",
+                _title, _chapter_key or "?", _unique,
+            )
+            _t.title = _unique
+            _used.add(_unique.casefold())
+
         # Group todos by chapter and find insertion points
         # We need to insert homework slides right after the last slide of each chapter
         chapter_groups = {}

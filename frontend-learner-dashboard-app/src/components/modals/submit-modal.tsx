@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +21,7 @@ interface SubmitModalProps {
 }
 
 export function SubmitModal({ open, onOpenChange, onConfirm }: SubmitModalProps) {
+  const { t } = useTranslation("courseComponentsExtra");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const assessment = useAssessmentStore((s) => s.assessment);
   const questionStates = useAssessmentStore((s) => s.questionStates);
@@ -68,36 +70,38 @@ export function SubmitModal({ open, onOpenChange, onConfirm }: SubmitModalProps)
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <WarningCircle className="h-5 w-5 text-primary-500" />
-            Submit Assessment
+            {t("submitModal.title")}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to submit your responses? Before submitting, make sure you have given your best responses.
+            {counts.total > 0 && counts.unanswered > 0
+              ? t("submitModal.descriptionWithUnanswered", {
+                  unanswered: counts.unanswered,
+                  total: counts.total,
+                })
+              : t("submitModal.description")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {counts.total > 0 && (
-          <div className="grid grid-cols-2 gap-2 rounded-md border bg-gray-50 p-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">Total</span>
-              <span className="font-semibold">{counts.total}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-emerald-700">Answered</span>
-              <span className="font-semibold text-emerald-700">{counts.answered}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-rose-700">Unanswered</span>
-              <span className="font-semibold text-rose-700">{counts.unanswered}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-amber-700">Marked for review</span>
-              <span className="font-semibold text-amber-700">{counts.marked}</span>
-            </div>
-            {counts.notVisited > 0 && (
-              <div className="col-span-2 flex items-center justify-between">
-                <span className="text-gray-500">Not visited</span>
-                <span className="font-semibold text-gray-600">{counts.notVisited}</span>
+          <div className="overflow-hidden rounded-xl border border-neutral-200">
+            {[
+              { label: t("submitModal.answered"), value: counts.answered, tone: "text-success-700" },
+              { label: t("submitModal.unanswered"), value: counts.unanswered, tone: "text-danger-600" },
+              { label: t("submitModal.markedForReview"), value: counts.marked, tone: "text-violet-700" },
+              { label: t("submitModal.notVisited"), value: counts.notVisited, tone: "text-neutral-500" },
+              { label: t("submitModal.totalQuestions"), value: counts.total, tone: "text-neutral-800" },
+            ].map((row, index) => (
+              <div
+                key={row.label}
+                className={`flex items-center justify-between gap-3 px-4 py-2.5 text-body ${
+                  index % 2 ? "bg-neutral-50" : "bg-white"
+                } ${index ? "border-t border-neutral-100" : ""}`}
+              >
+                <span className={row.tone}>{row.label}</span>
+                <span className="font-bold tabular-nums text-neutral-900">
+                  {row.value}
+                </span>
               </div>
-            )}
+            ))}
           </div>
         )}
         <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
@@ -109,10 +113,10 @@ export function SubmitModal({ open, onOpenChange, onConfirm }: SubmitModalProps)
             {isSubmitting ? (
               <div className="flex items-center justify-center gap-2">
                 <SpinnerGap className="h-4 w-4 animate-spin" />
-                Submitting...
+                {t("submitModal.submitting")}
               </div>
             ) : (
-              "Submit"
+              t("submitModal.submit")
             )}
           </AlertDialogAction>
           <AlertDialogCancel
@@ -120,7 +124,7 @@ export function SubmitModal({ open, onOpenChange, onConfirm }: SubmitModalProps)
             disabled={isSubmitting}
             onClick={() => !isSubmitting && onOpenChange(false)}
           >
-            Cancel
+            {t("common.cancel")}
           </AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>

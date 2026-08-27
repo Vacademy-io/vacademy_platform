@@ -9,12 +9,14 @@ import { PaymentPlanCreator } from '@/routes/settings/-components/Payment/Paymen
 import { useQueryClient } from '@tanstack/react-query';
 import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
 import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/cpo-service';
+import { useTranslation } from 'react-i18next';
 
 interface PaymentPlansDialogProps {
     form: UseFormReturn<InviteLinkFormValues>;
 }
 
 const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
+    const { t } = useTranslation('manageStudentsAddPaymentPlanDialog');
     const queryClient = useQueryClient();
     const [editingPlan, setEditingPlan] = useState<PaymentPlan | null>(null);
     const [showPaymentPlanCreator, setShowPaymentPlanCreator] = useState(
@@ -28,7 +30,7 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
 
     const handleError = (error: unknown, operation: string) => {
         console.error(`Error in ${operation}:`, error);
-        toast.error(`Error in ${operation}`);
+        toast.error(t('errors.generic', { operation }));
     };
 
     const handleClosePaymentPlanCreator = () => {
@@ -55,7 +57,7 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
                 // Refetch the invite's payment-option list so the new CPO mirror appears and
                 // can be selected for this invite.
                 await queryClient.invalidateQueries({ queryKey: ['GET_PAYMENT_DETAILS'] });
-                toast.success('Fee plan created — select it from the plans list');
+                toast.success(t('success.feePlanCreated'));
                 form.setValue('showAddPlanDialog', false);
                 setEditingPlan(null);
                 setShowPaymentPlanCreator(false);
@@ -124,7 +126,7 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
             setRequireApproval(false);
             queryClient.invalidateQueries({ queryKey: ['GET_PAYMENT_DETAILS'] });
         } catch (error) {
-            handleError(error, 'save payment plan');
+            handleError(error, t('errors.operations.savePaymentPlan'));
         } finally {
             setIsSaving(false);
         }

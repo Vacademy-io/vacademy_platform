@@ -1,12 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { QuestionDisplay } from "./question-display";
 import { SectionTabs } from "./section-tabs";
 import { Navbar } from "./navbar";
 import { Footer } from "./footer";
 import { Sidebar } from "./sidebar";
+import { QuestionNavigator } from "./question-navigator";
+import { LiveTestUiProvider, useLiveTestUi } from "./live-test-ui-context";
+import { ExamCalculator } from "./tools/exam-calculator";
+import { ExamScratchpad } from "./tools/exam-scratchpad";
 import { useAssessmentStore } from "@/stores/assessment-store";
+import { useLiveTestStore } from "@/stores/live-test-store";
+import { cn } from "@/lib/utils";
+import { useImmersiveMode } from "@/hooks/use-immersive-mode";
+import { topSafeAreaInset } from "@/utils/safe-area";
 import NetworkStatus from "./network-status";
 import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
@@ -157,8 +166,28 @@ export const formatDataFromStore = async (
 };
 
 export default function Page() {
+  return (
+    <LiveTestUiProvider>
+      <LiveTestShell />
+    </LiveTestUiProvider>
+  );
+}
+
+function LiveTestShell() {
+  const { t } = useTranslation("questionTest");
   const { loadState, saveState, currentQuestion } = useAssessmentStore();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const {
+    settings,
+    isCompact,
+    activeTool,
+    closeTool,
+    scratchpad,
+    setScratchpad,
+    isPaletteOpen,
+    setPaletteOpen,
+  } = useLiveTestUi();
+  const setLiveTest = useLiveTestStore((s) => s.setLiveTest);
+  const immersiveActive = useLiveTestStore((s) => s.immersiveActive);
   // The question area is the only scroller (see the h-dvh layout below), so it
   // keeps its offset when the question swaps — the learner would land partway
   // down the next question, often mid-options. Reset it on every change.
@@ -232,7 +261,7 @@ export default function Page() {
         await sendFormattedData();
         if (hasShownSaveFailureToastRef.current) {
           hasShownSaveFailureToastRef.current = false;
-          toast.success("Your responses are being saved again");
+          toast.success(t("page.toast.savingResumed"));
         }
       } catch (error) {
         console.error("Error in periodic data sending:", error);
@@ -240,7 +269,7 @@ export default function Page() {
         // NetworkStatus banner keeps the user informed after that.
         if (!hasShownSaveFailureToastRef.current) {
           hasShownSaveFailureToastRef.current = true;
-          toast.error("Your responses are not being recorded");
+          toast.error(t("page.toast.savingFailed"));
         }
       }
     };
@@ -344,38 +373,99 @@ export default function Page() {
     questionScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
   }, [currentQuestion?.question_id]);
 
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+  // Stand down the app-level chrome (chatbot launcher, OTA banner, announcement
+  // overlays) for as long as the learner is inside the attempt — see
+  // `stores/live-test-store.ts` for why they can't simply be z-indexed away.
+  const hideAppChrome = settings.mobile.hideAppNavigation;
+  useEffect(() => {
+    setLiveTest({ isActive: true, hideAppChrome });
+    return () => setLiveTest({ isActive: false, hideAppChrome: false });
+  }, [setLiveTest, hideAppChrome]);
+
+  // Take Android's system bars down for the attempt — they otherwise sit on top
+  // of this shell's own header and footer.
+  useImmersiveMode(hideAppChrome);
+
+  const showPalette = settings.questionPalette.enabled;
+  const showDesktopPalette = showPalette && !isCompact;
+
+  const toolPanel =
+    activeTool === "calculator" && settings.calculator.enabled ? (
+      <ExamCalculator mode={settings.calculator.mode} onClose={closeTool} />
+    ) : activeTool === "scratchpad" && settings.scratchpad.enabled ? (
+      <ExamScratchpad
+        value={scratchpad}
+        onChange={setScratchpad}
+        onClose={closeTool}
+      />
+    ) : null;
 
   return (
     // fixed inset-0, not h-dvh: body carries safe-area padding, so a 100dvh child
     // starts below the top inset and overflows the screen by that much — pushing
     // the footer off the bottom, behind the Android nav bar, where it can't be
-    // tapped. Positioning against the viewport ignores that padding, so we
-    // re-apply the top inset here (same calc body uses, which offsets the navbar's
-    // own built-in spacing). The bottom inset is handled inside Footer.
+    // tapped. Positioning against the viewport ignores that padding, so the top
+    // inset is re-applied here (see topSafeAreaInset). The bottom inset is
+    // handled inside Footer.
     <div
-      className="fixed inset-0 flex flex-col w-full overflow-hidden bg-gray-50"
+      className="fixed inset-0 flex w-full flex-col overflow-hidden bg-white"
       style={{ // design-lint-ignore: dynamic safe-area inset padding
-        paddingTop: "calc(env(safe-area-inset-top, 0px) - 20px)",
+        paddingTop: topSafeAreaInset(immersiveActive),
       }}
     >
       <Navbar playMode={playMode} evaluationType={evaluationType} />
-      <SectionTabs />
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <main
-          ref={questionScrollRef}
-          className="w-full h-full p-4 md:p-6 overflow-auto overscroll-contain"
-        >
-          <QuestionDisplay />
-        </main>
-      </div>
-      <Footer onToggleSidebar={toggleSidebar} />
-      <Sidebar
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        evaluationType={evaluationType}
-      />
       <NetworkStatus onRetrySave={sendFormattedData} />
+      <SectionTabs />
+
+      <div className="flex min-h-0 flex-1">
+        {/* Question column. The footer lives inside it so the desktop palette
+            keeps its own full-height rail and its own Submit action. */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative min-h-0 flex-1">
+            <main
+              ref={questionScrollRef}
+              className={cn(
+                "h-full overflow-auto overscroll-contain px-4 py-5 md:px-8 md:py-7",
+                // Room to scroll the last option out from behind an open tool
+                // panel — it is docked over the canvas, not stacked below it.
+                toolPanel && "pb-tool-dock",
+              )}
+            >
+              <QuestionDisplay />
+            </main>
+
+            {toolPanel && (
+              <div className="pointer-events-none absolute bottom-3 end-3 start-3 z-30 flex justify-end md:start-auto">
+                <div className="pointer-events-auto w-full max-w-reg-320">
+                  {toolPanel}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Footer
+            onToggleSidebar={() => setPaletteOpen(true)}
+            evaluationType={evaluationType}
+          />
+        </div>
+
+        {showDesktopPalette && (
+          <aside className="flex w-reg-320 flex-none flex-col border-s border-neutral-200">
+            <QuestionNavigator
+              onClose={() => {}}
+              evaluationType={evaluationType}
+            />
+          </aside>
+        )}
+      </div>
+
+      {showPalette && isCompact && (
+        <Sidebar
+          isOpen={isPaletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          evaluationType={evaluationType}
+        />
+      )}
     </div>
   );
 }

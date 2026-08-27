@@ -6,9 +6,12 @@ import { cn } from '@/lib/utils';
 import {
     listAdminReports,
     reviewReport,
+    deleteMessage as apiDeleteMessage,
+    describeDeleteChatError,
     type ChatReportResponse,
     type ReportStatus,
 } from '@/services/chat/chatApi';
+import { formatDateAndClockTime, toUtcDate } from './chatTime';
 
 const STATUS_FILTERS: { label: string; value?: ReportStatus }[] = [
     { label: 'Open', value: 'OPEN' },
@@ -41,15 +44,8 @@ const statusBadgeClass = (status: string): string => {
 };
 
 const formatDate = (iso: string): string => {
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime())
-        ? ''
-        : d.toLocaleString(undefined, {
-              day: '2-digit',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-          });
+    const d = toUtcDate(iso);
+    return d ? formatDateAndClockTime(d) : '';
 };
 
 export function ReportsReviewQueue() {
@@ -86,6 +82,34 @@ export function ReportsReviewQueue() {
     const handleStatusFilter = (next?: ReportStatus) => {
         setPage(0);
         setStatus(next);
+    };
+
+    /**
+     * Take the reported message down and close the report in one go. Marking a report ACTIONED on its
+     * own changes nothing a member can see — the offending message stays in the thread — so a reviewer
+     * otherwise has to go find it again by hand in the conversation.
+     */
+    const handleRemoveMessage = async (report: ChatReportResponse) => {
+        if (!report.messageId) return;
+        setUpdatingId(report.id);
+        try {
+            await apiDeleteMessage(report.conversationId, report.messageId);
+        } catch (err) {
+            toast.error(describeDeleteChatError(err));
+            setUpdatingId(null);
+            return;
+        }
+        // Closing the report is a separate call: the message is already gone by here, so a failure
+        // must not be reported as a failed delete.
+        try {
+            await reviewReport(report.id, 'ACTIONED');
+            toast.success('Message deleted and report actioned.');
+        } catch {
+            toast.error('Message deleted, but the report could not be marked actioned.');
+        } finally {
+            await load(status, page);
+            setUpdatingId(null);
+        }
     };
 
     const handleReview = async (report: ChatReportResponse, nextStatus: ReportStatus) => {
@@ -246,6 +270,23 @@ export function ReportsReviewQueue() {
                                         >
                                             Dismiss
                                         </Button>
+                                        {/* A DM is private to its two participants — the server
+                                            refuses moderation there, so the take-down is offered only
+                                            on group channels (and never for an already-gone message). */}
+                                        {report.messageId &&
+                                            report.reportedMessage &&
+                                            !report.reportedMessage.isDeleted &&
+                                            report.conversationType !== 'DIRECT' && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    disabled={updatingId === report.id}
+                                                    onClick={() => handleRemoveMessage(report)}
+                                                    className="h-7 px-2 text-xs"
+                                                >
+                                                    Delete message
+                                                </Button>
+                                            )}
                                         <Button
                                             size="sm"
                                             disabled={updatingId === report.id}

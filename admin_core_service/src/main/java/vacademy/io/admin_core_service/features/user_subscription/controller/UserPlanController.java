@@ -64,6 +64,31 @@ public class UserPlanController {
         return ResponseEntity.ok(paymentLogService.getCollectionSummary(request));
     }
 
+    /**
+     * Total billed / collected / due for an institute over a window, computed from the plans
+     * learners are enrolled on rather than from payment rows — so a part-paid instalment plan and
+     * an enrolment that has never paid both show up as money owed. Omit dates for all-time.
+     */
+    @PostMapping("/payment-logs/billing-summary")
+    public ResponseEntity<BillingSummaryResponseDTO> getBillingSummary(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody BillingSummaryRequestDTO request) {
+        return ResponseEntity.ok(paymentLogService.getBillingSummary(request));
+    }
+
+    /**
+     * Paginated drill-down behind the "Due payment" card: the learners who still owe money, with
+     * the amount, the fee type, and (for custom instalment plans) their next instalment.
+     */
+    @PostMapping("/payment-logs/outstanding-learners")
+    public ResponseEntity<Page<OutstandingLearnerDTO>> getOutstandingLearners(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody BillingSummaryRequestDTO request,
+            @RequestParam(value = "pageNo", defaultValue = "0") int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
+        return ResponseEntity.ok(paymentLogService.getOutstandingLearners(request, pageNo, pageSize));
+    }
+
     @PostMapping("/payment-logs/update-tracking")
     public ResponseEntity<Void> updatePaymentLogTracking(
             @RequestAttribute("user") CustomUserDetails userDetails,

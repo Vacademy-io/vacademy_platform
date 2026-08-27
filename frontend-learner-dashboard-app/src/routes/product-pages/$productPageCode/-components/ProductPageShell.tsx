@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { resolveInitialSelection } from "../-utils/custom-field-aggregator";
 import {
@@ -27,6 +28,8 @@ interface ProductPageShellProps {
   defaultTab?: "CATALOG" | "CART" | "PAYMENT";
   /** Catalogue the visitor came from — supplies header, footer and theme. */
   tagName?: string;
+  /** Comma-separated level names the browse step is restricted to. */
+  levels?: string;
   utmParams: Record<string, string | undefined>;
 }
 
@@ -59,12 +62,41 @@ export const ProductPageShell = ({
   courseIds,
   defaultTab,
   tagName,
+  levels,
   utmParams,
 }: ProductPageShellProps) => {
   const { step, setPageData, setStep, setSelection, setUtmParams, selectedPsOptionIds } =
     useProductPageStore();
   const gtmFired = useRef(false);
   const initialized = useRef(false);
+  const navigate = useNavigate();
+
+  /**
+   * Where "Back" from the cart leads.
+   *
+   * A visitor who arrived from a catalogue with a basket already filled
+   * (defaultTab=CART) has never seen THIS page's own catalogue step, so
+   * dropping them there is a place they have never been — a different grid of
+   * the same courses, with the basket bar they were just using replaced by
+   * another one. Send them back where they came from instead; the catalogue
+   * restores their basket from sessionStorage, so nothing is lost.
+   *
+   * Once they have actually visited this page's catalogue step, that becomes
+   * the honest destination again.
+   */
+  const enteredAtCart = useRef(defaultTab === "CART").current;
+  const sawOwnCatalog = useRef(defaultTab !== "CART");
+  useEffect(() => {
+    if (step === "CATALOG") sawOwnCatalog.current = true;
+  }, [step]);
+
+  const backFromCart = () => {
+    if (enteredAtCart && !sawOwnCatalog.current && tagName) {
+      navigate({ to: `/${tagName}` });
+      return;
+    }
+    setStep("CATALOG");
+  };
 
   // useLayoutEffect runs synchronously before the browser paints — ensures the
   // correct step is set before any frame is visible, preventing a flash of the
@@ -158,12 +190,14 @@ export const ProductPageShell = ({
         <CatalogueChrome
           tagName={pageHasOwnChrome ? undefined : tagName}
           instituteId={instituteId}
+          showFooter={false}
         >
           <CatalogStep
             pageData={pageData}
             settings={settings}
             tagName={tagName}
             productPageCode={productPageCode}
+            levels={levels}
             onNext={() => setStep("CART")}
           />
         </CatalogueChrome>
@@ -173,6 +207,7 @@ export const ProductPageShell = ({
         <CheckoutLayout
           pageData={pageData}
           pageJson={pageJson}
+          settings={settings}
           primaryColor={primaryColor}
         >
           {step === "CART" && (
@@ -180,7 +215,7 @@ export const ProductPageShell = ({
               pageData={pageData}
               settings={settings}
               primaryColor={primaryColor}
-              onBack={() => setStep("CATALOG")}
+              onBack={backFromCart}
               onNext={() => setStep("FORM")}
             />
           )}

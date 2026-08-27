@@ -9,6 +9,7 @@ import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFie
 import { capitalise } from "@/utils/custom-field";
 import { getCachedPreferredCountries } from "@/services/domain-routing";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
+import { useTranslation } from "react-i18next";
 
 interface BookingCustomFieldsProps {
   formFields: AssessmentCustomFieldOpenRegistration[];
@@ -27,6 +28,7 @@ const BookingCustomFields = ({
   formFields,
   control,
 }: BookingCustomFieldsProps) => {
+  const { t } = useTranslation("liveClassGuest");
   const phoneCountry = getCachedPreferredCountries()[0] ?? "in";
 
   return (
@@ -49,11 +51,13 @@ const BookingCustomFields = ({
                   <FormControl>
                     <PhoneInputField
                       label={capitalise(field.field_name)}
-                      placeholder="123 456 7890"
+                      placeholder={t("common.phoneExamplePlaceholder")}
                       name={name}
                       control={control}
                       country={phoneCountry}
                       required={field.is_mandatory}
+                      labelClassName="text-subtitle font-regular"
+                      inputClassName="!text-subtitle placeholder:!text-body"
                     />
                   </FormControl>
                 </FormItem>

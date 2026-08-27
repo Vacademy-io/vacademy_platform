@@ -9,14 +9,13 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { CreditCard, Globe, Plus } from '@phosphor-icons/react';
+import { CreditCard, Globe, Plus, Eye, CircleNotch } from '@phosphor-icons/react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { PaymentPlanList } from './PaymentPlanList';
 import { MyButton } from '@/components/design-system/button';
 import { SubscriptionPlanPreview } from './SubscriptionPlanPreview';
 import { DonationPlanPreview } from './DonationPlanPreview';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Eye, Loader2 } from 'lucide-react';
 import {
     savePaymentOption,
     getPaymentOptions,
@@ -31,11 +30,11 @@ import { getInstituteId } from '@/constants/helper';
 import { PaymentPlan, PaymentPlans, PaymentPlanTag, PaymentPlanType } from '@/types/payment';
 import { PaymentPlanCreator } from './PaymentPlanCreator/index';
 import { getCurrencySymbol } from './utils/utils';
-import { DAYS_IN_MONTH } from '../../-constants/terms';
 import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import PackageSessionRenewalSettings from './PackageSessionRenewalSettings';
+import { useTranslation } from 'react-i18next';
 
 interface Interval {
     price: string;
@@ -61,6 +60,7 @@ interface DiscountCoupon {
 }
 
 const PaymentSettings = () => {
+    const { t } = useTranslation('settingsPayment');
     const [editingPlan, setEditingPlan] = useState<PaymentPlan | null>(null);
     const [currency, setCurrency] = useState<string>('GBP');
     const [showPaymentPlanCreator, setShowPaymentPlanCreator] = useState(false);
@@ -91,7 +91,9 @@ const PaymentSettings = () => {
                     enabled: true,
                     price: interval.originalPrice || '0',
                     interval: 'custom',
-                    title: interval.title || `${interval.value} ${interval.unit} Plan`,
+                    title:
+                        interval.title ||
+                        t('intervalPlanFallback', { value: interval.value, unit: interval.unit }),
                     features: interval.features || [],
                     customInterval: {
                         value: interval.value,
@@ -125,10 +127,21 @@ const PaymentSettings = () => {
                 const discount = planDiscounts[`interval_${idx}`];
                 if (!discount || discount.type === 'none' || !discount.amount) return null;
 
+                const discountLabel =
+                    discount.type === 'percentage'
+                        ? t('discounts.percentageOff', { amount: discount.amount })
+                        : t('discounts.fixedOff', {
+                              symbol: currencySymbol,
+                              amount: discount.amount,
+                          });
+                const intervalTitle =
+                    interval.title ||
+                    t('intervalPlanFallback', { value: interval.value, unit: interval.unit });
+
                 return {
                     id: `plan-discount-${idx}`,
                     code: `${discount.type === 'percentage' ? 'PERCENT' : 'FLAT'}_${discount.amount}_${idx}`,
-                    name: `${discount.type === 'percentage' ? `${discount.amount}% Off` : `${currencySymbol}${discount.amount} Off`} - ${interval.title || `${interval.value} ${interval.unit} Plan`}`,
+                    name: t('discounts.nameWithInterval', { discountLabel, intervalTitle }),
                     type: discount.type,
                     value: parseFloat(discount.amount),
                     currency: plan.currency,
@@ -234,9 +247,19 @@ const PaymentSettings = () => {
                                 features: metadata.features || [],
                                 config: {
                                     ...metadata.config,
+                                    // This branch builds the plan without going through
+                                    // transformApiPlanToLocalFormat, so it has to derive the
+                                    // access option itself. Defaulting to 30 days here (as it
+                                    // used to) re-stamped a window no admin ever chose, since
+                                    // the free config UI was never rendered; deriving it from
+                                    // the saved value keeps a plan on the option it was saved
+                                    // with.
                                     free: {
-                                        validityDays:
-                                            metadata.freeData?.validityDays || DAYS_IN_MONTH,
+                                        accessType:
+                                            metadata.freeData?.validityDays > 0
+                                                ? 'limited'
+                                                : 'unlimited',
+                                        validityDays: metadata.freeData?.validityDays ?? undefined,
                                     },
                                 },
                                 isDefault: false,
@@ -298,11 +321,11 @@ const PaymentSettings = () => {
             );
 
             if (transformedPlans.length === 0) {
-                toast.info('No payment options found. Create your first payment plan!');
+                toast.info(t('toasts.noPaymentOptions'));
             }
         } catch (error) {
             console.error('Error loading payment options:', error);
-            toast.error('Failed to load payment options');
+            toast.error(t('toasts.loadFailed'));
         } finally {
             setIsLoading(false);
         }
@@ -314,9 +337,16 @@ const PaymentSettings = () => {
     }, []);
 
 
+    const operationLabels: Record<string, string> = {
+        'set default plan': t('operations.setDefaultPlan'),
+        'edit plan': t('operations.editPlan'),
+        'save payment plan': t('operations.savePaymentPlan'),
+        'preview plan': t('operations.previewPlan'),
+    };
+
     const handleError = (error: unknown, operation: string) => {
         console.error(`Error in ${operation}:`, error);
-        toast.error(`Error in ${operation}`);
+        toast.error(t('errors.generic', { operation: operationLabels[operation] || operation }));
     };
 
     const handleSetDefaultPlan = async (planId: string) => {
@@ -329,7 +359,7 @@ const PaymentSettings = () => {
                 paymentOptionId,
             });
             await loadPaymentOptions(); // Refresh the list from the API
-            toast.success('Default payment plan updated successfully');
+            toast.success(t('toasts.defaultUpdated'));
         } catch (error) {
             handleError(error, 'set default plan');
         }
@@ -408,7 +438,7 @@ const PaymentSettings = () => {
                 if (!cpoForm) throw new Error('Missing CPO form data');
                 const payload = buildCreateCPOPayload(cpoForm, batches);
                 await createCPOMutation.mutateAsync(payload);
-                toast.success('Fee plan created successfully');
+                toast.success(t('toasts.feePlanCreated'));
                 setEditingPlan(null);
                 setShowPaymentPlanCreator(false);
                 setRequireApproval(false);
@@ -466,7 +496,13 @@ const PaymentSettings = () => {
                     freeData:
                         plan.type === PaymentPlans.FREE
                             ? {
-                                  validityDays: plan.config?.free?.validityDays,
+                                  // plan.validityDays, not config.free.validityDays: the
+                                  // creator/editor already resolved "unlimited" to undefined
+                                  // there. Reading the raw config value would persist a stale
+                                  // number after switching Limited -> Unlimited, leaving this
+                                  // metadata disagreeing with the null validity_in_days that
+                                  // is actually saved.
+                                  validityDays: plan.validityDays,
                               }
                             : undefined,
                 }),
@@ -477,7 +513,7 @@ const PaymentSettings = () => {
             if (editingPlan) {
                 // Update existing plan in the list
                 setPaymentPlans((plans) => plans.map((p) => (p.id === editingPlan.id ? plan : p)));
-                toast.success('Payment plan updated successfully');
+                toast.success(t('toasts.planUpdated'));
             } else {
                 // Add new plan to the list
                 const savedPlan = savedPaymentOption?.payment_plans?.[0];
@@ -498,7 +534,7 @@ const PaymentSettings = () => {
                 } else {
                     setPaymentPlans((plans) => [...plans, plan]);
                 }
-                toast.success('Payment plan created successfully');
+                toast.success(t('toasts.planCreated'));
                 // Refresh the list from the API after creating a new plan
                 await loadPaymentOptions();
             }
@@ -583,7 +619,7 @@ const PaymentSettings = () => {
                     <div className="flex items-center justify-between">
                         <CardTitle className="flex items-center gap-2 text-lg">
                             <CreditCard className="size-5" />
-                            Payment Configuration
+                            {t('cardTitle')}
                         </CardTitle>
                         <div className="flex items-center gap-2">
                             <MyButton
@@ -592,7 +628,7 @@ const PaymentSettings = () => {
                                 disabled={isLoading || isSaving}
                             >
                                 <Plus className="size-4" />
-                                Add Payment Plan
+                                {t('addPaymentPlan')}
                             </MyButton>
                         </div>
                     </div>
@@ -600,10 +636,10 @@ const PaymentSettings = () => {
                 <CardContent className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label>Default Currency</Label>
+                            <Label>{t('defaultCurrency')}</Label>
                             <Select value={currency} onValueChange={(value) => setCurrency(value)}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select currency" />
+                                    <SelectValue placeholder={t('selectCurrencyPlaceholder')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {currencyOptions.map((currency) => (
@@ -622,15 +658,15 @@ const PaymentSettings = () => {
                         <div className="flex items-center justify-between">
                             <h3 className="flex items-center gap-2 text-lg font-medium text-gray-900">
                                 <Globe className="size-5 text-green-600" />
-                                Free Options
+                                {t('sections.freeOptions')}
                             </h3>
                             <Badge variant="outline" className="border-green-200 text-green-600">
-                                {getFreePlans().length} plans
+                                {t('planCount', { count: getFreePlans().length })}
                             </Badge>
                         </div>
                         {isLoading ? (
                             <div className="flex items-center justify-center py-8">
-                                <Loader2 className="size-8 animate-spin text-primary-400" />
+                                <CircleNotch className="size-8 animate-spin text-primary-400" />
                             </div>
                         ) : (
                             <PaymentPlanList
@@ -649,15 +685,15 @@ const PaymentSettings = () => {
                         <div className="flex items-center justify-between">
                             <h3 className="flex items-center gap-2 text-lg font-medium text-gray-900">
                                 <CreditCard className="size-5 text-blue-600" />
-                                Paid Options
+                                {t('sections.paidOptions')}
                             </h3>
                             <Badge variant="outline" className="border-blue-200 text-blue-600">
-                                {getPaidPlans().length} plan{getPaidPlans().length !== 1 ? 's' : ''}
+                                {t('planCount', { count: getPaidPlans().length })}
                             </Badge>
                         </div>
                         {isLoading ? (
                             <div className="flex items-center justify-center py-8">
-                                <Loader2 className="size-8 animate-spin text-primary-400" />
+                                <CircleNotch className="size-8 animate-spin text-primary-400" />
                             </div>
                         ) : (
                             <PaymentPlanList
@@ -697,12 +733,12 @@ const PaymentSettings = () => {
             <Dialog open={showPlanPreview} onOpenChange={setShowPlanPreview}>
                 <DialogContent
                     ref={previewDialogRef}
-                    className="max-h-[90vh] min-w-fit overflow-y-auto"
+                    className="max-h-dialog-tall min-w-fit overflow-y-auto"
                 >
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Eye className="size-5" />
-                            Plan Preview - {previewingPlan?.name}
+                            {t('planPreviewTitle', { name: previewingPlan?.name })}
                         </DialogTitle>
                     </DialogHeader>
                     <div className="mt-4">{renderPlanPreview()}</div>

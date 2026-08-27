@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   BookOpen,
   VideoCamera,
@@ -165,6 +166,7 @@ export function DashboardHero({
   onJoinSession,
   showGettingStarted = true,
 }: DashboardHeroProps): JSX.Element | null {
+  const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -192,7 +194,7 @@ export function DashboardHero({
   // 4. LOADING — skeleton matching the band's shape.
   if (!studyLibraryLoaded) {
     return (
-      <section aria-busy="true" aria-label="Loading" className={bandClassName}>
+      <section aria-busy="true" aria-label={t("dashboardHero.loadingAria")} className={bandClassName}>
         <div className="flex flex-col gap-3">
           <Skeleton className="h-3 w-32" />
           <Skeleton className="h-9 w-full max-w-md" />
@@ -236,16 +238,18 @@ export function DashboardHero({
             : "text-muted-foreground",
         )}
       >
-        {banner.isLive ? "Live now" : `Starts in ${banner.minutesUntilStart}m`}
+        {banner.isLive
+          ? t("dashboardHero.liveNow")
+          : t("dashboardHero.startsInMinutes", { minutes: banner.minutesUntilStart })}
       </span>
       <Button
         size="sm"
         onClick={() => onJoinSession(banner.session)}
-        aria-label={`Join ${banner.session.title || liveClassLabel}`}
+        aria-label={t("dashboardHero.joinAria", { title: banner.session.title || liveClassLabel })}
         className="gap-1.5"
       >
         <VideoCamera size={14} weight="fill" />
-        Join
+        {t("hero.join")}
       </Button>
     </div>
   ) : null;
@@ -258,22 +262,24 @@ export function DashboardHero({
     const steps = [
       {
         icon: BookOpen,
-        label: `Browse your ${coursesPlural.toLocaleLowerCase()}`,
-        hint: `Open a topic and start your first ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()}`,
+        label: t("dashboardHero.browseCoursesLabel", { courses: coursesPlural.toLocaleLowerCase() }),
+        hint: t("dashboardHero.browseCoursesHint", {
+          slide: getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase(),
+        }),
         onClick: goToCourses,
         primary: true,
       },
       {
         icon: ClipboardText,
-        label: "Try an assessment",
-        hint: "Check what you know with a quick quiz",
+        label: t("dashboardHero.tryAssessmentLabel"),
+        hint: t("dashboardHero.tryAssessmentHint"),
         onClick: () => navigate({ to: "/assessment/examination" }),
         primary: false,
       },
       {
         icon: UserCircle,
-        label: "Complete your profile",
-        hint: "Add your details to personalize learning",
+        label: t("dashboardHero.completeProfileLabel"),
+        hint: t("dashboardHero.completeProfileHint"),
         onClick: () => navigate({ to: "/user-profile" }),
         primary: false,
       },
@@ -297,13 +303,13 @@ export function DashboardHero({
                 </span>
                 <div className="min-w-0 space-y-1">
                   <p className="text-caption font-semibold uppercase tracking-wider text-primary">
-                    {userName ? `Welcome, ${userName}` : "Welcome"}
+                    {userName ? t("dashboardHero.welcomeWithName", { name: userName }) : t("dashboardHero.welcome")}
                   </p>
                   <h2 className="text-display-sm tracking-tight text-foreground">
-                    Let's get you started
+                    {t("dashboardHero.getStartedTitle")}
                   </h2>
                   <p className="text-body text-muted-foreground">
-                    A few quick steps to make the most of your learning.
+                    {t("dashboardHero.getStartedSubtitle")}
                   </p>
                 </div>
               </div>

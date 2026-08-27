@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ScoreCard } from "./quiz-viewer";
 import type { QuizAttemptLog, QuizSideEntry } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 import { getPublicUrl } from "@/services/upload_file";
 import { isRichTextEmpty } from "@/lib/utils";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 interface Option {
   id: string;
@@ -74,6 +77,8 @@ const InstructorFeedbackPanel = ({
   feedback: string;
   fileId: string;
 }) => {
+  const { t } = useTranslation("libraryCommonA");
+  const teacherTerm = getTerminology(RoleTerms.Teacher, SystemTerms.Teacher);
   const [fileUrl, setFileUrl] = useState("");
 
   useEffect(() => {
@@ -98,7 +103,7 @@ const InstructorFeedbackPanel = ({
   return (
     <div className="mt-2 rounded-lg border border-primary-200 bg-primary-50 p-4">
       <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary-600">
-        Instructor feedback
+        {t("quizReview.feedback.label", { teacher: teacherTerm })}
       </div>
       {feedback && (
         <div className="whitespace-pre-wrap text-sm text-neutral-800">
@@ -112,17 +117,17 @@ const InstructorFeedbackPanel = ({
           rel="noopener noreferrer"
           className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-500 hover:underline"
         >
-          View attachment
+          {t("quizReview.feedback.viewAttachment")}
         </a>
       )}
     </div>
   );
 };
 
-const getOptionHtml = (q: Question, idOrValue: string | number | undefined) => {
+const getOptionHtml = (q: Question, idOrValue: string | number | undefined, noAnswerLabel: string) => {
   // ✅ Handle undefined/null values
   if (idOrValue === undefined || idOrValue === null || idOrValue === '') {
-    return "No answer selected";
+    return noAnswerLabel;
   }
   
   if (q.options && q.options.length > 0 && typeof idOrValue === 'string') {
@@ -164,6 +169,7 @@ const getCorrectAnswers = (q: Question): (string | number)[] => {
 };
 
 export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, attemptNumber, maxAttempts, canReattempt = true, attemptLogs }) => {
+  const { t } = useTranslation("libraryCommonA");
   const [showFullPassageIdx, setShowFullPassageIdx] = useState<number | null>(null);
   const [showPastAttempts, setShowPastAttempts] = useState(false);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
@@ -423,10 +429,12 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
     <div className="w-full min-h-screen-80 bg-white rounded-xl shadow-lg p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <h2 className="text-primary-800 text-base font-bold">Quiz Review</h2>
+          <h2 className="text-primary-800 text-base font-bold">{t("quizReview.title")}</h2>
           {attemptNumber != null && attemptNumber > 0 && (
             <span className="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700">
-              Attempt {attemptNumber}{maxAttempts != null ? ` / ${maxAttempts}` : ''}
+              {maxAttempts != null
+                ? t("quizReview.attemptBadgeWithMax", { attemptNumber, maxAttempts })
+                : t("quizReview.attemptBadge", { attemptNumber })}
             </span>
           )}
         </div>
@@ -436,11 +444,11 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
             onClick={onRestart}
             type="button"
           >
-            Reattempt
+            {t("quizReview.reattempt")}
           </button>
         ) : (
           <span className="px-4 py-2 text-xs font-medium text-gray-400">
-            No attempts remaining
+            {t("quizReview.noAttemptsRemaining")}
           </span>
         )}
       </div>
@@ -453,7 +461,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           <div className="mb-3 flex items-center gap-2">
             <span className="text-lg">📊</span>
             <span className="font-semibold text-primary-800">
-              {isViewingPastAttempt ? 'Attempt Score' : 'Your Score'}
+              {isViewingPastAttempt ? t("quizReview.attemptScoreLabel") : t("quizReview.yourScoreLabel")}
             </span>
           </div>
           <div className="mb-4 flex items-baseline gap-3">
@@ -462,7 +470,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                 ? effectiveScoreCardWithCounts.earned
                 : effectiveScoreCardWithCounts.earned.toFixed(2)}
             </span>
-            <span className="text-lg text-primary-500">/ {effectiveScoreCardWithCounts.totalMarks} marks</span>
+            <span className="text-lg text-primary-500">{t("quizReview.marksSuffix", { totalMarks: effectiveScoreCardWithCounts.totalMarks })}</span>
             <span className="ms-auto rounded-full bg-primary-100 px-3 py-1 text-sm font-semibold text-primary-700">
               {effectiveScoreCardWithCounts.totalMarks > 0
                 ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
@@ -471,13 +479,13 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
             <span className="flex items-center gap-1.5 font-medium text-green-700">
-              <span>✅</span> Correct: {effectiveScoreCardWithCounts.correct}
+              <span>✅</span> {t("quizReview.correctLabel", { count: effectiveScoreCardWithCounts.correct })}
             </span>
             <span className="flex items-center gap-1.5 font-medium text-red-600">
-              <span>❌</span> Wrong: {effectiveScoreCardWithCounts.wrong}
+              <span>❌</span> {t("quizReview.wrongLabel", { count: effectiveScoreCardWithCounts.wrong })}
             </span>
             <span className="flex items-center gap-1.5 font-medium text-gray-500">
-              <span>⏭</span> Skipped: {effectiveScoreCardWithCounts.skipped}
+              <span>⏭</span> {t("quizReview.skippedLabel", { count: effectiveScoreCardWithCounts.skipped })}
             </span>
           </div>
         </div>
@@ -489,14 +497,16 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           <span className="text-2xl">🎉</span>
           <div>
             <div className="font-semibold text-green-800">
-              {isViewingPastAttempt ? 'Attempt passed' : 'You passed!'}
+              {isViewingPastAttempt ? t("quizReview.attemptPassed") : t("quizReview.youPassed")}
             </div>
             <div className="text-sm text-green-700">
-              Required: {passPercentage}% — Score:{" "}
-              {effectiveScoreCardWithCounts && effectiveScoreCardWithCounts.totalMarks > 0
-                ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
-                : 0}
-              %
+              {t("quizReview.requiredScoreLine", {
+                percentage: passPercentage,
+                score:
+                  effectiveScoreCardWithCounts && effectiveScoreCardWithCounts.totalMarks > 0
+                    ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
+                    : 0,
+              })}
             </div>
           </div>
         </div>
@@ -507,14 +517,16 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
             <span className="text-2xl">😔</span>
             <div>
               <div className="font-semibold text-red-800">
-                {isViewingPastAttempt ? 'Attempt did not pass' : 'You did not pass'}
+                {isViewingPastAttempt ? t("quizReview.attemptFailed") : t("quizReview.youFailed")}
               </div>
               <div className="text-sm text-red-700">
-                Required: {passPercentage}% — Score:{" "}
-                {effectiveScoreCardWithCounts && effectiveScoreCardWithCounts.totalMarks > 0
-                  ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
-                  : 0}
-                %
+                {t("quizReview.requiredScoreLine", {
+                  percentage: passPercentage,
+                  score:
+                    effectiveScoreCardWithCounts && effectiveScoreCardWithCounts.totalMarks > 0
+                      ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
+                      : 0,
+                })}
               </div>
             </div>
           </div>
@@ -527,7 +539,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
               disabled={!canReattempt}
               type="button"
             >
-              {canReattempt ? 'Reattempt Quiz' : 'No attempts remaining'}
+              {canReattempt ? t("quizReview.reattemptQuiz") : t("quizReview.noAttemptsRemaining")}
             </button>
           )}
         </div>
@@ -541,7 +553,9 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
             className="mb-2 text-sm font-semibold text-primary-700 hover:underline"
             onClick={() => setShowPastAttempts(!showPastAttempts)}
           >
-            {showPastAttempts ? "▾ Hide" : "▸ View"} Past Attempts ({attemptLogs.length})
+            {showPastAttempts
+              ? t("quizReview.hidePastAttempts", { count: attemptLogs.length })
+              : t("quizReview.viewPastAttempts", { count: attemptLogs.length })}
           </button>
           {showPastAttempts && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -564,7 +578,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                     >
                       <span className="flex items-center gap-2">
                         <span className="font-medium text-gray-700">
-                          Attempt #{attemptNum}
+                          {t("quizReview.attemptNumberLabel", { number: attemptNum })}
                         </span>
                         {score && score.total > 0 && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
@@ -573,7 +587,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                         )}
                         {feedbackCount > 0 && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
-                            📝 {feedbackCount} {feedbackCount === 1 ? 'note' : 'notes'}
+                            📝 {t("quizReview.notesCount", { count: feedbackCount })}
                           </span>
                         )}
                       </span>
@@ -594,8 +608,8 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
         <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3">
           <div className="text-sm text-primary-700">
             {activeAttemptHasData
-              ? 'Viewing a past attempt.'
-              : 'This attempt has no recorded responses — all questions are shown as Skipped.'}
+              ? t("quizReview.viewingPastAttempt")
+              : t("quizReview.noRecordedResponses")}
             {activeAttempt.end_time && (
               <span className="ms-1 text-xs text-primary-600">
                 ({new Date(activeAttempt.end_time).toLocaleString()})
@@ -607,7 +621,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
             onClick={() => setSelectedAttemptId(null)}
             className="rounded-md border border-primary-300 bg-white px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100"
           >
-            Back to latest
+            {t("quizReview.backToLatest")}
           </button>
         </div>
       )}
@@ -709,10 +723,10 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
 
           return (
             <div key={q.id} className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm rich-text-content">
-              <div className="mb-2 text-xs text-gray-500 font-medium">Question {idx + 1}</div>
+              <div className="mb-2 text-xs text-gray-500 font-medium">{t("quizReview.questionNumber", { number: idx + 1 })}</div>
               {passage && (
                 <div className="mb-4 p-4 bg-gray-100 rounded border border-gray-200">
-                  <div className="text-xs font-semibold text-gray-700 mb-1">Passage:</div>
+                  <div className="text-xs font-semibold text-gray-700 mb-1">{t("quizReview.passageLabel")}</div>
                   <div className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: passageToShow }} />
                   {isPassageLong && (
                     <button
@@ -720,7 +734,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                       onClick={() => setShowFullPassageIdx(showFull ? null : idx)}
                       type="button"
                     >
-                      {showFull ? "Show less" : "Show more"}
+                      {showFull ? t("quizReview.showLess") : t("quizReview.showMore")}
                     </button>
                   )}
                 </div>
@@ -735,43 +749,43 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                     {answerStatus === 'correct' && <CheckIcon />}
                     {answerStatus === 'wrong' && <CrossIcon />}
                     {answerStatus === 'skipped' && <UserIcon />}
-                    Your Answer
+                    {t("quizReview.yourAnswerLabel")}
                   </div>
                   <div className={`w-full rounded-lg border p-3 flex flex-col gap-2 ${yourAnswerStyles.box}`}>
                     {!hasUserAnswer ? (
-                      <span className="text-gray-500 italic text-sm">No answer selected</span>
+                      <span className="text-gray-500 italic text-sm">{t("quizReview.noAnswerSelected")}</span>
                     ) : isMCQ && userAnswerWithIndex
                       ? userAnswerWithIndex.map(({ id, idx }) => (
                           <span key={id as string} className={`text-sm flex items-center ${yourAnswerStyles.text}`}>
                             <span className="font-bold me-1">{getOptionLabel(idx)}</span>
-                            <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id) }} />
+                            <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id, t("quizReview.noAnswerSelected")) }} />
                           </span>
                         ))
                       : isMulti
                         ? (userAnswer as (string | number)[]).map((id) => (
                             <span key={id as string} className={`text-sm flex items-center ${yourAnswerStyles.text}`}>
-                              <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id) }} />
+                              <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id, t("quizReview.noAnswerSelected")) }} />
                             </span>
                           ))
                         : <span className={`text-sm flex items-center ${yourAnswerStyles.text}`}>
-                            <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, userAnswer) }} />
+                            <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, userAnswer, t("quizReview.noAnswerSelected")) }} />
                           </span>}
                   </div>
                 </div>
                 {showCorrectAnswers && correctAnswers.length > 0 && (
                   <div className="flex-1">
-                    <div className="mb-1 text-xs font-semibold text-green-800 flex items-center"><CheckIcon />Correct Answer</div>
+                    <div className="mb-1 text-xs font-semibold text-green-800 flex items-center"><CheckIcon />{t("quizReview.correctAnswerLabel")}</div>
                     <div className="w-full rounded-lg bg-green-50 border border-green-200 p-3 flex flex-col gap-2">
                       {isMCQ && correctAnswerWithIndex
                         ? correctAnswerWithIndex.map(({ id, idx }) => (
                             <span key={id as string} className="text-green-900 text-sm flex items-center">
                               <span className="font-bold me-1">{getOptionLabel(idx)}</span>
-                              <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id) }} />
+                              <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id, t("quizReview.noAnswerSelected")) }} />
                             </span>
                           ))
                         : correctAnswers.map((id) => (
                             <span key={id as string} className="text-green-900 text-sm flex items-center">
-                              <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id) }} />
+                              <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id, t("quizReview.noAnswerSelected")) }} />
                             </span>
                           ))}
                     </div>
@@ -780,7 +794,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
               </div>
               {showCorrectAnswers && !isRichTextEmpty(explanation) && (
                 <div className="mt-2 p-4 bg-gray-100 border border-gray-300 rounded-lg">
-                  <div className="mb-1 text-xs font-semibold text-gray-700">Explanation</div>
+                  <div className="mb-1 text-xs font-semibold text-gray-700">{t("quizReview.explanationLabel")}</div>
                   <div className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: explanation }} />
                 </div>
               )}

@@ -1,10 +1,14 @@
 "use client";
 import { cn } from "@/lib/utils";
 import { useAssessmentStore } from "@/stores/assessment-store";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { distribution_duration_types } from "@/types/assessment";
 
+const LOW_TIME_MS = 3 * 60 * 1000;
+
 export function SectionTabs() {
+  const { t } = useTranslation("questionTest");
   const {
     assessment,
     currentSection,
@@ -15,8 +19,7 @@ export function SectionTabs() {
     moveToNextAvailableSection,
   } = useAssessmentStore();
 
-  // Track if the current section's time is ending
-  // const [showEndButton, setShowEndButton] = useState(false)
+  const activeTabRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (
@@ -29,15 +32,9 @@ export function SectionTabs() {
 
       if (currentTimer && currentTimer.timeLeft > 0) {
         updateSectionTimer(currentSection, currentTimer.timeLeft - 1000);
-
-        // Show end button when 1 minute is remaining for the current section
-        if (currentTimer.timeLeft <= 60000 && !assessment?.can_switch_section) {
-          // setShowEndButton(true);
-        }
       } else if (!assessment?.can_switch_section) {
         // Automatically move to next section when time ends if switching is disabled
         moveToNextAvailableSection();
-        // setShowEndButton(false)
       }
     }, 1000);
 
@@ -49,6 +46,16 @@ export function SectionTabs() {
     updateSectionTimer,
     moveToNextAvailableSection,
   ]);
+
+  // The tab strip scrolls horizontally on a phone, so a section reached via the
+  // footer's "next" (rather than a tap) would otherwise sit off-screen.
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [currentSection]);
 
   if (!assessment || assessment.section_dtos.length <= 1) return null;
 
@@ -76,8 +83,14 @@ export function SectionTabs() {
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   };
 
+  const isSectionTimed =
+    assessment.distribution_duration === distribution_duration_types.SECTION;
+
   return (
-    <div className="flex gap-2 px-4 pt-2 border-b bg-white overflow-x-auto">
+    <nav
+      aria-label={t("sectionTabs.ariaLabel")}
+      className="flex flex-none gap-5 overflow-x-auto border-b border-neutral-200 bg-white px-4 [scrollbar-width:none] md:px-6 [&::-webkit-scrollbar]:hidden"
+    >
       {assessment?.section_dtos
         ?.map((section, originalIndex) => ({ section, originalIndex }))
         ?.sort((a, b) => a.section.section_order - b.section.section_order)
@@ -90,39 +103,46 @@ export function SectionTabs() {
             assessment.section_dtos
               .slice(0, originalIndex)
               .every((_, i) => sectionTimers[i]?.timeLeft === 0);
+          const isLowOnTime =
+            isSectionTimed && !isTimeUp && (timer?.timeLeft ?? 0) < LOW_TIME_MS;
 
           return (
-            <div key={section.id} className="flex items-center">
-              <button
-                onClick={() => handleSectionChange(originalIndex)}
-                disabled={!isAvailable || isTimeUp}
-                className={cn(
-                  "relative px-4 py-2 rounded-t-lg text-sm",
-                  isActive &&
-                    "border border-b-0 border-primary-500 bg-orange-50 text-primary-500",
-                  !isActive && "border border-transparent hover:bg-gray-50",
-                  (!isAvailable || isTimeUp) && "opacity-50 cursor-not-allowed",
-                )}
-              >
-                <div className="flex items-center gap-1 min-w-max">
-                  <span>{section.name}</span>
-                  {assessment.distribution_duration ===
-                    distribution_duration_types.SECTION && (
-                    <span
-                      className={cn(
-                        timer?.timeLeft < 60000 && !isTimeUp
-                          ? "text-red-500"
-                          : "text-gray-500",
-                      )}
-                    >
-                      {formatTime(timer?.timeLeft || 0)}
-                    </span>
+            <button
+              key={section.id}
+              ref={isActive ? activeTabRef : undefined}
+              type="button"
+              onClick={() => handleSectionChange(originalIndex)}
+              disabled={!isAvailable || isTimeUp}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                // Underline tabs, not pills: sections are a single-axis switch
+                // and the underline survives a 3-across scroll on a phone.
+                "-mb-px flex flex-none items-center gap-2 whitespace-nowrap border-b-2 py-3 transition-colors",
+                isActive
+                  ? "border-neutral-900 text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700",
+                (!isAvailable || isTimeUp) &&
+                  "cursor-not-allowed opacity-40 hover:text-neutral-500",
+              )}
+            >
+              <span className="text-caption font-semibold md:text-body">
+                {section.name}
+              </span>
+              {isSectionTimed && (
+                <span
+                  className={cn(
+                    "rounded-md px-1.5 py-0.5 font-mono text-3xs tabular-nums",
+                    isLowOnTime
+                      ? "bg-danger-50 text-danger-600"
+                      : "bg-neutral-100 text-neutral-500",
                   )}
-                </div>
-              </button>
-            </div>
+                >
+                  {formatTime(timer?.timeLeft || 0)}
+                </span>
+              )}
+            </button>
           );
         })}
-    </div>
+    </nav>
   );
 }

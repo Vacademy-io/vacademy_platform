@@ -1040,6 +1040,19 @@ public class SlideService {
                     : videoSlide.getPublishedVideoLengthInMillis());
             newVideoSlide.setPublishedUrl(videoSlide.getPublishedUrl());
             newVideoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
+            // Used to be dropped, so every copied video lost the information the
+            // players route on. A copied VIMEO or FILE_ID slide came back with a
+            // null source_type and fell through to the YouTube player, which can
+            // play neither — the learner got an empty frame. (YouTube copies
+            // survived by luck, since YouTube is the fallback.)
+            newVideoSlide.setSourceType(videoSlide.getSourceType());
+            // embeddedType/embeddedData are deliberately NOT copied. The split
+            // screen JSON embeds the SOURCE video row's own id (videoSlideId /
+            // originalVideoData.id), and the admin editor writes back to that id
+            // in preference to the slide's real video row — so a verbatim copy
+            // would make edits to the copy corrupt the original course. Copying
+            // them needs an id remap first (cf. DripConditionRemapper); until
+            // then a copied split-screen slide stays a plain video, as before.
             newVideoSlide = videoSlideRepository.save(newVideoSlide);
             return newVideoSlide.getId();
         }
@@ -1550,6 +1563,37 @@ public class SlideService {
      * @param packageSessionIds List of package session IDs
      * @return Map of package session ID to read time in minutes
      */
+    /**
+     * Pure function of packageSessionIds (the three status lists below are
+     * constants), which is why it is safe to cache without any user or institute
+     * scoping. It is the expensive half of the institute-details payload: every
+     * call re-aggregates slide read times across every batch, and the authenticated
+     * /institute/v1/details endpoint is uncached and fires on each dashboard load.
+     *
+     * Keyed on the list's toString rather than the hashCode idiom used by the
+     * caches in UserResolutionService: the key is longer, but a hash collision here
+     * would serve one institute's read times for another, and a miss is cheap.
+     * Order-sensitive, so a reordered list is a miss and never a wrong hit.
+     *
+     * Only ever called from other beans (InstituteInitManager), so the cache proxy
+     * actually applies -- a self-invocation from inside SlideService would silently
+     * bypass it.
+     *
+     * Guarded with condition rather than unless. Spring evaluates condition BEFORE
+     * the key, so a null argument skips the cache entirely and reaches the method's
+     * own null check; with only an unless clause the key expression would run first
+     * and throw SpelEvaluationException on null.toString(), making that check dead.
+     *
+     * An EMPTY result is deliberately cacheable: an institute with batches but no
+     * published slides legitimately aggregates to nothing, and excluding it via
+     * unless would re-run this query on every dashboard load for exactly the
+     * cold-start tenants the cache is meant to help.
+     *
+     * Staleness is bounded only by the 2m TTL -- there is no eviction hook on slide
+     * publish, so a newly published slide can take up to 2 minutes to move a batch's
+     * displayed duration.
+     */
+    @org.springframework.cache.annotation.Cacheable(value = "packageSessionReadTimes", key = "#packageSessionIds.toString()", condition = "#packageSessionIds != null && !#packageSessionIds.isEmpty()")
     public Map<String, Double> calculateReadTimesForPackageSessions(List<String> packageSessionIds) {
         if (packageSessionIds == null || packageSessionIds.isEmpty()) {
             return Map.of();

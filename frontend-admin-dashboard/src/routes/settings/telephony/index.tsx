@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-// Cast until the TanStack Router code generator regenerates routeTree.gen.ts to include this path.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute('/settings/telephony/' as any)({});
+// A plain string literal, so the route generator can see this path (an `as any`
+// cast here made it skip the file, which is why the tree never had this route).
+export const Route = createFileRoute('/settings/telephony/')({});

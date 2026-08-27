@@ -4,6 +4,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
+import { hasActiveLearnerSession } from "@/lib/auth/sessionUtility";
 
 // Code-split the catalogue render tree (JsonRenderer + all section components +
 // lead/intro modals) so it loads only when a catalogue route is visited.
@@ -16,9 +17,15 @@ const CourseCataloguePage = lazy(() =>
 export const Route = createFileRoute("/$tagName/")({
   // Reader mode (iOS always / reader-mode institutes): the public course
   // catalogue is a marketplace surface — block it (Apple 3.1.1).
-  beforeLoad: () => {
+  beforeLoad: async () => {
     if (shouldHidePaidPurchaseUI()) {
-      throw redirect({ to: "/dashboard" });
+      // /dashboard is auth-only: sending a logged-OUT learner there bounces
+      // back to the institute landing route, which is reader-blocked again —
+      // an infinite loop that hangs the app on the boot splash. See
+      // hasActiveLearnerSession().
+      throw redirect({
+        to: (await hasActiveLearnerSession()) ? "/dashboard" : "/login",
+      });
     }
   },
   component: RouteComponent,

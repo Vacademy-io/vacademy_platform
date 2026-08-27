@@ -1,5 +1,6 @@
 # Vacademy AI Voice Bot Service
 
+
 The dedicated real-time voice-bot behind the **Vacademy AI Agent** provider
 (`VACADEMY_AI`). Productionization of the validated POC
 (<https://github.com/shreyash-jain/sales-poc-ai>): Plivo `<Stream>` WebSocket →

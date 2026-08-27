@@ -1,19 +1,20 @@
 "use client";
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { PaperPlaneTilt } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { ViewToggle } from "./view-toggle";
 import { QuestionListView } from "./question-list-view";
 import { QuestionDto } from "@/types/assessment";
-import { Circle } from "@phosphor-icons/react";
+import { useLiveTestUi } from "./live-test-ui-context";
 import {
   getQuestionStatus,
+  getQuestionStatusLabel,
+  isMarkedStatus,
   QUESTION_LEGEND_ORDER,
   QUESTION_STATUS_GRID_CLASS,
-  QUESTION_STATUS_LABEL,
   type QuestionStatus,
 } from "./question-status-colors";
 
@@ -22,11 +23,16 @@ interface QuestionNavigatorProps {
   evaluationType: string;
 }
 
+/**
+ * Question palette — the same body serves the desktop right rail and the mobile
+ * bottom sheet, so answered/marked counts can never drift between the two.
+ */
 export function QuestionNavigator({
   onClose,
   evaluationType,
 }: QuestionNavigatorProps) {
-  const [view, setView] = React.useState<"grid" | "list">("grid");
+  const { t } = useTranslation("questionTest");
+  const { paletteView, setPaletteView, requestSubmit } = useLiveTestUi();
   const {
     assessment,
     currentSection,
@@ -36,16 +42,10 @@ export function QuestionNavigator({
     setQuestionState,
   } = useAssessmentStore();
 
-  if (!assessment) return null;
-
-  const currentSectionQuestions =
-    assessment.section_dtos[currentSection].question_preview_dto_list;
-
-  const handleQuestionClick = (question: QuestionDto) => {
-    setCurrentQuestion(question);
-    setQuestionState(question.question_id, { isVisited: true });
-    onClose();
-  };
+  const currentSectionQuestions = React.useMemo(
+    () => assessment?.section_dtos?.[currentSection]?.question_preview_dto_list ?? [],
+    [assessment, currentSection],
+  );
 
   const counts = React.useMemo(() => {
     const base: Record<QuestionStatus, number> = {
@@ -62,46 +62,71 @@ export function QuestionNavigator({
     return base;
   }, [currentSectionQuestions, questionStates]);
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b ">
-        <ViewToggle view={view} onViewChange={setView} />
-      </div>
+  if (!assessment) return null;
 
-      <div className="p-4">
-        {/* Status legend + counts */}
-        {evaluationType !== "MANUAL" && (
+  const sectionName =
+    assessment.section_dtos?.[currentSection]?.name ??
+    t("questionNavigator.sectionFallback");
+  const isManual = evaluationType === "MANUAL";
+
+  const handleQuestionClick = (question: QuestionDto) => {
+    setCurrentQuestion(question);
+    setQuestionState(question.question_id, { isVisited: true });
+    onClose();
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-neutral-50">
+      <div className="flex-none border-b border-neutral-200 px-4 py-3">
+        <div className="mb-3 flex items-start gap-2">
+          {/* Section names are author-supplied and often already read
+              "Section A — Biology", so the count sits on its own line rather
+              than competing with the name for the truncation budget. */}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-body font-semibold text-neutral-800">
+              {sectionName}
+            </p>
+            <p className="text-2xs text-neutral-500">
+              {t("questionNavigator.questionCount", {
+                count: currentSectionQuestions.length,
+              })}
+            </p>
+          </div>
+          <ViewToggle view={paletteView} onViewChange={setPaletteView} />
+        </div>
+
+        {!isManual && (
           <div
-            className="grid grid-cols-2 gap-2 mb-2 text-xs"
-            aria-label="Question status legend"
+            className="grid grid-cols-2 gap-x-3 gap-y-2"
+            aria-label={t("questionNavigator.legendAriaLabel")}
           >
             {QUESTION_LEGEND_ORDER.map((status) => (
-              <div key={status} className="flex items-center gap-2">
-                <div className="relative">
-                  <div
+              <div key={status} className="flex min-w-0 items-center gap-2">
+                <span className="relative flex-none">
+                  <span
                     className={cn(
-                      "w-6 h-6 rounded border flex items-center justify-center font-medium",
-                      QUESTION_STATUS_GRID_CLASS[status]
+                      "grid size-6 place-items-center rounded-md border text-2xs font-bold",
+                      QUESTION_STATUS_GRID_CLASS[status],
                     )}
                   >
                     {counts[status]}
-                  </div>
-                  {(status === "marked" || status === "answered-marked") && (
-                    <Circle
-                      className="absolute -top-1 -end-1 w-3 h-3 text-primary-500"
-                      weight="fill"
-                    />
+                  </span>
+                  {isMarkedStatus(status) && (
+                    <span className="absolute -end-1 -top-1 size-2 rounded-full border border-white bg-success-500" />
                   )}
-                </div>
-                <span>{QUESTION_STATUS_LABEL[status]}</span>
+                </span>
+                <span className="truncate text-2xs text-neutral-600">
+                  {getQuestionStatusLabel(status, t)}
+                </span>
               </div>
             ))}
           </div>
         )}
       </div>
-      <ScrollArea className="flex-1">
-        {view === "grid" ? (
-          <div className="grid grid-cols-5 gap-2 p-1 px-4">
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+        {paletteView === "grid" ? (
+          <div className="grid grid-cols-5 gap-2">
             {currentSectionQuestions.map((question, index) => {
               const state = questionStates[question.question_id];
               const status = getQuestionStatus(state);
@@ -109,33 +134,47 @@ export function QuestionNavigator({
                 currentQuestion?.question_id === question.question_id;
               return (
                 <div key={question.question_id} className="relative">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    aria-label={`Question ${index + 1}, ${QUESTION_STATUS_LABEL[status]}`}
+                  <button
+                    type="button"
+                    aria-label={t("questionList.itemAriaLabel", {
+                      number: index + 1,
+                      status: getQuestionStatusLabel(status, t),
+                    })}
+                    aria-current={isActive ? "true" : undefined}
                     className={cn(
-                      "w-full aspect-square text-sm font-medium p-0 border",
+                      // Square, 40px-plus tap target — the grid is the primary
+                      // way a learner moves around the paper on a phone.
+                      "flex aspect-square w-full items-center justify-center rounded-lg border text-body font-semibold tabular-nums transition-colors",
                       QUESTION_STATUS_GRID_CLASS[status],
-                      isActive && "ring-2 ring-primary"
+                      isActive &&
+                        "ring-2 ring-neutral-800 ring-offset-1 ring-offset-neutral-50",
                     )}
                     onClick={() => handleQuestionClick(question)}
                   >
                     {index + 1}
-                  </Button>
+                  </button>
                   {state?.isMarkedForReview && (
-                    <Circle
-                      className="absolute -top-1 -end-1 w-3 h-3 text-primary-500"
-                      weight="fill"
-                    />
+                    <span className="pointer-events-none absolute -end-1 -top-1 size-2.5 rounded-full border-2 border-white bg-success-500" />
                   )}
                 </div>
               );
             })}
           </div>
         ) : (
-          <QuestionListView />
+          <QuestionListView onSelect={onClose} />
         )}
-      </ScrollArea>
+      </div>
+
+      <div className="flex-none border-t border-neutral-200 bg-white p-4">
+        <button
+          type="button"
+          onClick={requestSubmit}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 text-body font-semibold text-white transition-colors hover:bg-neutral-800"
+        >
+          <PaperPlaneTilt size={17} weight="fill" />
+          {t("questionNavigator.submitPaper")}
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,36 @@
+{
+    "roleTabs": {
+        "admin": "Admin",
+        "teacher": "Teacher",
+        "custom": "Custom Role"
+    },
+    "tabs": {
+        "ariaLabel": "Select role to configure"
+    },
+    "title": {
+        "admin": "Admin Display Settings",
+        "teacher": "Teacher Display Settings",
+        "customNamed": "{{name}} Display Settings",
+        "customDefault": "Custom Role Display Settings"
+    },
+    "description": "Control what this role sees and can do — courses, sidebar, dashboard, permissions and more.",
+    "customRole": {
+        "label": "Custom role to configure",
+        "newRoleInput": {
+            "placeholder": "Enter role name",
+            "create": "Create",
+            "cancel": "Cancel"
+        },
+        "select": {
+            "placeholder": "Choose a custom role…",
+            "empty": "No custom roles yet. Create one with the + button.",
+            "addAriaLabel": "Add new role"
+        },
+        "emptyState": "Select a custom role above to view or edit its display settings."
+    },
+    "toasts": {
+        "roleCreated": "Role created successfully",
+        "roleCreateFailed": "Failed to create role",
+        "roleNameRequired": "Role name is required"
+    }
+}

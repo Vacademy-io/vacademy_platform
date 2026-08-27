@@ -105,9 +105,14 @@ import { SafetyWarningModal } from "@/components/common/safety/safety-warning-mo
 
 import { ENABLE_LIVE_CLASS_SAFETY_MODAL } from "@/constants/feature-flags";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { useTranslation } from "react-i18next";
 
 function EmbedComponent() {
+  const { t } = useTranslation("study");
+  const liveSession = getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession);
+  const session = getTerminology(ContentTerms.Session, SystemTerms.Session);
+  const instructor = getTerminology(RoleTerms.Teacher, SystemTerms.Teacher);
   const { sessionId, videoUrl, title, learnerButtonConfig: searchLearnerButtonConfig } = Route.useSearch();
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
@@ -157,7 +162,7 @@ function EmbedComponent() {
   useEffect(() => {
     // If we are watching a default class (no sessionId) and a live session starts, redirect
     if (!sessionId && sessions?.live_sessions && sessions.live_sessions.length > 0) {
-      toast.info("A live session has started!");
+      toast.info(t("liveClass.embed.toast.liveSessionStarted", { liveSession: liveSession.toLowerCase() }));
       navigate({ to: "/study-library/live-class" });
     }
   }, [sessions?.live_sessions, sessionId, navigate]);
@@ -187,11 +192,25 @@ function EmbedComponent() {
         params: { scheduleId: sessionId, role: "VIEWER" },
       })
       .then((response) => {
+        // The host starts the class; until then the backend returns NOT_STARTED
+        // instead of creating a room. Leave bbbJoinUrl unset (an undefined src
+        // would render an empty frame) and allow the learner to retry.
+        if (response.data?.status === "NOT_STARTED") {
+          toast.info(
+            response.data?.message ||
+            t("liveClass.embed.toast.classNotStarted", {
+              instructor: instructor.toLowerCase(),
+              liveClass: liveSession.toLowerCase(),
+            })
+          );
+          bbbFetchedRef.current = false;
+          return;
+        }
         setBbbJoinUrl(response.data.joinUrl);
       })
       .catch((err) => {
         console.error("Failed to get BBB join URL:", err);
-        toast.error("Failed to join video class. Please try again.");
+        toast.error(t("liveClass.embed.toast.joinFailed", { liveClass: liveSession.toLowerCase() }));
         bbbFetchedRef.current = false; // allow retry
       })
       .finally(() => {
@@ -210,7 +229,7 @@ function EmbedComponent() {
     fetchedSessionDetails ||
     (videoUrl
       ? {
-        title: title || (sessions as any)?.defaultDayConfig?.defaultClassName || "Default Session",
+        title: title || (sessions as any)?.defaultDayConfig?.defaultClassName || t("liveClass.defaultClassCard.defaultTitle", { session }),
         defaultMeetLink: videoUrl,
         linkType: LinkType.YOUTUBE, // Assuming default links are YouTube for now, can be improved
         allowPlayPause: true,
@@ -272,7 +291,7 @@ function EmbedComponent() {
 
     // Check if class has ended
     if (now > sessionEndInUserTimezone) {
-      toast.error("This class has ended");
+      toast.error(t("liveClass.toast.classEnded", { liveClass: liveSession.toLowerCase() }));
       navigate({ to: "/study-library/live-class" });
       return;
     }
@@ -281,7 +300,7 @@ function EmbedComponent() {
     const checkInterval = setInterval(() => {
       const currentTime = new Date();
       if (currentTime > sessionEndInUserTimezone) {
-        toast.error("This class has ended");
+        toast.error(t("liveClass.toast.classEnded", { liveClass: liveSession.toLowerCase() }));
         navigate({ to: "/study-library/live-class" });
         clearInterval(checkInterval);
       }
@@ -311,11 +330,11 @@ function EmbedComponent() {
         return (
           <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-8">
             <div className="text-center space-y-3">
-              <h3 className="text-lg font-semibold">Live Class is Ready</h3>
+              <h3 className="text-lg font-semibold">{t("liveClass.embed.classReady", { liveClass: liveSession })}</h3>
               <p className="text-sm text-muted-foreground">
                 {Capacitor.getPlatform() === "web"
-                  ? "Click below to join the video class in a new window."
-                  : "Tap below to join the video class."}
+                  ? t("liveClass.embed.clickToJoinNewWindow", { liveClass: liveSession.toLowerCase() })
+                  : t("liveClass.embed.tapToJoin", { liveClass: liveSession.toLowerCase() })}
               </p>
               <Button
                 onClick={() => {
@@ -328,7 +347,7 @@ function EmbedComponent() {
                 className="gap-2"
               >
                 <ArrowSquareOut size={18} />
-                Join Live Class
+                {t("liveClass.button.joinLiveClass")}
               </Button>
             </div>
           </div>
@@ -376,9 +395,9 @@ function EmbedComponent() {
       if (!videoId) {
         return (
           <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
-            Invalid YouTube URL format
+            {t("liveClass.embed.invalidYoutubeUrl")}
             <a href={sessionDetails.defaultMeetLink} target="_blank">
-              Click here to view the live
+              {t("liveClass.embed.clickToViewLive")}
             </a>
           </div>
         );
@@ -457,7 +476,7 @@ function EmbedComponent() {
       window.open(joinLink, "_blank", "noopener,noreferrer");
       return (
         <div className="flex flex-col items-center justify-center p-8 h-full">
-          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
+          <p className="mt-4 text-neutral-600">{t("liveClass.embed.openingInNewTab")}</p>
         </div>
       );
     }
@@ -465,7 +484,7 @@ function EmbedComponent() {
     // Handle unsupported link types
     return (
       <div className="p-4 border border-yellow-200 rounded-lg bg-yellow-50 text-yellow-700">
-        Unsupported session type: {linkType}
+        {t("liveClass.embed.unsupportedSessionType", { session, linkType })}
       </div>
     );
   };
@@ -482,15 +501,15 @@ function EmbedComponent() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h2 className="text-xl font-semibold text-gray-800">Login Required</h2>
+          <h2 className="text-xl font-semibold text-gray-800">{t("liveClass.embed.loginRequired")}</h2>
           <p className="text-gray-600">
-            Please log in to attend this session. This is a private session and requires authentication.
+            {t("liveClass.embed.loginRequiredDescription", { session: session.toLowerCase() })}
           </p>
           <Button
             onClick={() => navigate({ to: "/login" })}
             className="mt-4"
           >
-            Go to Login
+            {t("liveClass.embed.goToLogin")}
           </Button>
         </div>
       </div>
@@ -503,7 +522,7 @@ function EmbedComponent() {
     return (
       <LayoutContainer>
         <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
-          Error loading session details: {(error as Error).message}
+          {t("liveClass.embed.errorLoadingSessionDetails", { session, message: (error as Error).message })}
         </div>
       </LayoutContainer>
     );
@@ -537,7 +556,7 @@ function EmbedComponent() {
     return (
       <LayoutContainer>
         <div className="p-4 border border-yellow-200 rounded-lg bg-yellow-50 text-yellow-700">
-          No meeting link available for this session.
+          {t("liveClass.embed.noMeetingLink", { session: session.toLowerCase() })}
         </div>
       </LayoutContainer>
     );
@@ -581,13 +600,13 @@ function EmbedComponent() {
             onClick={() => navigate({ to: "/study-library/live-class" })}
             className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-neutral-800 shadow-sm transition hover:bg-white"
           >
-            ← Back
+            {t("liveClass.embed.back")}
           </button>
           <span className="truncate text-xs font-medium text-white/80">
             {sessionDetails.title}
           </span>
           <span className="ms-auto rounded bg-red-600 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-white">
-            Live
+            {t("liveClass.badge.live")}
           </span>
         </div>
         <div className="min-h-0 flex-1">
@@ -614,13 +633,33 @@ function EmbedComponent() {
       </Helmet>
 
       <div className="flex flex-col h-nav-offset">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-center mb-6">
+        <div className="mb-6 flex items-center justify-between gap-2">
+          {/* Scales with the viewport: a session title like
+              "Suchbliss.com - 07:30 (Day 2)" wrapped onto two lines on a phone
+              at a fixed 2xl. min-w-0 lets it shrink beside the LIVE badge
+              instead of pushing it off the row. */}
+          <h1 className="min-w-0 text-subtitle font-bold leading-tight xs:text-h3 md-tablets:text-h2">
             {sessionDetails?.title || getTerminology(ContentTerms.Session, SystemTerms.Session)}
           </h1>
-          <span className={`rounded px-3 py-1 text-sm font-semibold uppercase text-white shadow ${sessionId ? "bg-red-600" : "bg-primary-300"}`}>
-            {sessionId ? "Live" : "SESSION"}
-          </span>
+          {/* A recording dot rather than the word "Live". These classes are a
+              scheduled playback, not a broadcast, and "LIVE" alongside YouTube's
+              own chrome read as a claim the class could not keep. The dot is
+              shrink-0 so the title truncates against it instead of squashing it. */}
+          {sessionId ? (
+            <span
+              className="flex shrink-0 items-center gap-2 rounded px-3 py-1 text-sm font-semibold uppercase text-neutral-600 shadow"
+              role="status"
+              aria-label={t("liveClass.embed.recording")}
+              title={t("liveClass.embed.recording")}
+            >
+              <span className="size-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
+              {t("liveClass.embed.rec")}
+            </span>
+          ) : (
+            <span className="shrink-0 rounded bg-primary-300 px-3 py-1 text-sm font-semibold uppercase text-white shadow">
+              {t("liveClass.badge.session")}
+            </span>
+          )}
         </div>
         <div className="flex-grow relative flex items-center justify-center p-2">
           {renderEmbeddedSession()}

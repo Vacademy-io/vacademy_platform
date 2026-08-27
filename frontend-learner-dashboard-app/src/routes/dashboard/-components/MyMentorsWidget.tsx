@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarPlus, ChatCircle, UsersThree, VideoCamera } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
+import { CalendarPlus, ChatCircle, UserPlus, UsersThree, VideoCamera } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MyButton } from "@/components/design-system/button";
 import { getInstituteId } from "@/constants/helper";
 import { getCurrentUserId } from "@/lib/auth/sessionUtility";
-import { openDirectConversation } from "@/services/chat/chatApi";
+import { describeDirectChatError, openDirectConversation } from "@/services/chat/chatApi";
+import { useChatEnabled } from "@/hooks/use-chat-enabled";
 import {
+    handleGetMentorDirectory,
     handleGetMyBookings,
     handleGetMyMentors,
     type MyBooking,
@@ -32,14 +35,19 @@ function fmtWhen(v?: string | number | null): string {
 
 /**
  * Learner dashboard widget: the student's assigned mentors + their next upcoming
- * mentor session, with quick Book / Message. Self-hides when the student has no
- * mentors, so it only appears where mentorship is active.
+ * mentor session, with quick Book / Message. A student with no mentor yet gets a
+ * prompt into the directory instead — but only when their institute actually lists
+ * mentors, so the widget still self-hides where mentorship isn't in use.
  */
 export function MyMentorsWidget() {
+    const { t } = useTranslation("dashboard");
     const navigate = useNavigate();
     const [instituteId, setInstituteId] = useState<string | undefined>();
     const [userId, setUserId] = useState<string | undefined>();
     const [messagingId, setMessagingId] = useState<string | null>(null);
+    // Chat is off by default institute-wide; without this the learner gets a
+    // Message button whose only outcome is "Couldn't open the chat".
+    const chat = useChatEnabled();
 
     useEffect(() => {
         getInstituteId().then((id) => setInstituteId(id ?? undefined));
@@ -48,6 +56,12 @@ export function MyMentorsWidget() {
 
     const mentorsQuery = useQuery(handleGetMyMentors(instituteId));
     const bookingsQuery = useQuery(handleGetMyBookings(instituteId, userId));
+    // Only asked for when there's nothing to show yet — a student who already has
+    // a mentor never needs the directory to decide what this widget renders.
+    const directoryQuery = useQuery({
+        ...handleGetMentorDirectory(instituteId),
+        enabled: !!instituteId && mentorsQuery.isSuccess && (mentorsQuery.data?.length ?? 0) === 0,
+    });
 
     const mentors = (mentorsQuery.data ?? []) as MyMentor[];
 
@@ -72,7 +86,7 @@ export function MyMentorsWidget() {
         return (
             <Card>
                 <CardHeader className="pb-3">
-                    <CardTitle className="text-base">My Mentors</CardTitle>
+                    <CardTitle className="text-base">{t("mentors.title")}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                     {Array.from({ length: 2 }, (_, i) => (
@@ -86,7 +100,32 @@ export function MyMentorsWidget() {
         );
     }
 
-    if (mentors.length === 0) return null;
+    if (mentors.length === 0) {
+        if ((directoryQuery.data?.length ?? 0) === 0) return null;
+        return (
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <UsersThree size={18} weight="duotone" className="text-primary-500" />
+                        {t("mentors.emptyStateTitle")}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col items-start gap-3">
+                    <p className="text-caption text-neutral-500">
+                        {t("mentors.emptyStateBody")}
+                    </p>
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="small"
+                        onClick={() => navigate({ to: "/my-mentors" })}
+                    >
+                        <UserPlus size={16} /> {t("mentors.findMentorButton")}
+                    </MyButton>
+                </CardContent>
+            </Card>
+        );
+    }
 
     const book = (m: MyMentor) => {
         if (!m.booking_page_slug || !instituteId) return;
@@ -105,8 +144,15 @@ export function MyMentorsWidget() {
                 targetUserRole: "TEACHER",
             });
             navigate({ to: "/chat", search: { conversationId: conv.id } });
-        } catch {
-            toast.error("Couldn't open the chat. Please try again.");
+        } catch (error) {
+            // A 403 here is permanent (chat off, or a role pair the institute
+            // forbids) — "try again" would be a lie.
+            toast.error(
+                describeDirectChatError(
+                    error,
+                    t("mentors.chatOpenError"),
+                ),
+            );
         } finally {
             setMessagingId(null);
         }
@@ -117,38 +163,48 @@ export function MyMentorsWidget() {
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                     <UsersThree size={18} weight="duotone" className="text-primary-500" />
-                    My Mentors
+                    {t("mentors.title")}
                 </CardTitle>
                 <button
                     type="button"
                     onClick={() => navigate({ to: "/my-mentors" })}
                     className="text-xs font-medium text-primary-600 hover:text-primary-700"
                 >
-                    View all
+                    {t("mentors.viewAll")}
                 </button>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
                 {nextSession && (
                     <div className="flex flex-col gap-1 rounded-lg border border-primary-200 bg-primary-50 p-3">
                         <span className="text-xs font-medium uppercase tracking-wide text-primary-600">
-                            Next session
+                            {t("mentors.nextSession")}
                         </span>
                         <span className="text-sm font-medium text-neutral-700">
-                            {nextSession.booking_page_title || nextSession.host_name || "Mentor session"}
+                            {nextSession.booking_page_title || nextSession.host_name || t("mentors.mentorSessionFallback")}
                         </span>
                         <div className="flex items-center justify-between gap-2">
                             <span className="text-xs text-neutral-500">
                                 {fmtWhen(nextSession.scheduled_start_utc)}
                             </span>
-                            {nextSession.meet_link && (
+                            {nextSession.meet_link ? (
                                 <a
                                     href={nextSession.meet_link}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="flex items-center gap-1 text-xs font-medium text-primary-600"
                                 >
-                                    <VideoCamera size={14} /> Join
+                                    <VideoCamera size={14} /> {t("hero.join")}
                                 </a>
+                            ) : (
+                                // The link is minted after the booking commits, so a fresh
+                                // booking can have none yet. Saying so beats a row that
+                                // silently offers no way in.
+                                <span
+                                    className="text-xs text-neutral-400"
+                                    title={t("mentors.linkPendingTooltip")}
+                                >
+                                    {t("mentors.linkComingSoon")}
+                                </span>
                             )}
                         </div>
                     </div>
@@ -164,7 +220,7 @@ export function MyMentorsWidget() {
                             />
                             <div className="flex min-w-0 flex-col">
                                 <span className="truncate text-sm font-medium text-neutral-700">
-                                    {m.display_name || m.name || "Mentor"}
+                                    {m.display_name || m.name || t("mentors.mentorFallbackName")}
                                 </span>
                                 {m.title && (
                                     <span className="truncate text-xs text-neutral-400">{m.title}</span>
@@ -182,16 +238,18 @@ export function MyMentorsWidget() {
                             >
                                 <CalendarPlus size={16} />
                             </MyButton>
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                scale="medium"
-                                layoutVariant="icon"
-                                onClick={() => message(m)}
-                                disable={messagingId === m.user_id}
-                            >
-                                <ChatCircle size={16} />
-                            </MyButton>
+                            {chat.enabled && (
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    layoutVariant="icon"
+                                    onClick={() => message(m)}
+                                    disable={messagingId === m.user_id}
+                                >
+                                    <ChatCircle size={16} />
+                                </MyButton>
+                            )}
                         </div>
                     </div>
                 ))}

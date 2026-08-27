@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const HEIGHT_MSG = "vac-html-slide-height";
 const MAX_HEIGHT = 20000;
@@ -71,6 +72,7 @@ export const HtmlSlideIframe = ({
   onProgress?: (percent: number) => void;
   onComplete?: (result: SlideResult) => void;
 }) => {
+  const { t } = useTranslation("libraryCommonB");
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = useState(480);
   const srcDoc = useMemo(() => withResizeScript(html), [html]);
@@ -104,8 +106,8 @@ export const HtmlSlideIframe = ({
   return (
     <iframe
       ref={iframeRef}
-      title="Document"
-      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+      title={t("htmlSlideIframe.documentTitle")}
+      sandbox="allow-scripts allow-popups"
       srcDoc={srcDoc}
       onLoad={onLoad}
       className="w-full border-0 bg-white"

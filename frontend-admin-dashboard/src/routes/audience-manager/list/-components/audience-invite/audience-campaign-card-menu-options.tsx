@@ -13,6 +13,7 @@ import {
     CalendarCheck,
 } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
     AlertDialog,
@@ -58,6 +59,7 @@ export const AudienceCampaignCardMenuOptions = ({
     campaign,
     onEdit,
 }: AudienceCampaignCardMenuOptionsProps) => {
+    const { t } = useTranslation('audienceManagerAudienceCampaignCardMenuOptions');
     const isOptOut = campaign.campaign_type?.toUpperCase().includes('OPT_OUT');
     const queryClient = useQueryClient();
     const navigate = useNavigate();
@@ -111,12 +113,11 @@ export const AudienceCampaignCardMenuOptions = ({
                 }
             );
             queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
-            toast.success('Campaign deleted successfully');
+            toast.success(t('toast.deleteSuccess'));
             setOpenDeleteDialog(false);
         },
         onError: (error: unknown) => {
-            const message =
-                error instanceof Error ? error.message : 'Failed to delete the campaign';
+            const message = error instanceof Error ? error.message : t('toast.deleteError');
             toast.error(message);
         },
     });
@@ -129,13 +130,13 @@ export const AudienceCampaignCardMenuOptions = ({
         if (onEdit) {
             onEdit(campaign);
         } else {
-            toast.info('Edit campaign functionality coming soon');
+            toast.info(t('toast.editComingSoon'));
         }
     };
 
     const handleAddResponse = () => {
         if (!campaignId) {
-            toast.error('Campaign ID is missing');
+            toast.error(t('toast.campaignIdMissing'));
             return;
         }
         navigate({
@@ -165,17 +166,17 @@ export const AudienceCampaignCardMenuOptions = ({
     const linkedCount = useMemo(() => {
         if (!campaignId) return 0;
         return allWorkflows.filter((w) => {
-            const t = w.trigger;
-            if (!t || !t.trigger_event_name) return false;
+            const trigger = w.trigger;
+            if (!trigger || !trigger.trigger_event_name) return false;
             // Keep in sync with AUDIENCE_TRIGGER_EVENTS in linked-workflows-dialog.tsx
-            if (t.trigger_event_name !== 'AUDIENCE_LEAD_SUBMISSION') return false;
-            return t.event_id === campaignId || t.event_id === null;
+            if (trigger.trigger_event_name !== 'AUDIENCE_LEAD_SUBMISSION') return false;
+            return trigger.event_id === campaignId || trigger.event_id === null;
         }).length;
     }, [allWorkflows, campaignId]);
 
     const handleConfigureWorkflow = () => {
         if (!campaignId) {
-            toast.error('Campaign ID is missing');
+            toast.error(t('toast.campaignIdMissing'));
             return;
         }
         // Inline quick-create dialog — handles the two common cases
@@ -191,38 +192,38 @@ export const AudienceCampaignCardMenuOptions = ({
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="size-8 p-0">
                         <MoreVertical className="size-4" />
-                        <span className="sr-only">Open menu</span>
+                        <span className="sr-only">{t('menu.openMenu')}</span>
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={handleEdit}>
                         <Edit2 className="mr-2 size-4" />
-                        Edit
+                        {t('menu.edit')}
                     </DropdownMenuItem>
                     {!isOptOut && (
                         <DropdownMenuItem onClick={handleAddResponse}>
                             <UserPlus className="mr-2 size-4" />
-                            Add Response
+                            {t('menu.addResponse')}
                         </DropdownMenuItem>
                     )}
                     {!isOptOut && (
                         <DropdownMenuItem onClick={() => setOpenBulkImportDialog(true)}>
                             <Upload className="mr-2 size-4" />
-                            Bulk Import CSV
+                            {t('menu.bulkImportCsv')}
                         </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={() => setOpenSendMessageDialog(true)}>
                         <MessageSquare className="mr-2 size-4" />
-                        Send Message
+                        {t('menu.sendMessage')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleConfigureWorkflow}>
                         <Zap className="mr-2 size-4" />
-                        Configure Workflow
+                        {t('menu.configureWorkflow')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setOpenLinkedWorkflowsDialog(true)}>
                         <WorkflowIcon className="mr-2 size-4" />
-                        View Linked Workflows
+                        {t('menu.viewLinkedWorkflows')}
                         {linkedCount > 0 && (
                             <span className="ml-auto rounded-full bg-primary-100 text-primary-700 px-2 py-0.5 text-caption font-semibold">
                                 {linkedCount}
@@ -232,23 +233,23 @@ export const AudienceCampaignCardMenuOptions = ({
                     <DropdownMenuItem
                         onClick={() => {
                             if (!campaignId) {
-                                toast.error('Campaign ID is missing');
+                                toast.error(t('toast.campaignIdMissing'));
                                 return;
                             }
                             setOpenBookingSettingsDialog(true);
                         }}
                     >
                         <CalendarCheck className="mr-2 size-4" />
-                        Booking Settings
+                        {t('menu.bookingSettings')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => setOpenApiDialog(true)}>
                         <Code className="mr-2 size-4" />
-                        API Integration
+                        {t('menu.apiIntegration')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setOpenEmbedDialog(true)}>
                         <Code2 className="mr-2 size-4" />
-                        Get Embed Code
+                        {t('menu.getEmbedCode')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -256,7 +257,7 @@ export const AudienceCampaignCardMenuOptions = ({
                         onClick={() => setOpenDeleteDialog(true)}
                     >
                         <Trash2 className="mr-2 size-4" />
-                        Delete
+                        {t('menu.delete')}
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -264,15 +265,23 @@ export const AudienceCampaignCardMenuOptions = ({
             <AlertDialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>{`Delete ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}</AlertDialogTitle>
+                        <AlertDialogTitle>
+                            {t('deleteDialog.title', {
+                                term: getTerminology(
+                                    OtherTerms.AudienceList,
+                                    SystemTerms.AudienceList
+                                ),
+                            })}
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to delete the campaign &quot;
-                            {campaign.campaign_name}&quot;? This action cannot be undone.
+                            {t('deleteDialog.description', {
+                                campaignName: campaign.campaign_name,
+                            })}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={deleteCampaignMutation.isPending}>
-                            Cancel
+                            {t('deleteDialog.cancel')}
                         </AlertDialogCancel>
                         <AlertDialogAction
                             onClick={(e) => {
@@ -282,7 +291,9 @@ export const AudienceCampaignCardMenuOptions = ({
                             disabled={deleteCampaignMutation.isPending}
                             className="bg-red-600 hover:bg-red-700"
                         >
-                            {deleteCampaignMutation.isPending ? 'Deleting...' : 'Delete'}
+                            {deleteCampaignMutation.isPending
+                                ? t('deleteDialog.deleting')
+                                : t('deleteDialog.confirm')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -305,7 +316,7 @@ export const AudienceCampaignCardMenuOptions = ({
                     open={openBulkImportDialog}
                     onOpenChange={setOpenBulkImportDialog}
                     campaignId={campaignId}
-                    campaignName={campaign.campaign_name || 'Campaign'}
+                    campaignName={campaign.campaign_name || t('defaults.campaignName')}
                     instituteId={instituteId || ''}
                     customFields={bulkImportCustomFields}
                 />
@@ -316,7 +327,7 @@ export const AudienceCampaignCardMenuOptions = ({
                     open={openSendMessageDialog}
                     onOpenChange={setOpenSendMessageDialog}
                     campaignId={campaignId}
-                    campaignName={campaign.campaign_name || 'Campaign'}
+                    campaignName={campaign.campaign_name || t('defaults.campaignName')}
                     instituteId={instituteId || ''}
                     customFields={bulkImportCustomFields}
                     leadCount={0}
@@ -328,7 +339,7 @@ export const AudienceCampaignCardMenuOptions = ({
                     open={openLinkedWorkflowsDialog}
                     onOpenChange={setOpenLinkedWorkflowsDialog}
                     audienceId={campaignId}
-                    audienceName={campaign.campaign_name || 'this campaign'}
+                    audienceName={campaign.campaign_name || t('defaults.thisCampaign')}
                     instituteId={instituteId}
                 />
             )}
@@ -338,7 +349,7 @@ export const AudienceCampaignCardMenuOptions = ({
                     open={openBookingSettingsDialog}
                     onOpenChange={setOpenBookingSettingsDialog}
                     audienceId={campaignId}
-                    audienceName={campaign.campaign_name || 'this campaign'}
+                    audienceName={campaign.campaign_name || t('defaults.thisCampaign')}
                     instituteId={instituteId}
                 />
             )}
@@ -348,7 +359,7 @@ export const AudienceCampaignCardMenuOptions = ({
                     open={openConfigureWorkflowDialog}
                     onOpenChange={setOpenConfigureWorkflowDialog}
                     audienceId={campaignId}
-                    audienceName={campaign.campaign_name || 'this campaign'}
+                    audienceName={campaign.campaign_name || t('defaults.thisCampaign')}
                     instituteId={instituteId}
                 />
             )}

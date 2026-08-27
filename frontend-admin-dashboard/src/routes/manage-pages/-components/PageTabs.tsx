@@ -29,6 +29,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { getComponentTemplate } from '../-utils/component-templates';
 
 // Converts arbitrary text into a safe URL slug: lowercase, hyphens, no special chars
 const toSlug = (value: string) =>
@@ -41,6 +43,7 @@ const toSlug = (value: string) =>
         .replace(/^-|-$/g, '');
 
 export const PageTabs = () => {
+    const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
     const {
         config,
         selectPage,
@@ -56,6 +59,10 @@ export const PageTabs = () => {
     const [showAiWizard, setShowAiWizard] = useState(false);
     const [newPageRoute, setNewPageRoute] = useState('');
     const [newPageTitle, setNewPageTitle] = useState('');
+    // A page is either built from components or pasted as HTML — never both,
+    // so the choice is made here at creation rather than being a mode you can
+    // flip later and lose work to.
+    const [newPageIsHtml, setNewPageIsHtml] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
     if (!config) return null;
@@ -69,11 +76,16 @@ export const PageTabs = () => {
             id: `page-${Date.now()}`,
             route: slugPreview,
             title: newPageTitle.trim() || undefined,
-            components: [],
+            components: newPageIsHtml
+                ? [{ ...getComponentTemplate('htmlPage', tTemplates), id: `htmlpage-${Date.now()}` }]
+                : [],
+            // A pasted page nearly always brings its own nav and footer.
+            ...(newPageIsHtml ? { hideSiteChrome: true } : {}),
         };
         addPage(newPage);
         setNewPageRoute('');
         setNewPageTitle('');
+        setNewPageIsHtml(false);
         setShowAddDialog(false);
     };
 
@@ -220,6 +232,42 @@ export const PageTabs = () => {
                                 onChange={(e) => setNewPageTitle(e.target.value)}
                                 placeholder="e.g., About Us"
                             />
+                        </div>
+                        <div className="space-y-2 rounded border bg-gray-50 p-3">
+                            <Label className="text-xs">How will you build it?</Label>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setNewPageIsHtml(false)}
+                                    className={`flex-1 rounded border p-2 text-left text-caption ${
+                                        !newPageIsHtml
+                                            ? 'border-primary-400 bg-primary-50 text-primary-500'
+                                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <span className="block text-xs font-medium">Visual builder</span>
+                                    Drag in sections and edit them
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setNewPageIsHtml(true)}
+                                    className={`flex-1 rounded border p-2 text-left text-caption ${
+                                        newPageIsHtml
+                                            ? 'border-primary-400 bg-primary-50 text-primary-500'
+                                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <span className="block text-xs font-medium">HTML page</span>
+                                    Paste HTML you built elsewhere
+                                </button>
+                            </div>
+                            {newPageIsHtml && (
+                                <p className="text-caption text-gray-500">
+                                    You&apos;ll paste HTML and CSS instead of using the canvas. Scripts and
+                                    forms are removed for safety — use the action attributes to link,
+                                    scroll, or open a lead form. This choice can&apos;t be changed later.
+                                </p>
+                            )}
                         </div>
                     </div>
                     <DialogFooter>

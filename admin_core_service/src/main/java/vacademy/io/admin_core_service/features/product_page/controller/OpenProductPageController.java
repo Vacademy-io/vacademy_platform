@@ -32,8 +32,10 @@ public class OpenProductPageController {
     public ResponseEntity<ProductPageCouponValidateResponse> validateCoupon(
             @RequestParam("coursePageCode") String coursePageCode,
             @RequestParam("couponCode") String couponCode,
-            @RequestParam("totalAmount") double totalAmount) {
-        return ResponseEntity.ok(coursePageService.validateCoupon(coursePageCode, couponCode, totalAmount));
+            @RequestParam("totalAmount") double totalAmount,
+            @RequestParam(value = "itemCount", required = false) Integer itemCount) {
+        return ResponseEntity
+                .ok(coursePageService.validateCoupon(coursePageCode, couponCode, totalAmount, itemCount));
     }
 
     /** Step 1: create user + ABANDONED_CART entries per selected invite. */

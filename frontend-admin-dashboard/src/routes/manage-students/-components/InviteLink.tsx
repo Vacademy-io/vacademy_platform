@@ -4,9 +4,11 @@ import createInviteLink from '../invite/-utils/createInviteLink';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 export const InviteLink = ({ inviteCode }: { inviteCode: string }) => {
+    const { t } = useTranslation('manageStudentsInviteLinkComponent');
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
     const inviteLink = createInviteLink(inviteCode, instituteDetails?.learner_portal_base_url);
@@ -21,7 +23,7 @@ export const InviteLink = ({ inviteCode }: { inviteCode: string }) => {
             })
             .catch((err) => {
                 console.log('Failed to copy link: ', err);
-                toast.error('Copy failed');
+                toast.error(t('copyFailedToast'));
             });
     };
     return (

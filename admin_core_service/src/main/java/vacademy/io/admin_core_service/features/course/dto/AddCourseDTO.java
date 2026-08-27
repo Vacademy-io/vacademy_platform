@@ -15,6 +15,11 @@ import java.util.List;
 public class AddCourseDTO {
     private String id;
     private Boolean newCourse;
+    // When TRUE, never merge into an existing course that happens to share this
+    // name — create a fresh package, uniquifying the name with " (n)" if needed.
+    // AI course creation sets this: generated names are deterministic, so a
+    // regeneration would otherwise silently append its chapters into the old run.
+    private Boolean forceNewCourse;
     private String courseName;
     private String thumbnailFileId;
     private Boolean containLevels;

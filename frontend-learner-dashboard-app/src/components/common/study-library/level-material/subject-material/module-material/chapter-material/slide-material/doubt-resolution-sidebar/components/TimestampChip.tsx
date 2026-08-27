@@ -1,34 +1,34 @@
-
-import { Clock, FileText, PencilSimple } from "@phosphor-icons/react";
-import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { Clock, FilePdf, PencilSimple } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 
 interface TimestampChipProps {
-    timestamp: number;
-    formattedTime: string;
+    /** Pre-formatted position label, e.g. "1:02" or "Page 3". */
+    label: string;
+    isDocument: boolean;
     onEdit: () => void;
 }
 
-export const TimestampChip = ({ formattedTime, onEdit }: TimestampChipProps) => {
-    const { activeItem } = useContentStore();
-    const isDocument = activeItem?.source_type === "DOCUMENT";
+/**
+ * The moment/page a new doubt is anchored to. Pre-filled from the learner's
+ * current position and editable in place — no blocking dialog before typing.
+ */
+export const TimestampChip = ({ label, isDocument, onEdit }: TimestampChipProps) => {
+    const { t } = useTranslation("studyContent");
 
     return (
-        <div 
+        <button
+            type="button"
             onClick={onEdit}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-primary-50 to-blue-50 border border-primary-200/60 text-primary-700 rounded-xl cursor-pointer hover:shadow-md hover:border-primary-300 transition-all duration-200 group"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary-50 px-2 py-1 text-2xs font-semibold text-neutral-800 transition-colors hover:bg-primary-100"
         >
-            <div className="flex items-center gap-1.5">
-                {isDocument ? (
-                    <FileText size={14} className="text-primary-600" />
-                ) : (
-                    <Clock size={14} className="text-primary-600" />
-                )}
-                <span className="text-sm font-semibold">{formattedTime}</span>
-            </div>
-            <PencilSimple 
-                size={12} 
-                className="text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity" 
-            />
-        </div>
+            <span className="flex items-center text-primary-500">
+                {isDocument ? <FilePdf size={12} /> : <Clock size={12} />}
+            </span>
+            <span>{label}</span>
+            <span className="flex items-center gap-0.5 text-neutral-500">
+                <PencilSimple size={11} />
+                {t("doubts.editPosition")}
+            </span>
+        </button>
     );
-}; 
+};

@@ -1,5 +1,6 @@
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId } from '@/constants/helper';
+import type { TFunction } from 'i18next';
 
 /**
  * Interface for invite form custom field
@@ -64,13 +65,18 @@ export const getInviteListCustomFields = (): InviteFormCustomField[] => {
 
 /**
  * Get default invite fields (fallback)
+ *
+ * `t` is required so the field labels shown to the admin (column headers /
+ * form labels rendered elsewhere from `name`) are translated. Callers get
+ * `t` from their own `useTranslation()` — see getInviteListCustomFieldsAsync
+ * below.
  */
-const getDefaultInviteFields = (): InviteFormCustomField[] => {
+const getDefaultInviteFields = (t: TFunction): InviteFormCustomField[] => {
     return [
         {
             id: '0',
             type: 'text',
-            name: 'Full Name',
+            name: t('manageStudentsGetInviteListCustomFields:defaultFields.fullName'),
             oldKey: true,
             isRequired: true,
             key: 'full_name',
@@ -80,7 +86,7 @@ const getDefaultInviteFields = (): InviteFormCustomField[] => {
         {
             id: '1',
             type: 'text',
-            name: 'Email',
+            name: t('manageStudentsGetInviteListCustomFields:defaultFields.email'),
             oldKey: true,
             isRequired: true,
             key: 'email',
@@ -90,7 +96,7 @@ const getDefaultInviteFields = (): InviteFormCustomField[] => {
         {
             id: '2',
             type: 'text',
-            name: 'Phone Number',
+            name: t('manageStudentsGetInviteListCustomFields:defaultFields.phoneNumber'),
             oldKey: true,
             isRequired: true,
             key: 'phone_number',
@@ -123,13 +129,15 @@ function isSeededField(field: { name: string; id: string; canBeDeleted?: boolean
  * This bypasses the stale settings JSON blob entirely, so newly-added
  * DEFAULT fields from Settings always appear immediately.
  */
-export const getInviteListCustomFieldsAsync = async (): Promise<InviteFormCustomField[]> => {
+export const getInviteListCustomFieldsAsync = async (
+    t: TFunction
+): Promise<InviteFormCustomField[]> => {
     try {
         const instituteId = getInstituteId();
-        if (!instituteId) return getDefaultInviteFields();
+        if (!instituteId) return getDefaultInviteFields(t);
 
         const defaults = await fetchInstituteDefaultFields(instituteId);
-        if (!defaults || defaults.length === 0) return getDefaultInviteFields();
+        if (!defaults || defaults.length === 0) return getDefaultInviteFields(t);
 
         // Alias groups for dedup — old-style (`name`, `phone`) and new-style
         // (`full_name`, `phone_number`) should not both appear.
@@ -199,7 +207,7 @@ export const getInviteListCustomFieldsAsync = async (): Promise<InviteFormCustom
         return result.sort((a, b) => a.order - b.order);
     } catch (err) {
         console.error('[getInviteListCustomFieldsAsync] API call failed, using fallback defaults:', err);
-        return getDefaultInviteFields();
+        return getDefaultInviteFields(t);
     }
 };
 

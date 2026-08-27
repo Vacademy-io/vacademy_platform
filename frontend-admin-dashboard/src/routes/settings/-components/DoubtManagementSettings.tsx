@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -31,9 +32,14 @@ type QueryTypeAssigneeSource =
     | 'NONE';
 
 interface QueryTypeAssignee {
-    source: QueryTypeAssigneeSource;
+    /** Absent = no override; the institute-wide "Default auto-assignment" is the base. */
+    source?: QueryTypeAssigneeSource;
     role?: string | null;
     user_ids?: string[];
+    /** Roles assigned IN ADDITION to whatever `source` resolves to. */
+    also_roles?: string[];
+    /** Staff assigned IN ADDITION to whatever `source` resolves to. */
+    also_user_ids?: string[];
 }
 
 interface QueryTypeConfig {
@@ -112,13 +118,15 @@ const DEFAULT_LEARNER_QUERY: LearnerQueryPrefs = {
 };
 
 // Always-present academic type — cannot be removed (historical rows keep type='DOUBT').
+// `assignee: null` = no per-type override, so it follows the global "Default auto-assignment"
+// radio. Admins can override it (including to specific staff) from the Query types card.
 const SYSTEM_DOUBT_TYPE: QueryTypeConfig = {
     key: 'DOUBT',
     label: 'Doubt',
     enabled: true,
     is_system: true,
     learner_selectable: true,
-    assignee: { source: 'SUBJECT_TEACHER' },
+    assignee: null,
 };
 
 // Seeded defaults shown to institutes that haven't configured types yet. Nothing is persisted (or
@@ -144,13 +152,42 @@ const DEFAULT_QUERY_TYPES: QueryTypeConfig[] = [
 // Roles offered when a type routes by ROLE.
 const ROLE_OPTIONS = ['ADMIN', 'TEACHER', 'EVALUATOR', 'CONTENT CREATOR', 'ASSESSMENT CREATOR'];
 
-const ASSIGNEE_SOURCE_OPTIONS: { value: QueryTypeAssigneeSource; label: string }[] = [
-    { value: 'SUBJECT_TEACHER', label: 'Subject teacher' },
-    { value: 'BATCH_TEACHER', label: 'Batch teacher' },
-    { value: 'ROLE', label: 'A role' },
-    { value: 'SPECIFIC_USERS', label: 'Specific staff' },
-    { value: 'NONE', label: 'No one (no notifications sent)' },
+/**
+ * Frontend-only sentinel for "no per-type override" — the type defers to the institute-wide
+ * "Default auto-assignment" radio above. It is never persisted as a source string: picking it
+ * clears the type's `assignee` entirely, which is what makes the backend
+ * (DoubtsManager.resolveAssigneesForDoubt) fall back to `default_assignee_source`.
+ */
+const INHERIT_DEFAULT = 'DEFAULT';
+type RouteSelectValue = QueryTypeAssigneeSource | typeof INHERIT_DEFAULT;
+
+// i18nKey maps to queryTypes.assigneeSource.<i18nKey> in the settingsDoubtManagement catalog.
+const ASSIGNEE_SOURCE_OPTIONS: { value: RouteSelectValue; i18nKey: string }[] = [
+    { value: INHERIT_DEFAULT, i18nKey: 'default' },
+    { value: 'SUBJECT_TEACHER', i18nKey: 'subjectTeacher' },
+    { value: 'BATCH_TEACHER', i18nKey: 'batchTeacher' },
+    { value: 'ROLE', i18nKey: 'role' },
+    { value: 'SPECIFIC_USERS', i18nKey: 'specificUsers' },
+    { value: 'NONE', i18nKey: 'none' },
 ];
+
+/**
+ * Strips empty additive arrays and collapses an assignee that no longer says anything to
+ * `undefined`. Sending `also_user_ids: []` would be harmless but writes noise into every institute's
+ * settings blob, and an assignee of `{}` reads as "configured" while behaving as "not configured".
+ */
+const normalizeAssignee = (assignee: QueryTypeAssignee | null | undefined) => {
+    if (!assignee) return undefined;
+    const alsoRoles = (assignee.also_roles ?? []).filter(Boolean);
+    const alsoUsers = (assignee.also_user_ids ?? []).filter(Boolean);
+    const next: QueryTypeAssignee = { ...assignee };
+    delete next.also_roles;
+    delete next.also_user_ids;
+    if (alsoRoles.length) next.also_roles = alsoRoles;
+    if (alsoUsers.length) next.also_user_ids = alsoUsers;
+    if (!next.source && !next.also_roles && !next.also_user_ids) return undefined;
+    return next;
+};
 
 /** UPPER_SNAKE slug used as a stable type key when the admin adds a new type. */
 const slugifyKey = (label: string): string =>
@@ -177,51 +214,23 @@ const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
 const TEMPLATES_BY_TYPE_URL = (instituteId: string, type: string) =>
     `${BASE_URL}/admin-core-service/institute/template/v1/institute/${instituteId}/type/${type}`;
 
-const OPTIONS: { value: DoubtAssigneeSource; title: string; description: string }[] = [
-    {
-        value: 'SUBJECT_TEACHER',
-        title: 'Subject teacher',
-        description:
-            'Auto-assign to faculty mapped to the doubt’s subject (narrowest match). Ideal for slide-level doubts where the subject is unambiguous.',
-    },
-    {
-        value: 'BATCH_TEACHER',
-        title: 'Batch teacher',
-        description:
-            'Auto-assign to every faculty mapped to the batch, regardless of subject. This is the legacy behavior.',
-    },
-    {
-        value: 'BOTH',
-        title: 'Both',
-        description: 'Union of subject-mapped and batch-mapped faculty.',
-    },
-    {
-        value: 'NONE',
-        title: 'Admins only',
-        description:
-            'Skip teachers entirely — assign every doubt to your institute admins, who are notified and then triage it onward.',
-    },
+// i18nKey maps to defaultAssignment.options.<i18nKey> in the settingsDoubtManagement catalog.
+const OPTIONS: { value: DoubtAssigneeSource; i18nKey: string }[] = [
+    { value: 'SUBJECT_TEACHER', i18nKey: 'subjectTeacher' },
+    { value: 'BATCH_TEACHER', i18nKey: 'batchTeacher' },
+    { value: 'BOTH', i18nKey: 'both' },
+    { value: 'NONE', i18nKey: 'none' },
 ];
 
 // Labels take the institute's own word for a sub-org (Franchise / Center / ...) so the copy reads
-// correctly wherever NamingSettings has been customised.
+// correctly wherever NamingSettings has been customised. i18nKey maps to
+// subOrg.recipients.<i18nKey> in the settingsDoubtManagement catalog.
 const SUB_ORG_RECIPIENT_OPTIONS: {
     value: SubOrgNotifyRecipients;
-    title: (label: string) => string;
-    description: (label: string) => string;
+    i18nKey: string;
 }[] = [
-    {
-        value: 'ALL_TEAM',
-        title: (label) => `${label} admins and team`,
-        description: (label) =>
-            `Everyone with active access to the learner's ${label.toLowerCase()} — its admins plus every team member added under it.`,
-    },
-    {
-        value: 'ADMINS_ONLY',
-        title: (label) => `${label} admins only`,
-        description: (label) =>
-            `Just the admins of the learner's ${label.toLowerCase()}. Quieter, but team members won't see the doubt unless an admin assigns it.`,
-    },
+    { value: 'ALL_TEAM', i18nKey: 'allTeam' },
+    { value: 'ADMINS_ONLY', i18nKey: 'adminsOnly' },
 ];
 
 type EmailTemplateOption = { id: string; name: string };
@@ -259,7 +268,9 @@ function mergeWithDefaults(
         enabled: t.enabled ?? true,
         learner_selectable: t.learner_selectable ?? true,
         is_system: t.key?.toUpperCase() === 'DOUBT' ? true : t.is_system ?? false,
-        assignee: t.assignee ?? { source: 'SUBJECT_TEACHER' },
+        // A stored type with no assignee keeps deferring to `default_assignee_source`. Seeding a
+        // concrete source here would silently start overriding that global choice on the next save.
+        assignee: t.assignee ?? null,
     }));
     return {
         default_assignee_source:
@@ -312,9 +323,10 @@ const fetchEmailTemplates = async (): Promise<EmailTemplateOption[]> => {
 };
 
 export default function DoubtManagementSettings() {
+    const { t } = useTranslation('settingsDoubtManagement');
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId() ?? undefined;
-    const { assignees } = useInstituteAssignees(instituteId);
+    const { assignees, isLoading: assigneesLoading } = useInstituteAssignees(instituteId);
     const [settings, setSettings] = useState<DoubtManagementSettingsData>(DEFAULT_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
     const { ensurePermission } = usePushNotifications();
@@ -324,7 +336,7 @@ export default function DoubtManagementSettings() {
 
     const handleEnablePush = async () => {
         if (browserPushStatus === 'unsupported') {
-            toast.error('This browser does not support push notifications.');
+            toast.error(t('toast.pushUnsupported'));
             return;
         }
         await ensurePermission();
@@ -332,11 +344,9 @@ export default function DoubtManagementSettings() {
         if (typeof Notification !== 'undefined') {
             setBrowserPushStatus(Notification.permission);
             if (Notification.permission === 'granted') {
-                toast.success('Push notifications enabled on this device.');
+                toast.success(t('toast.pushEnabled'));
             } else if (Notification.permission === 'denied') {
-                toast.error(
-                    'Notifications blocked. Unblock them from the browser padlock icon, then retry.'
-                );
+                toast.error(t('toast.pushBlocked'));
             }
         }
     };
@@ -363,12 +373,12 @@ export default function DoubtManagementSettings() {
     const { mutate: save, isPending: saving } = useMutation({
         mutationFn: saveSettings,
         onSuccess: () => {
-            toast.success('Doubt management settings saved');
+            toast.success(t('toast.saveSuccess'));
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['doubt-management-settings'] });
         },
         onError: () => {
-            toast.error('Failed to save doubt management settings');
+            toast.error(t('toast.saveFailed'));
         },
     });
 
@@ -399,7 +409,7 @@ export default function DoubtManagementSettings() {
     const updateQueryType = (index: number, patch: Partial<QueryTypeConfig>) => {
         setSettings((prev) => ({
             ...prev,
-            query_types: prev.query_types.map((t, i) => (i === index ? { ...t, ...patch } : t)),
+            query_types: prev.query_types.map((qt, i) => (i === index ? { ...qt, ...patch } : qt)),
         }));
         setHasChanges(true);
     };
@@ -441,41 +451,38 @@ export default function DoubtManagementSettings() {
         // fixed), and de-duplicate by key so the per-type routing lookup is unambiguous.
         const seen = new Set<string>();
         const normalizedTypes: QueryTypeConfig[] = [];
-        for (const t of settings.query_types) {
-            const label = t.label.trim();
-            if (!label && !t.is_system) continue;
-            const key = (t.is_system ? 'DOUBT' : t.key || slugifyKey(label)).toUpperCase();
+        for (const qt of settings.query_types) {
+            const label = qt.label.trim();
+            if (!label && !qt.is_system) continue;
+            const key = (qt.is_system ? 'DOUBT' : qt.key || slugifyKey(label)).toUpperCase();
             if (seen.has(key)) {
-                toast.error(`Duplicate query type key "${key}". Rename one of them.`);
+                toast.error(t('toast.duplicateType', { key }));
                 return;
             }
             seen.add(key);
             normalizedTypes.push({
-                ...t,
+                ...qt,
                 key,
-                label: label || t.label,
-                // The built-in DOUBT type always defers to the global "Default auto-assignment"
-                // radio above — never persist a per-type assignee for it, otherwise it would
-                // silently override default_assignee_source on the backend.
-                assignee: t.is_system ? undefined : t.assignee,
+                label: label || qt.label,
+                // Every type — the built-in DOUBT included — may carry its own routing. An
+                // assignee that says nothing (no source, no additive handlers) is dropped so the
+                // backend keeps falling back to default_assignee_source for that type.
+                assignee: normalizeAssignee(qt.assignee),
             });
         }
         save({ ...settings, query_types: normalizedTypes });
     };
 
     if (isLoading) {
-        return <div className="p-6 text-sm text-muted-foreground">Loading settings…</div>;
+        return <div className="p-6 text-sm text-muted-foreground">{t('loading')}</div>;
     }
 
     return (
         <div className="space-y-6 p-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Default auto-assignment</CardTitle>
-                    <CardDescription>
-                        Controls who gets pre-assigned when a learner raises a new doubt. Only
-                        affects new doubts — existing doubts keep their current assignees.
-                    </CardDescription>
+                    <CardTitle>{t('defaultAssignment.title')}</CardTitle>
+                    <CardDescription>{t('defaultAssignment.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                     {OPTIONS.map((opt) => {
@@ -506,10 +513,12 @@ export default function DoubtManagementSettings() {
                                     </span>
                                     <div>
                                         <div className="text-sm font-medium text-neutral-800">
-                                            {opt.title}
+                                            {t(`defaultAssignment.options.${opt.i18nKey}.title`)}
                                         </div>
                                         <p className="mt-0.5 text-xs text-neutral-600">
-                                            {opt.description}
+                                            {t(
+                                                `defaultAssignment.options.${opt.i18nKey}.description`
+                                            )}
                                         </p>
                                     </div>
                                 </div>
@@ -522,10 +531,8 @@ export default function DoubtManagementSettings() {
             {showFallbackToggle && (
                 <Card>
                     <CardHeader>
-                        <CardTitle>Fallback behavior</CardTitle>
-                        <CardDescription>
-                            What to do when a doubt’s subject has no mapped faculty.
-                        </CardDescription>
+                        <CardTitle>{t('fallback.title')}</CardTitle>
+                        <CardDescription>{t('fallback.description')}</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="flex items-start gap-3">
@@ -541,11 +548,10 @@ export default function DoubtManagementSettings() {
                                     htmlFor="fallback-to-batch"
                                     className="cursor-pointer text-sm font-medium text-neutral-800"
                                 >
-                                    Fall back to batch teachers when no subject teacher exists
+                                    {t('fallback.label')}
                                 </Label>
                                 <p className="mt-0.5 text-xs text-neutral-600">
-                                    If off, doubts with no subject-mapped faculty will be left
-                                    unassigned and require manual attention.
+                                    {t('fallback.hint')}
                                 </p>
                             </div>
                         </div>
@@ -555,14 +561,9 @@ export default function DoubtManagementSettings() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>{subOrgLabel} routing</CardTitle>
+                    <CardTitle>{t('subOrg.title', { label: subOrgLabel })}</CardTitle>
                     <CardDescription>
-                        Applies only to doubts raised by a learner who belongs to a{' '}
-                        {subOrgLabel.toLowerCase()}. Their {subOrgLabel.toLowerCase()} shares this
-                        institute&rsquo;s courses and batches, so none of the rules above can reach
-                        its staff — batch-teacher matching skips {subOrgLabel.toLowerCase()} access
-                        rows and role lookups run against this institute. Turn this on to notify
-                        them as well.
+                        {t('subOrg.description', { labelLower: subOrgLabel.toLowerCase() })}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -584,12 +585,10 @@ export default function DoubtManagementSettings() {
                                 htmlFor="sub-org-notify"
                                 className="cursor-pointer text-sm font-medium text-neutral-800"
                             >
-                                Also notify the learner&rsquo;s {subOrgLabel.toLowerCase()}
+                                {t('subOrg.notifyLabel', { labelLower: subOrgLabel.toLowerCase() })}
                             </Label>
                             <p className="mt-0.5 text-xs text-neutral-600">
-                                They are added as assignees on top of whoever the rules above
-                                picked, so they get the email, push and bell alert and the doubt
-                                shows up in their inbox.
+                                {t('subOrg.notifyHint')}
                             </p>
                         </div>
                     </div>
@@ -597,7 +596,7 @@ export default function DoubtManagementSettings() {
                     {settings.sub_org_notifications.enabled && (
                         <div className="space-y-2 border-t border-neutral-200 pt-4">
                             <Label className="text-sm font-medium text-neutral-800">
-                                Who receives it
+                                {t('subOrg.whoReceives')}
                             </Label>
                             {SUB_ORG_RECIPIENT_OPTIONS.map((opt) => {
                                 const selected =
@@ -635,10 +634,16 @@ export default function DoubtManagementSettings() {
                                             </span>
                                             <div>
                                                 <div className="text-sm font-medium text-neutral-800">
-                                                    {opt.title(subOrgLabel)}
+                                                    {t(
+                                                        `subOrg.recipients.${opt.i18nKey}.title`,
+                                                        { label: subOrgLabel }
+                                                    )}
                                                 </div>
                                                 <p className="mt-0.5 text-xs text-neutral-600">
-                                                    {opt.description(subOrgLabel)}
+                                                    {t(
+                                                        `subOrg.recipients.${opt.i18nKey}.description`,
+                                                        { labelLower: subOrgLabel.toLowerCase() }
+                                                    )}
                                                 </p>
                                             </div>
                                         </div>
@@ -668,12 +673,16 @@ export default function DoubtManagementSettings() {
                                         htmlFor="sub-org-notify-parent"
                                         className="cursor-pointer text-sm font-medium text-neutral-800"
                                     >
-                                        Also email this institute&rsquo;s own team
+                                        {t('subOrg.notifyParentLabel')}
                                     </Label>
                                     <p className="mt-0.5 text-xs text-neutral-600">
                                         {settings.sub_org_notifications.notify_parent_staff
-                                            ? `On: your teachers/admins are notified alongside the ${subOrgLabel.toLowerCase()}, exactly as they are for a normal doubt.`
-                                            : `Off: only the ${subOrgLabel.toLowerCase()} is emailed. Your own team gets no email, push or bell for these doubts — but they still appear in your Doubt Management inbox, so nothing is hidden.`}
+                                            ? t('subOrg.notifyParentOn', {
+                                                  labelLower: subOrgLabel.toLowerCase(),
+                                              })
+                                            : t('subOrg.notifyParentOff', {
+                                                  labelLower: subOrgLabel.toLowerCase(),
+                                              })}
                                     </p>
                                 </div>
                             </div>
@@ -684,34 +693,27 @@ export default function DoubtManagementSettings() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Push notifications on this device</CardTitle>
-                    <CardDescription>
-                        Each admin/teacher enables push on their own browser. Without this step, the
-                        push toggles below do nothing for this user — the backend sends, the browser
-                        silently drops.
-                    </CardDescription>
+                    <CardTitle>{t('browserPush.title')}</CardTitle>
+                    <CardDescription>{t('browserPush.description')}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex items-center justify-between gap-4">
                         <div className="text-sm">
                             <div className="font-medium text-neutral-800">
                                 {browserPushStatus === 'granted'
-                                    ? 'Enabled'
+                                    ? t('browserPush.status.granted')
                                     : browserPushStatus === 'denied'
-                                      ? 'Blocked by browser'
+                                      ? t('browserPush.status.denied')
                                       : browserPushStatus === 'unsupported'
-                                        ? 'Not supported'
-                                        : 'Not enabled yet'}
+                                        ? t('browserPush.status.unsupported')
+                                        : t('browserPush.status.default')}
                             </div>
                             <p className="mt-0.5 text-xs text-neutral-600">
-                                {browserPushStatus === 'granted' &&
-                                    'This device will receive FCM pushes for doubt events.'}
-                                {browserPushStatus === 'denied' &&
-                                    'Click the padlock icon in the URL bar → Notifications → Allow, then reload.'}
-                                {browserPushStatus === 'default' &&
-                                    'Click the button to prompt for notification permission.'}
+                                {browserPushStatus === 'granted' && t('browserPush.hint.granted')}
+                                {browserPushStatus === 'denied' && t('browserPush.hint.denied')}
+                                {browserPushStatus === 'default' && t('browserPush.hint.default')}
                                 {browserPushStatus === 'unsupported' &&
-                                    'Your browser doesn’t expose the Notification API.'}
+                                    t('browserPush.hint.unsupported')}
                             </p>
                         </div>
                         <MyButton
@@ -723,15 +725,17 @@ export default function DoubtManagementSettings() {
                                 browserPushStatus === 'unsupported'
                             }
                         >
-                            {browserPushStatus === 'granted' ? 'Already enabled' : 'Enable push'}
+                            {browserPushStatus === 'granted'
+                                ? t('browserPush.alreadyEnabled')
+                                : t('browserPush.enableButton')}
                         </MyButton>
                     </div>
                 </CardContent>
             </Card>
 
             <NotificationEventCard
-                title="When a doubt is raised"
-                description="Notifies the assigned teacher(s). Push is delivered via the same FCM pipeline already used elsewhere — browsers that haven’t granted notification permission will silently skip."
+                title={t('events.raised.title')}
+                description={t('events.raised.description')}
                 idPrefix="raised"
                 prefs={settings.notifications.on_doubt_raised}
                 templates={emailTemplates}
@@ -739,8 +743,8 @@ export default function DoubtManagementSettings() {
             />
 
             <NotificationEventCard
-                title="When a doubt is resolved"
-                description="Notifies the learner who raised the doubt."
+                title={t('events.resolved.title')}
+                description={t('events.resolved.description')}
                 idPrefix="resolved"
                 prefs={settings.notifications.on_doubt_resolved}
                 templates={emailTemplates}
@@ -750,6 +754,7 @@ export default function DoubtManagementSettings() {
             <QueryTypesCard
                 types={settings.query_types}
                 assignees={assignees}
+                assigneesLoading={assigneesLoading}
                 onUpdate={updateQueryType}
                 onAdd={addQueryType}
                 onRemove={removeQueryType}
@@ -764,7 +769,7 @@ export default function DoubtManagementSettings() {
                     onClick={handleSave}
                     disable={saving || !hasChanges}
                 >
-                    {saving ? 'Saving…' : 'Save settings'}
+                    {saving ? t('saveButton.saving') : t('saveButton.save')}
                 </MyButton>
             </div>
         </div>
@@ -786,6 +791,7 @@ function NotificationEventCard({
     templates: EmailTemplateOption[];
     onChange: (patch: Partial<NotificationChannelPrefs>) => void;
 }) {
+    const { t } = useTranslation('settingsDoubtManagement');
     const pushId = `${idPrefix}-push`;
     const emailId = `${idPrefix}-email`;
     const systemAlertId = `${idPrefix}-system-alert`;
@@ -809,11 +815,10 @@ function NotificationEventCard({
                             htmlFor={pushId}
                             className="cursor-pointer text-sm font-medium text-neutral-800"
                         >
-                            Push notification
+                            {t('notificationCard.push.label')}
                         </Label>
                         <p className="mt-0.5 text-xs text-neutral-600">
-                            Default on. Uses FCM — recipients must have granted notification
-                            permission and registered a device token.
+                            {t('notificationCard.push.hint')}
                         </p>
                     </div>
                 </div>
@@ -829,12 +834,10 @@ function NotificationEventCard({
                             htmlFor={systemAlertId}
                             className="cursor-pointer text-sm font-medium text-neutral-800"
                         >
-                            In-app bell alert
+                            {t('notificationCard.bell.label')}
                         </Label>
                         <p className="mt-0.5 text-xs text-neutral-600">
-                            Default on. Shows a persistent entry in the recipient’s bell icon —
-                            stays visible when the user returns to the app even if they missed the
-                            push.
+                            {t('notificationCard.bell.hint')}
                         </p>
                     </div>
                 </div>
@@ -855,17 +858,16 @@ function NotificationEventCard({
                             htmlFor={emailId}
                             className="cursor-pointer text-sm font-medium text-neutral-800"
                         >
-                            Email notification
+                            {t('notificationCard.email.label')}
                         </Label>
                         <p className="mt-0.5 text-xs text-neutral-600">
-                            On by default. Sent alongside the push — turn off to suppress. Uses the
-                            seeded default template unless you pick a custom one below.
+                            {t('notificationCard.email.hint')}
                         </p>
 
                         {prefs.email_enabled && (
                             <div className="mt-2 space-y-1">
                                 <Label htmlFor={templateId} className="text-xs text-neutral-700">
-                                    Email template
+                                    {t('notificationCard.emailTemplate.label')}
                                 </Label>
                                 <select
                                     id={templateId}
@@ -877,21 +879,23 @@ function NotificationEventCard({
                                         })
                                     }
                                 >
-                                    <option value="">Default template (auto)</option>
-                                    {templates.map((t) => (
-                                        <option key={t.id} value={t.id}>
-                                            {t.name}
+                                    <option value="">
+                                        {t('notificationCard.emailTemplate.defaultOption')}
+                                    </option>
+                                    {templates.map((tpl) => (
+                                        <option key={tpl.id} value={tpl.id}>
+                                            {tpl.name}
                                         </option>
                                     ))}
                                 </select>
                                 <p className="text-caption text-neutral-500">
-                                    Leave as <em>Default template (auto)</em> to use the seeded
-                                    institute template — it automatically picks up your institute
-                                    theme color, name, and support email. Pick a custom template
-                                    here only if you want different copy.
+                                    {t('notificationCard.emailTemplate.helpPrefix')}{' '}
+                                    <em>{t('notificationCard.emailTemplate.helpEm')}</em>{' '}
+                                    {t('notificationCard.emailTemplate.helpSuffix')}
                                 </p>
                                 <p className="text-caption text-neutral-500">
-                                    Placeholders available: <code>{'{{institute_name}}'}</code>,{' '}
+                                    {t('notificationCard.emailTemplate.placeholdersLabel')}{' '}
+                                    <code>{'{{institute_name}}'}</code>,{' '}
                                     <code>{'{{institute_theme_color}}'}</code>,{' '}
                                     <code>{'{{recipient_name}}'}</code>,{' '}
                                     <code>{'{{doubt_text}}'}</code>, <code>{'{{doubt_id}}'}</code>,{' '}
@@ -909,35 +913,44 @@ function NotificationEventCard({
 function QueryTypesCard({
     types,
     assignees,
+    assigneesLoading,
     onUpdate,
     onAdd,
     onRemove,
 }: {
     types: QueryTypeConfig[];
     assignees: AssigneeOption[];
+    assigneesLoading: boolean;
     onUpdate: (index: number, patch: Partial<QueryTypeConfig>) => void;
     onAdd: () => void;
     onRemove: (index: number) => void;
 }) {
+    const { t } = useTranslation('settingsDoubtManagement');
     const assigneeOptions = assignees.map((a) => ({
         label: a.subtitle ? `${a.name} · ${a.subtitle}` : a.name,
         value: a.id,
+    }));
+    const roleChipOptions = ROLE_OPTIONS.map((r) => ({
+        label: t(`queryTypes.roles.${r}`),
+        value: r,
     }));
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Query types</CardTitle>
-                <CardDescription>
-                    The categories a learner can pick when raising a query (e.g. Doubt, Technical
-                    Issue, Payment Issue). Each type routes to its own default handler. The Doubt
-                    type is built-in and can’t be removed.
-                </CardDescription>
+                <CardTitle>{t('queryTypes.title')}</CardTitle>
+                <CardDescription>{t('queryTypes.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
                 <div className="space-y-3">
-                    {types.map((t, i) => {
-                        const source = t.assignee?.source ?? 'SUBJECT_TEACHER';
+                    {types.map((qt, i) => {
+                        const source: RouteSelectValue = qt.assignee?.source ?? INHERIT_DEFAULT;
+                        const pickedStaff = qt.assignee?.user_ids ?? [];
+                        const alsoStaff = qt.assignee?.also_user_ids ?? [];
+                        const alsoRoles = qt.assignee?.also_roles ?? [];
+                        // With SPECIFIC_USERS the base list already IS a staff picker; a second one
+                        // would just be two lists doing the same job.
+                        const showAlsoStaff = source !== 'SPECIFIC_USERS';
                         return (
                             <div
                                 key={i}
@@ -945,22 +958,22 @@ function QueryTypesCard({
                             >
                                 <div className="flex items-center gap-3">
                                     <Input
-                                        placeholder="Type name (e.g. Technical Issue)"
-                                        value={t.label}
-                                        disabled={t.is_system}
+                                        placeholder={t('queryTypes.namePlaceholder')}
+                                        value={qt.label}
+                                        disabled={qt.is_system}
                                         onChange={(e) => onUpdate(i, { label: e.target.value })}
                                         className="h-9 flex-1"
                                     />
-                                    {t.is_system ? (
+                                    {qt.is_system ? (
                                         <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500">
-                                            Built-in
+                                            {t('queryTypes.builtIn')}
                                         </span>
                                     ) : (
                                         <MyButton
                                             buttonType="text"
                                             layoutVariant="icon"
                                             scale="small"
-                                            aria-label="Remove type"
+                                            aria-label={t('queryTypes.removeType')}
                                             onClick={() => onRemove(i)}
                                             className="shrink-0 !text-neutral-400 hover:!text-danger-500"
                                         >
@@ -972,50 +985,57 @@ function QueryTypesCard({
                                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                                     <label className="flex items-center gap-2">
                                         <Switch
-                                            checked={t.enabled !== false}
+                                            checked={qt.enabled !== false}
                                             onCheckedChange={(v) => onUpdate(i, { enabled: v })}
                                         />
-                                        <span className="text-xs text-neutral-700">Enabled</span>
+                                        <span className="text-xs text-neutral-700">
+                                            {t('queryTypes.enabled')}
+                                        </span>
                                     </label>
                                     <label className="flex items-center gap-2">
                                         <Switch
-                                            checked={t.learner_selectable !== false}
+                                            checked={qt.learner_selectable !== false}
                                             onCheckedChange={(v) =>
                                                 onUpdate(i, { learner_selectable: v })
                                             }
                                         />
                                         <span className="text-xs text-neutral-700">
-                                            Learner can pick
+                                            {t('queryTypes.learnerCanPick')}
                                         </span>
                                     </label>
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-3">
                                     <span className="text-xs font-semibold text-neutral-600">
-                                        Route to
+                                        {t('queryTypes.routeTo')}
                                     </span>
-                                    {t.is_system && (
-                                        <span className="text-xs italic text-neutral-500">
-                                            uses “Default auto-assignment” above
-                                        </span>
-                                    )}
                                     <select
-                                        className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 focus:border-primary-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 focus:border-primary-400 focus:outline-none"
                                         value={source}
-                                        disabled={t.is_system}
-                                        onChange={(e) =>
+                                        onChange={(e) => {
+                                            const next = e.target.value as RouteSelectValue;
+                                            // The sentinel isn't a source — clear the override so
+                                            // the type falls back to the global default again,
+                                            // keeping any additive handlers on top of it.
+                                            if (next === INHERIT_DEFAULT) {
+                                                const keep =
+                                                    alsoRoles.length || alsoStaff.length
+                                                        ? {
+                                                              also_roles: alsoRoles,
+                                                              also_user_ids: alsoStaff,
+                                                          }
+                                                        : null;
+                                                onUpdate(i, { assignee: keep });
+                                                return;
+                                            }
                                             onUpdate(i, {
-                                                assignee: {
-                                                    ...t.assignee,
-                                                    source: e.target
-                                                        .value as QueryTypeAssigneeSource,
-                                                },
-                                            })
-                                        }
+                                                assignee: { ...qt.assignee, source: next },
+                                            });
+                                        }}
                                     >
                                         {ASSIGNEE_SOURCE_OPTIONS.map((o) => (
                                             <option key={o.value} value={o.value}>
-                                                {o.label}
+                                                {t(`queryTypes.assigneeSource.${o.i18nKey}`)}
                                             </option>
                                         ))}
                                     </select>
@@ -1023,11 +1043,11 @@ function QueryTypesCard({
                                     {source === 'ROLE' && (
                                         <select
                                             className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 focus:border-primary-400 focus:outline-none"
-                                            value={t.assignee?.role ?? 'ADMIN'}
+                                            value={qt.assignee?.role ?? 'ADMIN'}
                                             onChange={(e) =>
                                                 onUpdate(i, {
                                                     assignee: {
-                                                        ...t.assignee,
+                                                        ...qt.assignee,
                                                         source: 'ROLE',
                                                         role: e.target.value,
                                                     },
@@ -1036,29 +1056,41 @@ function QueryTypesCard({
                                         >
                                             {ROLE_OPTIONS.map((r) => (
                                                 <option key={r} value={r}>
-                                                    {r}
+                                                    {t(`queryTypes.roles.${r}`)}
                                                 </option>
                                             ))}
                                         </select>
                                     )}
+
+                                    {source === INHERIT_DEFAULT && (
+                                        <span className="text-xs italic text-neutral-500">
+                                            {t('queryTypes.followsDefault')}
+                                        </span>
+                                    )}
                                 </div>
+
+                                {qt.is_system && source !== INHERIT_DEFAULT && (
+                                    <p className="text-xs text-neutral-500">
+                                        {t('queryTypes.systemRoutingNote')}
+                                    </p>
+                                )}
 
                                 {source === 'SPECIFIC_USERS' && (
                                     <div className="space-y-1">
                                         <span className="text-xs font-semibold text-neutral-600">
-                                            Staff handlers
+                                            {t('queryTypes.staffHandlers')}
                                         </span>
                                         <SelectChips
                                             options={assigneeOptions}
                                             selected={assigneeOptions.filter((o) =>
-                                                (t.assignee?.user_ids ?? []).includes(o.value)
+                                                pickedStaff.includes(o.value)
                                             )}
                                             onChange={(
                                                 picked: { label: string; value: string }[]
                                             ) =>
                                                 onUpdate(i, {
                                                     assignee: {
-                                                        ...t.assignee,
+                                                        ...qt.assignee,
                                                         source: 'SPECIFIC_USERS',
                                                         // Preserve already-saved ids that aren't in
                                                         // the loaded staff page (beyond the first
@@ -1066,7 +1098,7 @@ function QueryTypesCard({
                                                         // silently dropped on save.
                                                         user_ids: [
                                                             ...picked.map((p) => p.value),
-                                                            ...(t.assignee?.user_ids ?? []).filter(
+                                                            ...pickedStaff.filter(
                                                                 (id) =>
                                                                     !assigneeOptions.some(
                                                                         (o) => o.value === id
@@ -1080,8 +1112,80 @@ function QueryTypesCard({
                                             hasClearFilter={false}
                                             className="min-w-60"
                                         />
+                                        {assigneesLoading ? (
+                                            <p className="text-xs text-neutral-500">
+                                                {t('queryTypes.loadingStaff')}
+                                            </p>
+                                        ) : assigneeOptions.length === 0 ? (
+                                            <p className="text-xs text-warning-600">
+                                                {t('queryTypes.noStaff')}
+                                            </p>
+                                        ) : pickedStaff.length === 0 ? (
+                                            <p className="text-xs text-neutral-500">
+                                                {t('queryTypes.nobodyPicked')}
+                                            </p>
+                                        ) : null}
                                     </div>
                                 )}
+
+                                <div className="space-y-2 rounded-md bg-neutral-50 p-2">
+                                    <span className="text-xs font-semibold text-neutral-600">
+                                        {t('queryTypes.alsoAlwaysAssign')}
+                                    </span>
+                                    <p className="text-xs text-neutral-500">
+                                        {t('queryTypes.alsoAssignHint')}
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <SelectChips
+                                            placeholder={t('queryTypes.rolesPlaceholder')}
+                                            options={roleChipOptions}
+                                            selected={roleChipOptions.filter((o) =>
+                                                alsoRoles.includes(o.value)
+                                            )}
+                                            onChange={(picked) =>
+                                                onUpdate(i, {
+                                                    assignee: {
+                                                        ...qt.assignee,
+                                                        also_roles: picked.map((p) => p.value),
+                                                    },
+                                                })
+                                            }
+                                            multiSelect={true}
+                                            hasClearFilter={true}
+                                            className="min-w-44"
+                                        />
+                                        {showAlsoStaff && (
+                                            <SelectChips
+                                                placeholder={t('queryTypes.staffPlaceholder')}
+                                                options={assigneeOptions}
+                                                selected={assigneeOptions.filter((o) =>
+                                                    alsoStaff.includes(o.value)
+                                                )}
+                                                onChange={(picked) =>
+                                                    onUpdate(i, {
+                                                        assignee: {
+                                                            ...qt.assignee,
+                                                            // Keep ids that aren't in the loaded
+                                                            // staff page so they aren't dropped.
+                                                            also_user_ids: [
+                                                                ...picked.map((p) => p.value),
+                                                                ...alsoStaff.filter(
+                                                                    (id) =>
+                                                                        !assigneeOptions.some(
+                                                                            (o) => o.value === id
+                                                                        )
+                                                                ),
+                                                            ],
+                                                        },
+                                                    })
+                                                }
+                                                multiSelect={true}
+                                                hasClearFilter={true}
+                                                className="min-w-60"
+                                            />
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         );
                     })}
@@ -1090,7 +1194,7 @@ function QueryTypesCard({
                 <MyButton buttonType="secondary" onClick={onAdd} className="w-full border-dashed">
                     <span className="flex items-center gap-2">
                         <Plus className="size-4" />
-                        Add query type
+                        {t('queryTypes.addType')}
                     </span>
                 </MyButton>
             </CardContent>
@@ -1105,15 +1209,12 @@ function LearnerQueryCard({
     prefs: LearnerQueryPrefs;
     onChange: (patch: Partial<LearnerQueryPrefs>) => void;
 }) {
+    const { t } = useTranslation('settingsDoubtManagement');
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Learner query intake</CardTitle>
-                <CardDescription>
-                    Let learners raise queries from outside a course. Off by default — turning this
-                    on does not affect the in-course doubt flow. Learners only see the types you
-                    marked “Learner can pick” above.
-                </CardDescription>
+                <CardTitle>{t('learnerQuery.title')}</CardTitle>
+                <CardDescription>{t('learnerQuery.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="flex items-start gap-3">
@@ -1127,10 +1228,10 @@ function LearnerQueryCard({
                             htmlFor="learner-query-enabled"
                             className="cursor-pointer text-sm font-medium text-neutral-800"
                         >
-                            Enable learner query intake
+                            {t('learnerQuery.enableLabel')}
                         </Label>
                         <p className="mt-0.5 text-xs text-neutral-600">
-                            Master switch for the entry points below.
+                            {t('learnerQuery.enableHint')}
                         </p>
                     </div>
                 </div>
@@ -1148,11 +1249,10 @@ function LearnerQueryCard({
                                     htmlFor="learner-query-topbar"
                                     className="cursor-pointer text-sm font-medium text-neutral-800"
                                 >
-                                    Show “?” icon in the top bar
+                                    {t('learnerQuery.topbarLabel')}
                                 </Label>
                                 <p className="mt-0.5 text-xs text-neutral-600">
-                                    A quick-access question-mark button visible across the learner
-                                    app.
+                                    {t('learnerQuery.topbarHint')}
                                 </p>
                             </div>
                         </div>
@@ -1168,10 +1268,10 @@ function LearnerQueryCard({
                                     htmlFor="learner-query-dashboard"
                                     className="cursor-pointer text-sm font-medium text-neutral-800"
                                 >
-                                    Show “Raise a query” card on the dashboard
+                                    {t('learnerQuery.dashboardLabel')}
                                 </Label>
                                 <p className="mt-0.5 text-xs text-neutral-600">
-                                    A help card on the learner home screen.
+                                    {t('learnerQuery.dashboardHint')}
                                 </p>
                             </div>
                         </div>
@@ -1187,12 +1287,10 @@ function LearnerQueryCard({
                                     htmlFor="learner-query-guest"
                                     className="cursor-pointer text-sm font-medium text-neutral-800"
                                 >
-                                    Allow logged-out visitors to raise queries
+                                    {t('learnerQuery.guestLabel')}
                                 </Label>
                                 <p className="mt-0.5 text-xs text-neutral-600">
-                                    Adds a “Need help?” button to the learner login page. Visitors
-                                    leave their name and email — staff replies are emailed to that
-                                    address.
+                                    {t('learnerQuery.guestHint')}
                                 </p>
                             </div>
                         </div>

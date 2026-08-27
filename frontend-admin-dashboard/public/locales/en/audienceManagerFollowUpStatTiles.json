@@ -1,0 +1,20 @@
+{
+    "tiles": {
+        "overdue": {
+            "label": "Pending",
+            "caption": "Overdue"
+        },
+        "today": {
+            "label": "Today",
+            "caption": "Due today"
+        },
+        "upcoming": {
+            "label": "Upcoming",
+            "caption": "Next 7 days"
+        },
+        "all": {
+            "label": "All",
+            "caption": "All follow-ups"
+        }
+    }
+}

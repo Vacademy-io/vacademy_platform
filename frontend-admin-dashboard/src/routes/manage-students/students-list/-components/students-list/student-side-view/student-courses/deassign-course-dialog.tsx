@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { Calendar } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarBlank } from '@phosphor-icons/react';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { useBulkDeassign } from '@/routes/manage-students/students-list/-services/bulkAssignService';
@@ -36,6 +37,7 @@ export const DeassignCourseDialog = ({
     onOpenChange,
     onSuccess,
 }: DeassignCourseDialogProps) => {
+    const { t } = useTranslation('manageStudentsDeassignCourseDialog');
     const instituteId = getInstituteId() || '';
     const [step, setStep] = useState<DeassignStep>('CONFIG');
     const [selectedPSIds, setSelectedPSIds] = useState<Set<string>>(new Set());
@@ -104,7 +106,7 @@ export const DeassignCourseDialog = ({
             setPreviewData(result);
             setStep('PREVIEW');
         } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'Preview failed');
+            toast.error(err?.response?.data?.message || t('toasts.previewFailed'));
         }
     };
 
@@ -115,30 +117,38 @@ export const DeassignCourseDialog = ({
             setStep('RESULTS');
             if (result.summary.failed === 0) {
                 toast.success(
-                    `${result.summary.successful} course(s) de-assigned successfully!`
+                    t('toasts.deassignSuccess', { count: result.summary.successful })
                 );
                 onSuccess();
             } else {
                 toast.warning(
-                    `${result.summary.successful} removed, ${result.summary.failed} failed.`
+                    t('toasts.deassignPartial', {
+                        successful: result.summary.successful,
+                        failed: result.summary.failed,
+                    })
                 );
             }
         } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'De-assignment failed');
+            toast.error(err?.response?.data?.message || t('toasts.deassignFailed'));
         }
     };
 
     const renderConfig = () => (
         <div className="flex flex-col gap-5">
             <p className="text-sm text-neutral-600">
-                Remove <strong>{userName}</strong> from selected courses.
+                <Trans
+                    t={t}
+                    i18nKey="config.removePrompt"
+                    values={{ name: userName }}
+                    components={{ strong: <strong /> }}
+                />
             </p>
 
             {/* Course selection */}
-            <div className="flex max-h-[220px] flex-col gap-2 overflow-y-auto pr-1">
+            <div className="flex max-h-56 flex-col gap-2 overflow-y-auto pe-1">
                 {courses.length === 0 ? (
                     <p className="py-4 text-center text-sm text-neutral-400">
-                        No courses to de-assign
+                        {t('config.noCourses')}
                     </p>
                 ) : (
                     courses.map((c) => {
@@ -162,7 +172,7 @@ export const DeassignCourseDialog = ({
                                 />
                                 <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-medium text-neutral-800">
-                                        {c.package_name || 'Unnamed Course'}
+                                        {c.package_name || t('config.unnamedCourse')}
                                     </p>
                                     {c.level_name && (
                                         <p className="truncate text-xs text-neutral-500">
@@ -178,7 +188,7 @@ export const DeassignCourseDialog = ({
 
             {/* Mode selection */}
             <div className="flex flex-col gap-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                <p className="text-xs font-medium text-neutral-600">Removal Mode</p>
+                <p className="text-xs font-medium text-neutral-600">{t('config.removalMode')}</p>
                 <label className="flex items-start gap-2">
                     <input
                         type="radio"
@@ -188,8 +198,8 @@ export const DeassignCourseDialog = ({
                         className="mt-0.5 text-primary-500"
                     />
                     <span className="text-xs text-neutral-700">
-                        <strong>Soft Cancel</strong> — Access continues until plan expires.
-                        Status → CANCELED
+                        <strong>{t('config.softCancel.label')}</strong>{' '}
+                        {t('config.softCancel.description')}
                     </span>
                 </label>
 
@@ -197,57 +207,78 @@ export const DeassignCourseDialog = ({
                     the calendar lets the admin bring the access cut-off forward. */}
                 {mode === 'SOFT' && (
                     <div className="ml-6 mt-1 flex flex-col gap-1.5">
-                        <p className="text-[11px] font-medium text-neutral-600">
-                            Last access date
+                        <p className="text-2xs font-medium text-neutral-600">
+                            {t('config.lastAccessDate.label')}
                         </p>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    className={cn(
-                                        'flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs transition-colors hover:border-neutral-300',
-                                        accessTillDate ? 'text-neutral-800' : 'text-neutral-500'
-                                    )}
-                                >
-                                    <CalendarBlank className="size-3.5 text-neutral-400" />
-                                    {accessTillDate
-                                        ? format(new Date(accessTillDate), 'dd MMM yyyy')
-                                        : defaultExpiry
-                                          ? `Plan expiry — ${format(defaultExpiry, 'dd MMM yyyy')}`
-                                          : 'Respect plan expiry'}
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start" portal={false}>
-                                <Calendar
-                                    mode="single"
-                                    selected={
-                                        accessTillDate
-                                            ? new Date(accessTillDate)
-                                            : defaultExpiry ?? undefined
-                                    }
-                                    defaultMonth={
-                                        accessTillDate
-                                            ? new Date(accessTillDate)
-                                            : defaultExpiry ?? undefined
-                                    }
-                                    onSelect={(date) => {
-                                        if (date) setAccessTillDate(format(date, 'yyyy-MM-dd'));
-                                    }}
-                                    initialFocus
-                                />
-                            </PopoverContent>
-                        </Popover>
-                        <p className="text-[10px] text-neutral-400">
+                        <div className="flex items-center gap-1.5">
+                            {/* Typed entry. yyyy-MM-dd is exactly the shape accessTillDate
+                                holds and the API expects, so the value maps straight through
+                                with no parsing. Also gives the browser's own picker, which
+                                renders natively and can never be clipped by the dialog. */}
+                            <Input
+                                type="date"
+                                aria-label={t('config.lastAccessDate.ariaLabel')}
+                                value={accessTillDate ?? ''}
+                                onChange={(e) => setAccessTillDate(e.target.value || null)}
+                                className="h-8 w-36 text-xs"
+                            />
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <button
+                                        type="button"
+                                        aria-label={t('config.lastAccessDate.pickAriaLabel')}
+                                        className="flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-600 transition-colors hover:border-neutral-300"
+                                    >
+                                        <CalendarBlank className="size-3.5 text-neutral-400" />
+                                    </button>
+                                </PopoverTrigger>
+                                {/* Portalled (the default) rather than inline: MyDialog wraps its
+                                    body in a vertical scroll area inside a capped-height,
+                                    overflow-hidden shell, so an inline popover gets clipped —
+                                    a 6-row month lost its last week. The popover has no internal
+                                    scrolling, so the reason PopoverContent offers the inline
+                                    escape hatch doesn't apply here. Stacking is left to DOM
+                                    order: the portal mounts after the dialog, so at equal
+                                    z-index it still paints above it. */}
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        // Always render 6 week rows so the height is identical
+                                        // in every month — no reflow, nothing to clip.
+                                        fixedWeeks
+                                        selected={
+                                            accessTillDate
+                                                ? new Date(accessTillDate)
+                                                : defaultExpiry ?? undefined
+                                        }
+                                        defaultMonth={
+                                            accessTillDate
+                                                ? new Date(accessTillDate)
+                                                : defaultExpiry ?? undefined
+                                        }
+                                        onSelect={(date) => {
+                                            if (date) setAccessTillDate(format(date, 'yyyy-MM-dd'));
+                                        }}
+                                        initialFocus
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <p className="text-2xs text-neutral-400">
                             {accessTillDate
-                                ? 'Access ends on the selected date.'
-                                : 'Leave as-is to keep access until the plan’s own expiry.'}
+                                ? t('config.lastAccessDate.hintSelected')
+                                : defaultExpiry
+                                  ? t('config.lastAccessDate.hintDefaultWithDate', {
+                                        date: format(defaultExpiry, 'dd MMM yyyy'),
+                                    })
+                                  : t('config.lastAccessDate.hintDefaultNoDate')}
                             {accessTillDate && (
                                 <button
                                     type="button"
                                     onClick={() => setAccessTillDate(null)}
                                     className="ml-1.5 text-primary-500 hover:underline"
                                 >
-                                    Reset to plan expiry
+                                    {t('config.lastAccessDate.reset')}
                                 </button>
                             )}
                         </p>
@@ -262,9 +293,11 @@ export const DeassignCourseDialog = ({
                         className="mt-0.5 text-red-500"
                     />
                     <span className="text-xs text-neutral-700">
-                        <strong>Hard Terminate</strong> — Immediate access revocation.
-                        Status → TERMINATED
-                        <span className="ml-1 text-red-500">⚠ Cannot be undone</span>
+                        <strong>{t('config.hardTerminate.label')}</strong>{' '}
+                        {t('config.hardTerminate.description')}
+                        <span className="ms-1 text-red-500">
+                            {t('config.hardTerminate.cannotUndo')}
+                        </span>
                     </span>
                 </label>
 
@@ -275,7 +308,7 @@ export const DeassignCourseDialog = ({
                         onChange={(e) => setNotifyLearners(e.target.checked)}
                         className="h-3.5 w-3.5 rounded border-neutral-300 text-primary-500"
                     />
-                    Notify learner about removal
+                    {t('config.notifyLearners')}
                 </label>
             </div>
         </div>
@@ -286,38 +319,36 @@ export const DeassignCourseDialog = ({
         const { summary, results } = previewData;
         return (
             <div className="flex flex-col gap-4">
-                <p className="text-sm font-medium text-neutral-700">
-                    Preview — Dry Run Results
-                </p>
+                <p className="text-sm font-medium text-neutral-700">{t('preview.title')}</p>
 
                 <div className="flex flex-wrap gap-2">
                     <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                        ✅ {summary.successful} will be removed
+                        ✅ {t('preview.willBeRemoved', { count: summary.successful })}
                     </span>
                     {summary.skipped > 0 && (
                         <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-700">
-                            ⏭ {summary.skipped} skipped
+                            ⏭ {t('preview.skipped', { count: summary.skipped })}
                         </span>
                     )}
                     {summary.failed > 0 && (
                         <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                            ❌ {summary.failed} failed
+                            ❌ {t('preview.failed', { count: summary.failed })}
                         </span>
                     )}
                 </div>
 
-                <div className="max-h-[260px] overflow-y-auto rounded-lg border border-neutral-200">
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-neutral-200">
                     <table className="w-full text-left text-xs">
                         <thead className="sticky top-0 bg-neutral-50">
                             <tr>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Course
+                                    {t('preview.tableHeaders.course')}
                                 </th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Action
+                                    {t('preview.tableHeaders.action')}
                                 </th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Status
+                                    {t('preview.tableHeaders.status')}
                                 </th>
                             </tr>
                         </thead>
@@ -345,7 +376,7 @@ export const DeassignCourseDialog = ({
                                         </td>
                                         <td className="px-3 py-2">
                                             <span
-                                                className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                                className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${
                                                     r.status === 'SUCCESS'
                                                         ? 'bg-green-100 text-green-700'
                                                         : r.status === 'SKIPPED'
@@ -356,12 +387,12 @@ export const DeassignCourseDialog = ({
                                                 {r.status}
                                             </span>
                                             {r.warning && (
-                                                <p className="mt-0.5 text-[10px] text-amber-600">
+                                                <p className="mt-0.5 text-2xs text-amber-600">
                                                     ⚠ {r.warning}
                                                 </p>
                                             )}
                                             {r.message && (
-                                                <p className="mt-0.5 text-[10px] text-neutral-400">
+                                                <p className="mt-0.5 text-2xs text-neutral-400">
                                                     {r.message}
                                                 </p>
                                             )}
@@ -381,35 +412,35 @@ export const DeassignCourseDialog = ({
         const { summary, results } = finalResults;
         return (
             <div className="flex flex-col gap-4">
-                <p className="text-sm font-semibold text-neutral-800">De-assignment Complete</p>
+                <p className="text-sm font-semibold text-neutral-800">{t('results.title')}</p>
                 <div className="flex flex-wrap gap-2">
                     <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                        ✅ {summary.successful} removed
+                        ✅ {t('results.removed', { count: summary.successful })}
                     </span>
                     {summary.skipped > 0 && (
                         <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-700">
-                            ⏭ {summary.skipped} skipped
+                            ⏭ {t('results.skipped', { count: summary.skipped })}
                         </span>
                     )}
                     {summary.failed > 0 && (
                         <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                            ❌ {summary.failed} failed
+                            ❌ {t('results.failed', { count: summary.failed })}
                         </span>
                     )}
                 </div>
 
-                <div className="max-h-[260px] overflow-y-auto rounded-lg border border-neutral-200">
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-neutral-200">
                     <table className="w-full text-left text-xs">
                         <thead className="sticky top-0 bg-neutral-50">
                             <tr>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Course
+                                    {t('results.tableHeaders.course')}
                                 </th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Status
+                                    {t('results.tableHeaders.status')}
                                 </th>
                                 <th className="px-3 py-2 font-medium text-neutral-600">
-                                    Message
+                                    {t('results.tableHeaders.message')}
                                 </th>
                             </tr>
                         </thead>
@@ -425,7 +456,7 @@ export const DeassignCourseDialog = ({
                                         </td>
                                         <td className="px-3 py-2">
                                             <span
-                                                className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                                className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${
                                                     r.status === 'SUCCESS'
                                                         ? 'bg-green-100 text-green-700'
                                                         : r.status === 'SKIPPED'
@@ -458,7 +489,7 @@ export const DeassignCourseDialog = ({
                         scale="small"
                         onClick={() => handleOpenChange(false)}
                     >
-                        Cancel
+                        {t('footer.cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -467,7 +498,9 @@ export const DeassignCourseDialog = ({
                         onClick={handlePreview}
                         className="!bg-red-500 hover:!bg-red-600"
                     >
-                        {isPending ? 'Loading...' : `Preview (${selectedPSIds.size} courses)`}
+                        {isPending
+                            ? t('footer.loading')
+                            : t('footer.previewButton', { count: selectedPSIds.size })}
                     </MyButton>
                 </>
             )}
@@ -478,7 +511,7 @@ export const DeassignCourseDialog = ({
                         scale="small"
                         onClick={() => setStep('CONFIG')}
                     >
-                        ← Back
+                        {t('footer.back')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -487,7 +520,7 @@ export const DeassignCourseDialog = ({
                         onClick={handleConfirm}
                         className="!bg-red-500 hover:!bg-red-600"
                     >
-                        {isPending ? 'Removing...' : '✓ Confirm Removal'}
+                        {isPending ? t('footer.removing') : t('footer.confirmRemoval')}
                     </MyButton>
                 </>
             )}
@@ -498,7 +531,7 @@ export const DeassignCourseDialog = ({
                     onClick={() => handleOpenChange(false)}
                     className="ml-auto"
                 >
-                    Done
+                    {t('footer.done')}
                 </MyButton>
             )}
         </div>
@@ -506,7 +539,9 @@ export const DeassignCourseDialog = ({
 
     return (
         <MyDialog
-            heading={`Remove from ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`}
+            heading={t('dialogTitle', {
+                term: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+            })}
             open={open}
             onOpenChange={handleOpenChange}
             dialogWidth="max-w-lg"

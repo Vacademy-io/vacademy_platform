@@ -46,6 +46,9 @@ import {
 import { getCachedInstituteBranding } from "@/services/domain-routing";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { useTheme } from "@/providers/theme/theme-provider";
+import { useTranslation } from "react-i18next";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 export interface InstituteBrandingInfo {
   instituteName: string | null;
@@ -53,6 +56,15 @@ export interface InstituteBrandingInfo {
 }
 
 export default function LiveClassRegistrationPage() {
+  const { t } = useTranslation("registrationA");
+  const liveSession = getTerminology(
+    ContentTerms.LiveSession,
+    SystemTerms.LiveSession,
+  ).toLocaleLowerCase();
+  const session = getTerminology(
+    ContentTerms.Session,
+    SystemTerms.Session,
+  ).toLocaleLowerCase();
   const [sessionDetails, setSessionDetails] =
     useState<SessionDetailsResponse | null>(null);
   const router = useRouter();
@@ -338,7 +350,7 @@ export default function LiveClassRegistrationPage() {
         data?.customFields || []
       );
     } catch (error) {
-      toast.error("Error building request");
+      toast.error(t("liveClass.page.toast.buildRequestError"));
       console.error("DTO transformation error:", error);
       return;
     }
@@ -353,11 +365,11 @@ export default function LiveClassRegistrationPage() {
     // At least one identity is required; paid classes additionally need an
     // email because the invoice is billed and mailed to it.
     if (!email && !mobileNumber) {
-      toast.error("Please enter your email or mobile number");
+      toast.error(t("liveClass.page.toast.identityRequired"));
       return;
     }
     if (data?.paymentRequired && !email) {
-      toast.error("An email address is required for this paid live class");
+      toast.error(t("liveClass.page.toast.emailRequiredPaid", { liveSession }));
       return;
     }
 
@@ -367,7 +379,7 @@ export default function LiveClassRegistrationPage() {
     const channelsToVerify: OtpChannel[] = [];
     if (data?.requireEmailVerification) {
       if (!email) {
-        toast.error("An email address is required for this live class");
+        toast.error(t("liveClass.page.toast.emailRequired", { liveSession }));
         return;
       }
       if (!verifiedIdentitiesRef.current.has(`email:${email.toLowerCase()}`)) {
@@ -376,7 +388,7 @@ export default function LiveClassRegistrationPage() {
     }
     if (data?.requirePhoneVerification) {
       if (!mobileNumber) {
-        toast.error("A mobile number is required for this live class");
+        toast.error(t("liveClass.page.toast.phoneRequired", { liveSession }));
         return;
       }
       const digits = mobileNumber.replace(/\D/g, "");
@@ -424,7 +436,7 @@ export default function LiveClassRegistrationPage() {
           payResponse.payment_status === "PAID" ||
           !payResponse.payment_required
         ) {
-          toast.success("Registration successful");
+          toast.success(t("liveClass.page.toast.registrationSuccess"));
           const sessionDetailResponse = await fetchSessionDetails(
             earliestScheduleId || ""
           );
@@ -440,9 +452,7 @@ export default function LiveClassRegistrationPage() {
           // "Payment pending" card with the Pay & Confirm button, exactly what
           // a returning visitor sees. Payment navigation only ever happens
           // from that explicit click — never automatically.
-          toast.success(
-            "Spot reserved — complete your payment to confirm your registration"
-          );
+          toast.success(t("liveClass.page.toast.spotReserved"));
         }
       } catch (error) {
         console.error("Paid registration failed:", error);
@@ -456,7 +466,7 @@ export default function LiveClassRegistrationPage() {
 
       if (registerResponse) {
         await storeRegistration(data?.sessionId || "", identity, registerResponse);
-        toast.success("Registration successful");
+        toast.success(t("liveClass.page.toast.registrationSuccess"));
 
         const sessionDetailResponse = await fetchSessionDetails(
           earliestScheduleId || ""
@@ -622,7 +632,7 @@ export default function LiveClassRegistrationPage() {
     setRegistrationResponse(info.registration_id);
     setIsUserAlreadyRegistered(true);
     setAlreadyRegisteredEmail(identity.email || identity.mobileNumber || "");
-    toast.success("You're already registered for this session");
+    toast.success(t("liveClass.page.toast.alreadyRegistered", { session }));
     if (!info.payment_required || info.payment_status === "PAID") {
       fetchSessionDetail(earliestScheduleId || sessionId || "");
     }
@@ -736,7 +746,7 @@ export default function LiveClassRegistrationPage() {
             {data?.paymentRequired && !isUserAlreadyRegistered && (
               <div className="mb-3 flex items-center justify-between rounded-xl border border-primary-200 bg-primary-50 px-4 py-3">
                 <span className="text-body font-medium text-foreground">
-                  Price
+                  {t("liveClass.page.priceLabel")}
                 </span>
                 <span className="text-subtitle font-semibold text-primary-500">
                   {getCurrencySymbol(data.currency || "")}
@@ -750,16 +760,14 @@ export default function LiveClassRegistrationPage() {
               <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div>
                   <h2 className="text-subtitle font-semibold text-foreground">
-                    Complete your registration
+                    {t("liveClass.page.completeRegistration")}
                   </h2>
                   <p className="mt-1 text-body text-muted-foreground">
-                    Your spot is reserved. Complete your payment to confirm it —
-                    you&apos;ll get a receipt by email and can join once
-                    it&apos;s time.
+                    {t("liveClass.page.completeRegistrationDescription")}
                   </p>
                 </div>
                 <div className="flex items-center justify-between rounded-xl bg-primary-50 px-4 py-3">
-                  <span className="text-body text-muted-foreground">Total</span>
+                  <span className="text-body text-muted-foreground">{t("liveClass.page.total")}</span>
                   <span className="text-subtitle font-semibold text-primary-500">
                     {getCurrencySymbol(
                       paymentInfo?.currency || data.currency || ""
@@ -779,7 +787,7 @@ export default function LiveClassRegistrationPage() {
                   }
                 >
                   <CreditCard size={18} weight="regular" />
-                  Pay & Confirm
+                  {t("liveClass.page.payAndConfirm")}
                 </Button>
               </div>
             ) : isUserAlreadyRegistered && sessionDetails ? (

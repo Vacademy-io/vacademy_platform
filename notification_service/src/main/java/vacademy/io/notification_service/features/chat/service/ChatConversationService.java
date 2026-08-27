@@ -25,6 +25,7 @@ import vacademy.io.notification_service.features.chat.event.ChatFanoutEvent;
 import vacademy.io.notification_service.features.chat.repository.ChatConversationMemberRepository;
 import vacademy.io.notification_service.features.chat.repository.ChatConversationRepository;
 import vacademy.io.notification_service.features.chat.repository.ChatMessageRepository;
+import vacademy.io.notification_service.features.chat.util.ChatTimeUtil;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -210,6 +211,13 @@ public class ChatConversationService {
         return map;
     }
 
+    /**
+     * Get-or-create the caller's member row. The stored member_role is deliberately NEVER rewritten
+     * for an existing row: {@link ChatMembershipReconciler} keeps every non-MEMBER row out of roster
+     * reconciliation, so promoting a materialized MEMBER here would quietly make that person immune to
+     * being removed when they leave the batch. Moderation authority that comes from the institute role
+     * is evaluated per-request from the token instead (see ChatMessageService#canModerate).
+     */
     public ChatConversationMember ensureMember(ChatConversation conv, String userId, String userRole, ChatMemberRole memberRole) {
         Optional<ChatConversationMember> existing = memberRepo.findByConversationIdAndUserId(conv.getId(), userId);
         if (existing.isPresent()) {
@@ -284,13 +292,35 @@ public class ChatConversationService {
         // provisioned batch is reachable via the batch search ("start a new conversation").
         addRoleVisibleBatches(convs, instituteId, userId, callerRole, limit <= 0 ? 30 : limit);
 
-        List<ChatConversation> visible = convs.stream()
+        int pageSize = limit <= 0 ? 30 : limit;
+        List<ChatConversation> candidates = convs.stream()
                 .filter(c -> instituteId.equals(c.getInstituteId()))
                 .filter(c -> typeFilter == null || typeFilter.equalsIgnoreCase(c.getType()))
                 .sorted(Comparator.comparing(ChatConversation::getLastMessageAt,
                         Comparator.nullsLast(Comparator.reverseOrder())))
-                .limit(limit <= 0 ? 30 : limit)
                 .collect(Collectors.toList());
+
+        // The community channel is PINNED to the top of the page instead of competing for a slot on
+        // recency. It is the one channel that is usually never-messaged (so it sorts dead last), while
+        // an admin's page is filled with every batch group in the institute — at any institute with
+        // more than `pageSize` messaged batches the community fell off the page entirely and became
+        // unreachable (the FE has no other entry point to it). Pinning keeps it visible by default for
+        // every role — admin, mentor, teacher and learner alike — at any institute size.
+        // Sized off the candidates, never off the caller-supplied `limit` (unvalidated at the
+        // controller — a bogus ?limit=2000000000 must not turn into a 2-billion-slot allocation).
+        List<ChatConversation> visible = new ArrayList<>(Math.min(pageSize, candidates.size()));
+        candidates.stream()
+                .filter(c -> ChatConversationType.COMMUNITY.name().equals(c.getType()))
+                .findFirst()
+                .ifPresent(visible::add);
+        for (ChatConversation c : candidates) {
+            if (visible.size() >= pageSize) {
+                break;
+            }
+            if (!ChatConversationType.COMMUNITY.name().equals(c.getType())) {
+                visible.add(c);
+            }
+        }
 
         // Fetch every active member of the visible page in ONE query, grouped by conversation,
         // so mapConversation never has to look up DIRECT participants per-row.
@@ -392,12 +422,14 @@ public class ChatConversationService {
                 .otherUserId(otherUserId)
                 .lastMessagePreview(c.getLastMessagePreview())
                 .lastMessageSenderId(c.getLastMessageSenderId())
-                .lastMessageAt(c.getLastMessageAt())
+                .lastMessageAt(ChatTimeUtil.toInstant(c.getLastMessageAt()))
                 .lastMessageSeq(c.getLastMessageSeq())
                 .unreadCount(unread)
                 .memberRole(callerMember != null ? callerMember.getMemberRole() : null)
                 .rulesVersion(c.getRulesVersion())
                 .canPost(canPost)
+                .canEditOwnMessages(permissionService.canEditOwnMessage(c.getInstituteId(), callerRole))
+                .canDeleteOwnMessages(permissionService.canDeleteOwnMessage(c.getInstituteId(), callerRole))
                 .build();
     }
 

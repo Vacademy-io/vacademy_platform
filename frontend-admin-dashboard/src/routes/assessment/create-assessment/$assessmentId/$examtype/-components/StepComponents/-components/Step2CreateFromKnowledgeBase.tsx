@@ -3,6 +3,9 @@ import { UseFormReturn, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import i18next from 'i18next';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Books, CaretLeft, Spinner, WarningCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -44,23 +47,29 @@ const POLL_MS = 3000;
 /** ~30s of unbroken polling failures before we stop and tell the teacher. */
 const MAX_CONSECUTIVE_POLL_ERRORS = 10;
 
-const QUESTION_TYPE_OPTIONS: Array<{ value: PaperQuestionType; label: string }> = [
-    { value: 'MCQS', label: 'Multiple choice (one answer)' },
-    { value: 'MCQM', label: 'Multiple choice (several answers)' },
-    { value: 'TRUE_FALSE', label: 'True / false' },
-    { value: 'ONE_WORD', label: 'One word' },
-    { value: 'LONG_ANSWER', label: 'Long answer' },
-    { value: 'NUMERIC', label: 'Numeric' },
+const buildQuestionTypeOptions = (
+    t: TFunction
+): Array<{ value: PaperQuestionType; label: string }> => [
+    { value: 'MCQS', label: t('setup.questionTypeOptions.mcqs') },
+    { value: 'MCQM', label: t('setup.questionTypeOptions.mcqm') },
+    { value: 'TRUE_FALSE', label: t('setup.questionTypeOptions.trueFalse') },
+    { value: 'ONE_WORD', label: t('setup.questionTypeOptions.oneWord') },
+    { value: 'LONG_ANSWER', label: t('setup.questionTypeOptions.longAnswer') },
+    { value: 'NUMERIC', label: t('setup.questionTypeOptions.numeric') },
 ];
 
-const DIFFICULTY_OPTIONS: Array<{ value: PaperDifficulty; label: string }> = [
-    { value: 'EASY', label: 'Easy' },
-    { value: 'MEDIUM', label: 'Medium' },
-    { value: 'HARD', label: 'Hard' },
+const buildDifficultyOptions = (t: TFunction): Array<{ value: PaperDifficulty; label: string }> => [
+    { value: 'EASY', label: t('setup.difficultyOptions.easy') },
+    { value: 'MEDIUM', label: t('setup.difficultyOptions.medium') },
+    { value: 'HARD', label: t('setup.difficultyOptions.hard') },
 ];
 
 const setupSchema = z.object({
-    count: z.coerce.number().int().min(1, 'At least 1 question').max(60, 'At most 60 at a time'),
+    count: z.coerce
+        .number()
+        .int()
+        .min(1, i18next.t('assessmentStep2CreateFromKnowledgeBase:setup.validation.minCount'))
+        .max(60, i18next.t('assessmentStep2CreateFromKnowledgeBase:setup.validation.maxCount')),
     questionType: z.enum(['MCQS', 'MCQM', 'TRUE_FALSE', 'ONE_WORD', 'LONG_ANSWER', 'NUMERIC']),
     difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']),
 });
@@ -89,6 +98,7 @@ const Step2CreateFromKnowledgeBase = ({
     form: UseFormReturn<SectionFormType>;
     index: number;
 }) => {
+    const { t } = useTranslation('assessmentStep2CreateFromKnowledgeBase');
     const [open, setOpen] = useState(false);
     const [step, setStep] = useState<Step>('kb');
     const [kbId, setKbId] = useState<string | null>(null);
@@ -109,7 +119,9 @@ const Step2CreateFromKnowledgeBase = ({
         defaultValues: { count: 10, questionType: 'MCQS', difficulty: 'MEDIUM' },
     });
 
-    const sectionName = form.getValues(`section.${index}.sectionName`) || `Section ${index + 1}`;
+    const sectionName =
+        form.getValues(`section.${index}.sectionName`) ||
+        t('defaultSectionName', { number: index + 1 });
 
     const reset = () => {
         setStep('kb');
@@ -152,7 +164,7 @@ const Step2CreateFromKnowledgeBase = ({
             setSelectedLeafIds(allLeaves);
         } catch (error) {
             setTopics([]);
-            toast.error(errorMessage(error, 'Could not read the topics in this knowledge base'));
+            toast.error(errorMessage(error, t('errors.loadTopics')));
         }
     };
 
@@ -174,7 +186,7 @@ const Step2CreateFromKnowledgeBase = ({
             setResult(null);
             setStep('generating');
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not start generating'));
+            toast.error(errorMessage(error, t('errors.startGenerating')));
         }
     };
 
@@ -197,7 +209,7 @@ const Step2CreateFromKnowledgeBase = ({
                     return;
                 }
                 if (job.status === 'FAILED') {
-                    toast.error(job.status_message || 'Generation failed');
+                    toast.error(job.status_message || t('errors.generationFailed'));
                     setStep('setup');
                     return;
                 }
@@ -271,7 +283,7 @@ const Step2CreateFromKnowledgeBase = ({
                 /* keep the previous issues rather than clearing them */
             }
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not rewrite that question'));
+            toast.error(errorMessage(error, t('errors.regenerateQuestion')));
         } finally {
             setRegeneratingNumber(null);
         }
@@ -288,14 +300,14 @@ const Step2CreateFromKnowledgeBase = ({
         if (!result || result.questions.length === 0) return;
         setInserting(true);
         try {
-            const title = `${kbName} — ${sectionName}`;
+            const title = t('insert.paperTitle', { kbName, sectionName });
             const saved = await savePaperToQuestionBank({
                 title,
                 questions: result.questions,
             });
 
             const savedId = saved?.saved_question_paper_id;
-            if (!savedId) throw new Error('The question paper was not saved');
+            if (!savedId) throw new Error(t('errors.paperNotSaved'));
 
             const stored = await getQuestionPaperById(savedId);
             const questions = transformResponseDataToMyQuestionsSchema(stored.question_dtolist);
@@ -344,10 +356,10 @@ const Step2CreateFromKnowledgeBase = ({
                 markGenerationSaved(generationId, savedId).catch(() => undefined);
             }
 
-            toast.success(`Added ${questions.length} questions to ${sectionName}`);
+            toast.success(t('insert.successToast', { count: questions.length, sectionName }));
             close(false);
         } catch (error) {
-            toast.error(errorMessage(error, 'Could not add these questions to the section'));
+            toast.error(errorMessage(error, t('errors.insertQuestions')));
         } finally {
             setInserting(false);
         }
@@ -358,7 +370,7 @@ const Step2CreateFromKnowledgeBase = ({
         if (step === 'kb') {
             return (
                 <MyButton buttonType="secondary" scale="medium" onClick={() => close(false)}>
-                    Cancel
+                    {t('footer.cancel')}
                 </MyButton>
             );
         }
@@ -367,7 +379,7 @@ const Step2CreateFromKnowledgeBase = ({
                 <>
                     <MyButton buttonType="secondary" scale="medium" onClick={() => setStep('kb')}>
                         <CaretLeft className="mr-1 size-4" />
-                        Back
+                        {t('footer.back')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -380,7 +392,7 @@ const Step2CreateFromKnowledgeBase = ({
                         }
                         onClick={setupForm.handleSubmit(startGenerating)}
                     >
-                        Generate questions
+                        {t('footer.generateQuestions')}
                     </MyButton>
                 </>
             );
@@ -395,7 +407,7 @@ const Step2CreateFromKnowledgeBase = ({
                         onClick={() => setStep('setup')}
                     >
                         <CaretLeft className="mr-1 size-4" />
-                        Change selection
+                        {t('footer.changeSelection')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -404,8 +416,8 @@ const Step2CreateFromKnowledgeBase = ({
                         onClick={insertIntoSection}
                     >
                         {inserting
-                            ? 'Adding…'
-                            : `Add ${result?.questions.length ?? 0} questions to this section`}
+                            ? t('footer.adding')
+                            : t('footer.addQuestions', { count: result?.questions.length ?? 0 })}
                     </MyButton>
                 </>
             );
@@ -425,16 +437,18 @@ const Step2CreateFromKnowledgeBase = ({
                 </div>
                 <div className="flex-1">
                     <div className="text-sm font-semibold text-neutral-800">
-                        Create From Knowledge Base
+                        {t('trigger.title')}
                     </div>
-                    <div className="text-xs text-neutral-500">
-                        Questions from your own books and notes
-                    </div>
+                    <div className="text-xs text-neutral-500">{t('trigger.subtitle')}</div>
                 </div>
             </button>
 
             <MyDialog
-                heading={step === 'kb' ? 'Choose a knowledge base' : `${kbName} — ${sectionName}`}
+                heading={
+                    step === 'kb'
+                        ? t('dialog.headingChooseKb')
+                        : t('dialog.headingKbSection', { kbName, sectionName })
+                }
                 open={open}
                 onOpenChange={close}
                 dialogWidth="max-w-4xl"
@@ -443,20 +457,16 @@ const Step2CreateFromKnowledgeBase = ({
                 <div className="flex flex-col gap-5 p-6">
                     {step === 'kb' && (
                         <>
-                            <p className="text-body text-neutral-500">
-                                Questions will be written only from the material in the knowledge
-                                base you pick, and each one will show the page it came from.
-                            </p>
+                            <p className="text-body text-neutral-500">{t('kbStep.intro')}</p>
                             {kbsLoading && <Skeleton className="h-24 w-full rounded-lg" />}
                             {!kbsLoading && (knowledgeBases?.length ?? 0) === 0 && (
                                 <div className="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 p-6 text-center">
                                     <Books className="size-6 text-neutral-300" />
                                     <p className="text-body text-neutral-600">
-                                        No knowledge bases yet
+                                        {t('kbStep.emptyTitle')}
                                     </p>
                                     <p className="text-caption text-neutral-500">
-                                        Add your books or notes under Knowledge Base first, then
-                                        come back here.
+                                        {t('kbStep.emptyDescription')}
                                     </p>
                                 </div>
                             )}
@@ -479,7 +489,9 @@ const Step2CreateFromKnowledgeBase = ({
                                             )}
                                         </div>
                                         <span className="shrink-0 text-caption text-neutral-500">
-                                            {kb.stats?.sources ?? 0} sources
+                                            {t('kbStep.sourcesCount', {
+                                                count: kb.stats?.sources ?? 0,
+                                            })}
                                         </span>
                                     </button>
                                 ))}
@@ -501,7 +513,7 @@ const Step2CreateFromKnowledgeBase = ({
                                             <FormItem className="w-full">
                                                 <FormControl>
                                                     <MyInput
-                                                        label="Number of questions"
+                                                        label={t('setup.numberOfQuestions')}
                                                         required
                                                         inputType="number"
                                                         input={String(field.value)}
@@ -515,24 +527,24 @@ const Step2CreateFromKnowledgeBase = ({
                                         )}
                                     />
                                     <SelectField
-                                        label="Question type"
+                                        label={t('setup.questionType')}
                                         name="questionType"
                                         control={setupForm.control}
                                         labelStyle="w-full"
                                         className="w-full"
-                                        options={QUESTION_TYPE_OPTIONS.map((opt, i) => ({
+                                        options={buildQuestionTypeOptions(t).map((opt, i) => ({
                                             value: opt.value,
                                             label: opt.label,
                                             _id: i,
                                         }))}
                                     />
                                     <SelectField
-                                        label="Difficulty"
+                                        label={t('setup.difficulty')}
                                         name="difficulty"
                                         control={setupForm.control}
                                         labelStyle="w-full"
                                         className="w-full"
-                                        options={DIFFICULTY_OPTIONS.map((opt, i) => ({
+                                        options={buildDifficultyOptions(t).map((opt, i) => ({
                                             value: opt.value,
                                             label: opt.label,
                                             _id: i,
@@ -546,8 +558,7 @@ const Step2CreateFromKnowledgeBase = ({
                                 <div className="flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 p-4">
                                     <WarningCircle className="mt-0.5 size-4 shrink-0 text-warning-600" />
                                     <p className="text-caption text-neutral-600">
-                                        This knowledge base has no topics yet. Questions will be
-                                        drawn from all of its material.
+                                        {t('setup.noTopicsWarning')}
                                     </p>
                                 </div>
                             )}
@@ -565,12 +576,10 @@ const Step2CreateFromKnowledgeBase = ({
                         <div className="flex flex-col items-center gap-3 py-12 text-center">
                             <Spinner className="size-8 animate-spin text-primary-500" />
                             <p className="text-body font-medium text-neutral-700">
-                                Writing questions from {kbName}
+                                {t('generating.writingFrom', { kbName })}
                             </p>
                             <p className="text-caption text-neutral-500">
-                                Questions are written a few at a time, so a larger section takes
-                                longer. This run is kept in the knowledge base&apos;s history even
-                                if you close this.
+                                {t('generating.hint')}
                             </p>
                         </div>
                     )}
@@ -581,9 +590,10 @@ const Step2CreateFromKnowledgeBase = ({
                                 <div className="flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 p-4">
                                     <WarningCircle className="mt-0.5 size-4 shrink-0 text-warning-600" />
                                     <p className="text-caption text-neutral-600">
-                                        {result.delivered} of {result.planned} questions could be
-                                        written from the topics you picked. Add more material or
-                                        widen the selection for the rest.
+                                        {t('review.partialDelivery', {
+                                            delivered: result.delivered,
+                                            planned: result.planned,
+                                        })}
                                     </p>
                                 </div>
                             )}

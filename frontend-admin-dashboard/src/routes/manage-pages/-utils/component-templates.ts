@@ -1,20 +1,31 @@
 import { v4 as uuidv4 } from 'uuid';
+import type { TFunction } from 'i18next';
 import { Component } from '../-types/editor-types';
 
-export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
+/**
+ * Default prop values for every draggable page-builder component. These are
+ * what a user actually sees the first time they add a component to a page —
+ * before they customize it — so the prose (titles, descriptions, button
+ * labels, etc.) is translated. Structural/technical values (type ids, CSS
+ * colors, layout/style enums, field-mapping keys like `level_name`, filter
+ * *values* that are matched against real data like `levelFilterValue`) stay
+ * as literal strings — translating those would change behavior, not just
+ * display.
+ */
+export const buildComponentTemplates = (t: TFunction): Record<string, Omit<Component, 'id'>> => ({
     header: {
         type: 'header',
         enabled: true,
         props: {
             logo: '',
-            title: 'My Platform',
+            title: t('header.title'),
             backgroundColor: '#4F46E5', // design-lint-ignore: page-builder template default color
             textColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
             // Nav items use `route` (the learner header resolves it against the
             // catalogue), NOT `url`.
             navigation: [
-                { label: 'Home', route: '', openInSameTab: true },
-                { label: 'Courses', route: 'courses', openInSameTab: true },
+                { label: t('header.navHome'), route: '', openInSameTab: true },
+                { label: t('header.navCourses'), route: 'courses', openInSameTab: true },
             ],
             // authLinks is what the learner header ACTUALLY renders on the right
             // (login / signup / Get Started / campaign-form popups). `ctaButton`
@@ -22,7 +33,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             // this template long after, so AI-composed headers taught the wrong
             // field and produced headers with no working buttons.
             authLinks: [
-                { label: 'Login', route: 'login' },
+                { label: t('header.authLogin'), route: 'login' },
             ],
         },
     },
@@ -34,28 +45,28 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             layout: 'split',
             backgroundColor: '#F8FAFC', // design-lint-ignore: page-builder template default color
             textColor: '#111827', // design-lint-ignore: page-builder template default color
-            eyebrow: { text: 'New batch enrolling now', style: 'badge' },
+            eyebrow: { text: t('heroSection.eyebrow'), style: 'badge' },
             left: {
-                title: 'Welcome to Our Platform',
-                subheading: 'Your path to mastery starts here',
-                description: '<p>Start your learning journey today with expert-led courses designed for real-world success.</p>',
-                tags: ['Online', 'Self-paced', 'Certified'],
+                title: t('heroSection.title'),
+                subheading: t('heroSection.subheading'),
+                description: t('heroSection.description'),
+                tags: [t('heroSection.tagOnline'), t('heroSection.tagSelfPaced'), t('heroSection.tagCertified')],
                 button: {
                     enabled: true,
-                    text: 'Explore Courses',
+                    text: t('heroSection.exploreCoursesButton'),
                     action: 'navigate',
                     target: '#courses',
                 },
                 buttons: [
-                    { text: 'Explore Courses', action: 'navigate', target: '#courses', variant: 'primary' },
-                    { text: 'Talk to Us', action: 'openLeadCollection', variant: 'secondary' },
+                    { text: t('heroSection.exploreCoursesButton'), action: 'navigate', target: '#courses', variant: 'primary' },
+                    { text: t('heroSection.talkToUsButton'), action: 'openLeadCollection', variant: 'secondary' },
                 ],
             },
             statChips: [
-                { value: '10,000+', label: 'Learners' },
-                { value: '4.8/5', label: 'Average rating' },
+                { value: '10,000+', label: t('heroSection.statLearnersLabel') },
+                { value: '4.8/5', label: t('heroSection.statRatingLabel') },
             ],
-            right: { image: '', alt: 'Hero image', imageCollage: [] },
+            right: { image: '', alt: t('heroSection.heroImageAlt'), imageCollage: [] },
             styles: { padding: '40px', roundedEdges: true, textAlign: 'left' },
         },
     },
@@ -64,9 +75,9 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'courseCatalog',
         enabled: true,
         props: {
-            title: 'Our Courses',
+            title: t('courseCatalog.title'),
             showFilters: true,
-            filtersConfig: [{ id: 'level', label: 'Level', type: 'checkbox', field: 'level_name' }],
+            filtersConfig: [{ id: 'level', label: t('courseCatalog.filterLevelLabel'), type: 'checkbox', field: 'level_name' }],
             render: {
                 layout: 'grid',
                 cardFields: ['package_name', 'course_preview_image_media_id', 'price'],
@@ -87,11 +98,11 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             backgroundColor: '#F9FAFB', // design-lint-ignore: page-builder template default color
             textColor: '#374151', // design-lint-ignore: page-builder template default color
             leftSection: {
-                title: 'My Platform',
-                text: 'Welcome to our platform.',
+                title: t('footer.leftTitle'),
+                text: t('footer.leftText'),
                 socials: [],
             },
-            rightSection: { title: 'Links', links: [] },
+            rightSection: { title: t('footer.rightTitle'), links: [] },
             bottomNote: '© 2025',
         },
     },
@@ -151,8 +162,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'mediaShowcase',
         enabled: true,
         props: {
-            headerText: 'Success Stories',
-            description: 'Hear directly from our learners.',
+            headerText: t('mediaShowcase.headerText'),
+            description: t('mediaShowcase.description'),
             media: [],
             layout: 'carousel',
             styles: { backgroundColor: '#F0F9FF', roundedEdges: true }, // design-lint-ignore: page-builder template default color
@@ -163,9 +174,9 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'statsHighlights',
         enabled: true,
         props: {
-            headerText: 'Our Achievements',
-            description: 'Numbers that speak about our growth.',
-            stats: [{ label: 'Students', value: '100+' }],
+            headerText: t('statsHighlights.headerText'),
+            description: t('statsHighlights.description'),
+            stats: [{ label: t('statsHighlights.statStudentsLabel'), value: '100+' }],
             style: 'circle',
             backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
             textColor: '#111827', // design-lint-ignore: page-builder template default color
@@ -177,8 +188,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'testimonialSection',
         enabled: true,
         props: {
-            headerText: 'What Our Students Say',
-            description: 'Real feedback from our learners.',
+            headerText: t('testimonialSection.headerText'),
+            description: t('testimonialSection.description'),
             layout: 'grid-scroll',
             testimonials: [],
             backgroundColor: '#F9FAFB', // design-lint-ignore: page-builder template default color
@@ -196,7 +207,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'bookCatalogue',
         enabled: true,
         props: {
-            title: 'Book Collection',
+            title: t('bookCatalogue.title'),
             showFilters: true,
             filtersConfig: [],
             cartButtonConfig: { enabled: true, showAddToCartButton: true },
@@ -235,9 +246,12 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'buyRentSection',
         enabled: true,
         props: {
-            heading: 'Choose Your Path',
-            buy: { buttonLabel: 'Buy', levelFilterValue: 'Buy', targetRoute: 'homepage' },
-            rent: { buttonLabel: 'Rent', levelFilterValue: 'Rent', targetRoute: 'homepage' },
+            heading: t('buyRentSection.heading'),
+            // `levelFilterValue` is matched against real course data (the
+            // `level_name` field) — it must stay in the data's own language,
+            // NOT the admin UI's language, so only `buttonLabel` is translated.
+            buy: { buttonLabel: t('buyRentSection.buyButtonLabel'), levelFilterValue: 'Buy', targetRoute: 'homepage' },
+            rent: { buttonLabel: t('buyRentSection.rentButtonLabel'), levelFilterValue: 'Rent', targetRoute: 'homepage' },
         },
     },
 
@@ -246,7 +260,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             policies: {
-                shipping: { title: 'Policy', content: '<p>Content here</p>' },
+                shipping: { title: t('policyRenderer.shippingTitle'), content: t('policyRenderer.shippingContent') },
             },
         },
     },
@@ -264,12 +278,12 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'faqSection',
         enabled: true,
         props: {
-            headerText: 'Frequently Asked Questions',
-            subheading: 'Everything you need to know.',
+            headerText: t('faqSection.headerText'),
+            subheading: t('faqSection.subheading'),
             faqs: [
-                { question: 'What courses do you offer?', answer: 'We offer a wide range of courses across multiple disciplines.' },
-                { question: 'How do I enroll?', answer: 'Simply sign up, browse our catalogue, and click enroll on any course.' },
-                { question: 'Is there a free trial?', answer: 'Yes! Many of our courses offer a free preview.' },
+                { question: t('faqSection.faq1Question'), answer: t('faqSection.faq1Answer') },
+                { question: t('faqSection.faq2Question'), answer: t('faqSection.faq2Answer') },
+                { question: t('faqSection.faq3Question'), answer: t('faqSection.faq3Answer') },
             ],
             backgroundColor: '#F9FAFB', // design-lint-ignore: page-builder template default color
             textColor: '#111827', // design-lint-ignore: page-builder template default color
@@ -281,7 +295,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             url: '',
-            title: 'Watch Our Story',
+            title: t('videoEmbed.title'),
             caption: '',
             aspectRatio: '16:9',
             autoplay: false,
@@ -293,14 +307,14 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'ctaBanner',
         enabled: true,
         props: {
-            heading: 'Ready to Get Started?',
-            subheading: 'Join thousands of learners and start your journey today.',
+            heading: t('ctaBanner.heading'),
+            subheading: t('ctaBanner.subheading'),
             backgroundColor: '#3B82F6', // design-lint-ignore: page-builder template default color
             textColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
             layout: 'centered',
             button: {
                 enabled: true,
-                text: 'Start Learning',
+                text: t('ctaBanner.buttonText'),
                 action: 'navigate',
                 target: '',
                 style: 'white',
@@ -312,27 +326,34 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'pricingTable',
         enabled: true,
         props: {
-            headerText: 'Choose Your Plan',
-            subheading: 'Simple, transparent pricing for everyone.',
+            headerText: t('pricingTable.headerText'),
+            subheading: t('pricingTable.subheading'),
             plans: [
                 {
-                    name: 'Basic',
-                    price: 'Free',
+                    name: t('pricingTable.basicName'),
+                    price: t('pricingTable.basicPrice'),
                     period: '',
-                    description: 'Perfect for getting started',
-                    features: ['5 Courses', 'Community access', 'Email support'],
+                    description: t('pricingTable.basicDescription'),
+                    features: [t('pricingTable.basicFeature1'), t('pricingTable.basicFeature2'), t('pricingTable.basicFeature3')],
                     highlighted: false,
-                    buttonText: 'Get Started',
+                    buttonText: t('pricingTable.basicButtonText'),
                     buttonTarget: '',
                 },
                 {
-                    name: 'Pro',
+                    name: t('pricingTable.proName'),
+                    // Currency amount — not translated; a real currency/locale
+                    // formatting story is a separate feature.
                     price: '₹999',
-                    period: '/month',
-                    description: 'For serious learners',
-                    features: ['Unlimited Courses', 'Priority support', 'Certificates', 'Live sessions'],
+                    period: t('pricingTable.proPeriod'),
+                    description: t('pricingTable.proDescription'),
+                    features: [
+                        t('pricingTable.proFeature1'),
+                        t('pricingTable.proFeature2'),
+                        t('pricingTable.proFeature3'),
+                        t('pricingTable.proFeature4'),
+                    ],
                     highlighted: true,
-                    buttonText: 'Get Pro',
+                    buttonText: t('pricingTable.proButtonText'),
                     buttonTarget: '',
                 },
             ],
@@ -349,10 +370,10 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         props: {
             audienceId: '',
             audienceName: '',
-            title: 'Register your interest',
-            subtitle: "Fill in your details and we'll get back to you.",
-            submitLabel: 'Submit',
-            successMessage: "Thank you! We've received your details.",
+            title: t('leadForm.title'),
+            subtitle: t('leadForm.subtitle'),
+            submitLabel: t('leadForm.submitLabel'),
+            successMessage: t('leadForm.successMessage'),
             layout: 'card',
             align: 'center',
         },
@@ -362,16 +383,16 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'contactForm',
         enabled: true,
         props: {
-            heading: 'Get In Touch',
-            subheading: "We'd love to hear from you. Send us a message!",
+            heading: t('contactForm.heading'),
+            subheading: t('contactForm.subheading'),
             fields: [
-                { name: 'name', label: 'Full Name', type: 'text', required: true },
-                { name: 'email', label: 'Email Address', type: 'email', required: true },
-                { name: 'phone', label: 'Phone Number', type: 'text', required: false },
-                { name: 'message', label: 'Message', type: 'textarea', required: true },
+                { name: 'name', label: t('contactForm.nameLabel'), type: 'text', required: true },
+                { name: 'email', label: t('contactForm.emailLabel'), type: 'email', required: true },
+                { name: 'phone', label: t('contactForm.phoneLabel'), type: 'text', required: false },
+                { name: 'message', label: t('contactForm.messageLabel'), type: 'textarea', required: true },
             ],
-            submitLabel: 'Send Message',
-            successMessage: "Thank you! We'll be in touch soon.",
+            submitLabel: t('contactForm.submitLabel'),
+            successMessage: t('contactForm.successMessage'),
             backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
             // Destination campaign (Audience Manager). Empty = the auto
             // "Course Catalogue Leads" list.
@@ -384,20 +405,20 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'teamSection',
         enabled: true,
         props: {
-            headerText: 'Meet Our Team',
-            subheading: 'The passionate people behind our platform.',
+            headerText: t('teamSection.headerText'),
+            subheading: t('teamSection.subheading'),
             members: [
                 {
-                    name: 'Team Member',
-                    role: 'Co-Founder & CEO',
-                    bio: 'Passionate about education and technology.',
+                    name: t('teamSection.member1Name'),
+                    role: t('teamSection.member1Role'),
+                    bio: t('teamSection.member1Bio'),
                     avatar: '',
                     socials: [],
                 },
                 {
-                    name: 'Team Member',
-                    role: 'Head of Learning',
-                    bio: 'Dedicated to creating the best learning experience.',
+                    name: t('teamSection.member2Name'),
+                    role: t('teamSection.member2Role'),
+                    bio: t('teamSection.member2Bio'),
                     avatar: '',
                     socials: [],
                 },
@@ -411,20 +432,20 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'announcementFeed',
         enabled: true,
         props: {
-            headerText: 'Latest Updates',
-            subheading: 'Stay up to date with our latest news.',
+            headerText: t('announcementFeed.headerText'),
+            subheading: t('announcementFeed.subheading'),
             announcements: [
                 {
-                    title: 'New Course Launch',
+                    title: t('announcementFeed.item1Title'),
                     date: '2025-01-15',
-                    summary: 'We are excited to announce our new advanced course series.',
-                    tag: 'News',
+                    summary: t('announcementFeed.item1Summary'),
+                    tag: t('announcementFeed.item1Tag'),
                 },
                 {
-                    title: 'Platform Update',
+                    title: t('announcementFeed.item2Title'),
                     date: '2025-01-10',
-                    summary: 'We have improved our platform for a better learning experience.',
-                    tag: 'Update',
+                    summary: t('announcementFeed.item2Summary'),
+                    tag: t('announcementFeed.item2Tag'),
                 },
             ],
             layout: 'list',
@@ -438,12 +459,12 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'imageGallery',
         enabled: true,
         props: {
-            headerText: 'Gallery',
+            headerText: t('imageGallery.headerText'),
             subheading: '',
             images: [
-                { src: '', alt: 'Gallery image 1', caption: '' },
-                { src: '', alt: 'Gallery image 2', caption: '' },
-                { src: '', alt: 'Gallery image 3', caption: '' },
+                { src: '', alt: t('imageGallery.image1Alt'), caption: '' },
+                { src: '', alt: t('imageGallery.image2Alt'), caption: '' },
+                { src: '', alt: t('imageGallery.image3Alt'), caption: '' },
             ],
             columns: 3,
             gap: 'medium',
@@ -469,9 +490,9 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         props: {
             mode: 'tabs',
             items: [
-                { title: 'Tab 1', content: '<p>Content for tab 1</p>' },
-                { title: 'Tab 2', content: '<p>Content for tab 2</p>' },
-                { title: 'Tab 3', content: '<p>Content for tab 3</p>' },
+                { title: t('tabsAccordion.tab1Title'), content: t('tabsAccordion.tab1Content') },
+                { title: t('tabsAccordion.tab2Title'), content: t('tabsAccordion.tab2Content') },
+                { title: t('tabsAccordion.tab3Title'), content: t('tabsAccordion.tab3Content') },
             ],
             defaultOpen: 0,
             allowMultiple: false,
@@ -483,7 +504,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'logoCloud',
         enabled: true,
         props: {
-            headerText: 'Trusted By',
+            headerText: t('logoCloud.headerText'),
             subheading: '',
             logos: [],
             layout: 'grid',
@@ -500,7 +521,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'trustChip',
         enabled: true,
         props: {
-            text: 'Trusted by 10,000+ learners',
+            text: t('trustChip.text'),
             rating: 4.8,
             avatars: [],
             alignment: 'center',
@@ -511,10 +532,10 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'sectionHeading',
         enabled: true,
         props: {
-            eyebrow: 'Why choose us',
-            title: 'Learning that actually sticks',
-            highlight: { text: 'actually sticks', style: 'gradient' },
-            lead: 'Programs designed around outcomes — not just content.',
+            eyebrow: t('sectionHeading.eyebrow'),
+            title: t('sectionHeading.title'),
+            highlight: { text: t('sectionHeading.highlight'), style: 'gradient' },
+            lead: t('sectionHeading.lead'),
             align: 'center',
             size: 'lg',
         },
@@ -527,7 +548,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             embedUrl: '',
             height: '400px',
             borderRadius: '8px',
-            title: 'Our Location',
+            title: t('mapEmbed.title'),
         },
     },
 
@@ -536,8 +557,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             targetDate: '',
-            heading: 'Event Starts In',
-            expiredMessage: 'The event has started!',
+            heading: t('countdownTimer.heading'),
+            expiredMessage: t('countdownTimer.expiredMessage'),
             backgroundColor: '#1E293B', // design-lint-ignore: page-builder template default color
             textColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
             style: 'cards',
@@ -547,7 +568,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'textBlock',
         enabled: true,
         props: {
-            content: '<h2>Your Heading Here</h2><p>Write your content here. This is a rich text block — you can add headings, paragraphs, lists, links, and more.</p>',
+            content: t('textBlock.content'),
             maxWidth: '800px',
             alignment: 'center',
         },
@@ -569,36 +590,36 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             blocks: [
                 {
                     anchor: 'flagship-program',
-                    tag: 'Flagship Program',
+                    tag: t('detailBlocks.block1Tag'),
                     headerVariant: 'solid',
-                    title: 'Flagship Program',
-                    description: 'One or two sentences on who this is for and what it covers.',
+                    title: t('detailBlocks.block1Title'),
+                    description: t('detailBlocks.block1Description'),
                     items: [
-                        { title: 'What is covered', description: 'A concrete detail about the syllabus, materials or teaching.' },
-                        { title: 'How it is taught', description: 'Live classes, recordings, doubt sessions — whatever is true here.' },
-                        { title: 'Practice and testing', description: 'Test series, previous papers, analytics.' },
+                        { title: t('detailBlocks.block1Item1Title'), description: t('detailBlocks.block1Item1Description') },
+                        { title: t('detailBlocks.block1Item2Title'), description: t('detailBlocks.block1Item2Description') },
+                        { title: t('detailBlocks.block1Item3Title'), description: t('detailBlocks.block1Item3Description') },
                     ],
                     specs: [
-                        { label: 'Eligibility', value: 'Who can join' },
-                        { label: 'Mode', value: 'Classroom + online' },
-                        { label: 'Duration', value: '12 months' },
-                        { label: 'Level', value: 'Beginner to advanced' },
+                        { label: t('detailBlocks.block1Spec1Label'), value: t('detailBlocks.block1Spec1Value') },
+                        { label: t('detailBlocks.block1Spec2Label'), value: t('detailBlocks.block1Spec2Value') },
+                        { label: t('detailBlocks.block1Spec3Label'), value: t('detailBlocks.block1Spec3Value') },
+                        { label: t('detailBlocks.block1Spec4Label'), value: t('detailBlocks.block1Spec4Value') },
                     ],
-                    note: 'Optional note — concessions, instalments, or anything that needs calling out.',
+                    note: t('detailBlocks.block1Note'),
                     noteTone: 'warn',
                 },
                 {
                     anchor: 'second-program',
-                    tag: 'Category',
-                    title: 'Second Program',
-                    description: 'Duplicate this block for every programme you offer.',
+                    tag: t('detailBlocks.block2Tag'),
+                    title: t('detailBlocks.block2Title'),
+                    description: t('detailBlocks.block2Description'),
                     items: [
-                        { title: 'Detail one', description: 'Replace with a real detail.' },
-                        { title: 'Detail two', description: 'Replace with a real detail.' },
+                        { title: t('detailBlocks.block2Item1Title'), description: t('detailBlocks.block2Item1Description') },
+                        { title: t('detailBlocks.block2Item2Title'), description: t('detailBlocks.block2Item2Description') },
                     ],
                     specs: [
-                        { label: 'Eligibility', value: 'Who can join' },
-                        { label: 'Mode', value: 'Online' },
+                        { label: t('detailBlocks.block2Spec1Label'), value: t('detailBlocks.block2Spec1Value') },
+                        { label: t('detailBlocks.block2Spec2Label'), value: t('detailBlocks.block2Spec2Value') },
                     ],
                 },
             ],
@@ -609,22 +630,22 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'featureGrid',
         enabled: true,
         props: {
-            headerText: 'Why Choose Us',
-            subheading: 'Everything you need to succeed',
+            headerText: t('featureGrid.headerText'),
+            subheading: t('featureGrid.subheading'),
             columns: 3,
             features: [
                 // style 'cards'/'glass'/'tinted': icon + title + description (+ optional chips/bullets).
-                { iconName: 'GraduationCap', title: 'Expert Instructors', description: 'Learn from industry professionals with years of experience.', chips: ['IIT/NIT faculty'] },
-                { iconName: 'BookOpen', title: 'Rich Content', description: 'Access comprehensive course materials and resources.' },
-                { iconName: 'Trophy', title: 'Certified Courses', description: 'Earn recognized certificates upon completion.' },
+                { iconName: 'GraduationCap', title: t('featureGrid.feature1Title'), description: t('featureGrid.feature1Description'), chips: [t('featureGrid.feature1Chip1')] },
+                { iconName: 'BookOpen', title: t('featureGrid.feature2Title'), description: t('featureGrid.feature2Description') },
+                { iconName: 'Trophy', title: t('featureGrid.feature3Title'), description: t('featureGrid.feature3Description') },
                 // style 'panel' (divisions/comparison): a card = tinted header
                 // {badge, iconName, title, description, headerVariant 'solid'|'tint'
                 // or headerColor '#rrggbb'} over a body of `bullets`. Make one
                 // pillar headerVariant 'solid' to stand out.
                 {
-                    badge: 'Training Division', iconName: 'GraduationCap', headerVariant: 'solid',
-                    title: 'CGP Career Avenues', description: 'Comprehensive coaching across every engineering branch.',
-                    bullets: ['GATE — CS, ECE, EEE, ME, CE, CH', 'Post-GATE ISRO/BARC/DRDO batches', 'Kerala PSC & campus placement'],
+                    badge: t('featureGrid.feature4Badge'), iconName: 'GraduationCap', headerVariant: 'solid',
+                    title: t('featureGrid.feature4Title'), description: t('featureGrid.feature4Description'),
+                    bullets: [t('featureGrid.feature4Bullet1'), t('featureGrid.feature4Bullet2'), t('featureGrid.feature4Bullet3')],
                 },
             ],
             style: 'cards',
@@ -639,7 +660,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             src: '',
-            alt: 'Image',
+            alt: t('imageBlock.alt'),
             caption: '',
             linkUrl: '',
             linkTarget: '_blank',
@@ -654,7 +675,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'buttonBlock',
         enabled: true,
         props: {
-            text: 'Get Started',
+            text: t('buttonBlock.text'),
             url: '',
             target: '_self',
             variant: 'filled',
@@ -675,13 +696,13 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'newsletterSignup',
         enabled: true,
         props: {
-            heading: 'Stay Updated',
-            subheading: 'Subscribe to our newsletter for the latest updates.',
-            placeholder: 'Enter your email',
-            buttonText: 'Subscribe',
+            heading: t('newsletterSignup.heading'),
+            subheading: t('newsletterSignup.subheading'),
+            placeholder: t('newsletterSignup.placeholder'),
+            buttonText: t('newsletterSignup.buttonText'),
             layout: 'inline',
             backgroundColor: '#F8FAFC', // design-lint-ignore: page-builder template default color
-            successMessage: 'Thank you for subscribing!',
+            successMessage: t('newsletterSignup.successMessage'),
             // Destination campaign (Audience Manager). Empty = the auto list.
             audienceId: '',
             audienceName: '',
@@ -692,13 +713,13 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         type: 'stepsProcess',
         enabled: true,
         props: {
-            headerText: 'How It Works',
-            subheading: 'Get started in just a few steps',
+            headerText: t('stepsProcess.headerText'),
+            subheading: t('stepsProcess.subheading'),
             layout: 'horizontal',
             steps: [
-                { number: '1', title: 'Sign Up', description: 'Create your free account in seconds.' },
-                { number: '2', title: 'Choose a Course', description: 'Browse our catalog and pick what interests you.' },
-                { number: '3', title: 'Start Learning', description: 'Access your course materials and begin.' },
+                { number: '1', title: t('stepsProcess.step1Title'), description: t('stepsProcess.step1Description') },
+                { number: '2', title: t('stepsProcess.step2Title'), description: t('stepsProcess.step2Description') },
+                { number: '3', title: t('stepsProcess.step3Title'), description: t('stepsProcess.step3Description') },
             ],
             connectorStyle: 'line',
             backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
@@ -711,11 +732,11 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             items: [
-                { icon: '⭐', text: 'Top-rated courses' },
-                { icon: '🎓', text: '10,000+ learners enrolled' },
-                { icon: '🏆', text: 'Expert-led curriculum' },
-                { icon: '🚀', text: 'Learn at your own pace' },
-                { icon: '💡', text: 'Industry-relevant skills' },
+                { icon: '⭐', text: t('marquee.item1Text') },
+                { icon: '🎓', text: t('marquee.item2Text') },
+                { icon: '🏆', text: t('marquee.item3Text') },
+                { icon: '🚀', text: t('marquee.item4Text') },
+                { icon: '💡', text: t('marquee.item5Text') },
             ],
             defaultIcon: '⭐',
             speed: 'medium',
@@ -750,8 +771,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         props: {
             productPageCode: '',
             productPageName: '',
-            title: 'Our Programs',
-            subtitle: 'Pick a program and enrol in minutes.',
+            title: t('productPageOffer.title'),
+            subtitle: t('productPageOffer.subtitle'),
             columns: 3,
             // 'grid' wraps onto rows; 'carousel' is one swipeable horizontal row.
             layout: 'grid',
@@ -761,13 +782,22 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             align: 'left',
             headerScale: 'md',
             showViewAll: true,
-            viewAllLabel: 'See all',
-            ctaLabel: 'Enrol now',
+            viewAllLabel: t('productPageOffer.viewAllLabel'),
+            ctaLabel: t('productPageOffer.ctaLabel'),
+            // Multi-course basket. OFF by default so existing sections keep the
+            // one-card-one-checkout behaviour; turned on, each card's CTA
+            // becomes an add/remove toggle and a basket bar carries the whole
+            // selection into the product page's cart in one go. Worth it when
+            // a visitor normally buys several at once (Olympiad subjects,
+            // a class's whole set of practice courses).
+            enableCart: false,
+            cartCtaLabel: t('productPageOffer.cartCtaLabel'),
+            checkoutCtaLabel: t('productPageOffer.checkoutCtaLabel'),
             // Second CTA per card: browse the course details page first. Its
             // enrol button re-enters this product page's checkout, so both
             // paths converge on the same funnel.
             showViewCourse: true,
-            viewCourseLabel: 'View course',
+            viewCourseLabel: t('productPageOffer.viewCourseLabel'),
             showImage: true,
             showChips: true,
             showDescription: true,
@@ -795,10 +825,24 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             prompt: '',
         },
     },
-};
+    /** A whole page pasted from elsewhere (ChatGPT/Claude, an agency, an old
+     *  site). Rendered by renderHtmlPage: page-level caps, SVG allowed, action
+     *  hooks bound. Never drag-and-dropped — a page is either an HTML page or a
+     *  built page, so this is created by the "HTML page" option in Add Page and
+     *  is the page's only component. Kept out of the AI composer's vocabulary
+     *  (FORBIDDEN in the schema exporter) for the same reason. */
+    htmlPage: {
+        type: 'htmlPage',
+        enabled: true,
+        props: {
+            html: '',
+            css: '',
+        },
+    },
+});
 
-export const getComponentTemplate = (type: string): Component => {
-    const template = componentTemplates[type];
+export const getComponentTemplate = (type: string, t: TFunction): Component => {
+    const template = buildComponentTemplates(t)[type];
     if (!template) throw new Error(`Unknown component type: ${type}`);
 
     return {

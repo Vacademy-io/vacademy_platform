@@ -78,6 +78,11 @@ public enum WorkflowTriggerEvent {
     ASSESSMENT_REMINDER_BEFORE_START,
     // Emitted per learner when an admin grants extra attempts from the participants screen.
     ASSESSMENT_REATTEMPT_GRANTED,
+    // Emitted when a LEARNER asks for another attempt (or more time) from inside the exam
+    // shell. This is the staff-facing half of the loop: the learner raising it is usually
+    // locked out of a live paper, so it is the assessment event most worth routing to email /
+    // WhatsApp / push rather than leaving in an inbox nobody refreshes.
+    ASSESSMENT_REATTEMPT_REQUESTED,
 
     // Onboarding. STEP_* are keyed by eventId = onboarding_step.id (the step definition,
     // not the instance) so admins can target a specific step from the trigger config UI.

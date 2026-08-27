@@ -122,7 +122,9 @@ async def generate_content_from_coursetree(
                     institute_id=payload.institute_id,
                     user_id=payload.user_id,
                     language=payload.language,
+                    model=payload.model,
                     video_settings=payload.video_settings,
+                    document_settings=payload.document_settings,
                     reference_document_file_ids=payload.reference_document_file_ids,
                     kb_grounding=payload.kb_grounding,
                 ):

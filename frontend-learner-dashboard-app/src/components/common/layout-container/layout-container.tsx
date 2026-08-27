@@ -16,6 +16,9 @@ interface LayoutContainerProps {
     children?: React.ReactNode;
     className?: string;
     sidebarComponent?: React.ReactNode;
+    /** Let a custom sidebar that renders the institute itself replace the
+     *  app sidebar's branding header rather than stack under it. */
+    hideBrandingHeader?: boolean;
     /**
      * Enable the chatbot side panel for this layout.
      * When enabled, the chatbot will render as a docked panel on the right
@@ -35,6 +38,7 @@ export const LayoutContainer = ({
     children,
     className,
     sidebarComponent,
+    hideBrandingHeader,
     enableChatbotPanel = true, // Docked panel enabled by default
     fullWidth = false,
 }: LayoutContainerProps) => {
@@ -79,10 +83,17 @@ export const LayoutContainer = ({
         return () => setIsDockedMode(false);
     }, [enableChatbotPanel, isMobile, setIsDockedMode]);
 
+    // Keyed on the BOOLEAN, not the element. `sidebarComponent` is a fresh JSX
+    // element on every render of the owning route, so keying the effect on it
+    // ran it — and wrote to the store twice — on every single render. zustand's
+    // set() always allocates a new state object and notifies unconditionally,
+    // so any subscriber that re-renders that route then builds a new element
+    // and re-triggers this: an infinite update loop.
+    const hasCustomSidebar = !!sidebarComponent;
     React.useEffect(() => {
-        setHasCustomSidebar(!!sidebarComponent);
+        setHasCustomSidebar(hasCustomSidebar);
         return () => setHasCustomSidebar(false);
-    }, [sidebarComponent, setHasCustomSidebar]);
+    }, [hasCustomSidebar, setHasCustomSidebar]);
 
     // Show docked panel only on desktop when enableChatbotPanel is true
     const showDockedPanel = enableChatbotPanel && chatbotIsOpen && !isMobile;
@@ -100,7 +111,10 @@ export const LayoutContainer = ({
 
     return (
         <>
-            <MySidebar sidebarComponent={sidebarComponent} />
+            <MySidebar
+                sidebarComponent={sidebarComponent}
+                hideBrandingHeader={hideBrandingHeader}
+            />
             {showPlayRail && <PlayNavRail />}
             <SidebarInset
                 className="overflow-x-hidden w-full"

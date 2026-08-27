@@ -1,4 +1,6 @@
-import { SUBMIT_AUDIENCE_LEAD_URL } from '@/constants/urls';
+import { SUBMIT_AUDIENCE_LEAD_ADMIN_URL, SUBMIT_AUDIENCE_LEAD_URL } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import type { TFunction } from 'i18next';
 
 export interface SubmitLeadUserDto {
     id?: string;
@@ -71,6 +73,77 @@ export const submitAudienceLead = async (
     } catch {
         return { success: true, message: text };
     }
+};
+
+/**
+ * Re-throw an axios failure carrying the server's own message.
+ *
+ * The open endpoints used `fetch` and threw `new Error(await res.text())`, so
+ * callers surface the backend's wording ("Audience campaign is not active", a
+ * duplicate-lead reason) via `error.message`. Axios replaces all of that with
+ * "Request failed with status code 511", so unwrap the body first.
+ *
+ * `ex` is the field that matters: GlobalExceptionHandler serialises every
+ * VacademyException as ErrorInfo {url, ex, responseCode, date}, and a bare
+ * `new VacademyException(msg)` maps to 511 — which the axios response
+ * interceptor deliberately does NOT treat as a dead session precisely because
+ * `ex`/`responseCode` are present. `message` / `error` are covered too for
+ * whatever else may sit behind these endpoints.
+ */
+interface ServerErrorBody {
+    ex?: string;
+    message?: string;
+    error?: string;
+}
+
+export const throwWithServerMessage = (error: unknown, fallback: string): never => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = (error as any)?.response?.data;
+    if (typeof data === 'string' && data.trim()) throw new Error(data);
+    if (data && typeof data === 'object') {
+        const body = data as ServerErrorBody;
+        const message = body.ex ?? body.message ?? body.error;
+        if (message) throw new Error(message);
+    }
+    if (error instanceof Error && error.message) throw error;
+    throw new Error(fallback);
+};
+
+/**
+ * Submit a lead the signed-in admin/counsellor is adding by hand.
+ *
+ * Same payload and same backend pipeline as {@link submitAudienceLead}, but sent
+ * with the session token. That is what lets the backend know who created the
+ * lead, so the "only leads assigned to <ROLE>" audience-access option can stamp
+ * them as its counsellor — otherwise the creator would save a lead into a list
+ * they can see and immediately lose sight of it.
+ *
+ * Use {@link submitAudienceLead} for anything that isn't an authenticated
+ * dashboard user (embedded forms, the cURL integration snippet).
+ *
+ * `t` must be bound to the `audienceManagerSubmitAudienceLead` namespace — it only
+ * supplies the fallback wording used when the server response carries no message
+ * of its own (see {@link throwWithServerMessage}).
+ */
+export const submitAudienceLeadAsAdmin = async (
+    payload: SubmitLeadRequest,
+    t: TFunction
+): Promise<SubmitLeadResponse> => {
+    let response;
+    try {
+        response = await authenticatedAxiosInstance({
+            method: 'POST',
+            url: SUBMIT_AUDIENCE_LEAD_ADMIN_URL,
+            data: payload,
+        });
+    } catch (error) {
+        return throwWithServerMessage(error, t('errors.submitFailed'));
+    }
+
+    const body = response.data;
+    if (!body) return { success: true };
+    if (typeof body === 'string') return { success: true, message: body };
+    return body as SubmitLeadResponse;
 };
 
 /**

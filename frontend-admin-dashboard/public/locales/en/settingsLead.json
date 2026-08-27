@@ -1,0 +1,62 @@
+{
+    "tabs": {
+        "config": "Configuration",
+        "pools": "Pools",
+        "forms": "Forms",
+        "workbench": "Workbench"
+    },
+    "loading": "Loading lead settings…",
+    "toasts": {
+        "saved": "Lead settings saved",
+        "saveFailed": "Failed to save lead settings",
+        "weightsSumError": "Scoring weights must sum to 100 (current: {{total}})"
+    },
+    "enableCard": {
+        "title": "Lead Management System",
+        "description": "Controls whether lead scoring, tier badges, and the lead sidebar tab are visible institute-wide. Disabling hides all lead UI without deleting data.",
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+    },
+    "visibilityCard": {
+        "title": "Score Badge Visibility",
+        "description": "Choose where the HOT / WARM / COLD score badge appears.",
+        "options": {
+            "enquiryTable": "Enquiries table (Admissions → Enquiries)",
+            "contactsTable": "Contacts table (Manage Contacts)",
+            "studentsTable": "Students table (Manage Students)"
+        }
+    },
+    "weightsCard": {
+        "title": "Scoring Weights",
+        "description": "Each factor contributes its weight percentage to the final score (0–100). Weights must sum to exactly 100.",
+        "factors": {
+            "sourceQuality": {
+                "label": "Source Quality",
+                "description": "Score based on how the lead came in (e.g. Walk-in > Google Ads > Manual)"
+            },
+            "profileCompleteness": {
+                "label": "Profile Completeness",
+                "description": "Percentage of key fields filled (name, email, phone, class, etc.)"
+            },
+            "recency": {
+                "label": "Recency",
+                "description": "Time decay — newer leads score higher, older ones decay"
+            },
+            "engagement": {
+                "label": "Engagement",
+                "description": "Number of timeline notes and interactions recorded"
+            }
+        },
+        "total": "Total",
+        "mustEqual100": "must equal 100"
+    },
+    "recencyCard": {
+        "title": "Recency Decay",
+        "description": "Number of days before a lead's recency score starts to decay toward 0. A lead submitted today scores 100 for recency; one submitted {{days}} days ago scores ~50.",
+        "unit": "days"
+    },
+    "saveButton": {
+        "saving": "Saving…",
+        "save": "Save scoring settings"
+    }
+}

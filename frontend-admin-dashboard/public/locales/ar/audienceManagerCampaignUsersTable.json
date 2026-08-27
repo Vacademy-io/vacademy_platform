@@ -1,0 +1,152 @@
+{
+    "heading": {
+        "fallbackTitle": "قائمة الجمهور",
+        "addResponse": "إضافة استجابة",
+        "loadingRespondents": "جارٍ تحميل المستجيبين…",
+        "respondentsCount_zero": "{{formattedCount}} مستجيب",
+        "respondentsCount_one": "{{formattedCount}} مستجيب",
+        "respondentsCount_two": "{{formattedCount}} مستجيبان",
+        "respondentsCount_few": "{{formattedCount}} مستجيبين",
+        "respondentsCount_many": "{{formattedCount}} مستجيبًا",
+        "respondentsCount_other": "{{formattedCount}} مستجيب"
+    },
+    "filters": {
+        "tiers": {
+            "label": "كل المستويات",
+            "hot": "ساخن",
+            "warm": "دافئ",
+            "cold": "بارد"
+        },
+        "leadStatus": {
+            "label": "كل العملاء المحتملين",
+            "active": "نشط (غير مسجَّل)",
+            "converted": "مسجَّل / تم التحويل"
+        },
+        "sla": {
+            "label": "كل حالات اتفاقية مستوى الخدمة",
+            "anyOverdue": "أي حالة متأخرة",
+            "reachOutOverdue": "التواصل متأخر",
+            "reachOutDueSoon": "التواصل مستحق قريبًا",
+            "followUpDue": "المتابعة مستحقة",
+            "followUpOverdue": "المتابعة متأخرة"
+        },
+        "callHistory": {
+            "placeholder": "سجل المكالمات",
+            "notCalled": "لم يتم الاتصال",
+            "called": "تم الاتصال (أي عدد)",
+            "calledOnce": "تم الاتصال مرة واحدة",
+            "calledTwicePlus": "تم الاتصال مرتين أو أكثر",
+            "aiCalled": "تم الاتصال بواسطة الذكاء الاصطناعي",
+            "manualCalled": "تم الاتصال يدويًا"
+        },
+        "moreFilters": "المزيد من الفلاتر",
+        "dateFrom": "من",
+        "dateTo": "إلى",
+        "applyDates": "تطبيق التواريخ",
+        "clearAll": "مسح الكل"
+    },
+    "chips": {
+        "search": "بحث: {{query}}",
+        "datePlaceholder": "…",
+        "date": "التاريخ: {{from}} ← {{to}}",
+        "tier": "المستوى: {{values}}",
+        "status": "الحالة: {{values}}",
+        "statusActive": "نشط",
+        "statusConverted": "تم التحويل",
+        "sla": "اتفاقية مستوى الخدمة: {{values}}",
+        "counsellor": "المستشار: {{values}}",
+        "counsellorUnassigned": "غير معيَّن",
+        "counsellorSelected": "محدَّد",
+        "customField": "{{fieldName}}: {{value}}",
+        "customFieldFallback": "حقل",
+        "removeAriaLabel": "إزالة {{label}}"
+    },
+    "toolbar": {
+        "sendMessage": "إرسال رسالة",
+        "importCsv": "استيراد CSV",
+        "exporting": "جارٍ التصدير…",
+        "export": "تصدير"
+    },
+    "search": {
+        "placeholder": "البحث عن العملاء المحتملين",
+        "ariaLabel": "البحث عن العملاء المحتملين",
+        "loadingResults": "جارٍ تحميل النتائج…",
+        "resultsCount_zero": "عرض {{shown}} من أصل {{total}} نتيجة",
+        "resultsCount_one": "عرض {{shown}} من أصل {{total}} نتيجة",
+        "resultsCount_two": "عرض {{shown}} من أصل {{total}} نتيجتين",
+        "resultsCount_few": "عرض {{shown}} من أصل {{total}} نتائج",
+        "resultsCount_many": "عرض {{shown}} من أصل {{total}} نتيجة",
+        "resultsCount_other": "عرض {{shown}} من أصل {{total}} نتيجة"
+    },
+    "bulkToolbar": {
+        "selectedCount_zero": "{{count}} محدد",
+        "selectedCount_one": "{{count}} محدد",
+        "selectedCount_two": "{{count}} محدَّدان",
+        "selectedCount_few": "{{count}} محددة",
+        "selectedCount_many": "{{count}} محددًا",
+        "selectedCount_other": "{{count}} محدد",
+        "selecting": "جارٍ التحديد…",
+        "selectAll": "تحديد الكل ({{count}})",
+        "clear": "مسح",
+        "bulkActions": "إجراءات جماعية",
+        "assignLeads": "تعيين العملاء المحتملين",
+        "unassignLeads": "إلغاء تعيين العملاء المحتملين",
+        "deleteLeads": "حذف العملاء المحتملين"
+    },
+    "emptyState": {
+        "errorTitle": "تعذَّر تحميل المستجيبين",
+        "errorDescription": "حدث خطأ ما أثناء جلب مستخدمي الحملة. حاول مرة أخرى.",
+        "noResultsTitle": "لا يوجد مستجيبون يطابقون هذه الفلاتر",
+        "noResultsDescription": "جرِّب مسح الفلاتر لرؤية المزيد من النتائج.",
+        "noDataTitle": "لا يوجد مستجيبون حتى الآن",
+        "noDataDescription": "عندما يملأ الأشخاص نموذج الجمهور هذا، سيظهرون هنا."
+    },
+    "exportColumns": {
+        "leadId": "معرّف العميل المحتمل",
+        "submittedAt": "تاريخ الإرسال",
+        "name": "الاسم",
+        "email": "البريد الإلكتروني",
+        "mobile": "رقم الجوال",
+        "leadStatus": "حالة العميل المحتمل",
+        "counsellor": "المستشار",
+        "activityNotes": "النشاط والملاحظات",
+        "notesCount": "عدد الملاحظات",
+        "leadJourney": "رحلة العميل المحتمل (التصرف والملاحظات)"
+    },
+    "csv": {
+        "headers": {
+            "leadId": "معرّف العميل المحتمل",
+            "submittedAt": "تاريخ الإرسال",
+            "name": "الاسم",
+            "email": "البريد الإلكتروني",
+            "mobile": "رقم الجوال",
+            "leadStatus": "حالة العميل المحتمل",
+            "counsellor": "المستشار",
+            "activityNotes": "النشاط والملاحظات",
+            "notesCount": "عدد الملاحظات",
+            "leadJourney": "رحلة العميل المحتمل (التصرف والملاحظات)"
+        },
+        "noteFallbackLabel": "ملاحظة",
+        "updatedByLabel": "تم التحديث بواسطة",
+        "dateLabel": "التاريخ"
+    },
+    "toasts": {
+        "selectAllFailed": "فشل تحديد جميع العملاء المحتملين",
+        "noLeadsToExport": "لا يوجد عملاء محتملون للتصدير",
+        "exportStarting": "جارٍ بدء التصدير…",
+        "noDataToExport": "لا توجد بيانات للتصدير",
+        "exportSuccess_zero": "تم تصدير {{count}} عميل محتمل",
+        "exportSuccess_one": "تم تصدير {{count}} عميل محتمل",
+        "exportSuccess_two": "تم تصدير {{count}} عميلين محتملين",
+        "exportSuccess_few": "تم تصدير {{count}} عملاء محتملين",
+        "exportSuccess_many": "تم تصدير {{count}} عميلًا محتملًا",
+        "exportSuccess_other": "تم تصدير {{count}} عميل محتمل",
+        "exportFailed": "فشل تصدير العملاء المحتملين"
+    },
+    "campaignFields": {
+        "optedOutFrom": "استبعد نفسه من"
+    },
+    "dialogs": {
+        "campaignFallbackName": "الحملة"
+    }
+}

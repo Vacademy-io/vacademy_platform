@@ -1,0 +1,42 @@
+{
+    "tabs": {
+        "attempted": "تمت المحاولة",
+        "ongoing": "جارٍ",
+        "pending": "معلّق"
+    },
+    "participantType": {
+        "internal": "داخلي",
+        "external": "خارجي"
+    },
+    "selectionMode": {
+        "batch": "اختيار الدفعة",
+        "individual": "اختيار فردي"
+    },
+    "filters": {
+        "evaluationStatus": {
+            "label": "حالة التقييم",
+            "options": {
+                "pending": "معلّق",
+                "evaluating": "قيد التقييم",
+                "evaluated": "تم التقييم"
+            }
+        },
+        "submissionStatus": {
+            "label": "الاستجابة",
+            "options": {
+                "submitted": "تم الإرسال",
+                "notSubmitted": "لم يُرسل"
+            }
+        }
+    },
+    "buttons": {
+        "offlineEntry": "إدخال دون اتصال",
+        "revaluate": "إعادة التقييم",
+        "aiEvaluations": "تقييمات الذكاء الاصطناعي"
+    },
+    "dialogs": {
+        "revaluate": {
+            "title": "إعادة تقييم النتيجة"
+        }
+    }
+}

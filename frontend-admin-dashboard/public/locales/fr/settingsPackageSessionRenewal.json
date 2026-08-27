@@ -1,0 +1,17 @@
+{
+    "title": "Planificateur de renouvellement d'adhésion",
+    "description": "Effectue une analyse quotidienne des plans des membres de cet établissement et applique la politique d'inscription de chaque lot : rappels avant expiration, période d'attente après expiration et expiration finale. Désactivé par défaut — tant qu'il est désactivé, aucun plan de cet établissement n'est jamais traité par le planificateur.",
+    "loading": "Chargement du paramètre de renouvellement…",
+    "toggle": {
+        "enabled": "Planificateur de renouvellement activé",
+        "disabled": "Planificateur de renouvellement désactivé"
+    },
+    "button": {
+        "save": "Enregistrer",
+        "saving": "Enregistrement…"
+    },
+    "toasts": {
+        "saveSuccess": "Paramètre du planificateur de renouvellement enregistré",
+        "saveError": "Échec de l'enregistrement du paramètre du planificateur de renouvellement"
+    }
+}

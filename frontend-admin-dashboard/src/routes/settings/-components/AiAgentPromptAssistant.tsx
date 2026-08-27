@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import i18next from 'i18next';
 import { toast } from 'sonner';
 import { CaretDown, CaretUp, CheckCircle, Sparkle } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -36,10 +38,20 @@ const scoreTone = (score: number) =>
 const scoreBarTone = (score: number) =>
     score >= 75 ? 'bg-success-500' : score >= 50 ? 'bg-warning-500' : 'bg-danger-500';
 
+/**
+ * Called from mutation onError handlers, which are plain callbacks with no
+ * hooks available, so it goes through the i18next singleton rather than a
+ * passed-in `t`.
+ */
 const errMsg = (err: unknown): string => {
     const e = err as { response?: { status?: number; data?: { ex?: string; message?: string } } };
-    if (e?.response?.status === 402) return 'Not enough AI credits';
-    return e?.response?.data?.ex ?? e?.response?.data?.message ?? 'The AI assistant failed — retry';
+    if (e?.response?.status === 402)
+        return i18next.t('settingsAiAgentPromptAssistant:errors.insufficientCredits');
+    return (
+        e?.response?.data?.ex ??
+        e?.response?.data?.message ??
+        i18next.t('settingsAiAgentPromptAssistant:errors.genericFailure')
+    );
 };
 
 /**
@@ -56,6 +68,7 @@ export function AiAgentPromptAssistant({
     onPromptChange,
     onApplyDerived,
 }: AiAgentPromptAssistantProps) {
+    const { t } = useTranslation('settingsAiAgentPromptAssistant');
     const [analysis, setAnalysis] = useState<AssistAnalysis | null>(null);
     const [brief, setBrief] = useState('');
     const [picked, setPicked] = useState<Set<number>>(new Set());
@@ -75,7 +88,7 @@ export function AiAgentPromptAssistant({
         onSuccess: (res) => {
             applyResult(res, true);
             if (res.derived) onApplyDerived(res.derived);
-            toast.success('Draft ready — review the score and refine');
+            toast.success(t('toasts.draftReady'));
         },
         onError: (e) => toast.error(errMsg(e)),
     });
@@ -88,7 +101,7 @@ export function AiAgentPromptAssistant({
         mutationFn: (additions: string[]) => improveAgentPrompt(instituteId, prompt, additions),
         onSuccess: (res) => {
             applyResult(res, true);
-            toast.success('Suggestions applied — prompt updated and re-scored');
+            toast.success(t('toasts.suggestionsApplied'));
         },
         onError: (e) => toast.error(errMsg(e)),
     });
@@ -107,11 +120,11 @@ export function AiAgentPromptAssistant({
             <div className="flex items-center justify-between">
                 <p className="flex items-center gap-1.5 text-body font-semibold text-neutral-600">
                     <Sparkle className="size-4 text-primary-500" />
-                    Prompt assistant
+                    {t('header.title')}
                 </p>
                 {analysis && (
                     <span className="text-caption text-neutral-500">
-                        {analysis.persona ? `Detected: ${analysis.persona}` : ''}
+                        {analysis.persona ? t('header.detected', { persona: analysis.persona }) : ''}
                     </span>
                 )}
             </div>
@@ -119,12 +132,12 @@ export function AiAgentPromptAssistant({
             {/* Draft-from-brief (empty prompt) or Review (existing prompt) */}
             {!hasPrompt ? (
                 <div className="space-y-1.5">
-                    <Label>Describe your agent in plain words</Label>
+                    <Label>{t('brief.label')}</Label>
                     <Textarea
                         rows={3}
                         value={brief}
                         onChange={(e) => setBrief(e.target.value)}
-                        placeholder="e.g. We run a NEET coaching institute. The agent should call new leads, qualify their class and target year, answer fee questions, and book a counselling session."
+                        placeholder={t('brief.placeholder')}
                     />
                     <MyButton
                         buttonType="primary"
@@ -133,8 +146,8 @@ export function AiAgentPromptAssistant({
                         onClick={() => draft.mutate()}
                     >
                         {draft.isPending
-                            ? 'Drafting…'
-                            : `Draft with AI (${AGENT_ASSIST_CREDIT_COST} credit)`}
+                            ? t('brief.drafting')
+                            : `${t('brief.action')} (${t('creditCost', { count: AGENT_ASSIST_CREDIT_COST })})`}
                     </MyButton>
                 </div>
             ) : (
@@ -145,8 +158,8 @@ export function AiAgentPromptAssistant({
                     onClick={() => analyze.mutate()}
                 >
                     {analyze.isPending
-                        ? 'Reviewing…'
-                        : `Review prompt (${AGENT_ASSIST_CREDIT_COST} credit)`}
+                        ? t('review.reviewing')
+                        : `${t('review.action')} (${t('creditCost', { count: AGENT_ASSIST_CREDIT_COST })})`}
                 </MyButton>
             )}
 
@@ -169,7 +182,8 @@ export function AiAgentPromptAssistant({
                             className="flex items-center gap-1 text-caption text-neutral-500 hover:text-primary-600"
                             onClick={() => setShowDims((v) => !v)}
                         >
-                            Details {showDims ? <CaretUp className="size-3" /> : <CaretDown className="size-3" />}
+                            {t('details.toggle')}{' '}
+                            {showDims ? <CaretUp className="size-3" /> : <CaretDown className="size-3" />}
                         </button>
                     </div>
                     {showDims && (
@@ -186,7 +200,7 @@ export function AiAgentPromptAssistant({
                                                   : 'text-danger-600'
                                         )}
                                     >
-                                        {d.score}/10
+                                        {t('details.dimensionScore', { score: d.score })}
                                     </span>
                                     <span className="font-medium text-neutral-600">{d.label}:</span>
                                     <span className="text-neutral-500">{d.comment}</span>
@@ -198,7 +212,7 @@ export function AiAgentPromptAssistant({
                     {/* Suggestions — pick and apply */}
                     {suggestions.length > 0 && (
                         <div className="space-y-1.5">
-                            <Label>Suggested improvements</Label>
+                            <Label>{t('suggestions.label')}</Label>
                             {suggestions.map((sg, i) => (
                                 <label
                                     key={i}
@@ -238,8 +252,8 @@ export function AiAgentPromptAssistant({
                                 }
                             >
                                 {improve.isPending
-                                    ? 'Applying…'
-                                    : `Apply ${picked.size || ''} selected (${AGENT_ASSIST_CREDIT_COST} credit)`}
+                                    ? t('suggestions.applying')
+                                    : `${t('suggestions.applySelected', { count: picked.size })} (${t('creditCost', { count: AGENT_ASSIST_CREDIT_COST })})`}
                             </MyButton>
                         </div>
                     )}
@@ -248,18 +262,18 @@ export function AiAgentPromptAssistant({
                     {analysis.derived && (
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="text-caption text-neutral-500">
-                                Derived from this prompt:
+                                {t('derived.label')}
                             </span>
                             <MyButton
                                 buttonType="text"
                                 scale="small"
                                 onClick={() => {
                                     onApplyDerived(analysis.derived!);
-                                    toast.success('Opening line, questions and outcomes filled in');
+                                    toast.success(t('toasts.derivedApplied'));
                                 }}
                             >
                                 <CheckCircle className="mr-1 size-3.5" />
-                                Use suggested opening line, questions & outcomes
+                                {t('derived.useButton')}
                             </MyButton>
                         </div>
                     )}
@@ -274,7 +288,7 @@ export function AiAgentPromptAssistant({
                         className="flex items-center gap-1 text-caption font-medium text-neutral-600 hover:text-primary-600"
                         onClick={() => setFeedbackOpen((v) => !v)}
                     >
-                        Improve from call feedback{' '}
+                        {t('feedback.toggle')}{' '}
                         {feedbackOpen ? <CaretUp className="size-3" /> : <CaretDown className="size-3" />}
                     </button>
                     {feedbackOpen && !pendingRevision && (
@@ -283,12 +297,9 @@ export function AiAgentPromptAssistant({
                                 rows={3}
                                 value={feedback}
                                 onChange={(e) => setFeedback(e.target.value)}
-                                placeholder="e.g. It gives up too easily when someone says 'email me'. Callers asked about fees and it had no answer."
+                                placeholder={t('feedback.placeholder')}
                             />
-                            <p className="text-caption text-neutral-500">
-                                The assistant also reads this agent&apos;s recent real calls
-                                (transcripts, outcomes) to ground the revision.
-                            </p>
+                            <p className="text-caption text-neutral-500">{t('feedback.hint')}</p>
                             <MyButton
                                 buttonType="secondary"
                                 scale="small"
@@ -296,15 +307,15 @@ export function AiAgentPromptAssistant({
                                 onClick={() => revise.mutate()}
                             >
                                 {revise.isPending
-                                    ? 'Revising…'
-                                    : `Suggest revision (${AGENT_ASSIST_CREDIT_COST} credit)`}
+                                    ? t('feedback.revising')
+                                    : `${t('feedback.action')} (${t('creditCost', { count: AGENT_ASSIST_CREDIT_COST })})`}
                             </MyButton>
                         </div>
                     )}
                     {pendingRevision && (
                         <div className="space-y-1.5 rounded-md border border-primary-200 bg-primary-50 p-2">
                             <p className="text-caption font-medium text-neutral-700">
-                                Proposed revision (score {pendingRevision.score})
+                                {t('feedback.proposedRevision', { score: pendingRevision.score })}
                             </p>
                             {pendingRevision.change_summary && (
                                 <p className="whitespace-pre-line text-caption text-neutral-600">
@@ -327,17 +338,17 @@ export function AiAgentPromptAssistant({
                                         setPendingRevision(null);
                                         setFeedback('');
                                         setFeedbackOpen(false);
-                                        toast.success('Revised prompt applied — remember to Save');
+                                        toast.success(t('toasts.revisionApplied'));
                                     }}
                                 >
-                                    Apply revision
+                                    {t('feedback.applyRevision')}
                                 </MyButton>
                                 <MyButton
                                     buttonType="secondary"
                                     scale="small"
                                     onClick={() => setPendingRevision(null)}
                                 >
-                                    Discard
+                                    {t('feedback.discard')}
                                 </MyButton>
                             </div>
                         </div>

@@ -4,10 +4,14 @@ import {
     GraduationCap,
     ChalkboardTeacher,
 } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { extractTextFromHTML } from "@/components/common/helper";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 interface Instructor {
@@ -36,6 +40,9 @@ const getInitials = (email: string) => {
 };
 
 export const CourseContentSections = ({ courseData }: CourseContentSectionsProps) => {
+    const { t } = useTranslation("courseDetailsC");
+    const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+
     return (
         <div className="space-y-4">
             {/* What You'll Learn Section */}
@@ -58,7 +65,7 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                What you'll learn
+                                {t("contentSections.whatYoullLearn")}
                             </h2>
                         </div>
                         <div
@@ -91,11 +98,9 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                About this{" "}
-                                {getTerminology(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                ).toLocaleLowerCase()}
+                                {t("contentSections.aboutCourse", {
+                                    course: course.toLocaleLowerCase(),
+                                })}
                             </h2>
                         </div>
                         <div
@@ -130,7 +135,7 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                Who should join
+                                {t("contentSections.whoShouldJoin")}
                             </h2>
                         </div>
                         <div
@@ -165,11 +170,10 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                {getTerminology(
+                                {getTerminologyPlural(
                                     RoleTerms.Teacher,
                                     SystemTerms.Teacher
                                 ).toLocaleLowerCase()}
-                                s
                             </h2>
                         </div>
                         <div className="space-y-2">

@@ -1,0 +1,21 @@
+{
+    "menu": {
+        "acceptRequest": "قبول الطلب",
+        "changeBatch": "تغيير الدفعة",
+        "extendCourseAccess": "تمديد الوصول إلى الدورة",
+        "reRegisterForNextSession": "إعادة التسجيل للجلسة القادمة",
+        "terminateRegistration": "إنهاء التسجيل",
+        "shareCredentials": "مشاركة بيانات الدخول",
+        "sendWhatsappMessage": "إرسال رسالة واتساب",
+        "sendEmail": "إرسال بريد إلكتروني",
+        "createCertificate": "إنشاء شهادة"
+    },
+    "actionInfo": {
+        "selectedStudents_zero": "لا يوجد طلاب محددون ({{count}})",
+        "selectedStudents_one": "طالب واحد محدد ({{count}})",
+        "selectedStudents_two": "طالبان محددان ({{count}})",
+        "selectedStudents_few": "{{count}} طلاب محددون",
+        "selectedStudents_many": "{{count}} طالبًا محددًا",
+        "selectedStudents_other": "{{count}} طالب محدد"
+    }
+}

@@ -1,0 +1,54 @@
+{
+    "header": {
+        "title": "Assistant de prompt",
+        "detected": "Détecté : {{persona}}"
+    },
+    "creditCost_one": "{{count}} crédit",
+    "creditCost_many": "{{count}} crédits",
+    "creditCost_other": "{{count}} crédits",
+    "brief": {
+        "label": "Décrivez votre agent en mots simples",
+        "placeholder": "ex. Nous dirigeons un institut de coaching NEET. L'agent doit appeler les nouveaux prospects, qualifier leur classe et leur année cible, répondre aux questions sur les frais et réserver une séance de conseil.",
+        "drafting": "Rédaction…",
+        "action": "Rédiger avec l'IA"
+    },
+    "review": {
+        "reviewing": "Analyse…",
+        "action": "Examiner le prompt"
+    },
+    "details": {
+        "toggle": "Détails",
+        "dimensionScore": "{{score}}/10"
+    },
+    "suggestions": {
+        "label": "Améliorations suggérées",
+        "applying": "Application…",
+        "applySelected_one": "Appliquer {{count}} sélectionnée",
+        "applySelected_many": "Appliquer {{count}} sélectionnées",
+        "applySelected_other": "Appliquer {{count}} sélectionnées"
+    },
+    "derived": {
+        "label": "Dérivé de ce prompt :",
+        "useButton": "Utiliser la phrase d'ouverture, les questions et les résultats suggérés"
+    },
+    "toasts": {
+        "draftReady": "Brouillon prêt — vérifiez le score et affinez",
+        "suggestionsApplied": "Suggestions appliquées — prompt mis à jour et réévalué",
+        "derivedApplied": "Phrase d'ouverture, questions et résultats renseignés",
+        "revisionApplied": "Prompt révisé appliqué — pensez à enregistrer"
+    },
+    "errors": {
+        "insufficientCredits": "Crédits IA insuffisants",
+        "genericFailure": "L'assistant IA a échoué — réessayez"
+    },
+    "feedback": {
+        "toggle": "Améliorer à partir des retours d'appel",
+        "placeholder": "ex. Il abandonne trop vite quand quelqu'un dit « envoyez-moi un e-mail ». Les appelants ont posé des questions sur les frais et il n'avait pas de réponse.",
+        "hint": "L'assistant lit aussi les appels réels récents de cet agent (transcriptions, résultats) pour fonder la révision.",
+        "revising": "Révision…",
+        "action": "Suggérer une révision",
+        "proposedRevision": "Révision proposée (score {{score}})",
+        "applyRevision": "Appliquer la révision",
+        "discard": "Ignorer"
+    }
+}

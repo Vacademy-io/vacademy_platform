@@ -23,6 +23,7 @@ import {
 import { SidebarSearch } from './sidebar-search';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from './sidebar-colors';
+import { ConnectionStatusPill } from '@/components/common/perf/ConnectionStatusPill';
 import { motion } from 'framer-motion';
 import {
     Tooltip,
@@ -296,6 +297,9 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             </div>
 
             {/* ─── Service health / status page (external, pinned above Settings) ──── */}
+            {/* Live speed indicator — always visible, directly above Status. */}
+            <ConnectionStatusPill />
+
             {showStatusLink && (
                 <a
                     href="https://status.vacademy.io"

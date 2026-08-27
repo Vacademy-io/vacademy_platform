@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Copy, Check } from "@phosphor-icons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -112,6 +113,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   copiedId,
   avatarUrl,
 }) => {
+  const { t } = useTranslation("chatFeatureB");
   const isUser = msg.role === "user";
   const isAssistant = msg.role === "assistant";
 
@@ -156,7 +158,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     <img
                       key={i}
                       src={att.url}
-                      alt={att.name || "attachment"}
+                      alt={att.name || t("common.attachmentAlt")}
                       className="max-w-32 max-h-20 rounded object-cover"
                     />
                   ))}
@@ -170,7 +172,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               <button
                 className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity z-10"
                 onClick={() => onCopy(msg.content, msg.id)}
-                title="Copy"
+                title={t("common.copy")}
               >
                 {copiedId === msg.id ? (
                   <Check className="size-3 text-green-500" />

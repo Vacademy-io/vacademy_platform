@@ -288,6 +288,8 @@ export default function ScheduleStep1() {
             bbbWebcamsOnlyForModerator:
                 liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false,
             bbbGuestPolicy: liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+            bbbDisableMic: liveSessionSettings.defaultBbbDisableMic ?? false,
+            bbbDisableCam: liveSessionSettings.defaultBbbDisableCam ?? false,
             bbbDisablePrivateChat: liveSessionSettings.defaultBbbDisablePrivateChat ?? false,
             bbbDisablePublicChat: liveSessionSettings.defaultBbbDisablePublicChat ?? false,
             bbbDisableSharedNotes: liveSessionSettings.defaultBbbDisableSharedNotes ?? false,
@@ -434,6 +436,8 @@ export default function ScheduleStep1() {
         }
         const snapBbbLockBool = (
             name:
+                | 'bbbDisableMic'
+                | 'bbbDisableCam'
                 | 'bbbDisablePrivateChat'
                 | 'bbbDisablePublicChat'
                 | 'bbbDisableSharedNotes'
@@ -445,6 +449,8 @@ export default function ScheduleStep1() {
                 form.setValue(name, def);
             }
         };
+        snapBbbLockBool('bbbDisableMic', liveSessionSettings.defaultBbbDisableMic ?? false);
+        snapBbbLockBool('bbbDisableCam', liveSessionSettings.defaultBbbDisableCam ?? false);
         snapBbbLockBool(
             'bbbDisablePrivateChat',
             liveSessionSettings.defaultBbbDisablePrivateChat ?? false
@@ -476,6 +482,8 @@ export default function ScheduleStep1() {
         liveSessionSettings.defaultBbbMuteOnStart,
         liveSessionSettings.defaultBbbWebcamsOnlyForModerator,
         liveSessionSettings.defaultBbbGuestPolicy,
+        liveSessionSettings.defaultBbbDisableMic,
+        liveSessionSettings.defaultBbbDisableCam,
         liveSessionSettings.defaultBbbDisablePrivateChat,
         liveSessionSettings.defaultBbbDisablePublicChat,
         liveSessionSettings.defaultBbbDisableSharedNotes,
@@ -898,6 +906,8 @@ export default function ScheduleStep1() {
             bbbMuteOnStart: schedule.bbb_config?.mute_on_start ?? true,
             bbbWebcamsOnlyForModerator: schedule.bbb_config?.webcams_only_for_moderator ?? false,
             bbbGuestPolicy: (schedule.bbb_config?.guest_policy as 'ALWAYS_ACCEPT' | 'ASK_MODERATOR' | 'ALWAYS_DENY') ?? 'ALWAYS_ACCEPT',
+            bbbDisableMic: schedule.bbb_config?.disable_mic ?? false,
+            bbbDisableCam: schedule.bbb_config?.disable_cam ?? false,
             bbbDisablePrivateChat: schedule.bbb_config?.disable_private_chat ?? false,
             bbbDisablePublicChat: schedule.bbb_config?.disable_public_chat ?? false,
             bbbDisableSharedNotes: schedule.bbb_config?.disable_shared_notes ?? false,
@@ -2503,6 +2513,40 @@ export default function ScheduleStep1() {
                         />
                         <FormField
                             control={control}
+                            name="bbbDisableMic"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center gap-2 space-y-0">
+                                    <FormControl>
+                                        <input
+                                            type="checkbox"
+                                            checked={field.value ?? false}
+                                            onChange={(e) => field.onChange(e.target.checked)}
+                                            className="size-4 rounded border-gray-300"
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal">Participants join in listen-only mode</FormLabel>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={control}
+                            name="bbbDisableCam"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center gap-2 space-y-0">
+                                    <FormControl>
+                                        <input
+                                            type="checkbox"
+                                            checked={field.value ?? false}
+                                            onChange={(e) => field.onChange(e.target.checked)}
+                                            className="size-4 rounded border-gray-300"
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-normal">Participants can&apos;t turn on their camera</FormLabel>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={control}
                             name="bbbDisablePrivateChat"
                             render={({ field }) => (
                                 <FormItem className="flex items-center gap-2 space-y-0">
@@ -2587,6 +2631,16 @@ export default function ScheduleStep1() {
                             )}
                         />
                     </div>
+                    <p className="mt-3 text-xs text-neutral-500">
+                        Running a large lecture or webinar? Turn on{' '}
+                        <span className="font-medium">listen-only mode</span> and{' '}
+                        <span className="font-medium">
+                            participants can&apos;t turn on their camera
+                        </span>
+                        , and have the host share slides rather than their screen. A class set up
+                        this way puts far less load on the server than one where everyone can
+                        unmute and switch a camera on.
+                    </p>
                     <div className="mt-3">
                         <FormField
                             control={control}

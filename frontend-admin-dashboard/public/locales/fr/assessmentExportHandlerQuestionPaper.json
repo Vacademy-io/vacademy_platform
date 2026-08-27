@@ -1,0 +1,17 @@
+{
+    "export": {
+        "exporting": "Exportation en cours...",
+        "button": "Exporter {{format}}"
+    },
+    "setLabel": " (Série {{letter}})",
+    "fileName": {
+        "base": "Sujet",
+        "withSet": "Sujet {{letter}}"
+    },
+    "progress": {
+        "title": "Génération du PDF",
+        "subtitle": "Cela peut prendre un certain temps",
+        "cancelAriaLabel": "Annuler la génération du PDF",
+        "percentComplete": "{{progress}} % terminé"
+    }
+}

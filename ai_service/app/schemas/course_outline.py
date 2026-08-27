@@ -24,6 +24,18 @@ class KbGrounding(BaseModel):
     # BLENDED — fill gaps from general knowledge, marked as outside the material.
     mode: Literal["STRICT", "BLENDED"] = "STRICT"
 
+    # REPLICATE — mirror the source: reuse its own section headings, numbering,
+    #             order and stated chapter identity (number/title/authors/
+    #             objectives). What a textbook-faithful client expects.
+    # ADAPT     — source-led, but the course may be re-titled and re-themed for
+    #             teaching flow.
+    fidelity: Literal["REPLICATE", "ADAPT"] = "REPLICATE"
+
+    # FULL       — every selected section must become at least one slide, so
+    #              nothing in the material silently disappears (longer course).
+    # HIGHLIGHTS — the model may condense closely-related sections.
+    coverage: Literal["FULL", "HIGHLIGHTS"] = "FULL"
+
 
 class GenerationOptions(BaseModel):
     """
@@ -45,6 +57,27 @@ class GenerationOptions(BaseModel):
     generate_images: bool = Field(
         default=False,
         description="Whether to generate course_banner_image and course_preview_image (S3 URLs)"
+    )
+    # ── Course structure options (chosen in the create-course UI) ──
+    quiz_placement: Optional[Literal["PER_TOPIC", "CHAPTER", "BOTH", "NONE"]] = Field(
+        default=None,
+        description=(
+            "Where quizzes live: PER_TOPIC = mini quiz inside each document slide "
+            "(via content_types), CHAPTER = one consolidated ASSESSMENT slide per "
+            "chapter, BOTH = both, NONE = no quizzes. None/absent keeps legacy "
+            "behaviour (whatever content_types says)."
+        ),
+    )
+    include_assignment: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Chapter assignment + solution slides: True = always add per chapter, "
+            "False = never, None = legacy keyword detection on the user prompt."
+        ),
+    )
+    include_chapter_video: bool = Field(
+        default=False,
+        description="Add one AI_VIDEO overview slide at the end of each chapter.",
     )
     image_style: Optional[str] = Field(
         default="professional",

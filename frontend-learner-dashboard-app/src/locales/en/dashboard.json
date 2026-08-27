@@ -25,7 +25,8 @@
             "evening": "Good evening",
             "morningWithName": "Good morning, {{name}}",
             "afternoonWithName": "Good afternoon, {{name}}",
-            "eveningWithName": "Good evening, {{name}}"
+            "eveningWithName": "Good evening, {{name}}",
+            "welcomeBackFallback": "Welcome back"
         },
         "pickUpWhereLeftOff": "Pick up where you left off",
         "yourFirstSlide": "your first {{slide}}",
@@ -205,5 +206,172 @@
         "awardedTooltipWithReason": "{{name}} — Awarded by your institute: {{reason}}",
         "unlockedCount": "{{unlocked}}/{{total}} unlocked",
         "emptyPrompt": "Complete your first {{slide}} to unlock a badge"
+    },
+    "tnc": {
+        "title": "Accept Terms & Conditions",
+        "description": "You must read and accept the institute's Terms & Conditions before accessing your dashboard.",
+        "scrollToRead": "Scroll to read",
+        "readAgree": "I have read and agree to the Terms & Conditions",
+        "digitalSignature": "Digital Signature",
+        "namePlaceholder": "Enter your full legal name",
+        "signaturePrefilled": "Your registered name is shown above. By clicking Accept, you are digitally signing this document.",
+        "signatureManual": "By entering your name and clicking Accept, you are digitally signing this document.",
+        "accepting": "Accepting...",
+        "acceptButton": "I Accept & Continue",
+        "toast": {
+            "needConfirmRead": "Please confirm you have read and agree to the Terms & Conditions",
+            "needName": "Please enter your full name to accept",
+            "success": "Terms & Conditions accepted successfully",
+            "failure": "Failed to accept Terms & Conditions. Please try again."
+        }
+    },
+    "achievements": {
+        "title": "Your achievements",
+        "xpToNextLevel": "{{xp}} XP to level {{level}}",
+        "badgesUnlocked": "Badges · {{unlocked}}/{{total}} unlocked"
+    },
+    "attendance": {
+        "title": "Attendance",
+        "period7d": "7 Days",
+        "period30d": "30 Days",
+        "period90d": "3 Months",
+        "dayStatus": {
+            "present": "Present",
+            "absent": "Absent",
+            "noClass": "No class",
+            "notMarked": "Not marked yet"
+        },
+        "emptyTitleWithStreak": "Attend today's {{liveClass}} to start your streak",
+        "emptyTitleNoStreak": "Attend today's {{liveClass}} to start tracking attendance",
+        "emptyBodyWithStreak": "Your attendance stats and weekly streak will appear here.",
+        "emptyBodyNoStreak": "Your attendance stats for the week will appear here.",
+        "viewDetailsAria": "View attendance details",
+        "coverageNote_one": "{{count}} {{liveClass}} day since {{date}}",
+        "coverageNote_other": "{{count}} {{liveClass}} days since {{date}}",
+        "overall": "Overall",
+        "streak": "Streak",
+        "daysPresent": "Days Present",
+        "thisWeek": "This week"
+    },
+    "continueLearning": {
+        "startLearningTitle": "Start Learning",
+        "allCaughtUpTitle": "All Caught Up!",
+        "browsePrompt": "Browse your {{courses}} and start your first {{slide}}.",
+        "allCompletePrompt": "You've completed all available {{slides}}. Great work, keep the momentum going.",
+        "startFirstSlideButton": "Start your first {{slide}}",
+        "exploreContentButton": "Explore Content",
+        "title": "Continue Learning",
+        "slidesInProgress": "{{count}} {{slide}} in progress",
+        "continueFromWhereLeftOff": "Continue from where you left off",
+        "resumeLearningButton": "Resume Learning"
+    },
+    "dashboardHero": {
+        "loadingAria": "Loading",
+        "liveNow": "Live now",
+        "startsInMinutes": "Starts in {{minutes}}m",
+        "joinAria": "Join {{title}}",
+        "welcomeWithName": "Welcome, {{name}}",
+        "welcome": "Welcome",
+        "getStartedTitle": "Let's get you started",
+        "getStartedSubtitle": "A few quick steps to make the most of your learning.",
+        "browseCoursesLabel": "Browse your {{courses}}",
+        "browseCoursesHint": "Open a topic and start your first {{slide}}",
+        "tryAssessmentLabel": "Try an assessment",
+        "tryAssessmentHint": "Check what you know with a quick quiz",
+        "completeProfileLabel": "Complete your profile",
+        "completeProfileHint": "Add your details to personalize learning"
+    },
+    "activityChart": {
+        "emptyMessage": "Your activity will appear here as you learn.",
+        "title": "Learning Progress Trend",
+        "subtitle": "Weekly learning activity comparison",
+        "status": {
+            "justStarting": "Just getting started",
+            "excellent": "Excellent",
+            "onTrack": "On Track",
+            "needsFocus": "Needs Focus"
+        },
+        "avgLabel": "Avg: {{time}}",
+        "yourStudyTime": "Your Study Time",
+        "batchAverage": "{{batch}} Average",
+        "realTimeData": "Real-time data",
+        "performanceVsBatch": "Performance vs {{batch}}:",
+        "above": "↗ Above",
+        "below": "↘ Below",
+        "activeDays": "{{active}}/{{total}} active days",
+        "peakDay": "Peak Day",
+        "vsBatch": "Vs {{batch}}",
+        "percentDifference": "{{percent}}% difference",
+        "yourTime": "Your Time"
+    },
+    "learningInsights": {
+        "title": "Learning Progress",
+        "subtitle": "Past 7 days activity vs {{batch}} average",
+        "avgLabel": "avg",
+        "sessionsLabel": "sessions",
+        "streakLabel_one": "day streak",
+        "streakLabel_other": "days streak",
+        "chartViewTitle": "Chart view",
+        "tableViewTitle": "Table view",
+        "loadError": "Couldn't load your learning activity.",
+        "tryAgain": "Try again"
+    },
+    "mentors": {
+        "title": "My Mentors",
+        "emptyStateTitle": "Mentorship",
+        "emptyStateBody": "Get one-to-one guidance — browse your institute's mentors and request the one that fits what you're working on.",
+        "findMentorButton": "Find a mentor",
+        "viewAll": "View all",
+        "nextSession": "Next session",
+        "mentorSessionFallback": "Mentor session",
+        "linkPendingTooltip": "Your mentor's meeting link is still being created. Check back shortly.",
+        "linkComingSoon": "Link coming soon",
+        "mentorFallbackName": "Mentor",
+        "chatOpenError": "Couldn't open the chat. Please try again."
+    },
+    "onboardingGate": {
+        "finishSetupWithName": "Finish setting up {{name}}'s account",
+        "finishSetupGeneric": "Finish setting up your account",
+        "completeStepsPrompt": "Complete the steps below to continue to your dashboard.",
+        "progressLabel": "Progress",
+        "waitingOnAdminSuffix": "is being handled by your school admin — you don't need to do anything here."
+    },
+    "dashboardPage": {
+        "pageTitle": "Dashboard",
+        "metaDescription": "Enterprise Dashboard - Learning Management System",
+        "yogaGreeting": "Ready for today's yoga journey?",
+        "classesToday": "{{count}} {{liveClass}} today",
+        "attendanceStreakFact": "{{count}}-day attendance streak",
+        "statCard": {
+            "coursesEmptyAction": "Browse {{courses}}",
+            "liveClassesEmptyAction": "View {{liveClasses}}",
+            "assessmentsTitle": "Assessments",
+            "assessmentsEmptyAction": "View Assessments"
+        },
+        "customWidgetFallbackTitle": "Custom Widget",
+        "openButton": "Open",
+        "devTesting": {
+            "title": "Developer Testing",
+            "description": "Test push notification functionality"
+        },
+        "exploreMembershipsButton": "Explore Memberships",
+        "exploreBooksButton": "Explore Books",
+        "toast": {
+            "attendanceMarkFailed": "Failed to mark attendance"
+        },
+        "holistic": {
+            "yogaIllustrationAlt": "Yoga illustration",
+            "thisWeekTitle": "This Week",
+            "referFriendTitle": "Refer A Friend",
+            "referFriendSubtitle": "Share the journey",
+            "inviteButton": "Invite",
+            "myClassesTitle": "My Classes",
+            "liveBadge": "Live",
+            "joinNowButton": "Join Now",
+            "noLiveClassesScheduled": "No {{liveClasses}} scheduled",
+            "checkBackLater": "Check back later for upcoming live classes",
+            "viewAllClassesButton": "View All Classes",
+            "dateAtTime": "{{date}} at {{time}}"
+        }
     }
 }

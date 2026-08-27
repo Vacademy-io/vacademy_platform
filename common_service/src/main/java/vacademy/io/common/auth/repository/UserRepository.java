@@ -18,6 +18,50 @@ public interface UserRepository extends CrudRepository<User, String> {
         @EntityGraph(attributePaths = { "roles", "roles.role", "roles.role.authorities" })
         Optional<User> findByUsername(String username);
 
+        /**
+         * Every user holding one of these roles at this institute.
+         *
+         * Added for scheduled reporting, which needs to expand a recipient rule like
+         * "all ADMINs" into actual addresses. Unlike the single-user lookups below
+         * there is no LIMIT — the caller wants the whole set.
+         *
+         * role_name is compared case-insensitively on purpose: production holds both
+         * 'ADMIN' (807 rows) and 'Admin' (49), and an exact match silently drops the
+         * second group.
+         */
+        @Query(value = """
+                        SELECT DISTINCT u.* FROM users u
+                        JOIN user_role ur ON u.id = ur.user_id
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE ur.institute_id = :instituteId
+                          AND ur.status IN (:roleStatus)
+                          AND UPPER(r.role_name) IN (:roleNames)
+                        """, nativeQuery = true)
+        List<User> findByInstituteAndRoleNames(
+                        @Param("instituteId") String instituteId,
+                        @Param("roleNames") List<String> upperCaseRoleNames,
+                        @Param("roleStatus") List<String> roleStatus);
+
+        /**
+         * (user_id, role_name) for these users AT THIS INSTITUTE only.
+         *
+         * Necessary because User.roles is a plain @OneToMany with no institute
+         * predicate, so UserDTO.roles is every role the person holds ANYWHERE —
+         * and it includes INVITED. Deciding "is this person an admin here" from
+         * that field lets an admin at institute B read institute A's data.
+         */
+        @Query(value = """
+                        SELECT ur.user_id AS userId, UPPER(r.role_name) AS roleName
+                        FROM user_role ur
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE ur.institute_id = :instituteId
+                          AND ur.status = 'ACTIVE'
+                          AND ur.user_id IN (:userIds)
+                        """, nativeQuery = true)
+        List<Object[]> findInstituteRoleRows(
+                        @Param("instituteId") String instituteId,
+                        @Param("userIds") List<String> userIds);
+
         @Query(value = """
                         SELECT u.* FROM users u
                         JOIN user_role ur ON u.id = ur.user_id
@@ -33,22 +77,12 @@ public interface UserRepository extends CrudRepository<User, String> {
                         @Param("roleStatus") List<String> roleStatus,
                         @Param("roleNames") List<String> roleNames);
 
-        @Query(value = """
-                        SELECT u.* FROM users u
-                        JOIN user_role ur ON u.id = ur.user_id
-                        JOIN roles r ON r.id = ur.role_id
-                        WHERE u.mobile = :mobile
-                          AND ur.status IN (:roleStatus)
-                          AND r.role_name IN (:roleNames)
-                        ORDER BY u.created_at DESC
-                        LIMIT 1
-                        """, nativeQuery = true)
-        Optional<User> findMostRecentUserByMobileAndRoleStatusAndRoleNames(
-                        @Param("mobile") String mobile,
-                        @Param("roleStatus") List<String> roleStatus,
-                        @Param("roleNames") List<String> roleNames);
-
-        // NEW METHOD: For WhatsApp OTP login - uses correct column name 'mobile_number'
+        // For WhatsApp OTP login - uses correct column name 'mobile_number'.
+        //
+        // This supersedes findMostRecentUserByMobileAndRoleStatusAndRoleNames, which was
+        // removed: it was byte-for-byte identical apart from filtering on a column named
+        // "mobile", which does not exist on users (the column is mobile_number). It had no
+        // callers and threw 42703 on every execution.
         @Query(value = """
                         SELECT u.* FROM users u
                         JOIN user_role ur ON u.id = ur.user_id

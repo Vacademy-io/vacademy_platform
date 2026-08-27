@@ -1,4 +1,5 @@
 import { Info } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { formatUnlockMessage } from "@/utils/drip-conditions";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ export function UnlockRequirements({
   className,
   compact = false,
 }: UnlockRequirementsProps) {
+  const { t } = useTranslation("courseComponentsExtra");
   if (!unlockMessage) {
     return null;
   }
@@ -50,7 +52,7 @@ export function UnlockRequirements({
       />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium text-amber-900 mb-0.5">
-          Unlock Requirements
+          {t("dripConditions.unlockRequirements.title")}
         </p>
         <p className="text-xs text-amber-700">{formattedMessage}</p>
       </div>

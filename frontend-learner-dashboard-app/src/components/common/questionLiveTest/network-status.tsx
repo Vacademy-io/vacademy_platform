@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Network } from "@capacitor/network";
 import { WifiHigh, WifiSlash, ArrowsClockwise, SpinnerGap } from "@phosphor-icons/react";
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -9,6 +10,7 @@ interface NetworkStatusProps {
 }
 
 const NetworkStatus = ({ onRetrySave }: NetworkStatusProps) => {
+  const { t } = useTranslation("questionTest");
   const [isOnline, setIsOnline] = useState(true);
   const [showAlert, setShowAlert] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -64,66 +66,67 @@ const NetworkStatus = ({ onRetrySave }: NetworkStatusProps) => {
   };
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50 flex items-start justify-center">
-      <div
-        className={`
-          mt-4 flex items-center gap-3 rounded-lg px-4 py-2
-          transform transition-all duration-300 ease-in-out
-          bg-foreground text-white
-          ${showBanner ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"}
-        `}
-        role="status"
-        aria-live="polite"
-      >
-        <div className="flex items-center gap-3">
-          {!isOnline ? (
-            <>
-              <WifiSlash className="h-5 w-5 text-red-500" />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">No Internet connection</span>
-                <span className="text-xs text-gray-400">
-                  Your responses will be saved when connection returns
-                </span>
-              </div>
-            </>
-          ) : saveFailed ? (
-            <>
-              <WifiSlash className="h-5 w-5 text-amber-500" />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Save failed</span>
-                <span className="text-xs text-gray-400">
-                  Your responses could not be synced
-                </span>
-              </div>
-            </>
+    // In the normal flow, not floating: as an overlay this sat on top of the
+    // exam header and hid the timer and Submit button on a phone — exactly when
+    // a learner most needs to see them. It is a persistent state, so pushing
+    // the content down is the right trade.
+    <div
+      className="flex flex-none items-center justify-center gap-3 bg-neutral-900 px-3 py-2 text-white"
+      role="status"
+      aria-live="polite"
+    >
+      {!isOnline ? (
+        <>
+          <WifiSlash className="size-5 flex-none text-danger-400" />
+          <div className="min-w-0">
+            <p className="text-caption font-semibold">
+              {t("networkStatus.offline.title")}
+            </p>
+            <p className="text-2xs text-neutral-400">
+              {t("networkStatus.offline.description")}
+            </p>
+          </div>
+        </>
+      ) : saveFailed ? (
+        <>
+          <WifiSlash className="size-5 flex-none text-warning-400" />
+          <div className="min-w-0">
+            <p className="text-caption font-semibold">
+              {t("networkStatus.saveFailed.title")}
+            </p>
+            <p className="text-2xs text-neutral-400">
+              {t("networkStatus.saveFailed.description")}
+            </p>
+          </div>
+        </>
+      ) : (
+        <>
+          <WifiHigh className="size-5 flex-none text-success-400" />
+          <div className="min-w-0">
+            <p className="text-caption font-semibold">
+              {t("networkStatus.online.title")}
+            </p>
+            <p className="text-2xs text-neutral-400">
+              {t("networkStatus.online.description")}
+            </p>
+          </div>
+        </>
+      )}
+      {(saveFailed || !isOnline) && onRetrySave && (
+        <button
+          type="button"
+          onClick={handleRetry}
+          disabled={isRetrying}
+          className="flex flex-none items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-2xs font-semibold transition-colors hover:bg-white/20 disabled:opacity-60"
+        >
+          {isRetrying ? (
+            <SpinnerGap className="size-3 animate-spin" />
           ) : (
-            <>
-              <WifiHigh className="h-5 w-5 text-green-500" />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Back online</span>
-                <span className="text-xs text-gray-400">
-                  Your network connection was restored
-                </span>
-              </div>
-            </>
+            <ArrowsClockwise className="size-3" />
           )}
-          {(saveFailed || !isOnline) && onRetrySave && (
-            <button
-              type="button"
-              onClick={handleRetry}
-              disabled={isRetrying}
-              className="ms-2 flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-xs font-medium hover:bg-white/20 disabled:opacity-60"
-            >
-              {isRetrying ? (
-                <SpinnerGap className="h-3 w-3 animate-spin" />
-              ) : (
-                <ArrowsClockwise className="h-3 w-3" />
-              )}
-              Retry
-            </button>
-          )}
-        </div>
-      </div>
+          {t("networkStatus.retry")}
+        </button>
+      )}
     </div>
   );
 };

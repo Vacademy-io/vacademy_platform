@@ -64,6 +64,13 @@ class QuizService:
         # Extract relevant content from context
         context_data = context.get("context_data", {})
         content_text = context_data.get("content", "")
+        # When the slide could not be read, `content` holds a bracketed note
+        # addressed to the tutor ("you have NOT been shown them, do not
+        # describe…"). That is guidance for the chat turn, not source material —
+        # feeding it in as "Content Details" would have the quiz generator try to
+        # follow it. Treat it as no content and fall back to the topic.
+        if content_text.lstrip().startswith("["):
+            content_text = ""
         slide_name = context_data.get("name", topic)
         chapter = context_data.get("chapter", "")
         subject = context_data.get("subject", "")

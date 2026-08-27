@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useFieldArray } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { useAudienceCampaignForm } from '../../-hooks/useAudienceCampaignForm';
@@ -29,9 +30,22 @@ import createCampaignLink from '../../-utils/createCampaignLink';
 import CampaignLink from './CampaignLink';
 import { CampaignItem } from '../../-services/get-campaigns-list';
 import { getCampaignCustomFieldsAsync } from '../../-utils/getCampaignCustomFields';
+import {
+    convertExistingCustomFields,
+    convertFieldsToPayload,
+} from '../../-utils/campaignFormFields';
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import PostSubmitConfigurationEditor from '@/components/audience/PostSubmitConfigurationEditor';
+import {
+    applyPostSubmitConfiguration,
+    DEFAULT_POST_SUBMIT_CONFIGURATION,
+    fetchAudienceFormSettings,
+    parsePostSubmitConfiguration,
+    validatePostSubmitConfiguration,
+    type AudiencePostSubmitConfiguration,
+} from '@/services/audience-post-submit-settings';
 
 const parseEmailsFromCsv = (value?: string | null) => {
     if (!value) return [];
@@ -39,131 +53,6 @@ const parseEmailsFromCsv = (value?: string | null) => {
         .split(',')
         .map((email) => email.trim())
         .filter((email) => email.length > 0);
-};
-
-const generateKeyFromName = (name: string): string =>
-    name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
-
-const mapApiFieldTypeToUi = (type?: string): string => {
-    const normalized = (type || '').toLowerCase();
-    if (normalized === 'select') return 'dropdown';
-    if (normalized === 'textfield') return 'text';
-    return normalized || 'text';
-};
-
-const parseFieldsInput = (fields?: any[] | string | null) => {
-    if (!fields) {
-        return null;
-    }
-
-    if (Array.isArray(fields)) {
-        return fields;
-    }
-
-    if (typeof fields === 'string') {
-        try {
-            const parsed = JSON.parse(fields);
-            if (Array.isArray(parsed)) {
-                return parsed;
-            }
-            // console.warn('⚠️ [convertExistingCustomFields] Parsed custom fields is not an array');
-        } catch (error) {
-            console.error(
-                '❌ [convertExistingCustomFields] Failed to parse custom fields JSON:',
-                error
-            );
-        }
-    }
-
-    return null;
-};
-
-const convertExistingCustomFields = (fields?: any[] | string | null) => {
-    const normalizedFields = parseFieldsInput(fields);
-
-    if (!normalizedFields || normalizedFields.length === 0) {
-        console.log('📋 [convertExistingCustomFields] No custom fields to convert');
-        return null;
-    }
-
-    // Seeded keys: Full Name / Email / Phone Number must stay locked even in
-    // edit mode. The previous code hardcoded `oldKey: false` which let admins
-    // delete these system fields when editing an existing audience campaign.
-    const SEEDED_KEYS = ['full_name', 'name', 'email', 'phone_number', 'phone', 'mobile_number'];
-    const SEEDED_NAMES = ['full name', 'name', 'email', 'phone number', 'phone', 'mobile number'];
-
-    const converted = normalizedFields
-        .map((field, index) => {
-            const meta = field?.custom_field || {};
-            const fieldName = meta.fieldName || field.field_name || `Field ${index + 1}`;
-            const fieldKey = meta.fieldKey || generateKeyFromName(fieldName);
-            const normalizedKey = fieldKey ? fieldKey.toLowerCase() : '';
-            const normalizedName = (fieldName || '').toLowerCase();
-            const isSeeded =
-                SEEDED_KEYS.includes(normalizedKey) || SEEDED_NAMES.includes(normalizedName);
-            const configOptions =
-                typeof meta.config === 'string' && meta.config.length > 0
-                    ? meta.config
-                          .split(',')
-                          .map((value: string) => value.trim())
-                          .filter(Boolean)
-                    : undefined;
-
-            // Preserve status from API - default to ACTIVE if not present
-            const fieldStatus = field.status || 'ACTIVE';
-
-            const convertedField = {
-                id: field.id || meta.id || field.field_id || `${index}`,
-                _id: meta.id || field.id || field.field_id,
-                field_id: field.field_id || meta.id || field.id,
-                type: mapApiFieldTypeToUi(meta.fieldType || field.type),
-                name: fieldName,
-                oldKey: isSeeded,
-                isRequired:
-                    typeof meta.isMandatory === 'boolean'
-                        ? meta.isMandatory
-                        : field.isRequired ?? true,
-                key: fieldKey,
-                // Order by the per-form mapping order (individual_order) so the editor
-                // matches what the public form renders. Fall back to the master formOrder
-                // (1-based) only when the mapping has no order, then to array index.
-                order:
-                    typeof field.individual_order === 'number'
-                        ? field.individual_order
-                        : typeof meta.formOrder === 'number'
-                          ? Math.max(meta.formOrder - 1, 0)
-                          : index,
-                options: configOptions
-                    ? configOptions.map((value: string, optIndex: number) => ({
-                          id: `${field.id || meta.id || field.field_id || index}_opt_${optIndex}`,
-                          value,
-                          disabled: true,
-                      }))
-                    : undefined,
-                // Preserve all original field data for payload
-                status: fieldStatus,
-                institute_id: field.institute_id,
-                type_id: field.type_id,
-                group_name: field.group_name || meta.groupName,
-                individual_order: field.individual_order,
-                group_internal_order: field.group_internal_order,
-                // Store full custom_field object for payload
-                custom_field_data: meta,
-            };
-
-            return convertedField;
-        })
-        .filter((field) => field.status !== 'DELETED') // Filter out deleted fields from display
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        .map((field, index) => ({
-            ...field,
-            order: index,
-        }));
-
-    return converted;
 };
 
 const formatDateToDateInput = (value?: string | null, fallback?: string) => {
@@ -216,6 +105,10 @@ const buildInitialFormValues = (
         status: campaign.status?.toUpperCase?.() || defaultFormValues.status,
         sub_org_id: campaign.sub_org_id || '',
         json_web_metadata: campaign.json_web_metadata || '',
+        // Thank-you screen config lives inside the campaign's setting_json blob.
+        // parse* tolerates a missing/legacy/unparsable blob and returns defaults,
+        // so campaigns created before this feature still open with a full card.
+        postSubmitConfiguration: parsePostSubmitConfiguration(campaign.setting_json),
         default_initial_score:
             typeof campaign.default_initial_score === 'number'
                 ? campaign.default_initial_score
@@ -233,6 +126,9 @@ interface CreateCampaignFormProps {
 }
 
 export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSuccess, campaign }) => {
+    const { t } = useTranslation('audienceManagerCreateCampaignForm');
+    const { t: tUpdateAudienceCampaign } = useTranslation('audienceManagerUseUpdateAudienceCampaign');
+    const { t: tCreateAudienceCampaign } = useTranslation('audienceManagerUseCreateAudienceCampaign');
     const { instituteDetails } = useInstituteDetailsStore();
     const isEditMode = Boolean(campaign);
     const editingCampaignId = useMemo(() => getCampaignIdentifier(campaign), [campaign]);
@@ -271,8 +167,8 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         getValues,
         formState: { errors },
     } = form;
-    const createCampaign = useCreateAudienceCampaign();
-    const updateCampaign = useUpdateAudienceCampaign();
+    const createCampaign = useCreateAudienceCampaign(tCreateAudienceCampaign);
+    const updateCampaign = useUpdateAudienceCampaign(tUpdateAudienceCampaign);
 
     // Sub-org options for the optional Sub-Org picker. Reuses the same accessible-sub-orgs
     // endpoint as the rest of the app ({id = child-institute id, name}).
@@ -284,10 +180,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     });
     const subOrgDropdownOptions = useMemo(
         () => [
-            { value: '', label: 'None' },
+            { value: '', label: t('subOrg.noneOption') },
             ...(accessibleSubOrgs ?? []).map((so) => ({ value: so.id, label: so.name })),
         ],
-        [accessibleSubOrgs]
+        [accessibleSubOrgs, t]
     );
     const existingCustomFields = useMemo(
         () => convertExistingCustomFields(campaignData?.institute_custom_fields),
@@ -298,6 +194,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
 
     // Store initial custom fields for create mode (from settings) so we can restore them on reset
     const initialCreateModeCustomFields = useRef<any[] | null>(null);
+    // Same idea for the post-submit block: the institute-wide default fetched
+    // once in create mode, kept so Reset restores it without a second fetch.
+    const initialCreateModePostSubmit = useRef<AudiencePostSubmitConfiguration | null>(null);
 
     useEffect(() => {
         if (campaignData) {
@@ -365,7 +264,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             }
         } catch (error) {
             console.error('Upload failed:', error);
-            toast.error('Failed to upload campaign image');
+            toast.error(t('errors.uploadImageFailed'));
         } finally {
             const prev = getValues('uploadingStates');
             setValue('uploadingStates', { ...prev, campaign_image: false });
@@ -457,6 +356,30 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         };
     }, [isEditMode, isLoadingCampaign, setValue]);
 
+    // Create mode: seed the post-submit block from the institute-wide default
+    // (Settings → Lead Settings → Forms) so an admin configures the thank-you
+    // screen once instead of retyping it per campaign. Edit mode is a no-op —
+    // the campaign's own saved block already came through initialFormValues,
+    // and a later change to the institute default must not rewrite it.
+    useEffect(() => {
+        if (isEditMode) return;
+        if (isLoadingCampaign) return;
+
+        let cancelled = false;
+        fetchAudienceFormSettings().then((config) => {
+            if (cancelled) return;
+            initialCreateModePostSubmit.current = config;
+            setValue('postSubmitConfiguration', config, {
+                shouldDirty: false,
+                shouldTouch: false,
+            });
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isEditMode, isLoadingCampaign, setValue]);
+
     // Custom fields array management
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
         control,
@@ -527,10 +450,19 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             // In create mode, reset form values but preserve the initial custom
             // fields that were loaded via getCampaignCustomFieldsAsync.
             const fieldsToRestore = initialCreateModeCustomFields.current;
+            const postSubmitToRestore = initialCreateModePostSubmit.current;
 
             handleReset();
 
             setTimeout(() => {
+                // Reset means "back to the institute defaults", not "back to the
+                // hardcoded blank" — restore the fetched post-submit default too.
+                if (postSubmitToRestore) {
+                    setValue('postSubmitConfiguration', postSubmitToRestore, {
+                        shouldDirty: false,
+                        shouldTouch: false,
+                    });
+                }
                 if (fieldsToRestore && fieldsToRestore.length > 0) {
                     setValue('custom_fields', fieldsToRestore, {
                         shouldDirty: false,
@@ -637,6 +569,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             // The dialog only returns options for choice types, so switching away from one
             // clears them instead of leaving stale values to reappear.
             options: options?.map((opt, i) => ({ id: String(i), value: opt.value })),
+            // Always an object once the dialog has run, so "edited to nothing"
+            // is distinguishable from "never touched" on save.
+            config: config ?? {},
         });
 
     const handleAddGender = (type: string, name: string, oldKey: boolean) => {
@@ -725,7 +660,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             ...prevOptions,
             {
                 id: String(prevOptions.length),
-                value: `option ${prevOptions.length + 1}`,
+                value: t('customField.newOptionDefault', { number: prevOptions.length + 1 }),
                 disabled: true,
             },
         ]);
@@ -751,7 +686,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             name,
             oldKey,
             ...(resolvedOptions && { options: resolvedOptions }),
-            isRequired: true,
+            // Carried through so help text, file limits and the verification gate
+            // survive the save — the dialog collected them, this dropped them.
+            config: config ?? {},
+            isRequired: (config?.isRequired as boolean | undefined) ?? true,
             key: '',
             order: customFields.length,
         };
@@ -762,105 +700,19 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         setValue('dropdownOptions', []);
     };
 
-    const mapFieldTypeToPayload = (type?: string) => {
-        if (!type) return 'TEXT';
-        const normalized = type.toLowerCase();
-        switch (normalized) {
-            case 'text':
-            case 'textfield':
-            case 'textarea':
-                return 'TEXT';
-            case 'number':
-                return 'NUMBER';
-            case 'email':
-                return 'EMAIL';
-            case 'date':
-                return 'DATE';
-            case 'dropdown':
-            case 'select':
-                return 'DROPDOWN';
-            default:
-                return normalized.toUpperCase();
-        }
-    };
-
-    const convertFieldsToPayload = (fields: any[], instituteId: string) => {
-        if (!Array.isArray(fields) || fields.length === 0) return [];
-
-        return fields.map((field, index) => {
-            const options =
-                Array.isArray(field.options) && field.options.length > 0
-                    ? field.options.map((option: any) => option.value?.trim()).filter(Boolean)
-                    : undefined;
-
-            // Use existing field data if available (from API), otherwise create new structure
-            const fieldId = field.id || field._id || field.field_id;
-            const customFieldData = field.custom_field_data || field.custom_field || {};
-
-            // Build the payload according to the required structure
-            const payload: any = {
-                ...(fieldId && { id: fieldId }),
-                field_id: field.field_id || customFieldData.id || fieldId,
-                institute_id: field.institute_id || instituteId,
-                type: '',
-                type_id: '',
-                group_name: field.group_name || customFieldData.groupName || '',
-                status: field.status || 'ACTIVE', // Preserve status (ACTIVE or DELETED)
-                // Persist the current on-screen order so reordering in the editor
-                // actually updates the effective per-form order the public form reads.
-                individual_order: field.order ?? index,
-                group_internal_order: field.group_internal_order ?? 0,
-                custom_field: {
-                    ...((customFieldData.id || field._id) && {
-                        id: customFieldData.id || field._id,
-                    }),
-                    ...(customFieldData.guestId && { guestId: customFieldData.guestId }),
-                    fieldKey:
-                        field.key || customFieldData.fieldKey || generateKeyFromName(field.name),
-                    fieldName: field.name || customFieldData.fieldName || `Field ${index + 1}`,
-                    fieldType: mapFieldTypeToPayload(field.type || customFieldData.fieldType),
-                    defaultValue: customFieldData.defaultValue || '',
-                    config: options
-                        ? JSON.stringify(
-                              options.map((v: string, i: number) => ({
-                                  id: i + 1,
-                                  value: v,
-                                  label: v,
-                              }))
-                          )
-                        : customFieldData.config || '',
-                    formOrder:
-                        typeof field.order === 'number'
-                            ? field.order + 1
-                            : customFieldData.formOrder || index + 1,
-                    isMandatory: Boolean(
-                        typeof field.isRequired === 'boolean'
-                            ? field.isRequired
-                            : customFieldData.isMandatory ?? true
-                    ),
-                    isFilter: customFieldData.isFilter ?? false,
-                    isSortable: customFieldData.isSortable ?? false,
-                    isHidden: customFieldData.isHidden ?? false,
-                    ...(customFieldData.createdAt && { createdAt: customFieldData.createdAt }),
-                    ...(customFieldData.updatedAt && { updatedAt: customFieldData.updatedAt }),
-                    ...(customFieldData.sessionId && { sessionId: customFieldData.sessionId }),
-                    ...(customFieldData.liveSessionId && {
-                        liveSessionId: customFieldData.liveSessionId,
-                    }),
-                    customFieldValue: customFieldData.customFieldValue || '',
-                    groupName: field.group_name || customFieldData.groupName || '',
-                    groupInternalOrder: field.group_internal_order ?? 0,
-                    individualOrder: field.order ?? index,
-                },
-            };
-
-            return payload;
-        });
-    };
-
     const onFormSubmit = handleSubmit(async (data: AudienceCampaignForm) => {
         if (!instituteDetails?.id) {
-            toast.error('Institute context unavailable. Please refresh and try again.');
+            toast.error(t('errors.instituteContextUnavailable'));
+            return;
+        }
+
+        // A bad redirect/CTA link only fails on the public form, long after the
+        // admin has left this dialog — block the save instead.
+        const postSubmitError = validatePostSubmitConfiguration(
+            data.postSubmitConfiguration ?? DEFAULT_POST_SUBMIT_CONFIGURATION
+        );
+        if (postSubmitError) {
+            toast.error(postSubmitError);
             return;
         }
 
@@ -875,12 +727,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             try {
                 const parsed = JSON.parse(data.institute_custom_fields);
                 if (parsed !== null && !Array.isArray(parsed)) {
-                    toast.error('Custom fields JSON must be an array.');
+                    toast.error(t('errors.customFieldsMustBeArray'));
                     return;
                 }
                 parsedCustomFields = parsed;
             } catch (error) {
-                toast.error('Custom fields must be valid JSON.');
+                toast.error(t('errors.customFieldsInvalidJson'));
                 console.error('Invalid custom fields JSON:', error);
                 return;
             }
@@ -933,6 +785,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             to_notify: notifyEmails.join(', '),
             send_respondent_email: Boolean(data.send_respondent_email),
             json_web_metadata: data.json_web_metadata?.trim() || '',
+            // Merge into (not replace) the existing blob — setting_json also
+            // carries other per-campaign settings the backend writes.
+            setting_json: applyPostSubmitConfiguration(
+                campaignData?.setting_json,
+                data.postSubmitConfiguration ?? DEFAULT_POST_SUBMIT_CONFIGURATION
+            ),
             created_by_user_id: userId,
             start_date_local: formatDateTimeForPayload(data.start_date_local, false),
             end_date_local: formatDateTimeForPayload(data.end_date_local, true),
@@ -984,11 +842,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     const isSaving = isSubmitting || createCampaign.isPending || updateCampaign.isPending;
     const primaryButtonLabel = isEditMode
         ? isSaving
-            ? 'Saving...'
-            : 'Save Changes'
+            ? t('actions.saving')
+            : t('actions.save')
         : isSaving
-          ? 'Creating...'
-          : `Create ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`;
+          ? t('actions.creating')
+          : t('actions.create', {
+                term: getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList),
+            });
 
     // Show loading state while fetching campaign data
     if (isEditMode && isLoadingCampaign) {
@@ -1004,7 +864,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {isStatusActive && latestCampaignShareLink && (
                 <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
                     <p className="text-sm font-semibold text-primary-700">
-                        Campaign link ready to share
+                        {t('shareLink.ready')}
                     </p>
                     <CampaignLink
                         presetLink={latestCampaignShareLink}
@@ -1016,11 +876,11 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Campaign Name */}
             <div>
                 <label className="block text-sm font-semibold text-neutral-700">
-                    Campaign Name <span className="text-red-500">*</span>
+                    {t('campaignName.label')} <span className="text-red-500">*</span>
                 </label>
                 <input
                     type="text"
-                    placeholder="Enter campaign name"
+                    placeholder={t('campaignName.placeholder')}
                     {...register('campaign_name')}
                     className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                 />
@@ -1037,7 +897,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Campaign Type <span className="text-red-500">*</span>
+                        {t('campaignType.label')} <span className="text-red-500">*</span>
                     </label>
                     <div className="mt-2">
                         <CampaignTypeDropdown
@@ -1055,12 +915,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 {/* CampaignObjective */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Campaign Objective
+                        {t('campaignObjective.label')}
                         {/* <span className="text-red-500">*</span> */}
                     </label>
                     <input
                         type="text"
-                        placeholder="e.g., Engagement, Retention"
+                        placeholder={t('campaignObjective.placeholder')}
                         {...register('campaign_objective')}
                         className="mt-2 w-full rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                     />
@@ -1075,12 +935,14 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Sub-Org (optional) — only shown when the institute has sub-orgs */}
             {subOrgDropdownOptions.length > 1 && (
                 <div>
-                    <label className="block text-sm font-semibold text-neutral-700">Sub-Org</label>
+                    <label className="block text-sm font-semibold text-neutral-700">
+                        {t('subOrg.label')}
+                    </label>
                     <div className="mt-2">
                         <StatusDropdown
                             value={watch('sub_org_id') || ''}
                             initialOptions={subOrgDropdownOptions}
-                            placeholder="Select sub-org (optional)"
+                            placeholder={t('subOrg.placeholder')}
                             onChange={(val) => {
                                 setValue('sub_org_id', val, { shouldDirty: true });
                             }}
@@ -1094,7 +956,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 <div className="flex flex-wrap gap-2">
                     <label className="block text-sm font-semibold text-neutral-700">
                         {' '}
-                        Team Notifications{' '}
+                        {t('teamNotifications.label')}{' '}
                     </label>
                     <TooltipProvider>
                         <Tooltip delayDuration={0}>
@@ -1102,16 +964,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                 <button
                                     type="button"
                                     className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label="Information about sharing campaign analytics"
+                                    aria-label={t('teamNotifications.infoAriaLabel')}
                                 >
                                     <Info className="size-4" weight="bold" />
                                 </button>
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>
-                                    Enter email addresses of team members who should receive
-                                    campaign updates
-                                </p>
+                                <p>{t('teamNotifications.tooltip')}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -1120,7 +979,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     ref={multiEmailRef}
                     value={emails}
                     onChange={setEmails}
-                    placeholder="Enter email addresses"
+                    placeholder={t('teamNotifications.placeholder')}
                     error={errors?.to_notify?.message}
                 />
 
@@ -1128,7 +987,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 <div className="flex items-center justify-between gap-2 px-2 py-2">
                     <div className="flex items-center gap-2">
                         <label className="block text-sm font-semibold text-neutral-700">
-                            Share Campaign Analytics with Team Members
+                            {t('shareAnalytics.label')}
                         </label>
                         <TooltipProvider>
                             <Tooltip delayDuration={0}>
@@ -1136,16 +995,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                     <button
                                         type="button"
                                         className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                        aria-label="Information about sharing campaign analytics"
+                                        aria-label={t('shareAnalytics.infoAriaLabel')}
                                     >
                                         <Info className="size-4" weight="regular" />
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                    <p>
-                                        Allow team members to view campaign performance metrics and
-                                        reports
-                                    </p>
+                                    <p>{t('shareAnalytics.tooltip')}</p>
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
@@ -1162,10 +1018,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Description */}
             <div>
                 <label className="block text-sm font-semibold text-neutral-700">
-                    Campaign Description
+                    {t('description.label')}
                 </label>
                 <textarea
-                    placeholder="Describe the campaign's goals, target audience, and key messages"
+                    placeholder={t('description.placeholder')}
                     rows={3}
                     {...register('description')}
                     className="mt-2 w-full resize-none rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
@@ -1183,7 +1039,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 {/* Start Date */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Start Date <span className="text-red-500">*</span>
+                        {t('startDate.label')} <span className="text-red-500">*</span>
                     </label>
                     <Controller
                         name="start_date_local"
@@ -1248,7 +1104,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 {/* End Date */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        End Date <span className="text-red-500">*</span>
+                        {t('endDate.label')} <span className="text-red-500">*</span>
                     </label>
                     <Controller
                         name="end_date_local"
@@ -1328,23 +1184,22 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Status */}
             <div>
                 <div className="flex items-center gap-2">
-                    <label className="block text-sm font-semibold text-neutral-700">Status</label>
+                    <label className="block text-sm font-semibold text-neutral-700">
+                        {t('status.label')}
+                    </label>
                     <TooltipProvider>
                         <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
                                 <button
                                     type="button"
                                     className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label="Information about sharing campaign analytics"
+                                    aria-label={t('status.infoAriaLabel')}
                                 >
                                     <Info className="size-4" weight="bold" />
                                 </button>
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>
-                                    To share the campaign link with Learners, please ensure the
-                                    campaign status is set to Active.
-                                </p>
+                                <p>{t('status.tooltip')}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -1367,7 +1222,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             <div>
                 <div className="flex items-center gap-2">
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Initial Lead Score
+                        {t('initialLeadScore.label')}
                     </label>
                     <TooltipProvider>
                         <Tooltip delayDuration={0}>
@@ -1375,16 +1230,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                 <button
                                     type="button"
                                     className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
-                                    aria-label="Initial lead score info"
+                                    aria-label={t('initialLeadScore.infoAriaLabel')}
                                 >
                                     <Info className="size-4" weight="bold" />
                                 </button>
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
-                                <p>
-                                    A base score added to every lead captured through this campaign.
-                                    Final score = initial score + calculated score (capped at 100).
-                                </p>
+                                <p>{t('initialLeadScore.tooltip')}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -1423,8 +1275,33 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 handleDeleteOptionField={handleDeleteOptionField}
                 handleAddDropdownOptions={handleAddDropdownOptions}
                 handleEditFieldAt={handleEditFieldAt}
+                campaignId={editingCampaignId}
                 handleCloseDialog={handleCloseDialog}
                 handleAddPhoneNumber={handleAddPhoneNumber}
+            />
+
+            {/* Post Submit Configuration — the thank-you screen / redirect the
+                respondent gets. Mirrors the enroll invite's Post Form Fill card. */}
+            <Controller
+                name="postSubmitConfiguration"
+                control={control}
+                render={({ field }) => (
+                    <PostSubmitConfigurationEditor
+                        // `?? DEFAULT` guards the window between a form.reset()
+                        // and the async default landing — the editor is fully
+                        // controlled and would crash on an undefined value.
+                        value={field.value ?? DEFAULT_POST_SUBMIT_CONFIGURATION}
+                        onChange={field.onChange}
+                        // Collapsed by default: this is an optional advanced
+                        // block, and the create form must look the way it
+                        // always did for admins who don't need it.
+                        collapsible
+                        previewCampaignName={
+                            watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
+                        }
+                        description={t('postSubmit.description')}
+                    />
+                )}
             />
 
             {/* Custom HTML Card */}
@@ -1438,7 +1315,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     buttonType="secondary"
                     scale="medium"
                 >
-                    Reset
+                    {t('actions.reset')}
                 </MyButton>
                 <MyButton type="submit" disabled={isSaving} buttonType="primary" scale="medium">
                     {primaryButtonLabel}

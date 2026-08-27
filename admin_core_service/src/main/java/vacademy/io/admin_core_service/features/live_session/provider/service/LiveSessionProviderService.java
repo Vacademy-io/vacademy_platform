@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.live_session.provider.service;
 
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import vacademy.io.admin_core_service.features.live_session.repository.SessionSc
 import vacademy.io.admin_core_service.features.live_session.provider.support.ScheduleConflicts;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.media.dto.FileDetailsDTO;
+import vacademy.io.common.tracing.ExternalCallTimer;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.meeting.dto.CreateMeetingRequestDTO;
 import vacademy.io.common.meeting.dto.CreateMeetingResponseDTO;
@@ -56,6 +58,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Slf4j
 public class LiveSessionProviderService {
 
+    private final EntityManager entityManager;
     private final ObjectMapper objectMapper;
     private final LiveSessionProviderFactory providerFactory;
     private final LiveSessionProviderConfigRepository configRepository;
@@ -66,8 +69,38 @@ public class LiveSessionProviderService {
     private final BbbServerRouter bbbServerRouter;
     private final RecordingAutoLinkService recordingAutoLinkService;
     private final vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomRecordingS3Service zoomRecordingS3Service;
+    private final vacademy.io.admin_core_service.features.live_session.provider.manager.ZoomMeetingManager zoomMeetingManager;
 
     private static final List<String> ACTIVE = List.of("ACTIVE");
+
+    /** How long a caller will queue behind an in-flight BBB /create before giving up. */
+    private static final String SCHEDULE_LOCK_TIMEOUT = "10s";
+
+    /**
+     * Bound how long the SELECT ... FOR UPDATE below may wait for the row lock.
+     *
+     * The @QueryHints jakarta.persistence.lock.timeout on
+     * SessionScheduleRepository#findByIdForUpdate does NOT do this on PostgreSQL:
+     * Postgres only understands NOWAIT / SKIP LOCKED on FOR UPDATE, it has no
+     * per-statement lock wait, so Hibernate silently drops the hint and the server
+     * default (lock_timeout = 0, i.e. wait forever) applies. That is why joins
+     * queued 14-15s -- and once 227s -- behind a slow BBB /create on 2026-08-22,
+     * each one pinning a pooled connection for the whole wait.
+     *
+     * SET LOCAL, not SET: it is scoped to this transaction and reverts on
+     * commit/rollback. pgbouncer runs in transaction pooling, so a plain SET would
+     * stay on the server connection and silently apply to whatever service picked
+     * it up next.
+     *
+     * On expiry Postgres raises SQLSTATE 55P03, which Hibernate maps to
+     * PessimisticLockException and Spring to PessimisticLockingFailureException --
+     * the exception LiveSessionProviderController#joinBbbMeeting already catches to
+     * return 503 "Meeting is being created, please retry".
+     */
+    private void boundScheduleLockWait() {
+        entityManager.createNativeQuery("SET LOCAL lock_timeout = '" + SCHEDULE_LOCK_TIMEOUT + "'")
+                .executeUpdate();
+    }
 
     // -----------------------------------------------------------------------
     // OAuth connect
@@ -150,6 +183,7 @@ public class LiveSessionProviderService {
             Supplier<ProviderMeetingCreateRequestDTO> requestSupplier,
             boolean recreate, String role) {
 
+        boundScheduleLockWait();
         SessionSchedule schedule = scheduleRepository.findByIdForUpdate(scheduleId)
                 .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
 
@@ -197,7 +231,11 @@ public class LiveSessionProviderService {
 
         // BBB /create call — if this throws, the @Transactional rolls back and
         // the row's providerMeetingId stays null. No orphan/partial state.
-        CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
+        // Attributed to `ext`: this is BBB/Zoom creating the room, not our compute.
+        // Without the split, the first learner into a live class sees a ~2s request
+        // and the speed indicator blames us for the provider's work.
+        CreateMeetingResponseDTO response = ExternalCallTimer.time(
+                () -> strategy.createMeeting(meetingRequest, request.getInstituteId()));
 
         // Persist provider IDs onto the locked entity. Same field-set rules as
         // the legacy createMeeting() to preserve frontend-friendly linkType
@@ -241,6 +279,7 @@ public class LiveSessionProviderService {
         // i.e. racy). The lock is held until commit, so a racing caller blocks then observes
         // the persisted id and returns it without hitting the provider again.
         if (request.getScheduleId() != null) {
+            boundScheduleLockWait();
             SessionSchedule existing = scheduleRepository.findByIdForUpdate(request.getScheduleId())
                     .orElse(null);
             if (existing != null && existing.getProviderMeetingId() != null
@@ -272,16 +311,21 @@ public class LiveSessionProviderService {
                 .zoomConfig(request.getZoomConfig())
                 .build();
 
-        CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
+        // Attributed to `ext`: this is BBB/Zoom creating the room, not our compute.
+        // Without the split, the first learner into a live class sees a ~2s request
+        // and the speed indicator blames us for the provider's work.
+        CreateMeetingResponseDTO response = ExternalCallTimer.time(
+                () -> strategy.createMeeting(meetingRequest, request.getInstituteId()));
 
         // Write everything back to the schedule row — no extra table needed
         if (request.getScheduleId() != null) {
             scheduleRepository.findById(request.getScheduleId()).ifPresent(schedule -> {
                 schedule.setCustomMeetingLink(response.getJoinUrl()); // learner join URL
-                // Only set linkType if not already set — preserve the frontend-friendly
-                // value (e.g. "bbb") instead of overwriting with enum name ("BBB_MEETING")
-                if (schedule.getLinkType() == null || schedule.getLinkType().isBlank()) {
-                    schedule.setLinkType(providerName);
+                // Set linkType when the row does not already carry a real one — preserving a
+                // frontend-friendly value ("bbb") the wizard already chose, but replacing the
+                // "UNKNOWN" placeholder, which is NOT a choice (see isUnsetLinkType).
+                if (isUnsetLinkType(schedule.getLinkType())) {
+                    schedule.setLinkType(frontendLinkType(providerName));
                 }
                 schedule.setProviderMeetingId(response.getProviderMeetingId());
                 schedule.setProviderHostUrl(response.getHostUrl());
@@ -775,11 +819,90 @@ public class LiveSessionProviderService {
         Map<String, String> links = new java.util.HashMap<>();
         if (schedule.getCustomMeetingLink() != null)
             links.put("joinUrl", schedule.getCustomMeetingLink());
-        if (schedule.getProviderHostUrl() != null)
-            links.put("hostUrl", schedule.getProviderHostUrl());
+        String hostUrl = freshZoomHostUrlOrStored(schedule);
+        if (hostUrl != null)
+            links.put("hostUrl", hostUrl);
         if (schedule.getProviderMeetingId() != null)
             links.put("providerMeetingId", schedule.getProviderMeetingId());
         return links;
+    }
+
+    /**
+     * Returns a host url that actually works.
+     *
+     * <p>{@code provider_host_url} is a Zoom start url captured once, when the occurrence was
+     * provisioned. The ZAK embedded in it lives about two hours, so for every recurring session
+     * the stored link is dead long before the class runs — the host cannot claim host role, the
+     * meeting is never started, and nothing is ever recorded. (The embedded SDK path never hit
+     * this because {@code ZoomSdkController} mints a ZAK per request; only the redirect path
+     * handed out the stale value.) Re-mint on read for Zoom; fall back to the stored url if Zoom
+     * is unreachable, since a stale link still beats no link.
+     */
+    private String freshZoomHostUrlOrStored(SessionSchedule schedule) {
+        String stored = schedule.getProviderHostUrl();
+        String meetingId = schedule.getProviderMeetingId();
+        if (meetingId == null || meetingId.isBlank() || !isZoom(schedule.getLinkType())) {
+            return stored;
+        }
+        try {
+            String fresh = zoomMeetingManager.fetchStartUrl(
+                    zoomMeetingManager.resolveAccountByMeeting(meetingId), meetingId);
+            return fresh != null ? fresh : stored;
+        } catch (Exception e) {
+            log.warn("zoom.host_url.refresh.fail scheduleId={} meetingId={} reason={}",
+                    schedule.getId(), meetingId, e.getClass().getSimpleName());
+            return stored;
+        }
+    }
+
+
+    /**
+     * True when a schedule's linkType carries no real provider.
+     *
+     * <p>{@code "UNKNOWN"} is what URL sniffing returns for a schedule created before its meeting
+     * link exists — which is every provider-provisioned occurrence, because the link is minted
+     * right here. It is neither null nor blank, so the old guard mistook it for a deliberate
+     * choice and left it in place permanently. Rows stuck on it are broken at both ends: the
+     * dashboards match linkType against StreamingPlatform literals, so "Start as Host" degrades
+     * to a plain participant link and the teacher never claims host role; and on the server
+     * {@code MeetingProvider.fromString("UNKNOWN")} throws, so strategy resolution fails outright.
+     */
+    static boolean isUnsetLinkType(String linkType) {
+        return linkType == null || linkType.isBlank() || "UNKNOWN".equalsIgnoreCase(linkType);
+    }
+
+    /**
+     * The literal the dashboards actually match on, for a given provider.
+     *
+     * <p>Storing the enum name instead ("GOOGLE_MEET", "ZOOM_MEETING") is the same
+     * case-sensitivity trap: some frontend branches accept the enum name, others only the
+     * StreamingPlatform literal, so the enum name works in one place and silently fails in
+     * another. The backend accepts either — {@code MeetingProvider.fromString} normalises.
+     */
+    static String frontendLinkType(String providerName) {
+        if (providerName == null || providerName.isBlank()) {
+            return providerName;
+        }
+        try {
+            switch (MeetingProvider.fromString(providerName)) {
+                case ZOOM_MEETING:
+                    return "zoom";
+                case GOOGLE_MEET:
+                    return "google meet";
+                case BBB_MEETING:
+                    return "bbb";
+                case ZOHO_MEETING:
+                    return "zoho";
+            }
+        } catch (Exception e) {
+            log.debug("unrecognised provider name {} — storing as-is", providerName);
+        }
+        return providerName;
+    }
+
+    /** True for both the frontend-friendly "zoom"/"ZOOM" and the enum name "ZOOM_MEETING". */
+    static boolean isZoom(String linkType) {
+        return linkType != null && linkType.toUpperCase().startsWith("ZOOM");
     }
 
     // -----------------------------------------------------------------------

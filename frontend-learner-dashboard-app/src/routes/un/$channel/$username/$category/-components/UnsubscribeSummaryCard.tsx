@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { CheckCircle, SpinnerGap, Envelope, ChatCircle, type Icon } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +29,7 @@ export const UnsubscribeSummaryCard = ({
   onResubscribe,
   statusCardProps,
 }: UnsubscribeSummaryCardProps) => {
+  const { t } = useTranslation("miscRoutesA");
   const isResubscribePending = isPending && activeAction === "RESUBSCRIBE";
   const isUnsubscribePending = isPending && activeAction === "UNSUBSCRIBE";
   const hasSuccessfulUnsubscribe =
@@ -60,7 +62,9 @@ export const UnsubscribeSummaryCard = ({
           {isError ? (
             <>
               <Button onClick={onRetry} disabled={isPending}>
-                {isPending ? "Retrying…" : "Try again"}
+                {isPending
+                  ? t("unsubscribe.summary.retrying")
+                  : t("unsubscribe.summary.tryAgain")}
               </Button>
               {showResubscribe && (
                 <Button
@@ -68,17 +72,23 @@ export const UnsubscribeSummaryCard = ({
                   onClick={onResubscribe}
                   disabled={isResubscribePending}
                 >
-                  {isResubscribePending ? "Please wait…" : "Resubscribe"}
+                  {isResubscribePending
+                    ? t("unsubscribe.summary.pleaseWait")
+                    : t("unsubscribe.summary.resubscribe")}
                 </Button>
               )}
             </>
           ) : showResubscribe ? (
             <Button onClick={onResubscribe} disabled={isResubscribePending}>
-              {isResubscribePending ? "Please wait…" : "Resubscribe"}
+              {isResubscribePending
+                ? t("unsubscribe.summary.pleaseWait")
+                : t("unsubscribe.summary.resubscribe")}
             </Button>
           ) : (
             <Button onClick={onRetry} disabled={isUnsubscribePending}>
-              {isUnsubscribePending ? "Please wait…" : "Unsubscribe"}
+              {isUnsubscribePending
+                ? t("unsubscribe.summary.pleaseWait")
+                : t("unsubscribe.summary.unsubscribe")}
             </Button>
           )}
         </div>

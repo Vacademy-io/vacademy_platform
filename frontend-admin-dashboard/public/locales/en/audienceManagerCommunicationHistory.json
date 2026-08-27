@@ -1,0 +1,30 @@
+{
+    "loading": "Loading communication history...",
+    "emptyState": "No messages sent to this audience yet.",
+    "heading": "Communication History",
+    "noValuePlaceholder": "—",
+    "failedCount_one": "{{count}} failed",
+    "failedCount_other": "{{count}} failed",
+    "pageOf": "Page {{current}} of {{total}}",
+    "table": {
+        "channel": "Channel",
+        "templateSubject": "Template / Subject",
+        "recipients": "Recipients",
+        "result": "Result",
+        "status": "Status",
+        "sentAt": "Sent At"
+    },
+    "channels": {
+        "whatsapp": "WhatsApp",
+        "email": "Email",
+        "push": "Push",
+        "systemAlert": "System Alert"
+    },
+    "statuses": {
+        "completed": "Completed",
+        "processing": "Processing",
+        "partial": "Partial",
+        "failed": "Failed",
+        "pending": "Pending"
+    }
+}

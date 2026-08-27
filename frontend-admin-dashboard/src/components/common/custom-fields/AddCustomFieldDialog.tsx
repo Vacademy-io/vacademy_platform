@@ -59,7 +59,26 @@ export interface CustomFieldConfig {
     description?: string;
     /** Short hint shown under any field. Distinct from `description`. */
     helpText?: string;
+    /**
+     * Proof-of-ownership gate: the visitor must receive a one-time code on the
+     * value they typed and enter it back before the form can be submitted.
+     * Honoured by the product-page checkout and by catalogue lead forms.
+     */
+    verification?: {
+        required?: boolean;
+        channel?: 'WHATSAPP';
+        /** Approved WhatsApp template. Blank uses the institute's OTP config. */
+        templateName?: string;
+        /** Language that template is approved in. Blank means English. */
+        languageCode?: string;
+    };
 }
+
+/**
+ * Field types a one-time code can actually be delivered TO. Offering
+ * verification anywhere else would produce a gate nobody can pass.
+ */
+const CAN_VERIFY = (type: string) => type === 'phone' || type === 'tel';
 
 /** An existing field's current settings, used to prefill the dialog in edit mode. */
 export interface CustomFieldInitialValues {
@@ -93,6 +112,11 @@ interface AddCustomFieldDialogProps {
     /** Controlled open state. Pass a `key` per edited field so the prefill re-runs. */
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    /**
+     * Shown under the header. Used to warn that the field being edited is shared
+     * with other forms, since its type and label live on one row.
+     */
+    notice?: React.ReactNode;
 }
 
 const hasOptionsType = (type: CustomFieldType) =>
@@ -108,6 +132,7 @@ export const AddCustomFieldDialog = ({
     supportedTypes,
     mode = 'add',
     initialField,
+    notice,
     open: controlledOpen,
     onOpenChange,
 }: AddCustomFieldDialogProps) => {
@@ -128,6 +153,15 @@ export const AddCustomFieldDialog = ({
     const [isRequired, setIsRequired] = useState(true);
     const [helpTextEnabled, setHelpTextEnabled] = useState(false);
     const [helpText, setHelpText] = useState('');
+    /**
+     * The config the field arrived with. buildConfig starts from this so that
+     * settings this dialog does not model (min/max, date bounds, maxLength,
+     * countryCode) survive an edit instead of being silently dropped.
+     */
+    const [initialConfig, setInitialConfig] = useState<CustomFieldConfig>({});
+    const [verifyEnabled, setVerifyEnabled] = useState(false);
+    const [verifyTemplate, setVerifyTemplate] = useState('');
+    const [verifyLanguage, setVerifyLanguage] = useState('');
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [checkboxDefault, setCheckboxDefault] = useState(false);
     const [checkboxHeading, setCheckboxHeading] = useState('');
@@ -153,6 +187,10 @@ export const AddCustomFieldDialog = ({
         setCheckboxDescription('');
         setAllowedFileTypes([]);
         setMaxSizeMB(5);
+        setInitialConfig({});
+        setVerifyEnabled(false);
+        setVerifyTemplate('');
+        setVerifyLanguage('');
     };
 
     /** Load an existing field's settings into the form so editing starts from what is there. */
@@ -170,6 +208,10 @@ export const AddCustomFieldDialog = ({
         setCheckboxDescription(config.description ?? '');
         setHelpText(config.helpText ?? '');
         setHelpTextEnabled(Boolean(config.helpText));
+        setInitialConfig(config);
+        setVerifyEnabled(Boolean(config.verification?.required));
+        setVerifyTemplate(config.verification?.templateName ?? '');
+        setVerifyLanguage(config.verification?.languageCode ?? '');
         setAllowedFileTypes(config.allowedFileTypes ?? []);
         setMaxSizeMB(config.maxSizeMB ?? 5);
         // Open the panel straight away when it holds values the admin came to change.
@@ -184,22 +226,56 @@ export const AddCustomFieldDialog = ({
     };
 
     const buildConfig = (): CustomFieldConfig | undefined => {
-        const config: CustomFieldConfig = {};
+        // Start from what the field already had, so settings this dialog does not
+        // model survive. Every key the dialog DOES own is then either set or
+        // deleted below — a switch turned off has to actually remove its key,
+        // not just decline to add it.
+        const config: CustomFieldConfig = { ...initialConfig };
+
         if (selectedType === 'checkbox') {
             config.defaultValue = checkboxDefault ? 'true' : 'false';
             if (checkboxHeading.trim()) config.heading = checkboxHeading.trim();
+            else delete config.heading;
             if (checkboxDescription.trim()) config.description = checkboxDescription.trim();
-        } else if (defaultValue.trim()) {
-            config.defaultValue = defaultValue.trim();
+            else delete config.description;
+        } else {
+            // Switching away from a checkbox leaves its consent copy behind.
+            delete config.heading;
+            delete config.description;
+            if (defaultValue.trim()) config.defaultValue = defaultValue.trim();
+            else delete config.defaultValue;
         }
+
         if (selectedType === 'file') {
             if (allowedFileTypes.length > 0) config.allowedFileTypes = allowedFileTypes;
+            else delete config.allowedFileTypes;
             config.maxSizeMB = maxSizeMB;
+        } else {
+            delete config.allowedFileTypes;
+            delete config.maxSizeMB;
         }
+
         if (helpTextEnabled && helpText.trim()) config.helpText = helpText.trim();
+        else delete config.helpText;
+
+        // Verification is OPTIONAL and must be removable: turning the switch off,
+        // or changing to a type a code cannot be delivered to, clears it.
+        if (verifyEnabled && CAN_VERIFY(selectedType)) {
+            config.verification = {
+                required: true,
+                channel: 'WHATSAPP',
+                ...(verifyTemplate.trim() ? { templateName: verifyTemplate.trim() } : {}),
+                ...(verifyLanguage.trim() ? { languageCode: verifyLanguage.trim() } : {}),
+            };
+        } else {
+            delete config.verification;
+        }
+
         // Only surface isRequired when it deviates from the default-true that
         // every caller already applies, so config stays undefined otherwise.
         if (!isRequired) config.isRequired = false;
+        else delete config.isRequired;
+
         return Object.keys(config).length > 0 ? config : undefined;
     };
 
@@ -263,6 +339,8 @@ export const AddCustomFieldDialog = ({
                         </p>
                     </div>
                 </div>
+
+                {notice && <div className="shrink-0 px-6 pt-4">{notice}</div>}
 
                 <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 md:grid-cols-2">
                     {/* ---------------- Left: the form ---------------- */}
@@ -443,6 +521,64 @@ export const AddCustomFieldDialog = ({
                                 size="large"
                                 className="w-full"
                             />
+                        )}
+
+                        {/* Only on field types a code can be delivered to. */}
+                        {CAN_VERIFY(selectedType) && (
+                            <>
+                                <div className="rounded-lg border border-neutral-200 p-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex flex-col">
+                                            <span className="text-subtitle">
+                                                Verify with a WhatsApp code{' '}
+                                                <span className="font-regular text-neutral-500">
+                                                    (Optional)
+                                                </span>
+                                            </span>
+                                            <span className="text-caption text-neutral-500">
+                                                They get a one-time code and must enter it before
+                                                the form can be submitted
+                                            </span>
+                                        </div>
+                                        <Switch
+                                            checked={verifyEnabled}
+                                            onCheckedChange={setVerifyEnabled}
+                                        />
+                                    </div>
+                                </div>
+
+                                {verifyEnabled && (
+                                    <>
+                                        {/* The gate blocks submission, so a template that cannot
+                                            send leaves a form nobody can complete. The resolver
+                                            does NOT fall back to a platform default — it fails. */}
+                                        <div className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-caption text-warning-700">
+                                            This institute needs an approved WhatsApp OTP template.
+                                            Without one the code cannot be sent, and because
+                                            verification is required to submit, nobody will be able
+                                            to complete the form.
+                                        </div>
+                                        <MyInput
+                                            inputType="text"
+                                            label="Template name"
+                                            inputPlaceholder="Leave blank to use this institute's OTP template"
+                                            input={verifyTemplate}
+                                            onChangeFunction={(e) => setVerifyTemplate(e.target.value)}
+                                            size="large"
+                                            className="w-full"
+                                        />
+                                        <MyInput
+                                            inputType="text"
+                                            label="Template language"
+                                            inputPlaceholder="en"
+                                            input={verifyLanguage}
+                                            onChangeFunction={(e) => setVerifyLanguage(e.target.value)}
+                                            size="large"
+                                            className="w-full"
+                                        />
+                                    </>
+                                )}
+                            </>
                         )}
 
                         {hasAdvancedOptions(selectedType) && (

@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { getBatchNamesByIds } from '../assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { useTranslation } from 'react-i18next';
 
 const ScheduleTestDetails = ({
     scheduleTestContent,
@@ -32,6 +33,7 @@ const ScheduleTestDetails = ({
     selectedTab: string;
     handleRefetchData: () => void;
 }) => {
+    const { t } = useTranslation('assessmentScheduleTestDetails');
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const navigate = useNavigate();
     const { data: instituteDetails, isLoading } = useSuspenseQuery(useInstituteQuery());
@@ -125,12 +127,14 @@ const ScheduleTestDetails = ({
                         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                             <DialogTrigger onClick={(e) => e.stopPropagation()}>
                                 <span className="text-sm text-primary-500">
-                                    +{batchIdsList.length - 1} more
+                                    {t('batchDialog.moreLink', {
+                                        count: batchIdsList.length - 1,
+                                    })}
                                 </span>
                             </DialogTrigger>
                             <DialogContent className="p-0">
                                 <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
-                                    Assessment Batches
+                                    {t('batchDialog.title')}
                                 </h1>
                                 <ul className="flex list-disc flex-col gap-4 py-4 pl-8 pr-4">
                                     {batchIdsList.map((batchId, idx) => {
@@ -147,38 +151,63 @@ const ScheduleTestDetails = ({
                     />
                 </div>
             </div>
-            <div className="flex w-full items-start justify-start gap-8 text-sm text-neutral-500">
+            {/* A grid, not flex-wrap. Three fixed flex columns overflowed a phone and pushed
+                the whole card wider than the viewport; letting them wrap instead dropped the
+                third column onto its own row on desktop, which looked broken the other way.
+                A column count per breakpoint keeps the desktop three-up intact and stacks
+                cleanly below it. */}
+            <div className="grid w-full grid-cols-1 items-start gap-x-8 gap-y-4 text-sm text-neutral-500 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="flex flex-col gap-4">
-                    <p>Created on: {convertToLocalDateTime(scheduleTestContent.created_at)}</p>
                     <p>
-                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:{' '}
-                        {getSubjectNameById(
-                            instituteDetails?.subjects || [],
-                            scheduleTestContent.subject_id || ''
-                        )}
+                        {t('info.createdOn', {
+                            date: convertToLocalDateTime(scheduleTestContent.created_at),
+                        })}
+                    </p>
+                    <p>
+                        {t('info.subject', {
+                            label: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
+                            name: getSubjectNameById(
+                                instituteDetails?.subjects || [],
+                                scheduleTestContent.subject_id || ''
+                            ),
+                        })}
                     </p>
                 </div>
                 <div className="flex flex-col gap-4">
                     {(scheduleTestContent.play_mode === 'EXAM' ||
                         scheduleTestContent.play_mode === 'SURVEY') && (
                         <p>
-                            Start Date and Time:{' '}
-                            {convertToLocalDateTime(scheduleTestContent.bound_start_time)}
+                            {t('info.startDateTime', {
+                                date: convertToLocalDateTime(scheduleTestContent.bound_start_time),
+                            })}
                         </p>
                     )}
                     {(scheduleTestContent.play_mode === 'EXAM' ||
                         scheduleTestContent.play_mode === 'MOCK') && (
                         <p>
-                            <span className="font-normal text-neutral-500">Duration: </span>
+                            <span className="font-normal text-neutral-500">
+                                {t('info.duration.label')}
+                            </span>
                             {scheduleTestContent.duration >= 60 ? (
                                 <span>
-                                    {Math.floor(scheduleTestContent.duration / 60)} hrs{' '}
+                                    {t('info.duration.hours', {
+                                        count: Math.floor(scheduleTestContent.duration / 60),
+                                    })}{' '}
                                     {scheduleTestContent.duration % 60 > 0 && (
-                                        <> {scheduleTestContent.duration % 60} min</>
+                                        <>
+                                            {' '}
+                                            {t('info.duration.minutes', {
+                                                count: scheduleTestContent.duration % 60,
+                                            })}
+                                        </>
                                     )}
                                 </span>
                             ) : (
-                                <span>{scheduleTestContent.duration} min</span>
+                                <span>
+                                    {t('info.duration.minutes', {
+                                        count: scheduleTestContent.duration,
+                                    })}
+                                </span>
                             )}
                         </p>
                     )}
@@ -187,16 +216,21 @@ const ScheduleTestDetails = ({
                     {(scheduleTestContent.play_mode === 'EXAM' ||
                         scheduleTestContent.play_mode === 'SURVEY') && (
                         <p>
-                            End Date and Time:{' '}
-                            {convertToLocalDateTime(scheduleTestContent.bound_end_time)}
+                            {t('info.endDateTime', {
+                                date: convertToLocalDateTime(scheduleTestContent.bound_end_time),
+                            })}
                         </p>
                     )}
-                    <p>Total Participants: {scheduleTestContent.user_registrations}</p>
+                    <p>
+                        {t('info.totalParticipants', {
+                            count: scheduleTestContent.user_registrations,
+                        })}
+                    </p>
                 </div>
             </div>
-            <div className="flex justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2 text-sm text-neutral-500">
-                    <h1 className="!font-normal text-black">Join Link:</h1>
+                    <h1 className="!font-normal text-black">{t('joinLink.label')}</h1>
                     <span className="px-3 py-2 text-sm underline">
                         {joinLink}
                     </span>

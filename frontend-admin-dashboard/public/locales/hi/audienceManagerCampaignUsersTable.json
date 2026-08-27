@@ -1,0 +1,136 @@
+{
+    "heading": {
+        "fallbackTitle": "ऑडियंस सूची",
+        "addResponse": "प्रतिक्रिया जोड़ें",
+        "loadingRespondents": "प्रतिवादी लोड हो रहे हैं…",
+        "respondentsCount_one": "{{formattedCount}} प्रतिवादी",
+        "respondentsCount_other": "{{formattedCount}} प्रतिवादी"
+    },
+    "filters": {
+        "tiers": {
+            "label": "सभी स्तर",
+            "hot": "हॉट",
+            "warm": "वॉर्म",
+            "cold": "कोल्ड"
+        },
+        "leadStatus": {
+            "label": "सभी लीड",
+            "active": "सक्रिय (नामांकित नहीं)",
+            "converted": "नामांकित / परिवर्तित"
+        },
+        "sla": {
+            "label": "सभी SLA स्थितियाँ",
+            "anyOverdue": "कोई भी विलंबित",
+            "reachOutOverdue": "संपर्क विलंबित",
+            "reachOutDueSoon": "संपर्क शीघ्र देय",
+            "followUpDue": "फ़ॉलो-अप देय",
+            "followUpOverdue": "फ़ॉलो-अप विलंबित"
+        },
+        "callHistory": {
+            "placeholder": "कॉल इतिहास",
+            "notCalled": "कॉल नहीं की गई",
+            "called": "कॉल की गई (कोई भी)",
+            "calledOnce": "एक बार कॉल की गई",
+            "calledTwicePlus": "2+ बार कॉल की गई",
+            "aiCalled": "AI द्वारा कॉल की गई",
+            "manualCalled": "मैन्युअल रूप से कॉल की गई"
+        },
+        "moreFilters": "अधिक फ़िल्टर",
+        "dateFrom": "से",
+        "dateTo": "तक",
+        "applyDates": "तारीखें लागू करें",
+        "clearAll": "सभी साफ़ करें"
+    },
+    "chips": {
+        "search": "खोजें: {{query}}",
+        "datePlaceholder": "…",
+        "date": "तारीख: {{from}} → {{to}}",
+        "tier": "स्तर: {{values}}",
+        "status": "स्थिति: {{values}}",
+        "statusActive": "सक्रिय",
+        "statusConverted": "परिवर्तित",
+        "sla": "SLA: {{values}}",
+        "counsellor": "काउंसलर: {{values}}",
+        "counsellorUnassigned": "अनसाइन्ड",
+        "counsellorSelected": "चयनित",
+        "customField": "{{fieldName}}: {{value}}",
+        "customFieldFallback": "फ़ील्ड",
+        "removeAriaLabel": "{{label}} हटाएं"
+    },
+    "toolbar": {
+        "sendMessage": "संदेश भेजें",
+        "importCsv": "CSV आयात करें",
+        "exporting": "निर्यात हो रहा है…",
+        "export": "निर्यात करें"
+    },
+    "search": {
+        "placeholder": "लीड खोजें",
+        "ariaLabel": "लीड खोजें",
+        "loadingResults": "परिणाम लोड हो रहे हैं…",
+        "resultsCount_one": "{{total}} में से {{shown}} परिणाम दिखाया जा रहा है",
+        "resultsCount_other": "{{total}} में से {{shown}} परिणाम दिखाए जा रहे हैं"
+    },
+    "bulkToolbar": {
+        "selectedCount_one": "{{count}} चयनित",
+        "selectedCount_other": "{{count}} चयनित",
+        "selecting": "चयन हो रहा है…",
+        "selectAll": "सभी {{count}} चुनें",
+        "clear": "साफ़ करें",
+        "bulkActions": "बल्क कार्रवाइयाँ",
+        "assignLeads": "लीड असाइन करें",
+        "unassignLeads": "लीड अनअसाइन करें",
+        "deleteLeads": "लीड हटाएं"
+    },
+    "emptyState": {
+        "errorTitle": "प्रतिवादी लोड नहीं हो सके",
+        "errorDescription": "कैंपेन उपयोगकर्ताओं को लाने में कुछ गड़बड़ हुई। फिर से प्रयास करें।",
+        "noResultsTitle": "इन फ़िल्टरों से कोई प्रतिवादी मेल नहीं खाता",
+        "noResultsDescription": "अधिक परिणाम देखने के लिए फ़िल्टर साफ़ करने का प्रयास करें।",
+        "noDataTitle": "अभी तक कोई प्रतिवादी नहीं",
+        "noDataDescription": "जब लोग यह ऑडियंस फ़ॉर्म भरेंगे, तो वे यहाँ दिखाई देंगे।"
+    },
+    "exportColumns": {
+        "leadId": "लीड आईडी",
+        "submittedAt": "सबमिट किया गया",
+        "name": "नाम",
+        "email": "ईमेल",
+        "mobile": "मोबाइल",
+        "leadStatus": "लीड स्थिति",
+        "counsellor": "काउंसलर",
+        "activityNotes": "गतिविधि और नोट्स",
+        "notesCount": "नोट्स की संख्या",
+        "leadJourney": "लीड यात्रा (डिस्पोज़िशन और नोट्स)"
+    },
+    "csv": {
+        "headers": {
+            "leadId": "लीड आईडी",
+            "submittedAt": "सबमिट किया गया",
+            "name": "नाम",
+            "email": "ईमेल",
+            "mobile": "मोबाइल",
+            "leadStatus": "लीड स्थिति",
+            "counsellor": "काउंसलर",
+            "activityNotes": "गतिविधि और नोट्स",
+            "notesCount": "नोट्स की संख्या",
+            "leadJourney": "लीड यात्रा (डिस्पोज़िशन और नोट्स)"
+        },
+        "noteFallbackLabel": "नोट",
+        "updatedByLabel": "अपडेट किया गया",
+        "dateLabel": "तारीख"
+    },
+    "toasts": {
+        "selectAllFailed": "सभी लीड चुनने में विफल",
+        "noLeadsToExport": "निर्यात करने के लिए कोई लीड नहीं",
+        "exportStarting": "निर्यात शुरू हो रहा है…",
+        "noDataToExport": "निर्यात करने के लिए कोई डेटा नहीं",
+        "exportSuccess_one": "{{count}} लीड निर्यात की गई",
+        "exportSuccess_other": "{{count}} लीड निर्यात की गईं",
+        "exportFailed": "लीड निर्यात करने में विफल"
+    },
+    "campaignFields": {
+        "optedOutFrom": "इससे ऑप्ट-आउट किया"
+    },
+    "dialogs": {
+        "campaignFallbackName": "कैंपेन"
+    }
+}

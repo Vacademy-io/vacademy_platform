@@ -1,16 +1,21 @@
 import { useEffect, useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { useTranslation } from "react-i18next";
+import { CaretDown, CaretUp, Backspace } from "@phosphor-icons/react";
 import { QUESTION_TYPES } from "@/types/assessment";
 import { useAssessmentStore } from "@/stores/assessment-store";
-import { MyInput } from "@/components/design-system/input";
+import { cn } from "@/lib/utils";
 
 export function NumericInputWithKeypad() {
+  const { t } = useTranslation("questionTest");
   const { currentQuestion, answers, setAnswer, setQuestionState } =
     useAssessmentStore();
   const [numericValue, setNumericValue] = useState("");
   const [isDecimal, setIsDecimal] = useState(false);
   const [maxDecimals, setMaxDecimals] = useState(0);
+  // The pad is a fallback for devices where the OS keyboard covers the
+  // question; a learner who prefers the system keyboard can fold it away and
+  // get the screen back.
+  const [isPadOpen, setIsPadOpen] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Initialize component state based on question settings
@@ -47,11 +52,12 @@ export function NumericInputWithKeypad() {
     }
   }, [currentQuestion, answers]);
 
-  // Auto-focus input on load
+  // Auto-focus on pointer devices only. On a phone, focusing raises the OS
+  // keyboard over the question the moment it loads — the learner has not read
+  // it yet, and the on-screen pad below covers the same need.
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    inputRef.current?.focus({ preventScroll: true });
   }, [currentQuestion]);
 
   // Handle keypad button press
@@ -83,8 +89,6 @@ export function NumericInputWithKeypad() {
       isAnswered: updated.trim() !== "",
     });
   };
-
-  // Handle direct input changes
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -125,64 +129,100 @@ export function NumericInputWithKeypad() {
     return null;
   }
 
-  return (
-    <div className="space-y-4 mt-6">
-      <div className="flex justify-center">
-        <MyInput
-          inputType="text"
-          input={numericValue}
-          onChangeFunction={handleInputChange}
-          inputPlaceholder={
-            isDecimal ? "Enter decimal value" : "Enter integer value"
-          }
-          inputMode="numeric"
-          className="text-xl py-4 font-medium w-full"
-          onCopy={(e) => e.preventDefault()}
-          onCut={(e) => e.preventDefault()}
-          onPaste={(e) => e.preventDefault()}
-        />
-      </div>
+  const padKeys = ["7", "8", "9", "4", "5", "6", "1", "2", "3"];
 
-      <Card className="max-w-md mx-auto">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-3 gap-2">
-            {[7, 8, 9, 4, 5, 6, 1, 2, 3].map((num) => (
-              <Button
-                key={num}
-                variant="outline"
-                className="h-14 text-xl font-medium"
-                onClick={() => handleKeyPress(num.toString())}
-              >
-                {num}
-              </Button>
-            ))}
-            <Button
-              variant="outline"
-              className="h-14 text-xl font-medium"
-              onClick={() => handleKeyPress("0")}
+  const hasNegativeMarking = (() => {
+    try {
+      return Number(JSON.parse(currentQuestion.marking_json)?.data?.negativeMark) > 0;
+    } catch {
+      return false;
+    }
+  })();
+
+  return (
+    <div className="md:max-w-reg-450">
+      <p className="mb-2 text-3xs font-bold uppercase tracking-wide text-neutral-400">
+        {t("common.yourAnswer")}
+      </p>
+
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode={isDecimal ? "decimal" : "numeric"}
+        value={numericValue}
+        onChange={handleInputChange}
+        placeholder={isDecimal ? "0.00" : "0"}
+        aria-label={t("numeric.ariaLabel")}
+        onCopy={(e) => e.preventDefault()}
+        onCut={(e) => e.preventDefault()}
+        onPaste={(e) => e.preventDefault()}
+        className={cn(
+          "h-14 w-full rounded-xl border-2 px-4 font-mono text-h3 font-semibold tabular-nums text-neutral-900 outline-none transition-colors placeholder:text-neutral-300",
+          numericValue ? "border-primary-500" : "border-neutral-200",
+        )}
+      />
+
+      {/* Read from this question's own marking scheme rather than assuming
+          numericals never carry a penalty — some papers do set one, and the
+          chip beside the question already shows it. */}
+      {!hasNegativeMarking && (
+        <p className="mt-2 text-caption text-neutral-400">
+          {t("numeric.noNegativeMarking")}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setIsPadOpen((prev) => !prev)}
+        aria-expanded={isPadOpen}
+        className="mt-3 flex items-center gap-1.5 text-caption font-semibold text-neutral-500 transition-colors hover:text-neutral-800"
+      >
+        {isPadOpen ? t("numeric.pad.hide") : t("numeric.pad.show")}
+        {isPadOpen ? <CaretUp size={14} /> : <CaretDown size={14} />}
+      </button>
+
+      {isPadOpen && (
+        <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl border border-neutral-200 bg-neutral-50 p-2">
+          {padKeys.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => handleKeyPress(key)}
+              className="h-12 rounded-lg border border-neutral-200 bg-white text-title font-semibold text-neutral-800 transition-colors hover:bg-neutral-100"
             >
-              0
-            </Button>
-            {isDecimal && (
-              <Button
-                variant="outline"
-                className="h-14 text-xl font-medium"
-                onClick={() => handleKeyPress(".")}
-                disabled={numericValue.includes(".")}
-              >
-                .
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              className="h-14 text-xl font-medium"
-              onClick={() => handleKeyPress("backspace")}
+              {key}
+            </button>
+          ))}
+          {isDecimal ? (
+            <button
+              type="button"
+              onClick={() => handleKeyPress(".")}
+              disabled={numericValue.includes(".")}
+              aria-label={t("numeric.pad.decimalPointAriaLabel")}
+              className="h-12 rounded-lg border border-neutral-200 bg-white text-title font-semibold text-neutral-800 transition-colors hover:bg-neutral-100 disabled:opacity-40"
             >
-              ←
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              .
+            </button>
+          ) : (
+            <span />
+          )}
+          <button
+            type="button"
+            onClick={() => handleKeyPress("0")}
+            className="h-12 rounded-lg border border-neutral-200 bg-white text-title font-semibold text-neutral-800 transition-colors hover:bg-neutral-100"
+          >
+            0
+          </button>
+          <button
+            type="button"
+            onClick={() => handleKeyPress("backspace")}
+            aria-label={t("numeric.pad.backspaceAriaLabel")}
+            className="grid h-12 place-items-center rounded-lg border border-neutral-200 bg-neutral-100 text-neutral-700 transition-colors hover:bg-neutral-200"
+          >
+            <Backspace size={20} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

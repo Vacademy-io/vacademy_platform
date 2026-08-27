@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MermaidDiagram } from './MermaidDiagram';
 import { EnhancedCodeBlock } from './EnhancedCodeBlock';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
@@ -52,6 +53,7 @@ function ensureFcRatioStyles() {
 
 /** Interactive quiz component for learner side */
 function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; slideId?: string; elementIndex?: number }) {
+    const { t } = useTranslation('libraryCommonA');
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
     const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -99,7 +101,7 @@ function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; sli
     return (
         <div className="inline-quiz" style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', margin: '8px 0', background: '#fafafa' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
             <div style={{ padding: '4px 8px', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '4px', display: 'inline-block', fontSize: '12px', fontWeight: 600, color: '#4338ca', marginBottom: '12px' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
-                QUIZ
+                {t('documentViewer.quiz.badge')}
             </div>
             {!htmlEmpty(quizData.question) && (
                 <div style={{ fontSize: '16px', fontWeight: 400, color: '#333', marginBottom: '12px' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
@@ -123,7 +125,7 @@ function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; sli
                         </span>
                         <div
                             style={{ fontSize: '14px', flex: 1, minWidth: 0 }}
-                            dangerouslySetInnerHTML={{ __html: htmlEmpty(opt.text) ? `Option ${optionLabels[i]}` : opt.text }}
+                            dangerouslySetInnerHTML={{ __html: htmlEmpty(opt.text) ? t('documentViewer.quiz.optionFallback', { letter: optionLabels[i] }) : opt.text }}
                         />
                     </div>
                 );
@@ -132,18 +134,18 @@ function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; sli
                 {!showResult ? (
                     <button onClick={handleCheck} disabled={selectedAnswer === null}
                         style={{ padding: '6px 16px', fontSize: '13px', border: 'none', borderRadius: '4px', backgroundColor: selectedAnswer !== null ? '#4338ca' : '#ccc', color: 'white', cursor: selectedAnswer !== null ? 'pointer' : 'default' }}> {/* design-lint-ignore: dynamic quiz button state — style prop */}
-                        Check Answer
+                        {t('documentViewer.quiz.checkAnswer')}
                     </button>
                 ) : (
                     <button onClick={() => { setSelectedAnswer(null); setShowResult(false); }}
                         style={{ padding: '6px 16px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', color: '#666', cursor: 'pointer' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
-                        Try Again
+                        {t('common.tryAgain')}
                     </button>
                 )}
             </div>
             {showResult && !htmlEmpty(quizData.explanation) && (
                 <div style={{ marginTop: '12px', padding: '10px 12px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '13px', color: '#856404' }}> {/* design-lint-ignore: dynamic quiz explanation state — style prop */}
-                    <strong>Explanation:</strong>{' '}
+                    <strong>{t('documentViewer.quiz.explanationLabel')}</strong>{' '}
                     <span dangerouslySetInnerHTML={{ __html: quizData.explanation || '' }} />
                 </div>
             )}
@@ -154,6 +156,7 @@ function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; sli
 /** Interactive flashcard component for learner side. Front/back are rich HTML
  * (text and/or images) authored in the admin editor. */
 function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex }: { front: string; back: string; aspectRatio?: string; slideId?: string; elementIndex?: number }) {
+    const { t } = useTranslation('libraryCommonA');
     const [isFlipped, setIsFlipped] = useState(false);
     const flipCountRef = useRef(0);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -163,7 +166,14 @@ function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex 
     }, []);
     const ratioClass = FC_RATIO_CLASS[aspectRatio || 'original'] || '';
     // Always bound flashcard images (fc-card-img); add the chosen ratio on top.
-    const imgWrapClass = `fc-card-img ${ratioClass}`.trim();
+    // `fc-face` is the hook for the face-content reset below.
+    const imgWrapClass = `fc-face fc-card-img ${ratioClass}`.trim();
+    // Legacy flashcards store plain text and lean on pre-wrap to keep their
+    // line breaks. Rich content brings its own block spacing, and there pre-wrap
+    // would *also* render the newlines sitting between `</p>` and `<p>` as blank
+    // lines inside the card — so choose the mode per face.
+    const faceWhiteSpace = (h: string) =>
+        /<(p|div|ul|ol|h[1-6]|table|blockquote)\b/i.test(h || '') ? 'normal' : 'pre-wrap';
 
     // Plain text (entities decoded) for activity analytics — the stored HTML
     // would otherwise pollute the admin activity log.
@@ -229,9 +239,9 @@ function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex 
                         boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
                     }}
                 >
-                    <div style={{ fontSize: '10px', color: '#007acc', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>Front</div> {/* design-lint-ignore: flashcard UI state — style prop */}
-                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#333', textAlign: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: front || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
-                    <div style={{ fontSize: '11px', color: '#999', position: 'absolute', bottom: '8px' }}>Click to flip</div> {/* design-lint-ignore: flashcard UI state — style prop */}
+                    <div style={{ fontSize: '10px', color: '#007acc', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>{t('documentViewer.flashcard.front')}</div> {/* design-lint-ignore: flashcard UI state — style prop */}
+                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#333', textAlign: 'center', maxWidth: '100%', whiteSpace: faceWhiteSpace(front) }} dangerouslySetInnerHTML={{ __html: front || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
+                    <div style={{ fontSize: '11px', color: '#999', position: 'absolute', bottom: '8px' }}>{t('documentViewer.flashcard.clickToFlip')}</div> {/* design-lint-ignore: flashcard UI state — style prop */}
                 </div>
                 {/* Back */}
                 <div
@@ -252,9 +262,9 @@ function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex 
                         boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
                     }}
                 >
-                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>Back</div>
-                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#fff', textAlign: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: back || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', position: 'absolute', bottom: '8px' }}>Click to flip back</div>
+                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>{t('documentViewer.flashcard.back')}</div>
+                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#fff', textAlign: 'center', maxWidth: '100%', whiteSpace: faceWhiteSpace(back) }} dangerouslySetInnerHTML={{ __html: back || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', position: 'absolute', bottom: '8px' }}>{t('documentViewer.flashcard.clickToFlipBack')}</div>
                 </div>
             </div>
         </div>
@@ -263,6 +273,7 @@ function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex 
 
 /** Interactive fill-in-the-blanks component for learner side */
 function InteractiveFillBlanks({ sentence, slideId, elementIndex }: { sentence: string; slideId?: string; elementIndex?: number }) {
+    const { t } = useTranslation('libraryCommonA');
     const [answers, setAnswers] = useState<Record<number, string>>({});
     const [showResults, setShowResults] = useState(false);
 
@@ -307,7 +318,7 @@ function InteractiveFillBlanks({ sentence, slideId, elementIndex }: { sentence: 
     return (
         <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', margin: '8px 0', background: '#fafafa' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
             <div style={{ padding: '4px 8px', background: '#e8f4fd', border: '1px solid #90caf9', borderRadius: '4px', display: 'inline-block', fontSize: '12px', fontWeight: 600, color: '#1565c0', marginBottom: '12px' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
-                FILL IN THE BLANKS
+                {t('documentViewer.fillBlanks.badge')}
             </div>
             {/* whiteSpace: pre-wrap mirrors the admin editor (Slate's editable container is pre-wrap),
                 so newlines between statements stay as line breaks instead of collapsing into one paragraph. */}
@@ -323,7 +334,7 @@ function InteractiveFillBlanks({ sentence, slideId, elementIndex }: { sentence: 
                                 type="text"
                                 value={userAnswer}
                                 onChange={(e) => { setAnswers((prev) => ({ ...prev, [idx]: e.target.value })); setShowResults(false); }}
-                                placeholder={`blank ${idx + 1}`}
+                                placeholder={t('documentViewer.fillBlanks.blankPlaceholder', { number: idx + 1 })}
                                 style={{
                                     width: `${Math.max(part.value.length * 10, 80)}px`,
                                     padding: '4px 8px',
@@ -347,15 +358,15 @@ function InteractiveFillBlanks({ sentence, slideId, elementIndex }: { sentence: 
                 <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'center' }}>
                     <button onClick={handleCheck}
                         style={{ padding: '6px 16px', fontSize: '13px', border: 'none', borderRadius: '4px', backgroundColor: '#007acc', color: 'white', cursor: 'pointer' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
-                        Check Answers
+                        {t('documentViewer.fillBlanks.checkAnswers')}
                     </button>
                     <button onClick={() => { setAnswers({}); setShowResults(false); }}
                         style={{ padding: '6px 16px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: 'white', color: '#666', cursor: 'pointer' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
-                        Reset
+                        {t('documentViewer.fillBlanks.reset')}
                     </button>
                     {showResults && (
                         <span style={{ display: 'flex', alignItems: 'center', fontSize: '13px', fontWeight: 600, color: blanks.every((b, i) => (answers[i] || '').trim().toLowerCase() === b.value.trim().toLowerCase()) ? '#22c55e' : '#666' }}> {/* design-lint-ignore: dynamic fill-blanks score state */}
-                            {blanks.filter((b, i) => (answers[i] || '').trim().toLowerCase() === b.value.trim().toLowerCase()).length}/{blanks.length} correct
+                            {t('documentViewer.fillBlanks.scoreLabel', { count: blanks.filter((b, i) => (answers[i] || '').trim().toLowerCase() === b.value.trim().toLowerCase()).length, total: blanks.length })}
                         </span>
                     )}
                 </div>
@@ -429,6 +440,7 @@ function InteractiveToc({
     onNavigate: (anchor: number) => void;
     containerRef: React.RefObject<HTMLDivElement>;
 }) {
+    const { t } = useTranslation('libraryCommonA');
     const [activeAnchor, setActiveAnchor] = useState<number | null>(
         headings.length > 0 ? headings[0]!.anchor : null
     );
@@ -483,16 +495,16 @@ function InteractiveToc({
                         <circle cx="3" cy="12" r="1" fill="hsl(var(--primary-500))" />
                         <circle cx="3" cy="18" r="1" fill="hsl(var(--primary-500))" />
                     </svg>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'hsl(var(--primary-500))' }}>Table of Contents</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'hsl(var(--primary-500))' }}>{t('documentViewer.toc.title')}</span>
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'hsl(var(--primary-500) / 0.7)', marginTop: '2px', marginLeft: '24px' }}>
-                    Tap a section to jump to it.
+                    {t('documentViewer.toc.hint')}
                 </div>
             </div>
             <div style={{ padding: '0.4rem' }}>
                 {headings.length === 0 ? (
                     <div style={{ padding: '12px', textAlign: 'center', color: 'hsl(var(--primary-500) / 0.55)', fontSize: '0.9rem' }}>
-                        This document has no headings yet.
+                        {t('documentViewer.toc.empty')}
                     </div>
                 ) : (
                     headings.map((h) => {
@@ -551,6 +563,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
     htmlContent,
     className = '',
 }) => {
+    const { t } = useTranslation('libraryCommonA');
     const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs' | 'pdfViewer' | 'toc'; content: string; meta?: Record<string, string> }>>([]);
     // Current slide id (for persisting the learner's checkbox/checklist ticks)
     // and a ref over the rendered output so we can wire up todo-item clicks.
@@ -675,16 +688,50 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             };
             continueOrderedNumbering(tempDiv);
 
-            // Yoopta serializes a checkbox/todo item as `<li>[ ] text</li>` (or
-            // `[x]` when checked) — a literal bracket marker, not a real checkbox.
-            // The admin editor re-parses that marker into an interactive checkbox,
-            // but rendered as raw HTML it shows as a bullet + literal "[ ]". Strip
-            // the marker and tag the <li> so the scoped CSS below renders a real
-            // checkbox (read-only, reflecting the saved checked state) like admin.
+            // A checkbox/todo item reaches us in one of two serialized shapes,
+            // depending on which admin editor authored the slide:
+            //  - Yoopta (legacy): `<li>[ ] text</li>` / `[x] text` — a literal
+            //    bracket marker, no checkbox markup at all.
+            //  - Lexical (the "New editor"): `<ul __lexicallisttype="check">` with
+            //    `<li role="checkbox" aria-checked="true|false" class="… lex-check-item">`
+            //    — real state, but the box itself is drawn by CSS that only exists
+            //    inside the admin editor shell.
+            // Rendered as raw HTML both collapse to a plain bullet (plus a literal
+            // "[ ]" for the Yoopta shape). Normalise both onto `todo-item` so the
+            // scoped CSS below draws a real checkbox like admin, and the effect
+            // below can make it tickable.
             const convertTodoListsToCheckboxes = (root: Element) => {
                 const TODO_RE = /^\s*\[([ xX])\]\s?/;
                 let todoIndex = 0;
+                const markTodoItem = (li: Element, checked: boolean) => {
+                    li.classList.add('todo-item');
+                    if (checked) li.classList.add('todo-item--checked');
+                    // Stable document-order index so the learner's saved tick state
+                    // (persisted per slide) can be mapped back onto each item.
+                    li.setAttribute('data-todo-index', String(todoIndex));
+                    todoIndex++;
+                };
+                // querySelectorAll walks in document order, so the two shapes share
+                // one index sequence even in a document that mixes them.
                 root.querySelectorAll('ul > li').forEach((li) => {
+                    // Lexical check list. Lexical only puts role/aria-checked on
+                    // LEAF items, so an <li> that merely wraps a nested list is
+                    // skipped here — which is what we want.
+                    const ariaChecked = li.getAttribute('aria-checked');
+                    if (
+                        li.getAttribute('role') === 'checkbox' ||
+                        ariaChecked !== null ||
+                        li.classList.contains('lex-check-item')
+                    ) {
+                        markTodoItem(
+                            li,
+                            ariaChecked === 'true' ||
+                                li.classList.contains('lex-check-item--checked')
+                        );
+                        return;
+                    }
+
+                    // Yoopta bracket marker.
                     const m = (li.textContent || '').match(TODO_RE);
                     if (!m) return;
                     const checked = m[1]!.toLowerCase() === 'x';
@@ -696,15 +743,26 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     if (node && node.nodeValue) {
                         node.nodeValue = node.nodeValue.replace(TODO_RE, '');
                     }
-                    li.classList.add('todo-item');
-                    if (checked) li.classList.add('todo-item--checked');
-                    // Stable document-order index so the learner's saved tick state
-                    // (persisted per slide) can be mapped back onto each item.
-                    li.setAttribute('data-todo-index', String(todoIndex));
-                    todoIndex++;
+                    markTodoItem(li, checked);
                 });
             };
             convertTodoListsToCheckboxes(tempDiv);
+
+            // Accordion bodies are serialized by the admin as
+            // `<div style="padding: 4px 0;">`. That inline shorthand outranks the
+            // scoped `details > *:not(summary)` rule below, collapsing the
+            // horizontal padding to 0 — so body text hugged the theme accent bar
+            // while the summary above it stayed inset. Drop just the padding
+            // declaration (any other inline styles survive) and let the
+            // stylesheet own accordion spacing.
+            const relaxAccordionBodyPadding = (root: Element) => {
+                root.querySelectorAll('details > div[style*="padding"]').forEach((el) => {
+                    const body = el as HTMLElement;
+                    body.style.removeProperty('padding');
+                    if (!body.getAttribute('style')) body.removeAttribute('style');
+                });
+            };
+            relaxAccordionBodyPadding(tempDiv);
 
             // Build a live outline for any Table of Contents block. The admin TOC
             // can't read the document at serialize time, so it ships a static
@@ -1116,6 +1174,14 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
         if (items.length === 0) return;
 
         const indexOf = (li: HTMLElement) => Number(li.getAttribute('data-todo-index'));
+        // Lexical-authored items carry role="checkbox", so aria-checked has to
+        // track the learner's tick, not the state the author saved.
+        const applyChecked = (li: HTMLElement, checked: boolean) => {
+            li.classList.toggle('todo-item--checked', checked);
+            if (li.getAttribute('role') === 'checkbox') {
+                li.setAttribute('aria-checked', checked ? 'true' : 'false');
+            }
+        };
         items.forEach((li) => {
             li.style.cursor = 'pointer';
         });
@@ -1143,7 +1209,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             checkedSet.clear();
             saved.checked.forEach((i) => checkedSet.add(i));
             items.forEach((li) => {
-                li.classList.toggle('todo-item--checked', checkedSet.has(indexOf(li)));
+                applyChecked(li, checkedSet.has(indexOf(li)));
             });
         });
 
@@ -1154,7 +1220,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             if (!li || !container.contains(li)) return;
             const idx = indexOf(li);
             const nowChecked = !li.classList.contains('todo-item--checked');
-            li.classList.toggle('todo-item--checked', nowChecked);
+            applyChecked(li, nowChecked);
             if (nowChecked) checkedSet.add(idx);
             else checkedSet.delete(idx);
             if (saveTimer) clearTimeout(saveTimer);
@@ -1378,7 +1444,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     list-style: none;
                     cursor: pointer;
                     position: relative;
-                    padding: 1rem 3.5rem 1rem 1.25rem;
+                    padding: 1rem 3.5rem 1rem 1.5rem;
                     font-weight: 600;
                     font-size: 1.0625rem;
                     line-height: 1.5;
@@ -1437,7 +1503,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 /* Accordion body — content paragraph(s), with a gentle reveal. */
                 .document-with-mermaid details > *:not(summary) {
                     margin: 0;
-                    padding: 0.875rem 1.25rem 1.125rem;
+                    padding: 1.125rem 1.5rem 1.25rem;
                     font-size: 1.0625rem;
                     color: #374151; /* design-lint-ignore: CSS-in-JS document theme */
                 }
@@ -1461,6 +1527,36 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 .document-with-mermaid .inline-quiz p:last-child {
                     margin-bottom: 0;
                 }
+
+                /* Flashcard faces: same problem as .inline-quiz. Authored rich text
+                   arrives wrapped in <p>, which would otherwise take the document's
+                   paragraph colour — dark grey on the blue BACK face reads at about
+                   2.3:1 — plus 1.5rem of dead space inside a card that has none to
+                   spare. Inherit the face's own colour/size instead. */
+                .document-with-mermaid .fc-face p,
+                .document-with-mermaid .fc-face li {
+                    margin: 0 0 0.35rem;
+                    font-size: inherit;
+                    color: inherit;
+                    line-height: 1.5;
+                }
+                .document-with-mermaid .fc-face p:last-child,
+                .document-with-mermaid .fc-face li:last-child {
+                    margin-bottom: 0;
+                }
+                /* An empty trailing <p> (common in pasted content) would still take
+                   up a line box. */
+                .document-with-mermaid .fc-face p:empty {
+                    display: none;
+                }
+                .document-with-mermaid .fc-face ul,
+                .document-with-mermaid .fc-face ol {
+                    margin: 0.25rem 0;
+                    padding-left: 1.4rem;
+                    text-align: left;
+                }
+                .document-with-mermaid .fc-face ul { list-style: disc outside; }
+                .document-with-mermaid .fc-face ol { list-style: decimal outside; }
                 .document-with-mermaid .inline-quiz ul {
                     list-style: disc outside;
                     margin: 0.25rem 0;
@@ -1614,7 +1710,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                                     rel="noreferrer noopener"
                                     style={{ color: '#3366cc' }} // design-lint-ignore: PDF viewer link color — style prop
                                 >
-                                    Open PDF in new tab
+                                    {t('documentViewer.pdfViewer.openInNewTab')}
                                 </a>
                             </div>
                         </div>

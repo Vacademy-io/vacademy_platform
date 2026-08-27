@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
@@ -76,6 +77,7 @@ const HtmlWithViewMore: React.FC<{
   className?: string;
   clampLines?: number;
 }> = ({ html, className, clampLines = 4 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -107,7 +109,7 @@ const HtmlWithViewMore: React.FC<{
           onClick={() => setExpanded((v) => !v)}
           className="mt-1 text-sm font-medium text-primary-500 hover:underline focus:outline-none"
         >
-          {expanded ? "View less" : "View more"}
+          {expanded ? t("common.viewLess") : t("common.viewMore")}
         </button>
       )}
     </div>
@@ -159,6 +161,7 @@ const CourseHighlightsAccordion: React.FC<{
   instructors: Array<{ name: string; email: string }>;
   showInstructors: boolean;
 }> = ({ whyLearn, aboutCourse, whoShouldLearn, instructors, showInstructors }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [open, setOpen] = useState(true);
   const hasWhy = hasContent(whyLearn);
   const hasAbout = hasContent(aboutCourse);
@@ -180,7 +183,9 @@ const CourseHighlightsAccordion: React.FC<{
             <Info className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" weight="bold" />
           </div>
           <span className="text-sm font-semibold truncate text-catalogue-text-primary">
-            {getTerminology(ContentTerms.Course, SystemTerms.Course)} Highlights
+            {t("courseDetails.accordion.highlightsTitle", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </span>
         </span>
         <CaretDown
@@ -195,10 +200,9 @@ const CourseHighlightsAccordion: React.FC<{
         <div className="px-3 sm:px-4 pb-4 pt-3 space-y-3 border-t border-catalogue-border-subtle bg-catalogue-bg-subtle/50">
           {hasAbout && (
             <HighlightSectionCard
-              title={`About This ${getTerminology(
-                ContentTerms.Course,
-                SystemTerms.Course
-              )}`}
+              title={t("courseDetails.accordion.aboutThisCourse", {
+                course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+              })}
               icon={
                 <FileIcon
                   size={18}
@@ -217,7 +221,7 @@ const CourseHighlightsAccordion: React.FC<{
           )}
           {hasWhy && (
             <HighlightSectionCard
-              title="What You'll Learn"
+              title={t("courseDetails.accordion.whatYoullLearn")}
               icon={
                 <BookOpen
                   size={18}
@@ -236,7 +240,7 @@ const CourseHighlightsAccordion: React.FC<{
           )}
           {hasWho && (
             <HighlightSectionCard
-              title="Who Should Join"
+              title={t("courseDetails.accordion.whoShouldJoin")}
               icon={
                 <GraduationCap
                   size={18}
@@ -284,7 +288,7 @@ const CourseHighlightsAccordion: React.FC<{
                           getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
                       </h4>
                       <p className="text-xs text-catalogue-text-secondary">
-                        {inst.email || "No email provided"}
+                        {inst.email || t("courseDetails.noEmailProvided")}
                       </p>
                     </div>
                   </div>
@@ -377,6 +381,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   available_slots,
   productPageCode,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === "android";
@@ -563,7 +568,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
         if (!courseResponse) {
           console.log("[CourseDetailsPage] Course not found in response");
-          setError("Course not found.");
+          setError(t("courseDetails.courseNotFoundError", {
+            course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+          }));
           return;
         }
 
@@ -602,7 +609,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           }
 
           if (!offeredByProductPage) {
-            setError("This course is not available for public viewing.");
+            setError(t("courseDetails.courseNotPublicError", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            }));
             return;
           }
         }
@@ -782,9 +791,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         };
 
         // Transform API response to CourseData interface
+        const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
         const courseData: CourseData = {
           id: course.id || courseId,
-          title: course.package_name || "Untitled Course",
+          title: course.package_name || t("courseDetails.untitledCourse", { course: courseTerm }),
           description: parseHtmlContent(course.course_html_description) || null,
           duration: courseResponse.sessions?.[0]?.level_with_details?.[0]
             ?.read_time_in_minutes
@@ -828,10 +838,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           ],
           whoShouldLearn:
             rawHtmlContent(course.who_should_learn) ||
-            "Anyone interested in learning this subject",
+            t("courseDetails.defaultWhoShouldLearn", {
+              subject: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
+            }),
           whyLearn:
             rawHtmlContent(course.why_learn) ||
-            "Gain valuable skills and knowledge",
+            t("courseDetails.defaultWhyLearn"),
           // "About this course" must show the dedicated About field (rich text),
           // falling back to the course description. Previously read the wrong field
           // (course_html_description) and stripped all formatting.
@@ -844,18 +856,22 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               (inst: any) => ({
                 name:
                   inst.full_name ||
-                  `Unknown ${getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}`,
-                email: inst.email || "No email provided",
+                  t("courseDetails.unknownTeacher", {
+                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+                  }),
+                email: inst.email || t("courseDetails.noEmailProvided"),
               }),
             ) || [
               {
                 name:
                   courseResponse.sessions?.[0]?.level_with_details?.[0]
                     ?.instructors?.[0]?.full_name ||
-                  `Unknown ${getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}`,
+                  t("courseDetails.unknownTeacher", {
+                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+                  }),
                 email:
                   courseResponse.sessions?.[0]?.level_with_details?.[0]
-                    ?.instructors?.[0]?.email || "No email provided",
+                    ?.instructors?.[0]?.email || t("courseDetails.noEmailProvided"),
               },
             ],
           rating: course.rating || 5,
@@ -917,7 +933,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         }
       } catch (err) {
         console.error("Error fetching course details:", err);
-        setError("Failed to load course details");
+        setError(t("courseDetails.loadFailedError", {
+          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+        }));
       } finally {
         setIsLoading(false);
       }
@@ -1019,16 +1037,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-semibold text-catalogue-text-primary mb-2">
-            {error || "Course not found"}
+            {error || t("courseDetails.courseNotFoundDefault", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </h2>
           <p className="text-catalogue-text-secondary mb-4">
-            The requested course could not be loaded.
+            {t("courseDetails.courseLoadFailedDescription", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </p>
           <button
             onClick={() => navigate({ to: `/${tagName}` })}
             className="px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-400 transition-colors"
           >
-            Back to Catalog
+            {t("courseDetails.backToCatalog")}
           </button>
         </div>
       </div>
@@ -1100,10 +1122,14 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       {!catalogueData && (
         <div className="container mx-auto p-8 text-center">
           <h2 className="text-2xl font-semibold text-catalogue-text-primary mb-4">
-            Loading Course Catalogue...
+            {t("courseDetails.loadingCatalogueTitle", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </h2>
           <p className="text-catalogue-text-secondary">
-            Please wait while we load the course information.
+            {t("courseDetails.loadingCatalogueDescription", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </p>
         </div>
       )}
@@ -1205,7 +1231,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <House size={16} className="text-primary-500" weight="duotone" />
                       </div>
                       <h2 className="text-sm font-semibold text-catalogue-text-primary">
-                        Course Overview
+                        {t("courseDetails.courseOverview", {
+                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                       </h2>
                     </div>
 
@@ -1217,7 +1245,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg border border-primary-100">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Tag size={13} className="text-primary-400" />
-                            Price
+                            {t("courseDetails.price")}
                           </span>
                           <PriceWithMrp
                             actual={courseData.price}
@@ -1233,7 +1261,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
                         <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                           <Star size={13} className="text-yellow-400" weight="fill" />
-                          Rating
+                          {t("courseDetails.rating")}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <div className="flex items-center gap-0.5">
@@ -1276,7 +1304,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Clock size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            Duration
+                            {t("courseDetails.duration")}
                           </span>
                           <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
                             {courseData.duration}
@@ -1313,12 +1341,14 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         {catalogueData?.globalSettings?.payment?.enabled !==
                         false
                           ? courseData.price === 0
-                            ? "Enroll for Free"
-                            : "Enroll Now"
-                          : "Get Started"}
+                            ? t("courseDetails.enrollForFree")
+                            : t("courseDetails.enrollNow")
+                          : t("courseDetails.getStarted")}
                       </button>
                       <p className="text-xs text-catalogue-text-muted text-center">
-                        Click to register for this course
+                        {t("courseDetails.clickToRegister", {
+                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                       </p>
                     </div>
                   </div>
@@ -1350,7 +1380,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <House size={16} className="text-primary-500" weight="duotone" />
                       </div>
                       <h2 className="text-sm font-semibold text-catalogue-text-primary">
-                        Course Overview
+                        {t("courseDetails.courseOverview", {
+                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                       </h2>
                     </div>
 
@@ -1362,7 +1394,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg border border-primary-100">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Tag size={13} className="text-primary-400" />
-                            Price
+                            {t("courseDetails.price")}
                           </span>
                           <PriceWithMrp
                             actual={courseData.price}
@@ -1378,7 +1410,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
                         <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                           <Star size={13} className="text-yellow-400" weight="fill" />
-                          Rating
+                          {t("courseDetails.rating")}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <div className="flex items-center gap-0.5">
@@ -1421,7 +1453,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Clock size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            Duration
+                            {t("courseDetails.duration")}
                           </span>
                           <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
                             {courseData.duration}
@@ -1455,10 +1487,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                           backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                         }}
                       >
-                        Enroll Now
+                        {t("courseDetails.enrollNow")}
                       </button>
                       <p className="text-xs text-catalogue-text-muted text-center">
-                        Click to register for this course
+                        {t("courseDetails.clickToRegister", {
+                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                       </p>
                     </div>
                   </div>
@@ -1491,7 +1525,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       <Dialog open={showUnavailableDialog} onOpenChange={setShowUnavailableDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="sr-only">Enrollment unavailable</DialogTitle>
+            <DialogTitle className="sr-only">{t("courseDetails.enrollmentUnavailableTitle")}</DialogTitle>
           </DialogHeader>
           <InviteUnavailableMessage
             availability={inviteAvailability}
@@ -1524,21 +1558,21 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             fields: catalogueData?.globalSettings?.leadCollection?.fields || [
               {
                 name: "name",
-                label: "Full Name",
+                label: t("courseDetails.leadFormDefaults.fullName"),
                 type: "text",
                 required: true,
                 step: 1,
               },
               {
                 name: "email",
-                label: "Email",
+                label: t("courseDetails.leadFormDefaults.email"),
                 type: "email",
                 required: true,
                 step: 2,
               },
               {
                 name: "phone",
-                label: "Phone Number",
+                label: t("courseDetails.leadFormDefaults.phone"),
                 type: "tel",
                 required: true,
                 step: 3,
@@ -1667,7 +1701,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                   borderColor: `hsl(var(--primary-500, var(--primary)))`,
                 }}
               >
-                Login
+                {t("header.login")}
               </button>
             </div>
 
@@ -1682,11 +1716,11 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               >
                 {catalogueData?.globalSettings?.payment?.enabled !== false
                   ? courseData.price === 0
-                    ? "Enroll for Free"
-                    : "Enroll Now"
-                  : "Get Started"}
+                    ? t("courseDetails.enrollForFree")
+                    : t("courseDetails.enrollNow")
+                  : t("courseDetails.getStarted")}
               </button>
-              <span className="text-xs text-catalogue-text-secondary text-center">For new users</span>
+              <span className="text-xs text-catalogue-text-secondary text-center">{t("courseDetails.forNewUsers")}</span>
             </div>
           </div>
         </div>

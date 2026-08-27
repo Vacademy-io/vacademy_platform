@@ -1,0 +1,42 @@
+{
+    "tabs": {
+        "attempted": "प्रयास किया गया",
+        "ongoing": "जारी",
+        "pending": "लंबित"
+    },
+    "participantType": {
+        "internal": "आंतरिक",
+        "external": "बाहरी"
+    },
+    "selectionMode": {
+        "batch": "बैच चयन",
+        "individual": "व्यक्तिगत चयन"
+    },
+    "filters": {
+        "evaluationStatus": {
+            "label": "मूल्यांकन स्थिति",
+            "options": {
+                "pending": "लंबित",
+                "evaluating": "मूल्यांकन हो रहा है",
+                "evaluated": "मूल्यांकित"
+            }
+        },
+        "submissionStatus": {
+            "label": "प्रतिक्रिया",
+            "options": {
+                "submitted": "जमा किया गया",
+                "notSubmitted": "जमा नहीं किया गया"
+            }
+        }
+    },
+    "buttons": {
+        "offlineEntry": "ऑफ़लाइन एंट्री",
+        "revaluate": "पुनर्मूल्यांकन करें",
+        "aiEvaluations": "AI मूल्यांकन"
+    },
+    "dialogs": {
+        "revaluate": {
+            "title": "परिणाम का पुनर्मूल्यांकन करें"
+        }
+    }
+}

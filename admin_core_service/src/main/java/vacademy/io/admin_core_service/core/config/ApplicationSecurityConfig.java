@@ -92,6 +92,11 @@ public class ApplicationSecurityConfig {
             // YouTube OAuth callback (Google redirects without Vacademy JWT; state token is the CSRF guard)
             "/admin-core-service/youtube/oauth/callback",
             "/admin-core-service/health/**",
+            // Network-baseline ping for the "is it us or your connection?" indicator.
+            // Must stay unauthenticated: JwtAuthFilter short-circuits without a Bearer
+            // token, so an anonymous call does no server work and its round trip is
+            // almost pure network. Does no DB access. See PerfPingController.
+            "/admin-core-service/v1/perf/ping",
             // Invoice test endpoints (for testing only)
             "/admin-core-service/v1/invoices/test/**",
             // Applicant public APIs for application form
@@ -108,6 +113,12 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-sessions/provider/meeting/recording/complete",
             // BBB server pool management (server-to-server from community_service, no JWT)
             "/admin-core-service/bbb/pool/**",
+            // BBB custom live-class domains, read by the pool start workflow.
+            // No JWT, but NOT unauthenticated: BbbCustomDomainController itself
+            // requires the shared X-Internal-Service-Token. Note the path must not
+            // contain the word "internal" — InternalAuthFilter substring-matches the
+            // URI and would demand clientName + Signature instead.
+            "/admin-core-service/bbb/custom-domains",
             // Zoom webhook callback (no JWT — verified by per-account HMAC signature)
             "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**",
             // "Connect with Zoom" OAuth redirect (no JWT — CSRF-protected by the state record)

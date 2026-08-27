@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import useAlertsStore from "@/stores/alerts-store";
 // import SectionDetails from "../common/instructionPage/SectionDetails";
@@ -23,6 +24,13 @@ import { fetchDataByIds } from "@/services/GetDataById";
 import { RichText, Assessment as AssessmentType } from "@/types/assessment";
 import { useEffect } from "react";
 import { Preferences } from "@capacitor/preferences";
+import { useLiveTestUi } from "../common/questionLiveTest/live-test-ui-context";
+import { InlineErrorBoundary } from "@/components/core/inline-error-boundary";
+import {
+  createReattemptRequest,
+  getMyReattemptRequests,
+  type ReattemptRequest,
+} from "@/services/reattempt-request";
 
 interface HelpModalProps {
   open: boolean;
@@ -31,6 +39,7 @@ interface HelpModalProps {
 }
 
 export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
+  const { t } = useTranslation("courseComponentsExtra");
   const [instructions, setInstructions] = useState<RichText>();
   const [assessmentInfo, setAssessmentInfo] = useState<AssessmentType>();
   const [reason, setReason] = useState("");
@@ -40,6 +49,80 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
   // const { assessment, currentSection } = useAssessmentStore();
   // const { alerts, requests, addRequest } = useAlertsStore();
   const { alerts } = useAlertsStore();
+  // The live test has already resolved these; `useLiveTestUi` falls back to the
+  // documented defaults when this modal is rendered outside the provider.
+  const { settings: examExperience } = useLiveTestUi();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<ReattemptRequest | null>(
+    null
+  );
+
+  const isRequestType = type === "reattempt" || type === "time";
+  const requestType = type === "reattempt" ? "REATTEMPT" : "TIME_INCREASE";
+
+  /** The assessment id lives in the same Preferences blob the exam shell reads. */
+  const getAssessmentId = async (): Promise<string | null> => {
+    const stored = await Preferences.get({ key: "InstructionID_and_AboutID" });
+    const parsed = stored.value ? JSON.parse(stored.value) : null;
+    return parsed?.assessment_id ?? null;
+  };
+
+  // Show a request that is already in flight rather than inviting a duplicate —
+  // a learner watching a timer run down will reopen this dialog repeatedly.
+  useEffect(() => {
+    if (!open || !isRequestType) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const assessmentId = await getAssessmentId();
+        if (!assessmentId) return;
+        const mine = await getMyReattemptRequests(assessmentId);
+        if (cancelled) return;
+        setPendingRequest(
+          mine.find(
+            (r) => r.request_type === requestType && r.status === "PENDING"
+          ) ?? null
+        );
+      } catch (error) {
+        // Non-fatal: worst case the learner sees a blank form and the backend
+        // de-duplicates on submit anyway.
+        console.error("Could not load existing requests:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isRequestType, requestType]);
+
+  const handleSubmitRequest = async () => {
+    setSubmitError(null);
+    setIsSubmitting(true);
+    try {
+      const assessmentId = await getAssessmentId();
+      if (!assessmentId) {
+        throw new Error(t("helpModal.couldNotIdentifyAssessment"));
+      }
+      const created = await createReattemptRequest({
+        assessmentId,
+        requestType,
+        reason: reason.trim(),
+        attemptId: assessment?.attempt_id ?? null,
+      });
+      setPendingRequest(created);
+      setReason("");
+      setShowSuccessDialog(true);
+    } catch (error: unknown) {
+      const message =
+        (error as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ??
+        (error as Error)?.message ??
+        t("helpModal.sendRequestFailed");
+      setSubmitError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   const fetchInstructions = async () => {
     try {
       const AssessmentData = await Preferences.get({
@@ -71,13 +154,13 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
   const getTitle = () => {
     switch (type) {
       case "instructions":
-        return "Assessment Instructions";
+        return t("helpModal.titles.instructions");
       case "alerts":
-        return "Assessment Alerts";
+        return t("helpModal.titles.alerts");
       case "reattempt":
-        return "Request Reattempt";
+        return t("helpModal.titles.reattempt");
       case "time":
-        return "Request Time Increase";
+        return t("helpModal.titles.time");
     }
   };
 
@@ -99,6 +182,7 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
                   preview={assessmentInfo.preview_time > 0 ? true : false}
                   canSwitchSections={assessmentInfo.can_switch_section}
                   assessmentInfo={assessmentInfo}
+                  examExperience={examExperience}
                 />
               )}
               {/* <p>Current Section Instructions:</p>
@@ -129,7 +213,7 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
             {alerts.length === 0 ? (
               <div className="flex items-center gap-2 text-yellow-600">
                 <WarningCircle className="h-5 w-5" />
-                <p>No active alerts at this time.</p>
+                <p>{t("helpModal.noActiveAlerts")}</p>
               </div>
             ) : (
               alerts.map((alert) => (
@@ -156,27 +240,48 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
             <div className="flex items-start gap-2 bg-red-50 p-3 rounded-lg mt-4">
               <WarningCircle className="h-5 w-5 text-red-500 mt-0.5" />
               <p className="text-sm text-red-600">
-                Please provide a reason for requesting a{" "}
-                {type === "reattempt" ? "reattempt" : "time extension"} for the
-                Assessment to submit to the admin.
+                {t("helpModal.reasonPromptPrefix")}{" "}
+                {type === "reattempt"
+                  ? t("helpModal.reattemptWord")
+                  : t("helpModal.timeExtensionWord")}{" "}
+                {t("helpModal.reasonPromptSuffix")}
               </p>
             </div>
-            <Textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Type your reason here"
-              className="min-h-reg-100"
-            />
-            <Button
-              className="w-full bg-primary-500"
-              onClick={() => {
-                // addRequest(type, reason);
-                setReason("");
-                setShowSuccessDialog(true);
-              }}
-            >
-              Submit
-            </Button>
+            {pendingRequest ? (
+              <div className="rounded-lg border border-warning-200 bg-warning-50 p-3">
+                <p className="text-body font-semibold text-neutral-800">
+                  {t("helpModal.requestAlreadySent")}
+                </p>
+                <p className="mt-1 text-caption text-neutral-600">
+                  {t("helpModal.requestUnderReview")}
+                </p>
+                {pendingRequest.reason && (
+                  <p className="mt-2 text-caption italic text-neutral-500">
+                    {t("helpModal.quotedReason", { reason: pendingRequest.reason })}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <Textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder={t("helpModal.reasonPlaceholder")}
+                  className="min-h-reg-100"
+                  disabled={isSubmitting}
+                />
+                {submitError && (
+                  <p className="text-caption text-danger-600">{submitError}</p>
+                )}
+                <Button
+                  className="w-full bg-primary-500"
+                  disabled={reason.trim() === "" || isSubmitting}
+                  onClick={handleSubmitRequest}
+                >
+                  {isSubmitting ? t("helpModal.sending") : t("helpModal.submit")}
+                </Button>
+              </>
+            )}
           </div>
         );
     }
@@ -189,14 +294,14 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle>{getTitle()}</DialogTitle>
           </DialogHeader>
-          {getContent()}
+          <InlineErrorBoundary>{getContent()}</InlineErrorBoundary>
         </DialogContent>
       </Dialog>
 
       <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
         <AlertDialogContent>
           <AlertDialogDescription>
-            Your request has been successfully submitted to the admin.
+            {t("helpModal.requestSentConfirmation")}
           </AlertDialogDescription>
           <AlertDialogAction
             onClick={() => {
@@ -204,7 +309,7 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
               onOpenChange(false);
             }}
           >
-            Close
+            {t("packageSessionMessages.close")}
           </AlertDialogAction>
         </AlertDialogContent>
       </AlertDialog>

@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDo
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 import vacademy.io.admin_core_service.features.domain_routing.service.DomainRoutingAdminService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
 import vacademy.io.admin_core_service.features.white_label.dto.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRoleRepository;
@@ -326,6 +327,63 @@ public class WhiteLabelService {
                 .teacherPortalUrl(institute.getTeacherPortalBaseUrl())
                 .routingEntries(entries)
                 .build();
+    }
+
+    // ── Live-class domain ─────────────────────────────────────────────────────
+
+    /**
+     * Current custom live-class host for the institute, or null when it uses the
+     * platform default.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, String> getLiveSessionDomain(CustomUserDetails user, String instituteId) {
+        assertInstituteAccess(user, instituteId);
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found: " + instituteId));
+
+        Map<String, String> out = new LinkedHashMap<>();
+        out.put("instituteId", instituteId);
+        out.put("liveSessionBaseUrl", institute.getLiveSessionBaseUrl());
+        return out;
+    }
+
+    /**
+     * Set (or clear, by passing null/blank) the institute's custom live-class host.
+     *
+     * Validation is strict rather than forgiving: this value becomes the origin of
+     * a URL learners are redirected into, so a malformed one is rejected outright
+     * instead of being coerced into something that merely looks plausible.
+     *
+     * Setting this row is only half the job — the host must also resolve to the
+     * PRIMARY BBB pool server and be present as a SAN on that server's
+     * certificate. Until both are true, participants sent to it will hit a DNS or
+     * TLS error.
+     */
+    @Transactional
+    public Map<String, String> setLiveSessionDomain(CustomUserDetails user, String instituteId,
+            String rawDomain) {
+        assertInstituteAccess(user, instituteId);
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found: " + instituteId));
+
+        String normalized = null;
+        if (StringUtils.hasText(rawDomain)) {
+            normalized = BbbMeetingManager.normalizeLiveSessionHost(rawDomain);
+            if (normalized == null) {
+                throw new VacademyException("Invalid live-class domain '" + rawDomain
+                        + "'. Use a plain hostname such as meet.yourschool.com — no path, port or credentials.");
+            }
+        }
+
+        institute.setLiveSessionBaseUrl(normalized);
+        instituteRepository.save(institute);
+        log.info("[WhiteLabel] Live-class domain for institute {} set to {}", instituteId,
+                normalized == null ? "(default)" : normalized);
+
+        Map<String, String> out = new LinkedHashMap<>();
+        out.put("instituteId", instituteId);
+        out.put("liveSessionBaseUrl", normalized);
+        return out;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

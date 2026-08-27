@@ -157,9 +157,7 @@ public class AdminDirectEnrollService {
                     .packageSessionId(packageSessionId)
                     .enrollmentStatus(LearnerStatusEnum.ACTIVE.name())
                     .enrollmentDate(enrollmentStartDate)
-                    .accessDays(
-                            enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
-                                    : null)
+                    .accessDays(resolveAccessDays(enrollDTO, paymentPlan, enrollInvite))
                     .destinationPackageSessionId(null)
                     .userPlanId(userPlan.getId())
                     .build());
@@ -179,6 +177,35 @@ public class AdminDirectEnrollService {
         LearnerEnrollResponseDTO response = new LearnerEnrollResponseDTO();
         response.setUser(createdUser);
         return response;
+    }
+
+    /**
+     * Days of access this enrollment grants, as the string
+     * {@link InstituteStudentDetails} carries. Precedence is
+     * <b>explicit &gt; plan &gt; invite</b>, mirroring
+     * {@code DefaultInviteResolver.resolveAccessDays} so manual and bulk enrollment
+     * cannot disagree.
+     *
+     * <p>The explicit value is what the admin typed on the enrollment form. It has to
+     * win: previously only the invite was consulted, so a number entered here was
+     * discarded and the learner silently got the invite's window (usually none at all,
+     * i.e. unlimited).
+     *
+     * @return null for unlimited access, which leaves expiry_date unset.
+     */
+    private String resolveAccessDays(LearnerPackageSessionsEnrollDTO enrollDTO,
+                                     PaymentPlan paymentPlan,
+                                     EnrollInvite enrollInvite) {
+        if (enrollDTO.getAccessDays() != null) {
+            return enrollDTO.getAccessDays().toString();
+        }
+        if (paymentPlan != null && paymentPlan.getValidityInDays() != null) {
+            return paymentPlan.getValidityInDays().toString();
+        }
+        if (enrollInvite != null && enrollInvite.getLearnerAccessDays() != null) {
+            return enrollInvite.getLearnerAccessDays().toString();
+        }
+        return null;
     }
 
 	private void sendNotificationsForEnrollment(

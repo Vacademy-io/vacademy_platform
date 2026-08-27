@@ -3,6 +3,7 @@ import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ArrowLeft, ListChecks, SpinnerGap } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { ModernCard } from "@/components/design-system/modern-card";
@@ -89,6 +90,7 @@ const CustomFieldsStep = ({
   onContinue,
   onBack,
 }: CustomFieldsStepProps) => {
+  const { t } = useTranslation("registrationB");
   const formFields = useMemo(
     () => convertTemplateCustomFields(customFields),
     [customFields]
@@ -188,10 +190,10 @@ const CustomFieldsStep = ({
         </div>
         <div>
           <h2 className="text-lg font-semibold leading-tight text-neutral-700">
-            Additional Information
+            {t("subOrgRegistration.customFields.title")}
           </h2>
           <p className="mt-0.5 text-sm text-neutral-500">
-            A few more details requested by the institute
+            {t("subOrgRegistration.customFields.subtitle")}
           </p>
         </div>
       </div>
@@ -200,7 +202,9 @@ const CustomFieldsStep = ({
 
       {formFields.length === 0 ? (
         <div className="py-8 text-center text-neutral-500">
-          <p className="mb-4">No additional information is required.</p>
+          <p className="mb-4">
+            {t("subOrgRegistration.customFields.noFieldsMessage")}
+          </p>
           <div className="flex flex-col-reverse items-center justify-center gap-3 sm:flex-row">
             {onBack && (
               <MyButton
@@ -212,7 +216,7 @@ const CustomFieldsStep = ({
                 disable={isSubmitting}
               >
                 <ArrowLeft className="me-2 size-4" />
-                Back
+                {t("common.back")}
               </MyButton>
             )}
             <MyButton
@@ -223,7 +227,7 @@ const CustomFieldsStep = ({
               onClick={() => onContinue([])}
               disable={isSubmitting}
             >
-              Continue
+              {t("common.continue")}
             </MyButton>
           </div>
         </div>
@@ -255,7 +259,9 @@ const CustomFieldsStep = ({
                         <FormControl>
                           <PhoneInputField
                             label={capitalise(field.field_name)}
-                            placeholder="123 456 7890"
+                            placeholder={t(
+                              "subOrgRegistration.customFields.phonePlaceholder"
+                            )}
                             name={`${key}.value`}
                             control={form.control}
                             country={phoneCountryCode}
@@ -313,7 +319,7 @@ const CustomFieldsStep = ({
                   className="w-full sm:w-auto"
                 >
                   <ArrowLeft className="me-2 size-4" />
-                  Back
+                  {t("common.back")}
                 </MyButton>
               ) : (
                 <span className="hidden sm:block" />
@@ -329,12 +335,12 @@ const CustomFieldsStep = ({
                 {isSubmitting ? (
                   <>
                     <SpinnerGap className="me-2 size-4 animate-spin" />
-                    Submitting...
+                    {t("common.submitting")}
                   </>
                 ) : isFinalStep ? (
-                  "Submit Registration"
+                  t("common.submitRegistration")
                 ) : (
-                  "Continue"
+                  t("common.continue")
                 )}
               </MyButton>
             </div>

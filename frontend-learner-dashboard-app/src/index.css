@@ -139,6 +139,24 @@ html, body {
   font-weight: 600;
 }
 
+/* Doubt / reply bodies (learner doubts panel). They render learner- and
+   teacher-authored HTML — often a pasted screenshot — inside a narrow
+   slide-over, so images and long unbroken strings must be contained rather
+   than pushing the panel sideways. Pair with .rich-text-content for spacing. */
+.doubt-html {
+  overflow-wrap: anywhere;
+}
+.doubt-html img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.4em 0;
+  border-radius: 6px;
+}
+.doubt-html p:last-child {
+  margin-bottom: 0;
+}
+
 /* Document slides fill the width in fullscreen. The normal reading measure
    (max-w-5xl) leaves large side gutters on a fullscreen/presentation view of
    image-heavy slide decks. Scoped to descendants of the fullscreen element, so

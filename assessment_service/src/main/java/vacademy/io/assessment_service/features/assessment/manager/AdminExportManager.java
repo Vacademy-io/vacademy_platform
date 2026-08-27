@@ -23,8 +23,12 @@ import vacademy.io.assessment_service.features.assessment.dto.export.Leaderboard
 import vacademy.io.assessment_service.features.assessment.dto.export.MarkRankExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.ParticipantsDetailExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.RespondentExportDto;
+import vacademy.io.assessment_service.features.assessment.dto.export.ResultExportColumnsDto;
+import vacademy.io.assessment_service.features.assessment.dto.export.ResultExportRowDto;
+import vacademy.io.assessment_service.features.assessment.dto.batch_pending.EnrolledLearnerDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.zip.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentCustomField;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentReportExportItem;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentReportExportJob;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
@@ -33,6 +37,8 @@ import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibi
 import vacademy.io.assessment_service.features.assessment.enums.ReportExportJobStatus;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentCustomFieldRepository;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentReportExportItemRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentReportExportJobRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
@@ -64,11 +70,39 @@ import java.util.TimeZone;
 @lombok.extern.slf4j.Slf4j
 public class AdminExportManager {
 
+    // Fixed columns of the result CSV, before any registration-form columns.
+    // Identity and contact first, then the result columns. Phone Number / Username / Batch
+    // were added so a mark sheet can be cross-referenced and learners contacted without a
+    // second export; every one of them is optional in the Export CSV dialog, so anyone who
+    // wants the older, narrower sheet just unticks them.
+    private static final List<String> RESULT_EXPORT_BASE_HEADERS = List.of(
+            "Name", "Email", "Phone Number", "Username", "Batch",
+            "Marks Obtained", "Total Marks", "Percentage", "Rank", "Duration", "Attempt Date");
+
+    // The "not attempted" sheet: contact details and nothing else. Marks, rank, percentage
+    // and attempt date would every one of them be blank for a learner who never started,
+    // so offering them would only invite the reader to believe they scored zero.
+    private static final List<String> NOT_ATTEMPTED_EXPORT_HEADERS = List.of(
+            "Name", "Email", "Phone Number", "Username", "Batch");
+
+    // Several answer rows can exist for one field (e.g. a multi-select), so they
+    // are joined into a single cell rather than silently dropping all but one.
+    private static final String MULTI_ANSWER_SEPARATOR = "; ";
+
     @Autowired
     StudentAttemptRepository studentAttemptRepository;
 
     @Autowired
     AssessmentUserRegistrationRepository assessmentUserRegistrationRepository;
+
+    @Autowired
+    vacademy.io.assessment_service.features.assessment.service.batch_pending.NotAttemptedLearnerService notAttemptedLearnerService;
+
+    @Autowired
+    AssessmentCustomFieldRepository assessmentCustomFieldRepository;
+
+    @Autowired
+    AssessmentInstituteMappingRepository assessmentInstituteMappingRepository;
 
     @Autowired
     HtmlBuilderService htmlBuilderService;
@@ -198,10 +232,18 @@ public class AdminExportManager {
     public ResponseEntity<byte[]> getRegisteredCsvExport(CustomUserDetails user, String instituteId, String assessmentId, AssessmentUserFilter filter) {
         if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
 
+        // "Not attempted" is not a slice of the attempt tables at all — a batch-enrolled
+        // learner has no registration row until they start — so it gets its own sheet
+        // rather than being squeezed through the result export below.
+        if (isPendingAttempt(filter) && UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name()
+                .equals(filter.getRegistrationSource())) {
+            return handleNotAttemptedCsvExport(instituteId, assessmentId, filter);
+        }
+
         // Empty registration_source means "all sources" — used by the result
         // export feature to get every participant regardless of how they enrolled.
         if (filter.getRegistrationSource() == null || filter.getRegistrationSource().isEmpty()) {
-            return handleCaseForAllSourcesResultExport(instituteId, assessmentId);
+            return handleCaseForAllSourcesResultExport(instituteId, assessmentId, filter.getCustomFieldIds());
         }
 
         // Determine whether to fetch participants for an open or closed assessment
@@ -290,18 +332,34 @@ public class AdminExportManager {
 
     // Fetch ALL participants across every registration source and build an
     // enriched result CSV: Name, Email, Marks Obtained, Total Marks, Percentage,
-    // Rank, Duration, Attempt Date (converted to IST).
-    private ResponseEntity<byte[]> handleCaseForAllSourcesResultExport(String instituteId, String assessmentId) {
-        List<ParticipantsDetailsDto> participants = assessmentUserRegistrationRepository
+    // Rank, Duration, Attempt Date (converted to IST), followed by one column per
+    // requested registration-form custom field — the details external participants
+    // filled in when they registered for a public assessment.
+    private ResponseEntity<byte[]> handleCaseForAllSourcesResultExport(String instituteId, String assessmentId,
+                                                                       List<String> requestedCustomFieldIds) {
+        List<ResultExportRowDto> participants = assessmentUserRegistrationRepository
                 .findAllEndedParticipantsForResultExport(assessmentId, instituteId);
 
+        List<ExportCustomFieldColumn> customColumns =
+                resolveExportCustomFieldColumns(assessmentId, requestedCustomFieldIds);
+
+        StringBuilder csv = new StringBuilder();
+        csv.append(String.join(",", RESULT_EXPORT_BASE_HEADERS));
+        customColumns.forEach(column -> csv.append(",").append(escapeCsvField(column.header())));
+        csv.append("\n");
+
         if (participants.isEmpty()) {
-            String emptyCsv = "Name,Email,Marks Obtained,Total Marks,Percentage,Rank,Duration,Attempt Date\n";
             return ResponseEntity.ok()
                     .header("Content-Disposition", "attachment; filename=\"results.csv\"")
                     .header("Content-Type", "text/plain")
-                    .body(emptyCsv.getBytes(StandardCharsets.UTF_8));
+                    .body(csv.toString().getBytes(StandardCharsets.UTF_8));
         }
+
+        // registrationId -> (customFieldId -> answer). One query for the whole
+        // assessment instead of one per participant.
+        Map<String, Map<String, String>> answersByRegistration = customColumns.isEmpty()
+                ? Map.of()
+                : loadCustomFieldAnswers(assessmentId, instituteId);
 
         // Compute total marks from section configuration.
         List<Section> sections = sectionRepository.findByAssessmentIdAndStatusNotIn(
@@ -314,12 +372,14 @@ public class AdminExportManager {
         SimpleDateFormat sdf = new SimpleDateFormat("dd MMM yyyy hh:mm a");
         sdf.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
 
-        StringBuilder csv = new StringBuilder();
-        csv.append("Name,Email,Marks Obtained,Total Marks,Percentage,Rank,Duration,Attempt Date\n");
+        // One lookup for every batch in the sheet rather than one per row.
+        Map<String, String> batchNames = adminCoreServiceClient.getBatchNames(
+                participants.stream().map(ResultExportRowDto::getBatchId)
+                        .filter(Objects::nonNull).distinct().sorted().toList());
 
         // Rows arrive sorted by score DESC (ORDER BY in query) → index+1 = rank.
         for (int i = 0; i < participants.size(); i++) {
-            ParticipantsDetailsDto p = participants.get(i);
+            ResultExportRowDto p = participants.get(i);
             Double obtained = p.getScore() != null ? p.getScore() : 0.0;
             String pct = totalMarks > 0
                     ? String.format("%.2f%%", (obtained / totalMarks) * 100)
@@ -328,21 +388,222 @@ public class AdminExportManager {
             String attemptDate = p.getAttemptDate() != null ? sdf.format(p.getAttemptDate()) : "";
             String email = p.getUserEmail() != null ? p.getUserEmail() : "";
             String name = p.getStudentName() != null ? p.getStudentName() : "";
+            String phone = p.getPhoneNumber() != null ? p.getPhoneNumber() : "";
+            String username = p.getUsername() != null ? p.getUsername() : "";
+            String batch = resolveBatchName(batchNames, p.getBatchId());
 
             csv.append(escapeCsvField(name)).append(",")
                     .append(escapeCsvField(email)).append(",")
+                    .append(escapeCsvField(phone)).append(",")
+                    .append(escapeCsvField(username)).append(",")
+                    .append(escapeCsvField(batch)).append(",")
                     .append(obtained).append(",")
                     .append(totalMarks).append(",")
                     .append(pct).append(",")
                     .append(i + 1).append(",")
                     .append(escapeCsvField(duration)).append(",")
-                    .append(escapeCsvField(attemptDate)).append("\n");
+                    .append(escapeCsvField(attemptDate));
+
+            Map<String, String> answers = answersByRegistration
+                    .getOrDefault(p.getRegistrationId(), Map.of());
+            for (ExportCustomFieldColumn column : customColumns) {
+                csv.append(",").append(escapeCsvField(answers.get(column.fieldId())));
+            }
+            csv.append("\n");
         }
 
         return ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=\"results.csv\"")
                 .header("Content-Type", "text/plain")
                 .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * CSV of the batch-enrolled learners who never attempted — the Pending tab's export.
+     *
+     * <p>Shares {@link NotAttemptedLearnerService} with the tab itself, so the file and the
+     * screen always name the same learners. It honours the batch chips and name search on
+     * the filter, so the sheet matches what the admin was looking at when they clicked.
+     *
+     * <p>Emits the header row even when nobody is pending: a file with just headers says
+     * "everyone attempted", whereas an empty file looks like the export failed.
+     */
+    private ResponseEntity<byte[]> handleNotAttemptedCsvExport(String instituteId, String assessmentId,
+                                                               AssessmentUserFilter filter) {
+        List<EnrolledLearnerDto> learners = notAttemptedLearnerService
+                .findNotAttempted(assessmentId, instituteId, filter);
+
+        Map<String, String> batchNames = adminCoreServiceClient.getBatchNames(
+                learners.stream().map(EnrolledLearnerDto::getPackageSessionId)
+                        .filter(Objects::nonNull).distinct().sorted().toList());
+
+        StringBuilder csv = new StringBuilder(String.join(",", NOT_ATTEMPTED_EXPORT_HEADERS));
+        csv.append("\n");
+
+        for (EnrolledLearnerDto learner : learners) {
+            String batch = resolveBatchName(batchNames, learner.getPackageSessionId());
+            csv.append(escapeCsvField(learner.getFullName())).append(",")
+                    .append(escapeCsvField(learner.getEmail())).append(",")
+                    .append(escapeCsvField(learner.getMobileNumber())).append(",")
+                    .append(escapeCsvField(learner.getUsername())).append(",")
+                    .append(escapeCsvField(batch))
+                    .append("\n");
+        }
+
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"not-attempted.csv\"")
+                .header("Content-Type", "text/plain")
+                .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Batch display name for a row, or a blank cell when the row has no batch.
+     *
+     * <p>The null check is not defensive padding: the all-sources result sheet includes
+     * open-registration participants, whose {@code source_id} is not a batch at all, so
+     * this is called with null on real data. {@code Map.of()} — what the name lookup
+     * returns when admin_core is unreachable — throws NullPointerException on a null key
+     * rather than missing, so probing the map first would crash the whole export.
+     *
+     * <p>Falls back to the raw id when the name cannot be resolved: an unresolved batch id
+     * is still more use to an admin than an empty cell.
+     */
+    private static String resolveBatchName(Map<String, String> batchNames, String batchId) {
+        if (batchId == null || batchId.isBlank()) {
+            return "";
+        }
+        return batchNames.getOrDefault(batchId, batchId);
+    }
+
+    /**
+     * Columns the result CSV can carry for this assessment — the fixed result
+     * columns plus every active registration-form field. Feeds the Export CSV
+     * dialog's tick-list, which starts with everything ticked.
+     */
+    public ResponseEntity<ResultExportColumnsDto> getResultExportColumns(CustomUserDetails user, String instituteId,
+                                                                         String assessmentId,
+                                                                         boolean notAttempted) {
+        // Reject an assessment that demonstrably belongs to another institute.
+        // A handful of live assessments pre-date the mapping table and have no
+        // mapping row at all — those stay exportable, scoped like the CSV itself
+        // by the institute on their registration rows.
+        if (assessmentInstituteMappingRepository.findByAssessmentIdAndInstituteId(assessmentId, instituteId).isEmpty()
+                && assessmentInstituteMappingRepository.findTopByAssessmentId(assessmentId).isPresent()) {
+            throw new VacademyException("Assessment Not Found");
+        }
+
+        // The "not attempted" sheet describes learners with no registration row, so the
+        // registration-form fields below would every one of them be blank. Offering them
+        // would be a tick-list of empty columns.
+        if (notAttempted) {
+            return ResponseEntity.ok(ResultExportColumnsDto.builder()
+                    .baseColumns(NOT_ATTEMPTED_EXPORT_HEADERS)
+                    .customFields(List.of())
+                    .build());
+        }
+
+        List<AssessmentCustomField> customFields = assessmentCustomFieldRepository
+                .findActiveFieldsByAssessmentId(assessmentId);
+        List<String> columnLabels = buildCustomFieldHeaders(customFields);
+
+        List<ResultExportColumnsDto.CustomFieldColumn> columns = new ArrayList<>();
+        for (int i = 0; i < customFields.size(); i++) {
+            AssessmentCustomField field = customFields.get(i);
+            columns.add(ResultExportColumnsDto.CustomFieldColumn.builder()
+                    .id(field.getId())
+                    .fieldName(field.getFieldName())
+                    .fieldKey(field.getFieldKey())
+                    .fieldType(field.getFieldType())
+                    .fieldOrder(field.getFieldOrder())
+                    .isMandatory(field.getIsMandatory())
+                    .columnLabel(columnLabels.get(i))
+                    .build());
+        }
+
+        return ResponseEntity.ok(ResultExportColumnsDto.builder()
+                .baseColumns(RESULT_EXPORT_BASE_HEADERS)
+                .customFields(columns)
+                .build());
+    }
+
+    /** One registration-form column of the CSV: which field fills it, and its header. */
+    private record ExportCustomFieldColumn(String fieldId, String header) {
+    }
+
+    /**
+     * Registration-form columns to append. A null id list means "every active
+     * field" (so an older client that doesn't send a selection still gets the
+     * full data), an empty list means the admin unticked all of them.
+     * <p>
+     * Headers are always computed over the assessment's full field list, then
+     * filtered — otherwise unticking one field could rename another's column
+     * (drop the first "Email" field and the second stops needing its "(Form 2)"
+     * suffix), and the header would no longer match what the dialog promised.
+     */
+    private List<ExportCustomFieldColumn> resolveExportCustomFieldColumns(String assessmentId,
+                                                                          List<String> requestedCustomFieldIds) {
+        if (requestedCustomFieldIds != null && requestedCustomFieldIds.isEmpty()) {
+            return List.of();
+        }
+        List<AssessmentCustomField> activeFields = assessmentCustomFieldRepository
+                .findActiveFieldsByAssessmentId(assessmentId);
+        List<String> headers = buildCustomFieldHeaders(activeFields);
+        Set<String> requested = requestedCustomFieldIds == null
+                ? null
+                : new HashSet<>(requestedCustomFieldIds);
+
+        List<ExportCustomFieldColumn> columns = new ArrayList<>();
+        for (int i = 0; i < activeFields.size(); i++) {
+            AssessmentCustomField field = activeFields.get(i);
+            if (requested == null || requested.contains(field.getId())) {
+                columns.add(new ExportCustomFieldColumn(field.getId(), headers.get(i)));
+            }
+        }
+        return columns;
+    }
+
+    /**
+     * Column titles for the custom fields, kept unique and distinct from the
+     * fixed result columns — a form asking for "Email" would otherwise produce
+     * two identically named columns and confuse the spreadsheet reader.
+     */
+    private List<String> buildCustomFieldHeaders(List<AssessmentCustomField> customFields) {
+        Set<String> used = new HashSet<>();
+        RESULT_EXPORT_BASE_HEADERS.forEach(header -> used.add(header.toLowerCase()));
+
+        List<String> headers = new ArrayList<>();
+        for (AssessmentCustomField field : customFields) {
+            String base = (field.getFieldName() != null && !field.getFieldName().isBlank())
+                    ? field.getFieldName().trim()
+                    : (field.getFieldKey() != null ? field.getFieldKey() : "Field");
+            String candidate = base;
+            if (used.contains(candidate.toLowerCase())) {
+                candidate = base + " (Form)";
+            }
+            int suffix = 2;
+            while (used.contains(candidate.toLowerCase())) {
+                candidate = base + " (Form " + suffix + ")";
+                suffix++;
+            }
+            used.add(candidate.toLowerCase());
+            headers.add(candidate);
+        }
+        return headers;
+    }
+
+    private Map<String, Map<String, String>> loadCustomFieldAnswers(String assessmentId, String instituteId) {
+        Map<String, Map<String, String>> answersByRegistration = new HashMap<>();
+        assessmentUserRegistrationRepository.findCustomFieldAnswersForAssessment(assessmentId, instituteId)
+                .forEach(row -> {
+                    if (row.getRegistrationId() == null || row.getFieldId() == null) return;
+                    String answer = row.getAnswer() != null ? row.getAnswer().trim() : "";
+                    if (answer.isEmpty()) return;
+                    answersByRegistration
+                            .computeIfAbsent(row.getRegistrationId(), key -> new HashMap<>())
+                            .merge(row.getFieldId(), answer,
+                                    (existing, incoming) -> existing + MULTI_ANSWER_SEPARATOR + incoming);
+                });
+        return answersByRegistration;
     }
 
     private String escapeCsvField(String value) {
@@ -381,7 +642,10 @@ public class AdminExportManager {
     private List<ParticipantsDetailsDto> handleCaseForBatchRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter) {
         List<ParticipantsDetailsDto> ParticipantsDetailsDto = new ArrayList<>();
         if (isPendingAttempt(filter)) {
-            //TODO: Send request to admin core to get pending list for batch
+            // Unreachable: getRegisteredCsvExport intercepts pending + batch and serves it
+            // from handleNotAttemptedCsvExport, which is the only path that can answer it
+            // (the set lives in admin_core, not in this database). Kept as a guard so a
+            // future caller reaching here gets an empty list rather than the attempted rows.
         } else {
             //Handle Case for Attempted case i.e LIVE,PREVIEW,ENDED
             ParticipantsDetailsDto = assessmentUserRegistrationRepository.findUserRegistrationWithFilterForBatchForExport(assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType());

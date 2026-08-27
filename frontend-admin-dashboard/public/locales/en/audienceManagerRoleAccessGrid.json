@@ -1,0 +1,11 @@
+{
+    "roleLabels": {
+        "admin": "Admin",
+        "student": "Student",
+        "parent": "Parent"
+    },
+    "actions": {
+        "view": "View",
+        "edit": "Edit"
+    }
+}

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { usePastLearningInsights } from "../-hooks/usePastLearningInsights";
 import { LineChartComponent } from "./LineChartComponent";
 import { StudentProgressTable } from "./StudentProgressTable";
@@ -119,6 +120,7 @@ const CleanerInlineStat = ({
 );
 
 export const PastLearningInsights = () => {
+  const { t } = useTranslation("dashboard");
   const isPlay = usePlayTheme();
   const isCleanerPlay = useCleanerPlayTheme();
   const { mutate: pastLearningInsights, isPending } = usePastLearningInsights();
@@ -200,14 +202,14 @@ export const PastLearningInsights = () => {
   const insightsContent = loadError ? (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-muted/40 p-6 text-center">
       <p className="text-sm font-medium text-muted-foreground">
-        Couldn't load your learning activity.
+        {t("learningInsights.loadError")}
       </p>
       <button
         type="button"
         onClick={fetchUserActivity}
         className="rounded-full bg-primary px-4 py-1.5 text-caption font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
-        Try again
+        {t("learningInsights.tryAgain")}
       </button>
     </div>
   ) : activeView === "chart" ? (
@@ -228,9 +230,9 @@ export const PastLearningInsights = () => {
               className="h-11 w-11 object-contain"
             />
             <div>
-              <p className="text-body font-black uppercase tracking-wide text-play-navy-soft-ink">Learning Progress</p>
+              <p className="text-body font-black uppercase tracking-wide text-play-navy-soft-ink">{t("learningInsights.title")}</p>
               <p className="text-caption font-bold text-play-ink/60">
-                Past 7 days activity vs {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} average
+                {t("learningInsights.subtitle", { batch: getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase() })}
               </p>
             </div>
           </div>
@@ -238,9 +240,9 @@ export const PastLearningInsights = () => {
           <div className="flex items-center gap-3 flex-wrap">
             {hasActivity && (
               <>
-                <PlayInlineStat label="avg" value={avgTimeSpent} icon={Clock} />
-                <PlayInlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
-                <PlayInlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Medal} />
+                <PlayInlineStat label={t("learningInsights.avgLabel")} value={avgTimeSpent} icon={Clock} />
+                <PlayInlineStat label={t("learningInsights.sessionsLabel")} value={totalSessions.toString()} icon={Target} />
+                <PlayInlineStat label={t("learningInsights.streakLabel", { count: streakDays })} value={streakDays.toString()} icon={Medal} />
               </>
             )}
 
@@ -251,7 +253,7 @@ export const PastLearningInsights = () => {
                   "rounded-full p-1.5 transition-all",
                   activeView === "chart" ? "bg-white text-play-navy-soft-ink shadow-sm" : "text-play-ink/50"
                 )}
-                title="Chart view"
+                title={t("learningInsights.chartViewTitle")}
               >
                 <ChartBarHorizontal size={14} />
               </button>
@@ -261,7 +263,7 @@ export const PastLearningInsights = () => {
                   "rounded-full p-1.5 transition-all",
                   activeView === "table" ? "bg-white text-play-navy-soft-ink shadow-sm" : "text-play-ink/50"
                 )}
-                title="Table view"
+                title={t("learningInsights.tableViewTitle")}
               >
                 <Table size={14} />
               </button>
@@ -288,9 +290,9 @@ export const PastLearningInsights = () => {
               className="h-11 w-11 object-contain"
             />
             <div>
-              <p className="cp-heading text-body">Learning Progress</p>
+              <p className="cp-heading text-body">{t("learningInsights.title")}</p>
               <p className="cp-muted text-caption">
-                Past 7 days activity vs {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} average
+                {t("learningInsights.subtitle", { batch: getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase() })}
               </p>
             </div>
           </div>
@@ -298,9 +300,9 @@ export const PastLearningInsights = () => {
           <div className="flex items-center gap-3 flex-wrap">
             {hasActivity && (
               <>
-                <CleanerInlineStat label="avg" value={avgTimeSpent} icon={Clock} />
-                <CleanerInlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
-                <CleanerInlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Medal} />
+                <CleanerInlineStat label={t("learningInsights.avgLabel")} value={avgTimeSpent} icon={Clock} />
+                <CleanerInlineStat label={t("learningInsights.sessionsLabel")} value={totalSessions.toString()} icon={Target} />
+                <CleanerInlineStat label={t("learningInsights.streakLabel", { count: streakDays })} value={streakDays.toString()} icon={Medal} />
               </>
             )}
 
@@ -311,7 +313,7 @@ export const PastLearningInsights = () => {
                   "rounded-full p-1.5 transition-all",
                   activeView === "chart" ? "bg-cp-surface text-cp-ink shadow-sm" : "cp-muted"
                 )}
-                title="Chart view"
+                title={t("learningInsights.chartViewTitle")}
               >
                 <ChartBarHorizontal size={14} />
               </button>
@@ -321,7 +323,7 @@ export const PastLearningInsights = () => {
                   "rounded-full p-1.5 transition-all",
                   activeView === "table" ? "bg-cp-surface text-cp-ink shadow-sm" : "cp-muted"
                 )}
-                title="Table view"
+                title={t("learningInsights.tableViewTitle")}
               >
                 <Table size={14} />
               </button>
@@ -352,8 +354,8 @@ export const PastLearningInsights = () => {
                 <TrendUp size={18} />
               </div>
               <div>
-                <CardTitle className="text-sm font-semibold">Learning Progress</CardTitle>
-                <CardDescription className="text-xs">Past 7 days activity vs {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} average</CardDescription>
+                <CardTitle className="text-sm font-semibold">{t("learningInsights.title")}</CardTitle>
+                <CardDescription className="text-xs">{t("learningInsights.subtitle", { batch: getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase() })}</CardDescription>
               </div>
             </div>
 
@@ -361,9 +363,9 @@ export const PastLearningInsights = () => {
               {/* Inline stats: only shown once there is real activity (no wall of zeros) */}
               {hasActivity && (
                 <>
-                  <InlineStat label="avg" value={avgTimeSpent} icon={Clock} />
-                  <InlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
-                  <InlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Medal} />
+                  <InlineStat label={t("learningInsights.avgLabel")} value={avgTimeSpent} icon={Clock} />
+                  <InlineStat label={t("learningInsights.sessionsLabel")} value={totalSessions.toString()} icon={Target} />
+                  <InlineStat label={t("learningInsights.streakLabel", { count: streakDays })} value={streakDays.toString()} icon={Medal} />
                 </>
               )}
 
@@ -377,7 +379,7 @@ export const PastLearningInsights = () => {
                       ? "bg-background shadow-sm text-foreground"
                       : "text-muted-foreground hover:text-foreground"
                   )}
-                  title="Chart view"
+                  title={t("learningInsights.chartViewTitle")}
                 >
                   <ChartBarHorizontal size={14} />
                 </button>
@@ -389,7 +391,7 @@ export const PastLearningInsights = () => {
                       ? "bg-background shadow-sm text-foreground"
                       : "text-muted-foreground hover:text-foreground"
                   )}
-                  title="Table view"
+                  title={t("learningInsights.tableViewTitle")}
                 >
                   <Table size={14} />
                 </button>

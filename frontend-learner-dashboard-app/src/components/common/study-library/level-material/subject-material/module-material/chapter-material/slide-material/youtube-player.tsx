@@ -13,6 +13,7 @@ import {
   useMemo,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { Trans, useTranslation } from "react-i18next";
 import { useTrackingStore } from "@/stores/study-library/youtube-video-tracking-store";
 import { getEpochTimeInMillis } from "./utils";
 import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTimeToSeconds";
@@ -39,6 +40,46 @@ import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import VideoQuestionOverlay from "./video-question-overlay";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
+
+/**
+ * Force subtitles off on a YouTube player.
+ *
+ * There is no playerVar for this: cc_load_policy only accepts 1 ("force captions
+ * ON") and its default is to follow the VIEWER's own preference — a Google
+ * account set to "always show captions", or an OS-level subtitle toggle. That is
+ * why one learner sees subtitles on a class everyone else sees clean.
+ *
+ * Three calls because no single one is reliable across player builds:
+ *   unloadModule("captions") — HTML5 player
+ *   unloadModule("cc")       — legacy player, which names the module differently
+ *   setOption("captions", "track", {}) — selects "no track"; this is the one that
+ *                              sticks when the module has already been loaded
+ *
+ * Must be re-applied when playback starts: the captions module is frequently
+ * loaded at PLAYING, after onReady has already run, which is why suppressing it
+ * only once on ready was not enough.
+ *
+ * Entirely best-effort — every call is swallowed. A learner seeing subtitles is a
+ * blemish; a thrown error here would break their class.
+ */
+const suppressCaptions = (target: unknown) => {
+  const p = target as {
+    unloadModule?: (m: string) => void;
+    setOption?: (module: string, option: string, value: unknown) => void;
+  };
+  for (const moduleName of ["captions", "cc"]) {
+    try {
+      p?.unloadModule?.(moduleName);
+    } catch {
+      /* module absent on this build */
+    }
+    try {
+      p?.setOption?.(moduleName, "track", {});
+    } catch {
+      /* option unsupported on this build */
+    }
+  }
+};
 
 // Add the YouTube PlayerState enum to avoid window.YT references
 enum PlayerState {
@@ -105,6 +146,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   enableConcentrationScore = true,
   concentrationSettings,
 }) => {
+  const { t } = useTranslation("libraryCommonB");
   const { activeItem } = useContentStore();
   // When Slide Content Protection is on, block right-click on the player (the
   // iframe is pointer-events-none with custom controls, so the contextmenu fires
@@ -186,6 +228,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Volume control state
   const [volume, setVolume] = useState(100); // 0 - 100
   const shouldAutoPlayAfterSeekRef = useRef(false);
+  /**
+   * True once the video has played to its end.
+   *
+   * playVideo() on a finished video does not resume it — it starts it over. The
+   * player has several paths that resume playback on their own (the isPlayed
+   * sync, resume-after-seek, tab-focus resume, initial autoplay), and any of them
+   * firing after the end restarts the class. That is the auto-restart: a 40-minute
+   * video in a 50-minute slot reaching its end and beginning again.
+   *
+   * Automatic resumes check this flag. Deliberate ones — the learner pressing play,
+   * or seeking somewhere — clear it, so replaying on purpose still works.
+   */
+  const hasEndedRef = useRef(false);
   // UI control states
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -835,6 +890,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           visibilityResumeTimeoutRef.current = setTimeout(async () => {
             visibilityResumeTimeoutRef.current = null;
             if (!isMountedRef.current) return;
+            if (hasEndedRef.current) return;
             const ok = await safePlayerOperation(
               () => player?.playVideo(),
               "visibilityResume"
@@ -1036,7 +1092,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       rel: 0, // Don't show related videos
       // showinfo: 0, // Hide video title and uploader
       autoplay: allowPlayPause ? 0 : 1, // Autoplay when pause control is disabled
-      // cc_load_policy: 0, // Hide closed captions
+      // NOTE: there is deliberately no cc_load_policy here. The API only accepts
+      // cc_load_policy=1, which FORCES captions on; there is no value that turns
+      // them off, because the default is "whatever the viewer prefers". Captions
+      // are suppressed in onPlayerReady via unloadModule instead.
       origin: getPlayerOrigin(), // Use localhost for Electron, actual origin for web
       enablejsapi: 1, // Enable JavaScript API
       playsinline: 1, // Play inline on iOS
@@ -1082,6 +1141,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   const togglePlay = async () => {
+    // A deliberate press is a request to watch again; let it through.
+    hasEndedRef.current = false;
     setIsPlayed(true);
 
     await safePlayerOperation(async () => {
@@ -1103,6 +1164,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     playerRef.current = event.target;
     setPlayer(event.target);
     setPlayerReady(true);
+
+    suppressCaptions(event.target);
+
     try {
       const vol = await event.target.getVolume();
       setVolume(typeof vol === "number" ? vol : 100);
@@ -1139,6 +1203,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Handler for manual play button (for iOS/browsers that block autoplay)
   const handleManualPlay = async () => {
     if (!player || !playerReady) return;
+    // Deliberate, like togglePlay — replaying a finished class on purpose is fine.
+    hasEndedRef.current = false;
 
     const success = await safePlayerOperation(async () => {
       const p = playerRef.current;
@@ -1181,6 +1247,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         const success = await safePlayerOperation(async () => {
           const p = playerRef.current;
           if (!p) return;
+          if (hasEndedRef.current) return;
           try {
             await p.unMute(); // Unmute for autoplay
           } catch (e) {
@@ -1281,6 +1348,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         const p = playerRef.current;
         if (!p) return;
         if (isPlayed) {
+          // Re-runs whenever its deps change, so without this it restarts a
+          // finished class every time it fires.
+          if (hasEndedRef.current) return;
           await p.playVideo();
           startProgressTracking();
         } else {
@@ -1325,6 +1395,21 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     if (!isMountedRef.current) return;
     if (!player || !playerRef.current) return;
 
+    // Re-assert "no subtitles" the moment playback starts. YouTube commonly loads
+    // the captions module at PLAYING rather than at ready, so suppressing it only
+    // in onPlayerReady leaves captions to reappear for viewers whose account
+    // forces them on — which is exactly what was reported.
+    if (event.data === PlayerState.PLAYING) suppressCaptions(event.target);
+
+    // Hold the last frame once the class finishes rather than letting the embed
+    // roll back to the start. A learner who leaves the tab open through the tail
+    // of the slot should see a finished class, not one that quietly began again.
+    if (event.data === PlayerState.ENDED) {
+      safePlayerOperation(async () => {
+        await playerRef.current?.pauseVideo();
+      }, "holdAtEnd");
+    }
+
     // Auto-play after seek completes (event-driven approach)
     if (shouldAutoPlayAfterSeekRef.current) {
       const state = event.data;
@@ -1336,6 +1421,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         await safePlayerOperation(async () => {
           const p = playerRef.current;
           if (!p) return;
+          if (hasEndedRef.current) return;
           await p.playVideo();
           if (isMountedRef.current) setIsPlayed(true);
         }, "autoPlayAfterSeek");
@@ -1394,8 +1480,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       currentStartTimeRef.current = formatVideoTime(currentTime);
       currentStartTimeInEpochRef.current =
         convertTimeToSeconds(currentStartTimeRef.current) * 1000;
+      // Actually playing again, so it is no longer "finished".
+      hasEndedRef.current = false;
       setIsPlayed(true);
     } else if (event.data === PAUSED_STATE || event.data === ENDED_STATE) {
+      if (event.data === ENDED_STATE) hasEndedRef.current = true;
       stopTimer();
       stopProgressTracking();
       videoEndTime.current = now;
@@ -1491,14 +1580,33 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
 
     try {
-      const videoDuration = await safeGetNumber(player.getDuration());
+      // A player that has not finished loading metadata reports a duration of 0,
+      // and briefly does so right after onReady. Clamping against that turned
+      // EVERY seek into a seek to 0 — which is how a live class that had already
+      // run its course appeared to start itself over. Wait for a real duration
+      // instead of trusting the first answer.
+      let videoDuration = await safeGetNumber(player.getDuration());
+      for (let i = 0; i < 10 && !(videoDuration > 0); i++) {
+        await new Promise((r) => setTimeout(r, 300));
+        if (!isMountedRef.current) return false;
+        videoDuration = await safeGetNumber(player.getDuration());
+      }
+      if (!(videoDuration > 0)) {
+        // Still unknown. There is nothing safe to clamp against, and seeking to 0
+        // would restart the class, so leave the player where it is.
+        console.warn("Seek skipped: video duration unavailable");
+        return false;
+      }
 
       let finalSeekTime = totalSecondsToSeek;
       // Ensure timestamp is within valid range
       if (finalSeekTime <= 0) {
         finalSeekTime = 0;
       } else if (finalSeekTime >= videoDuration) {
-        finalSeekTime = videoDuration;
+        // Land just short of the end rather than exactly on it: seeking to the
+        // duration itself fires ENDED, and the replay that follows is the same
+        // restart under a different name.
+        finalSeekTime = Math.max(0, videoDuration - 1);
       }
 
       const success = await safePlayerOperation(
@@ -1532,6 +1640,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   useEffect(() => {
     if (videoId !== lastVideoIdForSeekRef.current) {
       hasPerformedInitialSeekRef.current = false;
+      // A different video is a different class — whatever ended, this has not,
+      // so it must not inherit the previous one's finished state and refuse to
+      // start. Matters where the player is reused rather than remounted.
+      hasEndedRef.current = false;
       lastVideoIdForSeekRef.current = videoId;
     }
   }, [videoId]);
@@ -1619,7 +1731,40 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         // Only sync if elapsed time is positive (class has started)
         if (elapsedSeconds > 0) {
           // Add a small delay to ensure the player iframe is fully initialized
-          setTimeout(() => {
+          setTimeout(async () => {
+            // The scheduled slot is routinely longer than the video — a 60-minute
+            // class carrying a 57-minute recording leaves three minutes where
+            // "elapsed since start" points PAST the end. Seeking there does not
+            // land at the end: YouTube treats an out-of-range seek as a seek to
+            // zero, so the class appears to restart itself just as it finishes.
+            // Past the end there is nothing left to sync to, so leave the player
+            // where it is and let it finish.
+            // Same trap as in seekToTimestamp: a duration of 0 means "not loaded
+            // yet", not "zero-length". Waiting for it is what makes the check below
+            // meaningful — reading it once let the guard skip itself and hand an
+            // out-of-range target to the seek.
+            let duration = await safeGetNumber(playerRef.current?.getDuration());
+            for (let i = 0; i < 10 && !(duration > 0); i++) {
+              await new Promise((r) => setTimeout(r, 300));
+              if (!isMountedRef.current) return;
+              duration = await safeGetNumber(playerRef.current?.getDuration());
+            }
+            if (duration > 0 && elapsedSeconds >= duration - 1) {
+              console.log(
+                `Live class is ${elapsedSeconds}s in but the video is only ${duration}s long — not seeking.`
+              );
+              // The class is over even though its slot is not. Skipping the seek
+              // alone would leave autoplay to start it from the beginning, which
+              // is the same "it started again" the learner reports — just from
+              // arriving late rather than sitting through the end. Mark it ended
+              // so nothing automatic plays it, and hold the player quiet.
+              hasEndedRef.current = true;
+              void safePlayerOperation(async () => {
+                await playerRef.current?.pauseVideo();
+              }, "classAlreadyFinished");
+              if (isMountedRef.current) setIsPlayed(false);
+              return;
+            }
             // Seek to the calculated position (force it to bypass restrictions)
             seekToTimestamp(elapsedSeconds, true);
           }, 500);
@@ -1978,10 +2123,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                     </span>
-                    <h4 className="text-base font-bold text-white tracking-tight">Active Focus Check</h4>
+                    <h4 className="text-base font-bold text-white tracking-tight">{t("youtubePlayer.verification.title")}</h4>
                   </div>
                   <p className="text-sm text-zinc-400 leading-relaxed">
-                    Select <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle">{verificationNumbers[1]}</span> to maintain your learning streak.
+                    <Trans
+                      i18nKey="youtubePlayer.verification.prompt"
+                      t={t}
+                      values={{ number: verificationNumbers[1] }}
+                      components={{
+                        num: (
+                          <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle" />
+                        ),
+                      }}
+                    />
                   </p>
                 </div>
 
@@ -2000,7 +2154,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             </div>
             <div className="text-center mt-3">
               <span className="text-xs font-medium text-zinc-500 bg-black/40 px-3 py-1 rounded-full border border-white/5 backdrop-blur-md">
-                Closing in {verificationCountdown}s
+                {t("youtubePlayer.verification.closingIn", { seconds: verificationCountdown })}
               </span>
             </div>
           </div>
@@ -2043,10 +2197,19 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                       </span>
-                      <h4 className="text-base font-bold text-white tracking-tight">Active Focus Check</h4>
+                      <h4 className="text-base font-bold text-white tracking-tight">{t("youtubePlayer.verification.title")}</h4>
                     </div>
                     <p className="text-sm text-zinc-400 leading-relaxed">
-                      Select <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle">{verificationNumbers[1]}</span> to maintain your learning streak.
+                      <Trans
+                        i18nKey="youtubePlayer.verification.prompt"
+                        t={t}
+                        values={{ number: verificationNumbers[1] }}
+                        components={{
+                          num: (
+                            <span className="inline-block px-2 py-0.5 mx-1 bg-zinc-900 border border-zinc-700 rounded text-emerald-400 font-mono font-bold text-base shadow-inner md:align-middle" />
+                          ),
+                        }}
+                      />
                     </p>
                   </div>
 
@@ -2068,7 +2231,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               </div>
               <div className="text-center mt-3">
                 <span className="text-xs font-medium text-zinc-500 bg-black/40 px-3 py-1 rounded-full border border-white/5 backdrop-blur-md">
-                  Closing in {verificationCountdown}s
+                  {t("youtubePlayer.verification.closingIn", { seconds: verificationCountdown })}
                 </span>
               </div>
             </div>
@@ -2101,7 +2264,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   toggleFullscreen(e as any);
                 }}
                 className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all active:scale-95 shadow-lg backdrop-blur-sm border border-white/10"
-                aria-label="Exit fullscreen"
+                aria-label={t("youtubePlayer.controls.exitFullscreen")}
               >
                 <X size={24} weight="bold" />
               </button>
@@ -2167,10 +2330,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     <button
                       onClick={goToLive}
                       className="flex items-center gap-1 px-3 py-1 rounded-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-all hover:scale-105 backdrop-blur-sm animate-pulse"
-                      title="Go to live stream"
+                      title={t("youtubePlayer.controls.goToLive")}
                     >
                       <div className="w-2 h-2 bg-white rounded-full"></div>
-                      LIVE
+                      {t("youtubePlayer.controls.live")}
                     </button>
                   )}
 
@@ -2208,7 +2371,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     {showSpeedOptions && allowRewind && (
                       <div className="speed-dropdown absolute bottom-full end-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-20 min-w-20 max-h-reg-250 overflow-y-auto">
                         <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
-                          Speed
+                          {t("youtubePlayer.controls.speed")}
                         </div>
                         <div className="py-2">
                           {speedOptions.map((speed) => (
@@ -2284,12 +2447,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                           }
                         }}
                         disabled={!allowRewind}
-                        title={`Question ${index + 1}${isAnswered
-                            ? " (Answered)"
+                        title={`${t("youtubePlayer.questionMarker.title", { index: index + 1 })}${isAnswered
+                            ? t("youtubePlayer.questionMarker.answered")
                             : canSkip
-                              ? " (Skippable)"
-                              : " (Required)"
-                          }${!allowRewind ? " (Navigation disabled)" : ""}`}
+                              ? t("youtubePlayer.questionMarker.skippable")
+                              : t("youtubePlayer.questionMarker.required")
+                          }${!allowRewind ? t("youtubePlayer.questionMarker.navigationDisabled") : ""}`}
                       >
                         {isAnswered ? (
                           <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
@@ -2353,14 +2516,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             <button
               onClick={handleManualPlay}
               className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-2xl hover:scale-105 transition-all duration-300 hover:shadow-primary-500/50 active:scale-95"
-              aria-label="Start video"
+              aria-label={t("youtubePlayer.manualPlay.ariaLabel")}
             >
               <div className="p-4 rounded-full bg-white/20 backdrop-blur-sm">
                 <Play size={48} weight="fill" />
               </div>
-              <span className="text-lg font-semibold">Tap to Start Video</span>
+              <span className="text-lg font-semibold">{t("youtubePlayer.manualPlay.tapToStart")}</span>
               <span className="text-sm text-white/80">
-                Video will play automatically
+                {t("youtubePlayer.manualPlay.autoplayHint")}
               </span>
             </button>
           </div>
@@ -2433,10 +2596,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     <button
                       onClick={goToLive}
                       className="flex items-center gap-1 px-3 py-1 rounded-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-all hover:scale-105 backdrop-blur-sm animate-pulse"
-                      title="Go to live stream"
+                      title={t("youtubePlayer.controls.goToLive")}
                     >
                       <div className="w-2 h-2 bg-white rounded-full"></div>
-                      LIVE
+                      {t("youtubePlayer.controls.live")}
                     </button>
                   )}
 
@@ -2529,12 +2692,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                           }
                         }}
                         disabled={!allowRewind}
-                        title={`Question ${index + 1}${isAnswered
-                            ? " (Answered)"
+                        title={`${t("youtubePlayer.questionMarker.title", { index: index + 1 })}${isAnswered
+                            ? t("youtubePlayer.questionMarker.answered")
                             : canSkip
-                              ? " (Skippable)"
-                              : " (Required)"
-                          }${!allowRewind ? " (Navigation disabled)" : ""}`}
+                              ? t("youtubePlayer.questionMarker.skippable")
+                              : t("youtubePlayer.questionMarker.required")
+                          }${!allowRewind ? t("youtubePlayer.questionMarker.navigationDisabled") : ""}`}
                       >
                         {isAnswered ? (
                           <span className="text-white text-xs font-bold flex items-center justify-center w-full h-full">
@@ -2603,7 +2766,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           }}
         >
           <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
-            Speed
+            {t("youtubePlayer.controls.speed")}
           </div>
           <div className="py-2">
             {speedOptions.map((speed) => (

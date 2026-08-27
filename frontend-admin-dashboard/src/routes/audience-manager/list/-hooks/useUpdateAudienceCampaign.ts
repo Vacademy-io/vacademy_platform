@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import type { TFunction } from 'i18next';
 import {
     AudienceCampaignPayload,
     updateAudienceCampaign,
@@ -10,7 +11,7 @@ interface UpdateAudienceCampaignParams {
     payload: AudienceCampaignPayload;
 }
 
-export function useUpdateAudienceCampaign() {
+export function useUpdateAudienceCampaign(t: TFunction) {
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -18,11 +19,11 @@ export function useUpdateAudienceCampaign() {
             updateAudienceCampaign(audienceId, payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
-            toast.success('Update successfully');
+            toast.success(t('success.updateCampaign'));
         },
         onError: (error: any) => {
             const message =
-                error?.response?.data?.message || error?.message || 'Failed to update campaign';
+                error?.response?.data?.message || error?.message || t('errors.updateCampaign');
             toast.error(message);
             console.error('useUpdateAudienceCampaign error', error);
         },

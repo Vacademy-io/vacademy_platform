@@ -88,6 +88,11 @@ export const certificateHtml = `<!DOCTYPE html>
             letter-spacing: 1px;
             text-decoration-color: rgb(69, 67, 67);
             /* underline color set to gray */
+            /* A long name wraps at the page width already, but a single
+               unbroken token has nowhere to break and would run off the
+               edge of the certificate. */
+            max-width: 100%;
+            overflow-wrap: break-word;
         }
 
         .course-text {
@@ -95,6 +100,9 @@ export const certificateHtml = `<!DOCTYPE html>
             margin: 20px 12px;
             color: #333;
             line-height: 1.7;
+            /* Course titles are the longest values on a certificate. */
+            max-width: 100%;
+            overflow-wrap: break-word;
         }
 
         /* Footer row */

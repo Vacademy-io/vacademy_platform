@@ -57,11 +57,12 @@ public class CertificateSettingDto {
     // See CertificateNumberService for the supported tokens.
     private CertificateNumberingDto certificateNumbering;
 
-    // What the {{CERTIFICATE_QR}} token encodes. Null/blank encodes the bare
-    // certificate number. Set a URL containing {{CERTIFICATE_ID}} — for example
-    // https://myschool.com/verify?c={{CERTIFICATE_ID}} — to make a scan land on
-    // a verification page instead. There is no platform-provided public
-    // verification endpoint, so this is opt-in per institute.
+    // Overrides what the {{CERTIFICATE_QR}} token encodes. Null/blank uses the
+    // platform verification page on the institute's own learner portal, which
+    // needs no login. Set a URL containing {{CERTIFICATE_ID}} — for example
+    // https://myschool.com/verify?c={{CERTIFICATE_ID}} — to send scans to your
+    // own page instead. Note that doing so bypasses platform verification: the
+    // QR then carries only the number, which is not a credential.
     private String qrVerificationUrlTemplate;
 
     // Which machine-readable code is stamped alongside the certificate number
@@ -69,4 +70,90 @@ public class CertificateSettingDto {
     // QR — it carries more data, survives partial damage, and any phone camera
     // reads it without a dedicated scanner.
     private String badgeCodeType;
+
+    // What the {{CERTIFICATE_BARCODE}} token encodes:
+    //   NUMBER            - the bare certificate number (the historical
+    //                       behaviour, and what null means). Scans to a string;
+    //                       verifies nothing, because the number alone is
+    //                       deliberately not a credential.
+    //   VERIFICATION_CODE - "<number>*<shortCode>", which the public verify page
+    //                       resolves. Needs a wider barcode to stay scannable
+    //                       (~21 characters rather than ~11), so the editor
+    //                       widens the default box when this is selected.
+    private String barcodeContent;
+
+    // Whether the platform may stamp the code and the number bottom-right on a
+    // certificate whose design does not place them itself.
+    //
+    // Both default to TRUE when null, which is what every certificate issued
+    // before these existed did — the stamp was unconditional, and an admin who
+    // deleted the QR or the certificate-number field from their design watched
+    // it reappear on the issued PDF with no way to stop it. That is what these
+    // switch off.
+    //
+    // Two flags rather than one because they are two decisions: an institute
+    // that wants its number printed but no machine-readable code (or the
+    // reverse) is a normal request, and the renderer already decides them
+    // independently.
+    //
+    // Turning off the code means nothing on the certificate can be scanned, so
+    // it can no longer be verified by scanning — the admin is told this in the
+    // settings UI before they do it.
+    private Boolean autoStampCode;
+    private Boolean autoStampNumber;
+
+    // The public verification page — what someone scanning a certificate sees.
+    //
+    // Editable because the page speaks for the institute to an outsider, and
+    // institutes do not all say the same thing: a university confirming a degree
+    // and a training provider confirming attendance want different words and
+    // disclose different amounts. Everything here is public by definition,
+    // since anyone holding the link reads it.
+    //
+    // Null on every field means the shipped default, so a page that was never
+    // configured reads exactly as it does today.
+
+    // Replaces "This certificate is genuine" when set.
+    private String verificationHeadline;
+
+    // A line of the institute's own — a registrar's contact, a note about what
+    // the certificate attests to. Blank prints nothing rather than an empty panel.
+    private String verificationNote;
+
+    // Which particulars the page lists. The learner's (masked) name and the
+    // certificate number are always shown: without them the page confirms that
+    // *a* certificate exists rather than the one in the reader's hand.
+    private Boolean verificationShowCourse;
+    private Boolean verificationShowIssueDate;
+    private Boolean verificationShowCompletion;
+
+    // What a scanned QR actually opens.
+    //
+    // PAGE (default, and what every existing institute keeps) renders the built-in
+    // verification page from the fields above. DOCUMENT serves a document the
+    // institute supplied instead — some registrars want the scan to produce
+    // something that looks like an official record rather than a web page.
+    //
+    // Null means PAGE. Existing settings blobs have no such key, so they must
+    // keep behaving exactly as they do now.
+    private String verificationMode;
+
+    // HTML or PDF. HTML is designed in the same visual editor as the certificate
+    // and carries {{TOKEN}}s; PDF is uploaded as-is and cannot be substituted
+    // into, so it is the right choice only for a static notice.
+    private String verificationDocumentType;
+
+    // The designed HTML, tokens and all. Substituted at scan time through the
+    // same pipeline as the certificate, so a token that resolves on the
+    // certificate resolves here too.
+    private String verificationDocumentHtml;
+
+    // Media file id of the uploaded PDF, when verificationDocumentType is PDF.
+    private String verificationDocumentFileId;
+
+    // Admin-defined fields, so an institute can put values on its certificates
+    // that the platform has no built-in token for — a grade, a director's name,
+    // an accreditation line. Each entry becomes a draggable chip in the visual
+    // editor and a {{CF_<KEY>}} token the renderer substitutes.
+    private List<CertificateCustomFieldDto> customFields;
 }

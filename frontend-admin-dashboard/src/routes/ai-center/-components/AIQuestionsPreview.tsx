@@ -46,6 +46,7 @@ import { addQuestionPaper } from '@/routes/assessment/question-papers/-utils/que
 import { getQuestionPaperById } from '@/routes/community/question-paper/-service/utils';
 import { useAIQuestionDialogStore } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/zustand-global-states/ai-add-questions-dialog-zustand';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useTranslation } from 'react-i18next';
 
 interface AIQuestionsPreviewProps {
     task: AITaskIndividualListInterface;
@@ -70,6 +71,8 @@ const AIQuestionsPreview = ({
     currentSectionIndex,
     hideTrigger = false,
 }: AIQuestionsPreviewProps) => {
+    const { t } = useTranslation('aiCenterAIQuestionsPreview');
+    const { t: tHelper } = useTranslation('aiCenterHelper');
     const {
         setIsAIQuestionDialog1,
         setIsAIQuestionDialog2,
@@ -172,7 +175,8 @@ const AIQuestionsPreview = ({
             setNoResponse(false);
             setAssessmentData(response);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
-                response.questions
+                response.questions,
+                tHelper
             );
             form.reset({
                 ...form.getValues(),
@@ -218,12 +222,13 @@ const AIQuestionsPreview = ({
                 queryClient.invalidateQueries({ queryKey: ['GET_INDIVIDUAL_AI_LIST_DATA'] });
             }, 100);
             if (!response.questions || response.questions.length === 0) {
-                toast.success('No data exists!');
+                toast.success(t('toast.noDataExists'));
                 return;
             }
             setAssessmentData(response);
             const transformQuestionsData = transformQuestionsToGenerateAssessmentAI(
-                response.questions
+                response.questions,
+                tHelper
             );
             form.reset({
                 ...form.getValues(),
@@ -330,7 +335,7 @@ const AIQuestionsPreview = ({
 
     const handleSaveQuestionsInSection = () => {
         if (Object.values(form.formState.errors).length > 0) {
-            toast.error('some of your questions are incomplete or needs attentions!', {
+            toast.error(t('toast.incompleteQuestions'), {
                 className: 'error-toast',
                 duration: 3000,
             });
@@ -348,11 +353,11 @@ const AIQuestionsPreview = ({
             <Dialog open={noResponse} onOpenChange={setNoResponse}>
                 <DialogContent className="overflow-hidden rounded-lg p-0">
                     <div className="flex items-center gap-2 border-b border-destructive/20 bg-destructive/10 p-4 text-destructive">
-                        <span className="font-semibold">Failed to load questions</span>
+                        <span className="font-semibold">{t('noResponseDialog.title')}</span>
                     </div>
                     <div className="flex flex-col gap-4 p-6">
                         <p className="text-sm text-muted-foreground">
-                            We couldn't generate the questions for you. Please try again.
+                            {t('noResponseDialog.message')}
                         </p>
                         <MyButton
                             type="button"
@@ -361,7 +366,7 @@ const AIQuestionsPreview = ({
                             className="!text-primary w-fit text-sm font-semibold hover:underline"
                             onClick={() => handleRetryTask(task.id)}
                         >
-                            Retry Now
+                            {t('noResponseDialog.retryNow')}
                         </MyButton>
                     </div>
                 </DialogContent>
@@ -383,10 +388,10 @@ const AIQuestionsPreview = ({
                             {getRetryMutation.status === 'pending' ? (
                                 <>
                                     <div className="mr-2 size-3 animate-spin rounded-full border-2 border-destructive border-t-transparent"></div>
-                                    <span>Retrying...</span>
+                                    <span>{t('trigger.retrying')}</span>
                                 </>
                             ) : (
-                                'Retry'
+                                t('trigger.retry')
                             )}
                         </MyButton>
                     ) : (
@@ -400,12 +405,12 @@ const AIQuestionsPreview = ({
                             {getQuestionsListMutation.status === 'pending' ? (
                                 <>
                                     <div className="mr-1 size-3 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                                    <span>Loading…</span>
+                                    <span>{t('trigger.loading')}</span>
                                 </>
                             ) : (
                                 <>
                                     <Eye size={14} weight="bold" />
-                                    View questions
+                                    {t('trigger.viewQuestions')}
                                 </>
                             )}
                         </MyButton>
@@ -413,7 +418,7 @@ const AIQuestionsPreview = ({
                 </DialogTrigger>
                 )}
                 {form.getValues('questions') && form.getValues('questions').length > 0 && (
-                    <DialogContent className="no-scrollbar !m-0 flex h-[92vh] !w-[92vw] !max-w-none flex-col !gap-0 overflow-hidden !rounded-2xl bg-background !p-0 text-foreground [&>button]:hidden">
+                    <DialogContent className="no-scrollbar !m-0 flex h-[92vh] !w-[92vw] !max-w-none flex-col !gap-0 overflow-hidden !rounded-2xl bg-background !p-0 text-foreground [&>button]:hidden">{/* design-lint-ignore: near-fullscreen editor dialog, no token exists for viewport-relative sizing */}
                         <FormProvider {...form}>
                             <form className="flex h-full flex-col">
                                 {/* Header */}
@@ -422,7 +427,7 @@ const AIQuestionsPreview = ({
                                         <div className="flex items-center gap-3">
                                             <img
                                                 src={instituteLogo}
-                                                alt="logo"
+                                                alt={t('instituteLogoAlt')}
                                                 className="size-9 rounded-full border bg-muted object-contain"
                                             />
                                             <div className="flex flex-col">
@@ -437,7 +442,7 @@ const AIQuestionsPreview = ({
                                                             <Badge
                                                                 variant="secondary"
                                                                 key={idx}
-                                                                className="border-transparent bg-muted/50 px-1.5 py-0 text-[10px] font-medium text-muted-foreground"
+                                                                className="border-transparent bg-muted/50 px-1.5 py-0 text-caption font-medium text-muted-foreground"
                                                             >
                                                                 {tag}
                                                             </Badge>
@@ -449,11 +454,13 @@ const AIQuestionsPreview = ({
                                                                     <TooltipTrigger asChild>
                                                                         <Badge
                                                                             variant="secondary"
-                                                                            className="cursor-help border-transparent bg-muted/50 px-1.5 py-0 text-[10px] font-medium text-muted-foreground"
+                                                                            className="cursor-help border-transparent bg-muted/50 px-1.5 py-0 text-caption font-medium text-muted-foreground"
                                                                         >
-                                                                            +
-                                                                            {form.getValues('tags')!
-                                                                                .length - 3}
+                                                                            {t('header.moreTagsBadge', {
+                                                                                count: form.getValues(
+                                                                                    'tags'
+                                                                                )!.length - 3,
+                                                                            })}
                                                                         </Badge>
                                                                     </TooltipTrigger>
                                                                     <TooltipContent>
@@ -483,7 +490,7 @@ const AIQuestionsPreview = ({
                                             (handleSubmitFormData.status === 'pending' ? (
                                                 <MyButton type="button" disable scale="small">
                                                     <div className="mr-2 size-3 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                                                    <span>Saving...</span>
+                                                    <span>{t('header.saving')}</span>
                                                 </MyButton>
                                             ) : (
                                                 <MyButton
@@ -491,7 +498,7 @@ const AIQuestionsPreview = ({
                                                     type="button"
                                                     scale="small"
                                                 >
-                                                    Save Changes
+                                                    {t('header.saveChanges')}
                                                 </MyButton>
                                             ))}
                                         <ExportQuestionPaperAI
@@ -502,12 +509,12 @@ const AIQuestionsPreview = ({
                                             type="button"
                                             scale="small"
                                             buttonType="secondary"
-                                            className="text-muted-foreground hover:text-foreground md:min-w-[80px]"
+                                            className="text-muted-foreground hover:text-foreground md:min-w-20"
                                             onClick={() => {
                                                 setOpenQuestionsPreview(false);
                                             }}
                                         >
-                                            Close
+                                            {t('header.close')}
                                         </MyButton>
                                     </div>
                                 </div>
@@ -531,7 +538,7 @@ const AIQuestionsPreview = ({
                                                 >
                                                     <div
                                                         ref={contentRef}
-                                                        className="flex w-[350%] origin-top-left scale-[0.28] flex-col gap-6 pb-20"
+                                                        className="flex w-[350%] origin-top-left scale-[0.28] flex-col gap-6 pb-20" // design-lint-ignore: inverse of the scale-[0.28] transform (100/0.28≈357%, rounded), a computed compensation value with no matching width token
                                                     >
                                                         {fields.map((field, index) => {
                                                             const hasError =
@@ -569,7 +576,7 @@ const AIQuestionsPreview = ({
                                                                                     >
                                                                                         {index + 1}
                                                                                     </span>
-                                                                                    <span className="max-w-[400px] truncate text-3xl font-medium text-gray-500">
+                                                                                    <span className="max-w-sm truncate text-3xl font-medium text-gray-500">
                                                                                         {getPPTViewTitle(
                                                                                             getValues(
                                                                                                 `questions.${index}.questionType`
@@ -616,7 +623,7 @@ const AIQuestionsPreview = ({
                                                                                                 }}
                                                                                             >
                                                                                                 <Copy className="mr-3 size-5" />
-                                                                                                Duplicate
+                                                                                                {t('questionCard.duplicate')}
                                                                                             </DropdownMenuItem>
                                                                                             <DropdownMenuItem
                                                                                                 className="py-3 text-lg text-destructive focus:text-destructive"
@@ -641,7 +648,7 @@ const AIQuestionsPreview = ({
                                                                                                 }}
                                                                                             >
                                                                                                 <Trash className="mr-3 size-5" />
-                                                                                                Delete
+                                                                                                {t('questionCard.delete')}
                                                                                             </DropdownMenuItem>
                                                                                         </DropdownMenuContent>
                                                                                     </DropdownMenu>
@@ -693,12 +700,12 @@ const AIQuestionsPreview = ({
                                         {questions && questions.length === 0 ? (
                                             <div className="flex size-full items-center justify-center">
                                                 <h1 className="font-medium text-muted-foreground">
-                                                    No Question Exists.
+                                                    {t('content.noQuestionsExist')}
                                                 </h1>
                                             </div>
                                         ) : (
                                             <div className="size-full overflow-y-auto p-8">
-                                                <div className="mx-auto min-h-[600px] w-full max-w-5xl rounded-xl border bg-background p-10 shadow-sm">
+                                                <div className="mx-auto min-h-[600px] w-full max-w-5xl rounded-xl border bg-background p-10 shadow-sm"> {/* design-lint-ignore: 600px canvas min-height has no matching standard scale step (min-h-96=384px too small), pixel-exact value needed for the question preview surface */}
                                                     <MainViewComponentFactory
                                                         key={currentQuestionIndex}
                                                         type={

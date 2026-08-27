@@ -22,6 +22,7 @@ import { Route as SignupIndexRouteImport } from "./routes/signup/index"
 import { Route as SettingsIndexRouteImport } from "./routes/settings/index"
 import { Route as SalesDashboardIndexRouteImport } from "./routes/sales-dashboard/index"
 import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
+import { Route as PaymentDashboardIndexRouteImport } from "./routes/payment-dashboard/index"
 import { Route as MembershipStatsIndexRouteImport } from "./routes/membership-stats/index"
 import { Route as MembershipExpiryIndexRouteImport } from "./routes/membership-expiry/index"
 import { Route as ManageSuborgTeamsIndexRouteImport } from "./routes/manage-suborg-teams/index"
@@ -84,8 +85,11 @@ import { Route as SettingsTelephonyIndexRouteImport } from "./routes/settings/te
 import { Route as SettingsFeeManagementIndexRouteImport } from "./routes/settings/fee-management/index"
 import { Route as PlanningPlanningIndexRouteImport } from "./routes/planning/planning/index"
 import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning/activity-logs/index"
+import { Route as MentorshipSessionsIndexRouteImport } from "./routes/mentorship/sessions/index"
+import { Route as MentorshipRequestsIndexRouteImport } from "./routes/mentorship/requests/index"
 import { Route as MentorshipMyMentorshipIndexRouteImport } from "./routes/mentorship/my-mentorship/index"
 import { Route as MentorshipMentorsIndexRouteImport } from "./routes/mentorship/mentors/index"
+import { Route as MentorshipDashboardIndexRouteImport } from "./routes/mentorship/dashboard/index"
 import { Route as MeetingsTeamIndexRouteImport } from "./routes/meetings/team/index"
 import { Route as MeetingsMyScheduleIndexRouteImport } from "./routes/meetings/my-schedule/index"
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
@@ -116,6 +120,7 @@ import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./route
 import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/communication/notification-hub/index"
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
+import { Route as CallingCallQueueIndexRouteImport } from "./routes/calling/call-queue/index"
 import { Route as CallingAiAgentsIndexRouteImport } from "./routes/calling/ai-agents/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
@@ -170,6 +175,7 @@ import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from "./rou
 import { Route as StudyLibraryAiCopilotCourseOutlineIndexRouteImport } from "./routes/study-library/ai-copilot/course-outline/index"
 import { Route as PlanningPlanningCreateIndexRouteImport } from "./routes/planning/planning/create/index"
 import { Route as PlanningActivityLogsCreateIndexRouteImport } from "./routes/planning/activity-logs/create/index"
+import { Route as MentorshipMentorsMentorIdIndexRouteImport } from "./routes/mentorship/mentors/$mentorId/index"
 import { Route as EvaluatorAiEvaluationStudentSummaryIndexRouteImport } from "./routes/evaluator-ai/evaluation/student-summary/index"
 import { Route as EvaluatorAiAssessmentCreateAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/create-assessment/index"
 import { Route as AudienceManagerListCampaignUsersIndexRouteImport } from "./routes/audience-manager/list/campaign-users/index"
@@ -300,6 +306,13 @@ const PlanningIndexRoute = PlanningIndexRouteImport.update({
   path: "/planning/",
   getParentRoute: () => rootRouteImport,
 } as any)
+const PaymentDashboardIndexRoute = PaymentDashboardIndexRouteImport.update({
+  id: "/payment-dashboard/",
+  path: "/payment-dashboard/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/payment-dashboard/index.lazy").then((d) => d.Route),
+)
 const MembershipStatsIndexRoute = MembershipStatsIndexRouteImport.update({
   id: "/membership-stats/",
   path: "/membership-stats/",
@@ -743,6 +756,20 @@ const PlanningActivityLogsIndexRoute =
   } as any).lazy(() =>
     import("./routes/planning/activity-logs/index.lazy").then((d) => d.Route),
   )
+const MentorshipSessionsIndexRoute = MentorshipSessionsIndexRouteImport.update({
+  id: "/mentorship/sessions/",
+  path: "/mentorship/sessions/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/mentorship/sessions/index.lazy").then((d) => d.Route),
+)
+const MentorshipRequestsIndexRoute = MentorshipRequestsIndexRouteImport.update({
+  id: "/mentorship/requests/",
+  path: "/mentorship/requests/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/mentorship/requests/index.lazy").then((d) => d.Route),
+)
 const MentorshipMyMentorshipIndexRoute =
   MentorshipMyMentorshipIndexRouteImport.update({
     id: "/mentorship/my-mentorship/",
@@ -758,6 +785,14 @@ const MentorshipMentorsIndexRoute = MentorshipMentorsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/mentorship/mentors/index.lazy").then((d) => d.Route),
 )
+const MentorshipDashboardIndexRoute =
+  MentorshipDashboardIndexRouteImport.update({
+    id: "/mentorship/dashboard/",
+    path: "/mentorship/dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/mentorship/dashboard/index.lazy").then((d) => d.Route),
+  )
 const MeetingsTeamIndexRoute = MeetingsTeamIndexRouteImport.update({
   id: "/meetings/team/",
   path: "/meetings/team/",
@@ -1021,6 +1056,13 @@ const CertificateGenerationStudentDataIndexRoute =
       (d) => d.Route,
     ),
   )
+const CallingCallQueueIndexRoute = CallingCallQueueIndexRouteImport.update({
+  id: "/calling/call-queue/",
+  path: "/calling/call-queue/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/calling/call-queue/index.lazy").then((d) => d.Route),
+)
 const CallingAiAgentsIndexRoute = CallingAiAgentsIndexRouteImport.update({
   id: "/calling/ai-agents/",
   path: "/calling/ai-agents/",
@@ -1448,6 +1490,16 @@ const PlanningActivityLogsCreateIndexRoute =
     path: "/planning/activity-logs/create/",
     getParentRoute: () => rootRouteImport,
   } as any)
+const MentorshipMentorsMentorIdIndexRoute =
+  MentorshipMentorsMentorIdIndexRouteImport.update({
+    id: "/mentorship/mentors/$mentorId/",
+    path: "/mentorship/mentors/$mentorId/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/mentorship/mentors/$mentorId/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const EvaluatorAiEvaluationStudentSummaryIndexRoute =
   EvaluatorAiEvaluationStudentSummaryIndexRouteImport.update({
     id: "/evaluator-ai/evaluation/student-summary/",
@@ -1852,6 +1904,7 @@ export interface FileRoutesByFullPath {
   "/manage-suborg-teams/": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
+  "/payment-dashboard/": typeof PaymentDashboardIndexRoute
   "/planning/": typeof PlanningIndexRoute
   "/sales-dashboard/": typeof SalesDashboardIndexRoute
   "/settings/": typeof SettingsIndexRoute
@@ -1900,6 +1953,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
+  "/calling/call-queue/": typeof CallingCallQueueIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
@@ -1930,8 +1984,11 @@ export interface FileRoutesByFullPath {
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team/": typeof MeetingsTeamIndexRoute
+  "/mentorship/dashboard/": typeof MentorshipDashboardIndexRoute
   "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
+  "/mentorship/requests/": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions/": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -1976,6 +2033,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
   "/evaluator-ai/assessment/create-assessment/": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
   "/evaluator-ai/evaluation/student-summary/": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
+  "/mentorship/mentors/$mentorId/": typeof MentorshipMentorsMentorIdIndexRoute
   "/planning/activity-logs/create/": typeof PlanningActivityLogsCreateIndexRoute
   "/planning/planning/create/": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline/": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
@@ -2057,6 +2115,7 @@ export interface FileRoutesByTo {
   "/manage-suborg-teams": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry": typeof MembershipExpiryIndexRoute
   "/membership-stats": typeof MembershipStatsIndexRoute
+  "/payment-dashboard": typeof PaymentDashboardIndexRoute
   "/planning": typeof PlanningIndexRoute
   "/sales-dashboard": typeof SalesDashboardIndexRoute
   "/settings": typeof SettingsIndexRoute
@@ -2105,6 +2164,7 @@ export interface FileRoutesByTo {
   "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/calling/ai-agents": typeof CallingAiAgentsIndexRoute
+  "/calling/call-queue": typeof CallingCallQueueIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub": typeof CommunicationNotificationHubIndexRoute
@@ -2135,8 +2195,11 @@ export interface FileRoutesByTo {
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team": typeof MeetingsTeamIndexRoute
+  "/mentorship/dashboard": typeof MentorshipDashboardIndexRoute
   "/mentorship/mentors": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship": typeof MentorshipMyMentorshipIndexRoute
+  "/mentorship/requests": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs": typeof PlanningActivityLogsIndexRoute
   "/planning/planning": typeof PlanningPlanningIndexRoute
   "/settings/fee-management": typeof SettingsFeeManagementIndexRoute
@@ -2181,6 +2244,7 @@ export interface FileRoutesByTo {
   "/audience-manager/list/campaign-users": typeof AudienceManagerListCampaignUsersIndexRoute
   "/evaluator-ai/assessment/create-assessment": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
   "/evaluator-ai/evaluation/student-summary": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
+  "/mentorship/mentors/$mentorId": typeof MentorshipMentorsMentorIdIndexRoute
   "/planning/activity-logs/create": typeof PlanningActivityLogsCreateIndexRoute
   "/planning/planning/create": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
@@ -2264,6 +2328,7 @@ export interface FileRoutesById {
   "/manage-suborg-teams/": typeof ManageSuborgTeamsIndexRoute
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
+  "/payment-dashboard/": typeof PaymentDashboardIndexRoute
   "/planning/": typeof PlanningIndexRoute
   "/sales-dashboard/": typeof SalesDashboardIndexRoute
   "/settings/": typeof SettingsIndexRoute
@@ -2312,6 +2377,7 @@ export interface FileRoutesById {
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/calling/ai-agents/": typeof CallingAiAgentsIndexRoute
+  "/calling/call-queue/": typeof CallingCallQueueIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
   "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
@@ -2342,8 +2408,11 @@ export interface FileRoutesById {
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team/": typeof MeetingsTeamIndexRoute
+  "/mentorship/dashboard/": typeof MentorshipDashboardIndexRoute
   "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
   "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
+  "/mentorship/requests/": typeof MentorshipRequestsIndexRoute
+  "/mentorship/sessions/": typeof MentorshipSessionsIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2388,6 +2457,7 @@ export interface FileRoutesById {
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
   "/evaluator-ai/assessment/create-assessment/": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
   "/evaluator-ai/evaluation/student-summary/": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
+  "/mentorship/mentors/$mentorId/": typeof MentorshipMentorsMentorIdIndexRoute
   "/planning/activity-logs/create/": typeof PlanningActivityLogsCreateIndexRoute
   "/planning/planning/create/": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline/": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
@@ -2472,6 +2542,7 @@ export interface FileRouteTypes {
     | "/manage-suborg-teams/"
     | "/membership-expiry/"
     | "/membership-stats/"
+    | "/payment-dashboard/"
     | "/planning/"
     | "/sales-dashboard/"
     | "/settings/"
@@ -2520,6 +2591,7 @@ export interface FileRouteTypes {
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
     | "/calling/ai-agents/"
+    | "/calling/call-queue/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
@@ -2550,8 +2622,11 @@ export interface FileRouteTypes {
     | "/manage-students/students-list/"
     | "/meetings/my-schedule/"
     | "/meetings/team/"
+    | "/mentorship/dashboard/"
     | "/mentorship/mentors/"
     | "/mentorship/my-mentorship/"
+    | "/mentorship/requests/"
+    | "/mentorship/sessions/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2596,6 +2671,7 @@ export interface FileRouteTypes {
     | "/audience-manager/list/campaign-users/"
     | "/evaluator-ai/assessment/create-assessment/"
     | "/evaluator-ai/evaluation/student-summary/"
+    | "/mentorship/mentors/$mentorId/"
     | "/planning/activity-logs/create/"
     | "/planning/planning/create/"
     | "/study-library/ai-copilot/course-outline/"
@@ -2677,6 +2753,7 @@ export interface FileRouteTypes {
     | "/manage-suborg-teams"
     | "/membership-expiry"
     | "/membership-stats"
+    | "/payment-dashboard"
     | "/planning"
     | "/sales-dashboard"
     | "/settings"
@@ -2725,6 +2802,7 @@ export interface FileRouteTypes {
     | "/audience-manager/reports"
     | "/automation/chatbot-flows"
     | "/calling/ai-agents"
+    | "/calling/call-queue"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
     | "/communication/notification-hub"
@@ -2755,8 +2833,11 @@ export interface FileRouteTypes {
     | "/manage-students/students-list"
     | "/meetings/my-schedule"
     | "/meetings/team"
+    | "/mentorship/dashboard"
     | "/mentorship/mentors"
     | "/mentorship/my-mentorship"
+    | "/mentorship/requests"
+    | "/mentorship/sessions"
     | "/planning/activity-logs"
     | "/planning/planning"
     | "/settings/fee-management"
@@ -2801,6 +2882,7 @@ export interface FileRouteTypes {
     | "/audience-manager/list/campaign-users"
     | "/evaluator-ai/assessment/create-assessment"
     | "/evaluator-ai/evaluation/student-summary"
+    | "/mentorship/mentors/$mentorId"
     | "/planning/activity-logs/create"
     | "/planning/planning/create"
     | "/study-library/ai-copilot/course-outline"
@@ -2883,6 +2965,7 @@ export interface FileRouteTypes {
     | "/manage-suborg-teams/"
     | "/membership-expiry/"
     | "/membership-stats/"
+    | "/payment-dashboard/"
     | "/planning/"
     | "/sales-dashboard/"
     | "/settings/"
@@ -2931,6 +3014,7 @@ export interface FileRouteTypes {
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
     | "/calling/ai-agents/"
+    | "/calling/call-queue/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
     | "/communication/notification-hub/"
@@ -2961,8 +3045,11 @@ export interface FileRouteTypes {
     | "/manage-students/students-list/"
     | "/meetings/my-schedule/"
     | "/meetings/team/"
+    | "/mentorship/dashboard/"
     | "/mentorship/mentors/"
     | "/mentorship/my-mentorship/"
+    | "/mentorship/requests/"
+    | "/mentorship/sessions/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -3007,6 +3094,7 @@ export interface FileRouteTypes {
     | "/audience-manager/list/campaign-users/"
     | "/evaluator-ai/assessment/create-assessment/"
     | "/evaluator-ai/evaluation/student-summary/"
+    | "/mentorship/mentors/$mentorId/"
     | "/planning/activity-logs/create/"
     | "/planning/planning/create/"
     | "/study-library/ai-copilot/course-outline/"
@@ -3089,6 +3177,7 @@ export interface RootRouteChildren {
   ManageSuborgTeamsIndexRoute: typeof ManageSuborgTeamsIndexRoute
   MembershipExpiryIndexRoute: typeof MembershipExpiryIndexRoute
   MembershipStatsIndexRoute: typeof MembershipStatsIndexRoute
+  PaymentDashboardIndexRoute: typeof PaymentDashboardIndexRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
   SalesDashboardIndexRoute: typeof SalesDashboardIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -3137,6 +3226,7 @@ export interface RootRouteChildren {
   AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CallingAiAgentsIndexRoute: typeof CallingAiAgentsIndexRoute
+  CallingCallQueueIndexRoute: typeof CallingCallQueueIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
   CommunicationNotificationHubIndexRoute: typeof CommunicationNotificationHubIndexRoute
@@ -3167,8 +3257,11 @@ export interface RootRouteChildren {
   ManageStudentsStudentsListIndexRoute: typeof ManageStudentsStudentsListIndexRoute
   MeetingsMyScheduleIndexRoute: typeof MeetingsMyScheduleIndexRoute
   MeetingsTeamIndexRoute: typeof MeetingsTeamIndexRoute
+  MentorshipDashboardIndexRoute: typeof MentorshipDashboardIndexRoute
   MentorshipMentorsIndexRoute: typeof MentorshipMentorsIndexRoute
   MentorshipMyMentorshipIndexRoute: typeof MentorshipMyMentorshipIndexRoute
+  MentorshipRequestsIndexRoute: typeof MentorshipRequestsIndexRoute
+  MentorshipSessionsIndexRoute: typeof MentorshipSessionsIndexRoute
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningIndexRoute: typeof PlanningPlanningIndexRoute
   SettingsFeeManagementIndexRoute: typeof SettingsFeeManagementIndexRoute
@@ -3213,6 +3306,7 @@ export interface RootRouteChildren {
   AudienceManagerListCampaignUsersIndexRoute: typeof AudienceManagerListCampaignUsersIndexRoute
   EvaluatorAiAssessmentCreateAssessmentIndexRoute: typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
   EvaluatorAiEvaluationStudentSummaryIndexRoute: typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
+  MentorshipMentorsMentorIdIndexRoute: typeof MentorshipMentorsMentorIdIndexRoute
   PlanningActivityLogsCreateIndexRoute: typeof PlanningActivityLogsCreateIndexRoute
   PlanningPlanningCreateIndexRoute: typeof PlanningPlanningCreateIndexRoute
   StudyLibraryAiCopilotCourseOutlineIndexRoute: typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
@@ -3354,6 +3448,13 @@ declare module "@tanstack/react-router" {
       path: "/planning"
       fullPath: "/planning/"
       preLoaderRoute: typeof PlanningIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/payment-dashboard/": {
+      id: "/payment-dashboard/"
+      path: "/payment-dashboard"
+      fullPath: "/payment-dashboard/"
+      preLoaderRoute: typeof PaymentDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/membership-stats/": {
@@ -3790,6 +3891,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/mentorship/sessions/": {
+      id: "/mentorship/sessions/"
+      path: "/mentorship/sessions"
+      fullPath: "/mentorship/sessions/"
+      preLoaderRoute: typeof MentorshipSessionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mentorship/requests/": {
+      id: "/mentorship/requests/"
+      path: "/mentorship/requests"
+      fullPath: "/mentorship/requests/"
+      preLoaderRoute: typeof MentorshipRequestsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/mentorship/my-mentorship/": {
       id: "/mentorship/my-mentorship/"
       path: "/mentorship/my-mentorship"
@@ -3802,6 +3917,13 @@ declare module "@tanstack/react-router" {
       path: "/mentorship/mentors"
       fullPath: "/mentorship/mentors/"
       preLoaderRoute: typeof MentorshipMentorsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mentorship/dashboard/": {
+      id: "/mentorship/dashboard/"
+      path: "/mentorship/dashboard"
+      fullPath: "/mentorship/dashboard/"
+      preLoaderRoute: typeof MentorshipDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/meetings/team/": {
@@ -4012,6 +4134,13 @@ declare module "@tanstack/react-router" {
       path: "/certificate-generation/student-data"
       fullPath: "/certificate-generation/student-data/"
       preLoaderRoute: typeof CertificateGenerationStudentDataIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/calling/call-queue/": {
+      id: "/calling/call-queue/"
+      path: "/calling/call-queue"
+      fullPath: "/calling/call-queue/"
+      preLoaderRoute: typeof CallingCallQueueIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/calling/ai-agents/": {
@@ -4392,6 +4521,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof PlanningActivityLogsCreateIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/mentorship/mentors/$mentorId/": {
+      id: "/mentorship/mentors/$mentorId/"
+      path: "/mentorship/mentors/$mentorId"
+      fullPath: "/mentorship/mentors/$mentorId/"
+      preLoaderRoute: typeof MentorshipMentorsMentorIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/evaluator-ai/evaluation/student-summary/": {
       id: "/evaluator-ai/evaluation/student-summary/"
       path: "/evaluator-ai/evaluation/student-summary"
@@ -4739,6 +4875,7 @@ const rootRouteChildren: RootRouteChildren = {
   ManageSuborgTeamsIndexRoute: ManageSuborgTeamsIndexRoute,
   MembershipExpiryIndexRoute: MembershipExpiryIndexRoute,
   MembershipStatsIndexRoute: MembershipStatsIndexRoute,
+  PaymentDashboardIndexRoute: PaymentDashboardIndexRoute,
   PlanningIndexRoute: PlanningIndexRoute,
   SalesDashboardIndexRoute: SalesDashboardIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
@@ -4792,6 +4929,7 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
   CallingAiAgentsIndexRoute: CallingAiAgentsIndexRoute,
+  CallingCallQueueIndexRoute: CallingCallQueueIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
   CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,
@@ -4831,8 +4969,11 @@ const rootRouteChildren: RootRouteChildren = {
   ManageStudentsStudentsListIndexRoute: ManageStudentsStudentsListIndexRoute,
   MeetingsMyScheduleIndexRoute: MeetingsMyScheduleIndexRoute,
   MeetingsTeamIndexRoute: MeetingsTeamIndexRoute,
+  MentorshipDashboardIndexRoute: MentorshipDashboardIndexRoute,
   MentorshipMentorsIndexRoute: MentorshipMentorsIndexRoute,
   MentorshipMyMentorshipIndexRoute: MentorshipMyMentorshipIndexRoute,
+  MentorshipRequestsIndexRoute: MentorshipRequestsIndexRoute,
+  MentorshipSessionsIndexRoute: MentorshipSessionsIndexRoute,
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningIndexRoute: PlanningPlanningIndexRoute,
   SettingsFeeManagementIndexRoute: SettingsFeeManagementIndexRoute,
@@ -4891,6 +5032,7 @@ const rootRouteChildren: RootRouteChildren = {
     EvaluatorAiAssessmentCreateAssessmentIndexRoute,
   EvaluatorAiEvaluationStudentSummaryIndexRoute:
     EvaluatorAiEvaluationStudentSummaryIndexRoute,
+  MentorshipMentorsMentorIdIndexRoute: MentorshipMentorsMentorIdIndexRoute,
   PlanningActivityLogsCreateIndexRoute: PlanningActivityLogsCreateIndexRoute,
   PlanningPlanningCreateIndexRoute: PlanningPlanningCreateIndexRoute,
   StudyLibraryAiCopilotCourseOutlineIndexRoute:

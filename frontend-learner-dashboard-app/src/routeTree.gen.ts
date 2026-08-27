@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyIndexRouteImport } from './routes/verify/index'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
 import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
 import { Route as SubOrgRegistrationIndexRouteImport } from './routes/sub-org-registration/index'
@@ -94,6 +95,7 @@ import { Route as StudyLibraryLiveClassUsernameIndexRouteImport } from './routes
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from './routes/study-library/courses/course-details/index'
 import { Route as PayInvoiceInvoiceIdIndexRouteImport } from './routes/pay/invoice/$invoiceId/index'
 import { Route as ParentChildChildIdIndexRouteImport } from './routes/parent/child/$childId/index'
+import { Route as MyReportsActivityLogIdIndexRouteImport } from './routes/my-reports/activity/$logId/index'
 import { Route as MMediaIdPhoneNumberIndexRouteImport } from './routes/m/$mediaId/$phoneNumber/index'
 import { Route as LeaderboardInstituteInstituteIdIndexRouteImport } from './routes/leaderboard/institute/$instituteId/index'
 import { Route as AssessmentReportsStudentReportIndexRouteImport } from './routes/assessment/reports/student-report/index'
@@ -116,6 +118,11 @@ import { Route as AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRout
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRouteImport } from './routes/study-library/courses/course-details/subjects/modules/chapters/index'
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRouteImport } from './routes/study-library/courses/course-details/subjects/modules/chapters/slides/index'
 
+const VerifyIndexRoute = VerifyIndexRouteImport.update({
+  id: '/verify/',
+  path: '/verify/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
   id: '/user-profile/',
   path: '/user-profile/',
@@ -564,6 +571,12 @@ const ParentChildChildIdIndexRoute = ParentChildChildIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ParentChildChildIdRoute,
 } as any)
+const MyReportsActivityLogIdIndexRoute =
+  MyReportsActivityLogIdIndexRouteImport.update({
+    id: '/my-reports/activity/$logId/',
+    path: '/my-reports/activity/$logId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const MMediaIdPhoneNumberIndexRoute =
   MMediaIdPhoneNumberIndexRouteImport.update({
     id: '/m/$mediaId/$phoneNumber/',
@@ -737,6 +750,7 @@ export interface FileRoutesByFullPath {
   '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
+  '/verify': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
@@ -782,6 +796,7 @@ export interface FileRoutesByFullPath {
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/my-reports/activity/$logId': typeof MyReportsActivityLogIdIndexRoute
   '/parent/child/$childId/': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -844,6 +859,7 @@ export interface FileRoutesByTo {
   '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
+  '/verify': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
@@ -888,6 +904,7 @@ export interface FileRoutesByTo {
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/my-reports/activity/$logId': typeof MyReportsActivityLogIdIndexRoute
   '/parent/child/$childId': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -952,6 +969,7 @@ export interface FileRoutesById {
   '/sub-org-registration/': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
+  '/verify/': typeof VerifyIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
   '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
@@ -997,6 +1015,7 @@ export interface FileRoutesById {
   '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId/': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber/': typeof MMediaIdPhoneNumberIndexRoute
+  '/my-reports/activity/$logId/': typeof MyReportsActivityLogIdIndexRoute
   '/parent/child/$childId/': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId/': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details/': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -1062,6 +1081,7 @@ export interface FileRouteTypes {
     | '/sub-org-registration'
     | '/terms-and-conditions'
     | '/user-profile'
+    | '/verify'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/parent/child/$childId'
@@ -1107,6 +1127,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report'
     | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
+    | '/my-reports/activity/$logId'
     | '/parent/child/$childId/'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
@@ -1169,6 +1190,7 @@ export interface FileRouteTypes {
     | '/sub-org-registration'
     | '/terms-and-conditions'
     | '/user-profile'
+    | '/verify'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/$tagName/$courseId'
@@ -1213,6 +1235,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report'
     | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
+    | '/my-reports/activity/$logId'
     | '/parent/child/$childId'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
@@ -1276,6 +1299,7 @@ export interface FileRouteTypes {
     | '/sub-org-registration/'
     | '/terms-and-conditions/'
     | '/user-profile/'
+    | '/verify/'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
     | '/parent/child/$childId'
@@ -1321,6 +1345,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report/'
     | '/leaderboard/institute/$instituteId/'
     | '/m/$mediaId/$phoneNumber/'
+    | '/my-reports/activity/$logId/'
     | '/parent/child/$childId/'
     | '/pay/invoice/$invoiceId/'
     | '/study-library/courses/course-details/'
@@ -1385,6 +1410,7 @@ export interface RootRouteChildren {
   SubOrgRegistrationIndexRoute: typeof SubOrgRegistrationIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
+  VerifyIndexRoute: typeof VerifyIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
   ParentChildChildIdRoute: typeof ParentChildChildIdRouteWithChildren
@@ -1429,6 +1455,7 @@ export interface RootRouteChildren {
   AssessmentReportsStudentReportIndexRoute: typeof AssessmentReportsStudentReportIndexRoute
   LeaderboardInstituteInstituteIdIndexRoute: typeof LeaderboardInstituteInstituteIdIndexRoute
   MMediaIdPhoneNumberIndexRoute: typeof MMediaIdPhoneNumberIndexRoute
+  MyReportsActivityLogIdIndexRoute: typeof MyReportsActivityLogIdIndexRoute
   PayInvoiceInvoiceIdIndexRoute: typeof PayInvoiceInvoiceIdIndexRoute
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
   StudyLibraryLiveClassUsernameIndexRoute: typeof StudyLibraryLiveClassUsernameIndexRoute
@@ -1445,6 +1472,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify/': {
+      id: '/verify/'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/user-profile/': {
       id: '/user-profile/'
       path: '/user-profile'
@@ -2040,6 +2074,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ParentChildChildIdIndexRouteImport
       parentRoute: typeof ParentChildChildIdRoute
     }
+    '/my-reports/activity/$logId/': {
+      id: '/my-reports/activity/$logId/'
+      path: '/my-reports/activity/$logId'
+      fullPath: '/my-reports/activity/$logId'
+      preLoaderRoute: typeof MyReportsActivityLogIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/m/$mediaId/$phoneNumber/': {
       id: '/m/$mediaId/$phoneNumber/'
       path: '/m/$mediaId/$phoneNumber'
@@ -2273,6 +2314,7 @@ const rootRouteChildren: RootRouteChildren = {
   SubOrgRegistrationIndexRoute: SubOrgRegistrationIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
+  VerifyIndexRoute: VerifyIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
   ParentChildChildIdRoute: ParentChildChildIdRouteWithChildren,
@@ -2322,6 +2364,7 @@ const rootRouteChildren: RootRouteChildren = {
   LeaderboardInstituteInstituteIdIndexRoute:
     LeaderboardInstituteInstituteIdIndexRoute,
   MMediaIdPhoneNumberIndexRoute: MMediaIdPhoneNumberIndexRoute,
+  MyReportsActivityLogIdIndexRoute: MyReportsActivityLogIdIndexRoute,
   PayInvoiceInvoiceIdIndexRoute: PayInvoiceInvoiceIdIndexRoute,
   StudyLibraryCoursesCourseDetailsIndexRoute:
     StudyLibraryCoursesCourseDetailsIndexRoute,

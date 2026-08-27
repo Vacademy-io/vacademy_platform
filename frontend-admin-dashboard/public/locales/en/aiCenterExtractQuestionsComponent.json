@@ -1,0 +1,14 @@
+{
+    "trigger": {
+        "label": "Extract Questions"
+    },
+    "dialog": {
+        "title": "Extract Questions",
+        "promptLabel": "Prompt",
+        "promptPlaceholder": "Enter Your Prompt Here",
+        "extractButton": "Extract"
+    },
+    "tasksList": {
+        "heading": "Vsmart Extract"
+    }
+}

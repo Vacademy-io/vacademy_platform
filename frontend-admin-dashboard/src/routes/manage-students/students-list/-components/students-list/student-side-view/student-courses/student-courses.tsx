@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import {
     useLearnerPackagesQuery,
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { AssignCourseDialog } from './assign-course-dialog';
 import { DeassignCourseDialog } from './deassign-course-dialog';
+import { ManageAccessDialog } from './manage-access-dialog';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_LEVELS_BY_INSTITUTE } from '@/constants/urls';
@@ -44,6 +46,7 @@ import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollmen
 const ITEMS_PER_PAGE = 20;
 
 export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmissionTab?: boolean; packageSessionId?: string }) => {
+    const { t } = useTranslation('manageStudentsCourses');
     const { selectedStudent } = useStudentSidebar();
     const instituteId = getInstituteId();
     const userId = isSubmissionTab ? selectedStudent?.id || '' : selectedStudent?.user_id || '';
@@ -53,6 +56,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
     const [assignOpen, setAssignOpen] = useState(false);
     const [deassignOpen, setDeassignOpen] = useState(false);
+    const [manageAccessOpen, setManageAccessOpen] = useState(false);
     const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
     const [levelMenuOpen, setLevelMenuOpen] = useState(false);
     const [progressPage, setProgressPage] = useState(0);
@@ -117,8 +121,8 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         return (
             <ProfileEmpty
                 icon={GraduationCap}
-                title="Student details unavailable"
-                hint="No learner is selected or the institute could not be determined."
+                title={t('noStudentSelected.title')}
+                hint={t('noStudentSelected.hint')}
             />
         );
     }
@@ -131,6 +135,23 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         ...(progressCourses?.content || []),
         ...(completedCourses?.content || []),
     ];
+
+    // Access management also covers PAST enrollments — an expired learner is exactly the
+    // one an admin needs to extend, and they only appear in that bucket. De-assignment
+    // deliberately does not, since there is nothing left to remove there.
+    // De-duplicated by package session: a course can surface in more than one bucket, and
+    // listing it twice would let the admin tick the same enrollment as two separate rows.
+    const accessManageableCourses: PackageDetailDTO[] = Array.from(
+        new Map(
+            [
+                ...(progressCourses?.content || []),
+                ...(completedCourses?.content || []),
+                ...(pastCourses?.content || []),
+            ]
+                .filter((course) => !!course.package_session_id)
+                .map((course) => [course.package_session_id as string, course])
+        ).values()
+    );
 
     // Package sessions this learner is enrolled into — used to surface the
     // enrollment workflow run(s) (tick/cross per step) attached to them.
@@ -210,8 +231,8 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
             <div className="flex flex-col gap-3">
                 <ProfileEmpty
                     icon={BookOpen}
-                    title={`No ${courseTermPlural.toLowerCase()} assigned`}
-                    hint="Assign a program to get started."
+                    title={t('emptyState.title', { term: courseTermPlural.toLowerCase() })}
+                    hint={t('emptyState.hint')}
                     action={
                         <>
                             <MyButton
@@ -219,11 +240,11 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                                 scale="small"
                                 onClick={() => setAssignOpen(true)}
                             >
-                                + Assign to {courseTermSingular}
+                                {t('actions.assignToCourse', { term: courseTermSingular })}
                             </MyButton>
                             <AssignCourseDialog
                                 userId={userId}
-                                userName={selectedStudent?.full_name || 'Student'}
+                                userName={selectedStudent?.full_name || t('fallbackStudentName')}
                                 open={assignOpen}
                                 onOpenChange={setAssignOpen}
                                 onSuccess={handleRefresh}
@@ -242,19 +263,19 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                 render, so these tiles are purely orientation/status read-outs. */}
             <div className="grid grid-cols-3 gap-2">
                 <ProfileHeroStat
-                    label="In Progress"
+                    label={t('heroStats.inProgress')}
                     value={progressCount}
                     tone="primary"
                     icon={BookOpen}
                 />
                 <ProfileHeroStat
-                    label="Completed"
+                    label={t('heroStats.completed')}
                     value={completedCount}
                     tone="success"
                     icon={CheckCircle}
                 />
                 <ProfileHeroStat
-                    label="Past"
+                    label={t('heroStats.past')}
                     value={pastCount}
                     tone="neutral"
                     icon={ClockCounterClockwise}
@@ -270,7 +291,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     scale="small"
                     onClick={() => setAssignOpen(true)}
                 >
-                    + Assign to {courseTermSingular}
+                    {t('actions.assignToCourse', { term: courseTermSingular })}
                 </MyButton>
                 <MyButton
                     buttonType="secondary"
@@ -278,7 +299,15 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     onClick={() => setDeassignOpen(true)}
                     disable={allActiveCourses.length === 0}
                 >
-                    Remove from {courseTermSingular}
+                    {t('actions.removeFromCourse', { term: courseTermSingular })}
+                </MyButton>
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    onClick={() => setManageAccessOpen(true)}
+                    disable={accessManageableCourses.length === 0}
+                >
+                    {t('actions.manageAccess')}
                 </MyButton>
                 {availableLevels.length > 0 && (
                     // Collapsed by default into a Filter button; the level list
@@ -298,8 +327,8 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                             <MyButton buttonType="secondary" scale="small" className="ml-auto">
                                 <Funnel className="size-3.5" />
                                 {selectedLevelIds.length > 0
-                                    ? `Filter (${selectedLevelIds.length})`
-                                    : 'Filter'}
+                                    ? t('actions.filterCount', { count: selectedLevelIds.length })
+                                    : t('actions.filter')}
                             </MyButton>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
@@ -311,7 +340,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                                 onCheckedChange={() => clearLevels()}
                                 onSelect={(e) => e.preventDefault()}
                             >
-                                All
+                                {t('actions.allLevels')}
                             </DropdownMenuCheckboxItem>
                             {availableLevels.map((level) => (
                                 <DropdownMenuCheckboxItem
@@ -345,10 +374,10 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
             />
 
             <CourseSection
-                title={`Completed ${courseTermPlural}`}
+                title={t('sections.completedTitle', { term: courseTermPlural })}
                 icon={CheckCircle}
                 courses={completedCourses?.content || []}
-                emptyMessage={`No completed ${courseTermPlural.toLowerCase()}`}
+                emptyMessage={t('sections.noneCompleted', { term: courseTermPlural.toLowerCase() })}
                 onCourseClick={handleCourseClick}
                 getSessionName={(course) => {
                     if (!course.package_session_id) return null;
@@ -363,7 +392,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                             </span>
                         )}
                         <span className="rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700">
-                            Completed
+                            {t('sections.completedBadge')}
                         </span>
                     </div>
                 )}
@@ -373,10 +402,10 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
             />
 
             <CourseSection
-                title={`Past ${courseTermPlural}`}
+                title={t('sections.pastTitle', { term: courseTermPlural })}
                 icon={GraduationCap}
                 courses={pastCourses?.content || []}
-                emptyMessage={`No past ${courseTermPlural.toLowerCase()}`}
+                emptyMessage={t('sections.nonePast', { term: courseTermPlural.toLowerCase() })}
                 onCourseClick={handleCourseClick}
                 getSessionName={(course) => {
                     if (!course.package_session_id) return null;
@@ -406,20 +435,67 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
             {/* Dialogs */}
             <AssignCourseDialog
                 userId={userId}
-                userName={selectedStudent?.full_name || 'Student'}
+                userName={selectedStudent?.full_name || t('fallbackStudentName')}
                 open={assignOpen}
                 onOpenChange={setAssignOpen}
                 onSuccess={handleRefresh}
             />
             <DeassignCourseDialog
                 userId={userId}
-                userName={selectedStudent?.full_name || 'Student'}
+                userName={selectedStudent?.full_name || t('fallbackStudentName')}
                 courses={allActiveCourses}
                 open={deassignOpen}
                 onOpenChange={setDeassignOpen}
                 onSuccess={handleRefresh}
             />
+            <ManageAccessDialog
+                userId={userId}
+                userName={selectedStudent?.full_name || t('fallbackStudentName')}
+                courses={accessManageableCourses}
+                open={manageAccessOpen}
+                onOpenChange={setManageAccessOpen}
+                onSuccess={handleRefresh}
+            />
         </div>
+    );
+};
+
+/**
+ * How much course access is left, from ssigm.expiry_date. Absent expiry means the plan
+ * granted unlimited access, which is a real state worth naming — a blank row would read
+ * as "not loaded yet".
+ */
+const AccessWindowLabel = ({ expiryDate }: { expiryDate?: string | null }) => {
+    const { t, i18n } = useTranslation('manageStudentsCourses');
+
+    if (!expiryDate) {
+        return <span className="text-xs text-neutral-500">{t('accessWindow.unlimited')}</span>;
+    }
+
+    const expiry = new Date(expiryDate);
+    if (Number.isNaN(expiry.getTime())) return null;
+
+    const daysLeft = Math.ceil((expiry.getTime() - Date.now()) / 86_400_000);
+    const expired = daysLeft <= 0;
+    // Two weeks is roughly the window in which an admin can still act on a renewal
+    // before the learner is locked out, so that is where the row starts warning.
+    const expiringSoon = !expired && daysLeft <= 14;
+
+    return (
+        <span
+            className={cn(
+                'text-xs',
+                expired
+                    ? 'font-medium text-danger-600'
+                    : expiringSoon
+                      ? 'font-medium text-warning-600'
+                      : 'text-neutral-500'
+            )}
+        >
+            {expired
+                ? t('accessWindow.expired', { date: expiry.toLocaleDateString(i18n.language) })
+                : t('accessWindow.daysLeft', { date: expiry.toLocaleDateString(i18n.language), count: daysLeft })}
+        </span>
     );
 };
 
@@ -442,10 +518,11 @@ const InProgressSection = ({
     onCourseClick: (course: PackageDetailDTO) => void;
     getSessionName: (course: PackageDetailDTO) => string | null;
 }) => {
+    const { t } = useTranslation('manageStudentsCourses');
     const sessionTermSingular = getTerminology(ContentTerms.Session, SystemTerms.Session);
 
     return (
-        <ProfileSectionCard icon={BookOpen} heading={`In Progress ${courseTermPlural}`}>
+        <ProfileSectionCard icon={BookOpen} heading={t('sections.inProgressTitle', { term: courseTermPlural })}>
             {courses.length > 0 ? (
                 <div className="flex flex-col gap-2">
                     {courses.map((course) => {
@@ -465,9 +542,9 @@ const InProgressSection = ({
                                 <div className="flex min-w-0 items-center gap-2">
                                     <p
                                         className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-800"
-                                        title={course.package_name || 'Unnamed Course'}
+                                        title={course.package_name || t('course.unnamed')}
                                     >
-                                        {course.package_name || 'Unnamed Course'}
+                                        {course.package_name || t('course.unnamed')}
                                     </p>
                                     {course.level_name && (
                                         <span className="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium capitalize text-primary-700">
@@ -480,9 +557,10 @@ const InProgressSection = ({
                                 </div>
                                 {sessionName && (
                                     <span className="text-xs text-neutral-500">
-                                        {sessionTermSingular}: {sessionName}
+                                        {t('course.sessionLabel', { term: sessionTermSingular, name: sessionName })}
                                     </span>
                                 )}
+                                <AccessWindowLabel expiryDate={course.expiry_date} />
                                 {/* Progress mini-bar */}
                                 <ProfileMiniBar value={pct} />
                             </button>
@@ -498,7 +576,7 @@ const InProgressSection = ({
                                 disable={page === 0}
                             >
                                 <CaretLeft className="size-3.5" />
-                                Prev
+                                {t('pagination.prev')}
                             </MyButton>
                             <span className="text-xs text-neutral-500">
                                 {page + 1} / {totalPages}
@@ -509,7 +587,7 @@ const InProgressSection = ({
                                 onClick={() => onPageChange(page + 1)}
                                 disable={page >= totalPages - 1}
                             >
-                                Next
+                                {t('pagination.next')}
                                 <CaretRight className="size-3.5" />
                             </MyButton>
                         </div>
@@ -518,7 +596,7 @@ const InProgressSection = ({
             ) : (
                 <ProfileEmpty
                     icon={BookOpen}
-                    title={`No ${courseTermPlural.toLowerCase()} in progress`}
+                    title={t('sections.noneInProgress', { term: courseTermPlural.toLowerCase() })}
                 />
             )}
         </ProfileSectionCard>
@@ -550,6 +628,7 @@ const CourseSection = ({
     onCourseClick?: (course: PackageDetailDTO) => void;
     getSessionName?: (course: PackageDetailDTO) => string | null;
 }) => {
+    const { t } = useTranslation('manageStudentsCourses');
     const sessionTermSingular = getTerminology(ContentTerms.Session, SystemTerms.Session);
 
     return (
@@ -572,13 +651,13 @@ const CourseSection = ({
                                     <div className="min-w-0">
                                         <p
                                             className="truncate text-sm font-semibold text-neutral-800"
-                                            title={course.package_name || 'Unnamed Course'}
+                                            title={course.package_name || t('course.unnamed')}
                                         >
-                                            {course.package_name || 'Unnamed Course'}
+                                            {course.package_name || t('course.unnamed')}
                                         </p>
                                         {sessionName && (
                                             <p className="mt-0.5 truncate text-xs text-neutral-500">
-                                                {sessionTermSingular}: {sessionName}
+                                                {t('course.sessionLabel', { term: sessionTermSingular, name: sessionName })}
                                             </p>
                                         )}
                                     </div>
@@ -597,7 +676,7 @@ const CourseSection = ({
                                 disable={page === 0}
                             >
                                 <CaretLeft className="size-3.5" />
-                                Prev
+                                {t('pagination.prev')}
                             </MyButton>
                             <span className="text-xs text-neutral-500">
                                 {page + 1} / {totalPages}
@@ -608,7 +687,7 @@ const CourseSection = ({
                                 onClick={() => onPageChange(page + 1)}
                                 disable={page >= totalPages - 1}
                             >
-                                Next
+                                {t('pagination.next')}
                                 <CaretRight className="size-3.5" />
                             </MyButton>
                         </div>

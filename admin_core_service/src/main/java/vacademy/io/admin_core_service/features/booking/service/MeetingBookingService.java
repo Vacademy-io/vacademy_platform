@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.booking.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -242,7 +243,27 @@ public class MeetingBookingService {
                 .customFieldValuesJson(writeCustomFieldValues(request.getCustomFieldValues()))
                 .manageToken(UUID.randomUUID().toString())
                 .build();
-        return bookingInstanceRepository.save(instance);
+        try {
+            // saveAndFlush, not save: the insert must hit the database HERE so a lost
+            // race surfaces as a constraint violation we can translate, rather than
+            // blowing up later at commit with an opaque error.
+            return bookingInstanceRepository.saveAndFlush(instance);
+        } catch (DataIntegrityViolationException e) {
+            // uq_booking_host_slot (V458): someone else took this exact slot between
+            // the availability check and this insert. Same wording as the pre-check,
+            // because to the invitee it is the same situation.
+            if (isSlotCollision(e)) {
+                throw new VacademyException("This slot is no longer available. Please pick another time.");
+            }
+            throw e;
+        }
+    }
+
+    /** True when the failure is the host/slot uniqueness guard rather than any other constraint. */
+    private static boolean isSlotCollision(DataIntegrityViolationException e) {
+        String detail = String.valueOf(e.getMostSpecificCause() == null
+                ? e.getMessage() : e.getMostSpecificCause().getMessage());
+        return detail != null && detail.contains("uq_booking_host_slot");
     }
 
     /** Post-commit Meet allocation; failures leave the booking intact (retry processor re-provisions). */

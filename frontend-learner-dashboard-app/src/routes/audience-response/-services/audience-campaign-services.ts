@@ -13,6 +13,12 @@ export interface AudienceCampaignResponse {
   end_date_local: string;
   status: string;
   json_web_metadata: string;
+  /**
+   * Per-campaign settings blob. Holds `postSubmitConfiguration` — the
+   * thank-you screen / redirect the admin configured. Optional: campaigns
+   * created before that feature have no blob at all.
+   */
+  setting_json?: string;
   to_notify: string;
   send_respondent_email: boolean;
   created_by_user_id: string;
@@ -150,6 +156,19 @@ const getFullNameFromFormValues = (
   return `${firstName} ${lastName}`.trim();
 };
 
+
+/**
+ * What the visitor just told us about themselves, pulled from the submitted
+ * values with the same loose key-matching the payload builder uses. Feeds the
+ * `{{name}}` / `{{email}}` tokens on the post-submit screen.
+ */
+export const extractRespondentIdentity = (
+  // Borrow the helpers' own parameter type so the three stay in lockstep.
+  formValues: Parameters<typeof getEmailFromFormValues>[0]
+): { name: string; email: string } => ({
+  name: getFullNameFromFormValues(formValues),
+  email: getEmailFromFormValues(formValues),
+});
 
 export interface SubmitAudienceLeadRequest {
   audience_id: string;

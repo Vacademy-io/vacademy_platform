@@ -173,6 +173,108 @@ public class ProductPageService {
         return buildAdminResponseWithCustomFields(page, activeMappings);
     }
 
+    /**
+     * Edits a field already on this page's form — its label, input type,
+     * whether it is required, and its config (which now carries the
+     * verification block that gates submission behind a WhatsApp OTP).
+     *
+     * All four live on the shared `custom_fields` row, NOT on the mapping, so
+     * the edit reaches every form in the institute using this field. That is
+     * the existing model — required-ness and input type have always been read
+     * from the master row — and the admin dialog says so rather than pretending
+     * the change is page-local.
+     *
+     * The page is still the authorisation scope: a field that is not on it is
+     * rejected, so this endpoint cannot be used to edit arbitrary fields of
+     * another institute.
+     */
+    @Transactional
+    public ProductPageResponse updateCustomFieldOnPage(
+            String productPageId, String customFieldId,
+            ProductPageCustomFieldUpdateRequest request, String instituteId) {
+        ProductPage page = loadPageForInstitute(productPageId, instituteId);
+
+        List<ProductPageInviteMapping> activeMappings = mappingRepository
+                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+
+        boolean onThisPage = activeMappings.stream().anyMatch(mapping -> customFieldService
+                .getByInstituteIdAndFieldIdAndTypeAndTypeId(
+                        instituteId, customFieldId,
+                        CustomFieldTypeEnum.ENROLL_INVITE.name(),
+                        mapping.getPsInvitePaymentOption().getEnrollInvite().getId())
+                .isPresent());
+
+        if (!onThisPage) {
+            throw new VacademyException("That field is not on this product page");
+        }
+
+        CustomFieldDTO update = new CustomFieldDTO();
+        update.setFieldName(request.getFieldName());
+        update.setFieldType(request.getFieldType());
+        update.setIsMandatory(request.getIsMandatory());
+        update.setConfig(request.getConfig());
+        customFieldService.updateCustomField(update, customFieldId);
+
+        return buildAdminResponseWithCustomFields(page, activeMappings);
+    }
+
+    /**
+     * Sets the order the page's form asks for its fields in.
+     *
+     * The order lives on the mapping (`individual_order`), and there is one
+     * mapping per enroll invite — so a page selling 28 courses stores the same
+     * position 28 times. Nothing set it before, which left every field on 999
+     * and the form's order down to whatever order the rows came back in: a
+     * checkout collecting both "Full Name" and "School Name" could ask for them
+     * either way round on consecutive loads.
+     *
+     * Ids not on the page are ignored rather than rejected: an admin reordering
+     * a stale tab should not lose the whole save over one field somebody else
+     * removed in the meantime.
+     */
+    @Transactional
+    public ProductPageResponse reorderCustomFieldsOnPage(
+            String productPageId, List<String> orderedCustomFieldIds, String instituteId) {
+        ProductPage page = loadPageForInstitute(productPageId, instituteId);
+
+        List<ProductPageInviteMapping> activeMappings = mappingRepository
+                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+
+        if (orderedCustomFieldIds != null) {
+            for (ProductPageInviteMapping mapping : activeMappings) {
+                String enrollInviteId = mapping.getPsInvitePaymentOption().getEnrollInvite().getId();
+
+                for (int position = 0; position < orderedCustomFieldIds.size(); position++) {
+                    String customFieldId = orderedCustomFieldIds.get(position);
+                    if (customFieldId == null || customFieldId.isBlank()) {
+                        continue;
+                    }
+                    // Only touch fields this invite already carries — addOrUpdate
+                    // would otherwise ATTACH a field that was never on the page.
+                    if (customFieldService.getByInstituteIdAndFieldIdAndTypeAndTypeId(
+                            instituteId, customFieldId,
+                            CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInviteId).isEmpty()) {
+                        continue;
+                    }
+
+                    CustomFieldDTO cfDto = new CustomFieldDTO();
+                    cfDto.setId(customFieldId);
+
+                    InstituteCustomFieldDTO dto = new InstituteCustomFieldDTO();
+                    dto.setInstituteId(instituteId);
+                    dto.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
+                    dto.setTypeId(enrollInviteId);
+                    dto.setCustomField(cfDto);
+                    dto.setIndividualOrder(position);
+
+                    customFieldService.addOrUpdateCustomField(List.of(dto));
+                }
+            }
+        }
+
+        return buildAdminResponseWithCustomFields(page, activeMappings);
+    }
+
     @Transactional
     public ProductPageResponse createAndLinkCustomFieldToPage(
             String productPageId, ProductPageCustomFieldCreateRequest request, String instituteId) {
@@ -294,6 +396,10 @@ public class ProductPageService {
                 : null);
         if (request.getMaxUses() != null)
             couponCode.setUsageLimit(request.getMaxUses().longValue());
+        // Quantity condition — "₹99 off when you take 2 or more". Only stored when
+        // it is a real condition; 1 or less is no condition at all.
+        if (request.getMinItems() != null && request.getMinItems() > 1)
+            couponCode.setMinItems(request.getMinItems());
         couponCode = couponCodeRepository.save(couponCode);
 
         AppliedCouponDiscount discount = new AppliedCouponDiscount();
@@ -325,6 +431,15 @@ public class ProductPageService {
 
     public ProductPageCouponValidateResponse validateCoupon(String coursePageCode, String couponCode,
             double totalAmount) {
+        return validateCoupon(coursePageCode, couponCode, totalAmount, null);
+    }
+
+    /**
+     * @param itemCount how many courses are in the basket, for coupons carrying a
+     *                  minimum. Null reads as one item.
+     */
+    public ProductPageCouponValidateResponse validateCoupon(String coursePageCode, String couponCode,
+            double totalAmount, Integer itemCount) {
         ProductPage page = coursePageRepository.findByCode(coursePageCode)
                 .orElseThrow(() -> new VacademyException("Course page not found"));
 
@@ -336,6 +451,7 @@ public class ProductPageService {
                 .instituteId(page.getInstituteId())
                 .productPageCode(coursePageCode)
                 .totalAmount(totalAmount)
+                .itemCount(itemCount)
                 .build();
         CouponValidateResponseDTO resp = couponValidationService.validate(req);
 

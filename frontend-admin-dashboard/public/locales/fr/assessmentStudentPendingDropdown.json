@@ -1,0 +1,21 @@
+{
+    "dialogs": {
+        "attentionLabel": "Attention",
+        "sendReminder": {
+            "title": "Envoyer un rappel",
+            "confirmMessagePrefix": "Un rappel sera envoyé à",
+            "confirmMessageSuffix": "qui ne s’est pas encore présenté(e) à l’évaluation",
+            "send": "Envoyer"
+        },
+        "removeParticipant": {
+            "title": "Retirer le participant",
+            "confirmMessagePrefix": "Voulez-vous vraiment retirer",
+            "confirmMessageSuffix": "de cette évaluation ?",
+            "remove": "Retirer"
+        }
+    },
+    "dropdown": {
+        "sendReminder": "Envoyer un rappel",
+        "removeParticipants": "Retirer les participants"
+    }
+}

@@ -1,93 +1,121 @@
-import { Doubt as DoubtType} from "../types/get-doubts-type"
+import { Doubt as DoubtType } from "../types/get-doubts-type";
+import { Doubt } from "./doubt";
+import { ChatText, CheckCircle, Clock, CircleNotch } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
+import { DoubtAuthorMap } from "../hooks/useDoubtAuthors";
 
-import { Doubt } from "./doubt"
-import { DoubtFilter } from "../types/get-doubts-type"
-import { ChatText, CheckCircle, Clock } from "@phosphor-icons/react"
-import { useTranslation } from "react-i18next"
+interface DoubtListProps {
+    allDoubts: DoubtType[];
+    isLoading: boolean;
+    lastDoubtElementRef: (node: HTMLDivElement) => void;
+    refetch: () => void;
+    isFetchingNextPage: boolean;
+    /** Active tab — drives which empty state copy is shown. */
+    status: "ALL" | "RESOLVED" | "ACTIVE";
+    authors: DoubtAuthorMap;
+    viewerUserId: string | null;
+    sourceType?: string;
+    onJumpToPosition?: (position: number) => void;
+    getPositionLabel: (doubt: DoubtType) => string | undefined;
+}
 
-export const DoubtList = ({allDoubts, isLoading, lastDoubtElementRef, filter, refetch, isFetchingNextPage, status}:{allDoubts:  DoubtType[], isLoading: boolean, lastDoubtElementRef: (node: HTMLDivElement) => void, filter: DoubtFilter, refetch: () => void, isFetchingNextPage: boolean, status: string}) => {
+const DoubtSkeleton = () => (
+    <div className="animate-pulse rounded-lg border border-neutral-200 bg-white p-3">
+        <div className="flex items-center gap-2">
+            <div className="size-8 rounded-full bg-neutral-100" />
+            <div className="flex flex-1 flex-col gap-1">
+                <div className="h-3 w-24 rounded-sm bg-neutral-100" />
+                <div className="h-2 w-16 rounded-sm bg-neutral-100" />
+            </div>
+        </div>
+        <div className="mt-3 space-y-1.5">
+            <div className="h-2.5 w-full rounded-sm bg-neutral-100" />
+            <div className="h-2.5 w-4/5 rounded-sm bg-neutral-100" />
+        </div>
+    </div>
+);
 
+export const DoubtList = ({
+    allDoubts,
+    isLoading,
+    lastDoubtElementRef,
+    refetch,
+    isFetchingNextPage,
+    status,
+    authors,
+    viewerUserId,
+    sourceType,
+    onJumpToPosition,
+    getPositionLabel,
+}: DoubtListProps) => {
     const { t } = useTranslation("studyContent");
 
-    // Only show empty state if we're not loading and we truly have no doubts
-    const shouldShowEmptyState = !isLoading && !isFetchingNextPage && allDoubts.length === 0;
+    if (isLoading) {
+        return (
+            <div className="flex flex-col gap-2">
+                <DoubtSkeleton />
+                <DoubtSkeleton />
+                <DoubtSkeleton />
+            </div>
+        );
+    }
 
-    console.log("allDoubts from DoubtList: ", allDoubts)
+    if (allDoubts.length === 0) {
+        const empty =
+            status === "RESOLVED"
+                ? {
+                      icon: <CheckCircle size={22} className="text-success-600" />,
+                      title: t("doubts.emptyResolvedTitle"),
+                      subtitle: t("doubts.emptyResolvedSubtitle"),
+                  }
+                : status === "ACTIVE"
+                  ? {
+                        icon: <Clock size={22} className="text-warning-600" />,
+                        title: t("doubts.emptyPendingTitle"),
+                        subtitle: t("doubts.emptyPendingSubtitle"),
+                    }
+                  : {
+                        icon: <ChatText size={22} className="text-neutral-400" />,
+                        title: t("doubts.emptyAllTitle"),
+                        subtitle: t("doubts.emptyAllSubtitle"),
+                    };
 
-    const getEmptyStateContent = () => {
-        switch(status) {
-            case "RESOLVED":
-                return {
-                    icon: <CheckCircle size={48} className="text-green-400" />,
-                    title: t("doubts.emptyResolvedTitle"),
-                    subtitle: t("doubts.emptyResolvedSubtitle")
-                };
-            case "ACTIVE":
-                return {
-                    icon: <Clock size={48} className="text-amber-400" />,
-                    title: t("doubts.emptyPendingTitle"),
-                    subtitle: t("doubts.emptyPendingSubtitle")
-                };
-            default:
-                return {
-                    icon: <ChatText size={48} className="text-primary-400" />,
-                    title: t("doubts.emptyAllTitle"),
-                    subtitle: t("doubts.emptyAllSubtitle")
-                };
-        }
-    };
-
-    const emptyState = getEmptyStateContent();
-    
-    return(
-        <div className="space-y-4">
-            {isLoading && (
-                <div className="flex items-center justify-center py-12">
-                    <div className="relative">
-                        <div className="w-12 h-12 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
-                        <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-e-blue-400 rounded-full animate-spin" style={{ animationDelay: '0.1s', animationDirection: 'reverse' }}></div>
-                    </div>
+        return (
+            <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+                <div className="flex size-11 items-center justify-center rounded-full bg-neutral-100">
+                    {empty.icon}
                 </div>
-            )}
-            
-            {!isLoading && allDoubts && allDoubts?.length > 0 ?
-                allDoubts?.map((doubt, index) => (
-                    <div 
-                        key={doubt.id || index}
-                        ref={index === allDoubts.length - 1 ? lastDoubtElementRef : undefined}
-                        className="animate-in fade-in slide-in-from-bottom-4 duration-300"
-                        style={{ animationDelay: `${index * 50}ms` }}
-                    >
-                        <Doubt
-                            doubt={doubt} 
-                            filter={filter}
-                            refetch={refetch}
-                        />
-                    </div>
-                ))
-                :
-                shouldShowEmptyState && (
-                    <div className="flex flex-col items-center justify-center py-16 px-4 text-center animate-in fade-in slide-in-from-bottom-8 duration-500"> 
-                        <div className="relative mb-6">
-                            <div className="absolute -inset-2 bg-gradient-to-r from-primary-500/20 to-blue-600/20 rounded-full blur"></div>
-                            <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-full p-4">
-                                {emptyState.icon}
-                            </div>
-                        </div>
-                        <h3 className="text-lg font-semibold text-gray-700 mb-2">{emptyState.title}</h3>
-                        <p className="text-sm text-gray-500 max-w-xs leading-relaxed">{emptyState.subtitle}</p>
-                    </div>
-                )
-            }
-            
+                <p className="text-subtitle font-semibold text-neutral-800">{empty.title}</p>
+                <p className="max-w-reg-250 text-caption text-neutral-500">{empty.subtitle}</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-2">
+            {allDoubts.map((doubt, index) => (
+                <div
+                    key={doubt.id || index}
+                    ref={index === allDoubts.length - 1 ? lastDoubtElementRef : undefined}
+                >
+                    <Doubt
+                        doubt={doubt}
+                        refetch={refetch}
+                        authors={authors}
+                        viewerUserId={viewerUserId}
+                        sourceType={sourceType}
+                        onJumpToPosition={onJumpToPosition}
+                        positionLabel={getPositionLabel(doubt)}
+                    />
+                </div>
+            ))}
+
             {isFetchingNextPage && (
-                <div className="flex items-center justify-center py-8">
-                    <div className="flex items-center gap-2 text-gray-500">
-                        <div className="w-4 h-4 border-2 border-gray-300 border-t-primary-500 rounded-full animate-spin"></div>
-                        <span className="text-sm">{t("doubts.loadingMore")}</span>
-                    </div>
+                <div className="flex items-center justify-center gap-2 py-3 text-caption text-neutral-500">
+                    <CircleNotch size={14} className="animate-spin" />
+                    {t("doubts.loadingMore")}
                 </div>
             )}
         </div>
-    )
-}
+    );
+};

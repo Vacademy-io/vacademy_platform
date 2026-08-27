@@ -111,10 +111,9 @@ public class PlivoIvrRenderer {
                 }
                 speak(b, node); // optional pre-dial prompt ("Connecting you now…")
                 String statusBase = statusUrl(corr, token);
-                String recordAttrs = record
-                        ? " record=\"true\" recordCallbackUrl=\"" + esc(statusBase + "&plivoEvent=record")
-                          + "\" recordCallbackMethod=\"POST\""
-                        : "";
+                // Recording is a SIBLING <Record> emitted BEFORE <Dial> — <Dial> has no
+                // record attribute in Plivo. See PlivoRecordXml.
+                if (record) b.append(PlivoRecordXml.bridgeRecord(statusBase));
                 // Ring the number(s), then hand control to /plivo/dial-next: if nobody
                 // answered it follows this node's fallback (next_node_id → another DIAL or a
                 // Voicemail), else it ends the call. callbackUrl keeps live status events.
@@ -125,7 +124,7 @@ public class PlivoIvrRenderer {
                 b.append("<Dial action=\"").append(esc(dialNextUrl(node.getId(), corr, token, dialHop)))
                         .append("\" method=\"POST\" callbackUrl=\"").append(esc(statusBase + "&plivoEvent=dial_callback"))
                         .append("\" callbackMethod=\"POST\" timeout=\"").append(ring).append("\"")
-                        .append(recordAttrs).append(">");
+                        .append(">");
                 for (String t : targets) {
                     // Plivo/carrier rejects '+'-prefixed numbers.
                     b.append("<Number>").append(esc(stripPlus(t))).append("</Number>");

@@ -10,6 +10,14 @@ from typing import Dict, Any, Optional
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from .slide_text_service import (
+    UNREADABLE_SLIDE_NOTE,
+    file_belongs_to_institute,
+    get_cached_slide_text,
+    looks_like_file_id,
+    schedule_slide_text_extraction,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,6 +79,38 @@ class ContextResolverService:
         
         # Clean HTML from content fields before passing to LLM
         cleaned_meta = dict(context_meta) if context_meta else {}
+
+        # A PDF slide arrives with `content` set to a media fileId rather than
+        # the document text (see slide_text_service for the why). Swap in the
+        # real text when we have it cached, and otherwise tell the model
+        # explicitly that it has not been shown the slide — anything else and it
+        # describes a slide it has never seen.
+        raw_content = cleaned_meta.get("content")
+        if looks_like_file_id(raw_content):
+            file_id = str(raw_content).strip()
+            # context_meta is client-supplied and /chat-agent has no auth, so the
+            # fileId is attacker-controllable. Only resolve files that really do
+            # belong to a slide in THIS session's institute — otherwise this
+            # becomes an arbitrary cross-tenant file reader. Gates the cache read
+            # too, since the cache is keyed by fileId alone.
+            if not file_belongs_to_institute(self.db, file_id, institute_id):
+                logger.warning(
+                    "slide content fileId %s is not owned by institute %s — "
+                    "refusing to resolve",
+                    file_id,
+                    institute_id,
+                )
+                cleaned_meta["content"] = UNREADABLE_SLIDE_NOTE
+            else:
+                slide_text = get_cached_slide_text(self.db, file_id)
+                if slide_text:
+                    cleaned_meta["content"] = slide_text
+                else:
+                    cleaned_meta["content"] = UNREADABLE_SLIDE_NOTE
+                    # Warm the cache off the request path so the next learner on
+                    # this slide gets the real text.
+                    schedule_slide_text_extraction(file_id)
+
         if "content" in cleaned_meta and cleaned_meta["content"]:
             cleaned_meta["content"] = strip_html(cleaned_meta["content"])
         if "about" in cleaned_meta and cleaned_meta["about"]:

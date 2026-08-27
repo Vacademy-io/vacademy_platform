@@ -5,7 +5,7 @@ import { FormControl, FormField, FormItem } from '@/components/ui/form';
 import { PencilSimpleLine, Plus } from '@phosphor-icons/react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { editDashboardProfileSchema } from '../-utils/edit-dashboard-profile-schema';
+import { buildEditDashboardProfileSchema } from '../-utils/edit-dashboard-profile-schema';
 import { OnboardingFrame } from '@/svgs';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services';
@@ -26,10 +26,12 @@ import PhoneInputField from '@/components/design-system/phone-input-field';
 import { cn } from '@/lib/utils';
 import { getThemeShades, isCustomThemeCode } from '@/constants/themes/preset-themes';
 import { rampHexFromHex, SHADES } from '@/lib/theme-ramp';
+import { useTranslation } from 'react-i18next';
 
-type FormValues = z.infer<typeof editDashboardProfileSchema>;
+type FormValues = z.infer<ReturnType<typeof buildEditDashboardProfileSchema>>;
 
 const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
+    const { t } = useTranslation('dashboardEditProfileComponent');
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
@@ -39,7 +41,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const form = useForm<FormValues>({
-        resolver: zodResolver(editDashboardProfileSchema),
+        resolver: zodResolver(buildEditDashboardProfileSchema(t)),
         defaultValues: {
             instituteProfilePictureUrl: '',
             instituteProfilePictureId: undefined,
@@ -84,11 +86,11 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
             data,
             instituteId,
         }: {
-            data: z.infer<typeof editDashboardProfileSchema>;
+            data: FormValues;
             instituteId: string | undefined;
         }) => handleUpdateInstituteDashboard(data, instituteId),
         onSuccess: () => {
-            toast.success('Your details has been updated successfully!', {
+            toast.success(t('toast.updateSuccess'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -154,7 +156,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                 layoutVariant="default"
                                 className="text-sm"
                             >
-                                Edit Institute
+                                {t('trigger.editInstitute')}
                             </MyButton>
                         </>
                     ) : (
@@ -166,18 +168,18 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                             className="text-sm"
                         >
                             <Plus size={32} />
-                            Add Details
+                            {t('trigger.addDetails')}
                         </MyButton>
                     )}
                 </DialogTrigger>
                 <DialogContent className="flex h-4/5 max-h-[85vh] w-[calc(100vw-2rem)] flex-col p-0 [&>button>svg]:size-5 [&>button>svg]:text-neutral-600 sm:w-1/3">{/* design-lint-ignore: viewport-relative dialog sizing for mobile */}
                     <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
-                        Edit Institute
+                        {t('dialog.title')}
                     </h1>
                     <div className="flex h-full flex-1 flex-col">
                         <FormProvider {...form}>
                             <form
-                                className="flex h-[86%] flex-col"
+                                className="flex h-5/6 flex-col"
                                 onSubmit={handleSubmit(onSubmit, onInvalid)}
                             >
                                 {/* Scrollable form content */}
@@ -190,7 +192,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                     src={form.getValues(
                                                         'instituteProfilePictureUrl'
                                                     )}
-                                                    alt="logo"
+                                                    alt={t('logoAlt')}
                                                     className="size-52 object-contain"
                                                 />
                                             ) : (
@@ -231,7 +233,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                         <FormControl>
                                                             <MyInput
                                                                 inputType="text"
-                                                                inputPlaceholder="Institute Name"
+                                                                inputPlaceholder={t('fields.instituteName.placeholder')}
                                                                 input={value}
                                                                 onChangeFunction={onChange}
                                                                 required={true}
@@ -240,7 +242,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                         .instituteName?.message
                                                                 }
                                                                 size="large"
-                                                                label="Institute Name"
+                                                                label={t('fields.instituteName.label')}
                                                                 className="w-full"
                                                                 {...field}
                                                             />
@@ -249,7 +251,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                 )}
                                             />
                                             <SelectField
-                                                label="Institute Type"
+                                                label={t('fields.instituteType.label')}
                                                 name="instituteType"
                                                 options={InstituteType.map((option, index) => ({
                                                     value: option,
@@ -264,7 +266,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
 
                                             <Separator />
                                             <h1 className="text-lg font-semibold">
-                                                Contact Information
+                                                {t('sections.contactInformation')}
                                             </h1>
 
                                             <FormField
@@ -277,7 +279,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                         <FormControl>
                                                             <MyInput
                                                                 inputType="text"
-                                                                inputPlaceholder="Institute Email"
+                                                                inputPlaceholder={t('fields.instituteEmail.placeholder')}
                                                                 input={value}
                                                                 onChangeFunction={onChange}
                                                                 error={
@@ -285,7 +287,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                         .instituteEmail?.message
                                                                 }
                                                                 size="large"
-                                                                label="Institute Email"
+                                                                label={t('fields.instituteEmail.label')}
                                                                 className="w-full"
                                                                 {...field}
                                                             />
@@ -300,8 +302,8 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                     <FormItem>
                                                         <FormControl>
                                                             <PhoneInputField
-                                                                label="Institute Phone Number"
-                                                                placeholder="123 456 7890"
+                                                                label={t('fields.institutePhoneNumber.label')}
+                                                                placeholder={t('fields.institutePhoneNumber.placeholder')}
                                                                 name="institutePhoneNumber"
                                                                 control={form.control}
                                                                 labelStyle="text-base font-normal"
@@ -321,7 +323,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                         <FormControl>
                                                             <MyInput
                                                                 inputType="text"
-                                                                inputPlaceholder="Institute Website"
+                                                                inputPlaceholder={t('fields.instituteWebsite.placeholder')}
                                                                 input={value}
                                                                 onChangeFunction={onChange}
                                                                 error={
@@ -329,7 +331,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                         .instituteWebsite?.message
                                                                 }
                                                                 size="large"
-                                                                label="Institute Website"
+                                                                label={t('fields.instituteWebsite.label')}
                                                                 className="w-full"
                                                                 {...field}
                                                             />
@@ -340,7 +342,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
 
                                             <Separator />
                                             <h1 className="text-lg font-semibold">
-                                                Location Details
+                                                {t('sections.locationDetails')}
                                             </h1>
 
                                             <FormField
@@ -353,7 +355,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                         <FormControl>
                                                             <MyInput
                                                                 inputType="text"
-                                                                inputPlaceholder="Address line 1"
+                                                                inputPlaceholder={t('fields.instituteAddress.placeholder')}
                                                                 input={value}
                                                                 onChangeFunction={onChange}
                                                                 error={
@@ -361,7 +363,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                         .instituteAddress?.message
                                                                 }
                                                                 size="large"
-                                                                label="Address"
+                                                                label={t('fields.instituteAddress.label')}
                                                                 className="w-full"
                                                                 {...field}
                                                             />
@@ -380,7 +382,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                             <FormControl>
                                                                 <MyInput
                                                                     inputType="text"
-                                                                    inputPlaceholder="Select City/Village"
+                                                                    inputPlaceholder={t('fields.instituteCity.placeholder')}
                                                                     input={value}
                                                                     onChangeFunction={onChange}
                                                                     error={
@@ -389,7 +391,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                     }
                                                                     size="large"
                                                                     className="w-full sm:w-auto"
-                                                                    label="City/Village"
+                                                                    label={t('fields.instituteCity.label')}
                                                                     {...field}
                                                                 />
                                                             </FormControl>
@@ -406,7 +408,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                             <FormControl>
                                                                 <MyInput
                                                                     inputType="text"
-                                                                    inputPlaceholder="Select State"
+                                                                    inputPlaceholder={t('fields.instituteState.placeholder')}
                                                                     input={value}
                                                                     onChangeFunction={onChange}
                                                                     error={
@@ -415,7 +417,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                     }
                                                                     className="w-full sm:w-auto"
                                                                     size="large"
-                                                                    label="State"
+                                                                    label={t('fields.instituteState.label')}
                                                                     {...field}
                                                                 />
                                                             </FormControl>
@@ -433,7 +435,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                         <FormControl>
                                                             <MyInput
                                                                 inputType="text"
-                                                                inputPlaceholder="Select Country"
+                                                                inputPlaceholder={t('fields.instituteCountry.placeholder')}
                                                                 input={value}
                                                                 onChangeFunction={onChange}
                                                                 error={
@@ -441,7 +443,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                         .instituteCountry?.message
                                                                 }
                                                                 size="large"
-                                                                label="Country"
+                                                                label={t('fields.instituteCountry.label')}
                                                                 className="w-full"
                                                                 {...field}
                                                             />
@@ -459,7 +461,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                         <FormControl>
                                                             <MyInput
                                                                 inputType="text"
-                                                                inputPlaceholder="Enter Pincode"
+                                                                inputPlaceholder={t('fields.institutePinCode.placeholder')}
                                                                 input={value}
                                                                 onChangeFunction={(
                                                                     e: React.ChangeEvent<HTMLInputElement>
@@ -476,7 +478,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                         .institutePinCode?.message
                                                                 }
                                                                 size="large"
-                                                                label="Pincode"
+                                                                label={t('fields.institutePinCode.label')}
                                                                 className="w-full"
                                                                 maxLength={11}
                                                                 {...field}
@@ -491,10 +493,10 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                         <div className="flex w-full flex-col gap-4">
                                             <Separator />
                                             <h1 className="text-lg font-semibold">
-                                                Institute Theme
+                                                {t('sections.instituteTheme')}
                                             </h1>
                                             <div className="flex w-full flex-col gap-2">
-                                                <h1 className="whitespace-nowrap">Current</h1>
+                                                <h1 className="whitespace-nowrap">{t('theme.current')}</h1>
                                                 <div className="flex items-center gap-4">
                                                     <div className="mb-2 w-36">
                                                         {(() => {
@@ -550,7 +552,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                             })
                                                         }
                                                     >
-                                                        Change Theme
+                                                        {t('theme.changeTheme')}
                                                     </MyButton>
                                                 </div>
                                             </div>
@@ -567,7 +569,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                         layoutVariant="default"
                                         disable={Object.keys(form.formState.errors).length > 0}
                                     >
-                                        Save Changes
+                                        {t('actions.saveChanges')}
                                     </MyButton>
                                 </div>
                             </form>

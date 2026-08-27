@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Trophy, X, type Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
@@ -37,6 +38,7 @@ function BadgeGlyph({
 }
 
 export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
+    const { t } = useTranslation('manageStudentsBadges');
     const { selectedStudent } = useStudentSidebar();
     const [awards, setAwards] = useState<LearnerBadgeAward[] | null>(null);
     const [catalog, setCatalog] = useState<BadgeDefinitionConfig[]>([]);
@@ -86,9 +88,9 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
             setAwards(await getStudentAwardedBadges(userId));
             setSelectedBadgeId('');
             setReason('');
-            toast.success('Badge awarded');
+            toast.success(t('award.successToast'));
         } catch {
-            toast.error('Failed to award badge');
+            toast.error(t('award.errorToast'));
         } finally {
             setLoading(false);
         }
@@ -100,9 +102,9 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
         try {
             await revokeBadge(userId, badgeId);
             setAwards(await getStudentAwardedBadges(userId));
-            toast.success('Badge revoked');
+            toast.success(t('awarded.successToast'));
         } catch {
-            toast.error('Failed to revoke badge');
+            toast.error(t('awarded.errorToast'));
         } finally {
             setLoading(false);
         }
@@ -115,8 +117,8 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
     if (loadError) {
         return (
             <ProfileError
-                title="Couldn't load badges"
-                hint="Something went wrong while fetching this learner's badges."
+                title={t('loadError.title')}
+                hint={t('loadError.hint')}
                 onRetry={load}
             />
         );
@@ -129,21 +131,21 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
         <div className="flex flex-col gap-3">
             <ProfileSectionCard
                 icon={Trophy as PhosphorIcon}
-                heading="Award a badge"
+                heading={t('award.heading')}
             >
                 {catalog.length === 0 ? (
                     <p className="text-caption italic text-muted-foreground">
-                        No badges configured yet. Add them in Settings → Badges &amp; Rewards first.
+                        {t('award.empty')}
                     </p>
                 ) : (
                     <div className="flex flex-col gap-3">
                         <div className="flex flex-col gap-1.5">
                             <Label className="text-caption font-medium text-neutral-600">
-                                Badge
+                                {t('award.badgeLabel')}
                             </Label>
                             <Select value={selectedBadgeId} onValueChange={setSelectedBadgeId}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Choose a badge to award" />
+                                    <SelectValue placeholder={t('award.badgePlaceholder')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {catalog.map((b) => (
@@ -162,9 +164,9 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                         </div>
                         <div className="flex flex-col gap-1">
                             <MyInput
-                                label="Reason"
+                                label={t('award.reasonLabel')}
                                 required
-                                inputPlaceholder="e.g. Top scorer in the unit test"
+                                inputPlaceholder={t('award.reasonPlaceholder')}
                                 input={reason}
                                 onChangeFunction={(e) => setReason(e.target.value)}
                                 onKeyDown={(e) => {
@@ -175,7 +177,7 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                             />
                             {Boolean(selectedBadgeId) && !reason.trim() && (
                                 <p className="text-caption text-danger-600">
-                                    A reason is required to award this badge.
+                                    {t('award.reasonRequired')}
                                 </p>
                             )}
                         </div>
@@ -186,7 +188,7 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                                 disable={!canAward}
                                 onAsyncClick={handleAward}
                             >
-                                Award Badge
+                                {t('award.submit')}
                             </MyButton>
                         </div>
                     </div>
@@ -195,7 +197,7 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
 
             <ProfileSectionCard
                 icon={Trophy as PhosphorIcon}
-                heading="Awarded badges"
+                heading={t('awarded.heading')}
                 action={
                     awarded.length > 0 ? (
                         <span className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-caption font-semibold text-primary-700 ring-1 ring-primary-200">
@@ -236,7 +238,9 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                                     )}
                                     onClick={() => handleRevoke(a.badgeId)}
                                     disabled={loading}
-                                    aria-label={`Revoke ${a.badgeName || 'badge'}`}
+                                    aria-label={t('awarded.revokeAriaLabel', {
+                                        name: a.badgeName || t('awarded.badgeFallback'),
+                                    })}
                                 >
                                     <X className="size-4" />
                                 </button>
@@ -245,7 +249,7 @@ export const StudentBadges = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                     </div>
                 ) : (
                     <p className="text-caption italic text-muted-foreground">
-                        No badges awarded yet — recognise this learner with a badge above.
+                        {t('awarded.empty')}
                     </p>
                 )}
             </ProfileSectionCard>

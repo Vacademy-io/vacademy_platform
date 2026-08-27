@@ -1,0 +1,27 @@
+{
+    "header": {
+        "title": "List Filters & Sorting — Custom Fields",
+        "description": "Choose which custom fields appear as filters on each list page (applies to everyone). Each enabled field adds a searchable multi-select to that page's filter bar; turning it off hides the filter and stops loading its values. Sortable applies where custom-field column sorting is available."
+    },
+    "surfaces": {
+        "leads": {
+            "label": "Leads",
+            "pages": "Lead List + Recent Leads"
+        },
+        "contacts": {
+            "label": "All Contacts",
+            "pages": "Manage Students → All Contacts"
+        },
+        "students": {
+            "label": "Students",
+            "pages": "Manage Students → Student List"
+        }
+    },
+    "appliesTo": "Applies to: {{pages}}",
+    "loading": "Loading custom fields…",
+    "emptyState": "No custom fields configured for this institute yet.",
+    "columns": {
+        "filter": "Filter",
+        "sort": "Sort"
+    }
+}

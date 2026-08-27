@@ -50,4 +50,13 @@ public class ResolvedCertificateConfig {
 
     /** True when the course supplied its own threshold. */
     private boolean thresholdOverriddenByCourse;
+
+    /**
+     * The saved design this course follows, when it follows one. Null means the
+     * institute default, or a course that uploaded its own HTML.
+     */
+    private String templateId;
+
+    /** True when the certificate being rendered is the course's choice, not the institute's. */
+    private boolean templateOverriddenByCourse;
 }

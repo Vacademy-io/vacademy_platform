@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -58,13 +60,15 @@ import type {
     LearnerManagementSettings,
 } from '@/types/display-settings';
 
-const CUSTOM_DISPLAY_SECTIONS: SettingsSectionGroup[] = [
+// Built inside the component (not module scope) so labels stay reactive to
+// the active locale via t().
+const buildCustomDisplaySections = (t: TFunction): SettingsSectionGroup[] => [
     {
         sections: [
-            { id: 'grp-courses', label: 'Courses & Permissions', icon: BookOpen },
-            { id: 'grp-layout', label: 'Layout & Navigation', icon: SquaresFour },
-            { id: 'grp-learners', label: 'Content & Learners', icon: UsersThree },
-            { id: 'grp-access', label: 'Dashboard & Access', icon: ShieldCheck },
+            { id: 'grp-courses', label: t('sections.coursesPermissions'), icon: BookOpen },
+            { id: 'grp-layout', label: t('sections.layoutNavigation'), icon: SquaresFour },
+            { id: 'grp-learners', label: t('sections.contentLearners'), icon: UsersThree },
+            { id: 'grp-access', label: t('sections.dashboardAccess'), icon: ShieldCheck },
         ],
     },
 ];
@@ -99,96 +103,108 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     onboardingTab: false,
 };
 
-const STUDENT_SIDE_VIEW_OPTIONS: Array<{
+// Built inside the component (not module scope) so labels stay reactive to
+// the active locale via t().
+const buildStudentSideViewOptions = (
+    t: TFunction
+): Array<{
     key: StudentSideViewVisibilityKey;
     label: string;
     defaultValue: boolean;
-}> = [
+}> => [
     {
         key: 'overviewTab',
-        label: 'Overview Tab',
+        label: t('studentSideView.overviewTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.overviewTab,
     },
     {
         key: 'coursesTab',
-        label: 'Courses Tab',
+        label: t('studentSideView.coursesTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.coursesTab,
     },
-    { key: 'testTab', label: 'Test Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.testTab },
+    {
+        key: 'testTab',
+        label: t('studentSideView.testTab'),
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.testTab,
+    },
     {
         key: 'progressTab',
-        label: 'Progress Tab',
+        label: t('studentSideView.progressTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.progressTab,
     },
     {
         key: 'notificationTab',
-        label: 'Notification Tab',
+        label: t('studentSideView.notificationTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.notificationTab,
     },
     {
         key: 'membershipTab',
-        label: 'Membership Tab',
+        label: t('studentSideView.membershipTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.membershipTab,
     },
     {
         key: 'paymentHistoryTab',
-        label: 'Payment History Tab',
+        label: t('studentSideView.paymentHistoryTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.paymentHistoryTab,
     },
     {
         key: 'userTaggingTab',
-        label: 'User Tagging Tab',
+        label: t('studentSideView.userTaggingTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.userTaggingTab,
     },
     {
         key: 'badgesTab',
-        label: 'Badges Tab',
+        label: t('studentSideView.badgesTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.badgesTab,
     },
-    { key: 'fileTab', label: 'File Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fileTab },
+    {
+        key: 'fileTab',
+        label: t('studentSideView.fileTab'),
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fileTab,
+    },
     {
         key: 'portalAccessTab',
-        label: 'Portal Access Tab',
+        label: t('studentSideView.portalAccessTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.portalAccessTab,
     },
     {
         key: 'reportsTab',
-        label: 'Reports Tab',
+        label: t('studentSideView.reportsTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.reportsTab,
     },
     {
         key: 'enrollDerollTab',
-        label: 'Enroll/Deroll Tab',
+        label: t('studentSideView.enrollDerollTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enrollDerollTab,
     },
     {
         key: 'enquiryTab',
-        label: 'Enquiry Tab',
+        label: t('studentSideView.enquiryTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enquiryTab,
     },
     {
         key: 'applicationTab',
-        label: 'Application Tab',
+        label: t('studentSideView.applicationTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.applicationTab,
     },
     {
         key: 'leadTab',
-        label: 'Lead Profile Tab',
+        label: t('studentSideView.leadTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.leadTab,
     },
     {
         key: 'fullHistoryTab',
-        label: 'Full History Tab',
+        label: t('studentSideView.fullHistoryTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fullHistoryTab ?? false,
     },
     {
         key: 'parentTab',
-        label: 'Guardian Tab',
+        label: t('studentSideView.parentTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.parentTab ?? false,
     },
     {
         key: 'onboardingTab',
-        label: 'Onboarding Tab',
+        label: t('studentSideView.onboardingTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.onboardingTab ?? false,
     },
 ];
@@ -201,34 +217,38 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowEditCredentials: false,
 };
 
-const LEARNER_MANAGEMENT_OPTIONS: Array<{
+// Built inside the component (not module scope) so labels stay reactive to
+// the active locale via t().
+const buildLearnerManagementOptions = (
+    t: TFunction
+): Array<{
     key: keyof LearnerManagementSettings;
     label: string;
     defaultValue: boolean;
-}> = [
+}> => [
     {
         key: 'allowPortalAccess',
-        label: 'Allow Learner Portal Access',
+        label: t('learnerManagement.allowPortalAccess'),
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowPortalAccess,
     },
     {
         key: 'allowViewPassword',
-        label: 'Allow Viewing Learner Password',
+        label: t('learnerManagement.allowViewPassword'),
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowViewPassword,
     },
     {
         key: 'allowEditCredentials',
-        label: 'Allow Editing Learner Username & Password',
+        label: t('learnerManagement.allowEditCredentials'),
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowEditCredentials ?? false,
     },
     {
         key: 'allowSendResetPasswordMail',
-        label: 'Allow Sending Reset Password Mail',
+        label: t('learnerManagement.allowSendResetPasswordMail'),
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowSendResetPasswordMail,
     },
     {
         key: 'showApprovalToggle',
-        label: 'Show Approval Requests toggle on Learners list',
+        label: t('learnerManagement.showApprovalToggle'),
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.showApprovalToggle,
     },
 ];
@@ -240,10 +260,17 @@ export default function CustomRoleDisplaySettings({
     roleId: string;
     roleName?: string;
 }) {
+    const { t } = useTranslation('settingsCustomRoleDisplay');
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
+
+    // Recomputed every render (cheap arrays) so labels stay in sync with the
+    // active locale instead of being frozen at module-load time.
+    const customDisplaySections = buildCustomDisplaySections(t);
+    const studentSideViewOptions = buildStudentSideViewOptions(t);
+    const learnerManagementOptions = buildLearnerManagementOptions(t);
 
     // Master switch behind the Downloads course-details tab: off locks that row
     // to hidden here, matching what the course page renders.
@@ -282,7 +309,7 @@ export default function CustomRoleDisplaySettings({
         const maxOrder = Math.max(0, ...settings.sidebar.map((t) => t.order));
         const newTab = {
             id: `custom-${Date.now()}`,
-            label: 'Custom Tab',
+            label: t('sidebarTabs.defaultCustomTabLabel'),
             route: '/',
             order: maxOrder + 1,
             visible: true,
@@ -297,17 +324,17 @@ export default function CustomRoleDisplaySettings({
         if (!settings) return;
         updateSettings((prev) => ({
             ...prev,
-            sidebar: prev.sidebar.map((t) => {
-                if (t.id !== parentId) return t;
-                const nextOrder = ((t.subTabs?.length || 0) + 1) as number;
+            sidebar: prev.sidebar.map((tab) => {
+                if (tab.id !== parentId) return tab;
+                const nextOrder = ((tab.subTabs?.length || 0) + 1) as number;
                 const sub = {
                     id: `custom-sub-${Date.now()}`,
-                    label: 'Custom Sub Tab',
+                    label: t('sidebarTabs.defaultCustomSubTabLabel'),
                     route: '/',
                     order: nextOrder,
                     visible: true,
                 };
-                return { ...t, subTabs: [...(t.subTabs || []), sub] };
+                return { ...tab, subTabs: [...(tab.subTabs || []), sub] };
             }),
         }));
     };
@@ -478,11 +505,13 @@ export default function CustomRoleDisplaySettings({
             setSettings(fixed);
             pristineSettingsRef.current = fixed;
             setHasChanges(false);
-            toast.success('Custom role display settings saved');
+            toast.success(t('toast.saveSuccess'));
         } catch (e: any) {
             console.error('Failed to save settings:', e);
             toast.error(
-                `Failed to save: ${e?.response?.data?.message || e?.message || 'Unknown error'}`
+                t('toast.saveFailed', {
+                    message: e?.response?.data?.message || e?.message || t('toast.unknownError'),
+                })
             );
         } finally {
             setIsSaving(false);
@@ -495,55 +524,59 @@ export default function CustomRoleDisplaySettings({
         setHasChanges(false);
     };
 
-    if (!settings) return <div className="p-2">Loading...</div>;
+    if (!settings) return <div className="p-2">{t('common.loading')}</div>;
 
     return (
         <>
             <SettingsSectionsLayout
-                groups={CUSTOM_DISPLAY_SECTIONS}
+                groups={customDisplaySections}
                 toolbar={
                     <MyButton
                         buttonType="secondary"
                         scale="small"
                         onClick={() => setSettings(DEFAULT_TEACHER_DISPLAY_SETTINGS)}
                     >
-                        Reset to Defaults
+                        {t('common.resetToDefaults')}
                     </MyButton>
                 }
             >
             <section id="grp-courses" className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Course Page Settings</CardTitle>
-                    <CardDescription>Control visibility of course page elements.</CardDescription>
+                    <CardTitle>{t('coursePage.title')}</CardTitle>
+                    <CardDescription>{t('coursePage.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     {(
                         [
-                            ['viewInviteLinks', 'View invite links'],
-                            ['viewShortInviteLinks', 'View short invite links'],
-                            ['viewCourseConfiguration', 'View course configuration'],
-                            ['viewCourseOverviewItem', 'View course overview item'],
-                            ['viewContentNumbering', 'View content numbering'],
+                            ['viewInviteLinks', t('coursePage.viewInviteLinks')],
+                            ['viewShortInviteLinks', t('coursePage.viewShortInviteLinks')],
+                            ['viewCourseConfiguration', t('coursePage.viewCourseConfiguration')],
+                            ['viewCourseOverviewItem', t('coursePage.viewCourseOverviewItem')],
+                            ['viewContentNumbering', t('coursePage.viewContentNumbering')],
                             [
                                 'allowViewSlidesInReadOnly',
-                                'Allow viewing slides on published / in-review courses (read-only)',
+                                t('coursePage.allowViewSlidesInReadOnly'),
                             ],
                             [
                                 'showAddSubject',
-                                'Show "Add Subject" button (Outline & Content Structure)',
+                                t('coursePage.showAddSubject'),
                             ],
                             [
                                 'showAddModule',
-                                'Show "Add Module" button (Outline & Content Structure)',
+                                t('coursePage.showAddModule'),
                             ],
                             [
                                 'showAddChapter',
-                                'Show "Add Chapter" button (Outline & Content Structure)',
+                                t('coursePage.showAddChapter'),
                             ],
                             [
                                 'showAddSlide',
-                                'Show "Add Slide" button (Outline & Content Structure)',
+                                t('coursePage.showAddSlide'),
+                            ],
+                            [
+                                'showLearnerProgressReport',
+                                t('coursePage.showLearnerProgressReport'),
                             ],
                         ] as const
                     ).map(([key, label]) => (
@@ -558,6 +591,7 @@ export default function CustomRoleDisplaySettings({
                                     updateSettings((prev) => ({
                                         ...prev,
                                         coursePage: {
+                                            ...prev.coursePage,
                                             viewInviteLinks:
                                                 prev.coursePage?.viewInviteLinks ?? true,
                                             viewShortInviteLinks:
@@ -597,8 +631,7 @@ export default function CustomRoleDisplaySettings({
                     ))}
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                         <div className="text-sm font-medium text-neutral-800">
-                            Show advanced IDs menu on Course Details (course / package session /
-                            session / level)
+                            {t('coursePage.showAdvancedCourseIds')}
                         </div>
                         <Switch
                             checked={settings.coursePage?.showAdvancedCourseIds === true}
@@ -606,6 +639,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -640,15 +674,13 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Course Permission</CardTitle>
-                    <CardDescription>
-                        Control what this role can do on a course and its slides.
-                    </CardDescription>
+                    <CardTitle>{t('coursePermission.title')}</CardTitle>
+                    <CardDescription>{t('coursePermission.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                         <div className="text-sm font-medium text-neutral-800">
-                            Can directly edit (without Copy-to-Edit / approval)
+                            {t('coursePermission.directEditPublishedCourse')}
                         </div>
                         <Switch
                             checked={settings.coursePage?.directEditPublishedCourse === true}
@@ -656,6 +688,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -687,9 +720,9 @@ export default function CustomRoleDisplaySettings({
                     </div>
                     {(
                         [
-                            ['showCopyTo', 'Can copy slide'],
-                            ['showMoveTo', 'Can move slide'],
-                            ['showDelete', 'Can delete slide'],
+                            ['showCopyTo', t('coursePermission.showCopyTo')],
+                            ['showMoveTo', t('coursePermission.showMoveTo')],
+                            ['showDelete', t('coursePermission.showDelete')],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -718,13 +751,14 @@ export default function CustomRoleDisplaySettings({
                         </div>
                     ))}
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                        <div className="text-sm font-medium text-neutral-800">Can edit subject / module / chapter</div>
+                        <div className="text-sm font-medium text-neutral-800">{t('coursePermission.canEditCourseStructure')}</div>
                         <Switch
                             checked={settings.coursePage?.canEditCourseStructure === true}
                             onCheckedChange={(checked) =>
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -755,13 +789,14 @@ export default function CustomRoleDisplaySettings({
                         />
                     </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                        <div className="text-sm font-medium text-neutral-800">Can delete subject / module / chapter</div>
+                        <div className="text-sm font-medium text-neutral-800">{t('coursePermission.canDeleteCourseStructure')}</div>
                         <Switch
                             checked={settings.coursePage?.canDeleteCourseStructure === true}
                             onCheckedChange={(checked) =>
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -793,7 +828,7 @@ export default function CustomRoleDisplaySettings({
                     </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                         <div className="text-sm font-medium text-neutral-800">
-                            Show Bulk Upload (ZIP) button
+                            {t('coursePermission.showBulkUpload')}
                         </div>
                         <Switch
                             checked={settings.coursePage?.showBulkUpload === true}
@@ -801,6 +836,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     coursePage: {
+                                        ...prev.coursePage,
                                         viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
                                         viewShortInviteLinks:
                                             prev.coursePage?.viewShortInviteLinks ?? false,
@@ -831,7 +867,7 @@ export default function CustomRoleDisplaySettings({
                         />
                     </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                        <div className="text-sm font-medium text-neutral-800">Can delete course</div>
+                        <div className="text-sm font-medium text-neutral-800">{t('coursePermission.canDeleteCourse')}</div>
                         <Switch
                             checked={settings.authoredCoursesCard?.showDelete !== false}
                             onCheckedChange={(checked) =>
@@ -851,15 +887,12 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Authored Courses Card</CardTitle>
-                    <CardDescription>
-                        Control which actions appear on the course card under Explore Courses →
-                        Authored Courses.
-                    </CardDescription>
+                    <CardTitle>{t('authoredCoursesCard.title')}</CardTitle>
+                    <CardDescription>{t('authoredCoursesCard.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                        <div className="text-sm font-medium text-neutral-800">Show &quot;Copy to Edit&quot; button</div>
+                        <div className="text-sm font-medium text-neutral-800">{t('authoredCoursesCard.showCopyToEdit')}</div>
                         <Switch
                             checked={settings.authoredCoursesCard?.showCopyToEdit !== false}
                             onCheckedChange={(checked) =>
@@ -879,14 +912,12 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Course List Card</CardTitle>
-                    <CardDescription>
-                        Control which details appear on each course card under Explore Courses.
-                    </CardDescription>
+                    <CardTitle>{t('courseListCard.title')}</CardTitle>
+                    <CardDescription>{t('courseListCard.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                        <div className="text-sm font-medium text-neutral-800">Show enrolled student count</div>
+                        <div className="text-sm font-medium text-neutral-800">{t('courseListCard.showEnrolledStudentCount')}</div>
                         <Switch
                             checked={
                                 settings.courseListCard?.showEnrolledStudentCount === true
@@ -906,16 +937,13 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Course Creation</CardTitle>
-                    <CardDescription>
-                        Control who can create courses, AI entry points, and chapter setup
-                        defaults.
-                    </CardDescription>
+                    <CardTitle>{t('courseCreation.title')}</CardTitle>
+                    <CardDescription>{t('courseCreation.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                         <div className="text-sm font-medium text-neutral-800">
-                            Allow creating courses (show &quot;Add Course&quot; button)
+                            {t('courseCreation.showCreateCourse')}
                         </div>
                         <Switch
                             checked={settings.courseCreation?.showCreateCourse === true}
@@ -943,7 +971,7 @@ export default function CustomRoleDisplaySettings({
                         />
                     </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                        <div className="text-sm font-medium text-neutral-800">Show &quot;Create Course with AI&quot;</div>
+                        <div className="text-sm font-medium text-neutral-800">{t('courseCreation.showCreateCourseWithAI')}</div>
                         <Switch
                             checked={
                                 settings.courseCreation?.showCreateCourseWithAI ??
@@ -972,7 +1000,7 @@ export default function CustomRoleDisplaySettings({
                     </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                         <div className="text-sm font-medium text-neutral-800">
-                            Require package session selection when adding a new chapter
+                            {t('courseCreation.requirePackageSelectionForNewChapter')}
                         </div>
                         <Switch
                             checked={
@@ -1000,7 +1028,7 @@ export default function CustomRoleDisplaySettings({
                         />
                     </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                        <div className="text-sm font-medium text-neutral-800">Show Advanced Settings</div>
+                        <div className="text-sm font-medium text-neutral-800">{t('courseCreation.showAdvancedSettings')}</div>
                         <Switch
                             checked={
                                 settings.courseCreation?.showAdvancedSettings ??
@@ -1028,7 +1056,7 @@ export default function CustomRoleDisplaySettings({
                         />
                     </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                        <div className="text-sm font-medium text-neutral-800">Limit Course To Single Level</div>
+                        <div className="text-sm font-medium text-neutral-800">{t('courseCreation.limitToSingleLevel')}</div>
                         <Switch
                             checked={
                                 settings.courseCreation?.limitToSingleLevel ??
@@ -1060,11 +1088,8 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Course List Tabs</CardTitle>
-                    <CardDescription>
-                        Configure visible tabs, their order, and the default tab. Note: Course In
-                        Review is always visible for Teachers; Course Approval is hidden.
-                    </CardDescription>
+                    <CardTitle>{t('courseListTabs.title')}</CardTitle>
+                    <CardDescription>{t('courseListTabs.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     {(() => {
@@ -1120,7 +1145,7 @@ export default function CustomRoleDisplaySettings({
                                                 }))
                                             }
                                         />
-                                        <span className="text-sm">Visible</span>
+                                        <span className="text-sm">{t('common.visible')}</span>
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-2 text-sm">
@@ -1139,7 +1164,7 @@ export default function CustomRoleDisplaySettings({
                                                 }
                                                 disabled={isForcedHidden}
                                             />
-                                            Default
+                                            {t('common.default')}
                                         </label>
                                     </div>
                                 </div>
@@ -1151,10 +1176,8 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Course Details Tabs</CardTitle>
-                    <CardDescription>
-                        Choose which tabs are visible and set the default tab.
-                    </CardDescription>
+                    <CardTitle>{t('courseDetailsTabs.title')}</CardTitle>
+                    <CardDescription>{t('courseDetailsTabs.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     {(() => {
@@ -1212,8 +1235,7 @@ export default function CustomRoleDisplaySettings({
                                         </div>
                                         {offlineLocked && (
                                             <div className="text-caption text-neutral-500">
-                                                Turned off because offline downloads are disabled
-                                                for the institute (Settings → Offline Access).
+                                                {t('courseDetailsTabs.offlineLockedMessage')}
                                             </div>
                                         )}
                                     </div>
@@ -1266,7 +1288,7 @@ export default function CustomRoleDisplaySettings({
                                                 })
                                             }
                                         />
-                                        <span className="text-sm">Visible</span>
+                                        <span className="text-sm">{t('common.visible')}</span>
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-2 text-sm">
@@ -1285,7 +1307,7 @@ export default function CustomRoleDisplaySettings({
                                                     }))
                                                 }
                                             />
-                                            Default
+                                            {t('common.default')}
                                         </label>
                                     </div>
                                 </div>
@@ -1303,13 +1325,13 @@ export default function CustomRoleDisplaySettings({
             <section id="grp-layout" className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>UI Options</CardTitle>
-                    <CardDescription>Global UI preferences</CardDescription>
+                    <CardTitle>{t('uiOptions.title')}</CardTitle>
+                    <CardDescription>{t('uiOptions.description')}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col gap-2">
                         <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                            <div className="text-sm font-medium text-neutral-800">Show Support Button</div>
+                            <div className="text-sm font-medium text-neutral-800">{t('uiOptions.showSupportButton')}</div>
                             <Switch
                                 checked={settings.ui?.showSupportButton !== false}
                                 onCheckedChange={(checked) =>
@@ -1321,7 +1343,7 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                         <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                            <div className="text-sm font-medium text-neutral-800">Show Sidebar</div>
+                            <div className="text-sm font-medium text-neutral-800">{t('uiOptions.showSidebar')}</div>
                             <Switch
                                 checked={settings.ui?.showSidebar !== false}
                                 onCheckedChange={(checked) =>
@@ -1337,7 +1359,7 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                         <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                            <div className="text-sm font-medium text-neutral-800">Show AI Credits</div>
+                            <div className="text-sm font-medium text-neutral-800">{t('uiOptions.showAiCredits')}</div>
                             <Switch
                                 checked={settings.ui?.showAiCredits !== false}
                                 onCheckedChange={(checked) =>
@@ -1353,7 +1375,7 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                         <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-                            <div className="text-sm font-medium text-neutral-800">Show Status</div>
+                            <div className="text-sm font-medium text-neutral-800">{t('uiOptions.showStatus')}</div>
                             <Switch
                                 checked={settings.ui?.showStatus !== false}
                                 onCheckedChange={(checked) =>
@@ -1371,11 +1393,10 @@ export default function CustomRoleDisplaySettings({
                         <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                             <div>
                                 <div className="text-sm font-medium text-neutral-800">
-                                    Show Settings
+                                    {t('uiOptions.showSettings')}
                                 </div>
                                 <div className="text-xs text-neutral-500">
-                                    Hides the Settings gear in the sidebar rail. You can still open
-                                    Settings directly at /settings.
+                                    {t('uiOptions.showSettingsDescription')}
                                 </div>
                             </div>
                             <Switch
@@ -1395,11 +1416,10 @@ export default function CustomRoleDisplaySettings({
                         <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                             <div>
                                 <div className="text-sm font-medium text-neutral-800">
-                                    Show Right Side Rail
+                                    {t('uiOptions.showAssistDock')}
                                 </div>
                                 <div className="text-xs text-neutral-500">
-                                    Guides, Assist, Issues, What&apos;s new, Explore &amp; Admin
-                                    App. Hidden for this role by default.
+                                    {t('uiOptions.showAssistDockDescription')}
                                 </div>
                             </div>
                             <Switch
@@ -1421,10 +1441,8 @@ export default function CustomRoleDisplaySettings({
             </Card>
             <Card>
                 <CardHeader>
-                    <CardTitle>Sidebar Categories</CardTitle>
-                    <CardDescription>
-                        Configure visibility, order, and default category for the sidebar.
-                    </CardDescription>
+                    <CardTitle>{t('sidebarCategories.title')}</CardTitle>
+                    <CardDescription>{t('sidebarCategories.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     {(() => {
@@ -1451,7 +1469,7 @@ export default function CustomRoleDisplaySettings({
                                         </Button>
                                     </div>
                                     <div className="flex-1 text-sm font-medium">
-                                        {id === 'AI' ? 'AI Tools' : id}
+                                        {id === 'AI' ? t('sidebarCategories.aiToolsLabel') : id}
                                     </div>
                                     <div className="flex items-center gap-2">
                                     <Select
@@ -1523,9 +1541,9 @@ export default function CustomRoleDisplaySettings({
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="visible">Visible</SelectItem>
-                                            <SelectItem value="hidden">Hidden</SelectItem>
-                                            <SelectItem value="locked">Locked</SelectItem>
+                                            <SelectItem value="visible">{t('common.visible')}</SelectItem>
+                                            <SelectItem value="hidden">{t('common.hidden')}</SelectItem>
+                                            <SelectItem value="locked">{t('common.locked')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     </div>
@@ -1579,7 +1597,7 @@ export default function CustomRoleDisplaySettings({
                                                     });
                                                 }}
                                             />
-                                            Default
+                                            {t('common.default')}
                                         </label>
                                     </div>
                                 </div>
@@ -1590,10 +1608,8 @@ export default function CustomRoleDisplaySettings({
             </Card>
             <Card>
                 <CardHeader>
-                    <CardTitle>Sidebar Tabs</CardTitle>
-                    <CardDescription>
-                        Order and toggle visibility. Settings tab is always hidden for Teachers.
-                    </CardDescription>
+                    <CardTitle>{t('sidebarTabs.title')}</CardTitle>
+                    <CardDescription>{t('sidebarTabs.description')}</CardDescription>
                 </CardHeader>
                 {/* Assuming activeCategory state is declared here or in the parent component */}
                 {/* For example: const [activeCategory, setActiveCategory] = useState<'LMS' | 'CRM' | 'AI'>('CRM'); */}
@@ -1604,9 +1620,9 @@ export default function CustomRoleDisplaySettings({
                         className="w-full"
                     >
                         <TabsList className="mb-4 grid w-full grid-cols-3">
-                            <TabsTrigger value="LMS">LMS</TabsTrigger>
-                            <TabsTrigger value="CRM">CRM</TabsTrigger>
-                            <TabsTrigger value="AI">AI Tools</TabsTrigger>
+                            <TabsTrigger value="LMS">{t('sidebarTabs.tabLms')}</TabsTrigger>
+                            <TabsTrigger value="CRM">{t('sidebarTabs.tabCrm')}</TabsTrigger>
+                            <TabsTrigger value="AI">{t('sidebarTabs.tabAiTools')}</TabsTrigger>
                         </TabsList>
 
                         {(() => {
@@ -1648,7 +1664,7 @@ export default function CustomRoleDisplaySettings({
                                         <div className="flex-1">
                                             <div className="grid grid-cols-1 gap-3 md:grid-cols-4 md:items-center">
                                                 <div className="col-span-2">
-                                                    <Label>Tab Name</Label>
+                                                    <Label>{t('common.tabName')}</Label>
                                                     <Input
                                                         value={tab.label || ''}
                                                         onChange={(e) =>
@@ -1664,7 +1680,7 @@ export default function CustomRoleDisplaySettings({
                                                     />
                                                 </div>
                                                 <div>
-                                                    <Label>Route</Label>
+                                                    <Label>{t('common.route')}</Label>
                                                     <Input
                                                         value={tab.route || ''}
                                                         onChange={(e) =>
@@ -1720,9 +1736,9 @@ export default function CustomRoleDisplaySettings({
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="visible">Visible</SelectItem>
-                                                            <SelectItem value="hidden">Hidden</SelectItem>
-                                                            <SelectItem value="locked">Locked</SelectItem>
+                                                            <SelectItem value="visible">{t('common.visible')}</SelectItem>
+                                                            <SelectItem value="hidden">{t('common.hidden')}</SelectItem>
+                                                            <SelectItem value="locked">{t('common.locked')}</SelectItem>
                                                         </SelectContent>
                                                     </Select>
                                                     {tab.isCustom && (
@@ -1731,20 +1747,20 @@ export default function CustomRoleDisplaySettings({
                                                             size="sm"
                                                             onClick={() => removeCustomTab(tab.id)}
                                                         >
-                                                            Remove
+                                                            {t('common.remove')}
                                                         </Button>
                                                     )}
                                                 </div>
                                             </div>
                                             <div className="mt-3 space-y-2">
                                                 <div className="flex items-center justify-between">
-                                                    <Label>Sub Tabs</Label>
+                                                    <Label>{t('common.subTabs')}</Label>
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
                                                         onClick={() => addSubTab(tab.id)}
                                                     >
-                                                        Add Sub Tab
+                                                        {t('common.addSubTab')}
                                                     </Button>
                                                 </div>
                                                 {(() => {
@@ -1788,7 +1804,7 @@ export default function CustomRoleDisplaySettings({
                                                                 <div className="col-span-2">
                                                                     <Input
                                                                         value={sub.label || ''}
-                                                                        placeholder="Label"
+                                                                        placeholder={t('common.labelPlaceholder')}
                                                                         onChange={(e) =>
                                                                             updateSettings((prev) => ({
                                                                                 ...prev,
@@ -1821,7 +1837,7 @@ export default function CustomRoleDisplaySettings({
                                                                 <div>
                                                                     <Input
                                                                         value={sub.route}
-                                                                        placeholder="Route"
+                                                                        placeholder={t('common.route')}
                                                                         onChange={(e) =>
                                                                             updateSettings((prev) => ({
                                                                                 ...prev,
@@ -1917,13 +1933,13 @@ export default function CustomRoleDisplaySettings({
                                                                         </SelectTrigger>
                                                                         <SelectContent>
                                                                             <SelectItem value="visible">
-                                                                                Visible
+                                                                                {t('common.visible')}
                                                                             </SelectItem>
                                                                             <SelectItem value="hidden">
-                                                                                Hidden
+                                                                                {t('common.hidden')}
                                                                             </SelectItem>
                                                                             <SelectItem value="locked">
-                                                                                Locked
+                                                                                {t('common.locked')}
                                                                             </SelectItem>
                                                                         </SelectContent>
                                                                     </Select>
@@ -1938,7 +1954,7 @@ export default function CustomRoleDisplaySettings({
                                                                                 )
                                                                             }
                                                                         >
-                                                                            Remove
+                                                                            {t('common.remove')}
                                                                         </Button>
                                                                     )}
                                                                 </div>
@@ -1955,7 +1971,7 @@ export default function CustomRoleDisplaySettings({
                     </Tabs>
                     <div className="pt-2">
                         <Button variant="outline" onClick={addCustomTab}>
-                            Add Custom Tab
+                            {t('common.addCustomTab')}
                         </Button>
                     </div>
                 </CardContent>
@@ -1965,27 +1981,24 @@ export default function CustomRoleDisplaySettings({
             <section id="grp-learners" className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Course Content Types</CardTitle>
-                    <CardDescription>
-                        Enable or disable slide content types. Video has an extra in-video question
-                        option.
-                    </CardDescription>
+                    <CardTitle>{t('courseContentTypes.title')}</CardTitle>
+                    <CardDescription>{t('courseContentTypes.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     {(
                         [
-                            ['pdf', 'PDF'],
-                            ['ppt', 'PPT Presentation'],
-                            ['codeEditor', 'Code Editor'],
-                            ['document', 'Document'],
-                            ['question', 'Question'],
-                            ['quiz', 'Quiz'],
-                            ['assignment', 'Assignment'],
-                            ['jupyterNotebook', 'Jupyter Notebook'],
-                            ['scratch', 'Scratch'],
-                            ['audio', 'Audio'],
-                            ['scorm', 'SCORM Package'],
-                            ['assessment', 'Assessment'],
+                            ['pdf', t('courseContentTypes.pdf')],
+                            ['ppt', t('courseContentTypes.ppt')],
+                            ['codeEditor', t('courseContentTypes.codeEditor')],
+                            ['document', t('courseContentTypes.document')],
+                            ['question', t('courseContentTypes.question')],
+                            ['quiz', t('courseContentTypes.quiz')],
+                            ['assignment', t('courseContentTypes.assignment')],
+                            ['jupyterNotebook', t('courseContentTypes.jupyterNotebook')],
+                            ['scratch', t('courseContentTypes.scratch')],
+                            ['audio', t('courseContentTypes.audio')],
+                            ['scorm', t('courseContentTypes.scorm')],
+                            ['assessment', t('courseContentTypes.assessment')],
                         ] as const satisfies ReadonlyArray<
                             readonly [keyof Omit<CourseContentTypeSettings, 'video'>, string]
                         >
@@ -2034,7 +2047,7 @@ export default function CustomRoleDisplaySettings({
                     ))}
                     <div className="space-y-2 rounded border p-3">
                         <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium text-neutral-800">Video</div>
+                            <div className="text-sm font-medium text-neutral-800">{t('courseContentTypes.video')}</div>
                             <Switch
                                 checked={settings.contentTypes?.video?.enabled !== false}
                                 onCheckedChange={(checked) =>
@@ -2076,7 +2089,7 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                         <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium text-neutral-800">In-video Question Visible</div>
+                            <div className="text-sm font-medium text-neutral-800">{t('courseContentTypes.showInVideoQuestion')}</div>
                             <Switch
                                 checked={
                                     settings.contentTypes?.video?.showInVideoQuestion !== false
@@ -2122,7 +2135,7 @@ export default function CustomRoleDisplaySettings({
                             <>
                                 <div className="flex items-center justify-between">
                                     <div className="text-sm font-medium text-neutral-800">
-                                        Can add questions to video slides
+                                        {t('courseContentTypes.showAddVideoQuestion')}
                                     </div>
                                     <Switch
                                         checked={settings.slideView?.showAddVideoQuestion !== false}
@@ -2144,7 +2157,7 @@ export default function CustomRoleDisplaySettings({
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <div className="text-sm font-medium text-neutral-800">
-                                        Can convert video to split screen
+                                        {t('courseContentTypes.showConvertToSplitScreen')}
                                     </div>
                                     <Switch
                                         checked={
@@ -2172,7 +2185,7 @@ export default function CustomRoleDisplaySettings({
             </Card>
 
             <StudentSideViewSettingsCard
-                options={STUDENT_SIDE_VIEW_OPTIONS}
+                options={studentSideViewOptions}
                 settings={{
                     ...STUDENT_SIDE_VIEW_DEFAULTS,
                     ...settings.studentSideView,
@@ -2213,13 +2226,11 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Learner Management</CardTitle>
-                    <CardDescription>
-                        Configure learner management permissions and access controls.
-                    </CardDescription>
+                    <CardTitle>{t('learnerManagement.title')}</CardTitle>
+                    <CardDescription>{t('learnerManagement.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    {LEARNER_MANAGEMENT_OPTIONS.map(({ key, label }) => (
+                    {learnerManagementOptions.map(({ key, label }) => (
                         <div
                             key={key}
                             className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0"
@@ -2260,10 +2271,8 @@ export default function CustomRoleDisplaySettings({
             <section id="grp-access" className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Dashboard Widgets</CardTitle>
-                    <CardDescription>
-                        Order and toggle which widgets teachers can see.
-                    </CardDescription>
+                    <CardTitle>{t('dashboardWidgets.title')}</CardTitle>
+                    <CardDescription>{t('dashboardWidgets.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     {(() => {
@@ -2301,7 +2310,7 @@ export default function CustomRoleDisplaySettings({
                                             }))
                                         }
                                     />
-                                    <span className="text-sm">Visible</span>
+                                    <span className="text-sm">{t('common.visible')}</span>
                                 </div>
                             </div>
                         ));
@@ -2311,18 +2320,16 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Permissions</CardTitle>
-                    <CardDescription>
-                        Configure institute and profile visibility and edit access.
-                    </CardDescription>
+                    <CardTitle>{t('permissions.title')}</CardTitle>
+                    <CardDescription>{t('permissions.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {(
                         [
-                            ['canViewInstituteDetails', 'Can View Institute Details'],
-                            ['canEditInstituteDetails', 'Can Edit Institute Details'],
-                            ['canViewProfileDetails', 'Can View Profile Details'],
-                            ['canEditProfileDetails', 'Can Edit Profile Details'],
+                            ['canViewInstituteDetails', t('permissions.canViewInstituteDetails')],
+                            ['canEditInstituteDetails', t('permissions.canEditInstituteDetails')],
+                            ['canViewProfileDetails', t('permissions.canViewProfileDetails')],
+                            ['canEditProfileDetails', t('permissions.canEditProfileDetails')],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -2366,14 +2373,12 @@ export default function CustomRoleDisplaySettings({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Post-login Redirect</CardTitle>
-                    <CardDescription>
-                        Choose where to redirect teachers after login.
-                    </CardDescription>
+                    <CardTitle>{t('postLoginRedirect.title')}</CardTitle>
+                    <CardDescription>{t('postLoginRedirect.description')}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="max-w-md">
-                        <Label>Route</Label>
+                        <Label>{t('common.route')}</Label>
                         <Input
                             value={settings.postLoginRedirectRoute}
                             onChange={(e) =>
@@ -2390,7 +2395,7 @@ export default function CustomRoleDisplaySettings({
             <SubOrgModuleCard
                 settings={settings}
                 onChange={(next) => updateSettings(() => next)}
-                roleLabel={roleName || 'this role'}
+                roleLabel={roleName || t('subOrg.thisRoleFallback')}
             />
 
             {roleName && (

@@ -1,0 +1,27 @@
+{
+    "header": {
+        "title": "Filtres et tri de liste — Champs personnalisés",
+        "description": "Choisissez les champs personnalisés qui apparaissent comme filtres sur chaque page de liste (s'applique à tout le monde). Chaque champ activé ajoute une sélection multiple avec recherche à la barre de filtres de cette page ; le désactiver masque le filtre et arrête le chargement de ses valeurs. Le tri s'applique lorsque le tri des colonnes de champs personnalisés est disponible."
+    },
+    "surfaces": {
+        "leads": {
+            "label": "Prospects",
+            "pages": "Liste des prospects + Prospects récents"
+        },
+        "contacts": {
+            "label": "Tous les contacts",
+            "pages": "Gestion des étudiants → Tous les contacts"
+        },
+        "students": {
+            "label": "Étudiants",
+            "pages": "Gestion des étudiants → Liste des étudiants"
+        }
+    },
+    "appliesTo": "S'applique à : {{pages}}",
+    "loading": "Chargement des champs personnalisés…",
+    "emptyState": "Aucun champ personnalisé configuré pour cet établissement pour le moment.",
+    "columns": {
+        "filter": "Filtre",
+        "sort": "Tri"
+    }
+}

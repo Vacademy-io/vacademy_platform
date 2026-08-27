@@ -282,6 +282,13 @@ public class VoiceBotInternalController {
         // key we dropped would be served Sarvam while billed for Rumik.
         base.put("tts_model", a.getTtsModel() != null && !a.getTtsModel().isBlank()
                 ? a.getTtsModel() : TtsVoiceCatalog.MODEL_SARVAM);
+        // V466 — snake_case for the same reason as tts_model above: the bot reads
+        // agent.get("speech_cache_mode"). Always emitted, never conditional: a
+        // dropped key would fall back to the bot's default, and the ONLY safe
+        // default for "may this agent replay stored audio" is OFF.
+        base.put("speech_cache_mode",
+                a.getSpeechCacheMode() != null && !a.getSpeechCacheMode().isBlank()
+                        ? a.getSpeechCacheMode().trim().toUpperCase() : "OFF");
         return base;
     }
 
@@ -307,6 +314,9 @@ public class VoiceBotInternalController {
         // billing resolves an unresolvable agent to 'sarvam' too, and the two must
         // agree or the fallback persona would be served one engine and billed another.
         agent.put("tts_model", TtsVoiceCatalog.MODEL_SARVAM);
+        // The built-in persona predates any admin decision about caching, so it
+        // gets the same answer an unconfigured agent gets.
+        agent.put("speech_cache_mode", "OFF");
         agent.put("openingLine",
                 "Namaste! Main " + instituteName + " se baat kar rahi hoon. Kya aapke paas do minute hain?");
         agent.put("systemPrompt",
@@ -326,5 +336,48 @@ public class VoiceBotInternalController {
 
     private static String asString(Object o) {
         return o == null ? null : o.toString();
+    }
+    // ── TTS speech-cache mirror ─────────────────────────────────────────────
+    //
+    // The bot PUSHES here rather than admin-core polling it, because this
+    // direction is the one that is authenticated: the bot already reaches these
+    // routes for call-context and reports. Admin-core has no credential for
+    // reaching the bot, which is why warm-on-save has never fired.
+
+    @Autowired(required = false)
+    private vacademy.io.admin_core_service.features.super_admin.service.TtsCacheAnalyticsService ttsCache;
+
+    /** One ledger report. Bounded, so it upserts rather than replaces. */
+    @PostMapping("/tts-cache/report")
+    public ResponseEntity<?> ttsCacheReport(@RequestBody java.util.Map<String, Object> body) {
+        if (ttsCache == null) return ResponseEntity.ok(java.util.Map.of("ingested", 0));
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> entries =
+                (java.util.List<java.util.Map<String, Object>>) body.get("entries");
+        int n = ttsCache.ingest(entries);
+        return ResponseEntity.ok(java.util.Map.of("ingested", n));
+    }
+
+    /** Claim queued flushes. FOR UPDATE SKIP LOCKED, so two replicas polling at
+     *  once cannot both run the same destructive command. */
+    @PostMapping("/tts-cache/commands")
+    public ResponseEntity<?> ttsCacheCommands() {
+        if (ttsCache == null) return ResponseEntity.ok(java.util.Map.of("commands", java.util.List.of()));
+        return ResponseEntity.ok(java.util.Map.of("commands", ttsCache.claimCommands(20)));
+    }
+
+    /** What the flush actually did. The log exists because a destructive action
+     *  with no record is not one anybody should trigger from a web page. */
+    @PostMapping("/tts-cache/commands/{id}/result")
+    public ResponseEntity<?> ttsCacheCommandResult(@PathVariable String id,
+                                                   @RequestBody java.util.Map<String, Object> body) {
+        if (ttsCache != null) {
+            ttsCache.recordCommandResult(id,
+                    Boolean.TRUE.equals(body.get("ok")),
+                    String.valueOf(body.getOrDefault("result", "")),
+                    body.get("entriesRemoved") instanceof Number n ? n.intValue() : null,
+                    body.get("bytesRemoved") instanceof Number b ? b.longValue() : null);
+        }
+        return ResponseEntity.ok(java.util.Map.of("ok", true));
     }
 }

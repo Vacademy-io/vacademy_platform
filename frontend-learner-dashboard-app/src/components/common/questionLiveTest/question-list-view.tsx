@@ -1,12 +1,22 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAssessmentStore } from "@/stores/assessment-store";
-import { QuestionDto, QuestionState } from "@/types/assessment";
-import { useEffect } from "react";
-import { Circle } from "@phosphor-icons/react";
+import { QuestionDto } from "@/types/assessment";
 import { QuestionHtmlContent } from "./question-html-content";
+import {
+  getQuestionStatus,
+  getQuestionStatusLabel,
+  QUESTION_STATUS_GRID_CLASS,
+  QUESTION_STATUS_LIST_CLASS,
+} from "./question-status-colors";
 
-export function QuestionListView() {
+interface QuestionListViewProps {
+  /** Called after a question is picked — closes the mobile palette sheet. */
+  onSelect?: () => void;
+}
+
+export function QuestionListView({ onSelect }: QuestionListViewProps) {
+  const { t } = useTranslation("questionTest");
   const {
     assessment,
     currentSection,
@@ -17,64 +27,62 @@ export function QuestionListView() {
     sectionTimers,
   } = useAssessmentStore();
 
-  useEffect(() => {
-    if (!assessment) return;
-  }, [assessment]);
-
   const currentSectionQuestions =
-    assessment?.section_dtos[currentSection].question_preview_dto_list;
+    assessment?.section_dtos?.[currentSection]?.question_preview_dto_list ?? [];
   const isTimeUp = sectionTimers[currentSection]?.timeLeft === 0;
 
   const handleQuestionClick = (question: QuestionDto) => {
     if (isTimeUp) return;
     setCurrentQuestion(question);
     setQuestionState(question.question_id, { isVisited: true });
-  };
-
-  const getQuestionClass = (state: QuestionState) => {
-    if (state.isAnswered) return "border-green-200 bg-green-50";
-    if (!state.isVisited) return "border-gray-200";
-    return "border-pink-200 bg-pink-50";
+    onSelect?.();
   };
 
   return (
-    <ScrollArea className="h-full pb-16">
-      <div className="space-y-2 p-4">
-        {currentSectionQuestions?.map((question, index) => {
-          const state = questionStates[question.question_id];
-          const isActive =
-            currentQuestion?.question_id === question.question_id;
+    <div className="flex flex-col gap-2">
+      {currentSectionQuestions.map((question, index) => {
+        const state = questionStates[question.question_id];
+        const status = getQuestionStatus(state);
+        const isActive = currentQuestion?.question_id === question.question_id;
 
-          return (
-            <div
-              key={question.question_id}
+        return (
+          <button
+            key={question.question_id}
+            type="button"
+            disabled={isTimeUp}
+            aria-label={t("questionList.itemAriaLabel", {
+              number: index + 1,
+              status: getQuestionStatusLabel(status, t),
+            })}
+            aria-current={isActive ? "true" : undefined}
+            onClick={() => handleQuestionClick(question)}
+            className={cn(
+              "flex w-full items-start gap-3 rounded-lg border p-3 text-start transition-colors",
+              QUESTION_STATUS_LIST_CLASS[status],
+              !isTimeUp && "hover:border-neutral-300",
+              isActive && "ring-2 ring-neutral-800",
+              isTimeUp && "cursor-not-allowed opacity-50",
+            )}
+          >
+            <span
               className={cn(
-                "relative rounded-lg border p-4 transition-colors",
-                !isTimeUp && "cursor-pointer hover:bg-accent/50",
-                isActive && "ring-2 ring-primary",
-                state && getQuestionClass(state),
-                isTimeUp && "opacity-50",
+                "grid size-6 flex-none place-items-center rounded-md border text-2xs font-bold tabular-nums",
+                QUESTION_STATUS_GRID_CLASS[status],
               )}
-              onClick={() => handleQuestionClick(question)}
             >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{index + 1}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {question.question_type}
-                  </span>
-                </div>
-                {state?.isMarkedForReview && (
-                  <Circle className="h-4 w-4 text-primary-500" weight="fill" />
-                )}
-              </div>
-              <div className="text-sm line-clamp-2">
+              {index + 1}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="line-clamp-2 block text-caption text-neutral-700">
                 <QuestionHtmlContent html={question.question.content} inline />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </ScrollArea>
+              </span>
+              <span className="mt-1 block text-3xs font-semibold uppercase tracking-wide text-neutral-400">
+                {question.question_type}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

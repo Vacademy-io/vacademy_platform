@@ -1,9 +1,23 @@
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
+import type { TFunction } from 'i18next';
 import type {
     BrandPalette,
     IntroOutroConfig,
     WatermarkConfig,
 } from '@/features/vimotion/api/dashboardTypes';
+
+/**
+ * Namespace for this module's translated display strings — see
+ * src/locales/en/videoApiStudioVideoGeneration.json. The `buildXxx(t)`
+ * factories below re-derive their English-source constants (CONTENT_TYPES,
+ * QUALITY_TIERS, etc.) with translated `label`/`description`/`hint` text.
+ * The raw constants stay untouched (same values, English fallback text) so
+ * existing consumers outside this rollout wave keep working unmodified;
+ * call sites that render these lists to users should prefer the `buildXxx(t)`
+ * version instead. Enum `value`s are never translated — they're used for
+ * state, equality checks, and the request payload sent to the backend.
+ */
+const NS = 'videoApiStudioVideoGeneration';
 
 /**
  * Per-video brand overrides — a one-shot layer on top of the resolved brand kit
@@ -169,6 +183,83 @@ export const CONTENT_TYPES = [
     },
 ] as const;
 
+export interface ContentTypeOption {
+    value: ContentType;
+    label: string;
+    description: string;
+}
+
+/** Translated `label`/`description` for CONTENT_TYPES — same order/values. */
+export function buildContentTypes(t: TFunction): ContentTypeOption[] {
+    return [
+        {
+            value: 'VIDEO',
+            label: `📹 ${t(`${NS}:contentTypes.video.label`)}`,
+            description: t(`${NS}:contentTypes.video.description`),
+        },
+        {
+            value: 'SLIDES',
+            label: `🖼️ ${t(`${NS}:contentTypes.slides.label`)}`,
+            description: t(`${NS}:contentTypes.slides.description`),
+        },
+        {
+            value: 'QUIZ',
+            label: `❓ ${t(`${NS}:contentTypes.quiz.label`)}`,
+            description: t(`${NS}:contentTypes.quiz.description`),
+        },
+        {
+            value: 'STORYBOOK',
+            label: `📚 ${t(`${NS}:contentTypes.storybook.label`)}`,
+            description: t(`${NS}:contentTypes.storybook.description`),
+        },
+        {
+            value: 'INTERACTIVE_GAME',
+            label: `🎮 ${t(`${NS}:contentTypes.interactiveGame.label`)}`,
+            description: t(`${NS}:contentTypes.interactiveGame.description`),
+        },
+        {
+            value: 'PUZZLE_BOOK',
+            label: `🧩 ${t(`${NS}:contentTypes.puzzleBook.label`)}`,
+            description: t(`${NS}:contentTypes.puzzleBook.description`),
+        },
+        {
+            value: 'SIMULATION',
+            label: `🔬 ${t(`${NS}:contentTypes.simulation.label`)}`,
+            description: t(`${NS}:contentTypes.simulation.description`),
+        },
+        {
+            value: 'FLASHCARDS',
+            label: `📇 ${t(`${NS}:contentTypes.flashcards.label`)}`,
+            description: t(`${NS}:contentTypes.flashcards.description`),
+        },
+        {
+            value: 'MAP_EXPLORATION',
+            label: `🗺️ ${t(`${NS}:contentTypes.mapExploration.label`)}`,
+            description: t(`${NS}:contentTypes.mapExploration.description`),
+        },
+        {
+            value: 'WORKSHEET',
+            label: `📝 ${t(`${NS}:contentTypes.worksheet.label`)}`,
+            description: t(`${NS}:contentTypes.worksheet.description`),
+        },
+        {
+            value: 'CODE_PLAYGROUND',
+            label: `💻 ${t(`${NS}:contentTypes.codePlayground.label`)}`,
+            description: t(`${NS}:contentTypes.codePlayground.description`),
+        },
+        {
+            value: 'TIMELINE',
+            label: `⏳ ${t(`${NS}:contentTypes.timeline.label`)}`,
+            description: t(`${NS}:contentTypes.timeline.description`),
+        },
+        {
+            value: 'CONVERSATION',
+            label: `💬 ${t(`${NS}:contentTypes.conversation.label`)}`,
+            description: t(`${NS}:contentTypes.conversation.description`),
+        },
+    ];
+}
+
 export type VideoOrientation = 'landscape' | 'portrait';
 export type QualityTier = 'free' | 'standard' | 'premium' | 'ultra' | 'super_ultra';
 // Deprecated: the Director now picks theme/background/animation per-shot.
@@ -232,6 +323,23 @@ export const VISUAL_PREFERENCE_FAMILIES = [
     label: string;
 }>;
 
+export interface VisualPreferenceFamilyOption {
+    key: (typeof VISUAL_PREFERENCE_FAMILIES)[number]['key'];
+    label: string;
+}
+
+/** Translated `label` for VISUAL_PREFERENCE_FAMILIES — same order/keys. */
+export function buildVisualPreferenceFamilies(t: TFunction): VisualPreferenceFamilyOption[] {
+    return [
+        { key: 'stock_video', label: t(`${NS}:visualPreferenceFamilies.stockVideo`) },
+        { key: 'ai_imagery', label: t(`${NS}:visualPreferenceFamilies.aiImagery`) },
+        { key: 'svg_illustrated', label: t(`${NS}:visualPreferenceFamilies.svgIllustrated`) },
+        { key: 'motion_graphics', label: t(`${NS}:visualPreferenceFamilies.motionGraphics`) },
+        { key: 'app_ui_mockup', label: t(`${NS}:visualPreferenceFamilies.appUiMockup`) },
+        { key: 'ai_video', label: t(`${NS}:visualPreferenceFamilies.aiVideo`) },
+    ];
+}
+
 /** Default AI video model when none is specified. Phase 3 only ships
  *  fal-ai/veo3.1/lite; the dropdown exists for future model additions. */
 export const AI_VIDEO_MODELS = [
@@ -252,6 +360,33 @@ export const AI_VIDEO_MODELS = [
     },
 ] as const;
 export type AiVideoModel = (typeof AI_VIDEO_MODELS)[number]['value'];
+
+export interface AiVideoModelOption {
+    value: AiVideoModel;
+    label: string;
+    hint: string;
+}
+
+/** Translated `label`/`hint` for AI_VIDEO_MODELS — same order/values. */
+export function buildAiVideoModels(t: TFunction): AiVideoModelOption[] {
+    return [
+        {
+            value: 'fal-ai/veo3.1',
+            label: t(`${NS}:aiVideoModels.veo31.label`),
+            hint: t(`${NS}:aiVideoModels.veo31.hint`),
+        },
+        {
+            value: 'fal-ai/veo3.1/fast',
+            label: t(`${NS}:aiVideoModels.veo31Fast.label`),
+            hint: t(`${NS}:aiVideoModels.veo31Fast.hint`),
+        },
+        {
+            value: 'fal-ai/veo3.1/lite',
+            label: t(`${NS}:aiVideoModels.veo31Lite.label`),
+            hint: t(`${NS}:aiVideoModels.veo31Lite.hint`),
+        },
+    ];
+}
 
 // ── Per-stage model overrides (V200 — DB-backed routing) ─────────────────
 // Backend canonical stage IDs the user can override at request time. Keep in
@@ -301,6 +436,43 @@ export const USER_OVERRIDABLE_STAGE_META: readonly {
         hint: 'Corrective regen for failed validation passes.',
     },
 ] as const;
+
+export interface UserOverridableStageOption {
+    value: UserOverridableStage;
+    label: string;
+    hint?: string;
+}
+
+/** Translated `label`/`hint` for USER_OVERRIDABLE_STAGE_META — same order/values. */
+export function buildUserOverridableStageMeta(t: TFunction): UserOverridableStageOption[] {
+    return [
+        {
+            value: 'shot_planner',
+            label: t(`${NS}:overridableStages.shotPlanner.label`),
+            hint: t(`${NS}:overridableStages.shotPlanner.hint`),
+        },
+        {
+            value: 'narration_writer',
+            label: t(`${NS}:overridableStages.narrationWriter.label`),
+            hint: t(`${NS}:overridableStages.narrationWriter.hint`),
+        },
+        {
+            value: 'per_shot_html',
+            label: t(`${NS}:overridableStages.perShotHtml.label`),
+            hint: t(`${NS}:overridableStages.perShotHtml.hint`),
+        },
+        {
+            value: 'act_planner',
+            label: t(`${NS}:overridableStages.actPlanner.label`),
+            hint: t(`${NS}:overridableStages.actPlanner.hint`),
+        },
+        {
+            value: 'regen_html',
+            label: t(`${NS}:overridableStages.regenHtml.label`),
+            hint: t(`${NS}:overridableStages.regenHtml.hint`),
+        },
+    ];
+}
 
 export interface ModelOverrides {
     /** Mass-pick model — applied to every user-overridable stage. */
@@ -438,6 +610,45 @@ export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecond
         perSecondUsd: 0.3034,
     },
 ];
+
+export interface AvatarModelOption {
+    value: AvatarModel;
+    label: string;
+    perSecondUsd: number;
+}
+
+/** Translated `label` for AVATAR_MODELS — same order/values/prices. */
+export function buildAvatarModels(t: TFunction): AvatarModelOption[] {
+    return [
+        { value: 'fal-ai/flashtalk', label: t(`${NS}:avatarModels.flashtalk`), perSecondUsd: 0.02 },
+        {
+            value: 'fal-ai/kling-video/ai-avatar/v2/standard',
+            label: t(`${NS}:avatarModels.klingStandard`),
+            perSecondUsd: 0.0562,
+        },
+        { value: 'veed/fabric-1.0', label: t(`${NS}:avatarModels.veedFabric`), perSecondUsd: 0.08 },
+        {
+            value: 'fal-ai/heygen/avatar4/image-to-video',
+            label: t(`${NS}:avatarModels.heygenAvatar4`),
+            perSecondUsd: 0.1,
+        },
+        {
+            value: 'fal-ai/kling-video/ai-avatar/v2/pro',
+            label: t(`${NS}:avatarModels.klingPro`),
+            perSecondUsd: 0.115,
+        },
+        {
+            value: 'fal-ai/ltx-2.3-quality/audio-to-video',
+            label: t(`${NS}:avatarModels.ltx23`),
+            perSecondUsd: 0.0237,
+        },
+        {
+            value: 'bytedance/seedance-2.0/reference-to-video',
+            label: t(`${NS}:avatarModels.seedance20`),
+            perSecondUsd: 0.3034,
+        },
+    ];
+}
 
 export interface GenerateVideoRequest {
     prompt: string;
@@ -914,6 +1125,46 @@ export const QUALITY_TIERS: Array<{
         badge: 'New',
     },
 ];
+
+export interface QualityTierOption {
+    value: QualityTier;
+    label: string;
+    description: string;
+    badge?: string;
+}
+
+/** Translated `label`/`description`/`badge` for QUALITY_TIERS — same order/values. */
+export function buildQualityTiers(t: TFunction): QualityTierOption[] {
+    return [
+        {
+            value: 'free',
+            label: t(`${NS}:qualityTiers.free.label`),
+            description: t(`${NS}:qualityTiers.free.description`),
+        },
+        {
+            value: 'standard',
+            label: t(`${NS}:qualityTiers.standard.label`),
+            description: t(`${NS}:qualityTiers.standard.description`),
+        },
+        {
+            value: 'premium',
+            label: t(`${NS}:qualityTiers.premium.label`),
+            description: t(`${NS}:qualityTiers.premium.description`),
+        },
+        {
+            value: 'ultra',
+            label: t(`${NS}:qualityTiers.ultra.label`),
+            description: t(`${NS}:qualityTiers.ultra.description`),
+            badge: t(`${NS}:qualityTiers.ultra.badge`),
+        },
+        {
+            value: 'super_ultra',
+            label: t(`${NS}:qualityTiers.superUltra.label`),
+            description: t(`${NS}:qualityTiers.superUltra.description`),
+            badge: t(`${NS}:qualityTiers.superUltra.badge`),
+        },
+    ];
+}
 
 export interface ProgressEvent {
     type: 'progress';
@@ -1652,6 +1903,19 @@ export const VOICE_GENDERS = [
     { value: 'male', label: 'Male' },
 ] as const;
 
+export interface VoiceGenderOption {
+    value: VoiceGender;
+    label: string;
+}
+
+/** Translated `label` for VOICE_GENDERS — same order/values. */
+export function buildVoiceGenders(t: TFunction): VoiceGenderOption[] {
+    return [
+        { value: 'female', label: t(`${NS}:voiceGenders.female`) },
+        { value: 'male', label: t(`${NS}:voiceGenders.male`) },
+    ];
+}
+
 export const TTS_PROVIDERS = [
     {
         value: 'standard' as TtsProvider,
@@ -1665,6 +1929,28 @@ export const TTS_PROVIDERS = [
     },
 ] as const;
 
+export interface TtsProviderOption {
+    value: TtsProvider;
+    label: string;
+    description: string;
+}
+
+/** Translated `label`/`description` for TTS_PROVIDERS — same order/values. */
+export function buildTtsProviders(t: TFunction): TtsProviderOption[] {
+    return [
+        {
+            value: 'standard',
+            label: t(`${NS}:ttsProviders.standard.label`),
+            description: t(`${NS}:ttsProviders.standard.description`),
+        },
+        {
+            value: 'premium',
+            label: t(`${NS}:ttsProviders.premium.label`),
+            description: t(`${NS}:ttsProviders.premium.description`),
+        },
+    ];
+}
+
 export const TARGET_AUDIENCES = [
     'Class 1-2 (Ages 6-7)',
     'Class 3-4 (Ages 8-9)',
@@ -1677,6 +1963,37 @@ export const TARGET_AUDIENCES = [
     'General/Adult',
 ];
 
+/** value → translation-key suffix, for display only. The raw TARGET_AUDIENCES
+ *  strings stay as-is since they're sent verbatim as `target_audience` on the
+ *  request payload and persisted in saved history — only the rendered label
+ *  is translated (mirrors the ai-center QUESTION_TYPE_LABEL_KEYS pattern). */
+const TARGET_AUDIENCE_KEYS: Record<string, string> = {
+    'Class 1-2 (Ages 6-7)': 'class1to2',
+    'Class 3-4 (Ages 8-9)': 'class3to4',
+    'Class 5 (Ages 10-11)': 'class5',
+    'Class 6-8 (Ages 11-14)': 'class6to8',
+    'Class 9-10 (Ages 14-16)': 'class9to10',
+    'Class 11-12 (Ages 16-18)': 'class11to12',
+    Undergraduate: 'undergraduate',
+    'Graduate/Professional': 'graduateProfessional',
+    'General/Adult': 'generalAdult',
+};
+
+/** Translated display label for a TARGET_AUDIENCES value; falls back to the
+ *  raw English value for anything not in the map. */
+export function getTargetAudienceLabel(audience: string, t: TFunction): string {
+    const key = TARGET_AUDIENCE_KEYS[audience];
+    return key ? t(`${NS}:targetAudiences.${key}`) : audience;
+}
+
+/** `{ value, label }` pairs for rendering the audience picker — `value` stays
+ *  the raw English string (the actual request field); `label` is translated. */
+export function buildTargetAudienceOptions(
+    t: TFunction
+): Array<{ value: string; label: string }> {
+    return TARGET_AUDIENCES.map((value) => ({ value, label: getTargetAudienceLabel(value, t) }));
+}
+
 export const TARGET_DURATIONS = [
     '30 seconds',
     '1 minute',
@@ -1684,6 +2001,30 @@ export const TARGET_DURATIONS = [
     '5 minutes',
     '10 minutes',
 ];
+
+/** value → translation-key suffix, for display only — see TARGET_AUDIENCE_KEYS. */
+const TARGET_DURATION_KEYS: Record<string, string> = {
+    '30 seconds': 'seconds30',
+    '1 minute': 'minute1',
+    '2-3 minutes': 'minutes2to3',
+    '5 minutes': 'minutes5',
+    '10 minutes': 'minutes10',
+};
+
+/** Translated display label for a TARGET_DURATIONS value; falls back to the
+ *  raw English value for anything not in the map. */
+export function getTargetDurationLabel(duration: string, t: TFunction): string {
+    const key = TARGET_DURATION_KEYS[duration];
+    return key ? t(`${NS}:targetDurations.${key}`) : duration;
+}
+
+/** `{ value, label }` pairs for rendering the duration picker — `value` stays
+ *  the raw English string (the actual request field); `label` is translated. */
+export function buildTargetDurationOptions(
+    t: TFunction
+): Array<{ value: string; label: string }> {
+    return TARGET_DURATIONS.map((value) => ({ value, label: getTargetDurationLabel(value, t) }));
+}
 
 export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     content_type: 'VIDEO',
@@ -1738,12 +2079,28 @@ export interface GenerationResponse {
 /**
  * Generate content (video, quiz, storybook, etc.)
  */
+/** Fallback message when a 402 response carries no `detail` — translated
+ *  when `t` is passed (real callers thread their bound `t` through), English
+ *  otherwise so older/untranslated call sites keep working. */
+function insufficientCreditsFallback(t?: TFunction): string {
+    return t ? t(`${NS}:errors.insufficientCredits`) : 'Insufficient credits';
+}
+
+/** Fallback message when a 429 response carries no `detail` — see
+ *  `insufficientCreditsFallback`. */
+function rateLimitFallback(t?: TFunction): string {
+    return t
+        ? t(`${NS}:errors.rateLimited`)
+        : 'Too many requests. Please wait a moment and try again.';
+}
+
 export function generateVideo(
     request: GenerateVideoRequest,
     apiKey: string,
     onProgress: (event: SSEEvent) => void,
     onError: (error: Error) => void,
-    onHeadersReceived?: (headers: { videoId: string; contentType: ContentType }) => void
+    onHeadersReceived?: (headers: { videoId: string; contentType: ContentType }) => void,
+    t?: TFunction
 ): GenerationResponse {
     const videoId = request.video_id || generateVideoId();
     const controller = new AbortController();
@@ -1774,7 +2131,7 @@ export function generateVideo(
                 const errorText = await response.text().catch(() => response.statusText);
                 if (response.status === 402) {
                     // Parse detail from FastAPI error response
-                    let detail = 'Insufficient credits';
+                    let detail = insufficientCreditsFallback(t);
                     try {
                         const parsed = JSON.parse(errorText);
                         detail = parsed.detail || detail;
@@ -1787,7 +2144,7 @@ export function generateVideo(
                     throw err;
                 }
                 if (response.status === 429) {
-                    let detail = 'Too many requests. Please wait a moment and try again.';
+                    let detail = rateLimitFallback(t);
                     try {
                         const parsed = JSON.parse(errorText);
                         detail = parsed.detail || detail;
@@ -1892,7 +2249,8 @@ export function resumeVideo(
     request: ResumeVideoRequest,
     apiKey: string,
     onProgress: (event: SSEEvent) => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    t?: TFunction
 ): { abort: () => void } {
     const controller = new AbortController();
 
@@ -1940,7 +2298,7 @@ export function resumeVideo(
                             try {
                                 return JSON.parse(errorText).detail;
                             } catch {
-                                return errorText || 'Insufficient credits';
+                                return errorText || insufficientCreditsFallback(t);
                             }
                         })()
                     );
@@ -2057,7 +2415,8 @@ export function submitDecision(
     answer: DecisionAnswer,
     apiKey: string,
     onProgress: (event: SSEEvent) => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    t?: TFunction
 ): { abort: () => void } {
     const controller = new AbortController();
     const body = decisionAnswerToBody(decisionId, gateType, answer);
@@ -2080,7 +2439,7 @@ export function submitDecision(
                             try {
                                 return JSON.parse(errorText).detail;
                             } catch {
-                                return errorText || 'Insufficient credits';
+                                return errorText || insufficientCreditsFallback(t);
                             }
                         })()
                     );
@@ -2175,7 +2534,8 @@ export function retryVideo(
     videoId: string,
     apiKey: string,
     onProgress: (event: SSEEvent) => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    t?: TFunction
 ): { abort: () => void } {
     const controller = new AbortController();
 
@@ -2193,7 +2553,7 @@ export function retryVideo(
                             try {
                                 return JSON.parse(errorText).detail;
                             } catch {
-                                return errorText || 'Insufficient credits';
+                                return errorText || insufficientCreditsFallback(t);
                             }
                         })()
                     );
@@ -2300,16 +2660,16 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
     fps: 30,
     captions: true,
     captionPosition: 'bottom',
-    captionTextColor: '#ffffff',
-    captionBgColor: '#000000',
+    captionTextColor: '#ffffff', // design-lint-ignore: functional hex sent as caption_text_color to the render API / native color-input value, not a CSS class
+    captionBgColor: '#000000', // design-lint-ignore: functional hex sent as caption_bg_color to the render API / native color-input value, not a CSS class
     captionBgOpacity: 0,
     captionSize: 'L',
     captionStyle: 'karaoke',
     captionFontFamily: 'inter',
     captionFontWeight: 600,
     captionTextStrokeWidth: 4,
-    captionTextStrokeColor: '#000000',
-    captionHighlightColor: '#fbbf24',
+    captionTextStrokeColor: '#000000', // design-lint-ignore: functional hex sent as caption_text_stroke_color to the render API / native color-input value, not a CSS class
+    captionHighlightColor: '#fbbf24', // design-lint-ignore: functional hex sent as caption_highlight_color to the render API / native color-input value, not a CSS class
     captionPreset: 'karaoke',
     watermark: true,
 };
@@ -2502,10 +2862,10 @@ export function requiresAudio(contentType: ContentType): boolean {
 }
 
 /**
- * Get content type label for display
+ * Get content type label for display, translated via `t`.
  */
-export function getContentTypeLabel(contentType: ContentType): string {
-    const found = CONTENT_TYPES.find((ct) => ct.value === contentType);
+export function getContentTypeLabel(contentType: ContentType, t: TFunction): string {
+    const found = buildContentTypes(t).find((ct) => ct.value === contentType);
     return found?.label || contentType;
 }
 

@@ -78,7 +78,11 @@ const MEDIA_HOST_RE =
 
 const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
 const CSS_URL_RE = /url\s*\([^)]*\)/gi;
-const CSS_BANNED_RE = /@import\b|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/gi;
+// `behavior:` targets the legacy IE binding property. Without a boundary it
+// also matches INSIDE scroll-behavior, overscroll-behavior and
+// transition-behavior, truncating them to `scroll- smooth` — caught by
+// simulating a real page's CSS, where it silently killed smooth scrolling.
+const CSS_BANNED_RE = /@import\b|expression\s*\(|(?<![\w-])behavior\s*:|-moz-binding|javascript\s*:/gi;
 const MAX_HTML = 30000;
 const MAX_CSS = 20000;
 

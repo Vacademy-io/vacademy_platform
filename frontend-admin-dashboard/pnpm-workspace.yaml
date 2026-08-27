@@ -1,12 +1,12 @@
 packages:
   - '.'
 
-allowBuilds:
-  '@firebase/util': true
-  '@swc/core': true
-  canvas: true
-  core-js: true
-  core-js-pure: true
-  esbuild: true
-  protobufjs: true
-  sharp: true
+onlyBuiltDependencies:
+  - '@firebase/util'
+  - '@swc/core'
+  - canvas
+  - core-js
+  - core-js-pure
+  - esbuild
+  - protobufjs
+  - sharp

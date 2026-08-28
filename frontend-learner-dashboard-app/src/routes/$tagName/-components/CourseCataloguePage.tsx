@@ -11,6 +11,8 @@ import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { useCatalogueBasketActive } from "../-utils/use-catalogue-basket";
+import { StepRailBar } from "@/routes/product-pages/$productPageCode/-components/StepRailBar";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -64,6 +66,12 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // First-party page view. Fires per route, so SPA navigation between pages is
   // counted — the GA4/Pixel hooks above only serve the institute's own tools,
   // and most institutes never connect one.
+  // Mid-purchase visitors get the same four-step rail the checkout wears, so
+  // "Back to courses" does not drop them out of a journey they are halfway
+  // through. Gated on an actual basket: a first-time visitor with nothing
+  // selected sees the catalogue exactly as before.
+  const basketActive = useCatalogueBasketActive();
+
   useCataloguePageView(
     catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
   );
@@ -529,6 +537,18 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <meta property="og:description" content={seoDescription} />
         <meta property="og:type" content="website" />
       </Helmet>
+      {/* The checkout's own rail, for a visitor who is mid-purchase. "Back to
+          courses" lands here, and without it the four-step journey simply
+          vanishes at the step where they were choosing. Hidden entirely when
+          there is no basket, so an ordinary first visit is unchanged, and
+          hidden with the rest of the site chrome when a page opts out. */}
+      {basketActive && !hidesSiteChrome && (
+        <StepRailBar
+          primaryColor={themeSettings?.primaryColor || '#2563eb'} // design-lint-ignore: catalogue theme fallback
+          step="CATALOG"
+          variant="catalogue"
+        />
+      )}
       {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
       {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
         <IntroPageComponent

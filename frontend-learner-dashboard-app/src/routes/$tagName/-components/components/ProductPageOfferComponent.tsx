@@ -665,6 +665,11 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   const seeAllSearch = {
     ...(instituteId ? { instituteId } : {}),
     ...(tagName ? { tagName } : {}),
+    // Say which step this link means. Without it the shell falls back to the
+    // page's own defaultStep, and a page configured to open on CART turned
+    // "see everything" into an empty cart — no courses are passed either, so
+    // the visitor landed on "Nothing in your cart yet".
+    defaultTab: "CATALOG" as const,
     ...(finderSelection && finderSelection.levels.length > 0
       ? { levels: finderSelection.levels.join(",") }
       : {}),

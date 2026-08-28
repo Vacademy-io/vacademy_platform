@@ -297,6 +297,17 @@
         "continueFromWhereLeftOff": "تابع من حيث توقفت",
         "resumeLearningButton": "استئناف التعلّم"
     },
+    "enrolledCourses": {
+        "viewAll": "عرض كل {{courses}}",
+        "emptyTitle": "لم تسجّل في أي {{courses}} بعد",
+        "browse": "تصفّح {{courses}}",
+        "cta": {
+            "continue": "متابعة",
+            "start": "ابدأ",
+            "review": "مراجعة"
+        },
+        "cardAria": "{{course}}، {{percent}}٪ مكتمل. {{action}}"
+    },
     "dashboardHero": {
         "loadingAria": "جارٍ التحميل",
         "liveNow": "مباشر الآن",

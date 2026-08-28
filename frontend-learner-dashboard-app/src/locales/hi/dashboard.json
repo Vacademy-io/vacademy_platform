@@ -265,6 +265,17 @@
         "continueFromWhereLeftOff": "जहां छोड़ा था वहीं से जारी रखें",
         "resumeLearningButton": "सीखना फिर से शुरू करें"
     },
+    "enrolledCourses": {
+        "viewAll": "सभी {{courses}} देखें",
+        "emptyTitle": "आपने अभी तक किसी {{courses}} में नामांकन नहीं किया है",
+        "browse": "{{courses}} देखें",
+        "cta": {
+            "continue": "जारी रखें",
+            "start": "शुरू करें",
+            "review": "दोहराएँ"
+        },
+        "cardAria": "{{course}}, {{percent}}% पूर्ण। {{action}}"
+    },
     "dashboardHero": {
         "loadingAria": "लोड हो रहा है",
         "liveNow": "अभी लाइव",

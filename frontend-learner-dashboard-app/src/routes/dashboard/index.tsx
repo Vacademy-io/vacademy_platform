@@ -103,6 +103,7 @@ import { fetchBestAssessmentScorePct } from "@/services/assessment-score";
 import { fetchLiveAttendanceStats } from "@/services/live-attendance-stats";
 import { fetchAwardedBadges } from "@/services/awarded-badges";
 import { fetchLast7DaysProgress } from "./-lib/utils";
+import { EnrolledCoursesWidget } from "./-components/EnrolledCoursesWidget";
 import { StreakCounterWidget } from "./-components/play/StreakCounterWidget";
 import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
 import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
@@ -867,6 +868,12 @@ export function DashboardComponent() {
           hasAnyProgress={hasAnyProgress}
         />
       ),
+    },
+    {
+      id: "enrolledCourses" as const,
+      order: getWidgetOrder("enrolledCourses"),
+      visible: isWidgetVisible("enrolledCourses"),
+      render: <EnrolledCoursesWidget />,
     },
     {
       id: "statsRow" as const,

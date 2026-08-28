@@ -1086,3 +1086,211 @@ export interface TaxDeclarationDTO {
     proof_verified?: boolean;
     status?: string;
 }
+
+// ───────────────────── Teaching pay (LMS teaching → payroll) ─────────────────────
+
+/**
+ * The teaching endpoints answer for *people who taught*, not for people on the HR
+ * roster — a teacher is a `live_session.created_by_user_id` matched against
+ * `hr_employee_profile.user_id`. Someone who hosted classes but was never given an
+ * HR profile still appears, flagged `no_employee_profile`, because silently
+ * dropping them is how an unpaid teacher goes unnoticed for a month.
+ *
+ * Every field is optional here on purpose: the server builds these rows from
+ * several joins and the UI must render a half-populated row rather than crash.
+ */
+
+/** One session occurrence a teacher hosted (or was scheduled to host). */
+export interface TeachingOccurrenceDTO {
+    schedule_id?: string;
+    session_id?: string;
+    session_title?: string;
+    subject?: string;
+    /** Local times, "HH:mm:ss". */
+    start_time?: string;
+    last_entry_time?: string;
+    /** True when an ATTENDANCE_RECORDED log exists for this occurrence. */
+    attendance_recorded?: boolean;
+    /** 0 when no attendance log exists — scheduled ≠ taught. */
+    taught_minutes?: number;
+    scheduled_minutes?: number;
+}
+
+/** Per-date breakdown of a teacher's month. */
+export interface TeachingDayDTO {
+    date?: string;
+    sessions_scheduled?: number;
+    sessions_with_attendance?: number;
+    taught_minutes?: number;
+    occurrences?: TeachingOccurrenceDTO[];
+}
+
+/** One teaching person's month. */
+export interface TeachingEmployeeSummaryDTO {
+    /** hr_employee_profile.id — absent when the teacher has no HR profile. */
+    employee_id?: string;
+    user_id?: string;
+    employee_name?: string;
+    employee_code?: string;
+    /** Taught this month but is not on the HR roster — cannot be paid until bridged. */
+    no_employee_profile?: boolean;
+    sessions_scheduled?: number;
+    sessions_with_attendance?: number;
+    total_taught_minutes?: number;
+    days?: TeachingDayDTO[];
+}
+
+export interface TeachingSummaryResponseDTO {
+    institute_id?: string;
+    month?: number;
+    year?: number;
+    teachers?: TeachingEmployeeSummaryDTO[];
+}
+
+/** Counts from a teaching → hr_attendance sync run. */
+export interface TeachingAttendanceSyncResultDTO {
+    institute_id?: string;
+    month?: number;
+    year?: number;
+    require_log?: boolean;
+    /** New PRESENT rows inserted. */
+    created?: number;
+    /** Existing non-PRESENT/non-ON_LEAVE rows upgraded to PRESENT. */
+    updated?: number;
+    /** Already PRESENT or ON_LEAVE — deliberately left alone. */
+    skipped?: number;
+    dates_considered?: number;
+    /** Teacher userIds with no HR profile; nothing was written for them. */
+    teachers_without_profile?: string[];
+}
+
+/**
+ * Why a pay line did or did not become an adjustment.
+ * `UNRATED` is the one an admin has to act on: no `teaching_rate_per_session`
+ * or `teaching_rate_per_hour` on the employee's custom fields, so there is no
+ * rate to multiply by and the line is skipped rather than guessed at.
+ */
+export type TeachingPayStatus =
+    | 'ELIGIBLE'
+    | 'CREATED'
+    | 'SKIPPED_EXISTING'
+    | 'UNRATED'
+    | 'ZERO_QUANTITY'
+    | 'NO_EMPLOYEE_PROFILE';
+
+/** One teacher's computed pay line: rate × quantity, plus why it was skipped. */
+export interface TeachingPayLineDTO {
+    employee_id?: string;
+    user_id?: string;
+    employee_name?: string;
+    employee_code?: string;
+    /** PER_SESSION | PER_HOUR — absent when unrated. */
+    basis?: string;
+    rate?: Money;
+    sessions_with_attendance?: number;
+    taught_minutes?: number;
+    /** taught_minutes / 60 to 2dp — the payable quantity on the PER_HOUR basis. */
+    taught_hours?: Money;
+    amount?: Money;
+    /** A `TeachingPayStatus`, typed loosely because the server may add cases. */
+    status?: string;
+    /** hr_payroll_adjustment.id once materialized. */
+    adjustment_id?: string;
+    note?: string;
+}
+
+export interface TeachingPayResultDTO {
+    institute_id?: string;
+    month?: number;
+    year?: number;
+    /** True for /pay/preview, false for /pay/materialize. */
+    preview?: boolean;
+    eligible_count?: number;
+    created_count?: number;
+    skipped_existing_count?: number;
+    unrated_count?: number;
+    total_amount?: Money;
+    lines?: TeachingPayLineDTO[];
+}
+
+// ───────────────────── CRM incentives (collected revenue → payroll) ─────────────────────
+
+/**
+ * One counsellor's collected revenue and computed incentive for an EARNING month.
+ * `no_employee_profile` counsellors are returned and totalled so the number is
+ * honest, but materialization skips them — there is no employee to pay.
+ */
+export interface IncentiveRowDTO {
+    counsellor_user_id?: string;
+    counsellor_name?: string;
+    employee_id?: string;
+    no_employee_profile?: boolean;
+    /** Collected revenue attributed to this counsellor (PAID payments of CONVERTED leads). */
+    revenue?: Money;
+    /** Distinct paying converted leads — the "conversions" the fixed component multiplies. */
+    paying_leads?: number;
+    payments?: number;
+    commission_component?: Money;
+    fixed_component?: Money;
+    incentive?: Money;
+}
+
+export interface IncentivePreviewDTO {
+    /** Earning period — the month the revenue was collected in. */
+    month?: number;
+    year?: number;
+    commission_pct?: Money;
+    fixed_per_conversion?: Money;
+    /** The UTC window actually queried, surfaced so a disputed total can be traced. */
+    window_from_utc?: string;
+    window_to_utc?: string;
+    rows?: IncentiveRowDTO[];
+    total_revenue?: Money;
+    total_paying_leads?: number;
+    total_payments?: number;
+    total_incentive?: Money;
+    counsellor_count?: number;
+    linked_counsellor_count?: number;
+    unlinked_counsellor_count?: number;
+}
+
+export interface IncentiveCreatedItemDTO {
+    adjustment_id?: string;
+    employee_id?: string;
+    counsellor_user_id?: string;
+    counsellor_name?: string;
+    amount?: Money;
+}
+
+export interface IncentiveSkippedItemDTO {
+    employee_id?: string;
+    counsellor_user_id?: string;
+    counsellor_name?: string;
+    /** already_materialized | zero_incentive */
+    reason?: string;
+}
+
+export interface IncentiveUnlinkedCounsellorDTO {
+    counsellor_user_id?: string;
+    counsellor_name?: string;
+    /** What they would have earned, kept for follow-up once a profile exists. */
+    incentive?: Money;
+}
+
+/**
+ * Outcome of writing incentives into payroll. Note the two periods: `month`/`year`
+ * is when the revenue was earned, `payout_month`/`payout_year` is the payroll the
+ * adjustment lands on. They are almost never the same month.
+ */
+export interface IncentiveMaterializeResultDTO {
+    month?: number;
+    year?: number;
+    payout_month?: number;
+    payout_year?: number;
+    created?: IncentiveCreatedItemDTO[];
+    skipped?: IncentiveSkippedItemDTO[];
+    unlinked_counsellors?: IncentiveUnlinkedCounsellorDTO[];
+    total_amount?: Money;
+    created_count?: number;
+    skipped_count?: number;
+}

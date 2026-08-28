@@ -23,6 +23,7 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getInstituteId } from '@/constants/helper';
 import { useHrRole } from '@/hooks/use-hr-role';
 import { reportApiError } from '@/lib/report-api-error';
@@ -36,6 +37,8 @@ import {
 import type { PayrollAdjustmentDTO } from '@/routes/erp/-shared/hr-types';
 import { AdjustmentDialog } from './AdjustmentDialog';
 import { AdjustmentTypeChip, RunScopeChip } from './adjustment-meta';
+import { IncentivesTab } from './IncentivesTab';
+import { TeachingPayTab } from './TeachingPayTab';
 
 /**
  * Adjustments carry `employee_id` only, so a name map is fetched alongside them.
@@ -45,12 +48,60 @@ import { AdjustmentTypeChip, RunScopeChip } from './adjustment-meta';
  */
 const NAME_MAP_PAGE_SIZE = 200;
 
-// TODO(payroll phase 2): Teaching Pay and Incentives join this screen as sibling
-// tabs (per-class/per-hour teaching pay, and incentive schemes with their own
-// payout rules). Both land as adjustments on the same run, so they belong here
-// rather than on a separate route — wrap this table in <Tabs> at that point.
-
+/**
+ * Variable Pay: everything that lands on a payroll run as a one-off amount.
+ *
+ * Three tabs, one screen, because all three end up in the same place — an
+ * hr_payroll_adjustment row the next matching run consumes. Adjustments is the
+ * manual entry; Teaching Pay and Incentives are the two computed sources that
+ * write the same kind of row from LMS teaching activity and collected CRM revenue.
+ * Splitting them across routes would hide that they all compete for one run.
+ *
+ * The HR gate lives here rather than per tab: it is the whole screen that is
+ * restricted, and repeating the card three times would let one tab drift.
+ */
 export const AdjustmentsMain = () => {
+    const { isHrStaff } = useHrRole();
+
+    if (!isHrStaff) {
+        return (
+            <Card className="mx-auto max-w-xl">
+                <CardHeader className="flex flex-row items-center gap-3">
+                    <span className="flex size-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
+                        <Lock size={20} />
+                    </span>
+                    <CardTitle className="text-title">Variable pay is restricted</CardTitle>
+                </CardHeader>
+                <CardContent className="text-body text-neutral-600">
+                    One-off earnings and deductions are visible to HR roles only. Ask an
+                    administrator to grant you HR Manager or HR Admin access in this institute.
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <Tabs defaultValue="adjustments" className="flex flex-col gap-4">
+            <TabsList className="w-fit">
+                <TabsTrigger value="adjustments">Adjustments</TabsTrigger>
+                <TabsTrigger value="teaching">Teaching Pay</TabsTrigger>
+                <TabsTrigger value="incentives">Incentives</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="adjustments" className="mt-0">
+                <AdjustmentsTab />
+            </TabsContent>
+            <TabsContent value="teaching" className="mt-0">
+                <TeachingPayTab />
+            </TabsContent>
+            <TabsContent value="incentives" className="mt-0">
+                <IncentivesTab />
+            </TabsContent>
+        </Tabs>
+    );
+};
+
+const AdjustmentsTab = () => {
     const { isHrAdmin, isHrStaff } = useHrRole();
     const queryClient = useQueryClient();
     const instituteId = getInstituteId();
@@ -220,23 +271,6 @@ export const AdjustmentsMain = () => {
         ],
         [employeeLabels, isHrAdmin]
     );
-
-    if (!isHrStaff) {
-        return (
-            <Card className="mx-auto max-w-xl">
-                <CardHeader className="flex flex-row items-center gap-3">
-                    <span className="flex size-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
-                        <Lock size={20} />
-                    </span>
-                    <CardTitle className="text-title">Variable pay is restricted</CardTitle>
-                </CardHeader>
-                <CardContent className="text-body text-neutral-600">
-                    One-off earnings and deductions are visible to HR roles only. Ask an
-                    administrator to grant you HR Manager or HR Admin access in this institute.
-                </CardContent>
-            </Card>
-        );
-    }
 
     const tableData: TableData<PayrollAdjustmentDTO> = {
         content: rows,

@@ -151,6 +151,21 @@ const instituteParams = (extra?: Record<string, unknown>) => ({
     params: { instituteId: getInstituteId(), ...(extra ?? {}) },
 });
 
+
+/**
+ * Unwrap a Spring response that may be a `Page` or a plain array.
+ *
+ * Several HR endpoints return `Page<T>` (leave applications, reimbursements)
+ * while others return a bare list, and the difference is not visible from the
+ * URL. Spreading a Page yields nothing useful, so every list fetcher whose
+ * endpoint paginates goes through this instead of trusting the shape.
+ */
+const asList = <T,>(data: unknown): T[] => {
+    if (Array.isArray(data)) return data as T[];
+    const content = (data as { content?: unknown } | null | undefined)?.content;
+    return Array.isArray(content) ? (content as T[]) : [];
+};
+
 /** Root of every ERP query key — `queryClient.invalidateQueries({ queryKey: ERP_KEY })` clears all. */
 export const ERP_KEY = ['erp'] as const;
 
@@ -1171,9 +1186,12 @@ export const fetchLeaveApplications = async (args: {
 }): Promise<LeaveApplicationDTO[]> => {
     const { data } = await authenticatedAxiosInstance.get(
         HR_LEAVE_APPLICATIONS,
-        instituteParams({ status: args.status, employeeId: args.employeeId })
+        // pageSize is generous on purpose: these screens show a queue, not a
+        // paginated grid, and the endpoint defaults to 20.
+        instituteParams({ status: args.status, employeeId: args.employeeId, pageSize: 200 })
     );
-    return data ?? [];
+    // This endpoint returns Page<LeaveApplicationDTO>, not a bare list.
+    return asList<LeaveApplicationDTO>(data);
 };
 
 /**
@@ -1386,9 +1404,10 @@ export const submitReimbursement = async (payload: {
 export const fetchMyReimbursements = async (employeeId: string) => {
     const { data } = await authenticatedAxiosInstance.get(
         HR_REIMBURSEMENTS,
-        instituteParams({ employeeId })
+        instituteParams({ employeeId, pageSize: 200 })
     );
-    return data ?? [];
+    // Page<ReimbursementDTO>, not a bare list.
+    return asList<Record<string, unknown>>(data);
 };
 
 export const fetchMyLoans = async (employeeId: string) => {
@@ -1396,5 +1415,186 @@ export const fetchMyLoans = async (employeeId: string) => {
         HR_PAYROLL_LOANS,
         instituteParams({ employeeId })
     );
-    return data ?? [];
+    return asList<Record<string, unknown>>(data);
+};
+
+// ───────────────── Teaching pay & CRM incentives (payroll phase 2) ─────────────────
+
+/**
+ * Imports for this section live here rather than in the module's header block so
+ * that this whole feature is one contiguous append — the file is edited by several
+ * feature streams at once and a shared import list is where they collide.
+ */
+import {
+    HR_TEACHING_SUMMARY,
+    HR_TEACHING_ATTENDANCE_SYNC,
+    HR_TEACHING_PAY_PREVIEW,
+    HR_TEACHING_PAY_MATERIALIZE,
+    HR_INCENTIVES_PREVIEW,
+    HR_INCENTIVES_MATERIALIZE,
+} from '@/constants/urls';
+import type {
+    IncentiveMaterializeResultDTO,
+    IncentivePreviewDTO,
+    TeachingAttendanceSyncResultDTO,
+    TeachingPayResultDTO,
+    TeachingSummaryResponseDTO,
+} from '@/routes/erp/-shared/hr-types';
+
+/**
+ * Query keys for the two variable-pay sources.
+ *
+ * Kept beside `hrKeys` rather than inside it for the same append-safety reason as
+ * the imports above; both spread `ERP_KEY`, so a blanket ERP invalidation still
+ * clears them.
+ *
+ * The two *preview* keys carry their whole input (month, and for incentives the
+ * rates) because a preview computed at 5% is a different answer from one at 10% —
+ * caching them under one key would show an admin the wrong money.
+ */
+export const teachingKeys = {
+    summary: (year: number, month: number, employeeId?: string) => [
+        ...ERP_KEY,
+        'teaching-summary',
+        year,
+        month,
+        employeeId ?? 'all',
+    ],
+    payPreview: (year: number, month: number) => [...ERP_KEY, 'teaching-pay-preview', year, month],
+};
+
+export const incentiveKeys = {
+    preview: (year: number, month: number, commissionPct?: number, fixedPerConversion?: number) => [
+        ...ERP_KEY,
+        'incentive-preview',
+        year,
+        month,
+        commissionPct ?? 'none',
+        fixedPerConversion ?? 'none',
+    ],
+};
+
+/**
+ * Who taught what, for one month. Includes teachers with no HR profile (flagged
+ * `no_employee_profile`) — see the DTO note.
+ */
+export const fetchTeachingSummary = async (
+    year: number,
+    month: number,
+    employeeId?: string
+): Promise<TeachingSummaryResponseDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_TEACHING_SUMMARY,
+        instituteParams({ month, year, ...(employeeId ? { employeeId } : {}) })
+    );
+    return data ?? {};
+};
+
+/**
+ * Marks every day a teacher taught as PRESENT in HR attendance.
+ *
+ * `requireLog` defaults to the server's stricter reading — only days with an
+ * attendance log count, not merely scheduled ones. Refused outright when payroll
+ * for the month is locked; let that error surface with its own message, since it
+ * names the run that did the locking.
+ */
+export const syncTeachingAttendance = async (args: {
+    year: number;
+    month: number;
+    requireLog?: boolean;
+}): Promise<TeachingAttendanceSyncResultDTO> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_TEACHING_ATTENDANCE_SYNC,
+        {},
+        instituteParams({
+            month: args.month,
+            year: args.year,
+            ...(args.requireLog === undefined ? {} : { requireLog: args.requireLog }),
+        })
+    );
+    return data ?? {};
+};
+
+/**
+ * Rate × quantity per teacher, computed but not written. A POST despite being a
+ * read: it is an expensive aggregation the server declines to cache.
+ */
+export const previewTeachingPay = async (
+    year: number,
+    month: number
+): Promise<TeachingPayResultDTO> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_TEACHING_PAY_PREVIEW,
+        {},
+        instituteParams({ month, year })
+    );
+    return data ?? {};
+};
+
+/** Writes the previewed lines as TEACHING_PAY adjustments. Idempotent per month. */
+export const materializeTeachingPay = async (
+    year: number,
+    month: number
+): Promise<TeachingPayResultDTO> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_TEACHING_PAY_MATERIALIZE,
+        {},
+        instituteParams({ month, year })
+    );
+    return data ?? {};
+};
+
+/**
+ * Per-counsellor incentive for an earning month. At least one of `commissionPct`
+ * and `fixedPerConversion` must be present or every row computes to zero; the
+ * caller enforces that before offering the button.
+ */
+export const fetchIncentivePreview = async (args: {
+    year: number;
+    month: number;
+    commissionPct?: number;
+    fixedPerConversion?: number;
+}): Promise<IncentivePreviewDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_INCENTIVES_PREVIEW,
+        instituteParams({
+            month: args.month,
+            year: args.year,
+            ...(args.commissionPct === undefined ? {} : { commissionPct: args.commissionPct }),
+            ...(args.fixedPerConversion === undefined
+                ? {}
+                : { fixedPerConversion: args.fixedPerConversion }),
+        })
+    );
+    return data ?? {};
+};
+
+/**
+ * Writes CRM_INCENTIVE adjustments. Two periods, deliberately separate: the
+ * earning month the incentive was computed over, and the payout month whose
+ * payroll run pays it. Idempotent per payout period.
+ */
+export const materializeIncentives = async (args: {
+    year: number;
+    month: number;
+    commissionPct?: number;
+    fixedPerConversion?: number;
+    payoutYear: number;
+    payoutMonth: number;
+}): Promise<IncentiveMaterializeResultDTO> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_INCENTIVES_MATERIALIZE,
+        {},
+        instituteParams({
+            month: args.month,
+            year: args.year,
+            ...(args.commissionPct === undefined ? {} : { commissionPct: args.commissionPct }),
+            ...(args.fixedPerConversion === undefined
+                ? {}
+                : { fixedPerConversion: args.fixedPerConversion }),
+            payoutMonth: args.payoutMonth,
+            payoutYear: args.payoutYear,
+        })
+    );
+    return data ?? {};
 };

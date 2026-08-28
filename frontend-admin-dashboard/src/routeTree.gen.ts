@@ -114,6 +114,7 @@ import { Route as EvaluationEvaluationsIndexRouteImport } from "./routes/evaluat
 import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/evaluation/evaluation-tool/index"
 import { Route as ErpPeopleIndexRouteImport } from "./routes/erp/people/index"
 import { Route as ErpPayrollIndexRouteImport } from "./routes/erp/payroll/index"
+import { Route as ErpMyHrIndexRouteImport } from "./routes/erp/my-hr/index"
 import { Route as ErpLeaveIndexRouteImport } from "./routes/erp/leave/index"
 import { Route as ErpComplianceIndexRouteImport } from "./routes/erp/compliance/index"
 import { Route as ErpAttendanceIndexRouteImport } from "./routes/erp/attendance/index"
@@ -189,6 +190,10 @@ import { Route as ErpPeopleEmployeeIdIndexRouteImport } from "./routes/erp/peopl
 import { Route as ErpPayrollSalarySetupIndexRouteImport } from "./routes/erp/payroll/salary-setup/index"
 import { Route as ErpPayrollAdjustmentsIndexRouteImport } from "./routes/erp/payroll/adjustments/index"
 import { Route as ErpPayrollRunIdIndexRouteImport } from "./routes/erp/payroll/$runId/index"
+import { Route as ErpMyHrTaxIndexRouteImport } from "./routes/erp/my-hr/tax/index"
+import { Route as ErpMyHrPayslipsIndexRouteImport } from "./routes/erp/my-hr/payslips/index"
+import { Route as ErpMyHrLeaveIndexRouteImport } from "./routes/erp/my-hr/leave/index"
+import { Route as ErpMyHrClaimsIndexRouteImport } from "./routes/erp/my-hr/claims/index"
 import { Route as ErpLeaveSetupIndexRouteImport } from "./routes/erp/leave/setup/index"
 import { Route as ErpLeaveBalancesIndexRouteImport } from "./routes/erp/leave/balances/index"
 import { Route as ErpFinancePnlIndexRouteImport } from "./routes/erp/finance/pnl/index"
@@ -1019,6 +1024,13 @@ const ErpPayrollIndexRoute = ErpPayrollIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/erp/payroll/index.lazy").then((d) => d.Route),
 )
+const ErpMyHrIndexRoute = ErpMyHrIndexRouteImport.update({
+  id: "/erp/my-hr/",
+  path: "/erp/my-hr/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/my-hr/index.lazy").then((d) => d.Route),
+)
 const ErpLeaveIndexRoute = ErpLeaveIndexRouteImport.update({
   id: "/erp/leave/",
   path: "/erp/leave/",
@@ -1612,6 +1624,34 @@ const ErpPayrollRunIdIndexRoute = ErpPayrollRunIdIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/erp/payroll/$runId/index.lazy").then((d) => d.Route),
 )
+const ErpMyHrTaxIndexRoute = ErpMyHrTaxIndexRouteImport.update({
+  id: "/erp/my-hr/tax/",
+  path: "/erp/my-hr/tax/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/my-hr/tax/index.lazy").then((d) => d.Route),
+)
+const ErpMyHrPayslipsIndexRoute = ErpMyHrPayslipsIndexRouteImport.update({
+  id: "/erp/my-hr/payslips/",
+  path: "/erp/my-hr/payslips/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/my-hr/payslips/index.lazy").then((d) => d.Route),
+)
+const ErpMyHrLeaveIndexRoute = ErpMyHrLeaveIndexRouteImport.update({
+  id: "/erp/my-hr/leave/",
+  path: "/erp/my-hr/leave/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/my-hr/leave/index.lazy").then((d) => d.Route),
+)
+const ErpMyHrClaimsIndexRoute = ErpMyHrClaimsIndexRouteImport.update({
+  id: "/erp/my-hr/claims/",
+  path: "/erp/my-hr/claims/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/my-hr/claims/index.lazy").then((d) => d.Route),
+)
 const ErpLeaveSetupIndexRoute = ErpLeaveSetupIndexRouteImport.update({
   id: "/erp/leave/setup/",
   path: "/erp/leave/setup/",
@@ -2128,6 +2168,7 @@ export interface FileRoutesByFullPath {
   "/erp/attendance/": typeof ErpAttendanceIndexRoute
   "/erp/compliance/": typeof ErpComplianceIndexRoute
   "/erp/leave/": typeof ErpLeaveIndexRoute
+  "/erp/my-hr/": typeof ErpMyHrIndexRoute
   "/erp/payroll/": typeof ErpPayrollIndexRoute
   "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
@@ -2207,6 +2248,10 @@ export interface FileRoutesByFullPath {
   "/erp/finance/pnl/": typeof ErpFinancePnlIndexRoute
   "/erp/leave/balances/": typeof ErpLeaveBalancesIndexRoute
   "/erp/leave/setup/": typeof ErpLeaveSetupIndexRoute
+  "/erp/my-hr/claims/": typeof ErpMyHrClaimsIndexRoute
+  "/erp/my-hr/leave/": typeof ErpMyHrLeaveIndexRoute
+  "/erp/my-hr/payslips/": typeof ErpMyHrPayslipsIndexRoute
+  "/erp/my-hr/tax/": typeof ErpMyHrTaxIndexRoute
   "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments/": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup/": typeof ErpPayrollSalarySetupIndexRoute
@@ -2358,6 +2403,7 @@ export interface FileRoutesByTo {
   "/erp/attendance": typeof ErpAttendanceIndexRoute
   "/erp/compliance": typeof ErpComplianceIndexRoute
   "/erp/leave": typeof ErpLeaveIndexRoute
+  "/erp/my-hr": typeof ErpMyHrIndexRoute
   "/erp/payroll": typeof ErpPayrollIndexRoute
   "/erp/people": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool": typeof EvaluationEvaluationToolIndexRoute
@@ -2437,6 +2483,10 @@ export interface FileRoutesByTo {
   "/erp/finance/pnl": typeof ErpFinancePnlIndexRoute
   "/erp/leave/balances": typeof ErpLeaveBalancesIndexRoute
   "/erp/leave/setup": typeof ErpLeaveSetupIndexRoute
+  "/erp/my-hr/claims": typeof ErpMyHrClaimsIndexRoute
+  "/erp/my-hr/leave": typeof ErpMyHrLeaveIndexRoute
+  "/erp/my-hr/payslips": typeof ErpMyHrPayslipsIndexRoute
+  "/erp/my-hr/tax": typeof ErpMyHrTaxIndexRoute
   "/erp/payroll/$runId": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup": typeof ErpPayrollSalarySetupIndexRoute
@@ -2590,6 +2640,7 @@ export interface FileRoutesById {
   "/erp/attendance/": typeof ErpAttendanceIndexRoute
   "/erp/compliance/": typeof ErpComplianceIndexRoute
   "/erp/leave/": typeof ErpLeaveIndexRoute
+  "/erp/my-hr/": typeof ErpMyHrIndexRoute
   "/erp/payroll/": typeof ErpPayrollIndexRoute
   "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
@@ -2669,6 +2720,10 @@ export interface FileRoutesById {
   "/erp/finance/pnl/": typeof ErpFinancePnlIndexRoute
   "/erp/leave/balances/": typeof ErpLeaveBalancesIndexRoute
   "/erp/leave/setup/": typeof ErpLeaveSetupIndexRoute
+  "/erp/my-hr/claims/": typeof ErpMyHrClaimsIndexRoute
+  "/erp/my-hr/leave/": typeof ErpMyHrLeaveIndexRoute
+  "/erp/my-hr/payslips/": typeof ErpMyHrPayslipsIndexRoute
+  "/erp/my-hr/tax/": typeof ErpMyHrTaxIndexRoute
   "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments/": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup/": typeof ErpPayrollSalarySetupIndexRoute
@@ -2823,6 +2878,7 @@ export interface FileRouteTypes {
     | "/erp/attendance/"
     | "/erp/compliance/"
     | "/erp/leave/"
+    | "/erp/my-hr/"
     | "/erp/payroll/"
     | "/erp/people/"
     | "/evaluation/evaluation-tool/"
@@ -2902,6 +2958,10 @@ export interface FileRouteTypes {
     | "/erp/finance/pnl/"
     | "/erp/leave/balances/"
     | "/erp/leave/setup/"
+    | "/erp/my-hr/claims/"
+    | "/erp/my-hr/leave/"
+    | "/erp/my-hr/payslips/"
+    | "/erp/my-hr/tax/"
     | "/erp/payroll/$runId/"
     | "/erp/payroll/adjustments/"
     | "/erp/payroll/salary-setup/"
@@ -3053,6 +3113,7 @@ export interface FileRouteTypes {
     | "/erp/attendance"
     | "/erp/compliance"
     | "/erp/leave"
+    | "/erp/my-hr"
     | "/erp/payroll"
     | "/erp/people"
     | "/evaluation/evaluation-tool"
@@ -3132,6 +3193,10 @@ export interface FileRouteTypes {
     | "/erp/finance/pnl"
     | "/erp/leave/balances"
     | "/erp/leave/setup"
+    | "/erp/my-hr/claims"
+    | "/erp/my-hr/leave"
+    | "/erp/my-hr/payslips"
+    | "/erp/my-hr/tax"
     | "/erp/payroll/$runId"
     | "/erp/payroll/adjustments"
     | "/erp/payroll/salary-setup"
@@ -3284,6 +3349,7 @@ export interface FileRouteTypes {
     | "/erp/attendance/"
     | "/erp/compliance/"
     | "/erp/leave/"
+    | "/erp/my-hr/"
     | "/erp/payroll/"
     | "/erp/people/"
     | "/evaluation/evaluation-tool/"
@@ -3363,6 +3429,10 @@ export interface FileRouteTypes {
     | "/erp/finance/pnl/"
     | "/erp/leave/balances/"
     | "/erp/leave/setup/"
+    | "/erp/my-hr/claims/"
+    | "/erp/my-hr/leave/"
+    | "/erp/my-hr/payslips/"
+    | "/erp/my-hr/tax/"
     | "/erp/payroll/$runId/"
     | "/erp/payroll/adjustments/"
     | "/erp/payroll/salary-setup/"
@@ -3515,6 +3585,7 @@ export interface RootRouteChildren {
   ErpAttendanceIndexRoute: typeof ErpAttendanceIndexRoute
   ErpComplianceIndexRoute: typeof ErpComplianceIndexRoute
   ErpLeaveIndexRoute: typeof ErpLeaveIndexRoute
+  ErpMyHrIndexRoute: typeof ErpMyHrIndexRoute
   ErpPayrollIndexRoute: typeof ErpPayrollIndexRoute
   ErpPeopleIndexRoute: typeof ErpPeopleIndexRoute
   EvaluationEvaluationToolIndexRoute: typeof EvaluationEvaluationToolIndexRoute
@@ -3594,6 +3665,10 @@ export interface RootRouteChildren {
   ErpFinancePnlIndexRoute: typeof ErpFinancePnlIndexRoute
   ErpLeaveBalancesIndexRoute: typeof ErpLeaveBalancesIndexRoute
   ErpLeaveSetupIndexRoute: typeof ErpLeaveSetupIndexRoute
+  ErpMyHrClaimsIndexRoute: typeof ErpMyHrClaimsIndexRoute
+  ErpMyHrLeaveIndexRoute: typeof ErpMyHrLeaveIndexRoute
+  ErpMyHrPayslipsIndexRoute: typeof ErpMyHrPayslipsIndexRoute
+  ErpMyHrTaxIndexRoute: typeof ErpMyHrTaxIndexRoute
   ErpPayrollRunIdIndexRoute: typeof ErpPayrollRunIdIndexRoute
   ErpPayrollAdjustmentsIndexRoute: typeof ErpPayrollAdjustmentsIndexRoute
   ErpPayrollSalarySetupIndexRoute: typeof ErpPayrollSalarySetupIndexRoute
@@ -4390,6 +4465,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpPayrollIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/my-hr/": {
+      id: "/erp/my-hr/"
+      path: "/erp/my-hr"
+      fullPath: "/erp/my-hr/"
+      preLoaderRoute: typeof ErpMyHrIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/erp/leave/": {
       id: "/erp/leave/"
       path: "/erp/leave"
@@ -4915,6 +4997,34 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpPayrollRunIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/my-hr/tax/": {
+      id: "/erp/my-hr/tax/"
+      path: "/erp/my-hr/tax"
+      fullPath: "/erp/my-hr/tax/"
+      preLoaderRoute: typeof ErpMyHrTaxIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/my-hr/payslips/": {
+      id: "/erp/my-hr/payslips/"
+      path: "/erp/my-hr/payslips"
+      fullPath: "/erp/my-hr/payslips/"
+      preLoaderRoute: typeof ErpMyHrPayslipsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/my-hr/leave/": {
+      id: "/erp/my-hr/leave/"
+      path: "/erp/my-hr/leave"
+      fullPath: "/erp/my-hr/leave/"
+      preLoaderRoute: typeof ErpMyHrLeaveIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/my-hr/claims/": {
+      id: "/erp/my-hr/claims/"
+      path: "/erp/my-hr/claims"
+      fullPath: "/erp/my-hr/claims/"
+      preLoaderRoute: typeof ErpMyHrClaimsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/erp/leave/setup/": {
       id: "/erp/leave/setup/"
       path: "/erp/leave/setup"
@@ -5373,6 +5483,7 @@ const rootRouteChildren: RootRouteChildren = {
   ErpAttendanceIndexRoute: ErpAttendanceIndexRoute,
   ErpComplianceIndexRoute: ErpComplianceIndexRoute,
   ErpLeaveIndexRoute: ErpLeaveIndexRoute,
+  ErpMyHrIndexRoute: ErpMyHrIndexRoute,
   ErpPayrollIndexRoute: ErpPayrollIndexRoute,
   ErpPeopleIndexRoute: ErpPeopleIndexRoute,
   EvaluationEvaluationToolIndexRoute: EvaluationEvaluationToolIndexRoute,
@@ -5471,6 +5582,10 @@ const rootRouteChildren: RootRouteChildren = {
   ErpFinancePnlIndexRoute: ErpFinancePnlIndexRoute,
   ErpLeaveBalancesIndexRoute: ErpLeaveBalancesIndexRoute,
   ErpLeaveSetupIndexRoute: ErpLeaveSetupIndexRoute,
+  ErpMyHrClaimsIndexRoute: ErpMyHrClaimsIndexRoute,
+  ErpMyHrLeaveIndexRoute: ErpMyHrLeaveIndexRoute,
+  ErpMyHrPayslipsIndexRoute: ErpMyHrPayslipsIndexRoute,
+  ErpMyHrTaxIndexRoute: ErpMyHrTaxIndexRoute,
   ErpPayrollRunIdIndexRoute: ErpPayrollRunIdIndexRoute,
   ErpPayrollAdjustmentsIndexRoute: ErpPayrollAdjustmentsIndexRoute,
   ErpPayrollSalarySetupIndexRoute: ErpPayrollSalarySetupIndexRoute,

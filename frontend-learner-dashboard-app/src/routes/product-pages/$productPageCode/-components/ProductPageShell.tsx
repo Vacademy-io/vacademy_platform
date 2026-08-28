@@ -14,6 +14,7 @@ import { CpoInstallmentsCheckoutStep } from "./CpoInstallmentsCheckoutStep";
 import { ProductPageSuccess } from "./ProductPageSuccess";
 import { CheckoutLayout } from "./CheckoutLayout";
 import { CatalogueChrome } from "@/routes/$tagName/-components/CatalogueChrome";
+import { requestCourseFinder } from "@/routes/$tagName/-utils/reopen-course-finder";
 import type {
   ProductPageSettings,
   PageJson,
@@ -108,6 +109,9 @@ export const ProductPageShell = ({
     // not since browsed THIS page's catalogue step, that slug is where Back
     // belongs — the catalogue restores their basket from sessionStorage.
     if (tagName && !sawOwnCatalog.current) {
+      // Going back to choose is exactly when the Course Finder earns its keep,
+      // but its once-ever seen flag would suppress it. Ask for it explicitly.
+      requestCourseFinder(tagName);
       // The params form, not a template path: real catalogue tags contain
       // spaces, parentheses and even leading slashes ("Home Page", "Arabian
       // International Stem Hub (AISH)", "/cement-factory"), which the router

@@ -11,6 +11,7 @@ import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -83,6 +84,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   });
   const [hasCourseFinderOptions, setHasCourseFinderOptions] = useState(false);
   const [showCourseFinder, setShowCourseFinder] = useState(false);
+  // How the picker was opened. "Back to courses" is an ADD to an existing
+  // basket; a first-visit open is a fresh start. Only the latter may reset it.
+  const reopenedFromCheckout = useRef(false);
 
   // Preview mode: bidirectional communication with admin editor iframe
   const isPreviewMode = typeof window !== 'undefined' &&
@@ -421,6 +425,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     if (!catalogueData?.globalSettings?.courseFinder?.enabled) return;
     if (!hasCourseFinderOptions) return;
     if (showIntroPage && !introCompleted) return;
+    // "Back to courses" asks for the picker explicitly - that visitor is
+    // going back to CHOOSE, which is the one time the once-ever seen flag
+    // gets in the way. The request clears itself, so a later reload of the
+    // same page behaves normally.
+    if (consumeCourseFinderRequest(tagName)) {
+      reopenedFromCheckout.current = true;
+      setShowCourseFinder(true);
+      return;
+    }
     const seenKey = `courseFinderSeen_${instituteId}_${tagName}`;
     if (localStorage.getItem(seenKey) === 'true') return;
     setShowCourseFinder(true);
@@ -444,12 +457,20 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const handleCourseFinderComplete = (selection: CourseFinderSelection) => {
     setShowCourseFinder(false);
     markCourseFinderSeen();
-    window.dispatchEvent(new CustomEvent('courseFinderApplied', { detail: selection }));
+    // Answering the picker normally starts a fresh basket. Answering it after
+    // "Back to courses" must not: that visitor already has courses selected and
+    // came back to add more, so wiping them loses work they cannot recover.
+    const keepBasket = reopenedFromCheckout.current;
+    reopenedFromCheckout.current = false;
+    window.dispatchEvent(
+      new CustomEvent('courseFinderApplied', { detail: { ...selection, keepBasket } }),
+    );
   };
 
   const handleCourseFinderSkip = () => {
     setShowCourseFinder(false);
     markCourseFinderSeen();
+    reopenedFromCheckout.current = false;
   };
 
   if (isLoading) {

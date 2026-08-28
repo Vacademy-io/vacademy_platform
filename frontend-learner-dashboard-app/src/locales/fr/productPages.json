@@ -205,6 +205,10 @@
             "defaultTitle": "Vidéo"
         }
     },
+    "stepRail": {
+        "secureTitle": "Sûr et sécurisé",
+        "secureNote": "Vos données sont protégées"
+    },
     "stepProgress": {
         "ariaLabel": "Progression de l'inscription",
         "steps": {

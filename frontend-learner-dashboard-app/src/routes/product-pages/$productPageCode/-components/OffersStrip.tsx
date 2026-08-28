@@ -1,10 +1,6 @@
 import { CheckCircle, Tag } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import {
-    getTerminology,
-    getTerminologyPlural,
-} from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/types/naming-settings';
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import { cn } from '@/lib/utils';
 import type { OfferStatus } from '../-utils/offers';
 
@@ -23,11 +19,9 @@ interface OffersStripProps {
 
 export const OffersStrip = ({ offers, money }: OffersStripProps) => {
     const { t } = useTranslation('productPages');
-    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
-    const coursesTerm = getTerminologyPlural(
-        ContentTerms.Course,
-        SystemTerms.Course
-    ).toLocaleLowerCase();
+    const terms = useCourseTerms();
+    const courseTerm = terms.course.toLocaleLowerCase();
+    const coursesTerm = terms.courses.toLocaleLowerCase();
 
     if (offers.length === 0) return null;
 

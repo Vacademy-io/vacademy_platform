@@ -204,6 +204,10 @@
             "defaultTitle": "Video"
         }
     },
+    "stepRail": {
+        "secureTitle": "Secure & Safe",
+        "secureNote": "Your data is protected"
+    },
     "stepProgress": {
         "ariaLabel": "Enrollment progress",
         "steps": {

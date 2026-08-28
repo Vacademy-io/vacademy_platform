@@ -34,6 +34,7 @@ const OPT_IN_TAB_IDS = new Set<string>([
     // it on. An institute that never runs payroll here should never see it.
     'erp-people',
     'erp-payroll',
+    'erp-compliance',
     'erp-finance',
 ]);
 

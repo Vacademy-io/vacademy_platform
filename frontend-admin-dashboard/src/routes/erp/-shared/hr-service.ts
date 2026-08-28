@@ -37,6 +37,19 @@ import {
     HR_SALARY_TEMPLATES,
     HR_SALARY_TEMPLATE_BY_ID,
     HR_STAFF_BRIDGE,
+    HR_TAX_CONFIG,
+    HR_COMPLIANCE_PF_ECR,
+    HR_COMPLIANCE_ESI_RETURN,
+    HR_COMPLIANCE_PT_RETURN,
+    HR_COMPLIANCE_WPS,
+    HR_COMPLIANCE_FORM16,
+    HR_COMPLIANCE_24Q,
+    HR_COMPLIANCE_CHALLANS,
+    HR_COMPLIANCE_CHALLAN_BY_ID,
+    HR_COMPLIANCE_GRATUITY,
+    HR_COMPLIANCE_EOSB,
+    HR_COMPLIANCE_BONUS,
+    HR_COMPLIANCE_BONUS_MATERIALIZE,
 } from '@/constants/urls';
 import type {
     AssignSalaryPayload,
@@ -61,6 +74,19 @@ import type {
     SalaryComponentDTO,
     SalaryTemplateDTO,
     StaffBridgeResponse,
+    TaxConfigurationDTO,
+    PfEcrResponseDTO,
+    EsiReturnResponseDTO,
+    PtReturnResponseDTO,
+    WpsExportResponseDTO,
+    Form16DataDTO,
+    Form24QResponseDTO,
+    TdsChallanDTO,
+    CreateTdsChallanPayload,
+    GratuityProvisionReportDTO,
+    EosbProvisionReportDTO,
+    BonusComputationReportDTO,
+    BonusMaterializationResultDTO,
 } from '@/routes/erp/-shared/hr-types';
 
 /**
@@ -104,6 +130,11 @@ export const hrKeys = {
     employeeDirectory: () => [...ERP_KEY, 'employee-directory'],
     journal: (year: number, month: number) => [...ERP_KEY, 'journal', year, month],
     pnlSnapshot: (year: number, month: number) => [...ERP_KEY, 'pnl-snapshot', year, month],
+    taxConfig: () => [...ERP_KEY, 'tax-config'],
+    challans: (fy: string, quarter?: string) => [...ERP_KEY, 'challans', fy, quarter ?? 'all'],
+    gratuity: (asOf?: string) => [...ERP_KEY, 'gratuity', asOf ?? 'today'],
+    eosb: (asOf?: string) => [...ERP_KEY, 'eosb', asOf ?? 'today'],
+    bonus: (fy: string, pct: number) => [...ERP_KEY, 'bonus', fy, pct],
 };
 
 // ───────────────────────── People ─────────────────────────
@@ -688,4 +719,189 @@ export const downloadBankExportFile = async (
         responseType: 'blob',
     });
     saveBlob(data as Blob, fileName);
+};
+
+// ───────────────────────── Compliance ─────────────────────────
+//
+// NOTE the casing split documented in hr-types.ts: the statutory FILINGS
+// (ECR/ESI/PT/Form 16/24Q/WPS) and the challan entity are camelCase on the
+// wire, while tax config and the provision reports are snake_case. Params are
+// query-string either way.
+
+export const fetchTaxConfiguration = async (): Promise<TaxConfigurationDTO | null> => {
+    try {
+        const { data } = await authenticatedAxiosInstance.get(HR_TAX_CONFIG, instituteParams());
+        return data ?? null;
+    } catch {
+        // An institute that has never configured tax 4xxs here. That is a normal
+        // state (it just means "no country set yet"), not an error worth a toast:
+        // the caller uses null to decide whether to offer India vs Gulf filings.
+        return null;
+    }
+};
+
+/** ARE | SAU | IND | null — normalized so callers can branch without alias juggling. */
+export const resolveComplianceCountry = (
+    config: TaxConfigurationDTO | null | undefined
+): 'IND' | 'ARE' | 'SAU' | null => {
+    const raw = (config?.country_code ?? '').toUpperCase();
+    if (!raw) return null;
+    if (['ARE', 'UAE', 'AE'].includes(raw)) return 'ARE';
+    if (['SAU', 'KSA', 'SA', 'SAUDI'].includes(raw)) return 'SAU';
+    if (['IND', 'IN', 'INDIA'].includes(raw)) return 'IND';
+    return null;
+};
+
+// ── Monthly filings ──
+
+export const fetchPfEcr = async (month: number, year: number): Promise<PfEcrResponseDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_PF_ECR,
+        instituteParams({ month, year })
+    );
+    return data ?? {};
+};
+
+export const fetchEsiReturn = async (
+    month: number,
+    year: number
+): Promise<EsiReturnResponseDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_ESI_RETURN,
+        instituteParams({ month, year })
+    );
+    return data ?? {};
+};
+
+export const fetchPtReturn = async (month: number, year: number): Promise<PtReturnResponseDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_PT_RETURN,
+        instituteParams({ month, year })
+    );
+    return data ?? {};
+};
+
+export const fetchWpsExport = async (
+    month: number,
+    year: number
+): Promise<WpsExportResponseDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_WPS,
+        instituteParams({ month, year })
+    );
+    return data ?? {};
+};
+
+// ── TDS filings ──
+
+export const fetchForm16 = async (
+    employeeId: string,
+    financialYear: string
+): Promise<Form16DataDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_FORM16,
+        instituteParams({ employeeId, financialYear })
+    );
+    return data ?? {};
+};
+
+export const fetchForm24Q = async (
+    financialYear: string,
+    quarter: string
+): Promise<Form24QResponseDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_24Q,
+        instituteParams({ financialYear, quarter })
+    );
+    return data ?? {};
+};
+
+/** Downloads any compliance file endpoint (all return a blob) and saves it. */
+export const downloadComplianceFile = async (
+    url: string,
+    params: Record<string, unknown>,
+    fileName: string
+): Promise<void> => {
+    const { data } = await authenticatedAxiosInstance.get(url, {
+        ...instituteParams(params),
+        responseType: 'blob',
+    });
+    saveBlob(data as Blob, fileName);
+};
+
+// ── TDS challan register ──
+
+export const fetchChallans = async (
+    financialYear: string,
+    quarter?: string
+): Promise<TdsChallanDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_CHALLANS,
+        instituteParams({ financialYear, quarter })
+    );
+    return data ?? [];
+};
+
+export const createChallan = async (payload: CreateTdsChallanPayload): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_COMPLIANCE_CHALLANS,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const deleteChallan = async (id: string): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.delete(
+        HR_COMPLIANCE_CHALLAN_BY_ID(id),
+        instituteParams()
+    );
+    return data;
+};
+
+// ── Provisions ──
+
+export const fetchGratuityProvision = async (
+    asOfDate?: string
+): Promise<GratuityProvisionReportDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_GRATUITY,
+        instituteParams(asOfDate ? { asOfDate } : undefined)
+    );
+    return data ?? {};
+};
+
+export const fetchEosbProvision = async (
+    asOfDate?: string
+): Promise<EosbProvisionReportDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_EOSB,
+        instituteParams(asOfDate ? { asOfDate } : undefined)
+    );
+    return data ?? {};
+};
+
+export const fetchBonusComputation = async (
+    financialYear: string,
+    bonusPct: number
+): Promise<BonusComputationReportDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMPLIANCE_BONUS,
+        instituteParams({ financialYear, bonusPct })
+    );
+    return data ?? {};
+};
+
+export const materializeBonus = async (args: {
+    financialYear: string;
+    bonusPct: number;
+    month: number;
+    year: number;
+}): Promise<BonusMaterializationResultDTO> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_COMPLIANCE_BONUS_MATERIALIZE,
+        {},
+        instituteParams(args)
+    );
+    return data ?? {};
 };

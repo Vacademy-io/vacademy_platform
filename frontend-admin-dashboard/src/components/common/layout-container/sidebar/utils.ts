@@ -26,6 +26,7 @@ import {
     IdentificationBadge,
     Money,
     ChartLineUp,
+    SealCheck,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -720,6 +721,32 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Salary Setup',
                 subItemLink: '/erp/payroll/salary-setup',
                 subItemId: 'erp-payroll-salary-setup',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
+        icon: SealCheck,
+        title: 'Compliance',
+        id: 'erp-compliance',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Filings',
+                subItemLink: '/erp/compliance',
+                subItemId: 'erp-compliance-filings',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Challans',
+                subItemLink: '/erp/compliance/challans',
+                subItemId: 'erp-compliance-challans',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Provisions',
+                subItemLink: '/erp/compliance/provisions',
+                subItemId: 'erp-compliance-provisions',
                 adminOnly: true,
             },
         ],

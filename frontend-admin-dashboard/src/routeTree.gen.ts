@@ -114,6 +114,7 @@ import { Route as EvaluationEvaluationsIndexRouteImport } from "./routes/evaluat
 import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/evaluation/evaluation-tool/index"
 import { Route as ErpPeopleIndexRouteImport } from "./routes/erp/people/index"
 import { Route as ErpPayrollIndexRouteImport } from "./routes/erp/payroll/index"
+import { Route as ErpComplianceIndexRouteImport } from "./routes/erp/compliance/index"
 import { Route as EngagementEnginesInboxIndexRouteImport } from "./routes/engagement-engines/inbox/index"
 import { Route as EngagementEnginesCreateIndexRouteImport } from "./routes/engagement-engines/create/index"
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
@@ -188,6 +189,8 @@ import { Route as ErpPayrollAdjustmentsIndexRouteImport } from "./routes/erp/pay
 import { Route as ErpPayrollRunIdIndexRouteImport } from "./routes/erp/payroll/$runId/index"
 import { Route as ErpFinancePnlIndexRouteImport } from "./routes/erp/finance/pnl/index"
 import { Route as ErpFinanceJournalIndexRouteImport } from "./routes/erp/finance/journal/index"
+import { Route as ErpComplianceProvisionsIndexRouteImport } from "./routes/erp/compliance/provisions/index"
+import { Route as ErpComplianceChallansIndexRouteImport } from "./routes/erp/compliance/challans/index"
 import { Route as AudienceManagerListCampaignUsersIndexRouteImport } from "./routes/audience-manager/list/campaign-users/index"
 import { Route as AssessmentExportAssessmentIdIndexRouteImport } from "./routes/assessment/export/$assessmentId/index"
 import { Route as AiCenterAiToolsVsmartUploadIndexRouteImport } from "./routes/ai-center/ai-tools/vsmart-upload/index"
@@ -1010,6 +1013,13 @@ const ErpPayrollIndexRoute = ErpPayrollIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/erp/payroll/index.lazy").then((d) => d.Route),
 )
+const ErpComplianceIndexRoute = ErpComplianceIndexRouteImport.update({
+  id: "/erp/compliance/",
+  path: "/erp/compliance/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/compliance/index.lazy").then((d) => d.Route),
+)
 const EngagementEnginesInboxIndexRoute =
   EngagementEnginesInboxIndexRouteImport.update({
     id: "/engagement-engines/inbox/",
@@ -1596,6 +1606,24 @@ const ErpFinanceJournalIndexRoute = ErpFinanceJournalIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/erp/finance/journal/index.lazy").then((d) => d.Route),
 )
+const ErpComplianceProvisionsIndexRoute =
+  ErpComplianceProvisionsIndexRouteImport.update({
+    id: "/erp/compliance/provisions/",
+    path: "/erp/compliance/provisions/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/compliance/provisions/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const ErpComplianceChallansIndexRoute =
+  ErpComplianceChallansIndexRouteImport.update({
+    id: "/erp/compliance/challans/",
+    path: "/erp/compliance/challans/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/compliance/challans/index.lazy").then((d) => d.Route),
+  )
 const AudienceManagerListCampaignUsersIndexRoute =
   AudienceManagerListCampaignUsersIndexRouteImport.update({
     id: "/audience-manager/list/campaign-users/",
@@ -2046,6 +2074,7 @@ export interface FileRoutesByFullPath {
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
+  "/erp/compliance/": typeof ErpComplianceIndexRoute
   "/erp/payroll/": typeof ErpPayrollIndexRoute
   "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
@@ -2117,6 +2146,8 @@ export interface FileRoutesByFullPath {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/compliance/challans/": typeof ErpComplianceChallansIndexRoute
+  "/erp/compliance/provisions/": typeof ErpComplianceProvisionsIndexRoute
   "/erp/finance/journal/": typeof ErpFinanceJournalIndexRoute
   "/erp/finance/pnl/": typeof ErpFinancePnlIndexRoute
   "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
@@ -2267,6 +2298,7 @@ export interface FileRoutesByTo {
   "/content/$contentId": typeof ContentContentIdIndexRoute
   "/engagement-engines/create": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox": typeof EngagementEnginesInboxIndexRoute
+  "/erp/compliance": typeof ErpComplianceIndexRoute
   "/erp/payroll": typeof ErpPayrollIndexRoute
   "/erp/people": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool": typeof EvaluationEvaluationToolIndexRoute
@@ -2338,6 +2370,8 @@ export interface FileRoutesByTo {
   "/ai-center/ai-tools/vsmart-upload": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/compliance/challans": typeof ErpComplianceChallansIndexRoute
+  "/erp/compliance/provisions": typeof ErpComplianceProvisionsIndexRoute
   "/erp/finance/journal": typeof ErpFinanceJournalIndexRoute
   "/erp/finance/pnl": typeof ErpFinancePnlIndexRoute
   "/erp/payroll/$runId": typeof ErpPayrollRunIdIndexRoute
@@ -2490,6 +2524,7 @@ export interface FileRoutesById {
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
+  "/erp/compliance/": typeof ErpComplianceIndexRoute
   "/erp/payroll/": typeof ErpPayrollIndexRoute
   "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
@@ -2561,6 +2596,8 @@ export interface FileRoutesById {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/compliance/challans/": typeof ErpComplianceChallansIndexRoute
+  "/erp/compliance/provisions/": typeof ErpComplianceProvisionsIndexRoute
   "/erp/finance/journal/": typeof ErpFinanceJournalIndexRoute
   "/erp/finance/pnl/": typeof ErpFinancePnlIndexRoute
   "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
@@ -2714,6 +2751,7 @@ export interface FileRouteTypes {
     | "/content/$contentId/"
     | "/engagement-engines/create/"
     | "/engagement-engines/inbox/"
+    | "/erp/compliance/"
     | "/erp/payroll/"
     | "/erp/people/"
     | "/evaluation/evaluation-tool/"
@@ -2785,6 +2823,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/compliance/challans/"
+    | "/erp/compliance/provisions/"
     | "/erp/finance/journal/"
     | "/erp/finance/pnl/"
     | "/erp/payroll/$runId/"
@@ -2935,6 +2975,7 @@ export interface FileRouteTypes {
     | "/content/$contentId"
     | "/engagement-engines/create"
     | "/engagement-engines/inbox"
+    | "/erp/compliance"
     | "/erp/payroll"
     | "/erp/people"
     | "/evaluation/evaluation-tool"
@@ -3006,6 +3047,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload"
     | "/assessment/export/$assessmentId"
     | "/audience-manager/list/campaign-users"
+    | "/erp/compliance/challans"
+    | "/erp/compliance/provisions"
     | "/erp/finance/journal"
     | "/erp/finance/pnl"
     | "/erp/payroll/$runId"
@@ -3157,6 +3200,7 @@ export interface FileRouteTypes {
     | "/content/$contentId/"
     | "/engagement-engines/create/"
     | "/engagement-engines/inbox/"
+    | "/erp/compliance/"
     | "/erp/payroll/"
     | "/erp/people/"
     | "/evaluation/evaluation-tool/"
@@ -3228,6 +3272,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/compliance/challans/"
+    | "/erp/compliance/provisions/"
     | "/erp/finance/journal/"
     | "/erp/finance/pnl/"
     | "/erp/payroll/$runId/"
@@ -3379,6 +3425,7 @@ export interface RootRouteChildren {
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
   EngagementEnginesCreateIndexRoute: typeof EngagementEnginesCreateIndexRoute
   EngagementEnginesInboxIndexRoute: typeof EngagementEnginesInboxIndexRoute
+  ErpComplianceIndexRoute: typeof ErpComplianceIndexRoute
   ErpPayrollIndexRoute: typeof ErpPayrollIndexRoute
   ErpPeopleIndexRoute: typeof ErpPeopleIndexRoute
   EvaluationEvaluationToolIndexRoute: typeof EvaluationEvaluationToolIndexRoute
@@ -3450,6 +3497,8 @@ export interface RootRouteChildren {
   AiCenterAiToolsVsmartUploadIndexRoute: typeof AiCenterAiToolsVsmartUploadIndexRoute
   AssessmentExportAssessmentIdIndexRoute: typeof AssessmentExportAssessmentIdIndexRoute
   AudienceManagerListCampaignUsersIndexRoute: typeof AudienceManagerListCampaignUsersIndexRoute
+  ErpComplianceChallansIndexRoute: typeof ErpComplianceChallansIndexRoute
+  ErpComplianceProvisionsIndexRoute: typeof ErpComplianceProvisionsIndexRoute
   ErpFinanceJournalIndexRoute: typeof ErpFinanceJournalIndexRoute
   ErpFinancePnlIndexRoute: typeof ErpFinancePnlIndexRoute
   ErpPayrollRunIdIndexRoute: typeof ErpPayrollRunIdIndexRoute
@@ -4248,6 +4297,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpPayrollIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/compliance/": {
+      id: "/erp/compliance/"
+      path: "/erp/compliance"
+      fullPath: "/erp/compliance/"
+      preLoaderRoute: typeof ErpComplianceIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/engagement-engines/inbox/": {
       id: "/engagement-engines/inbox/"
       path: "/engagement-engines/inbox"
@@ -4766,6 +4822,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpFinanceJournalIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/compliance/provisions/": {
+      id: "/erp/compliance/provisions/"
+      path: "/erp/compliance/provisions"
+      fullPath: "/erp/compliance/provisions/"
+      preLoaderRoute: typeof ErpComplianceProvisionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/compliance/challans/": {
+      id: "/erp/compliance/challans/"
+      path: "/erp/compliance/challans"
+      fullPath: "/erp/compliance/challans/"
+      preLoaderRoute: typeof ErpComplianceChallansIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/list/campaign-users/": {
       id: "/audience-manager/list/campaign-users/"
       path: "/audience-manager/list/campaign-users"
@@ -5165,6 +5235,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContentContentIdIndexRoute: ContentContentIdIndexRoute,
   EngagementEnginesCreateIndexRoute: EngagementEnginesCreateIndexRoute,
   EngagementEnginesInboxIndexRoute: EngagementEnginesInboxIndexRoute,
+  ErpComplianceIndexRoute: ErpComplianceIndexRoute,
   ErpPayrollIndexRoute: ErpPayrollIndexRoute,
   ErpPeopleIndexRoute: ErpPeopleIndexRoute,
   EvaluationEvaluationToolIndexRoute: EvaluationEvaluationToolIndexRoute,
@@ -5254,6 +5325,8 @@ const rootRouteChildren: RootRouteChildren = {
     AssessmentExportAssessmentIdIndexRoute,
   AudienceManagerListCampaignUsersIndexRoute:
     AudienceManagerListCampaignUsersIndexRoute,
+  ErpComplianceChallansIndexRoute: ErpComplianceChallansIndexRoute,
+  ErpComplianceProvisionsIndexRoute: ErpComplianceProvisionsIndexRoute,
   ErpFinanceJournalIndexRoute: ErpFinanceJournalIndexRoute,
   ErpFinancePnlIndexRoute: ErpFinancePnlIndexRoute,
   ErpPayrollRunIdIndexRoute: ErpPayrollRunIdIndexRoute,

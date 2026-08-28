@@ -273,6 +273,17 @@
         "continueFromWhereLeftOff": "Reprenez là où vous en étiez",
         "resumeLearningButton": "Reprendre l'apprentissage"
     },
+    "enrolledCourses": {
+        "viewAll": "Voir tous les {{courses}}",
+        "emptyTitle": "Vous n'êtes inscrit à aucun {{courses}} pour le moment",
+        "browse": "Parcourir {{courses}}",
+        "cta": {
+            "continue": "Continuer",
+            "start": "Commencer",
+            "review": "Revoir"
+        },
+        "cardAria": "{{course}}, {{percent}} % terminé. {{action}}"
+    },
     "dashboardHero": {
         "loadingAria": "Chargement",
         "liveNow": "En direct maintenant",

@@ -4,12 +4,10 @@ import type {
   ProductPageSettings,
   PageJson,
 } from "../-types/product-page-types";
-import { ShieldCheck } from "@phosphor-icons/react";
 import { PageRenderer, CourseGridBlock } from "./PageRenderer";
 import { BasketSummaryBar } from "./BasketSummaryBar";
-import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { StepProgress } from "./StepProgress";
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
+import { StepRailBar } from "./StepRailBar";
 
 interface CatalogStepProps {
   pageData: ProductPageData;
@@ -45,15 +43,22 @@ export const CatalogStep = ({
   onNext,
 }: CatalogStepProps) => {
   const { t } = useTranslation("productPages");
-  const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+  const courses = useCourseTerms().courses;
 
   const pageJson = parseSafeJson<PageJson>(
     pageData.page_json,
     DEFAULT_PAGE_JSON,
   );
 
+  const designedPrimary = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
+
   if (pageJson.components.length > 0) {
     return (
+      <>
+        {/* The rail belongs here too. Leaving it off a designed page meant the
+            wizard was absent while browsing and appeared on reaching the cart,
+            which reads as random rather than as step 1 of 4. */}
+        <StepRailBar primaryColor={designedPrimary} variant="catalogue" />
       <PageRenderer
         pageJson={pageJson}
         pageData={pageData}
@@ -63,6 +68,7 @@ export const CatalogStep = ({
         lockedLevels={levels}
         onNext={onNext}
       />
+      </>
     );
   }
 
@@ -75,26 +81,7 @@ export const CatalogStep = ({
 
   return (
     <div className="min-h-screen bg-catalogue-bg">
-      {/* Step rail — same one the checkout steps wear, so browsing reads as
-          step 1 of 4 rather than a separate page. Only on this fallback view:
-          a page_json-designed catalog is the admin's own layout and must not
-          get platform chrome injected above it. */}
-      <div className="border-b border-catalogue-border bg-catalogue-bg-elevated px-4 py-5">
-        <div className="mx-auto flex max-w-screen-xl items-center gap-4">
-          <div className="min-w-0 flex-1 overflow-x-auto">
-            <StepProgress primaryColor={primaryColor} />
-          </div>
-          <div className="hidden shrink-0 items-center gap-1.5 md:flex">
-            <ShieldCheck className="size-4 text-success-600" aria-hidden="true" />
-            <div className="leading-tight">
-              <p className="text-caption font-semibold text-catalogue-text-secondary">
-                Secure &amp; Safe
-              </p>
-              <p className="text-2xs text-catalogue-text-muted">Your data is protected</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <StepRailBar primaryColor={primaryColor} variant="catalogue" />
 
       {/* Page title */}
       <div className="border-b border-catalogue-border px-6 py-8 lg:px-8">

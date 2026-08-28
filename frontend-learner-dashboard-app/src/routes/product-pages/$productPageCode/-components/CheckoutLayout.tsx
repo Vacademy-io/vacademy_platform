@@ -1,6 +1,5 @@
-import { ShieldCheck } from '@phosphor-icons/react';
 import { useProductPageStore } from '../-stores/product-page-store';
-import { StepProgress } from './StepProgress';
+import { StepRailBar } from './StepRailBar';
 import { OrderSummaryPanel } from './OrderSummaryPanel';
 import { HeaderBlock, NewHeaderBlock, FooterBlock, NewFooterBlock } from './PageRenderer';
 import type { ProductPageData, PageJson, ProductPageSettings } from '../-types/product-page-types';
@@ -49,21 +48,7 @@ export const CheckoutLayout = ({
                     : <NewHeaderBlock key={c.id} props={c.props} primaryColor={primaryColor} pageName={pageData.name} />
             )}
 
-            {/* Step progress + trust marker */}
-            <div className="border-b border-gray-200 bg-white px-4 py-5">
-                <div className="mx-auto flex max-w-screen-xl items-center gap-4">
-                    <div className="min-w-0 flex-1 overflow-x-auto">
-                        <StepProgress primaryColor={primaryColor} />
-                    </div>
-                    <div className="hidden shrink-0 items-center gap-1.5 md:flex">
-                        <ShieldCheck className="size-4 text-success-600" aria-hidden="true" />
-                        <div className="leading-tight">
-                            <p className="text-caption font-semibold text-gray-700">Secure &amp; Safe</p>
-                            <p className="text-2xs text-gray-400">Your data is protected</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <StepRailBar primaryColor={primaryColor} />
 
             {/* Step content + live order summary */}
             <div className="mx-auto max-w-screen-xl px-4 py-6 lg:flex lg:items-start lg:gap-6">

@@ -1,11 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Gift, ShoppingCart } from '@phosphor-icons/react';
-import {
-    getTerminology,
-    getTerminologyPlural,
-} from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/types/naming-settings';
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import type { ProductPageData } from '../-types/product-page-types';
 import { celebrateSavingOnce } from '../-utils/celebrate-saving';
 import { useBasketSavings } from '../-utils/use-basket-savings';
@@ -40,8 +36,9 @@ export const BasketSummaryBar = ({ pageData, onNext, primaryColor }: BasketSumma
         useBasketSavings(pageData);
     const total = totalBeforeCoupon;
 
-    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
-    const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+    const terms = useCourseTerms();
+    const courseTerm = terms.course;
+    const coursesTerm = terms.courses;
 
     // Celebrate a saving this basket has never reached before. Shared with the
     // catalogue bar and keyed the same way, so walking between the two surfaces

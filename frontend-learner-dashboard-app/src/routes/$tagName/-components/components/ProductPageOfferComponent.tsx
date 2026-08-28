@@ -25,8 +25,7 @@ import {
   celebrateSavingOnce,
 } from "@/routes/product-pages/$productPageCode/-utils/celebrate-saving";
 import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-services/product-page-service";
-import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import {
   parseBasketPricing,
   nextTier,
@@ -344,8 +343,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   isPreviewMode = false,
 }) => {
   const { t } = useTranslation("coursePlayerB");
-  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
-  const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+  const terms = useCourseTerms();
+  const courseTerm = terms.course;
+  const coursesTerm = terms.courses;
   const { data, isLoading, isError } = useQuery({
     ...handleGetProductPage(productPageCode || "", instituteId || ""),
   });

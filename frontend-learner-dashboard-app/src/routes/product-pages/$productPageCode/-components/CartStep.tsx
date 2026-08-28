@@ -30,11 +30,7 @@ import { PlanTiles } from './PlanTiles';
 import { pushCartViewed, pushCouponApplied } from '@/components/common/enroll-by-invite/-utils/gtm';
 import { useCouponsEnabled } from '@/components/common/coupon/use-coupons-enabled';
 import { Tag, X, ArrowLeft, ArrowRight, CheckCircle, SpinnerGap } from "@phosphor-icons/react";
-import {
-    getTerminology,
-    getTerminologyPlural,
-} from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/types/naming-settings';
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import { cn } from '@/lib/utils';
 import { CartItemList } from './CartItemList';
 import { OffersStrip } from './OffersStrip';
@@ -66,12 +62,10 @@ interface CartStepProps {
  */
 export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack, onNext }: CartStepProps) => { // design-lint-ignore: page-builder default color
     const { t, i18n } = useTranslation('productPages');
-    const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
-    const courseTerm = course.toLocaleLowerCase();
-    const coursesTerm = getTerminologyPlural(
-        ContentTerms.Course,
-        SystemTerms.Course
-    ).toLocaleLowerCase();
+    const terms = useCourseTerms();
+    const course = terms.course;
+    const courseTerm = terms.course.toLocaleLowerCase();
+    const coursesTerm = terms.courses.toLocaleLowerCase();
     const {
         selectedPsOptionIds, couponCode, discountAmount,
         setCouponCode, applyCoupon, clearCoupon, totalPrice, toggleSelection, setSelection, utmParams,

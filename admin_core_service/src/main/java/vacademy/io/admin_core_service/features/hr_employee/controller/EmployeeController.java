@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.core.security.HrAccessGuard;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.hr_employee.dto.*;
+import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
 import vacademy.io.admin_core_service.features.hr_employee.service.EmployeeBankService;
 import vacademy.io.admin_core_service.features.hr_employee.service.EmployeeDocumentService;
 import vacademy.io.admin_core_service.features.hr_employee.service.EmployeeService;

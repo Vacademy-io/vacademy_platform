@@ -537,18 +537,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <meta property="og:description" content={seoDescription} />
         <meta property="og:type" content="website" />
       </Helmet>
-      {/* The checkout's own rail, for a visitor who is mid-purchase. "Back to
-          courses" lands here, and without it the four-step journey simply
-          vanishes at the step where they were choosing. Hidden entirely when
-          there is no basket, so an ordinary first visit is unchanged, and
-          hidden with the rest of the site chrome when a page opts out. */}
-      {basketActive && !hidesSiteChrome && (
-        <StepRailBar
-          primaryColor={themeSettings?.primaryColor || '#2563eb'} // design-lint-ignore: catalogue theme fallback
-          step="CATALOG"
-          variant="catalogue"
-        />
-      )}
       {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
       {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
         <IntroPageComponent
@@ -600,6 +588,23 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             .filter(matchesActivePage)
             .map((page) => (
               <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : 'pt-16 md:pt-20'} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
+                {/* The checkout's own rail, for a visitor who is mid-purchase:
+                    "Back to courses" lands here, and without it the four-step
+                    journey vanishes at the step where they were choosing.
+                
+                    INSIDE main, because the site header is `fixed` with an opaque
+                    background and emits no spacer - main's pt-16/md:pt-20 IS the
+                    space reserved for it. Rendered above main the rail painted
+                    underneath the header: invisible, while pushing the hero down by
+                    its own height. Same trap CatalogueChrome documents. Hidden with
+                    no basket, so an ordinary first visit is untouched. */}
+                {basketActive && (
+                  <StepRailBar
+                    primaryColor={themeSettings?.primaryColor || '#2563eb'} // design-lint-ignore: catalogue theme fallback
+                    step="CATALOG"
+                    variant="catalogue"
+                  />
+                )}
                 <JsonRenderer
                   page={page}
                   globalSettings={catalogueData.globalSettings}

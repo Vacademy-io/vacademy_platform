@@ -208,6 +208,10 @@
             "defaultTitle": "فيديو"
         }
     },
+    "stepRail": {
+        "secureTitle": "آمن ومحمي",
+        "secureNote": "بياناتك محمية"
+    },
     "stepProgress": {
         "ariaLabel": "تقدّم التسجيل",
         "steps": {

@@ -38,6 +38,17 @@ export interface AdditionalCharge {
 }
 
 export interface GlobalSettings {
+  /**
+   * This catalogue's own words for a course / level / session. Seeded into the
+   * terminology store so authored copy and terminology-driven UI agree without
+   * editing the institute record, which every other surface shares.
+   */
+  naming?: {
+    course?: string;
+    coursePlural?: string;
+    level?: string;
+    session?: string;
+  };
   courseCatalogeType: {
     enabled: boolean;
     value: string
@@ -89,8 +100,10 @@ export interface GlobalSettings {
     additionalCharges?: AdditionalCharge[];
   };
   /**
-   * Step-by-step Level → Session → Tag picker shown once, the first time a
-   * visitor opens this catalogue page, before any course grid is filtered.
+   * Step-by-step Level → Session → Tag picker shown on every visit to this
+   * catalogue page, before any course grid is filtered. Not persisted across
+   * page views: a refresh or a later return re-asks, since a returning
+   * visitor is usually shopping for a different level/session than last time.
    * Options are sourced live from whichever `courseCatalog` block(s) are on
    * the page (via a `courseFinderOptionsReady` event) — never a separate
    * fetch — so a pick can never reference a level/session/tag that has zero

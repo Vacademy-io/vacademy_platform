@@ -1,7 +1,6 @@
 import { Check } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
-import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import { cn } from "@/lib/utils";
 import { useProductPageStore } from "../-stores/product-page-store";
 
@@ -13,10 +12,7 @@ export const StepProgress = ({
   const { t } = useTranslation("productPages");
   const { step } = useProductPageStore();
   const isCpoFlow = step === "CPO_INSTALLMENTS";
-  const courses = getTerminologyPlural(
-    ContentTerms.Course,
-    SystemTerms.Course,
-  ).toLocaleLowerCase();
+  const courses = useCourseTerms().courses.toLocaleLowerCase();
   // The browse step is part of the rail so the visitor sees the whole journey
   // from the first screen. It is also the step CatalogStep is ON: without an
   // entry for it, findIndex returns -1, and `done`/`active` are then false for

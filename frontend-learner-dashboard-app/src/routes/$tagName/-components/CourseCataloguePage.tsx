@@ -10,6 +10,7 @@ import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
+import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -57,6 +58,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
   // first-touch UTM capture for lead attribution.
   useCatalogueTracking((catalogueData?.globalSettings as any)?.tracking);
+
+
   useEffect(() => { captureUtmOnce(); }, []);
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
   // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
@@ -500,6 +503,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   )?.hideSiteChrome;
 
   return (
+    <CatalogueNamingProvider naming={catalogueData?.globalSettings?.naming}>
     <div
       ref={wrapperRef}
       className={`min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 md:pt-0${isDarkMode ? ' dark' : ''}`}
@@ -667,6 +671,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <BackToTopButton />
       )}
     </div>
+    </CatalogueNamingProvider>
   );
 };
 

@@ -204,6 +204,10 @@
             "defaultTitle": "वीडियो"
         }
     },
+    "stepRail": {
+        "secureTitle": "सुरक्षित",
+        "secureNote": "आपका डेटा सुरक्षित है"
+    },
     "stepProgress": {
         "ariaLabel": "नामांकन प्रगति",
         "steps": {

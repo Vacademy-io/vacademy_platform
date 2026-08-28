@@ -3,14 +3,24 @@ import { useTranslation } from "react-i18next";
 import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import { cn } from "@/lib/utils";
 import { useProductPageStore } from "../-stores/product-page-store";
+import type { ProductPageStep } from "../-types/product-page-types";
 
 export const StepProgress = ({
   primaryColor = "#2563eb", // design-lint-ignore: page-builder default color
+  step: stepOverride,
 }: {
   primaryColor?: string;
+  /**
+   * Which step to show as current. The catalogue route lives outside the
+   * product-page store, and that store may still hold a step from an earlier
+   * visit — so it says where the visitor is rather than mutating shared state
+   * to make the rail agree.
+   */
+  step?: ProductPageStep;
 }) => {
   const { t } = useTranslation("productPages");
-  const { step } = useProductPageStore();
+  const { step: storeStep } = useProductPageStore();
+  const step = stepOverride ?? storeStep;
   const isCpoFlow = step === "CPO_INSTALLMENTS";
   const courses = useCourseTerms().courses.toLocaleLowerCase();
   // The browse step is part of the rail so the visitor sees the whole journey

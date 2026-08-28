@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { ShieldCheck } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { StepProgress } from './StepProgress';
+import type { ProductPageStep } from '../-types/product-page-types';
 
 /**
  * The step rail and its trust marker, in one place.
@@ -15,6 +16,8 @@ import { StepProgress } from './StepProgress';
  */
 interface StepRailBarProps {
     primaryColor: string;
+    /** Which step is current, for surfaces outside the product-page store. */
+    step?: ProductPageStep;
     /** Catalogue-themed tokens for the browse step; plain chrome for checkout. */
     variant?: 'checkout' | 'catalogue';
     className?: string;
@@ -22,6 +25,7 @@ interface StepRailBarProps {
 
 export const StepRailBar = ({
     primaryColor,
+    step,
     variant = 'checkout',
     className,
 }: StepRailBarProps) => {
@@ -40,7 +44,7 @@ export const StepRailBar = ({
         >
             <div className="mx-auto flex max-w-screen-xl items-center gap-4">
                 <div className="min-w-0 flex-1 overflow-x-auto">
-                    <StepProgress primaryColor={primaryColor} />
+                    <StepProgress primaryColor={primaryColor} step={step} />
                 </div>
                 <div className="hidden shrink-0 items-center gap-1.5 md:flex">
                     <ShieldCheck className="size-4 text-success-600" aria-hidden="true" />

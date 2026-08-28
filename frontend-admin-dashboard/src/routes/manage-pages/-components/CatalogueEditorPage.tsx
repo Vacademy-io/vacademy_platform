@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import {
     CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
     ArrowUUpLeft as Undo2, ArrowUUpRight as Redo2, Stack as Layers,
-    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle,, ChartLine } from '@phosphor-icons/react';
+    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';

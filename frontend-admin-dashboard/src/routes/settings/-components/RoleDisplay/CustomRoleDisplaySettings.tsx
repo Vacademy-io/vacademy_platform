@@ -60,6 +60,7 @@ import type {
     LearnerManagementSettings,
 } from '@/types/display-settings';
 
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 // Built inside the component (not module scope) so labels stay reactive to
 // the active locale via t().
 const buildCustomDisplaySections = (t: TFunction): SettingsSectionGroup[] => [
@@ -264,7 +265,7 @@ export default function CustomRoleDisplaySettings({
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
-    const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
+    const [activeCategory, setActiveCategory] = useState<SidebarCategory>('CRM');
 
     // Recomputed every render (cheap arrays) so labels stay in sync with the
     // active locale instead of being frozen at module-load time.
@@ -1616,7 +1617,7 @@ export default function CustomRoleDisplaySettings({
                 <CardContent className="space-y-3">
                     <Tabs
                         value={activeCategory}
-                        onValueChange={(v) => setActiveCategory(v as 'CRM' | 'LMS' | 'AI')}
+                        onValueChange={(v) => setActiveCategory(v as SidebarCategory)}
                         className="w-full"
                     >
                         <TabsList className="mb-4 grid w-full grid-cols-3">

@@ -20,14 +20,19 @@ import vacademy.io.admin_core_service.features.hr_employee.enums.EmploymentType;
 import vacademy.io.admin_core_service.features.hr_employee.repository.DepartmentRepository;
 import vacademy.io.admin_core_service.features.hr_employee.repository.DesignationRepository;
 import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class EmployeeService {
 
@@ -42,6 +47,9 @@ public class EmployeeService {
 
     @Autowired
     private HrAccessGuard hrAccessGuard;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     @Transactional
     public String createEmployee(EmployeeProfileDTO dto, String instituteId) {
@@ -284,6 +292,7 @@ public class EmployeeService {
             throw new VacademyException("Invalid employment status: " + statusUpdateDTO.getStatus());
         }
 
+        String oldStatus = employee.getEmploymentStatus();
         employee.setEmploymentStatus(statusUpdateDTO.getStatus());
 
         if (statusUpdateDTO.getResignationDate() != null) {
@@ -297,6 +306,30 @@ public class EmployeeService {
         }
 
         employeeProfileRepository.save(employee);
+
+        // Phase F5: HR_EMPLOYEE_STATUS_CHANGED workflow trigger on an actual
+        // transition (emit-and-forget — a workflow failure must never break the
+        // status update itself)
+        if (!statusUpdateDTO.getStatus().equals(oldStatus)) {
+            try {
+                Map<String, Object> contextData = new HashMap<>();
+                contextData.put("employeeId", employee.getId());
+                contextData.put("userId", employee.getUserId());
+                contextData.put("oldStatus", oldStatus);
+                contextData.put("newStatus", employee.getEmploymentStatus());
+                if (employee.getLastWorkingDate() != null) {
+                    contextData.put("lastWorkingDate", employee.getLastWorkingDate().toString());
+                }
+                workflowTriggerService.handleTriggerEvents(
+                        WorkflowTriggerEvent.HR_EMPLOYEE_STATUS_CHANGED.name(),
+                        employee.getId(),
+                        instituteId,
+                        contextData);
+            } catch (Exception e) {
+                log.warn("Failed to trigger HR_EMPLOYEE_STATUS_CHANGED workflow", e);
+            }
+        }
+
         return employee.getId();
     }
 

@@ -12,14 +12,19 @@ import vacademy.io.admin_core_service.features.hr_payroll.enums.PayrollEntryStat
 import vacademy.io.admin_core_service.features.hr_payroll.enums.PayrollStatus;
 import vacademy.io.admin_core_service.features.hr_payroll.repository.PayrollEntryRepository;
 import vacademy.io.admin_core_service.features.hr_payroll.repository.PayrollRunRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class PayrollRunService {
 
@@ -33,6 +38,12 @@ public class PayrollRunService {
 
     @Autowired
     private PayrollCalculationService payrollCalculationService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.erp_finance.service.JournalService journalService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     /**
      * Creates a run for the VALIDATED institute — the caller-supplied
@@ -116,6 +127,30 @@ public class PayrollRunService {
         run.setApprovedAt(LocalDateTime.now());
         payrollRunRepository.save(run);
 
+        // Phase F4: approval posts the run's accounting journal (idempotent per run).
+        journalService.postPayrollJournal(run, approverUserId);
+
+        // Phase F5: HR_PAYROLL_APPROVED workflow trigger (emit-and-forget — a
+        // workflow failure must never break the approval itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("runId", run.getId());
+            contextData.put("month", run.getMonth());
+            contextData.put("year", run.getYear());
+            contextData.put("runType", run.getRunType() != null ? run.getRunType() : "REGULAR");
+            contextData.put("totalEmployees", run.getTotalEmployees());
+            contextData.put("totalNetPay", run.getTotalNetPay() != null
+                    ? run.getTotalNetPay().toPlainString() : null);
+            contextData.put("approvedBy", approverUserId);
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_PAYROLL_APPROVED.name(),
+                    run.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_PAYROLL_APPROVED workflow", e);
+        }
+
         return run.getId();
     }
 
@@ -133,6 +168,9 @@ public class PayrollRunService {
                 && !PayrollStatus.APPROVED.name().equals(run.getStatus())) {
             throw new VacademyException("Only PROCESSED or APPROVED payroll runs can be rejected. Current status: " + run.getStatus());
         }
+
+        // Phase F4: an APPROVED run already posted its journal — mirror-reverse it.
+        journalService.reversePayrollJournal(run, null);
 
         payrollCalculationService.reverseAndDeleteEntries(run.getId());
 
@@ -174,6 +212,26 @@ public class PayrollRunService {
         run.setPaidAt(LocalDateTime.now());
         payrollRunRepository.save(run);
 
+        // Phase F5: HR_PAYROLL_PAID workflow trigger (emit-and-forget — a
+        // workflow failure must never break the mark-paid operation itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("runId", run.getId());
+            contextData.put("month", run.getMonth());
+            contextData.put("year", run.getYear());
+            contextData.put("runType", run.getRunType() != null ? run.getRunType() : "REGULAR");
+            contextData.put("totalEmployees", run.getTotalEmployees());
+            contextData.put("totalNetPay", run.getTotalNetPay() != null
+                    ? run.getTotalNetPay().toPlainString() : null);
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_PAYROLL_PAID.name(),
+                    run.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_PAYROLL_PAID workflow", e);
+        }
+
         return run.getId();
     }
 
@@ -189,6 +247,9 @@ public class PayrollRunService {
         if (PayrollStatus.PAID.name().equals(run.getStatus())) {
             throw new VacademyException("Cannot cancel a PAID payroll run");
         }
+
+        // Phase F4: an APPROVED run already posted its journal — mirror-reverse it.
+        journalService.reversePayrollJournal(run, null);
 
         payrollCalculationService.reverseAndDeleteEntries(run.getId());
 

@@ -23,6 +23,8 @@ import vacademy.io.admin_core_service.features.hr_leave.enums.LeaveStatus;
 import vacademy.io.admin_core_service.features.hr_leave.repository.CompensatoryOffRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveBalanceRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveTypeRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.VacademyException;
@@ -74,6 +76,9 @@ public class CompOffService {
 
     @Autowired
     private HrNotificationService hrNotificationService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     @Transactional
     public String requestCompOff(CompOffDTO dto, String instituteId, CustomUserDetails user) {
@@ -168,6 +173,30 @@ public class CompOffService {
         compensatoryOffRepository.save(compOff);
 
         notifyCompOffDecision(compOff, Boolean.TRUE.equals(actionDTO.getApproved()));
+
+        // Phase F5: HR_COMP_OFF_DECIDED workflow trigger (emit-and-forget — a
+        // workflow failure must never break the decision itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("compOffId", compOff.getId());
+            contextData.put("employeeId", compOff.getEmployee().getId());
+            contextData.put("employeeUserId", compOff.getEmployee().getUserId());
+            contextData.put("workedOnDate", compOff.getWorkedOnDate() != null
+                    ? compOff.getWorkedOnDate().toString() : null);
+            contextData.put("earnedDays", compOff.getEarnedDays() != null
+                    ? compOff.getEarnedDays().toPlainString() : null);
+            contextData.put("expiryDate", compOff.getExpiryDate() != null
+                    ? compOff.getExpiryDate().toString() : null);
+            contextData.put("status", compOff.getStatus());
+            contextData.put("approvedBy", compOff.getApprovedBy());
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_COMP_OFF_DECIDED.name(),
+                    compOff.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_COMP_OFF_DECIDED workflow", e);
+        }
 
         return compOff.getId();
     }

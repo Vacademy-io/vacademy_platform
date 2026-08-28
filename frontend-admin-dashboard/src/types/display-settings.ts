@@ -1,3 +1,4 @@
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 // Types that define Admin/Teacher display settings configuration
 
 export type UserRoleForDisplaySettings = 'ADMIN' | 'TEACHER';
@@ -24,7 +25,7 @@ export interface SidebarTabConfig {
     // For custom tabs: which sidebar category (CRM/LMS/AI) it belongs to.
     // Built-in tabs derive their category from SidebarItemsData; this only applies
     // to user-added custom tabs whose id isn't in SidebarItemsData.
-    category?: 'CRM' | 'LMS' | 'AI';
+    category?: SidebarCategory;
 }
 
 // Dashboard widget identifiers. These are string literal ids that we can enforce in UI.
@@ -680,7 +681,7 @@ export interface DisplaySettingsData {
 
     // 14) Sidebar Category Configuration
     sidebarCategories?: Array<{
-        id: 'CRM' | 'LMS' | 'AI';
+        id: SidebarCategory;
         visible: boolean;
         locked?: boolean; // whether the category is locked
         default: boolean; // Is this the default category on load?

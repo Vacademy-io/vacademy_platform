@@ -9,7 +9,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
-import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
+import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
@@ -61,6 +61,12 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
 
   useEffect(() => { captureUtmOnce(); }, []);
+  // First-party page view. Fires per route, so SPA navigation between pages is
+  // counted — the GA4/Pixel hooks above only serve the institute's own tools,
+  // and most institutes never connect one.
+  useCataloguePageView(
+    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
+  );
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
   // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
   const [leadArmed, setLeadArmed] = useState(false);

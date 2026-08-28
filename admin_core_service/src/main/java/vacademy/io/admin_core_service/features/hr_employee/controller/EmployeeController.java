@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.hr_employee.dto.*;
 import vacademy.io.admin_core_service.features.hr_employee.service.EmployeeBankService;
 import vacademy.io.admin_core_service.features.hr_employee.service.EmployeeDocumentService;
 import vacademy.io.admin_core_service.features.hr_employee.service.EmployeeService;
+import vacademy.io.admin_core_service.features.hr_employee.service.StaffUnificationService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -29,6 +30,9 @@ public class EmployeeController {
 
     @Autowired
     private HrAccessGuard hrAccessGuard;
+
+    @Autowired
+    private StaffUnificationService staffUnificationService;
 
     // ======================== Employee Profile ========================
 
@@ -125,6 +129,37 @@ public class EmployeeController {
         List<EmployeeProfileDTO> directReports = employeeService.getOrgChart(
                 id, instituteId, hrAccessGuard.isHrAdmin(user));
         return ResponseEntity.ok(directReports);
+    }
+
+    // ======================== Staff ↔ HR bridge (Phase F1) ========================
+
+    @GetMapping("/staff-bridge")
+    public ResponseEntity<StaffBridgeResponseDTO> getStaffBridge(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "role", required = false) String role,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        hrAccessGuard.requireHrStaff(user, instituteId);
+        StaffBridgeResponseDTO bridge = staffUnificationService.getStaffBridge(
+                instituteId, role, search, page, size);
+        return ResponseEntity.ok(bridge);
+    }
+
+    @PostMapping("/from-staff")
+    @Auditable(
+            entityType = "HR_EMPLOYEE",
+            action = "CREATE_FROM_STAFF",
+            entityIdExpr = "#result?.body",
+            descriptionExpr = "'created employee profile from staff user ' + (#dto?.userId ?: '')")
+    public ResponseEntity<String> createEmployeeFromStaff(
+            @RequestBody EmployeeProfileDTO dto,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        hrAccessGuard.requireHrAdmin(user, instituteId);
+        String id = staffUnificationService.createEmployeeFromStaff(dto, instituteId);
+        return ResponseEntity.ok(id);
     }
 
     // ======================== Bank Details ========================

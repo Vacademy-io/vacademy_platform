@@ -15,6 +15,8 @@ import vacademy.io.admin_core_service.features.hr_payroll.entity.LoanRepayment;
 import vacademy.io.admin_core_service.features.hr_payroll.enums.LoanStatus;
 import vacademy.io.admin_core_service.features.hr_payroll.repository.EmployeeLoanRepository;
 import vacademy.io.admin_core_service.features.hr_payroll.repository.LoanRepaymentRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -23,9 +25,12 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class LoanService {
 
@@ -43,6 +48,9 @@ public class LoanService {
 
     @Autowired
     private HrNotificationService hrNotificationService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     @Transactional
     public String createLoan(CreateLoanDTO dto, String instituteId) {
@@ -74,6 +82,31 @@ public class LoanService {
         loan.setStartYear(nextMonth.getYear());
 
         loan = loanRepository.save(loan);
+
+        // Phase F5: HR_LOAN_REQUESTED workflow trigger (emit-and-forget — a
+        // workflow failure must never break the loan creation itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("loanId", loan.getId());
+            contextData.put("employeeId", employee.getId());
+            contextData.put("employeeUserId", employee.getUserId());
+            contextData.put("loanType", loan.getLoanType());
+            contextData.put("principalAmount", loan.getPrincipalAmount() != null
+                    ? loan.getPrincipalAmount().toPlainString() : null);
+            contextData.put("emiAmount", loan.getEmiAmount() != null
+                    ? loan.getEmiAmount().toPlainString() : null);
+            contextData.put("tenureMonths", loan.getTenureMonths());
+            contextData.put("currency", loan.getCurrency());
+            contextData.put("status", loan.getStatus());
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_LOAN_REQUESTED.name(),
+                    loan.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_LOAN_REQUESTED workflow", e);
+        }
+
         return loan.getId();
     }
 
@@ -126,6 +159,31 @@ public class LoanService {
             hrNotificationService.emailEmployee(loan.getEmployee(), subject, body);
         } catch (Exception e) {
             // emailEmployee already swallows send failures; this guards lazy-load surprises
+        }
+
+        // Phase F5: HR_LOAN_DECIDED workflow trigger (emit-and-forget — a
+        // workflow failure must never break the approval itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("loanId", loan.getId());
+            contextData.put("employeeId", loan.getEmployee().getId());
+            contextData.put("employeeUserId", loan.getEmployee().getUserId());
+            contextData.put("loanType", loan.getLoanType());
+            contextData.put("principalAmount", loan.getPrincipalAmount() != null
+                    ? loan.getPrincipalAmount().toPlainString() : null);
+            contextData.put("emiAmount", loan.getEmiAmount() != null
+                    ? loan.getEmiAmount().toPlainString() : null);
+            contextData.put("tenureMonths", loan.getTenureMonths());
+            contextData.put("currency", loan.getCurrency());
+            contextData.put("status", loan.getStatus());
+            contextData.put("approvedBy", loan.getApprovedBy());
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_LOAN_DECIDED.name(),
+                    loan.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_LOAN_DECIDED workflow", e);
         }
 
         return loan.getId();

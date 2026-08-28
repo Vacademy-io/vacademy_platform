@@ -199,7 +199,20 @@ public class StudentAttemptService {
 
         double totalMarks = calculateTotalMarksForAttemptAndUpdateQuestionWiseMarks(studentAttemptOptional);
 
-        StudentAttempt attempt = studentAttemptOptional.get();
+        // Re-read before writing. This runs async off a 60s autosave, so the
+        // learner may have submitted while it was calculating; the entity we
+        // were handed is a snapshot from before that submit. StudentAttempt has
+        // no @Version, so saving the snapshot is a full-row overwrite that
+        // resets status to LIVE and wipes submit_time/result_marks — measured at
+        // 6.6% of submits in the 1000-VU load test (2026-08-27). The submit and
+        // expiry paths compute authoritative marks, so once the attempt has
+        // ended there is nothing here worth persisting.
+        StudentAttempt attempt = studentAttemptRepository.findById(studentAttemptOptional.get().getId())
+                .orElse(studentAttemptOptional.get());
+        if (AssessmentAttemptEnum.ENDED.name().equals(attempt.getStatus()) || attempt.getSubmitTime() != null) {
+            log.debug("Skipping live-sync marks write, attempt already submitted: attemptId={}", attempt.getId());
+            return attempt;
+        }
         attempt.setTotalMarks(totalMarks);
         attempt.setTotalTimeInSeconds(timeElapsedInSeconds);
 

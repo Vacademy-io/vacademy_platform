@@ -20,7 +20,7 @@ import {
 import { useNavigate } from '@tanstack/react-router';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from './sidebar-colors';
-import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
+import { SidebarItemsType, SidebarCategory } from '@/types/layout-container/layout-container-types';
 import type { DisplaySettingsData } from '@/types/display-settings';
 import { LockKey, GearSix } from '@phosphor-icons/react';
 import { recordRecentTab } from './recent-tabs-store';
@@ -65,19 +65,20 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
 
     // Build a quick lookup for hidden categories so we can skip them entirely.
     const hiddenCategoryIds = React.useMemo(() => {
-        const set = new Set<'CRM' | 'LMS' | 'AI'>();
+        const set = new Set<SidebarCategory>();
         (sidebarCategories || []).forEach((c) => {
-            if (c.visible === false) set.add(c.id as 'CRM' | 'LMS' | 'AI');
+            if (c.visible === false) set.add(c.id as SidebarCategory);
         });
         return set;
     }, [sidebarCategories]);
 
     // Group items by category
     const groupedItems = React.useMemo(() => {
-        const groups: Record<'CRM' | 'LMS' | 'AI', SidebarItemsType[]> = {
+        const groups: Record<SidebarCategory, SidebarItemsType[]> = {
             CRM: [],
             LMS: [],
             AI: [],
+            ERP: [],
         };
 
         sidebarItems.forEach((item) => {
@@ -87,7 +88,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
             // Filter by institute
             if (item.showForInstitute && item.showForInstitute !== instituteId) return;
 
-            const category = (item.category || 'CRM') as 'CRM' | 'LMS' | 'AI';
+            const category = (item.category || 'CRM') as SidebarCategory;
             // Drop entries that belong to a category the role has hidden — surfacing
             // them in search would let users click through to features the sidebar
             // is hiding for them.
@@ -120,7 +121,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                 id: itemId || to,
                 label: title,
                 route: to,
-                category: (category as 'CRM' | 'LMS' | 'AI') || 'CRM',
+                category: (category as SidebarCategory) || 'CRM',
             });
             // Sidebar links may carry a query ("/settings?selectedTab=…"); the
             // router only honours it when it's passed as `search`.
@@ -155,7 +156,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
     };
 
     const renderItem = (item: SidebarItemsType) => {
-        const colors = CATEGORY_COLORS[(item.category || 'CRM') as 'CRM' | 'LMS' | 'AI'];
+        const colors = CATEGORY_COLORS[(item.category || 'CRM') as SidebarCategory];
         const Icon = item.icon;
         const results: React.ReactNode[] = [];
 
@@ -175,7 +176,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                     )}
                     <span className="flex-1 truncate">{item.title}</span>
                     {item.locked && (
-                        <span className="text-[10px] font-medium text-neutral-400">Locked</span>
+                        <span className="text-2xs font-medium text-neutral-400">Locked</span>
                     )}
                 </CommandItem>
             );
@@ -199,7 +200,8 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                         }
                         className="gap-3 px-3 py-2"
                     >
-                        <div className="w-[18px] shrink-0" /> {/* Indent for sub-items */}
+                        {/* Indent for sub-items — w-4 matches the 16px sibling icons */}
+                        <div className="w-4 shrink-0" />
                         {sub.locked ? (
                             <LockKey size={16} weight="duotone" className="text-neutral-400" />
                         ) : (
@@ -211,7 +213,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                             />
                         )}
                         <span className="flex-1 truncate text-neutral-600">{sub.subItem}</span>
-                        <span className="text-[10px] text-neutral-400">{item.title}</span>
+                        <span className="text-2xs text-neutral-400">{item.title}</span>
                     </CommandItem>
                 );
             });
@@ -235,7 +237,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
 
                 {Object.entries(groupedItems).map(([category, items], idx) => {
                     if (items.length === 0) return null;
-                    const colors = CATEGORY_COLORS[category as 'CRM' | 'LMS' | 'AI'];
+                    const colors = CATEGORY_COLORS[category as SidebarCategory];
 
                     return (
                         <React.Fragment key={category}>

@@ -1624,10 +1624,11 @@ export default function TeacherDisplaySettings() {
                         onValueChange={(v) => setActiveCategory(v as SidebarCategory)}
                         className="w-full"
                     >
-                        <TabsList className="mb-4 grid w-full grid-cols-3">
+                        <TabsList className="mb-4 grid w-full grid-cols-4">
                             <TabsTrigger value="LMS">LMS</TabsTrigger>
                             <TabsTrigger value="CRM">CRM</TabsTrigger>
                             <TabsTrigger value="AI">{t('common.aiTools')}</TabsTrigger>
+                            <TabsTrigger value="ERP">ERP</TabsTrigger>
                         </TabsList>
 
                         {(() => {

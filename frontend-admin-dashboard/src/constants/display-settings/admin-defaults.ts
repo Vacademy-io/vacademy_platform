@@ -30,15 +30,11 @@ const OPT_IN_TAB_IDS = new Set<string>([
     'admin-activity-logs',
     'ai-copilot-tab',
     'mentorship',
-    // ERP (HR & Payroll): every module stays hidden until the institute turns
-    // it on. An institute that never runs payroll here should never see it.
-    'erp-my-hr',
-    'erp-people',
-    'erp-leave',
-    'erp-attendance',
-    'erp-payroll',
-    'erp-compliance',
-    'erp-finance',
+    // NOTE: the ERP modules are deliberately NOT listed here. The opt-in gate
+    // for ERP is the rail CATEGORY, which ships `visible: false` (see
+    // display-settings.ts). Hiding the modules as well made turning the
+    // category on produce an empty panel with no obvious way to fill it —
+    // one deliberate switch is the gate, not eight.
 ]);
 
 function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {

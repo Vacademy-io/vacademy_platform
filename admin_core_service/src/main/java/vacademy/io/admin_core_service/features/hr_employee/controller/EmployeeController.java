@@ -51,6 +51,27 @@ public class EmployeeController {
         return ResponseEntity.ok(id);
     }
 
+    /**
+     * The caller's OWN employee profile in this institute.
+     *
+     * Every other read here is keyed on an employee id, which a self-service
+     * user does not have and cannot discover: the list endpoint is HR-gated on
+     * purpose. Without this, an employee has no way to reach their own payslips,
+     * leave balance or tax declaration. Institute membership is the only
+     * requirement — the guard resolves the profile from the JWT user id, so a
+     * caller can never address anyone else's record through it, and 404s for a
+     * staff member who has no HR profile yet.
+     */
+    @GetMapping("/me")
+    public ResponseEntity<EmployeeProfileDTO> getMyEmployeeProfile(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        EmployeeProfile self = hrAccessGuard.resolveSelfEmployee(user, instituteId);
+        // Sensitive statutory fields stay masked: this is the employee's own
+        // view, not an HR-admin one.
+        return ResponseEntity.ok(employeeService.getEmployeeById(self.getId(), instituteId, false));
+    }
+
     @GetMapping
     public ResponseEntity<Page<EmployeeProfileDTO>> getEmployees(
             @RequestParam("instituteId") String instituteId,

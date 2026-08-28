@@ -70,6 +70,7 @@ import {
     useHasCallIntelligenceData,
 } from '@/components/shared/leads';
 import { useIsMentor } from '@/hooks/use-is-mentor';
+import { useMyEmployeeProfile } from '@/hooks/use-my-employee-profile';
 
 import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 // Sidebar sub-items under "Assessments and Tests" that deep-link into the
@@ -154,6 +155,17 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     const mentorshipEntryVisible = isSubItemVisible('mentorship', 'mentorship-my-mentorship');
     const onMentorshipRoute = currentRoute.startsWith('/mentorship');
     const { isMentor } = useIsMentor(mentorshipEntryVisible && onMentorshipRoute);
+
+    // ERP > My HR is the employee's OWN workspace; every screen behind it 404s
+    // for someone with no HR profile (most staff, at an institute that has not
+    // onboarded payroll). Unlike the mentorship probe this cannot wait until the
+    // user is already on the route — the entry IS the way in — so it runs
+    // whenever the institute has ERP switched on at all. That is one request per
+    // session, cached for its lifetime, and none at all for the institutes that
+    // never enable ERP.
+    const myHrEntryVisible = isTabVisible('erp-my-hr');
+    const { employeeId: myEmployeeId } = useMyEmployeeProfile(myHrEntryVisible);
+    const hasEmployeeProfile = !!myEmployeeId;
 
     // AI Intelligence (Leads > AI Intelligence) rides on Call Intelligence. The
     // entry is available when the feature is ON, or when it's off but the institute
@@ -294,9 +306,14 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // hidden Create Assessment button.
         const needsSubItemFilter =
             !isChatEnabled || !isCrmIntelligenceAvailable || !canCreateAssessment || !isMentor;
-        const base = !needsSubItemFilter
+        // Drop My HR entirely for non-employees — it is a whole module, not a
+        // sub-item, so it is filtered from the item list rather than within one.
+        const rawBaseWithHr = hasEmployeeProfile
             ? rawBase
-            : rawBase.map((item) => ({
+            : rawBase.filter((item) => item.id !== 'erp-my-hr');
+        const base = !needsSubItemFilter
+            ? rawBaseWithHr
+            : rawBaseWithHr.map((item) => ({
                   ...item,
                   subItems: item.subItems?.filter(
                       (s) =>

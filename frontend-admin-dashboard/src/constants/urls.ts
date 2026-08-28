@@ -1858,3 +1858,7 @@ export const ERP_JOURNAL = `${ERP_FINANCE_BASE}/journal`;
 export const ERP_JOURNAL_EXPORT = `${ERP_FINANCE_BASE}/journal/export`;
 export const ERP_PNL_SNAPSHOT = `${ERP_FINANCE_BASE}/pnl-snapshot`;
 export const ERP_PNL_SNAPSHOT_DOWNLOAD = `${ERP_FINANCE_BASE}/pnl-snapshot/download`;
+
+// ERP · My HR (self-service): the caller's own employee record. Every other HR
+// read is keyed on an employee id the employee cannot discover.
+export const HR_EMPLOYEE_ME = `${BASE_URL}/admin-core-service/api/v1/hr/employees/me`;

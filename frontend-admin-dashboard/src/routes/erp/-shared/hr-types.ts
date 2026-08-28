@@ -1071,3 +1071,18 @@ export interface CompOffDTO {
     status?: string;
     approved_by?: string;
 }
+
+// ───────────────────────── Tax declaration (self-service) ─────────────────────────
+
+export interface TaxDeclarationDTO {
+    id?: string;
+    employee_id?: string;
+    financial_year?: string;
+    /** OLD | NEW — only OLD allows the chapter VI-A deductions below. */
+    regime?: string;
+    /** Free-form keyed amounts the engine reads: section_80c, section_80d, hra_rent_paid, … */
+    declarations?: Record<string, unknown>;
+    proof_submitted?: boolean;
+    proof_verified?: boolean;
+    status?: string;
+}

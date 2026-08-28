@@ -28,6 +28,7 @@ import {
     Money,
     ChartLineUp,
     SealCheck,
+    UserCircle,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -666,6 +667,43 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/engagement-engines/inbox',
                 subItemId: 'engagement-task-inbox',
                 adminOnly: true,
+            },
+        ],
+    },
+    // My HR is the EMPLOYEE's own workspace, so its sub-items are deliberately
+    // not adminOnly. mySidebar strips the whole section for anyone without an
+    // employee profile (see useMyEmployeeProfile) — same shape as
+    // mentorship-my-mentorship.
+    {
+        icon: UserCircle,
+        title: 'My HR',
+        id: 'erp-my-hr',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Overview',
+                subItemLink: '/erp/my-hr',
+                subItemId: 'erp-my-hr-overview',
+            },
+            {
+                subItem: 'My Leave',
+                subItemLink: '/erp/my-hr/leave',
+                subItemId: 'erp-my-hr-leave',
+            },
+            {
+                subItem: 'My Payslips',
+                subItemLink: '/erp/my-hr/payslips',
+                subItemId: 'erp-my-hr-payslips',
+            },
+            {
+                subItem: 'My Tax',
+                subItemLink: '/erp/my-hr/tax',
+                subItemId: 'erp-my-hr-tax',
+            },
+            {
+                subItem: 'My Claims',
+                subItemLink: '/erp/my-hr/claims',
+                subItemId: 'erp-my-hr-claims',
             },
         ],
     },

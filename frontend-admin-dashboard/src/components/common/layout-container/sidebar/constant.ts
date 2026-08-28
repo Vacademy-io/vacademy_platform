@@ -91,6 +91,7 @@ export const controlledTabs = [
     'mentorship',
     // ERP (HR & Payroll): opt-in per institute, same as above. Payroll is not
     // something to surface by accident.
+    'erp-my-hr',
     'erp-people',
     'erp-leave',
     'erp-attendance',

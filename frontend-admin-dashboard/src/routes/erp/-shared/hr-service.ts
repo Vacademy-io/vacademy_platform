@@ -75,6 +75,13 @@ import {
     HR_LEAVE_YEAR_END,
     HR_COMP_OFF,
     HR_COMP_OFF_ACTION,
+    HR_ATTENDANCE_CHECK_IN,
+    HR_ATTENDANCE_CHECK_OUT,
+    HR_LEAVE_APPLY,
+    HR_TAX_DECLARATIONS,
+    HR_TAX_DECLARATION_BY_ID,
+    HR_REIMBURSEMENTS,
+    HR_PAYROLL_LOANS,
 } from '@/constants/urls';
 import type {
     AssignSalaryPayload,
@@ -123,6 +130,7 @@ import type {
     LeaveApplicationDTO,
     LeaveBalanceDTO,
     CompOffDTO,
+    TaxDeclarationDTO,
 } from '@/routes/erp/-shared/hr-types';
 
 /**
@@ -203,6 +211,10 @@ export const hrKeys = {
         employeeId ?? 'all',
     ],
     compOffs: (employeeId?: string) => [...ERP_KEY, 'comp-offs', employeeId ?? 'all'],
+    myPayslips: (employeeId: string, year: number) => [...ERP_KEY, 'my-payslips', employeeId, year],
+    taxDeclaration: (employeeId: string, fy: string) => [...ERP_KEY, 'tax-declaration', employeeId, fy],
+    myReimbursements: (employeeId: string) => [...ERP_KEY, 'my-reimbursements', employeeId],
+    myLoans: (employeeId: string) => [...ERP_KEY, 'my-loans', employeeId],
 };
 
 // ───────────────────────── People ─────────────────────────
@@ -1249,4 +1261,140 @@ export const actOnCompOff = async (
         instituteParams()
     );
     return data;
+};
+
+// ───────────────────────── My HR (self-service) ─────────────────────────
+//
+// These call the same endpoints as the admin screens; the backend decides what
+// a non-HR caller may see. Where an endpoint accepts an employeeId, the caller
+// passes their OWN (from useMyEmployeeProfile) and the guard refuses anyone
+// else's — the UI is not what keeps these private.
+
+/** Check in. employeeId is omitted deliberately: the backend resolves the caller. */
+export const checkIn = async (payload: {
+    latitude?: number;
+    longitude?: number;
+}): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_ATTENDANCE_CHECK_IN,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const checkOut = async (payload: {
+    latitude?: number;
+    longitude?: number;
+}): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_ATTENDANCE_CHECK_OUT,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const applyForLeave = async (payload: {
+    employee_id: string;
+    leave_type_id: string;
+    from_date: string;
+    to_date: string;
+    is_half_day?: boolean;
+    half_day_type?: string;
+    reason?: string;
+}): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_LEAVE_APPLY,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const fetchMyPayslips = async (
+    employeeId: string,
+    year: number
+): Promise<PayslipDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_PAYSLIPS,
+        instituteParams({ employeeId, year })
+    );
+    return data ?? [];
+};
+
+export const fetchTaxDeclaration = async (
+    employeeId: string,
+    financialYear: string
+): Promise<TaxDeclarationDTO | null> => {
+    try {
+        const { data } = await authenticatedAxiosInstance.get(
+            HR_TAX_DECLARATIONS,
+            instituteParams({ employeeId, fy: financialYear, financialYear })
+        );
+        // The endpoint may answer with a list or a single record depending on args.
+        if (Array.isArray(data)) return data[0] ?? null;
+        return data ?? null;
+    } catch {
+        // No declaration filed yet is the normal starting state.
+        return null;
+    }
+};
+
+export const submitTaxDeclaration = async (payload: {
+    employee_id: string;
+    financial_year: string;
+    regime?: string;
+    declarations: Record<string, unknown>;
+}): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_TAX_DECLARATIONS,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const updateTaxDeclaration = async (
+    id: string,
+    payload: { regime?: string; declarations: Record<string, unknown> }
+): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.put(
+        HR_TAX_DECLARATION_BY_ID(id),
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const submitReimbursement = async (payload: {
+    employee_id: string;
+    type: string;
+    amount: number;
+    description?: string;
+    expense_date?: string;
+    receipt_file_id?: string;
+}): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_REIMBURSEMENTS,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const fetchMyReimbursements = async (employeeId: string) => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_REIMBURSEMENTS,
+        instituteParams({ employeeId })
+    );
+    return data ?? [];
+};
+
+export const fetchMyLoans = async (employeeId: string) => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_PAYROLL_LOANS,
+        instituteParams({ employeeId })
+    );
+    return data ?? [];
 };

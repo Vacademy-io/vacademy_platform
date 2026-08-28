@@ -254,6 +254,7 @@ const GratuityTab = ({
                                         <td className="px-4 py-2.5 text-end">
                                             <StatusChip
                                                 text={r.vested ? 'Vested' : 'Not yet'}
+                                                textSize="text-caption"
                                                 status={r.vested ? 'SUCCESS' : 'INFO'}
                                             />
                                         </td>
@@ -391,6 +392,7 @@ const EosbTab = ({
                                         <td className="px-4 py-2.5 text-end">
                                             <StatusChip
                                                 text={r.statutory_eligible ? 'Eligible' : 'Not yet'}
+                                                textSize="text-caption"
                                                 status={r.statutory_eligible ? 'SUCCESS' : 'INFO'}
                                             />
                                         </td>

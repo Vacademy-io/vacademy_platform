@@ -866,3 +866,208 @@ export interface BankExportResult {
     skipped_count: number;
     warnings: string[];
 }
+
+// ───────────────────────── Attendance ─────────────────────────
+//
+// hr_attendance and hr_leave DTOs use @JsonNaming(SnakeCase), like People and
+// Payroll — unlike the compliance filings above.
+
+/** TIME_TRACKING = employees check in/out; DAY_LEVEL = admins mark the day. */
+export type AttendanceMode = 'TIME_TRACKING' | 'DAY_LEVEL';
+
+export type AttendanceStatus =
+    | 'PRESENT'
+    | 'ABSENT'
+    | 'HALF_DAY'
+    | 'ON_LEAVE'
+    | 'HOLIDAY'
+    | 'WEEKEND'
+    | 'COMP_OFF';
+
+export interface AttendanceConfigDTO {
+    id?: string;
+    institute_id?: string;
+    mode?: AttendanceMode;
+    /** IANA zone the institute's days are bucketed by — payroll depends on this. */
+    timezone?: string;
+    auto_checkout_enabled?: boolean;
+    auto_checkout_time?: string;
+    geo_fence_enabled?: boolean;
+    geo_fence_lat?: number;
+    geo_fence_lng?: number;
+    geo_fence_radius_m?: number;
+    ip_restriction_enabled?: boolean;
+    /** Exact IPs or CIDR blocks. */
+    allowed_ips?: string[];
+    overtime_enabled?: boolean;
+    overtime_threshold_min?: number;
+    half_day_threshold_min?: number;
+    /** e.g. ["SATURDAY","SUNDAY"] — a Sun-Thu institute changes this. */
+    weekend_days?: string[];
+}
+
+export interface AttendanceRecordDTO {
+    id?: string;
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    institute_id?: string;
+    attendance_date?: string;
+    shift_id?: string;
+    check_in_time?: string;
+    check_out_time?: string;
+    total_hours?: Money;
+    overtime_hours?: Money;
+    break_duration_min?: number;
+    status?: AttendanceStatus | string;
+    source?: string;
+    remarks?: string;
+    is_regularized?: boolean;
+}
+
+export interface AttendanceSummaryRowDTO {
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    total_working_days?: number;
+    present?: Money;
+    absent?: Money;
+    half_day?: Money;
+    on_leave?: Money;
+    overtime_hours?: Money;
+}
+
+export interface RegularizationDTO {
+    id?: string;
+    attendance_id?: string;
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    attendance_date?: string;
+    original_status?: string;
+    requested_status?: string;
+    original_check_in?: string;
+    original_check_out?: string;
+    requested_check_in?: string;
+    requested_check_out?: string;
+    reason?: string;
+    approval_status?: string;
+    approved_by?: string;
+    approved_at?: string;
+    remarks?: string;
+}
+
+export interface ShiftDTO {
+    id?: string;
+    institute_id?: string;
+    name?: string;
+    code?: string;
+    start_time?: string;
+    end_time?: string;
+    break_duration_min?: number;
+    is_night_shift?: boolean;
+    grace_period_min?: number;
+    min_hours_full_day?: Money;
+    min_hours_half_day?: Money;
+    is_default?: boolean;
+    status?: string;
+}
+
+export interface HolidayDTO {
+    id?: string;
+    institute_id?: string;
+    name?: string;
+    date?: string;
+    type?: string;
+    is_optional?: boolean;
+    max_optional_allowed?: number;
+    year?: number;
+    description?: string;
+}
+
+// ───────────────────────── Leave ─────────────────────────
+
+export interface LeaveTypeDTO {
+    id?: string;
+    institute_id?: string;
+    name?: string;
+    code?: string;
+    is_paid?: boolean;
+    is_carry_forward?: boolean;
+    max_carry_forward?: number;
+    is_encashable?: boolean;
+    requires_document?: boolean;
+    min_days?: Money;
+    max_consecutive_days?: number;
+    applicable_gender?: string;
+    description?: string;
+    status?: string;
+}
+
+export interface LeavePolicyDTO {
+    id?: string;
+    institute_id?: string;
+    leave_type_id?: string;
+    leave_type_name?: string;
+    annual_quota?: Money;
+    accrual_type?: 'YEARLY' | 'MONTHLY' | 'QUARTERLY' | string;
+    accrual_amount?: Money;
+    pro_rata_enabled?: boolean;
+    applicable_after_days?: number;
+    applicable_employment_types?: string[];
+    effective_from?: string;
+    effective_to?: string;
+    status?: string;
+}
+
+export interface LeaveBalanceDTO {
+    id?: string;
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    leave_type_id?: string;
+    leave_type_name?: string;
+    year?: number;
+    opening_balance?: Money;
+    accrued?: Money;
+    used?: Money;
+    adjustment?: Money;
+    carried_forward?: Money;
+    encashed?: Money;
+    closing_balance?: Money;
+}
+
+export interface LeaveApplicationDTO {
+    id?: string;
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    institute_id?: string;
+    leave_type_id?: string;
+    leave_type_name?: string;
+    from_date?: string;
+    to_date?: string;
+    total_days?: Money;
+    is_half_day?: boolean;
+    half_day_type?: string;
+    reason?: string;
+    document_file_id?: string;
+    status?: string;
+    applied_to?: string;
+    approved_by?: string;
+    approved_at?: string;
+    rejection_reason?: string;
+}
+
+export interface CompOffDTO {
+    id?: string;
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    worked_on_date?: string;
+    earned_days?: Money;
+    expiry_date?: string;
+    used?: boolean;
+    status?: string;
+    approved_by?: string;
+}

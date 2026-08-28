@@ -50,6 +50,31 @@ import {
     HR_COMPLIANCE_EOSB,
     HR_COMPLIANCE_BONUS,
     HR_COMPLIANCE_BONUS_MATERIALIZE,
+    HR_ATTENDANCE,
+    HR_ATTENDANCE_CONFIG,
+    HR_ATTENDANCE_MARK,
+    HR_ATTENDANCE_SUMMARY,
+    HR_ATTENDANCE_REGULARIZATION,
+    HR_ATTENDANCE_REGULARIZATION_ACTION,
+    HR_SHIFTS,
+    HR_SHIFT_BY_ID,
+    HR_SHIFTS_ASSIGN,
+    HR_HOLIDAYS,
+    HR_HOLIDAY_BY_ID,
+    HR_HOLIDAYS_BULK,
+    HR_LEAVE_TYPES,
+    HR_LEAVE_TYPE_BY_ID,
+    HR_LEAVE_POLICIES,
+    HR_LEAVE_POLICY_BY_ID,
+    HR_LEAVE_APPLICATIONS,
+    HR_LEAVE_APPLICATION_ACTION,
+    HR_LEAVE_APPLICATION_CANCEL,
+    HR_LEAVE_BALANCES,
+    HR_LEAVE_BALANCE_ADJUST,
+    HR_LEAVE_ACCRUE,
+    HR_LEAVE_YEAR_END,
+    HR_COMP_OFF,
+    HR_COMP_OFF_ACTION,
 } from '@/constants/urls';
 import type {
     AssignSalaryPayload,
@@ -87,6 +112,17 @@ import type {
     EosbProvisionReportDTO,
     BonusComputationReportDTO,
     BonusMaterializationResultDTO,
+    AttendanceConfigDTO,
+    AttendanceRecordDTO,
+    AttendanceSummaryRowDTO,
+    RegularizationDTO,
+    ShiftDTO,
+    HolidayDTO,
+    LeaveTypeDTO,
+    LeavePolicyDTO,
+    LeaveApplicationDTO,
+    LeaveBalanceDTO,
+    CompOffDTO,
 } from '@/routes/erp/-shared/hr-types';
 
 /**
@@ -135,6 +171,38 @@ export const hrKeys = {
     gratuity: (asOf?: string) => [...ERP_KEY, 'gratuity', asOf ?? 'today'],
     eosb: (asOf?: string) => [...ERP_KEY, 'eosb', asOf ?? 'today'],
     bonus: (fy: string, pct: number) => [...ERP_KEY, 'bonus', fy, pct],
+    attendanceConfig: () => [...ERP_KEY, 'attendance-config'],
+    attendance: (year: number, month: number, employeeId?: string) => [
+        ...ERP_KEY,
+        'attendance',
+        year,
+        month,
+        employeeId ?? 'all',
+    ],
+    attendanceSummary: (year: number, month: number) => [
+        ...ERP_KEY,
+        'attendance-summary',
+        year,
+        month,
+    ],
+    regularizations: (status?: string) => [...ERP_KEY, 'regularizations', status ?? 'all'],
+    shifts: () => [...ERP_KEY, 'shifts'],
+    holidays: (year: number) => [...ERP_KEY, 'holidays', year],
+    leaveTypes: () => [...ERP_KEY, 'leave-types'],
+    leavePolicies: () => [...ERP_KEY, 'leave-policies'],
+    leaveApplications: (status?: string, employeeId?: string) => [
+        ...ERP_KEY,
+        'leave-applications',
+        status ?? 'all',
+        employeeId ?? 'all',
+    ],
+    leaveBalances: (year: number, employeeId?: string) => [
+        ...ERP_KEY,
+        'leave-balances',
+        year,
+        employeeId ?? 'all',
+    ],
+    compOffs: (employeeId?: string) => [...ERP_KEY, 'comp-offs', employeeId ?? 'all'],
 };
 
 // ───────────────────────── People ─────────────────────────
@@ -904,4 +972,281 @@ export const materializeBonus = async (args: {
         instituteParams(args)
     );
     return data ?? {};
+};
+
+// ───────────────────────── Attendance ─────────────────────────
+
+export const fetchAttendanceConfig = async (): Promise<AttendanceConfigDTO | null> => {
+    try {
+        const { data } = await authenticatedAxiosInstance.get(
+            HR_ATTENDANCE_CONFIG,
+            instituteParams()
+        );
+        return data ?? null;
+    } catch {
+        // An institute that has never configured attendance 4xxs here; that is a
+        // starting state, not a failure. Callers fall back to TIME_TRACKING.
+        return null;
+    }
+};
+
+export const saveAttendanceConfig = async (
+    payload: AttendanceConfigDTO
+): Promise<AttendanceConfigDTO> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_ATTENDANCE_CONFIG,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+/** Records for a month, optionally narrowed to one employee. */
+export const fetchAttendanceRecords = async (args: {
+    month: number;
+    year: number;
+    employeeId?: string;
+}): Promise<AttendanceRecordDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_ATTENDANCE,
+        instituteParams({ month: args.month, year: args.year, employeeId: args.employeeId })
+    );
+    return data ?? [];
+};
+
+export const fetchAttendanceSummary = async (
+    month: number,
+    year: number
+): Promise<AttendanceSummaryRowDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_ATTENDANCE_SUMMARY,
+        instituteParams({ month, year })
+    );
+    return data ?? [];
+};
+
+/** Bulk day-level marking. Refused by the backend when the month is payroll-locked. */
+export const markAttendance = async (payload: {
+    attendance_date: string;
+    records: Array<{ employee_id: string; status: string; remarks?: string }>;
+}): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_ATTENDANCE_MARK,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const fetchRegularizations = async (
+    status?: string
+): Promise<RegularizationDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_ATTENDANCE_REGULARIZATION,
+        instituteParams(status ? { status } : undefined)
+    );
+    return data ?? [];
+};
+
+export const actOnRegularization = async (
+    id: string,
+    payload: { approval_status: 'APPROVED' | 'REJECTED'; remarks?: string }
+): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.put(
+        HR_ATTENDANCE_REGULARIZATION_ACTION(id),
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const fetchShifts = async (): Promise<ShiftDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(HR_SHIFTS, instituteParams());
+    return data ?? [];
+};
+
+export const saveShift = async (payload: ShiftDTO): Promise<string> => {
+    const { data } = payload.id
+        ? await authenticatedAxiosInstance.put(HR_SHIFT_BY_ID(payload.id), payload, instituteParams())
+        : await authenticatedAxiosInstance.post(HR_SHIFTS, payload, instituteParams());
+    return data;
+};
+
+/**
+ * Assigning a shift closes any mapping still open on/after `effective_from`, so
+ * an employee only ever has one active shift — the backend enforces that too.
+ */
+export const assignShift = async (payload: {
+    shift_id: string;
+    employee_ids: string[];
+    effective_from: string;
+}): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_SHIFTS_ASSIGN,
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const fetchHolidays = async (year: number): Promise<HolidayDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(HR_HOLIDAYS, instituteParams({ year }));
+    return data ?? [];
+};
+
+export const saveHoliday = async (payload: HolidayDTO): Promise<string> => {
+    const { data } = payload.id
+        ? await authenticatedAxiosInstance.put(
+              HR_HOLIDAY_BY_ID(payload.id),
+              payload,
+              instituteParams()
+          )
+        : await authenticatedAxiosInstance.post(HR_HOLIDAYS, payload, instituteParams());
+    return data;
+};
+
+export const deleteHoliday = async (id: string): Promise<void> => {
+    await authenticatedAxiosInstance.delete(HR_HOLIDAY_BY_ID(id), instituteParams());
+};
+
+/** Bulk import. Duplicates are skipped server-side and reported in the message. */
+export const bulkCreateHolidays = async (holidays: HolidayDTO[]): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_HOLIDAYS_BULK,
+        { holidays },
+        instituteParams()
+    );
+    return data;
+};
+
+// ───────────────────────── Leave ─────────────────────────
+
+export const fetchLeaveTypes = async (): Promise<LeaveTypeDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(HR_LEAVE_TYPES, instituteParams());
+    return data ?? [];
+};
+
+export const saveLeaveType = async (payload: LeaveTypeDTO): Promise<string> => {
+    const { data } = payload.id
+        ? await authenticatedAxiosInstance.put(
+              HR_LEAVE_TYPE_BY_ID(payload.id),
+              payload,
+              instituteParams()
+          )
+        : await authenticatedAxiosInstance.post(HR_LEAVE_TYPES, payload, instituteParams());
+    return data;
+};
+
+export const fetchLeavePolicies = async (): Promise<LeavePolicyDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(HR_LEAVE_POLICIES, instituteParams());
+    return data ?? [];
+};
+
+export const saveLeavePolicy = async (payload: LeavePolicyDTO): Promise<string> => {
+    const { data } = payload.id
+        ? await authenticatedAxiosInstance.put(
+              HR_LEAVE_POLICY_BY_ID(payload.id),
+              payload,
+              instituteParams()
+          )
+        : await authenticatedAxiosInstance.post(HR_LEAVE_POLICIES, payload, instituteParams());
+    return data;
+};
+
+export const fetchLeaveApplications = async (args: {
+    status?: string;
+    employeeId?: string;
+}): Promise<LeaveApplicationDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_LEAVE_APPLICATIONS,
+        instituteParams({ status: args.status, employeeId: args.employeeId })
+    );
+    return data ?? [];
+};
+
+/**
+ * Approve or reject. The backend re-checks the balance at approval time and
+ * refuses if the month is payroll-locked, so surface its message verbatim.
+ */
+export const actOnLeaveApplication = async (
+    id: string,
+    payload: { status: 'APPROVED' | 'REJECTED'; rejection_reason?: string }
+): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.put(
+        HR_LEAVE_APPLICATION_ACTION(id),
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+export const cancelLeaveApplication = async (id: string): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.put(
+        HR_LEAVE_APPLICATION_CANCEL(id),
+        {},
+        instituteParams()
+    );
+    return data;
+};
+
+export const fetchLeaveBalances = async (args: {
+    employeeId?: string;
+    year: number;
+}): Promise<LeaveBalanceDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_LEAVE_BALANCES,
+        instituteParams({ employeeId: args.employeeId, year: args.year })
+    );
+    return data ?? [];
+};
+
+export const adjustLeaveBalance = async (
+    id: string,
+    payload: { adjustment: number; reason?: string }
+): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.put(
+        HR_LEAVE_BALANCE_ADJUST(id),
+        payload,
+        instituteParams()
+    );
+    return data;
+};
+
+/** Idempotent per period — the accrual ledger makes a repeat run a no-op. */
+export const runLeaveAccrual = async (): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_LEAVE_ACCRUE,
+        {},
+        instituteParams()
+    );
+    return data;
+};
+
+export const runLeaveYearEnd = async (): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_LEAVE_YEAR_END,
+        {},
+        instituteParams()
+    );
+    return data;
+};
+
+export const fetchCompOffs = async (employeeId?: string): Promise<CompOffDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_COMP_OFF,
+        instituteParams(employeeId ? { employeeId } : undefined)
+    );
+    return data ?? [];
+};
+
+export const actOnCompOff = async (
+    id: string,
+    payload: { status: 'APPROVED' | 'REJECTED' }
+): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.put(
+        HR_COMP_OFF_ACTION(id),
+        payload,
+        instituteParams()
+    );
+    return data;
 };

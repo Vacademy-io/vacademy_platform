@@ -38,7 +38,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { fetchCampaignLeads } from '@/routes/audience-manager/list/-services/get-campaign-users';
-import { SUBMIT_CATALOGUE_LEAD_URL, AUDIENCE_CAMPAIGN
+import {
+    SUBMIT_CATALOGUE_LEAD_URL,
+    AUDIENCE_CAMPAIGN,
     GET_INVITE_LIST,
 } from '@/constants/urls';
 import axios from 'axios';

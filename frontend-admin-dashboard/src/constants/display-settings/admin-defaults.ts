@@ -33,6 +33,8 @@ const OPT_IN_TAB_IDS = new Set<string>([
     // ERP (HR & Payroll): every module stays hidden until the institute turns
     // it on. An institute that never runs payroll here should never see it.
     'erp-people',
+    'erp-leave',
+    'erp-attendance',
     'erp-payroll',
     'erp-compliance',
     'erp-finance',

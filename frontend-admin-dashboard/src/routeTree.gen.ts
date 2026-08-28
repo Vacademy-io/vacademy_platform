@@ -114,7 +114,9 @@ import { Route as EvaluationEvaluationsIndexRouteImport } from "./routes/evaluat
 import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/evaluation/evaluation-tool/index"
 import { Route as ErpPeopleIndexRouteImport } from "./routes/erp/people/index"
 import { Route as ErpPayrollIndexRouteImport } from "./routes/erp/payroll/index"
+import { Route as ErpLeaveIndexRouteImport } from "./routes/erp/leave/index"
 import { Route as ErpComplianceIndexRouteImport } from "./routes/erp/compliance/index"
+import { Route as ErpAttendanceIndexRouteImport } from "./routes/erp/attendance/index"
 import { Route as EngagementEnginesInboxIndexRouteImport } from "./routes/engagement-engines/inbox/index"
 import { Route as EngagementEnginesCreateIndexRouteImport } from "./routes/engagement-engines/create/index"
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
@@ -187,10 +189,14 @@ import { Route as ErpPeopleEmployeeIdIndexRouteImport } from "./routes/erp/peopl
 import { Route as ErpPayrollSalarySetupIndexRouteImport } from "./routes/erp/payroll/salary-setup/index"
 import { Route as ErpPayrollAdjustmentsIndexRouteImport } from "./routes/erp/payroll/adjustments/index"
 import { Route as ErpPayrollRunIdIndexRouteImport } from "./routes/erp/payroll/$runId/index"
+import { Route as ErpLeaveSetupIndexRouteImport } from "./routes/erp/leave/setup/index"
+import { Route as ErpLeaveBalancesIndexRouteImport } from "./routes/erp/leave/balances/index"
 import { Route as ErpFinancePnlIndexRouteImport } from "./routes/erp/finance/pnl/index"
 import { Route as ErpFinanceJournalIndexRouteImport } from "./routes/erp/finance/journal/index"
 import { Route as ErpComplianceProvisionsIndexRouteImport } from "./routes/erp/compliance/provisions/index"
 import { Route as ErpComplianceChallansIndexRouteImport } from "./routes/erp/compliance/challans/index"
+import { Route as ErpAttendanceSetupIndexRouteImport } from "./routes/erp/attendance/setup/index"
+import { Route as ErpAttendanceRegularizationsIndexRouteImport } from "./routes/erp/attendance/regularizations/index"
 import { Route as AudienceManagerListCampaignUsersIndexRouteImport } from "./routes/audience-manager/list/campaign-users/index"
 import { Route as AssessmentExportAssessmentIdIndexRouteImport } from "./routes/assessment/export/$assessmentId/index"
 import { Route as AiCenterAiToolsVsmartUploadIndexRouteImport } from "./routes/ai-center/ai-tools/vsmart-upload/index"
@@ -1013,12 +1019,26 @@ const ErpPayrollIndexRoute = ErpPayrollIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/erp/payroll/index.lazy").then((d) => d.Route),
 )
+const ErpLeaveIndexRoute = ErpLeaveIndexRouteImport.update({
+  id: "/erp/leave/",
+  path: "/erp/leave/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/leave/index.lazy").then((d) => d.Route),
+)
 const ErpComplianceIndexRoute = ErpComplianceIndexRouteImport.update({
   id: "/erp/compliance/",
   path: "/erp/compliance/",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/erp/compliance/index.lazy").then((d) => d.Route),
+)
+const ErpAttendanceIndexRoute = ErpAttendanceIndexRouteImport.update({
+  id: "/erp/attendance/",
+  path: "/erp/attendance/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/attendance/index.lazy").then((d) => d.Route),
 )
 const EngagementEnginesInboxIndexRoute =
   EngagementEnginesInboxIndexRouteImport.update({
@@ -1592,6 +1612,20 @@ const ErpPayrollRunIdIndexRoute = ErpPayrollRunIdIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/erp/payroll/$runId/index.lazy").then((d) => d.Route),
 )
+const ErpLeaveSetupIndexRoute = ErpLeaveSetupIndexRouteImport.update({
+  id: "/erp/leave/setup/",
+  path: "/erp/leave/setup/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/leave/setup/index.lazy").then((d) => d.Route),
+)
+const ErpLeaveBalancesIndexRoute = ErpLeaveBalancesIndexRouteImport.update({
+  id: "/erp/leave/balances/",
+  path: "/erp/leave/balances/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/leave/balances/index.lazy").then((d) => d.Route),
+)
 const ErpFinancePnlIndexRoute = ErpFinancePnlIndexRouteImport.update({
   id: "/erp/finance/pnl/",
   path: "/erp/finance/pnl/",
@@ -1623,6 +1657,23 @@ const ErpComplianceChallansIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/erp/compliance/challans/index.lazy").then((d) => d.Route),
+  )
+const ErpAttendanceSetupIndexRoute = ErpAttendanceSetupIndexRouteImport.update({
+  id: "/erp/attendance/setup/",
+  path: "/erp/attendance/setup/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/attendance/setup/index.lazy").then((d) => d.Route),
+)
+const ErpAttendanceRegularizationsIndexRoute =
+  ErpAttendanceRegularizationsIndexRouteImport.update({
+    id: "/erp/attendance/regularizations/",
+    path: "/erp/attendance/regularizations/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/attendance/regularizations/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const AudienceManagerListCampaignUsersIndexRoute =
   AudienceManagerListCampaignUsersIndexRouteImport.update({
@@ -2074,7 +2125,9 @@ export interface FileRoutesByFullPath {
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
+  "/erp/attendance/": typeof ErpAttendanceIndexRoute
   "/erp/compliance/": typeof ErpComplianceIndexRoute
+  "/erp/leave/": typeof ErpLeaveIndexRoute
   "/erp/payroll/": typeof ErpPayrollIndexRoute
   "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
@@ -2146,10 +2199,14 @@ export interface FileRoutesByFullPath {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/attendance/regularizations/": typeof ErpAttendanceRegularizationsIndexRoute
+  "/erp/attendance/setup/": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans/": typeof ErpComplianceChallansIndexRoute
   "/erp/compliance/provisions/": typeof ErpComplianceProvisionsIndexRoute
   "/erp/finance/journal/": typeof ErpFinanceJournalIndexRoute
   "/erp/finance/pnl/": typeof ErpFinancePnlIndexRoute
+  "/erp/leave/balances/": typeof ErpLeaveBalancesIndexRoute
+  "/erp/leave/setup/": typeof ErpLeaveSetupIndexRoute
   "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments/": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup/": typeof ErpPayrollSalarySetupIndexRoute
@@ -2298,7 +2355,9 @@ export interface FileRoutesByTo {
   "/content/$contentId": typeof ContentContentIdIndexRoute
   "/engagement-engines/create": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox": typeof EngagementEnginesInboxIndexRoute
+  "/erp/attendance": typeof ErpAttendanceIndexRoute
   "/erp/compliance": typeof ErpComplianceIndexRoute
+  "/erp/leave": typeof ErpLeaveIndexRoute
   "/erp/payroll": typeof ErpPayrollIndexRoute
   "/erp/people": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool": typeof EvaluationEvaluationToolIndexRoute
@@ -2370,10 +2429,14 @@ export interface FileRoutesByTo {
   "/ai-center/ai-tools/vsmart-upload": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/attendance/regularizations": typeof ErpAttendanceRegularizationsIndexRoute
+  "/erp/attendance/setup": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans": typeof ErpComplianceChallansIndexRoute
   "/erp/compliance/provisions": typeof ErpComplianceProvisionsIndexRoute
   "/erp/finance/journal": typeof ErpFinanceJournalIndexRoute
   "/erp/finance/pnl": typeof ErpFinancePnlIndexRoute
+  "/erp/leave/balances": typeof ErpLeaveBalancesIndexRoute
+  "/erp/leave/setup": typeof ErpLeaveSetupIndexRoute
   "/erp/payroll/$runId": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup": typeof ErpPayrollSalarySetupIndexRoute
@@ -2524,7 +2587,9 @@ export interface FileRoutesById {
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
+  "/erp/attendance/": typeof ErpAttendanceIndexRoute
   "/erp/compliance/": typeof ErpComplianceIndexRoute
+  "/erp/leave/": typeof ErpLeaveIndexRoute
   "/erp/payroll/": typeof ErpPayrollIndexRoute
   "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
@@ -2596,10 +2661,14 @@ export interface FileRoutesById {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/attendance/regularizations/": typeof ErpAttendanceRegularizationsIndexRoute
+  "/erp/attendance/setup/": typeof ErpAttendanceSetupIndexRoute
   "/erp/compliance/challans/": typeof ErpComplianceChallansIndexRoute
   "/erp/compliance/provisions/": typeof ErpComplianceProvisionsIndexRoute
   "/erp/finance/journal/": typeof ErpFinanceJournalIndexRoute
   "/erp/finance/pnl/": typeof ErpFinancePnlIndexRoute
+  "/erp/leave/balances/": typeof ErpLeaveBalancesIndexRoute
+  "/erp/leave/setup/": typeof ErpLeaveSetupIndexRoute
   "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments/": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup/": typeof ErpPayrollSalarySetupIndexRoute
@@ -2751,7 +2820,9 @@ export interface FileRouteTypes {
     | "/content/$contentId/"
     | "/engagement-engines/create/"
     | "/engagement-engines/inbox/"
+    | "/erp/attendance/"
     | "/erp/compliance/"
+    | "/erp/leave/"
     | "/erp/payroll/"
     | "/erp/people/"
     | "/evaluation/evaluation-tool/"
@@ -2823,10 +2894,14 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/attendance/regularizations/"
+    | "/erp/attendance/setup/"
     | "/erp/compliance/challans/"
     | "/erp/compliance/provisions/"
     | "/erp/finance/journal/"
     | "/erp/finance/pnl/"
+    | "/erp/leave/balances/"
+    | "/erp/leave/setup/"
     | "/erp/payroll/$runId/"
     | "/erp/payroll/adjustments/"
     | "/erp/payroll/salary-setup/"
@@ -2975,7 +3050,9 @@ export interface FileRouteTypes {
     | "/content/$contentId"
     | "/engagement-engines/create"
     | "/engagement-engines/inbox"
+    | "/erp/attendance"
     | "/erp/compliance"
+    | "/erp/leave"
     | "/erp/payroll"
     | "/erp/people"
     | "/evaluation/evaluation-tool"
@@ -3047,10 +3124,14 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload"
     | "/assessment/export/$assessmentId"
     | "/audience-manager/list/campaign-users"
+    | "/erp/attendance/regularizations"
+    | "/erp/attendance/setup"
     | "/erp/compliance/challans"
     | "/erp/compliance/provisions"
     | "/erp/finance/journal"
     | "/erp/finance/pnl"
+    | "/erp/leave/balances"
+    | "/erp/leave/setup"
     | "/erp/payroll/$runId"
     | "/erp/payroll/adjustments"
     | "/erp/payroll/salary-setup"
@@ -3200,7 +3281,9 @@ export interface FileRouteTypes {
     | "/content/$contentId/"
     | "/engagement-engines/create/"
     | "/engagement-engines/inbox/"
+    | "/erp/attendance/"
     | "/erp/compliance/"
+    | "/erp/leave/"
     | "/erp/payroll/"
     | "/erp/people/"
     | "/evaluation/evaluation-tool/"
@@ -3272,10 +3355,14 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/attendance/regularizations/"
+    | "/erp/attendance/setup/"
     | "/erp/compliance/challans/"
     | "/erp/compliance/provisions/"
     | "/erp/finance/journal/"
     | "/erp/finance/pnl/"
+    | "/erp/leave/balances/"
+    | "/erp/leave/setup/"
     | "/erp/payroll/$runId/"
     | "/erp/payroll/adjustments/"
     | "/erp/payroll/salary-setup/"
@@ -3425,7 +3512,9 @@ export interface RootRouteChildren {
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
   EngagementEnginesCreateIndexRoute: typeof EngagementEnginesCreateIndexRoute
   EngagementEnginesInboxIndexRoute: typeof EngagementEnginesInboxIndexRoute
+  ErpAttendanceIndexRoute: typeof ErpAttendanceIndexRoute
   ErpComplianceIndexRoute: typeof ErpComplianceIndexRoute
+  ErpLeaveIndexRoute: typeof ErpLeaveIndexRoute
   ErpPayrollIndexRoute: typeof ErpPayrollIndexRoute
   ErpPeopleIndexRoute: typeof ErpPeopleIndexRoute
   EvaluationEvaluationToolIndexRoute: typeof EvaluationEvaluationToolIndexRoute
@@ -3497,10 +3586,14 @@ export interface RootRouteChildren {
   AiCenterAiToolsVsmartUploadIndexRoute: typeof AiCenterAiToolsVsmartUploadIndexRoute
   AssessmentExportAssessmentIdIndexRoute: typeof AssessmentExportAssessmentIdIndexRoute
   AudienceManagerListCampaignUsersIndexRoute: typeof AudienceManagerListCampaignUsersIndexRoute
+  ErpAttendanceRegularizationsIndexRoute: typeof ErpAttendanceRegularizationsIndexRoute
+  ErpAttendanceSetupIndexRoute: typeof ErpAttendanceSetupIndexRoute
   ErpComplianceChallansIndexRoute: typeof ErpComplianceChallansIndexRoute
   ErpComplianceProvisionsIndexRoute: typeof ErpComplianceProvisionsIndexRoute
   ErpFinanceJournalIndexRoute: typeof ErpFinanceJournalIndexRoute
   ErpFinancePnlIndexRoute: typeof ErpFinancePnlIndexRoute
+  ErpLeaveBalancesIndexRoute: typeof ErpLeaveBalancesIndexRoute
+  ErpLeaveSetupIndexRoute: typeof ErpLeaveSetupIndexRoute
   ErpPayrollRunIdIndexRoute: typeof ErpPayrollRunIdIndexRoute
   ErpPayrollAdjustmentsIndexRoute: typeof ErpPayrollAdjustmentsIndexRoute
   ErpPayrollSalarySetupIndexRoute: typeof ErpPayrollSalarySetupIndexRoute
@@ -4297,11 +4390,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpPayrollIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/leave/": {
+      id: "/erp/leave/"
+      path: "/erp/leave"
+      fullPath: "/erp/leave/"
+      preLoaderRoute: typeof ErpLeaveIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/erp/compliance/": {
       id: "/erp/compliance/"
       path: "/erp/compliance"
       fullPath: "/erp/compliance/"
       preLoaderRoute: typeof ErpComplianceIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/attendance/": {
+      id: "/erp/attendance/"
+      path: "/erp/attendance"
+      fullPath: "/erp/attendance/"
+      preLoaderRoute: typeof ErpAttendanceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/engagement-engines/inbox/": {
@@ -4808,6 +4915,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpPayrollRunIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/leave/setup/": {
+      id: "/erp/leave/setup/"
+      path: "/erp/leave/setup"
+      fullPath: "/erp/leave/setup/"
+      preLoaderRoute: typeof ErpLeaveSetupIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/leave/balances/": {
+      id: "/erp/leave/balances/"
+      path: "/erp/leave/balances"
+      fullPath: "/erp/leave/balances/"
+      preLoaderRoute: typeof ErpLeaveBalancesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/erp/finance/pnl/": {
       id: "/erp/finance/pnl/"
       path: "/erp/finance/pnl"
@@ -4834,6 +4955,20 @@ declare module "@tanstack/react-router" {
       path: "/erp/compliance/challans"
       fullPath: "/erp/compliance/challans/"
       preLoaderRoute: typeof ErpComplianceChallansIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/attendance/setup/": {
+      id: "/erp/attendance/setup/"
+      path: "/erp/attendance/setup"
+      fullPath: "/erp/attendance/setup/"
+      preLoaderRoute: typeof ErpAttendanceSetupIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/attendance/regularizations/": {
+      id: "/erp/attendance/regularizations/"
+      path: "/erp/attendance/regularizations"
+      fullPath: "/erp/attendance/regularizations/"
+      preLoaderRoute: typeof ErpAttendanceRegularizationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/audience-manager/list/campaign-users/": {
@@ -5235,7 +5370,9 @@ const rootRouteChildren: RootRouteChildren = {
   ContentContentIdIndexRoute: ContentContentIdIndexRoute,
   EngagementEnginesCreateIndexRoute: EngagementEnginesCreateIndexRoute,
   EngagementEnginesInboxIndexRoute: EngagementEnginesInboxIndexRoute,
+  ErpAttendanceIndexRoute: ErpAttendanceIndexRoute,
   ErpComplianceIndexRoute: ErpComplianceIndexRoute,
+  ErpLeaveIndexRoute: ErpLeaveIndexRoute,
   ErpPayrollIndexRoute: ErpPayrollIndexRoute,
   ErpPeopleIndexRoute: ErpPeopleIndexRoute,
   EvaluationEvaluationToolIndexRoute: EvaluationEvaluationToolIndexRoute,
@@ -5325,10 +5462,15 @@ const rootRouteChildren: RootRouteChildren = {
     AssessmentExportAssessmentIdIndexRoute,
   AudienceManagerListCampaignUsersIndexRoute:
     AudienceManagerListCampaignUsersIndexRoute,
+  ErpAttendanceRegularizationsIndexRoute:
+    ErpAttendanceRegularizationsIndexRoute,
+  ErpAttendanceSetupIndexRoute: ErpAttendanceSetupIndexRoute,
   ErpComplianceChallansIndexRoute: ErpComplianceChallansIndexRoute,
   ErpComplianceProvisionsIndexRoute: ErpComplianceProvisionsIndexRoute,
   ErpFinanceJournalIndexRoute: ErpFinanceJournalIndexRoute,
   ErpFinancePnlIndexRoute: ErpFinancePnlIndexRoute,
+  ErpLeaveBalancesIndexRoute: ErpLeaveBalancesIndexRoute,
+  ErpLeaveSetupIndexRoute: ErpLeaveSetupIndexRoute,
   ErpPayrollRunIdIndexRoute: ErpPayrollRunIdIndexRoute,
   ErpPayrollAdjustmentsIndexRoute: ErpPayrollAdjustmentsIndexRoute,
   ErpPayrollSalarySetupIndexRoute: ErpPayrollSalarySetupIndexRoute,

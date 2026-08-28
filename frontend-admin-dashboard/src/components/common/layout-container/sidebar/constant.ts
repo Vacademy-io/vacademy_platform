@@ -92,6 +92,8 @@ export const controlledTabs = [
     // ERP (HR & Payroll): opt-in per institute, same as above. Payroll is not
     // something to surface by accident.
     'erp-people',
+    'erp-leave',
+    'erp-attendance',
     'erp-payroll',
     'erp-compliance',
     'erp-finance',

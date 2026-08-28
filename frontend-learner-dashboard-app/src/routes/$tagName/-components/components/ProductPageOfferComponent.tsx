@@ -449,8 +449,13 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // A fresh Course Finder answer means a fresh basket — keeping Class 2 picks
   // after the visitor switches to Class 5 would check them out for a class
   // they are no longer shopping for, with the evidence scrolled out of view.
+  //
+  // The exception is keepBasket: the picker reopened from the checkout's "Back
+  // to courses", where the visitor already has courses selected and came back
+  // to ADD another. Resetting there deletes their whole basket the moment they
+  // answer, which reads as the site throwing their order away.
   useEffect(() => {
-    if (finderSelection) setCart([]);
+    if (finderSelection && !finderSelection.keepBasket) setCart([]);
   }, [finderSelection]);
 
   // Resolve the basket against what this page still sells. A restored id whose

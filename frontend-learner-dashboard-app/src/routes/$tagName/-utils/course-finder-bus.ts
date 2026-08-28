@@ -75,6 +75,13 @@ export interface CourseFinderSelectionPayload {
    * Optional so an older dispatcher (or a hand-fired event) still type-checks.
    */
   labels?: string[];
+  /**
+   * True when the picker was reopened by "Back to courses" from the checkout.
+   * That visitor is returning to ADD to what they already chose, so the offer
+   * block must NOT run its usual fresh-answer basket reset — doing so discards
+   * every course they picked before, with no undo. See ProductPageOfferComponent.
+   */
+  keepBasket?: boolean;
 }
 
 /**
@@ -100,6 +107,7 @@ export const subscribeCourseFinderApplied = (
             ...(Array.isArray(detail.sessions) ? detail.sessions : []),
             ...(Array.isArray(detail.tags) ? detail.tags : []),
           ],
+      keepBasket: detail.keepBasket === true,
     });
   };
   window.addEventListener(APPLIED_EVENT_NAME, handler);

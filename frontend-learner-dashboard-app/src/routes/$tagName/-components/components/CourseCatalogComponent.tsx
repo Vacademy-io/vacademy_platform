@@ -8,6 +8,10 @@ import {
   DEFAULT_COURSE_CATALOG_SORT,
 } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import {
+  clearCourseFinderOptions,
+  publishCourseFinderOptions,
+} from "../../-utils/course-finder-bus";
 import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -572,12 +576,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   // conventions (levels match by name, tags are raw case-sensitive strings).
   useEffect(() => {
     if (courses.length === 0) return;
-    window.dispatchEvent(
-      new CustomEvent("courseFinderOptionsReady", {
-        detail: { levels, sessions, tags },
-      }),
-    );
+    publishCourseFinderOptions({ levels, sessions, tags });
   }, [courses.length, levels, sessions, tags]);
+
+  // Drop the retained payload when this grid goes away, so a different
+  // catalogue page never opens its wizard on this one's levels.
+  useEffect(() => clearCourseFinderOptions, []);
 
   useEffect(() => {
     const handleApplied = (e: Event) => {

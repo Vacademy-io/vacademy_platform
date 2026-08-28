@@ -4969,6 +4969,23 @@ const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
     // lost with no visible cause. Detect and offer to move it rather than
     // leaving a note the admin reads after the page looks broken.
     const html: string = props.html || '';
+
+    // Every <a>/<button> in the pasted markup, plus the ids available to scroll
+    // to. Re-parsed only when the HTML changes — this walks the whole document
+    // through DOMParser, and the editor re-renders on unrelated prop edits.
+    const { rows: linkRows, sectionIds } = useMemo(() => parseHtmlLinks(html), [html]);
+
+    // Link targets for the "page" kind. Every page is offered, including
+    // unpublished ones: you routinely wire up a link while the destination is
+    // still a draft, and HtmlLinkRowEditor already flags a route that resolves
+    // to nothing. (Contrast syncNavFromPages, which filters to published —
+    // that builds the public menu, this picks a build-time target.)
+    const config = useEditorStore((s) => s.config);
+    const sitePages = useMemo(
+        () => (config?.pages ?? []).map((p) => ({ route: p.route, title: p.title })),
+        [config]
+    );
+
     const styleBlocks = html.match(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi) || [];
     const scriptCount = (html.match(/<script\b/gi) || []).length;
     const linkedCss = (html.match(/<link\b[^>]*stylesheet/gi) || []).length;

@@ -23,6 +23,8 @@ import {
     Notebook,
     PhoneCall,
     ChatCircleDots,
+    IdentificationBadge,
+    Money,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -660,6 +662,63 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Task Inbox',
                 subItemLink: '/engagement-engines/inbox',
                 subItemId: 'engagement-task-inbox',
+                adminOnly: true,
+            },
+        ],
+    },
+    // ─────────────────────────── ERP ───────────────────────────
+    // The operations world: HR & Payroll today, accounting/inventory later.
+    // Every module here is opt-in per institute (OPT_IN_TAB_IDS) and the ERP
+    // rail category itself ships hidden, so nothing appears until an institute
+    // turns it on in Settings → Display Settings.
+    {
+        icon: IdentificationBadge,
+        title: 'People',
+        id: 'erp-people',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Employees',
+                subItemLink: '/erp/people',
+                subItemId: 'erp-people-employees',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Departments & Designations',
+                subItemLink: '/erp/people/org',
+                subItemId: 'erp-people-org',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Staff Coverage',
+                subItemLink: '/erp/people/staff-bridge',
+                subItemId: 'erp-people-staff-bridge',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
+        icon: Money,
+        title: 'Payroll',
+        id: 'erp-payroll',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Runs',
+                subItemLink: '/erp/payroll',
+                subItemId: 'erp-payroll-runs',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Variable Pay',
+                subItemLink: '/erp/payroll/adjustments',
+                subItemId: 'erp-payroll-adjustments',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Salary Setup',
+                subItemLink: '/erp/payroll/salary-setup',
+                subItemId: 'erp-payroll-salary-setup',
                 adminOnly: true,
             },
         ],

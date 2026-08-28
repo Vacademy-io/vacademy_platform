@@ -60,6 +60,7 @@ import type {
     LearnerManagementSettings,
 } from '@/types/display-settings';
 
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 function getTeacherDisplaySections(t: TFunction): SettingsSectionGroup[] {
     return [
         {
@@ -266,7 +267,7 @@ export default function TeacherDisplaySettings() {
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
-    const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
+    const [activeCategory, setActiveCategory] = useState<SidebarCategory>('CRM');
 
     // Master switch behind the Downloads course-details tab: off locks that row
     // to hidden here, matching what the course page renders.
@@ -1620,7 +1621,7 @@ export default function TeacherDisplaySettings() {
                 <CardContent className="space-y-3">
                     <Tabs
                         value={activeCategory}
-                        onValueChange={(v) => setActiveCategory(v as 'CRM' | 'LMS' | 'AI')}
+                        onValueChange={(v) => setActiveCategory(v as SidebarCategory)}
                         className="w-full"
                     >
                         <TabsList className="mb-4 grid w-full grid-cols-3">

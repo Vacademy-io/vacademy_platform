@@ -23,6 +23,7 @@
         "lint": "eslint src --max-warnings=0",
         "lint:naming": "node scripts/lint-naming-terms.cjs",
         "typecheck": "tsc --project tsconfig.json --noEmit",
+        "gen:routes": "node scripts/generate-routes.mjs",
         "precommit": "pnpm run typecheck && pnpm run lint && pnpm run build",
         "prepare": "cd .. && husky .husky || true",
         "lint-staged": "lint-staged",

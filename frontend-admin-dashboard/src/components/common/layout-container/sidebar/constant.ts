@@ -89,6 +89,10 @@ export const controlledTabs = [
     // Mentorship: hidden by default (feature not broadly rolled out); admins
     // opt it in per institute via Display Settings (see admin-defaults.ts).
     'mentorship',
+    // ERP (HR & Payroll): opt-in per institute, same as above. Payroll is not
+    // something to surface by accident.
+    'erp-people',
+    'erp-payroll',
 ];
 
 export const modules = ['ASSESS', 'ENGAGE', 'VOLT', 'VSMART_AI_TOOLS'];

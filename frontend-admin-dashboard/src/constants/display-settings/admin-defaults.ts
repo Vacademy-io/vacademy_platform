@@ -26,7 +26,15 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
 // Tabs that ship hidden until an institute admin opts them in via the
 // Display Settings UI. Distinct from admissions/fee-management which are
 // shipped hidden for historical sub-org reasons.
-const OPT_IN_TAB_IDS = new Set<string>(['admin-activity-logs', 'ai-copilot-tab', 'mentorship']);
+const OPT_IN_TAB_IDS = new Set<string>([
+    'admin-activity-logs',
+    'ai-copilot-tab',
+    'mentorship',
+    // ERP (HR & Payroll): every module stays hidden until the institute turns
+    // it on. An institute that never runs payroll here should never see it.
+    'erp-people',
+    'erp-payroll',
+]);
 
 function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu.map((item, index) => ({

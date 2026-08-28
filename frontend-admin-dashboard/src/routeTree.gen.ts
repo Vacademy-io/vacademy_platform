@@ -112,6 +112,8 @@ import { Route as EvaluatorAiEvaluationIndexRouteImport } from "./routes/evaluat
 import { Route as EvaluatorAiAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/index"
 import { Route as EvaluationEvaluationsIndexRouteImport } from "./routes/evaluation/evaluations/index"
 import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/evaluation/evaluation-tool/index"
+import { Route as ErpPeopleIndexRouteImport } from "./routes/erp/people/index"
+import { Route as ErpPayrollIndexRouteImport } from "./routes/erp/payroll/index"
 import { Route as EngagementEnginesInboxIndexRouteImport } from "./routes/engagement-engines/inbox/index"
 import { Route as EngagementEnginesCreateIndexRouteImport } from "./routes/engagement-engines/create/index"
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
@@ -178,6 +180,12 @@ import { Route as PlanningActivityLogsCreateIndexRouteImport } from "./routes/pl
 import { Route as MentorshipMentorsMentorIdIndexRouteImport } from "./routes/mentorship/mentors/$mentorId/index"
 import { Route as EvaluatorAiEvaluationStudentSummaryIndexRouteImport } from "./routes/evaluator-ai/evaluation/student-summary/index"
 import { Route as EvaluatorAiAssessmentCreateAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/create-assessment/index"
+import { Route as ErpPeopleStaffBridgeIndexRouteImport } from "./routes/erp/people/staff-bridge/index"
+import { Route as ErpPeopleOrgIndexRouteImport } from "./routes/erp/people/org/index"
+import { Route as ErpPeopleEmployeeIdIndexRouteImport } from "./routes/erp/people/$employeeId/index"
+import { Route as ErpPayrollSalarySetupIndexRouteImport } from "./routes/erp/payroll/salary-setup/index"
+import { Route as ErpPayrollAdjustmentsIndexRouteImport } from "./routes/erp/payroll/adjustments/index"
+import { Route as ErpPayrollRunIdIndexRouteImport } from "./routes/erp/payroll/$runId/index"
 import { Route as AudienceManagerListCampaignUsersIndexRouteImport } from "./routes/audience-manager/list/campaign-users/index"
 import { Route as AssessmentExportAssessmentIdIndexRouteImport } from "./routes/assessment/export/$assessmentId/index"
 import { Route as AiCenterAiToolsVsmartUploadIndexRouteImport } from "./routes/ai-center/ai-tools/vsmart-upload/index"
@@ -986,6 +994,20 @@ const EvaluationEvaluationToolIndexRoute =
       (d) => d.Route,
     ),
   )
+const ErpPeopleIndexRoute = ErpPeopleIndexRouteImport.update({
+  id: "/erp/people/",
+  path: "/erp/people/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/people/index.lazy").then((d) => d.Route),
+)
+const ErpPayrollIndexRoute = ErpPayrollIndexRouteImport.update({
+  id: "/erp/payroll/",
+  path: "/erp/payroll/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/payroll/index.lazy").then((d) => d.Route),
+)
 const EngagementEnginesInboxIndexRoute =
   EngagementEnginesInboxIndexRouteImport.update({
     id: "/engagement-engines/inbox/",
@@ -1512,6 +1534,52 @@ const EvaluatorAiAssessmentCreateAssessmentIndexRoute =
     path: "/evaluator-ai/assessment/create-assessment/",
     getParentRoute: () => rootRouteImport,
   } as any)
+const ErpPeopleStaffBridgeIndexRoute =
+  ErpPeopleStaffBridgeIndexRouteImport.update({
+    id: "/erp/people/staff-bridge/",
+    path: "/erp/people/staff-bridge/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/people/staff-bridge/index.lazy").then((d) => d.Route),
+  )
+const ErpPeopleOrgIndexRoute = ErpPeopleOrgIndexRouteImport.update({
+  id: "/erp/people/org/",
+  path: "/erp/people/org/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/people/org/index.lazy").then((d) => d.Route),
+)
+const ErpPeopleEmployeeIdIndexRoute =
+  ErpPeopleEmployeeIdIndexRouteImport.update({
+    id: "/erp/people/$employeeId/",
+    path: "/erp/people/$employeeId/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/people/$employeeId/index.lazy").then((d) => d.Route),
+  )
+const ErpPayrollSalarySetupIndexRoute =
+  ErpPayrollSalarySetupIndexRouteImport.update({
+    id: "/erp/payroll/salary-setup/",
+    path: "/erp/payroll/salary-setup/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/payroll/salary-setup/index.lazy").then((d) => d.Route),
+  )
+const ErpPayrollAdjustmentsIndexRoute =
+  ErpPayrollAdjustmentsIndexRouteImport.update({
+    id: "/erp/payroll/adjustments/",
+    path: "/erp/payroll/adjustments/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/erp/payroll/adjustments/index.lazy").then((d) => d.Route),
+  )
+const ErpPayrollRunIdIndexRoute = ErpPayrollRunIdIndexRouteImport.update({
+  id: "/erp/payroll/$runId/",
+  path: "/erp/payroll/$runId/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/payroll/$runId/index.lazy").then((d) => d.Route),
+)
 const AudienceManagerListCampaignUsersIndexRoute =
   AudienceManagerListCampaignUsersIndexRouteImport.update({
     id: "/audience-manager/list/campaign-users/",
@@ -1962,6 +2030,8 @@ export interface FileRoutesByFullPath {
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
+  "/erp/payroll/": typeof ErpPayrollIndexRoute
+  "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations/": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
@@ -2031,6 +2101,12 @@ export interface FileRoutesByFullPath {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
+  "/erp/payroll/adjustments/": typeof ErpPayrollAdjustmentsIndexRoute
+  "/erp/payroll/salary-setup/": typeof ErpPayrollSalarySetupIndexRoute
+  "/erp/people/$employeeId/": typeof ErpPeopleEmployeeIdIndexRoute
+  "/erp/people/org/": typeof ErpPeopleOrgIndexRoute
+  "/erp/people/staff-bridge/": typeof ErpPeopleStaffBridgeIndexRoute
   "/evaluator-ai/assessment/create-assessment/": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
   "/evaluator-ai/evaluation/student-summary/": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
   "/mentorship/mentors/$mentorId/": typeof MentorshipMentorsMentorIdIndexRoute
@@ -2173,6 +2249,8 @@ export interface FileRoutesByTo {
   "/content/$contentId": typeof ContentContentIdIndexRoute
   "/engagement-engines/create": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox": typeof EngagementEnginesInboxIndexRoute
+  "/erp/payroll": typeof ErpPayrollIndexRoute
+  "/erp/people": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment": typeof EvaluatorAiAssessmentIndexRoute
@@ -2242,6 +2320,12 @@ export interface FileRoutesByTo {
   "/ai-center/ai-tools/vsmart-upload": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/payroll/$runId": typeof ErpPayrollRunIdIndexRoute
+  "/erp/payroll/adjustments": typeof ErpPayrollAdjustmentsIndexRoute
+  "/erp/payroll/salary-setup": typeof ErpPayrollSalarySetupIndexRoute
+  "/erp/people/$employeeId": typeof ErpPeopleEmployeeIdIndexRoute
+  "/erp/people/org": typeof ErpPeopleOrgIndexRoute
+  "/erp/people/staff-bridge": typeof ErpPeopleStaffBridgeIndexRoute
   "/evaluator-ai/assessment/create-assessment": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
   "/evaluator-ai/evaluation/student-summary": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
   "/mentorship/mentors/$mentorId": typeof MentorshipMentorsMentorIdIndexRoute
@@ -2386,6 +2470,8 @@ export interface FileRoutesById {
   "/content/$contentId/": typeof ContentContentIdIndexRoute
   "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
   "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
+  "/erp/payroll/": typeof ErpPayrollIndexRoute
+  "/erp/people/": typeof ErpPeopleIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations/": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
@@ -2455,6 +2541,12 @@ export interface FileRoutesById {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
+  "/erp/payroll/adjustments/": typeof ErpPayrollAdjustmentsIndexRoute
+  "/erp/payroll/salary-setup/": typeof ErpPayrollSalarySetupIndexRoute
+  "/erp/people/$employeeId/": typeof ErpPeopleEmployeeIdIndexRoute
+  "/erp/people/org/": typeof ErpPeopleOrgIndexRoute
+  "/erp/people/staff-bridge/": typeof ErpPeopleStaffBridgeIndexRoute
   "/evaluator-ai/assessment/create-assessment/": typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
   "/evaluator-ai/evaluation/student-summary/": typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
   "/mentorship/mentors/$mentorId/": typeof MentorshipMentorsMentorIdIndexRoute
@@ -2600,6 +2692,8 @@ export interface FileRouteTypes {
     | "/content/$contentId/"
     | "/engagement-engines/create/"
     | "/engagement-engines/inbox/"
+    | "/erp/payroll/"
+    | "/erp/people/"
     | "/evaluation/evaluation-tool/"
     | "/evaluation/evaluations/"
     | "/evaluator-ai/assessment/"
@@ -2669,6 +2763,12 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/payroll/$runId/"
+    | "/erp/payroll/adjustments/"
+    | "/erp/payroll/salary-setup/"
+    | "/erp/people/$employeeId/"
+    | "/erp/people/org/"
+    | "/erp/people/staff-bridge/"
     | "/evaluator-ai/assessment/create-assessment/"
     | "/evaluator-ai/evaluation/student-summary/"
     | "/mentorship/mentors/$mentorId/"
@@ -2811,6 +2911,8 @@ export interface FileRouteTypes {
     | "/content/$contentId"
     | "/engagement-engines/create"
     | "/engagement-engines/inbox"
+    | "/erp/payroll"
+    | "/erp/people"
     | "/evaluation/evaluation-tool"
     | "/evaluation/evaluations"
     | "/evaluator-ai/assessment"
@@ -2880,6 +2982,12 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload"
     | "/assessment/export/$assessmentId"
     | "/audience-manager/list/campaign-users"
+    | "/erp/payroll/$runId"
+    | "/erp/payroll/adjustments"
+    | "/erp/payroll/salary-setup"
+    | "/erp/people/$employeeId"
+    | "/erp/people/org"
+    | "/erp/people/staff-bridge"
     | "/evaluator-ai/assessment/create-assessment"
     | "/evaluator-ai/evaluation/student-summary"
     | "/mentorship/mentors/$mentorId"
@@ -3023,6 +3131,8 @@ export interface FileRouteTypes {
     | "/content/$contentId/"
     | "/engagement-engines/create/"
     | "/engagement-engines/inbox/"
+    | "/erp/payroll/"
+    | "/erp/people/"
     | "/evaluation/evaluation-tool/"
     | "/evaluation/evaluations/"
     | "/evaluator-ai/assessment/"
@@ -3092,6 +3202,12 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/payroll/$runId/"
+    | "/erp/payroll/adjustments/"
+    | "/erp/payroll/salary-setup/"
+    | "/erp/people/$employeeId/"
+    | "/erp/people/org/"
+    | "/erp/people/staff-bridge/"
     | "/evaluator-ai/assessment/create-assessment/"
     | "/evaluator-ai/evaluation/student-summary/"
     | "/mentorship/mentors/$mentorId/"
@@ -3235,6 +3351,8 @@ export interface RootRouteChildren {
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
   EngagementEnginesCreateIndexRoute: typeof EngagementEnginesCreateIndexRoute
   EngagementEnginesInboxIndexRoute: typeof EngagementEnginesInboxIndexRoute
+  ErpPayrollIndexRoute: typeof ErpPayrollIndexRoute
+  ErpPeopleIndexRoute: typeof ErpPeopleIndexRoute
   EvaluationEvaluationToolIndexRoute: typeof EvaluationEvaluationToolIndexRoute
   EvaluationEvaluationsIndexRoute: typeof EvaluationEvaluationsIndexRoute
   EvaluatorAiAssessmentIndexRoute: typeof EvaluatorAiAssessmentIndexRoute
@@ -3304,6 +3422,12 @@ export interface RootRouteChildren {
   AiCenterAiToolsVsmartUploadIndexRoute: typeof AiCenterAiToolsVsmartUploadIndexRoute
   AssessmentExportAssessmentIdIndexRoute: typeof AssessmentExportAssessmentIdIndexRoute
   AudienceManagerListCampaignUsersIndexRoute: typeof AudienceManagerListCampaignUsersIndexRoute
+  ErpPayrollRunIdIndexRoute: typeof ErpPayrollRunIdIndexRoute
+  ErpPayrollAdjustmentsIndexRoute: typeof ErpPayrollAdjustmentsIndexRoute
+  ErpPayrollSalarySetupIndexRoute: typeof ErpPayrollSalarySetupIndexRoute
+  ErpPeopleEmployeeIdIndexRoute: typeof ErpPeopleEmployeeIdIndexRoute
+  ErpPeopleOrgIndexRoute: typeof ErpPeopleOrgIndexRoute
+  ErpPeopleStaffBridgeIndexRoute: typeof ErpPeopleStaffBridgeIndexRoute
   EvaluatorAiAssessmentCreateAssessmentIndexRoute: typeof EvaluatorAiAssessmentCreateAssessmentIndexRoute
   EvaluatorAiEvaluationStudentSummaryIndexRoute: typeof EvaluatorAiEvaluationStudentSummaryIndexRoute
   MentorshipMentorsMentorIdIndexRoute: typeof MentorshipMentorsMentorIdIndexRoute
@@ -4080,6 +4204,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof EvaluationEvaluationToolIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/people/": {
+      id: "/erp/people/"
+      path: "/erp/people"
+      fullPath: "/erp/people/"
+      preLoaderRoute: typeof ErpPeopleIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/payroll/": {
+      id: "/erp/payroll/"
+      path: "/erp/payroll"
+      fullPath: "/erp/payroll/"
+      preLoaderRoute: typeof ErpPayrollIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/engagement-engines/inbox/": {
       id: "/engagement-engines/inbox/"
       path: "/engagement-engines/inbox"
@@ -4542,6 +4680,48 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof EvaluatorAiAssessmentCreateAssessmentIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/people/staff-bridge/": {
+      id: "/erp/people/staff-bridge/"
+      path: "/erp/people/staff-bridge"
+      fullPath: "/erp/people/staff-bridge/"
+      preLoaderRoute: typeof ErpPeopleStaffBridgeIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/people/org/": {
+      id: "/erp/people/org/"
+      path: "/erp/people/org"
+      fullPath: "/erp/people/org/"
+      preLoaderRoute: typeof ErpPeopleOrgIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/people/$employeeId/": {
+      id: "/erp/people/$employeeId/"
+      path: "/erp/people/$employeeId"
+      fullPath: "/erp/people/$employeeId/"
+      preLoaderRoute: typeof ErpPeopleEmployeeIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/payroll/salary-setup/": {
+      id: "/erp/payroll/salary-setup/"
+      path: "/erp/payroll/salary-setup"
+      fullPath: "/erp/payroll/salary-setup/"
+      preLoaderRoute: typeof ErpPayrollSalarySetupIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/payroll/adjustments/": {
+      id: "/erp/payroll/adjustments/"
+      path: "/erp/payroll/adjustments"
+      fullPath: "/erp/payroll/adjustments/"
+      preLoaderRoute: typeof ErpPayrollAdjustmentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/payroll/$runId/": {
+      id: "/erp/payroll/$runId/"
+      path: "/erp/payroll/$runId"
+      fullPath: "/erp/payroll/$runId/"
+      preLoaderRoute: typeof ErpPayrollRunIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/list/campaign-users/": {
       id: "/audience-manager/list/campaign-users/"
       path: "/audience-manager/list/campaign-users"
@@ -4941,6 +5121,8 @@ const rootRouteChildren: RootRouteChildren = {
   ContentContentIdIndexRoute: ContentContentIdIndexRoute,
   EngagementEnginesCreateIndexRoute: EngagementEnginesCreateIndexRoute,
   EngagementEnginesInboxIndexRoute: EngagementEnginesInboxIndexRoute,
+  ErpPayrollIndexRoute: ErpPayrollIndexRoute,
+  ErpPeopleIndexRoute: ErpPeopleIndexRoute,
   EvaluationEvaluationToolIndexRoute: EvaluationEvaluationToolIndexRoute,
   EvaluationEvaluationsIndexRoute: EvaluationEvaluationsIndexRoute,
   EvaluatorAiAssessmentIndexRoute: EvaluatorAiAssessmentIndexRoute,
@@ -5028,6 +5210,12 @@ const rootRouteChildren: RootRouteChildren = {
     AssessmentExportAssessmentIdIndexRoute,
   AudienceManagerListCampaignUsersIndexRoute:
     AudienceManagerListCampaignUsersIndexRoute,
+  ErpPayrollRunIdIndexRoute: ErpPayrollRunIdIndexRoute,
+  ErpPayrollAdjustmentsIndexRoute: ErpPayrollAdjustmentsIndexRoute,
+  ErpPayrollSalarySetupIndexRoute: ErpPayrollSalarySetupIndexRoute,
+  ErpPeopleEmployeeIdIndexRoute: ErpPeopleEmployeeIdIndexRoute,
+  ErpPeopleOrgIndexRoute: ErpPeopleOrgIndexRoute,
+  ErpPeopleStaffBridgeIndexRoute: ErpPeopleStaffBridgeIndexRoute,
   EvaluatorAiAssessmentCreateAssessmentIndexRoute:
     EvaluatorAiAssessmentCreateAssessmentIndexRoute,
   EvaluatorAiEvaluationStudentSummaryIndexRoute:

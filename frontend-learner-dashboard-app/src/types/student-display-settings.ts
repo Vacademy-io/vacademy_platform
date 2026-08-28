@@ -43,6 +43,9 @@ export type StudentDashboardWidgetId =
   | "coursesStat"
   | "evaluationStat"
   | "continueLearning"
+  // The learner's enrolled courses with per-course progress and a way back
+  // in. Distinct from coursesStat, which is only the count tile.
+  | "enrolledCourses"
   | "learningAnalytics"
   | "liveClasses"
   | "thisWeekAttendance"

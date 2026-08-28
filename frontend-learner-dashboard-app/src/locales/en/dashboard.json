@@ -265,6 +265,17 @@
         "continueFromWhereLeftOff": "Continue from where you left off",
         "resumeLearningButton": "Resume Learning"
     },
+    "enrolledCourses": {
+        "viewAll": "View all {{courses}}",
+        "emptyTitle": "You are not enrolled in any {{courses}} yet",
+        "browse": "Browse {{courses}}",
+        "cta": {
+            "continue": "Continue",
+            "start": "Start",
+            "review": "Review"
+        },
+        "cardAria": "{{course}}, {{percent}}% complete. {{action}}"
+    },
     "dashboardHero": {
         "loadingAria": "Loading",
         "liveNow": "Live now",

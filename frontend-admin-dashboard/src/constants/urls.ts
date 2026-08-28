@@ -1241,6 +1241,10 @@ export const CATALOGUE_REVISION_HISTORY = (catalogueId: string) =>
     `${CATALOGUE_BASE_URL}/revision/history?catalogueId=${catalogueId}`;
 export const CATALOGUE_REVISION_GET = (revisionId: string) =>
     `${CATALOGUE_BASE_URL}/revision/get?revisionId=${revisionId}`;
+// Catalogue site analytics (first-party page views, joined to leads)
+export const CATALOGUE_ANALYTICS_SUMMARY = (instituteId: string, days: number) =>
+    `${BASE_URL}/admin-core-service/v1/catalogue-analytics/summary?instituteId=${instituteId}&days=${days}`;
+
 // AI Page Builder (ai_service)
 export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;
 // Institute scope comes from the auth token — no params

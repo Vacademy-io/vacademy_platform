@@ -93,6 +93,7 @@ export const controlledTabs = [
     // something to surface by accident.
     'erp-people',
     'erp-payroll',
+    'erp-finance',
 ];
 
 export const modules = ['ASSESS', 'ENGAGE', 'VOLT', 'VSMART_AI_TOOLS'];

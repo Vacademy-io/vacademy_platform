@@ -186,6 +186,8 @@ import { Route as ErpPeopleEmployeeIdIndexRouteImport } from "./routes/erp/peopl
 import { Route as ErpPayrollSalarySetupIndexRouteImport } from "./routes/erp/payroll/salary-setup/index"
 import { Route as ErpPayrollAdjustmentsIndexRouteImport } from "./routes/erp/payroll/adjustments/index"
 import { Route as ErpPayrollRunIdIndexRouteImport } from "./routes/erp/payroll/$runId/index"
+import { Route as ErpFinancePnlIndexRouteImport } from "./routes/erp/finance/pnl/index"
+import { Route as ErpFinanceJournalIndexRouteImport } from "./routes/erp/finance/journal/index"
 import { Route as AudienceManagerListCampaignUsersIndexRouteImport } from "./routes/audience-manager/list/campaign-users/index"
 import { Route as AssessmentExportAssessmentIdIndexRouteImport } from "./routes/assessment/export/$assessmentId/index"
 import { Route as AiCenterAiToolsVsmartUploadIndexRouteImport } from "./routes/ai-center/ai-tools/vsmart-upload/index"
@@ -1580,6 +1582,20 @@ const ErpPayrollRunIdIndexRoute = ErpPayrollRunIdIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/erp/payroll/$runId/index.lazy").then((d) => d.Route),
 )
+const ErpFinancePnlIndexRoute = ErpFinancePnlIndexRouteImport.update({
+  id: "/erp/finance/pnl/",
+  path: "/erp/finance/pnl/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/finance/pnl/index.lazy").then((d) => d.Route),
+)
+const ErpFinanceJournalIndexRoute = ErpFinanceJournalIndexRouteImport.update({
+  id: "/erp/finance/journal/",
+  path: "/erp/finance/journal/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/erp/finance/journal/index.lazy").then((d) => d.Route),
+)
 const AudienceManagerListCampaignUsersIndexRoute =
   AudienceManagerListCampaignUsersIndexRouteImport.update({
     id: "/audience-manager/list/campaign-users/",
@@ -2101,6 +2117,8 @@ export interface FileRoutesByFullPath {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/finance/journal/": typeof ErpFinanceJournalIndexRoute
+  "/erp/finance/pnl/": typeof ErpFinancePnlIndexRoute
   "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments/": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup/": typeof ErpPayrollSalarySetupIndexRoute
@@ -2320,6 +2338,8 @@ export interface FileRoutesByTo {
   "/ai-center/ai-tools/vsmart-upload": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/finance/journal": typeof ErpFinanceJournalIndexRoute
+  "/erp/finance/pnl": typeof ErpFinancePnlIndexRoute
   "/erp/payroll/$runId": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup": typeof ErpPayrollSalarySetupIndexRoute
@@ -2541,6 +2561,8 @@ export interface FileRoutesById {
   "/ai-center/ai-tools/vsmart-upload/": typeof AiCenterAiToolsVsmartUploadIndexRoute
   "/assessment/export/$assessmentId/": typeof AssessmentExportAssessmentIdIndexRoute
   "/audience-manager/list/campaign-users/": typeof AudienceManagerListCampaignUsersIndexRoute
+  "/erp/finance/journal/": typeof ErpFinanceJournalIndexRoute
+  "/erp/finance/pnl/": typeof ErpFinancePnlIndexRoute
   "/erp/payroll/$runId/": typeof ErpPayrollRunIdIndexRoute
   "/erp/payroll/adjustments/": typeof ErpPayrollAdjustmentsIndexRoute
   "/erp/payroll/salary-setup/": typeof ErpPayrollSalarySetupIndexRoute
@@ -2763,6 +2785,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/finance/journal/"
+    | "/erp/finance/pnl/"
     | "/erp/payroll/$runId/"
     | "/erp/payroll/adjustments/"
     | "/erp/payroll/salary-setup/"
@@ -2982,6 +3006,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload"
     | "/assessment/export/$assessmentId"
     | "/audience-manager/list/campaign-users"
+    | "/erp/finance/journal"
+    | "/erp/finance/pnl"
     | "/erp/payroll/$runId"
     | "/erp/payroll/adjustments"
     | "/erp/payroll/salary-setup"
@@ -3202,6 +3228,8 @@ export interface FileRouteTypes {
     | "/ai-center/ai-tools/vsmart-upload/"
     | "/assessment/export/$assessmentId/"
     | "/audience-manager/list/campaign-users/"
+    | "/erp/finance/journal/"
+    | "/erp/finance/pnl/"
     | "/erp/payroll/$runId/"
     | "/erp/payroll/adjustments/"
     | "/erp/payroll/salary-setup/"
@@ -3422,6 +3450,8 @@ export interface RootRouteChildren {
   AiCenterAiToolsVsmartUploadIndexRoute: typeof AiCenterAiToolsVsmartUploadIndexRoute
   AssessmentExportAssessmentIdIndexRoute: typeof AssessmentExportAssessmentIdIndexRoute
   AudienceManagerListCampaignUsersIndexRoute: typeof AudienceManagerListCampaignUsersIndexRoute
+  ErpFinanceJournalIndexRoute: typeof ErpFinanceJournalIndexRoute
+  ErpFinancePnlIndexRoute: typeof ErpFinancePnlIndexRoute
   ErpPayrollRunIdIndexRoute: typeof ErpPayrollRunIdIndexRoute
   ErpPayrollAdjustmentsIndexRoute: typeof ErpPayrollAdjustmentsIndexRoute
   ErpPayrollSalarySetupIndexRoute: typeof ErpPayrollSalarySetupIndexRoute
@@ -4722,6 +4752,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErpPayrollRunIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/erp/finance/pnl/": {
+      id: "/erp/finance/pnl/"
+      path: "/erp/finance/pnl"
+      fullPath: "/erp/finance/pnl/"
+      preLoaderRoute: typeof ErpFinancePnlIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/erp/finance/journal/": {
+      id: "/erp/finance/journal/"
+      path: "/erp/finance/journal"
+      fullPath: "/erp/finance/journal/"
+      preLoaderRoute: typeof ErpFinanceJournalIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/list/campaign-users/": {
       id: "/audience-manager/list/campaign-users/"
       path: "/audience-manager/list/campaign-users"
@@ -5210,6 +5254,8 @@ const rootRouteChildren: RootRouteChildren = {
     AssessmentExportAssessmentIdIndexRoute,
   AudienceManagerListCampaignUsersIndexRoute:
     AudienceManagerListCampaignUsersIndexRoute,
+  ErpFinanceJournalIndexRoute: ErpFinanceJournalIndexRoute,
+  ErpFinancePnlIndexRoute: ErpFinancePnlIndexRoute,
   ErpPayrollRunIdIndexRoute: ErpPayrollRunIdIndexRoute,
   ErpPayrollAdjustmentsIndexRoute: ErpPayrollAdjustmentsIndexRoute,
   ErpPayrollSalarySetupIndexRoute: ErpPayrollSalarySetupIndexRoute,

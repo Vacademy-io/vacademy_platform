@@ -20,6 +20,8 @@ import { HrErrorState, HrNoAccessCard } from '@/routes/erp/people/-components/Hr
 import { usePayrollRun } from '@/routes/erp/payroll/-hooks/use-payroll-run';
 import { PayrollEntriesTab } from './PayrollEntriesTab';
 import { PayrollErrorsTab } from './PayrollErrorsTab';
+import { PayslipsTab } from './PayslipsTab';
+import { BankFileTab } from './BankFileTab';
 import { RunActionBar } from './RunActionBar';
 import { RunKpiCards } from './RunKpiCards';
 
@@ -163,6 +165,8 @@ export const PayrollRunDetail = ({
                             </Badge>
                         )}
                     </TabsTrigger>
+                    <TabsTrigger value="payslips">Payslips</TabsTrigger>
+                    <TabsTrigger value="bank-file">Bank file</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="entries" className="mt-0">
@@ -185,6 +189,20 @@ export const PayrollRunDetail = ({
                         isError={isErrorsError}
                         onRetry={() => void refetchErrors()}
                     />
+                </TabsContent>
+
+                <TabsContent value="payslips" className="mt-0">
+                    <PayslipsTab
+                        runId={runId}
+                        run={run}
+                        entries={entries}
+                        isEntriesLoading={isEntriesLoading}
+                        isHrAdmin={isHrAdmin}
+                    />
+                </TabsContent>
+
+                <TabsContent value="bank-file" className="mt-0">
+                    <BankFileTab runId={runId} run={run} isHrAdmin={isHrAdmin} />
                 </TabsContent>
             </Tabs>
         </div>

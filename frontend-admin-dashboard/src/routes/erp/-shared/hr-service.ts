@@ -1,6 +1,10 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
 import {
+    ERP_JOURNAL,
+    ERP_JOURNAL_EXPORT,
+    ERP_PNL_SNAPSHOT,
+    ERP_PNL_SNAPSHOT_DOWNLOAD,
     HR_DEPARTMENTS,
     HR_DEPARTMENT_BY_ID,
     HR_DESIGNATIONS,
@@ -21,6 +25,12 @@ import {
     HR_PAYROLL_RUN_MARK_PAID,
     HR_PAYROLL_RUN_PROCESS,
     HR_PAYROLL_RUN_REJECT,
+    HR_PAYSLIPS,
+    HR_PAYSLIPS_EMAIL,
+    HR_PAYSLIPS_GENERATE,
+    HR_PAYSLIP_DOWNLOAD,
+    HR_BANK_EXPORT,
+    HR_BANK_EXPORT_DOWNLOAD,
     HR_SALARY_COMPONENTS,
     HR_SALARY_COMPONENT_BY_ID,
     HR_SALARY_STRUCTURES,
@@ -30,15 +40,24 @@ import {
 } from '@/constants/urls';
 import type {
     AssignSalaryPayload,
+    BankExportDTO,
+    BankExportFormat,
+    BankExportResult,
+    BankExportSkippedEntry,
     CreatePayrollRunPayload,
     DepartmentDTO,
     DesignationDTO,
     EmployeeProfileDTO,
     EmployeeSalaryStructureDTO,
+    JournalEntryDTO,
+    PnlSnapshotDTO,
     PayrollAdjustmentDTO,
     PayrollEntryDTO,
     PayrollEntryError,
     PayrollRunDTO,
+    PayslipDTO,
+    PayslipEmailOutcome,
+    PayslipEmailResult,
     SalaryComponentDTO,
     SalaryTemplateDTO,
     StaffBridgeResponse,
@@ -80,6 +99,11 @@ export const hrKeys = {
     payrollEntries: (runId: string) => [...ERP_KEY, 'payroll-entries', runId],
     payrollErrors: (runId: string) => [...ERP_KEY, 'payroll-errors', runId],
     adjustments: (year: number, month: number) => [...ERP_KEY, 'adjustments', year, month],
+    payslips: (runId: string) => [...ERP_KEY, 'payslips', runId],
+    bankExports: (runId: string) => [...ERP_KEY, 'bank-exports', runId],
+    employeeDirectory: () => [...ERP_KEY, 'employee-directory'],
+    journal: (year: number, month: number) => [...ERP_KEY, 'journal', year, month],
+    pnlSnapshot: (year: number, month: number) => [...ERP_KEY, 'pnl-snapshot', year, month],
 };
 
 // ───────────────────────── People ─────────────────────────
@@ -425,4 +449,243 @@ export const deleteAdjustment = async (id: string): Promise<string> => {
         instituteParams()
     );
     return data;
+};
+
+// ───────────────────── Finance · journal & P&L ─────────────────────
+
+/**
+ * The month's journal entries.
+ *
+ * Read-only by design: nothing in this UI posts to the ledger. Entries appear
+ * when a payroll run is APPROVED and are reversed when that run is rejected, so
+ * an empty month is a normal state (nothing approved yet), not an error.
+ */
+export const fetchJournalEntries = async (
+    year: number,
+    month: number
+): Promise<JournalEntryDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        ERP_JOURNAL,
+        instituteParams({ year, month })
+    );
+    return Array.isArray(data) ? data : [];
+};
+
+/** Journal as CSV, shaped for a Zoho Books / Tally import. HR admin only. */
+export const downloadJournalCsv = async (year: number, month: number): Promise<Blob> => {
+    const { data } = await authenticatedAxiosInstance.get(ERP_JOURNAL_EXPORT, {
+        ...instituteParams({ year, month }),
+        responseType: 'blob',
+    });
+    return data as Blob;
+};
+
+/**
+ * The month's P&L snapshot.
+ *
+ * Returned verbatim — no normalization here. The response stitches together
+ * payments, payroll and the GL, and its nesting is not guaranteed stable, so the
+ * shape-probing lives next to the screen that renders it
+ * (routes/erp/finance/-hooks/pnl-shape.ts) rather than being baked into a
+ * fetcher that would have to lie about what it returns.
+ */
+export const fetchPnlSnapshot = async (year: number, month: number): Promise<PnlSnapshotDTO> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        ERP_PNL_SNAPSHOT,
+        instituteParams({ year, month })
+    );
+    return (data ?? {}) as PnlSnapshotDTO;
+};
+
+/** P&L snapshot as CSV. HR admin only. */
+export const downloadPnlSnapshotCsv = async (year: number, month: number): Promise<Blob> => {
+    const { data } = await authenticatedAxiosInstance.get(ERP_PNL_SNAPSHOT_DOWNLOAD, {
+        ...instituteParams({ year, month }),
+        responseType: 'blob',
+    });
+    return data as Blob;
+};
+
+// ─────────────────── Employee name directory ───────────────────
+
+/** One page is enough to name a payroll's worth of people; see the note below. */
+export const EMPLOYEE_DIRECTORY_SIZE = 500;
+
+/**
+ * Employee ids and codes mapped to names.
+ *
+ * Payslip and bank-export payloads carry the employee CODE and nothing else, and
+ * a table of bare codes is unusable when the actionable output is "chase these
+ * people for their bank details". Rather than N profile lookups this pulls one
+ * large page of the employee list and resolves locally; anyone past that page
+ * degrades to a dash rather than blocking the screen. Status is deliberately
+ * unfiltered — an exited employee still appears in their final run.
+ */
+export const fetchEmployeeDirectory = async (): Promise<EmployeeProfileDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_EMPLOYEES,
+        instituteParams({ page: 0, size: EMPLOYEE_DIRECTORY_SIZE })
+    );
+    return (data?.content ?? []) as EmployeeProfileDTO[];
+};
+
+// ───────────────────────── Payslips ─────────────────────────
+
+/**
+ * Save bytes we already hold to the user's disk.
+ *
+ * Payslip and bank-export files are served by authenticated endpoints, so they
+ * arrive as a blob through the axios instance and cannot go through
+ * `downloadFileFromUrl` (that fetches a public S3 URL with no bearer token).
+ * The object URL is revoked on the next tick rather than synchronously after
+ * `click()`: Chromium copes with an immediate revoke, Safari and Firefox can
+ * still be reading the URL when the download starts.
+ */
+const saveBlob = (blob: Blob, fileName: string) => {
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    } finally {
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    }
+};
+
+const numberOr = (value: unknown, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+/**
+ * Render a PDF payslip for every non-held entry on the run. Returns the server's
+ * own sentence, which distinguishes freshly generated payslips from legacy rows
+ * it re-rendered — so it is surfaced verbatim rather than replaced with "Done".
+ * Refused by the backend unless the run is PROCESSED or later.
+ */
+export const generatePayslips = async (payrollRunId: string): Promise<string> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_PAYSLIPS_GENERATE,
+        { payroll_run_id: payrollRunId },
+        instituteParams()
+    );
+    return typeof data === 'string' ? data : ((data?.message as string | undefined) ?? '');
+};
+
+/**
+ * One employee's payslips, optionally narrowed to a year.
+ *
+ * This is the ONLY payslip list the API offers — there is no "by payroll run"
+ * endpoint — so a run's payslips are assembled by the caller from its entries.
+ */
+export const fetchEmployeePayslips = async (
+    employeeId: string,
+    year?: number
+): Promise<PayslipDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_PAYSLIPS,
+        instituteParams({ employeeId, year })
+    );
+    return data ?? [];
+};
+
+/** Fetches the PDF bytes (authenticated) and saves them as `fileName`. */
+export const downloadPayslipPdf = async (payslipId: string, fileName: string): Promise<void> => {
+    const { data } = await authenticatedAxiosInstance.get(HR_PAYSLIP_DOWNLOAD(payslipId), {
+        ...instituteParams(),
+        responseType: 'blob',
+    });
+    saveBlob(data as Blob, fileName);
+};
+
+/**
+ * The API field is `outcomes`; `results` is accepted as well so a rename on the
+ * backend degrades to a shorter result dialog instead of an empty one. Counts are
+ * recomputed from the list when absent — the per-employee failures are the point
+ * of this response and must never be reported as a bare number.
+ */
+const normalizeEmailResult = (data: unknown): PayslipEmailResult => {
+    const body = (data ?? {}) as Record<string, unknown>;
+    const raw = body.outcomes ?? body.results;
+    const outcomes = (Array.isArray(raw) ? raw : []) as PayslipEmailOutcome[];
+    const statusIs = (status: string) =>
+        outcomes.filter((outcome) => (outcome.status ?? '').toUpperCase() === status).length;
+    return {
+        total: numberOr(body.total, outcomes.length),
+        sent: numberOr(body.sent, statusIs('SENT')),
+        failed: numberOr(body.failed, statusIs('FAILED')),
+        outcomes,
+    };
+};
+
+/** Emails every employee on the run their own payslip PDF. */
+export const emailPayslips = async (payrollRunId: string): Promise<PayslipEmailResult> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_PAYSLIPS_EMAIL,
+        { payroll_run_id: payrollRunId },
+        instituteParams()
+    );
+    return normalizeEmailResult(data);
+};
+
+// ─────────────────────── Bank export ───────────────────────
+
+/**
+ * The API nests the export log under `export`; a flatter shape is tolerated by
+ * falling back to the body itself, so the result panel still renders totals if
+ * the response is ever flattened.
+ */
+const normalizeBankExportResult = (data: unknown): BankExportResult => {
+    const body = (data ?? {}) as Record<string, unknown>;
+    const exportLog = (body.export ?? body) as BankExportDTO;
+    const skipped = (
+        Array.isArray(body.skipped) ? body.skipped : []
+    ) as BankExportSkippedEntry[];
+    const warnings = (Array.isArray(body.warnings) ? body.warnings : []) as string[];
+    return {
+        export: exportLog ?? {},
+        skipped,
+        skipped_count: numberOr(body.skipped_count, skipped.length),
+        warnings,
+    };
+};
+
+/**
+ * Build the payment file for a run. Returns JSON describing the file — including
+ * the employees it EXCLUDED for missing bank details — not the file itself; the
+ * bytes come from {@link downloadBankExportFile}. Backend accepts APPROVED or
+ * PAID runs only.
+ */
+export const generateBankExport = async (
+    payrollRunId: string,
+    format: BankExportFormat
+): Promise<BankExportResult> => {
+    const { data } = await authenticatedAxiosInstance.post(
+        HR_BANK_EXPORT,
+        { payroll_run_id: payrollRunId, format },
+        instituteParams()
+    );
+    return normalizeBankExportResult(data);
+};
+
+/** Every bank file generated for this run so far, newest first as the API returns them. */
+export const fetchBankExports = async (payrollRunId: string): Promise<BankExportDTO[]> => {
+    const { data } = await authenticatedAxiosInstance.get(
+        HR_BANK_EXPORT,
+        instituteParams({ payrollRunId })
+    );
+    return data ?? [];
+};
+
+/** Fetches the generated file (authenticated) and saves it as `fileName`. */
+export const downloadBankExportFile = async (
+    exportId: string,
+    fileName: string
+): Promise<void> => {
+    const { data } = await authenticatedAxiosInstance.get(HR_BANK_EXPORT_DOWNLOAD(exportId), {
+        ...instituteParams(),
+        responseType: 'blob',
+    });
+    saveBlob(data as Blob, fileName);
 };

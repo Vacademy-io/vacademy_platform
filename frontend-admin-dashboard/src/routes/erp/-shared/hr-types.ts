@@ -276,3 +276,593 @@ export interface PayrollAdjustmentDTO {
     notes?: string;
     payroll_entry_id?: string;
 }
+
+// ───────────────────────── Compliance ─────────────────────────
+
+/**
+ * **Wire casing is NOT uniform across the compliance endpoints — read this before
+ * adding a field.**
+ *
+ * Unlike the People/Salary/Payroll DTOs above, the `hr_compliance` package only
+ * annotates *some* of its DTOs with `@JsonNaming(SnakeCaseStrategy)`, and the
+ * service has no global Jackson naming strategy configured. So the wire shape is
+ * split, verified against the Java DTOs:
+ *
+ * - **snake_case** (`@JsonNaming` present): tax configuration, gratuity provision,
+ *   EOSB provision, bonus computation + materialization.
+ * - **camelCase** (no annotation — Jackson's default): PF ECR, ESI return, PT
+ *   return, Form 16, Form 24Q, WPS export, and the TDS challan (which is the JPA
+ *   *entity* serialized directly, so its request body binds camelCase too).
+ *
+ * The interfaces below mirror that split exactly rather than pretending it away:
+ * a `financial_year` key in a challan POST body binds to nothing and comes back
+ * as "financial_year must look like 2025-26".
+ *
+ * Everything is optional. These reports are assembled from payroll data that may
+ * be partly missing (no UAN, no ACTIVE salary structure, an unconfigured TAN), and
+ * a half-filled report is the normal case the screens exist to surface.
+ */
+
+/** `GET /hr/tax/config` — snake_case. 4xx when the institute has no ACTIVE config at all. */
+export interface TaxConfigurationDTO {
+    id?: string;
+    institute_id?: string;
+    /** ISO country the payroll is configured under: IND, ARE/UAE, SAU/KSA, … */
+    country_code?: string;
+    state_code?: string;
+    financial_year_start_month?: number;
+    tax_rules?: Record<string, unknown>;
+    employer_contributions?: Record<string, unknown>;
+    /** TAN, PF establishment id, ESI employer code, MOL establishment id, … */
+    statutory_settings?: Record<string, unknown>;
+    status?: string;
+}
+
+/** Employee left out of a generated file, with the reason. Same shape on ECR / ESI / WPS. */
+export interface ComplianceSkippedRowDTO {
+    employeeCode?: string;
+    employeeName?: string;
+    reason?: string;
+}
+
+// ── PF ECR (camelCase) ──
+
+export interface PfEcrRowDTO {
+    employeeCode?: string;
+    uan?: string;
+    memberName?: string;
+    grossWages?: Money;
+    epfWages?: Money;
+    epsWages?: Money;
+    edliWages?: Money;
+    epfContriRemitted?: Money;
+    epsContriRemitted?: Money;
+    epfEpsDiffRemitted?: Money;
+    ncpDays?: number;
+    refundOfAdvances?: Money;
+}
+
+export interface PfEcrResponseDTO {
+    instituteId?: string;
+    month?: number;
+    year?: number;
+    pfEstablishmentId?: string;
+    rows?: PfEcrRowDTO[];
+    skipped?: ComplianceSkippedRowDTO[];
+    warnings?: string[];
+    memberCount?: number;
+    totalEpfWages?: Money;
+    totalEpfContri?: Money;
+    totalEpsContri?: Money;
+    totalEpfEpsDiff?: Money;
+}
+
+// ── ESI return (camelCase) ──
+
+export interface EsiReturnRowDTO {
+    employeeCode?: string;
+    ipNumber?: string;
+    name?: string;
+    daysWorked?: number;
+    monthlyWage?: Money;
+    ipContribution?: Money;
+    employerContribution?: Money;
+}
+
+export interface EsiReturnResponseDTO {
+    instituteId?: string;
+    month?: number;
+    year?: number;
+    esiEmployerCode?: string;
+    rows?: EsiReturnRowDTO[];
+    skipped?: ComplianceSkippedRowDTO[];
+    warnings?: string[];
+    ipCount?: number;
+    totalWages?: Money;
+    totalIpContribution?: Money;
+    totalEmployerContribution?: Money;
+}
+
+// ── PT return (camelCase) ──
+
+export interface PtReturnRowDTO {
+    employeeCode?: string;
+    name?: string;
+    grossSalary?: Money;
+    ptAmount?: Money;
+}
+
+export interface PtReturnSlabSummaryDTO {
+    ptAmount?: Money;
+    employeeCount?: number;
+    totalAmount?: Money;
+}
+
+export interface PtReturnResponseDTO {
+    instituteId?: string;
+    month?: number;
+    year?: number;
+    stateCode?: string;
+    ptRegistrationNumber?: string;
+    slabs?: PtReturnSlabSummaryDTO[];
+    rows?: PtReturnRowDTO[];
+    warnings?: string[];
+    employeeCount?: number;
+    grandTotalPt?: Money;
+}
+
+// ── Form 16 Part B (camelCase) ──
+
+export interface Form16MonthlyRowDTO {
+    month?: number;
+    year?: number;
+    monthName?: string;
+    incomePaid?: Money;
+    tdsDeducted?: Money;
+}
+
+export interface Form16DataDTO {
+    employeeId?: string;
+    employeeName?: string;
+    employeeCode?: string;
+    employeePan?: string;
+    deductorName?: string;
+    deductorTan?: string;
+    deductorPan?: string;
+    deductorAddress?: string;
+    financialYear?: string;
+    regime?: string;
+    grossSalaryPaid?: Money;
+    standardDeduction?: Money;
+    hraExemption?: Money;
+    totalExemptions?: Money;
+    chapterVIADeductions?: Record<string, Money>;
+    taxableIncome?: Money;
+    slabTax?: Money;
+    taxAfterRebate?: Money;
+    surcharge?: Money;
+    cess?: Money;
+    totalTaxLiability?: Money;
+    totalTdsDeducted?: Money;
+    /** FY-order month of the last computation present — annual figures are projections until March. */
+    lastComputedMonth?: number;
+    monthlyDetails?: Form16MonthlyRowDTO[];
+    warnings?: string[];
+}
+
+// ── Form 24Q (camelCase) ──
+
+export interface Form24QDeductorDTO {
+    name?: string;
+    tan?: string;
+    pan?: string;
+    address?: string;
+}
+
+export interface Form24QChallanDTO {
+    id?: string;
+    depositDate?: string;
+    bsrCode?: string;
+    challanSerial?: string;
+    amount?: Money;
+    interest?: Money;
+    fee?: Money;
+}
+
+export interface Form24QDeducteeRowDTO {
+    employeeId?: string;
+    pan?: string;
+    name?: string;
+    employeeCode?: string;
+    month?: number;
+    year?: number;
+    monthName?: string;
+    incomePaid?: Money;
+    tdsDeducted?: Money;
+    section?: string;
+}
+
+export interface Form24QResponseDTO {
+    financialYear?: string;
+    quarter?: string;
+    deductor?: Form24QDeductorDTO;
+    challans?: Form24QChallanDTO[];
+    deducteeRows?: Form24QDeducteeRowDTO[];
+    totalTdsDeducted?: Money;
+    totalChallanAmount?: Money;
+    /** True when deducted TDS and deposited challan totals differ — the reconciliation signal. */
+    mismatch?: boolean;
+    warnings?: string[];
+}
+
+// ── WPS salary file, Gulf only (camelCase) ──
+
+export interface WpsEdrRowDTO {
+    employeeCode?: string;
+    employeeName?: string;
+    personId?: string;
+    agentId?: string;
+    iban?: string;
+    payStartDate?: string;
+    payEndDate?: string;
+    daysInPeriod?: number;
+    fixedIncome?: Money;
+    variableIncome?: Money;
+    leaveDays?: number;
+    netPay?: Money;
+    currency?: string;
+}
+
+export interface WpsSaudiRowDTO {
+    employeeCode?: string;
+    employeeName?: string;
+    employeeId?: string;
+    iban?: string;
+    bankCode?: string;
+    basicSalary?: Money;
+    housingAllowance?: Money;
+    otherEarnings?: Money;
+    deductions?: Money;
+    netSalary?: Money;
+    currency?: string;
+}
+
+export interface WpsExportResponseDTO {
+    /** UAE_SIF or SAUDI_WPS — decides which of the two row lists is populated. */
+    format?: string;
+    instituteId?: string;
+    month?: number;
+    year?: number;
+    countryCode?: string;
+    establishmentId?: string;
+    employerBankCode?: string;
+    wpsReference?: string;
+    edrRows?: WpsEdrRowDTO[];
+    saudiRows?: WpsSaudiRowDTO[];
+    skipped?: ComplianceSkippedRowDTO[];
+    warnings?: string[];
+    employeeCount?: number;
+    totalNetPay?: Money;
+    currency?: string;
+}
+
+// ── TDS challan register (camelCase — serialized JPA entity) ──
+
+export interface TdsChallanDTO {
+    id?: string;
+    instituteId?: string;
+    financialYear?: string;
+    /** Q1..Q4 in FY terms (Q1 = Apr–Jun). */
+    quarter?: string;
+    /** Salary month the deposit relates to. Optional server-side and unused by Form 24Q. */
+    month?: number;
+    year?: number;
+    depositDate?: string;
+    bsrCode?: string;
+    challanSerial?: string;
+    amount?: Money;
+    interest?: Money;
+    fee?: Money;
+    notes?: string;
+    createdBy?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface CreateTdsChallanPayload {
+    financialYear: string;
+    quarter: string;
+    depositDate: string;
+    amount: number;
+    month?: number;
+    year?: number;
+    bsrCode?: string;
+    challanSerial?: string;
+    interest?: number;
+    fee?: number;
+    notes?: string;
+}
+
+// ── Gratuity provision, India (snake_case) ──
+
+export interface GratuityProvisionRowDTO {
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    employment_status?: string;
+    join_date?: string;
+    service_end_date?: string;
+    exited_in_as_of_month?: boolean;
+    /** Decimal years of service (days / 365.2425). */
+    raw_years?: Money;
+    /** Completed years, part beyond six months rounded up once past year five. */
+    rounded_years?: number;
+    monthly_basic?: Money;
+    /** BASIC_COMPONENT | GROSS_FALLBACK | NONE — how monthly basic was derived. */
+    basic_source?: string;
+    accrued_liability?: Money;
+    capped_at_ceiling?: boolean;
+    /** Service ≥ 4 years + 240 days — payable if the employee exits now. */
+    vested?: boolean;
+    monthly_run_rate?: Money;
+    currency?: string;
+}
+
+export interface GratuityProvisionReportDTO {
+    institute_id?: string;
+    as_of_date?: string;
+    employee_count?: number;
+    total_accrued_liability?: Money;
+    vested_accrued_liability?: Money;
+    unvested_accrued_liability?: Money;
+    total_monthly_run_rate?: Money;
+    currency?: string;
+    rows?: GratuityProvisionRowDTO[];
+}
+
+// ── EOSB provision, Gulf (snake_case) ──
+
+export interface EosbProvisionRowDTO {
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    employment_status?: string;
+    join_date?: string;
+    service_end_date?: string;
+    exited_in_as_of_month?: boolean;
+    service_years?: Money;
+    monthly_basic?: Money;
+    basic_source?: string;
+    /** Payable if the employee exited on the service end date (UAE: nil under 1 year). */
+    statutory_liability?: Money;
+    statutory_eligible?: boolean;
+    /** Day-one IAS 19 style accrual — carried in the books before statutory eligibility. */
+    accounting_accrual?: Money;
+    capped_at_two_years_pay?: boolean;
+    monthly_run_rate?: Money;
+    currency?: string;
+}
+
+export interface EosbProvisionReportDTO {
+    institute_id?: string;
+    /** Normalized ISO-3 country the report was computed under: ARE | SAU. */
+    country_code?: string;
+    as_of_date?: string;
+    employee_count?: number;
+    total_statutory_liability?: Money;
+    total_accounting_accrual?: Money;
+    total_monthly_run_rate?: Money;
+    currency?: string;
+    rows?: EosbProvisionRowDTO[];
+}
+
+// ── Statutory bonus, India (snake_case) ──
+
+export interface BonusComputationRowDTO {
+    employee_id?: string;
+    employee_code?: string;
+    employee_name?: string;
+    monthly_basic?: Money;
+    eligible?: boolean;
+    /** Set when eligible = false (wage above the ₹21,000 ceiling, under 30 days service, …). */
+    ineligible_reason?: string;
+    eligible_months?: number;
+    /** min(monthly basic, ₹7,000) — the s.12 calculation ceiling. */
+    bonus_wage_base?: Money;
+    computed_bonus?: Money;
+    currency?: string;
+}
+
+export interface BonusComputationReportDTO {
+    institute_id?: string;
+    financial_year?: string;
+    fy_start?: string;
+    fy_end?: string;
+    /** Applied rate after the server clamps it to 8.33 … 20. */
+    bonus_pct?: Money;
+    eligible_count?: number;
+    total_bonus?: Money;
+    currency?: string;
+    rows?: BonusComputationRowDTO[];
+}
+
+export interface BonusMaterializationResultDTO {
+    financial_year?: string;
+    month?: number;
+    year?: number;
+    bonus_pct?: Money;
+    created_count?: number;
+    /** Employees skipped because a STATUTORY_BONUS adjustment already exists for the period. */
+    skipped_existing_count?: number;
+    total_amount?: Money;
+}
+
+// ───────────────────── Finance · accounting journal ─────────────────────
+
+export type JournalEntryStatus = 'POSTED' | 'REVERSED';
+
+/** One side of a double-entry line. Exactly one of debit/credit is non-zero. */
+export interface JournalLineDTO {
+    line_no?: number;
+    account_code?: string;
+    account_name?: string;
+    debit?: Money;
+    credit?: Money;
+}
+
+/**
+ * A single balanced journal entry.
+ *
+ * Posted by the source module, never by hand: approving a payroll run writes the
+ * HR_PAYROLL entry, and rejecting that run writes its reversal. `total_debit` and
+ * `total_credit` are the server's own totals — the UI re-adds `lines` and compares,
+ * because a mismatch between the two is a real accounting bug worth surfacing
+ * rather than papering over.
+ */
+export interface JournalEntryDTO {
+    id?: string;
+    entry_date?: string;
+    source_module?: string;
+    reference?: string;
+    memo?: string;
+    status?: JournalEntryStatus | string;
+    currency?: string;
+    total_debit?: Money;
+    total_credit?: Money;
+    lines?: JournalLineDTO[];
+}
+
+// ───────────────────── Finance · P&L snapshot ─────────────────────
+
+export interface PnlDepartmentCostDTO {
+    department_id?: string;
+    department_name?: string;
+    headcount?: number;
+    employer_cost?: Money;
+}
+
+export interface PnlRevenueDTO {
+    /** Cash actually collected in the period — NOT billed/invoiced revenue. */
+    total_collected?: Money;
+    payment_count?: number;
+    currency?: string;
+}
+
+export interface PnlPayrollCostDTO {
+    total_employer_cost?: Money;
+    total_net_pay?: Money;
+    employee_count?: number;
+    run_count?: number;
+    departments?: PnlDepartmentCostDTO[];
+}
+
+export interface PnlDerivedDTO {
+    margin?: Money;
+    cost_to_revenue_ratio?: Money;
+}
+
+export interface PnlJournalInfoDTO {
+    exists?: boolean;
+    posted?: boolean;
+    count?: number;
+}
+
+/**
+ * The month's P&L snapshot as the endpoint returns it.
+ *
+ * Every field is optional and the shape is only the *documented* one: this
+ * response is assembled from three subsystems (payments, payroll, GL) whose
+ * nesting has already drifted once, so nothing here is load-bearing. Screens must
+ * read it through `normalizePnlSnapshot` (routes/erp/finance/-hooks/pnl-shape.ts),
+ * which probes the plausible key spellings and answers `undefined` — rendered as
+ * "—" — rather than guessing. The index signature is what lets that normalizer
+ * look at keys this interface does not know about yet.
+ */
+export interface PnlSnapshotDTO {
+    year?: number;
+    month?: number;
+    revenue?: PnlRevenueDTO;
+    payroll_cost?: PnlPayrollCostDTO;
+    derived?: PnlDerivedDTO;
+    journal?: PnlJournalInfoDTO;
+    currency?: string | { code?: string };
+    warnings?: string[];
+    [key: string]: unknown;
+}
+
+// ───────────────────────── Payslips ─────────────────────────
+
+/** `hr_payslip.email_status`. NOT_SENT is the state a freshly generated payslip is in. */
+export type PayslipEmailStatus = 'SENT' | 'FAILED' | 'NOT_SENT' | 'PENDING';
+
+export interface PayslipDTO {
+    id?: string;
+    /** The run line this PDF was rendered from — the only exact link back to a run. */
+    payroll_entry_id?: string;
+    employee_id?: string;
+    employee_code?: string;
+    institute_id?: string;
+    month?: number;
+    year?: number;
+    file_id?: string;
+    file_url?: string;
+    generated_at?: string;
+    emailed_at?: string;
+    email_status?: string;
+    currency?: string;
+}
+
+export interface PayslipEmailOutcome {
+    payslip_id?: string;
+    employee_code?: string;
+    /** SENT / FAILED. */
+    status?: string;
+    /** Only present on FAILED — the actionable half of the result. */
+    reason?: string;
+}
+
+/** Normalized POST /payslips/email response. Counts are always present after normalization. */
+export interface PayslipEmailResult {
+    total: number;
+    sent: number;
+    failed: number;
+    outcomes: PayslipEmailOutcome[];
+}
+
+// ─────────────────────── Bank export ───────────────────────
+
+export type BankExportFormat = 'CSV' | 'XLSX' | 'HDFC' | 'ICICI' | 'SBI';
+
+/** One row of `hr_bank_export_log` — a file that was generated, not the file itself. */
+export interface BankExportDTO {
+    id?: string;
+    payroll_run_id?: string;
+    institute_id?: string;
+    file_id?: string;
+    file_name?: string;
+    format?: string;
+    total_records?: number;
+    total_amount?: Money;
+    generated_by?: string;
+    generated_at?: string;
+    currency?: string;
+}
+
+/**
+ * An employee left OUT of the payment file. The API returns only a code and a
+ * reason; `employee_name` is filled in client-side from the employee directory
+ * because "EMP0142 has no bank account" is not something anyone can act on.
+ */
+export interface BankExportSkippedEntry {
+    employee_code?: string;
+    employee_name?: string;
+    reason?: string;
+}
+
+/** Normalized POST /reports/bank-export response. */
+export interface BankExportResult {
+    export: BankExportDTO;
+    skipped: BankExportSkippedEntry[];
+    skipped_count: number;
+    warnings: string[];
+}

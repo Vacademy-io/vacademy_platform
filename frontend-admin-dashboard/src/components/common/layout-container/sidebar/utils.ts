@@ -25,6 +25,7 @@ import {
     ChatCircleDots,
     IdentificationBadge,
     Money,
+    ChartLineUp,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -719,6 +720,26 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Salary Setup',
                 subItemLink: '/erp/payroll/salary-setup',
                 subItemId: 'erp-payroll-salary-setup',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
+        icon: ChartLineUp,
+        title: 'Finance',
+        id: 'erp-finance',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Journal',
+                subItemLink: '/erp/finance/journal',
+                subItemId: 'erp-finance-journal',
+                adminOnly: true,
+            },
+            {
+                subItem: 'P&L Snapshot',
+                subItemLink: '/erp/finance/pnl',
+                subItemId: 'erp-finance-pnl',
                 adminOnly: true,
             },
         ],

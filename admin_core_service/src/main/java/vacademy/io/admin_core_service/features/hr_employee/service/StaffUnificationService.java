@@ -14,7 +14,6 @@ import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfil
 import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDate;
@@ -36,18 +35,21 @@ import java.util.stream.Collectors;
  * institute-scoped, status ACTIVE/INVITED; the legacy `staff` table is dead) —
  * to hr_employee_profile.
  *
- * <p>Roster source is split, because the data is split. Membership — who holds
- * which staff role, and whether the grant is ACTIVE or INVITED — comes from
- * {@code user_role}/{@code roles}, which exist in this service's schema. The
- * identity columns (name, email, phone) live in {@code users}, which does NOT:
- * that table belongs to auth_service, and a native join against it fails at
- * runtime with {@code relation "users" does not exist}. Identity is therefore
- * fetched over HTTP and merged in.
+ * <p>Roster source is auth_service over HTTP — ALL of it. admin_core's database
+ * contains none of the auth tables: not {@code users}, and not {@code user_role}
+ * or {@code roles} either. admin_core does inject the common_service
+ * {@code UserRoleRepository}, which makes those queries compile and pass review,
+ * but any of them that actually reaches the database fails at runtime with
+ * {@code relation "user_role" does not exist}. There is no in-process way to ask
+ * "who works here"; {@link AuthService} is the only answer.
  *
- * <p>Membership drives the roster and identity only decorates it, so an
- * auth_service outage degrades the rows to ids and roles rather than reporting
- * an institute with zero staff — {@link AuthService#getUsersByInstituteAndRoles}
- * returns an empty list on failure rather than throwing.
+ * <p>Two consequences worth knowing when reading these rows:
+ * <ul>
+ *   <li>auth_service returns ACTIVE memberships only, so INVITED staff do not
+ *       appear in the bridge and every row's status is ACTIVE.</li>
+ *   <li>{@code UserDTO.roles} lists a user's roles across ALL their institutes,
+ *       so it is intersected with {@link #STAFF_ROLES} before display.</li>
+ * </ul>
  */
 @Service
 public class StaffUnificationService {
@@ -55,17 +57,12 @@ public class StaffUnificationService {
     /** The staff roles that constitute the institute roster. */
     public static final List<String> STAFF_ROLES = List.of("ADMIN", "TEACHER", "EVALUATOR", "COUNSELLOR");
 
-    private static final List<String> ROSTER_STATUSES = List.of("ACTIVE", "INVITED");
-
     private static final String CROSS_INSTITUTE_BLOCKED_REASON =
             "User already has an HR employee profile in another institute; hr_employee_profile.user_id "
                     + "is globally unique, so a second profile cannot be created for this user here.";
 
     @Autowired
     private AuthService authService;
-
-    @Autowired
-    private UserRoleRepository userRoleRepository;
 
     @Autowired
     private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
@@ -177,10 +174,11 @@ public class StaffUnificationService {
             throw new VacademyException(CROSS_INSTITUTE_BLOCKED_REASON);
         }
 
-        boolean isStaffHere = userRoleRepository
-                .findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
-                        userId, instituteId, STAFF_ROLES, ROSTER_STATUSES)
-                .isPresent();
+        // Same constraint as the roster: user_role is not in this database, so
+        // "is this user staff here?" is an auth_service question.
+        boolean isStaffHere = authService.requireUsersByInstituteAndRoles(instituteId, STAFF_ROLES)
+                .stream()
+                .anyMatch(u -> u != null && userId.equals(u.getId()));
         if (!isStaffHere) {
             throw new VacademyException(
                     "User holds no staff role (ADMIN/TEACHER/EVALUATOR/COUNSELLOR) in this institute");
@@ -200,51 +198,30 @@ public class StaffUnificationService {
     // ======================== internals ========================
 
     /**
-     * Distinct staff users of the institute: membership from {@code user_role}
-     * (row shape [user_id, role_name, status]), identity decorated from
-     * auth_service. A user with several staff roles yields several rows, merged
-     * by userId; the entry is ACTIVE if any one grant is.
+     * Distinct staff users of the institute, from auth_service. Uses the
+     * throwing variant: an unreachable auth_service must surface as an error,
+     * not as an institute that appears to employ nobody.
      */
     private Map<String, RosterEntry> fetchStaffRoster(String instituteId) {
         Map<String, RosterEntry> byUserId = new LinkedHashMap<>();
-        List<Object[]> grants = userRoleRepository.findRoleGrantsByInstituteAndRoleNames(
-                instituteId, STAFF_ROLES, ROSTER_STATUSES);
-        for (Object[] row : grants) {
-            String userId = (String) row[0];
-            if (!StringUtils.hasText(userId)) {
+        for (UserDTO user : authService.requireUsersByInstituteAndRoles(instituteId, STAFF_ROLES)) {
+            if (user == null || !StringUtils.hasText(user.getId())) {
                 continue;
             }
-            RosterEntry entry = byUserId.computeIfAbsent(userId, RosterEntry::new);
-            entry.roles.add(((String) row[1]).trim().toUpperCase(Locale.ROOT));
-            if ("ACTIVE".equalsIgnoreCase((String) row[2])) {
-                entry.anyActive = true;
-            }
-        }
-        decorateWithIdentity(instituteId, byUserId);
-        return byUserId;
-    }
-
-    /**
-     * Fills in names, emails and phone numbers from auth_service. Best-effort by
-     * design: the roster is already complete without it, so a failed or partial
-     * response leaves those cells blank instead of hiding staff.
-     */
-    private void decorateWithIdentity(String instituteId, Map<String, RosterEntry> byUserId) {
-        if (byUserId.isEmpty()) {
-            return;
-        }
-        for (UserDTO user : authService.getUsersByInstituteAndRoles(instituteId, STAFF_ROLES)) {
-            if (user == null) {
-                continue;
-            }
-            RosterEntry entry = byUserId.get(user.getId());
-            if (entry == null) {
-                continue;
-            }
+            RosterEntry entry = byUserId.computeIfAbsent(user.getId(), RosterEntry::new);
             entry.fullName = user.getFullName();
             entry.email = user.getEmail();
             entry.mobileNumber = user.getMobileNumber();
+            entry.anyActive = true;
+            if (user.getRoles() != null) {
+                user.getRoles().stream()
+                        .filter(StringUtils::hasText)
+                        .map(r -> r.trim().toUpperCase(Locale.ROOT))
+                        .filter(STAFF_ROLES::contains)
+                        .forEach(entry.roles::add);
+            }
         }
+        return byUserId;
     }
 
     private String normalizeRoleFilter(String role) {

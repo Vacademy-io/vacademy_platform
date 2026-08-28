@@ -87,6 +87,25 @@ public class AuthService {
      * dies partway and leaves a half-charged run behind.
      */
     public List<UserDTO> getUsersByInstituteAndRoles(String instituteId, List<String> roles) {
+        try {
+            return requireUsersByInstituteAndRoles(instituteId, roles);
+        } catch (Exception e) {
+            log.warn("[reporting] could not expand roles {} for institute {} — no recipients resolved",
+                    roles, instituteId, e);
+            return List.of();
+        }
+    }
+
+    /**
+     * The same lookup, but a failure surfaces instead of collapsing to an empty
+     * list. Anything that RENDERS this as a roster must use this variant: an
+     * unreachable auth_service and an institute with no staff are the same empty
+     * list, and showing "no staff" for an outage is a lie the caller acts on.
+     *
+     * <p>auth_service returns ACTIVE memberships only — INVITED users are not
+     * included.
+     */
+    public List<UserDTO> requireUsersByInstituteAndRoles(String instituteId, List<String> roles) {
         if (instituteId == null || instituteId.isBlank() || roles == null || roles.isEmpty()) {
             return List.of();
         }
@@ -109,9 +128,8 @@ public class AuthService {
             return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
             });
         } catch (Exception e) {
-            log.warn("[reporting] could not expand roles {} for institute {} — no recipients resolved",
-                    roles, instituteId, e);
-            return List.of();
+            throw new VacademyException("Could not reach auth_service to resolve users for institute "
+                    + instituteId + ": " + e.getMessage());
         }
     }
 

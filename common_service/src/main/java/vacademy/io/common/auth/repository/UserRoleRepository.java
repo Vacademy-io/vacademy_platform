@@ -13,6 +13,17 @@ import vacademy.io.common.auth.entity.UserRole;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * WARNING — this repository is only usable from <b>auth_service</b>. It lives in
+ * common_service, so any service can inject it and every query here compiles and
+ * passes review anywhere. But {@code users}, {@code user_role} and {@code roles}
+ * exist only in auth_service's database: called from admin_core (or any other
+ * service) these methods fail at RUNTIME with
+ * {@code relation "user_role" does not exist}.
+ *
+ * <p>From another service, resolve users and their roles over HTTP instead —
+ * see {@code AuthService.requireUsersByInstituteAndRoles} in admin_core.
+ */
 @Repository
 public interface UserRoleRepository extends CrudRepository<UserRole, String> {
 
@@ -80,27 +91,6 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                         """, nativeQuery = true)
         Optional<UserRole> findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
                         @Param("userId") String userId,
-                        @Param("instituteId") String instituteId,
-                        @Param("roleNames") List<String> roleNames,
-                        @Param("statuses") List<String> statuses);
-
-        /**
-         * One row per (user, role) grant in an institute, as
-         * [user_id, role_name, status].
-         *
-         * <p>Deliberately touches only {@code user_role} and {@code roles}, never
-         * {@code users}: that table lives in auth_service's schema and joining it
-         * from another service fails with {@code relation "users" does not exist}.
-         * Callers needing names or emails must resolve them over HTTP.
-         */
-        @Query(value = """
-                        SELECT ur.user_id, r.role_name, ur.status FROM user_role ur
-                        JOIN roles r ON r.id = ur.role_id
-                        WHERE ur.institute_id = :instituteId
-                          AND r.role_name IN (:roleNames)
-                          AND ur.status IN (:statuses)
-                        """, nativeQuery = true)
-        List<Object[]> findRoleGrantsByInstituteAndRoleNames(
                         @Param("instituteId") String instituteId,
                         @Param("roleNames") List<String> roleNames,
                         @Param("statuses") List<String> statuses);

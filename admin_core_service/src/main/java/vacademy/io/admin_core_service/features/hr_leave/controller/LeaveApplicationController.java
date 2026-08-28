@@ -84,7 +84,7 @@ public class LeaveApplicationController {
     // --- Leave Balance endpoints ---
 
     @GetMapping("/balances")
-    public ResponseEntity<List<LeaveBalanceDTO>> getBalances(@RequestParam String employeeId,
+    public ResponseEntity<List<LeaveBalanceDTO>> getBalances(@RequestParam(required = false) String employeeId,
                                                               @RequestParam Integer year,
                                                               @RequestParam String instituteId,
                                                               @RequestAttribute("user") CustomUserDetails user) {

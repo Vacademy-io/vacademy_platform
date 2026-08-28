@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.hr_attendance.dto.AttendanceConfigDTO;
 import vacademy.io.admin_core_service.features.hr_attendance.entity.AttendanceConfig;
+import vacademy.io.admin_core_service.features.hr_attendance.enums.AttendanceMode;
 import vacademy.io.admin_core_service.features.hr_attendance.repository.AttendanceConfigRepository;
 import vacademy.io.admin_core_service.features.hr_attendance.util.HrTimeUtil;
 import vacademy.io.common.exceptions.VacademyException;
@@ -67,11 +68,28 @@ public class AttendanceConfigService {
         return toDTO(saved);
     }
 
+    /**
+     * Never having configured attendance is a starting state, not an error, so
+     * an institute with no row gets the defaults the settings screen should open
+     * on. The absent {@code id} is what tells a caller it is unsaved.
+     */
     @Transactional(readOnly = true)
     public AttendanceConfigDTO getConfig(String instituteId) {
-        AttendanceConfig config = attendanceConfigRepository.findByInstituteId(instituteId)
-                .orElseThrow(() -> new VacademyException("Attendance config not found for institute: " + instituteId));
-        return toDTO(config);
+        return attendanceConfigRepository.findByInstituteId(instituteId)
+                .map(this::toDTO)
+                .orElseGet(() -> defaultConfig(instituteId));
+    }
+
+    private AttendanceConfigDTO defaultConfig(String instituteId) {
+        AttendanceConfigDTO dto = new AttendanceConfigDTO();
+        dto.setInstituteId(instituteId);
+        dto.setMode(AttendanceMode.TIME_TRACKING.name());
+        dto.setTimezone(HrTimeUtil.DEFAULT_TIMEZONE);
+        dto.setAutoCheckoutEnabled(false);
+        dto.setGeoFenceEnabled(false);
+        dto.setIpRestrictionEnabled(false);
+        dto.setOvertimeEnabled(false);
+        return dto;
     }
 
     private AttendanceConfigDTO toDTO(AttendanceConfig config) {

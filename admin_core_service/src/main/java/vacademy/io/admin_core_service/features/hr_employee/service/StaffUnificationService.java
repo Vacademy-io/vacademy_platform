@@ -12,6 +12,8 @@ import vacademy.io.admin_core_service.features.hr_employee.dto.StaffBridgeRespon
 import vacademy.io.admin_core_service.features.hr_employee.dto.StaffBridgeRowDTO;
 import vacademy.io.admin_core_service.features.hr_employee.entity.EmployeeProfile;
 import vacademy.io.admin_core_service.features.hr_employee.repository.EmployeeProfileRepository;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -34,14 +36,18 @@ import java.util.stream.Collectors;
  * institute-scoped, status ACTIVE/INVITED; the legacy `staff` table is dead) —
  * to hr_employee_profile.
  *
- * <p>Roster source decision: admin_core already injects the common_service
- * {@link UserRoleRepository} directly in several features (suborg, white_label,
- * audience, workflow), so this service queries it in-process rather than going
- * through auth_service HTTP. {@code findUsersByInstitutePaginated} filters to
- * ONE role per call (its STRING_AGG only aggregates WHERE-matched rows) and
- * with a null role would also return STUDENT-only users — so the roster is
- * assembled as four per-role fetches merged by userId. Staff headcounts are
- * small; the per-role cap is a safety valve, not a page.
+ * <p>Roster source is split, because the data is split. Membership — who holds
+ * which staff role, and whether the grant is ACTIVE or INVITED — comes from
+ * {@code user_role}/{@code roles}, which exist in this service's schema. The
+ * identity columns (name, email, phone) live in {@code users}, which does NOT:
+ * that table belongs to auth_service, and a native join against it fails at
+ * runtime with {@code relation "users" does not exist}. Identity is therefore
+ * fetched over HTTP and merged in.
+ *
+ * <p>Membership drives the roster and identity only decorates it, so an
+ * auth_service outage degrades the rows to ids and roles rather than reporting
+ * an institute with zero staff — {@link AuthService#getUsersByInstituteAndRoles}
+ * returns an empty list on failure rather than throwing.
  */
 @Service
 public class StaffUnificationService {
@@ -51,12 +57,12 @@ public class StaffUnificationService {
 
     private static final List<String> ROSTER_STATUSES = List.of("ACTIVE", "INVITED");
 
-    /** Safety cap per role fetch; staff rosters are orders of magnitude smaller. */
-    private static final int PER_ROLE_FETCH_CAP = 10000;
-
     private static final String CROSS_INSTITUTE_BLOCKED_REASON =
             "User already has an HR employee profile in another institute; hr_employee_profile.user_id "
                     + "is globally unique, so a second profile cannot be created for this user here.";
+
+    @Autowired
+    private AuthService authService;
 
     @Autowired
     private UserRoleRepository userRoleRepository;
@@ -194,26 +200,51 @@ public class StaffUnificationService {
     // ======================== internals ========================
 
     /**
-     * Distinct staff users of the institute, merged across the four staff-role
-     * fetches. Row shape of findUsersByInstitutePaginated:
-     * [id, full_name, email, mobile_number, roles, status, last_login_time, created_at].
+     * Distinct staff users of the institute: membership from {@code user_role}
+     * (row shape [user_id, role_name, status]), identity decorated from
+     * auth_service. A user with several staff roles yields several rows, merged
+     * by userId; the entry is ACTIVE if any one grant is.
      */
     private Map<String, RosterEntry> fetchStaffRoster(String instituteId) {
         Map<String, RosterEntry> byUserId = new LinkedHashMap<>();
-        for (String staffRole : STAFF_ROLES) {
-            List<Object[]> rows = userRoleRepository.findUsersByInstitutePaginated(
-                    instituteId, staffRole, null, PER_ROLE_FETCH_CAP, 0);
-            for (Object[] row : rows) {
-                String userId = (String) row[0];
-                RosterEntry entry = byUserId.computeIfAbsent(userId, id -> new RosterEntry(
-                        id, (String) row[1], (String) row[2], (String) row[3]));
-                entry.roles.add(staffRole);
-                if ("ACTIVE".equalsIgnoreCase((String) row[5])) {
-                    entry.anyActive = true;
-                }
+        List<Object[]> grants = userRoleRepository.findRoleGrantsByInstituteAndRoleNames(
+                instituteId, STAFF_ROLES, ROSTER_STATUSES);
+        for (Object[] row : grants) {
+            String userId = (String) row[0];
+            if (!StringUtils.hasText(userId)) {
+                continue;
+            }
+            RosterEntry entry = byUserId.computeIfAbsent(userId, RosterEntry::new);
+            entry.roles.add(((String) row[1]).trim().toUpperCase(Locale.ROOT));
+            if ("ACTIVE".equalsIgnoreCase((String) row[2])) {
+                entry.anyActive = true;
             }
         }
+        decorateWithIdentity(instituteId, byUserId);
         return byUserId;
+    }
+
+    /**
+     * Fills in names, emails and phone numbers from auth_service. Best-effort by
+     * design: the roster is already complete without it, so a failed or partial
+     * response leaves those cells blank instead of hiding staff.
+     */
+    private void decorateWithIdentity(String instituteId, Map<String, RosterEntry> byUserId) {
+        if (byUserId.isEmpty()) {
+            return;
+        }
+        for (UserDTO user : authService.getUsersByInstituteAndRoles(instituteId, STAFF_ROLES)) {
+            if (user == null) {
+                continue;
+            }
+            RosterEntry entry = byUserId.get(user.getId());
+            if (entry == null) {
+                continue;
+            }
+            entry.fullName = user.getFullName();
+            entry.email = user.getEmail();
+            entry.mobileNumber = user.getMobileNumber();
+        }
     }
 
     private String normalizeRoleFilter(String role) {
@@ -236,20 +267,21 @@ public class StaffUnificationService {
                 || (entry.email != null && entry.email.toLowerCase(Locale.ROOT).contains(needle));
     }
 
-    /** In-memory merge of one user's staff user_role rows. */
+    /**
+     * In-memory merge of one user's staff user_role rows. Only {@code userId} and
+     * the role grants come from this service's schema; the identity fields stay
+     * null until {@link #decorateWithIdentity} fills them from auth_service.
+     */
     private static final class RosterEntry {
         final String userId;
-        final String fullName;
-        final String email;
-        final String mobileNumber;
         final Set<String> roles = new LinkedHashSet<>();
+        String fullName;
+        String email;
+        String mobileNumber;
         boolean anyActive;
 
-        RosterEntry(String userId, String fullName, String email, String mobileNumber) {
+        RosterEntry(String userId) {
             this.userId = userId;
-            this.fullName = fullName;
-            this.email = email;
-            this.mobileNumber = mobileNumber;
         }
     }
 }

@@ -21,6 +21,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class RegularizationService {
@@ -42,6 +43,48 @@ public class RegularizationService {
 
     @Autowired
     private HrNotificationService hrNotificationService;
+
+    /**
+     * The institute's regularization requests, newest first, optionally narrowed
+     * to one approval status (PENDING for the approval queue).
+     */
+    @Transactional(readOnly = true)
+    public List<RegularizationDTO> getRegularizations(String instituteId, String approvalStatus) {
+        List<AttendanceRegularization> found = (approvalStatus == null || approvalStatus.isBlank())
+                ? regularizationRepository.findByEmployee_InstituteIdOrderByCreatedAtDesc(instituteId)
+                : regularizationRepository.findByEmployee_InstituteIdAndApprovalStatusOrderByCreatedAtDesc(
+                        instituteId, approvalStatus.trim().toUpperCase());
+        return found.stream()
+                .map(this::toDTO)
+                .toList();
+    }
+
+    private RegularizationDTO toDTO(AttendanceRegularization entity) {
+        RegularizationDTO dto = new RegularizationDTO();
+        dto.setId(entity.getId());
+        AttendanceRecord record = entity.getAttendanceRecord();
+        if (record != null) {
+            dto.setAttendanceId(record.getId());
+            dto.setAttendanceDate(record.getAttendanceDate());
+        }
+        EmployeeProfile employee = entity.getEmployee();
+        if (employee != null) {
+            dto.setEmployeeId(employee.getId());
+            dto.setEmployeeCode(employee.getEmployeeCode());
+        }
+        dto.setOriginalStatus(entity.getOriginalStatus());
+        dto.setRequestedStatus(entity.getRequestedStatus());
+        dto.setOriginalCheckIn(entity.getOriginalCheckIn());
+        dto.setOriginalCheckOut(entity.getOriginalCheckOut());
+        dto.setRequestedCheckIn(entity.getRequestedCheckIn());
+        dto.setRequestedCheckOut(entity.getRequestedCheckOut());
+        dto.setReason(entity.getReason());
+        dto.setApprovalStatus(entity.getApprovalStatus());
+        dto.setApprovedBy(entity.getApprovedBy());
+        dto.setApprovedAt(entity.getApprovedAt());
+        dto.setRemarks(entity.getRemarks());
+        return dto;
+    }
 
     /**
      * The employee is resolved and authorized by HrAccessGuard in the controller

@@ -119,6 +119,15 @@ public class AttendanceController {
         return ResponseEntity.ok(attendanceService.getAttendanceSummary(instituteId, month, year));
     }
 
+    @GetMapping("/regularization")
+    public ResponseEntity<List<RegularizationDTO>> getRegularizations(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestAttribute("user") CustomUserDetails user) {
+        hrAccessGuard.requireHrStaff(user, instituteId);
+        return ResponseEntity.ok(regularizationService.getRegularizations(instituteId, status));
+    }
+
     @PostMapping("/regularization")
     public ResponseEntity<String> requestRegularization(
             @RequestBody RegularizationDTO regularizationDTO,

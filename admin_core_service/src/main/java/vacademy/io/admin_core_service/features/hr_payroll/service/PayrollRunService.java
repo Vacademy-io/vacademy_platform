@@ -45,6 +45,9 @@ public class PayrollRunService {
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
 
+    @Autowired
+    private PayrollCurrencyResolver payrollCurrencyResolver;
+
     /**
      * Creates a run for the VALIDATED institute — the caller-supplied
      * instituteId inside the DTO is deliberately ignored (body-vs-param
@@ -87,6 +90,9 @@ public class PayrollRunService {
         run.setTotalNetPay(BigDecimal.ZERO);
         run.setTotalEmployerCost(BigDecimal.ZERO);
         run.setNotes(dto.getNotes());
+        // NOT NULL in hr_payroll_run — stamped at creation, not at processing,
+        // or the very first insert for an institute fails.
+        run.setCurrency(payrollCurrencyResolver.resolve(instituteId));
 
         try {
             run = payrollRunRepository.save(run);

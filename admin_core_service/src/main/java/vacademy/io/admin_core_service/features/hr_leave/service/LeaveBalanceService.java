@@ -54,10 +54,22 @@ public class LeaveBalanceService {
     @Autowired
     private HrAccessGuard hrAccessGuard;
 
+    /**
+     * Balances for one employee, or — when no employeeId is given — for every
+     * employee in the institute, which is what the HR balance dashboard needs.
+     * The institute-wide form is HR-staff only; the per-employee form still lets
+     * an employee read their own.
+     */
     @Transactional(readOnly = true)
     public List<LeaveBalanceDTO> getBalances(String employeeId, Integer year, String instituteId, CustomUserDetails user) {
-        hrAccessGuard.requireSelfOrHrStaff(user, instituteId, employeeId);
-        List<LeaveBalance> balances = leaveBalanceRepository.findByEmployee_IdAndYear(employeeId, year);
+        List<LeaveBalance> balances;
+        if (employeeId == null || employeeId.isBlank()) {
+            hrAccessGuard.requireHrStaff(user, instituteId);
+            balances = leaveBalanceRepository.findByEmployee_InstituteIdAndYear(instituteId, year);
+        } else {
+            hrAccessGuard.requireSelfOrHrStaff(user, instituteId, employeeId);
+            balances = leaveBalanceRepository.findByEmployee_IdAndYear(employeeId, year);
+        }
         return balances.stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());

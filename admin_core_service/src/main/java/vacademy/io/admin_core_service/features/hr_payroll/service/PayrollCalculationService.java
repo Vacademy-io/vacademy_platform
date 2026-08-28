@@ -54,7 +54,12 @@ public class PayrollCalculationService {
 
     private static final Logger log = LoggerFactory.getLogger(PayrollCalculationService.class);
 
-    private static final String DEFAULT_CURRENCY = "INR";
+    /**
+     * Last-resort currency for rows whose own source (salary structure,
+     * adjustment) carries none. The RUN's currency comes from
+     * {@link PayrollCurrencyResolver} so a Gulf institute is not stamped INR.
+     */
+    private static final String DEFAULT_CURRENCY = PayrollCurrencyResolver.FALLBACK_CURRENCY;
 
     /** Structure component codes that mean a statutory scheme is template-managed (skip engine). */
     private static final Map<String, Set<String>> STATUTORY_ALIASES = Map.of(
@@ -64,6 +69,9 @@ public class PayrollCalculationService {
 
     @Autowired
     private PayrollRunRepository payrollRunRepository;
+
+    @Autowired
+    private PayrollCurrencyResolver payrollCurrencyResolver;
 
     @Autowired
     private PayrollEntryRepository payrollEntryRepository;
@@ -228,7 +236,7 @@ public class PayrollCalculationService {
         run.setStatus(PayrollStatus.PROCESSED.name());
         run.setProcessedAt(LocalDateTime.now());
         if (run.getCurrency() == null) {
-            run.setCurrency(DEFAULT_CURRENCY);
+            run.setCurrency(payrollCurrencyResolver.resolve(run.getInstituteId()));
         }
         payrollRunRepository.save(run);
 

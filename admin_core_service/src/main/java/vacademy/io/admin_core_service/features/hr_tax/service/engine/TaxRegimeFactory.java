@@ -36,8 +36,12 @@ public class TaxRegimeFactory {
         return engine;
     }
 
-    /** Institutes configure common aliases; engines register ISO alpha-3. */
-    private static String normalize(String countryCode) {
+    /**
+     * Institutes configure common aliases; engines register ISO alpha-3. Public
+     * so anything else keying off a configured country code (payroll currency,
+     * statutory exports) resolves aliases the same way this factory does.
+     */
+    public static String normalize(String countryCode) {
         if (countryCode == null) return "";
         return switch (countryCode.trim().toUpperCase()) {
             case "IN", "INDIA" -> "IND";

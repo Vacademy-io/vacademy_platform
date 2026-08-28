@@ -36,6 +36,8 @@ import vacademy.io.admin_core_service.features.hr_tax.service.engine.TaxInput;
 import vacademy.io.admin_core_service.features.hr_tax.service.engine.TaxRegimeEngine;
 import vacademy.io.admin_core_service.features.hr_tax.service.engine.TaxResult;
 import vacademy.io.admin_core_service.features.hr_tax.service.engine.TaxRegimeFactory;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
@@ -116,6 +118,9 @@ public class PayrollCalculationService {
 
     @Autowired
     private PayrollAdjustmentRepository payrollAdjustmentRepository;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     /**
      * Everything one employee's calculation produced, held in memory until the
@@ -226,6 +231,26 @@ public class PayrollCalculationService {
             run.setCurrency(DEFAULT_CURRENCY);
         }
         payrollRunRepository.save(run);
+
+        // Phase F5: HR_PAYROLL_PROCESSED workflow trigger (emit-and-forget — a
+        // workflow failure must never break the payroll processing itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("runId", run.getId());
+            contextData.put("month", run.getMonth());
+            contextData.put("year", run.getYear());
+            contextData.put("runType", runType);
+            contextData.put("totalEmployees", processedCount);
+            contextData.put("totalNetPay", totalNetPay.toPlainString());
+            contextData.put("errorCount", errors.size());
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_PAYROLL_PROCESSED.name(),
+                    run.getId(),
+                    run.getInstituteId(),
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_PAYROLL_PROCESSED workflow", e);
+        }
 
         if (!errors.isEmpty()) {
             return run.getId() + " (processed " + processedCount + " employees, "

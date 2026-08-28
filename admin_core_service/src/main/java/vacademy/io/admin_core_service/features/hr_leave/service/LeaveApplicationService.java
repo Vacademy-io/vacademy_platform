@@ -31,6 +31,8 @@ import vacademy.io.admin_core_service.features.hr_leave.enums.LeaveStatus;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveApplicationRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveBalanceRepository;
 import vacademy.io.admin_core_service.features.hr_leave.repository.LeaveTypeRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.VacademyException;
@@ -41,11 +43,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class LeaveApplicationService {
 
@@ -75,6 +80,9 @@ public class LeaveApplicationService {
 
     @Autowired
     private HrNotificationService hrNotificationService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     @Transactional
     public String applyLeave(LeaveApplyDTO dto, String instituteId, CustomUserDetails user) {
@@ -211,6 +219,28 @@ public class LeaveApplicationService {
                             "Reason", dto.getReason()));
         }
 
+        // Phase F5: HR_LEAVE_REQUESTED workflow trigger (emit-and-forget — a
+        // workflow failure must never break the leave application itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("applicationId", application.getId());
+            contextData.put("employeeId", employee.getId());
+            contextData.put("employeeUserId", employee.getUserId());
+            contextData.put("leaveTypeId", leaveType.getId());
+            contextData.put("leaveTypeName", leaveType.getName());
+            contextData.put("fromDate", dto.getFromDate().toString());
+            contextData.put("toDate", dto.getToDate().toString());
+            contextData.put("totalDays", calculatedDays.toPlainString());
+            contextData.put("appliedTo", appliedTo);
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_LEAVE_REQUESTED.name(),
+                    application.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_LEAVE_REQUESTED workflow", e);
+        }
+
         return application.getId();
     }
 
@@ -288,6 +318,30 @@ public class LeaveApplicationService {
         leaveApplicationRepository.save(application);
 
         notifyLeaveDecision(application);
+
+        // Phase F5: HR_LEAVE_DECIDED workflow trigger (emit-and-forget — a
+        // workflow failure must never break the decision itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("applicationId", application.getId());
+            contextData.put("employeeId", application.getEmployee().getId());
+            contextData.put("employeeUserId", application.getEmployee().getUserId());
+            contextData.put("leaveTypeId", application.getLeaveType().getId());
+            contextData.put("fromDate", application.getFromDate().toString());
+            contextData.put("toDate", application.getToDate().toString());
+            contextData.put("totalDays", application.getTotalDays() != null
+                    ? application.getTotalDays().toPlainString() : null);
+            contextData.put("status", application.getStatus());
+            contextData.put("approvedBy", application.getApprovedBy());
+            contextData.put("rejectionReason", application.getRejectionReason());
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_LEAVE_DECIDED.name(),
+                    application.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_LEAVE_DECIDED workflow", e);
+        }
 
         return application.getId();
     }

@@ -90,6 +90,23 @@ public enum WorkflowTriggerEvent {
     ONBOARDING_FLOW_COMPLETED,
     ONBOARDING_STEP_ENTERED,
     ONBOARDING_STEP_COMPLETED,
-    ONBOARDING_STEP_SKIPPED
+    ONBOARDING_STEP_SKIPPED,
+
+    /**
+     * HR & Payroll events (Phase F5) — institutes attach approval/notification/
+     * escalation workflows to these; HR's own emails remain as direct sends,
+     * these enable AUTOMATION on top.
+     */
+    HR_LEAVE_REQUESTED,
+    HR_LEAVE_DECIDED,
+    HR_COMP_OFF_DECIDED,
+    HR_LOAN_REQUESTED,
+    HR_LOAN_DECIDED,
+    HR_REIMBURSEMENT_REQUESTED,
+    HR_REIMBURSEMENT_DECIDED,
+    HR_PAYROLL_PROCESSED,
+    HR_PAYROLL_APPROVED,
+    HR_PAYROLL_PAID,
+    HR_EMPLOYEE_STATUS_CHANGED
 }
 

@@ -14,11 +14,16 @@ import vacademy.io.admin_core_service.features.hr_payroll.dto.ReimbursementActio
 import vacademy.io.admin_core_service.features.hr_payroll.dto.ReimbursementDTO;
 import vacademy.io.admin_core_service.features.hr_payroll.entity.Reimbursement;
 import vacademy.io.admin_core_service.features.hr_payroll.repository.ReimbursementRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class ReimbursementService {
 
@@ -30,6 +35,9 @@ public class ReimbursementService {
 
     @Autowired
     private HrNotificationService hrNotificationService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
 
     @Transactional
     public String submitReimbursement(CreateReimbursementDTO dto, String instituteId, CustomUserDetails user) {
@@ -50,6 +58,30 @@ public class ReimbursementService {
         reimbursement.setStatus("PENDING");
 
         reimbursement = reimbursementRepository.save(reimbursement);
+
+        // Phase F5: HR_REIMBURSEMENT_REQUESTED workflow trigger (emit-and-forget —
+        // a workflow failure must never break the submission itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("reimbursementId", reimbursement.getId());
+            contextData.put("employeeId", employee.getId());
+            contextData.put("employeeUserId", employee.getUserId());
+            contextData.put("type", reimbursement.getType());
+            contextData.put("amount", reimbursement.getAmount() != null
+                    ? reimbursement.getAmount().toPlainString() : null);
+            contextData.put("currency", reimbursement.getCurrency());
+            contextData.put("expenseDate", reimbursement.getExpenseDate() != null
+                    ? reimbursement.getExpenseDate().toString() : null);
+            contextData.put("status", reimbursement.getStatus());
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_REIMBURSEMENT_REQUESTED.name(),
+                    reimbursement.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_REIMBURSEMENT_REQUESTED workflow", e);
+        }
+
         return reimbursement.getId();
     }
 
@@ -108,6 +140,31 @@ public class ReimbursementService {
             hrNotificationService.emailEmployee(reimbursement.getEmployee(), subject, body);
         } catch (Exception e) {
             // emailEmployee already swallows send failures; this guards lazy-load surprises
+        }
+
+        // Phase F5: HR_REIMBURSEMENT_DECIDED workflow trigger (emit-and-forget —
+        // a workflow failure must never break the decision itself)
+        try {
+            Map<String, Object> contextData = new HashMap<>();
+            contextData.put("reimbursementId", reimbursement.getId());
+            contextData.put("employeeId", reimbursement.getEmployee().getId());
+            contextData.put("employeeUserId", reimbursement.getEmployee().getUserId());
+            contextData.put("type", reimbursement.getType());
+            contextData.put("amount", reimbursement.getAmount() != null
+                    ? reimbursement.getAmount().toPlainString() : null);
+            contextData.put("currency", reimbursement.getCurrency());
+            contextData.put("expenseDate", reimbursement.getExpenseDate() != null
+                    ? reimbursement.getExpenseDate().toString() : null);
+            contextData.put("status", reimbursement.getStatus());
+            contextData.put("approvedBy", reimbursement.getApprovedBy());
+            contextData.put("rejectionReason", reimbursement.getRejectionReason());
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.HR_REIMBURSEMENT_DECIDED.name(),
+                    reimbursement.getId(),
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Failed to trigger HR_REIMBURSEMENT_DECIDED workflow", e);
         }
 
         return reimbursement.getId();

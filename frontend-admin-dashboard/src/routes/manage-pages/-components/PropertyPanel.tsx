@@ -38,11 +38,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { fetchCampaignLeads } from '@/routes/audience-manager/list/-services/get-campaign-users';
-import { SUBMIT_CATALOGUE_LEAD_URL, AUDIENCE_CAMPAIGN } from '@/constants/urls';
+import { SUBMIT_CATALOGUE_LEAD_URL, AUDIENCE_CAMPAIGN
+    GET_INVITE_LIST,
+} from '@/constants/urls';
 import axios from 'axios';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
@@ -4707,6 +4711,62 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
     );
 };
 
+/** Pick one of the institute's live enrolment invite links.
+ *
+ *  An invite URL can already be pasted as a plain web address — that is how the
+ *  first real page was wired — but it makes the admin go and find the code in
+ *  another screen first. This lists the real invitations by name and builds the
+ *  canonical URL with createInviteLink, the same helper the invite screens use,
+ *  so the institute's white-label learner domain is honoured instead of
+ *  hardcoding one. */
+const InviteLinkPicker = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+    const instituteId = getCurrentInstituteId();
+    const { instituteDetails } = useInstituteDetailsStore();
+    const { data, isLoading, isError } = useQuery({
+        queryKey: ['htmlPageInviteLinks', instituteId],
+        queryFn: async () => {
+            const res = await authenticatedAxiosInstance.post(
+                `${GET_INVITE_LIST}?instituteId=${instituteId}&pageNo=0&pageSize=100`,
+                { status: ['ACTIVE'], name: '' }
+            );
+            return (res.data?.content ?? []) as { id: string; name: string; invite_code: string }[];
+        },
+        enabled: !!instituteId,
+    });
+
+    if (isLoading) return <p className="text-caption text-gray-400">Loading invite links…</p>;
+    if (isError) return <p className="text-caption text-danger-600">Could not load invite links.</p>;
+    if (!data?.length) {
+        return (
+            <p className="text-caption text-gray-500">
+                No active invite links yet. Create one under Students → Invite, then come back — or
+                use &quot;Web address&quot; to paste a link by hand.
+            </p>
+        );
+    }
+    return (
+        <div className="space-y-1">
+            {data.map((inv) => {
+                const url = createInviteLink(inv.invite_code, instituteDetails?.learner_portal_base_url);
+                return (
+                    <button
+                        key={inv.id}
+                        onClick={() => onChange(url)}
+                        className={`block w-full rounded border p-1.5 text-start text-caption ${
+                            value === url
+                                ? 'border-primary-400 bg-primary-50 text-primary-500'
+                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                    >
+                        <span className="block font-medium">{inv.name || inv.invite_code}</span>
+                        <span className="font-mono text-gray-400">{inv.invite_code}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+};
+
 /* ─── HTML-page link manager ─────────────────────────────────────────────
    Wiring a pasted page's buttons previously meant editing raw HTML — the enrol
    CTAs on a real import could only be pointed at the invitation flow by hand.
@@ -4714,7 +4774,7 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
    flags ones that go nowhere, and writes edits back STRUCTURALLY via
    DOMParser (regex rewrites of attributes created an injection once already). */
 
-type HtmlLinkKind = 'page' | 'section' | 'url' | 'lead' | 'none';
+type HtmlLinkKind = 'page' | 'section' | 'url' | 'invite' | 'lead' | 'none';
 
 interface HtmlLinkRow {
     index: number;
@@ -4738,6 +4798,7 @@ const parseHtmlLinks = (html: string): { rows: HtmlLinkRow[]; sectionIds: string
         if (verb === 'lead-form') { kind = 'lead'; value = el.getAttribute('data-audience') || ''; }
         else if (verb === 'scroll') { kind = 'section'; value = el.getAttribute('data-target') || ''; }
         else if (verb === 'route') { kind = 'page'; value = el.getAttribute('data-route') || ''; }
+        else if (/learner-invitation-response\?/i.test(href)) { kind = 'invite'; value = href; }
         else if (/^(https?:|mailto:|tel:)/i.test(href)) { kind = 'url'; value = href; }
         else if (href.startsWith('#') && href.length > 1) { kind = 'section'; value = href.slice(1); }
         const label = (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 44);
@@ -4764,6 +4825,11 @@ const applyHtmlLink = (html: string, index: number, kind: HtmlLinkKind, value: s
     } else if (kind === 'url') {
         if (el.tagName === 'A') el.setAttribute('href', value);
         else { el.setAttribute('data-vacademy', 'link'); el.setAttribute('data-href', value); }
+    } else if (kind === 'invite') {
+        // A plain absolute link: enrolment lives outside the catalogue router,
+        // so the binder must NOT intercept it.
+        if (el.tagName === 'A') el.setAttribute('href', value);
+        else { el.setAttribute('data-vacademy', 'link'); el.setAttribute('data-href', value); }
     } else if (kind === 'lead') {
         el.setAttribute('data-vacademy', 'lead-form');
         if (value) el.setAttribute('data-audience', value);
@@ -4778,6 +4844,7 @@ const HTML_LINK_KIND_LABELS: Record<HtmlLinkKind, string> = {
     page: 'Page on this site',
     section: 'Scroll to section',
     url: 'Web address',
+    invite: 'Enrol / invite link',
     lead: 'Lead form',
     none: 'No action',
 };
@@ -4798,6 +4865,7 @@ const HtmlLinkRowEditor = ({
     const summary =
         row.kind === 'page' ? `→ ${row.value || 'home'}` :
         row.kind === 'section' ? `↓ #${row.value}` :
+        row.kind === 'invite' ? '→ enrolment invite' :
         row.kind === 'url' ? `→ ${row.value.slice(0, 40)}` :
         row.kind === 'lead' ? '→ lead form' : 'no action';
     return (
@@ -4868,13 +4936,14 @@ const HtmlLinkRowEditor = ({
                             className="h-7 text-caption"
                         />
                     )}
+                    {kind === 'invite' && <InviteLinkPicker value={value} onChange={setValue} />}
                     {kind === 'lead' && (
                         <CampaignPicker value={value} onChange={setValue} label="Campaign" allowEmpty={false} />
                     )}
                     <Button
                         size="sm"
                         className="text-xs"
-                        disabled={kind !== 'none' && kind !== 'lead' && !value && kind !== 'page'}
+                        disabled={!value && kind !== 'none' && kind !== 'page'}
                         onClick={() => { onApply(kind, value); setEditing(false); }}
                     >
                         Apply

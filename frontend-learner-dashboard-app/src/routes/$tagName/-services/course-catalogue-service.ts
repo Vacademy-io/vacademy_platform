@@ -453,6 +453,11 @@ export class CourseCatalogueService {
                   };
                 }
                 
+                // Carry the catalogue ROW id through. The parsed
+                // catalogue_json has no id of its own, and without this an
+                // institute running several sites (different tags) cannot tell
+                // their traffic apart in analytics.
+                parsedData.catalogueId = response.data.id;
                 return parsedData;
         } catch (parseError) {
           console.error("[CourseCatalogueService] Error parsing catalogue_json:", parseError);

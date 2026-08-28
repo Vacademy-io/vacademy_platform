@@ -11,8 +11,6 @@ import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
-import { useCatalogueBasketActive } from "../-utils/use-catalogue-basket";
-import { StepRailBar } from "@/routes/product-pages/$productPageCode/-components/StepRailBar";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -66,12 +64,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // First-party page view. Fires per route, so SPA navigation between pages is
   // counted — the GA4/Pixel hooks above only serve the institute's own tools,
   // and most institutes never connect one.
-  // Mid-purchase visitors get the same four-step rail the checkout wears, so
-  // "Back to courses" does not drop them out of a journey they are halfway
-  // through. Gated on an actual basket: a first-time visitor with nothing
-  // selected sees the catalogue exactly as before.
-  const basketActive = useCatalogueBasketActive();
-
   useCataloguePageView(
     catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
   );
@@ -588,23 +580,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             .filter(matchesActivePage)
             .map((page) => (
               <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : 'pt-16 md:pt-20'} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
-                {/* The checkout's own rail, for a visitor who is mid-purchase:
-                    "Back to courses" lands here, and without it the four-step
-                    journey vanishes at the step where they were choosing.
-                
-                    INSIDE main, because the site header is `fixed` with an opaque
-                    background and emits no spacer - main's pt-16/md:pt-20 IS the
-                    space reserved for it. Rendered above main the rail painted
-                    underneath the header: invisible, while pushing the hero down by
-                    its own height. Same trap CatalogueChrome documents. Hidden with
-                    no basket, so an ordinary first visit is untouched. */}
-                {basketActive && (
-                  <StepRailBar
-                    primaryColor={themeSettings?.primaryColor || '#2563eb'} // design-lint-ignore: catalogue theme fallback
-                    step="CATALOG"
-                    variant="catalogue"
-                  />
-                )}
                 <JsonRenderer
                   page={page}
                   globalSettings={catalogueData.globalSettings}

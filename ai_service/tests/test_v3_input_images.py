@@ -148,3 +148,103 @@ def test_plan_shots_accepts_input_images():
     import inspect
 
     assert "input_images" in inspect.signature(sp.plan_shots).parameters
+
+
+def test_ocr_full_text_carries_identity_when_there_is_no_caption():
+    """The image indexer emits meta / colors / ocr only — no caption block.
+
+    So `short`, `long`, `tags` and `ui_elements` are absent on every real asset,
+    and OCR is the ONLY signal describing what an upload depicts. The prompt
+    names screenshots by content ("the framework formula screenshot"), so
+    without this the planner has nothing but the filename to match on.
+    """
+    img = {
+        "name": "02-framework-formula",
+        "mode": "screenshot",
+        "source_public_url": "https://s3/x.png",
+        "duration_seconds": 6.0,
+        "context": {
+            "meta": {"width": 1600, "height": 900},
+            # Exactly the shape the indexer produces — note: no "caption" key.
+            "ocr": {
+                "full_text": "Accreditation\nFramework\nPART 1 OF 2\n600",
+                "blocks": [{"text": "600", "bbox_norm": [0.1, 0.2, 0.3, 0.4]}] * 30,
+            },
+            "colors": {"dominant": []},
+        },
+    }
+    block = sp.build_input_image_block([img])
+    assert "Text on screen:" in block
+    assert "PART 1 OF 2" in block
+    # Placement anchors survive alongside identity.
+    assert "bbox_norm" in block
+
+
+def test_a_caption_less_asset_does_not_crash_the_block():
+    """Every caption-derived line must degrade to absent, not raise."""
+    bare = {
+        "name": "x",
+        "mode": "screenshot",
+        "source_public_url": "https://s3/x.png",
+        "context": {"meta": {}, "ocr": {}},
+    }
+    block = sp.build_input_image_block([bare])
+    assert "image_index: 0" in block
+    assert "https://s3/x.png" in block
+
+
+def test_bbox_floor_survives_a_full_twenty_image_run():
+    """OCR was budgeted assuming a caption existed. With no caption it is the
+    only content signal, so the floor must stay usable at the 20-image cap."""
+    img = {
+        "name": "s", "mode": "screenshot", "source_public_url": "https://s3/s.png",
+        "context": {"meta": {}, "ocr": {
+            "full_text": "hello", "blocks": [{"text": "t", "bbox_norm": [0, 0, 1, 1]}] * 40}},
+    }
+    block = sp.build_input_image_block([img] * 20)
+    assert block.count("bbox_norm") >= 20 * 6
+
+
+def _shot(name, lines):
+    return {
+        "name": name, "mode": "screenshot",
+        "source_public_url": f"https://s3/{name}.png",
+        "context": {"meta": {}, "ocr": {"full_text": "\n".join(lines), "blocks": []}},
+    }
+
+
+def test_shared_chrome_does_not_make_every_screen_read_the_same():
+    """Screens from one product share a nav bar. Taken verbatim, the first
+    characters of every screenshot in a walkthrough are that same menu, so each
+    image described itself identically and the planner could not tell them
+    apart — the whole point of this block.
+    """
+    NAV = ["Home", "Framework", "Fee", "Login", "Apply Now"]
+    imgs = [
+        _shot("formula", NAV + ["Dual-Assessment Framework", "600 marks"]),
+        _shot("dashboard", NAV + ["Five stages", "Under review"]),
+        _shot("certificate", NAV + ["Certificate of Accreditation", "A++"]),
+        _shot("verify", NAV + ["ICOSA Verified", "Credential ID"]),
+    ]
+    block = sp.build_input_image_block(imgs)
+    excerpts = [
+        line[len("Text on screen: "):]
+        for line in block.split("\n")
+        if line.startswith("Text on screen:")
+    ]
+    assert len(excerpts) == 4
+    assert len(set(excerpts)) == 4, f"screens not distinguishable: {excerpts}"
+    # The distinctive text must lead; chrome may appear but must not crowd it out.
+    assert "Dual-Assessment Framework" in excerpts[0]
+    assert "Certificate of Accreditation" in excerpts[2]
+
+
+def test_a_screen_that_is_only_chrome_still_describes_itself():
+    """Ranking must not empty an excerpt — a screen whose text is entirely
+    shared still needs to say something rather than nothing."""
+    NAV = ["Home", "Framework", "Login"]
+    imgs = [_shot(f"s{i}", NAV) for i in range(5)]
+    block = sp.build_input_image_block(imgs)
+    excerpts = [l for l in block.split("\n") if l.startswith("Text on screen:")]
+    assert len(excerpts) == 5
+    assert all(len(e) > len("Text on screen: ") for e in excerpts)

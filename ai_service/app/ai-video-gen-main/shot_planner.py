@@ -521,7 +521,36 @@ def build_input_image_block(images: List[Dict[str, Any]]) -> str:
     blow the prompt budget; mirrors the transcript budget on the video side.
     """
     n = len(images)
-    ocr_budget = max(4, 90 // max(1, n))
+    # The image indexer emits meta / colors / ocr only — there is no caption
+    # block, so `short`, `long`, `tags` and `ui_elements` below are almost
+    # always absent in practice. OCR is therefore the ONLY signal saying what a
+    # given upload actually depicts, which is what the planner matches against
+    # when the prompt names a screenshot by content. `full_text` identifies a
+    # screen far better per token than a handful of positioned blocks, so it
+    # carries identity and the blocks carry placement.
+    ocr_budget = max(6, 90 // max(1, n))
+    text_budget = 280 if n > 10 else 420
+
+    # Screens from one product share chrome — a nav bar, a footer, a sidebar.
+    # Taken verbatim, the first 280 characters of every screenshot in a
+    # walkthrough is the SAME menu, so each image describes itself identically
+    # and the planner cannot tell them apart. Drop fragments that recur across
+    # most of the batch; what survives is what makes each screen itself.
+    def _fragments(ictx: Dict[str, Any]) -> List[str]:
+        raw = ((ictx.get("context", {}) or {}).get("ocr", {}) or {}).get("full_text") or ""
+        return [t.strip() for t in raw.split("\n") if t.strip()]
+
+    # Frequency across the batch, used to RANK rather than to threshold. A cutoff
+    # cannot work here: this product's nav bar appears on a quarter of the
+    # screens, so any threshold loose enough to drop it also drops real content
+    # that several screens legitimately share. Ranking needs no cutoff — the
+    # rarest text on a screen is what distinguishes it, so it simply goes first
+    # and the shared chrome falls off the end of the budget on its own.
+    doc_freq: Dict[str, int] = {}
+    for ictx in images:
+        for frag in set(_fragments(ictx)):
+            doc_freq[frag] = doc_freq.get(frag, 0) + 1
+
     sections: List[str] = []
 
     for idx, ictx in enumerate(images):
@@ -554,6 +583,22 @@ def build_input_image_block(images: List[Dict[str, Any]]) -> str:
         ui_elements = caption.get("ui_elements") or []
         if ui_elements:
             sec += f"UI elements visible: {', '.join(ui_elements[:10])}\n"
+        frags = _fragments(ictx)
+        # Most distinctive first, ties broken by where it sits on screen, then
+        # restored to reading order once the budget is filled — the planner gets
+        # what identifies this screen, still in the order a person would read it.
+        ranked = sorted(range(len(frags)), key=lambda i: (doc_freq.get(frags[i], 1), i))
+        chosen: List[int] = []
+        used = 0
+        for i in ranked:
+            cost = len(frags[i]) + 3
+            if used + cost > text_budget and chosen:
+                break
+            chosen.append(i)
+            used += cost
+        full_text = " · ".join(frags[i] for i in sorted(chosen))
+        if full_text:
+            sec += f"Text on screen: {full_text}\n"
         if ocr_blocks:
             lines = [
                 f"  \"{b.get('text', '')}\" @ bbox_norm={b.get('bbox_norm', [])}"

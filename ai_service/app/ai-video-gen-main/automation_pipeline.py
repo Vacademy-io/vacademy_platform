@@ -1735,7 +1735,17 @@ class OpenRouterClient:
                         method="POST",
                     )
                     _t_start = time.perf_counter()
-                    with urllib.request.urlopen(request, timeout=180) as response:
+                    # A flat 180s was sized for a fast non-reasoning model. A
+                    # thinking model planning a 20-shot video spends minutes in
+                    # its reasoning channel before the first content token, so
+                    # 180s cut it off, the call failed over to the next model in
+                    # the chain, and the model the user actually picked was
+                    # never the one that answered — silently, since a fallback
+                    # is not an error. Scale with the token budget instead: a
+                    # small utility prompt keeps a tight timeout, a big
+                    # generation gets room to finish.
+                    _req_timeout = max(180, min(900, 120 + int(_effective_max_tokens * 0.05)))
+                    with urllib.request.urlopen(request, timeout=_req_timeout) as response:
                         raw = response.read().decode("utf-8")
                         # Parse JSON response and return content
                         data = json.loads(raw)

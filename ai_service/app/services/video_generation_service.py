@@ -1227,6 +1227,22 @@ class VideoGenerationService:
                 gen_metadata["visual_style"] = visual_style
             if quality_tier and quality_tier != "ultra":
                 gen_metadata["quality_tier"] = quality_tier
+            # Which model the user asked for. Neither field was recorded, so a
+            # finished run carried no trace of the choice and the only way to
+            # answer "what model ran this?" was to guess. Worse, reading the
+            # absent key returned None, which reads exactly like "no override
+            # was set" — the run looks like it used defaults when it did not.
+            if model:
+                gen_metadata["model"] = model
+            if model_overrides is not None:
+                try:
+                    gen_metadata["model_overrides"] = (
+                        model_overrides.model_dump(exclude_none=True)
+                        if hasattr(model_overrides, "model_dump")
+                        else dict(model_overrides)
+                    )
+                except Exception:
+                    gen_metadata["model_overrides"] = str(model_overrides)
             # Normalize: singular → list (backward compat)
             if input_video_id and not input_video_ids:
                 input_video_ids = [input_video_id]

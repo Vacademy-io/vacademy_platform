@@ -111,3 +111,41 @@ def test_the_corrective_turn_is_cooled_and_keeps_json_mode():
     kw = calls[1]["kw"]
     assert kw.get("response_format") == {"type": "json_object"}
     assert kw.get("temperature", 1.0) <= 0.2, "retry should not be as hot as the first call"
+
+
+def test_the_llm_timeout_scales_with_the_token_budget():
+    """A flat 180s was sized for a fast non-reasoning model.
+
+    A thinking model planning a 20-shot video spends minutes in its reasoning
+    channel before the first content token. At 180s the call was cut off and
+    failed over to the next model in the chain — so the model the user picked
+    was never the one that answered, and silently, because a fallback is not
+    an error.
+    """
+    import os
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "app", "ai-video-gen-main", "automation_pipeline.py"
+    )
+    src = open(path).read()
+    assert "urlopen(request, timeout=180)" not in src, "flat timeout is back"
+    assert "_req_timeout = max(180, min(900, 120 + int(_effective_max_tokens * 0.05)))" in src
+    assert "urlopen(request, timeout=_req_timeout)" in src
+
+    budget = lambda mt: max(180, min(900, 120 + int(mt * 0.05)))
+    assert budget(500) == 180        # small utility prompt keeps a tight timeout
+    assert budget(16000) == 900      # a full shot plan gets room to finish
+    assert budget(64000) == 900      # and it is bounded, not unlimited
+    assert budget(2000) < budget(8000)
+
+
+def test_the_requested_model_is_recorded_on_the_run():
+    """Neither `model` nor `model_overrides` was persisted, so a finished run
+    carried no trace of the choice — and reading the absent key returned None,
+    which reads exactly like "no override was set"."""
+    import os
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "app", "services", "video_generation_service.py"
+    )
+    src = open(path).read()
+    assert 'gen_metadata["model"] = model' in src
+    assert 'gen_metadata["model_overrides"]' in src

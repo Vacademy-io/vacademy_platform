@@ -34,6 +34,8 @@ import { VideoUploadField } from './VideoUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
+import { useToast } from '@/hooks/use-toast';
+import { HTML_PAGE_AI_PROMPT } from '../-utils/html-page-prompt';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
@@ -4960,6 +4962,7 @@ const HtmlLinkRowEditor = ({
  *  someone else's markup and we do not pretend to understand its structure. */
 const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
     const { t } = useTranslation('managePagesPropertyPanel');
+    const { toast } = useToast();
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -5041,6 +5044,36 @@ const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
                     components={{ code: <code />, styletag: <code>&lt;style&gt;</code> }}
                 />
             </div>
+            {/* Placed ABOVE the paste fields: someone who has no page yet needs
+                this before they need anywhere to paste. */}
+            <details className="rounded border border-primary-200 bg-primary-50 p-2.5">
+                <summary className="cursor-pointer text-caption font-medium text-primary-500">
+                    {t('htmlPage.aiHelpTitle')}
+                </summary>
+                <ol className="mt-2 list-decimal space-y-1 ps-4 text-caption text-gray-600">
+                    <li>{t('htmlPage.aiStep1')}</li>
+                    <li>{t('htmlPage.aiStep2')}</li>
+                    <li>{t('htmlPage.aiStep3')}</li>
+                    <li>{t('htmlPage.aiStep4')}</li>
+                </ol>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={() => {
+                        navigator.clipboard.writeText(HTML_PAGE_AI_PROMPT);
+                        toast({
+                            title: t('htmlPage.aiCopiedTitle'),
+                            description: t('htmlPage.aiCopiedBody'),
+                        });
+                    }}
+                >
+                    <Copy className="me-1.5 size-3.5" />
+                    {t('htmlPage.aiCopyPrompt')}
+                </Button>
+                <p className="mt-1.5 text-caption text-gray-400">{t('htmlPage.aiPromptHint')}</p>
+            </details>
+
             <div>
                 <Label className="text-xs">{t('htmlPage.html')}</Label>
                 <Textarea

@@ -23521,6 +23521,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               word-break: normal;
               overflow-wrap: normal;
             }}
+            /* Headings must never split mid-word. `word-break: break-word` above is
+               a safety valve for prose in a narrow column, but applied to display
+               type it produces "CONFIRM SUBMISSI / ON". A heading that does not
+               fit should be SHRUNK — the fit sweep in dispatcher_install_js
+               already does that — not hacked in half. keep-all breaks at spaces
+               only; the sweep handles the genuinely-too-wide single word. */
+            h1, h2, h3, h4, h5, h6,
+            [class*="title" i],
+            [class*="headline" i],
+            [class*="heading" i],
+            [class*="display" i] {{
+              word-break: keep-all;
+              overflow-wrap: normal;
+              hyphens: none;
+            }}
             /* Word-level wrappers: prevent internal breaks, allow breaks between words */
             [class*="-word"],
             [class*="word-"] {{

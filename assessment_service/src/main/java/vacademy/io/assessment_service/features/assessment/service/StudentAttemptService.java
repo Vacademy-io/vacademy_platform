@@ -93,13 +93,22 @@ public class StudentAttemptService {
     }
 
 
+    // @Transactional is load-bearing, not decorative: without it the rows loaded by
+    // the marks calculation detach the instant their read finishes, so saveAll() falls
+    // back to merge() and fires a SELECT per row — each dragging this entity's four
+    // EAGER @ManyToOne graphs. A 42-question paper became ~84 round trips per autosave
+    // per candidate, which took a live exam's background recalcs to 29s on 2026-08-29.
+    // Inside a transaction the entities stay managed, dirty checking emits plain
+    // batched UPDATEs, and the same work costs a couple of round trips.
     @Async
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
         return CompletableFuture.completedFuture(updateStudentAttemptWithTotalAfterMarksCalculation(studentAttemptOptional));
     }
 
     @Async
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
         return updateStudentAttemptResultAfterMarksCalculationAsync(studentAttemptOptional, null);
@@ -107,6 +116,7 @@ public class StudentAttemptService {
 
     /** @param endSource see {@link #updateStudentAttemptWithResultAfterMarksCalculation(Optional, String)}. */
     @Async
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional,
                                                                                                  String endSource) {
@@ -127,6 +137,7 @@ public class StudentAttemptService {
      *                  cannot be inferred from here, because callers reach this method with
      *                  a non-ENDED attempt for several different reasons.
      */
+    @Transactional
     @CacheEvict(value = "comparisonData", allEntries = true)
     public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional,
                                                                              String endSource) {

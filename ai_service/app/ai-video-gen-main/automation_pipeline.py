@@ -1772,18 +1772,25 @@ class OpenRouterClient:
                             if _reasoning and str(_reasoning).strip():
                                 content = str(_reasoning)
 
+                        # finish_reason "length" means the answer was CUT OFF,
+                        # whether or not any content came back. The budget bump
+                        # used to sit inside the empty-content branch, so a
+                        # partial answer was returned as-is and failed downstream —
+                        # measured on gpt-5.6-luna at reasoning effort "high":
+                        # well-formed JSON that simply stopped at char 40,689,
+                        # which the shot-plan parser can only report as garbage.
+                        # Retry on the cut-off itself; emptiness is a separate
+                        # question handled below.
+                        if _finish == "length" and _length_bump < 2:
+                            _effective_max_tokens = min(_effective_max_tokens * 2, 64000)
+                            print(
+                                f"   ↻ {model_to_use} hit max_tokens at stage "
+                                f"'{_llm_stage.get()}' (content={len(content or '')} chars) — "
+                                f"retrying same model with max_tokens={_effective_max_tokens}"
+                            )
+                            continue
+
                         if not content or not content.strip():
-                            # Empty because the model exhausted its budget before
-                            # emitting content → retry the same model once with a
-                            # bigger budget before failing over to the next one.
-                            if _finish == "length" and _length_bump < 2:
-                                _effective_max_tokens = min(_effective_max_tokens * 2, 64000)
-                                print(
-                                    f"   ↻ {model_to_use} hit max_tokens with empty content at "
-                                    f"stage '{_llm_stage.get()}' — retrying same model with "
-                                    f"max_tokens={_effective_max_tokens}"
-                                )
-                                continue
                             _hint = (
                                 " (finish_reason=length — model hit max_tokens before emitting"
                                 " content even after a budget bump)"

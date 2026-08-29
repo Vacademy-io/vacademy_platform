@@ -175,3 +175,27 @@ def test_a_reasoning_model_gets_two_budget_bumps():
         seen.append(budget)
         budget = min(budget * 2, 64000)
     assert seen == [16000, 32000, 64000]
+
+
+def test_truncated_output_also_triggers_a_budget_bump():
+    """finish_reason "length" means the answer was CUT OFF — whether or not any
+    content came back.
+
+    The bump used to live inside the empty-content branch, so a partial answer
+    was handed straight to the parser. Measured on gpt-5.6-luna at reasoning
+    effort "high": well-formed JSON that simply stopped at char 40,689, which
+    the shot-plan parser can only report as garbage ("Expecting value: line
+    1247 column 17"). The model was not confused; it ran out of room.
+    """
+    import os
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "app", "ai-video-gen-main", "automation_pipeline.py"
+    )
+    src = open(path).read()
+    bump = src.index('if _finish == "length" and _length_bump < 2:')
+    empty = src.index("if not content or not content.strip():\n                            _hint")
+    assert bump < empty, "the length check must precede (and be independent of) the empty check"
+
+    # The bump must not be nested under an emptiness condition any more.
+    between = src[bump - 400:bump]
+    assert "if not content" not in between.split("# finish_reason")[-1]

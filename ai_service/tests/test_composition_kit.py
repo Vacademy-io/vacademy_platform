@@ -371,3 +371,31 @@ def test_text_rows_cannot_collapse_below_min_content():
     """min-width:0 is what lets a grid item shrink so long labels wrap; applied
     to a text-bearing flex row it is what produces the one-letter column."""
     assert "min-width: min-content" in ck.COMPOSITION_CSS
+
+
+def test_image_clip_takes_the_whole_frame():
+    """IMAGE_CLIP embeds the user's screenshot full-frame in its own HTML.
+
+    It was absent from both default maps, so a screenshot-led video (the
+    `input_image_screenshot` domain, where IMAGE_CLIP is the PRIMARY shot type)
+    had almost every shot told to build a 5-of-12-column text layout on a flat
+    brand background — directly contradicting the mandatory full-frame <img>.
+    """
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app", "ai-video-gen-main"))
+    import shot_planner as sp
+
+    assert ck.default_for("IMAGE_CLIP") == "full_bleed_overlay"
+    # media_hero is what earns the repeat exemption below; without it every
+    # second screenshot gets reflowed into a column by the no-repeat rule.
+    assert sp.SHOT_TYPE_BG_TREATMENT_DEFAULT["IMAGE_CLIP"] == "media_hero"
+
+
+def test_consecutive_screenshots_all_keep_the_full_frame():
+    """The no-repeat rule must not reflow a run of screenshots into columns."""
+    shots = [
+        {"shot_type": "IMAGE_CLIP", "background_treatment": "media_hero"}
+        for _ in range(5)
+    ]
+    ck.assign_compositions(shots)
+    assert [s["composition"] for s in shots] == ["full_bleed_overlay"] * 5

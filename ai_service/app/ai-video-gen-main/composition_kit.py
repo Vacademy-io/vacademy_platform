@@ -276,6 +276,10 @@ SHOT_TYPE_COMPOSITION_DEFAULT: Dict[str, str] = {
     "IMAGE_HERO": "bottom_anchor",
     "VIDEO_HERO": "full_bleed_overlay",
     "SOURCE_CLIP": "full_bleed_overlay",
+    # IMAGE_CLIP embeds the user's screenshot full-frame in its own HTML and
+    # annotates on top. A column composition would fight that <img>, so it
+    # takes the same frame as SOURCE_CLIP.
+    "IMAGE_CLIP": "full_bleed_overlay",
     "AI_VIDEO_HERO": "full_bleed_overlay",
     "PRODUCT_HERO": "bottom_anchor",
     "DEVICE_MOCKUP": "stacked_offset",

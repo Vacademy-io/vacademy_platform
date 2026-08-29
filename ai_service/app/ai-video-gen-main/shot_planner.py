@@ -113,6 +113,7 @@ SHOT_TYPE_BG_TREATMENT_DEFAULT: Dict[str, str] = {
     "IMAGE_SPLIT": "media_hero",
     "ARTICLE_FOCUS": "media_hero",
     "SOURCE_CLIP": "media_hero",
+    "IMAGE_CLIP": "media_hero",
     "AI_VIDEO_HERO": "media_hero",
     "ANNOTATION_MAP": "brand_textured",
     "DATA_STORY": "brand_textured",

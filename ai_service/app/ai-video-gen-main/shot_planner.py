@@ -224,6 +224,11 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "with HTML overlays on top. Use for key quotes, soundbites, demo highlights — any moment where "
     "showing the real footage is more impactful than AI graphics. Specify `source_start` and "
     "`source_end` (seconds in the source video). No `image_prompt` or `video_query` needed.\n"
+    "- **IMAGE_CLIP** *(only when source images are provided)*: Show one of the user's uploaded "
+    "images full-frame with HTML annotations on top — callouts, highlight boxes, arrows, a label. "
+    "This is the shot type for a screenshot, a scanned plate, a chart, a photograph the user "
+    "supplied. Set `image_index` to choose WHICH upload. Never substitute a generated illustration "
+    "for an uploaded image. No `image_prompt` or `video_query` needed.\n"
     "- **ARTICLE_FOCUS** *(only when scrape_url captured screenshots)*: Show the actual scraped "
     "article page with a slow zoom-pan toward a highlighted quote. Tells the viewer 'this is real, "
     "here is the source.' MUST set `template_id: \"article_focus_zoom_pan\"` and `template_params` "
@@ -491,6 +496,98 @@ _VERBALIZED_SAMPLING_BLOCK = (
 # User prompt builder
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _img_label_for(index: int) -> str:
+    """Spreadsheet-style label for an uploaded image: A..Z, then AA, AB, ..."""
+    label = ""
+    n = max(0, index)
+    while True:
+        label = chr(ord("A") + n % 26) + label
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return label
+
+
+def build_input_image_block(images: List[Dict[str, Any]]) -> str:
+    """Describe the user's indexed images so the planner can place them.
+
+    Each entry carries the metadata the image indexer produced: a caption, tags,
+    the UI elements it recognised, and OCR blocks with NORMALISED bounding boxes.
+    The bboxes are the reason this block is worth its tokens — they are what let
+    an annotation land on the actual button being described rather than floating
+    somewhere over the screenshot.
+
+    OCR volume scales down as the image count rises so a 20-still run does not
+    blow the prompt budget; mirrors the transcript budget on the video side.
+    """
+    n = len(images)
+    ocr_budget = max(4, 90 // max(1, n))
+    sections: List[str] = []
+
+    for idx, ictx in enumerate(images):
+        blob = ictx.get("context", {}) or {}
+        meta = blob.get("meta", {}) or {}
+        caption = blob.get("caption", {}) or {}
+        ocr_blocks = (blob.get("ocr", {}) or {}).get("blocks", []) or []
+        faces = blob.get("faces", {}) or {}
+
+        name = ictx.get("name", f"Image {_img_label_for(idx)}")
+        mode = ictx.get("mode", "photo")
+        url = ictx.get("source_public_url") or ictx.get("source_url", "")
+        width = meta.get("width", ictx.get("width", 0))
+        height = meta.get("height", ictx.get("height", 0))
+        default_dur = ictx.get("duration_seconds", 5.0)
+
+        sec = (
+            f"\n### Image {_img_label_for(idx)}: \"{name}\" ({mode}, {width}x{height})\n"
+            f"image_index: {idx}\n"
+            f"source_public_url: {url}\n"
+            f"default_duration_s: {default_dur}\n"
+        )
+        if caption.get("short"):
+            sec += f"Caption: {caption['short']}\n"
+        if caption.get("long"):
+            sec += f"Detail: {caption['long']}\n"
+        tags = ", ".join((caption.get("tags") or [])[:10])
+        if tags:
+            sec += f"Tags: {tags}\n"
+        ui_elements = caption.get("ui_elements") or []
+        if ui_elements:
+            sec += f"UI elements visible: {', '.join(ui_elements[:10])}\n"
+        if ocr_blocks:
+            lines = [
+                f"  \"{b.get('text', '')}\" @ bbox_norm={b.get('bbox_norm', [])}"
+                for b in ocr_blocks[:ocr_budget]
+            ]
+            sec += "OCR text blocks (normalized bboxes 0-1):\n" + "\n".join(lines) + "\n"
+        if faces.get("detected"):
+            free = ", ".join(faces.get("free_regions", []) or []) or "none"
+            sec += f"Face detected (count={faces.get('face_count', 0)}). Safe overlay zones: {free}\n"
+        sections.append(sec)
+
+    rules = (
+        "**IMAGE_CLIP RULES**:\n"
+        f"- The user uploaded {n} image(s). They are the subject of this video, not "
+        "decoration — show them. Give each one a beat unless the narration truly has "
+        "no use for it.\n"
+        "- Each IMAGE_CLIP shot MUST set `image_index` (0 = Image A, 1 = Image B, ...).\n"
+        "- Do NOT invent an illustration to stand in for an uploaded image. If a beat is "
+        "about something an upload shows, use the upload.\n"
+        "- For screenshots and diagrams, position callouts and arrows using the OCR "
+        "bbox_norm coordinates so an annotation lands on the element it names.\n"
+        "- For photos with faces, keep overlays inside the listed safe zones.\n"
+        "- Default durations: photo 4s, screenshot 6s, diagram 8s. Lengthen when the "
+        "narration at that image needs longer.\n"
+        "- Between image beats, use graphic shot types (TEXT_DIAGRAM, PROCESS_STEPS, "
+        "DATA_STORY, KINETIC_TITLE) to explain structure and numbers, so the video is "
+        "not the same framed screenshot N times.\n"
+    )
+    return (
+        "IMAGE_CLIP IS AVAILABLE — the user uploaded source images.\n"
+        "\n## SOURCE IMAGE CONTEXTS\n" + "".join(sections) + "\n" + rules
+    )
+
+
 def build_shot_planner_user_prompt(
     *,
     prompt: str,
@@ -513,6 +610,7 @@ def build_shot_planner_user_prompt(
     saved_cast: Optional[List[Dict[str, Any]]] = None,
     asset_asks_enabled: bool = False,
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
+    input_images: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
     cultural_context: Any = None,
     template_catalog_md: Optional[str] = None,
@@ -709,6 +807,21 @@ def build_shot_planner_user_prompt(
         lines.append(
             "SOURCE_CLIP IS NOT AVAILABLE — no source video uploaded. Do NOT pick "
             "shot_type=SOURCE_CLIP."
+        )
+
+    # Indexed input images gating.
+    # IMAGE_CLIP was previously reachable only from the deprecated v2 Director,
+    # which built its own SOURCE IMAGE CONTEXTS block. On v3 the planner was
+    # never told the user's screenshots existed, so an image-led run indexed
+    # every still, paid for it, and then planned a video that referenced none
+    # of them.
+    if input_images:
+        lines.append("")
+        lines.append(build_input_image_block(input_images))
+    else:
+        lines.append(
+            "IMAGE_CLIP IS NOT AVAILABLE — no source images uploaded. Do NOT pick "
+            "shot_type=IMAGE_CLIP."
         )
 
     # Article screenshots gating
@@ -1037,6 +1150,11 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "ai_video_audio",
         "source_start",
         "source_end",
+        # Which uploaded asset this shot shows. Without these in the
+        # pass-through the planner's choice is silently dropped during
+        # normalization and every clip shot falls back to asset 0.
+        "image_index",
+        "source_video_index",
         "role",
         "pacing_role",
         # DIALOGUE_SCENE (storybook/drama mode): spoken lines + scene staging.
@@ -1509,6 +1627,7 @@ def plan_shots(
     saved_cast: Optional[List[Dict[str, Any]]] = None,
     asset_asks_enabled: bool = False,
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
+    input_images: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
     cultural_context: Any = None,
     template_catalog_md: Optional[str] = None,
@@ -1579,6 +1698,7 @@ def plan_shots(
         saved_cast=saved_cast,
         asset_asks_enabled=asset_asks_enabled,
         article_screenshots=article_screenshots,
+        input_images=input_images,
         subject_domain=subject_domain,
         cultural_context=cultural_context,
         template_catalog_md=template_catalog_md,

@@ -14586,6 +14586,7 @@ class VideoGenerationPipeline:
                 and (self._assist_state or {}).get("enabled")
             ),
             article_screenshots=self._v3_article_screenshots(),
+            input_images=self._input_image_contexts or None,
             cultural_context=getattr(self, "_cultural_context", None),
             template_catalog_md=_tmpl_catalog_md or None,
             valid_template_ids=_tmpl_valid_ids,

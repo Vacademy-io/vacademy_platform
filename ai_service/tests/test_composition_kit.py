@@ -431,3 +431,21 @@ def test_non_media_cards_still_get_the_composition_exemplar():
     whole mechanism that stopped every shot coming out centre-stacked."""
     for shot_type in ("TEXT_DIAGRAM", "PROCESS_STEPS", "KINETIC_TITLE"):
         assert ck.exemplar_for(ck.default_for(shot_type), shot_type) is not None, shot_type
+
+
+def test_text_children_cannot_collapse_to_one_character():
+    """`min-width: 0` on a .comp child is what permits a grid item to shrink
+    below its content width — all the way to one character per line.
+
+    It was added so long labels wrap instead of overflowing, with a min-content
+    floor only on `.comp-spine .spine > *`. A pipeline-authored frame with a
+    correct `comp comp-spine` container but no `.spine` child therefore had
+    nothing protecting it, and its parameter labels rendered vertically, one
+    letter each. Media keeps the 0 floor — an image can shrink without
+    becoming unreadable; a sentence cannot.
+    """
+    css = ck.COMPOSITION_CSS
+    assert '.comp > *, [class*="comp-"] > * { min-width: min-content; min-height: 0; }' in css
+    assert ".comp > * { min-width: 0;" not in css
+    for tag in ("img", "video", "svg", "canvas"):
+        assert f".comp {tag}" in css or f'[class*="comp-"] {tag}' in css

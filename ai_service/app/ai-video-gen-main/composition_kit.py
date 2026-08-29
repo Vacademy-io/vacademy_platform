@@ -487,9 +487,17 @@ COMPOSITION_CSS = """
 /* min-width:0 lets a grid item shrink below min-content, which is what allows
    long labels to wrap. Keep it off text-bearing flex rows: those must overflow
    or shrink their type, never collapse to a one-character column. */
-.comp > * { min-width: 0; min-height: 0; }
-.comp .spine > *,
-.comp-spine .spine > * { min-width: min-content; }
+.comp > *, [class*="comp-"] > * { min-width: min-content; min-height: 0; }
+/* min-width:0 belongs to things that CAN shrink without becoming unreadable —
+   media. Applied to a text-bearing grid child it permits the item to shrink
+   below its content width, all the way to one character per line, which is
+   exactly the failure it was meant to prevent. A real run collapsed a
+   pipeline-authored `comp comp-spine` frame this way: the container was
+   correct, the children were simply allowed to vanish. The floor is the
+   longest word — text still wraps, it can no longer collapse. */
+.comp img, .comp video, .comp svg, .comp canvas,
+[class*="comp-"] img, [class*="comp-"] video,
+[class*="comp-"] svg, [class*="comp-"] canvas { min-width: 0; }
 
 /* centred — calm and declarative; rationed by assign_compositions() */
 .comp-center .comp-main {

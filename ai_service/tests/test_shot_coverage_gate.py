@@ -1,0 +1,92 @@
+"""A run that ships a fraction of its shots must not report COMPLETED.
+
+Real incident: a 28-shot film delivered 20. Eight shots generated fine, failed
+at the timeline-placement step and were dropped; two more shipped as empty
+fallback frames — a few hundred bytes carrying only a GSAP fade, which renders
+as a white screen. The run reported COMPLETED with an empty error_message, so
+the only way to find a film missing its certificate reveal and its closing shot
+was to open the editor and look at the timeline.
+"""
+
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from app.services.timeline_coverage import (  # noqa: E402
+    _frame_is_substantive,
+    _timeline_coverage,
+)
+
+PREAMBLE = "<!--vx-preamble--><style>" + ("/*x*/" * 300) + "</style>"
+
+# The exact shape the pipeline shipped for a failed shot.
+EMPTY_FALLBACK = PREAMBLE + (
+    "<div id=\"shot-root\" style=\"position:absolute;inset:0;\">"
+    "<div id='fb_b' style='opacity:0'></div>"
+    "<script>(function(){if(typeof gsap==='undefined')return;"
+    "gsap.to('#fb_b',{opacity:1,duration:0.4,delay:0.4});})();</script></div>"
+)
+
+REAL = PREAMBLE + (
+    "<div id=\"shot-root\">" + "<p>Six expert parameters worth six hundred marks, "
+    "averaged with eight self-assessed dimensions into a single score.</p>" * 6 + "</div>"
+)
+
+
+def test_the_empty_fallback_frame_is_not_substantive():
+    assert _frame_is_substantive(EMPTY_FALLBACK) is False
+
+
+def test_a_real_frame_is_substantive():
+    assert _frame_is_substantive(REAL) is True
+
+
+def test_a_frame_carrying_only_an_image_counts():
+    """An IMAGE_CLIP is mostly a screenshot — little text, still a real shot."""
+    html = PREAMBLE + '<div id="shot-root">' + ("<span></span>" * 200) + '<img src="s3://x.png"/></div>'
+    assert _frame_is_substantive(html) is True
+
+
+def test_missing_and_blank_are_both_reported(tmp_path):
+    meta_shots = [{"shot_idx": i, "shot_type": "DEVICE_MOCKUP"} for i in range(5)]
+    entries = [
+        {"id": "shot-1", "html": REAL},
+        {"id": "shot-2", "html": REAL},
+        # shot-3 absent entirely — the placement-step failure
+        {"id": "shot-4", "html": EMPTY_FALLBACK},  # present but blank
+        {"id": "shot-5", "html": REAL},
+    ]
+    tl = tmp_path / "timeline"
+    tl.mkdir()
+    (tl / "time_based_frame.json").write_text(
+        json.dumps({"meta": {"shots": meta_shots}, "entries": entries})
+    )
+    cov = _timeline_coverage(tmp_path)
+    assert cov["planned"] == 5
+    assert cov["present"] == 3
+    # Both failure modes surface: the dropped shot AND the white-screen one.
+    assert cov["missing"] == [2, 3]
+
+
+def test_a_complete_run_reports_no_gap(tmp_path):
+    meta_shots = [{"shot_idx": i, "shot_type": "TEXT_DIAGRAM"} for i in range(3)]
+    entries = [{"id": f"shot-{i+1}", "html": REAL} for i in range(3)]
+    tl = tmp_path / "timeline"
+    tl.mkdir()
+    (tl / "time_based_frame.json").write_text(
+        json.dumps({"meta": {"shots": meta_shots}, "entries": entries})
+    )
+    cov = _timeline_coverage(tmp_path)
+    assert cov["missing"] == []
+    assert cov["present"] == cov["planned"] == 3
+
+
+def test_an_unreadable_timeline_is_unknown_not_failed(tmp_path):
+    """No timeline is not evidence of missing shots — it must not fail a run."""
+    assert _timeline_coverage(tmp_path) is None
+    tl = tmp_path / "timeline"
+    tl.mkdir()
+    (tl / "time_based_frame.json").write_text("{ not json")
+    assert _timeline_coverage(tmp_path) is None

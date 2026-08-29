@@ -18,6 +18,7 @@ from typing import Optional, Dict, Any, AsyncIterator, List, Tuple
 from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
+from .timeline_coverage import _frame_is_substantive, _timeline_coverage
 from ..db import db_session as _fresh_db_session
 from .s3_service import S3Service
 from .s3_url_utils import extract_s3_key
@@ -304,6 +305,7 @@ def _assign_capture_ids(captured_files: List[Dict[str, Any]]) -> None:
         else:
             f["id"] = f"inline_{inline_idx}"
             inline_idx += 1
+
 
 
 class VideoGenerationService:
@@ -4116,6 +4118,28 @@ class VideoGenerationService:
                             logger.info(f"[VideoGenService] Uploaded cost_breakdown.json for {video_id}")
                     except Exception as _cb_err:
                         logger.warning(f"[VideoGenService] Failed to upload cost_breakdown.json: {_cb_err}")
+
+                # Coverage gate — a run that shipped a fraction of its shots is
+                # not COMPLETED. A real run planned 28 shots and delivered 20:
+                # 8 generated fine, failed at timeline placement, and were
+                # dropped, while 2 more shipped as empty fallback frames. The
+                # run reported COMPLETED with an empty error_message, so the
+                # only way to discover a film missing its certificate reveal
+                # and its closing shot was to open the editor and look.
+                if stage_name == "HTML":
+                    try:
+                        _cov = _timeline_coverage(run_dir)
+                        if _cov and _cov["missing"]:
+                            _msg = (
+                                f"Shipped {_cov['present']} of {_cov['planned']} shots — "
+                                f"missing/blank: {_cov['missing']}"
+                            )
+                            logger.error(f"[VideoGenService] {video_id}: {_msg}")
+                            self.repository.update_status(
+                                video_id=video_id, status="PARTIAL", error_message=_msg
+                            )
+                    except Exception as _cov_err:
+                        logger.warning(f"[VideoGenService] coverage check failed: {_cov_err}")
 
                 # Update stage status — wrap in try/except so a stale-session error
                 # doesn't abort the entire pipeline after files were already uploaded.

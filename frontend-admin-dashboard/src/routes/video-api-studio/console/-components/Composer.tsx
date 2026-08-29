@@ -228,7 +228,7 @@ export function Composer({
         for (const id of currentIds) {
             if (!prevCompletedIds.current.has(id) && prevCompletedIds.current.size > 0) {
                 onSelectedInputVideoIdsChange((prev) => {
-                    if (prev.includes(id) || prev.length >= 10) return prev;
+                    if (prev.includes(id) || prev.length >= MAX_INPUT_ASSETS) return prev;
                     const next = [...prev, id];
                     // Multi-source auto-forces TTS — original audio is single-clip only.
                     if (next.length > 1) onInputVideoAudioChange('tts');
@@ -569,6 +569,12 @@ export function Composer({
     };
 
     const MAX_ATTACHMENTS = 10;
+    // Mirrors the server caps (MAX_INPUT_ASSETS / MAX_INPUT_VIDEOS). Videos are
+    // the expensive kind — a large download plus an index job each — while
+    // images cost one metadata JSON, so a screenshot-led walkthrough is allowed
+    // the wider ceiling. A flat cap of 5 here silently truncated exactly that.
+    const MAX_INPUT_ASSETS = 20;
+    const MAX_INPUT_VIDEOS = 5;
     const MAX_FILE_SIZE_MB = 50;
     const ACCEPTED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
     const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -860,7 +866,18 @@ export function Composer({
                             selectedIds={selectedInputVideoIds}
                             onAddVideo={(id) => {
                                 onSelectedInputVideoIdsChange((prev) => {
-                                    if (prev.includes(id) || prev.length >= 5) return prev;
+                                    if (prev.includes(id) || prev.length >= MAX_INPUT_ASSETS)
+                                        return prev;
+                                    const isVideo =
+                                        indexedVideos.find((v) => v.id === id)?.kind !== 'image';
+                                    if (isVideo) {
+                                        const videoCount = prev.filter(
+                                            (p) =>
+                                                indexedVideos.find((v) => v.id === p)?.kind !==
+                                                'image'
+                                        ).length;
+                                        if (videoCount >= MAX_INPUT_VIDEOS) return prev;
+                                    }
                                     const next = [...prev, id];
                                     if (next.length > 1) onInputVideoAudioChange('tts');
                                     return next;

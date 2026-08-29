@@ -399,3 +399,35 @@ def test_consecutive_screenshots_all_keep_the_full_frame():
     ]
     ck.assign_compositions(shots)
     assert [s["composition"] for s in shots] == ["full_bleed_overlay"] * 5
+
+
+def test_media_contract_cards_keep_their_own_exemplar():
+    """Two cards carry a contract in their html_template, not just a layout.
+
+    IMAGE_CLIP's template is the only place `{{IMAGE_URL}}` — the placeholder
+    the pipeline rewrites to the user's uploaded image — is taught. SOURCE_CLIP's
+    mandates a #000000 background because black is keyed out when the source
+    footage is composited behind it.
+
+    Swapping in a composition exemplar replaced both silently. The IMAGE_CLIP
+    shot then designed around empty space with no idea an image belonged in it,
+    and SOURCE_CLIP painted a background over the footage it was meant to reveal.
+    Both already ARE full-bleed compositions, so the exemplar added nothing.
+    """
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app", "ai-video-gen-main"))
+    import shot_type_cards as stc
+
+    for shot_type, marker in (("IMAGE_CLIP", "{{IMAGE_URL}}"), ("SOURCE_CLIP", "#000000")):
+        assert ck.exemplar_for(ck.default_for(shot_type), shot_type) is None, shot_type
+        prompt = stc.build_per_shot_system_prompt(
+            shot_type, 1920, 1080, aspirational=True, composition="full_bleed_overlay"
+        )
+        assert marker in prompt, f"{shot_type} lost its contract: {marker}"
+
+
+def test_non_media_cards_still_get_the_composition_exemplar():
+    """The guard must not disable the composition system generally — that is the
+    whole mechanism that stopped every shot coming out centre-stacked."""
+    for shot_type in ("TEXT_DIAGRAM", "PROCESS_STEPS", "KINETIC_TITLE"):
+        assert ck.exemplar_for(ck.default_for(shot_type), shot_type) is not None, shot_type

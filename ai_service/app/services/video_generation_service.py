@@ -2556,10 +2556,25 @@ class VideoGenerationService:
 
                 loaded_contexts = []
                 source_video_urls = []
+                # The schema-level cap is a shared ceiling across both kinds.
+                # Videos carry the real cost (a large download plus an index
+                # job each) and the splice constraints, so they keep the
+                # original limit of 5; images are bounded only by prompt size.
+                from ..schemas.video_generation import MAX_INPUT_VIDEOS
+                _video_count = 0
                 for idx, iv_record in enumerate(iv_records):
                     # Polymorphic asset table: kind ∈ {video, image}. Old rows
                     # default to 'video' since the column was backfilled there.
                     iv_kind = getattr(iv_record, "kind", "video") or "video"
+
+                    if iv_kind != "image":
+                        _video_count += 1
+                        if _video_count > MAX_INPUT_VIDEOS:
+                            logger.warning(
+                                f"[VideoGenService] Input video {iv_record.id} skipped — "
+                                f"more than {MAX_INPUT_VIDEOS} videos selected"
+                            )
+                            continue
 
                     # Pick the metadata-URL field that corresponds to the kind.
                     if iv_kind == "image":

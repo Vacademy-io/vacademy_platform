@@ -823,6 +823,26 @@ except ImportError:
     # numeric default in lockstep with `ai_video_constants.py`.
     AI_VIDEO_PER_VIDEO_COST_CAP_USD = 24.00
 
+def _img_label_for(index: int) -> str:
+    """Spreadsheet-style label for an input image: A..Z, then AA, AB, ...
+
+    The old inline lookup indexed a 10-character string and fell back to the
+    bare integer past position 9, so an image-led run mixed letters and digits
+    in the same list ("Image I", "Image 10"). The Director cites these labels
+    back when it plans IMAGE_CLIP shots, so they need to stay one namespace.
+    """
+    if index < 0:
+        index = 0
+    label = ""
+    n = index
+    while True:
+        label = chr(ord("A") + n % 26) + label
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return label
+
+
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
         "script_temperature": 0.5,
@@ -15329,10 +15349,15 @@ class VideoGenerationPipeline:
         # URL itself is in source_public_url — Director embeds it as <img src>
         # in the IMAGE_CLIP HTML (no render-worker compositing).
         if self._input_image_contexts:
-            _img_labels = "ABCDEFGHIJ"
+            _num_images = len(self._input_image_contexts)
+            # OCR blocks are the bulk of an image section. A screenshot-led run
+            # can now carry 15-20 stills, so scale the per-image allowance down
+            # as the count rises rather than emitting 15 blocks x 20 images.
+            # Mirrors the transcript budget in the SOURCE VIDEO block above.
+            _ocr_per_image = max(4, 90 // max(1, _num_images))
             _image_sections = []
             for _iidx, _ictx in enumerate(self._input_image_contexts):
-                _label = _img_labels[_iidx] if _iidx < len(_img_labels) else str(_iidx)
+                _label = _img_label_for(_iidx)
                 _img_meta_blob = _ictx.get("context", {})  # parsed image_metadata.json
                 _img_meta = _img_meta_blob.get("meta", {})
                 _img_caption = _img_meta_blob.get("caption") or {}
@@ -15353,7 +15378,7 @@ class VideoGenerationPipeline:
                 )
                 _ocr_lines = [
                     f"  \"{b.get('text', '')}\" @ bbox_norm={b.get('bbox_norm', [])}"
-                    for b in _img_ocr_blocks[:15]
+                    for b in _img_ocr_blocks[:_ocr_per_image]
                 ]
                 _tags_line = ", ".join(_img_caption.get("tags", [])[:10])
                 _ui_elements = _img_caption.get("ui_elements") or []

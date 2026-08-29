@@ -2217,7 +2217,15 @@ DOMAIN_SHOT_TYPES: Dict[str, List[str]] = {
     #   screenshot → UI walkthrough (annotation, process steps)
     #   diagram    → concept exposition (text diagram, data story)
     "input_image_photo": ["IMAGE_CLIP", "KINETIC_TITLE", "LOWER_THIRD", "TEXT_DIAGRAM"],
-    "input_image_screenshot": ["IMAGE_CLIP", "ANNOTATION_MAP", "PROCESS_STEPS", "LOWER_THIRD", "KINETIC_TITLE"],
+    # TEXT_DIAGRAM + DATA_STORY earn their place here: a product walkthrough
+    # has to explain structure and numbers between the screenshots, and
+    # without them a 15-still run has only one visual idea (a framed
+    # screenshot) repeated for its whole length. Both are pure-graphics
+    # types, so neither can fabricate a UI that contradicts the real one.
+    "input_image_screenshot": [
+        "IMAGE_CLIP", "ANNOTATION_MAP", "PROCESS_STEPS",
+        "TEXT_DIAGRAM", "DATA_STORY", "LOWER_THIRD", "KINETIC_TITLE",
+    ],
     "input_image_diagram": ["IMAGE_CLIP", "TEXT_DIAGRAM", "DATA_STORY", "KINETIC_TITLE", "LOWER_THIRD"],
     # Mixed assets — user picked at least one video AND at least one image.
     # Catalog is the union of the two primary clip types plus every shot

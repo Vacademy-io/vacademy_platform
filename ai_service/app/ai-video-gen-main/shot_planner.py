@@ -615,7 +615,9 @@ def build_input_image_block(images: List[Dict[str, Any]]) -> str:
         f"- The user uploaded {n} image(s). They are the subject of this video, not "
         "decoration — show them. Give each one a beat unless the narration truly has "
         "no use for it.\n"
-        "- Each IMAGE_CLIP shot MUST set `image_index` (0 = Image A, 1 = Image B, ...).\n"
+        f"- Each IMAGE_CLIP shot MUST set `image_index`, an integer from 0 to {n - 1} "
+        f"inclusive (0 = Image A, 1 = Image B, ...). There are exactly {n} images; "
+        f"{n} and above do not exist and would render the wrong screenshot.\n"
         "- Do NOT invent an illustration to stand in for an uploaded image. If a beat is "
         "about something an upload shows, use the upload.\n"
         "- For screenshots and diagrams, position callouts and arrows using the OCR "
@@ -1814,8 +1816,16 @@ def plan_shots(
         # (and far more likely to work) than re-running the same prompt,
         # which just reproduces the same behaviour.
         print(f"   ⚠️ ShotPlanner returned non-JSON ({_fmt_err}) — retrying with a format-corrective turn")
+        # Asking again in words does not work on a model that has decided to
+        # think out loud: prod has seen the corrective turn answer "The user
+        # wants a valid JSON response. Let me carefully construct..." and burn
+        # its whole budget reasoning, so nothing parses and the run drops to v2.
+        #
+        # Prefill instead of instruct. A trailing assistant turn containing "{"
+        # leaves the model mid-object with no grammatical way back into prose,
+        # which is far more reliable than any wording of "reply with JSON only".
+        # The brace is ours, so it is prepended before parsing.
         _fix_messages = messages + [
-            {"role": "assistant", "content": (text or "")[:2000]},
             {"role": "user", "content": (
                 "That response was not valid JSON. Do NOT explain, analyze, or "
                 "add any commentary. Reply with ONE JSON object and nothing "
@@ -1823,6 +1833,7 @@ def plan_shots(
                 "the `shots` array (and the other top-level keys) exactly as "
                 "specified above."
             )},
+            {"role": "assistant", "content": "{"},
         ]
         _t2, _u2 = llm_chat(
             _fix_messages,
@@ -1831,7 +1842,16 @@ def plan_shots(
             max_tokens=max_tokens,
             response_format={"type": "json_object"},
         )
-        parsed = _parse_shot_plan(_t2 or "")
+        _t2 = _t2 or ""
+        # Some providers echo the prefill, others continue from it. Only add the
+        # brace back when the continuation did not bring its own.
+        _joined = _t2 if _t2.lstrip().startswith("{") else "{" + _t2
+        try:
+            parsed = _parse_shot_plan(_joined)
+        except ShotPlanError:
+            # Fall back to the raw continuation in case the prefill was echoed
+            # in a shape the join mangled.
+            parsed = _parse_shot_plan(_t2)
         text = _t2 or text
         for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
             try:

@@ -9,6 +9,8 @@ import {
     CircleNotch,
     Info,
     Package,
+    WarningOctagon,
+    ArrowCircleUp,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -25,6 +27,25 @@ import { APP_REGISTRY_STATUS } from '@/constants/urls';
 
 type Platform = 'ANDROID' | 'IOS' | 'WINDOWS' | 'MACOS';
 
+/** Present only while the rejection is still worth acting on — see AppStatusMapper#rejection. */
+interface Rejection {
+    version: string;
+    build: string;
+    reason: string;
+    submitted_at: string;
+    decided_at: string;
+}
+
+/** The newest recorded build the store is not serving yet. */
+interface PendingUpdate {
+    version: string;
+    build: string;
+    status: string;
+    release_notes: string;
+    submitted_at: string;
+    ota_status: string;
+}
+
 interface PlatformStatus {
     platform: Platform;
     enabled: boolean;
@@ -34,6 +55,9 @@ interface PlatformStatus {
     current_build: string;
     released_at: string;
     last_synced_at: string;
+    rejection?: Rejection | null;
+    pending_update?: PendingUpdate | null;
+    update_available?: boolean;
 }
 
 interface RegisteredApp {
@@ -91,6 +115,29 @@ function statusLabel(status: string): string {
         .join(' ');
 }
 
+/**
+ * Registry dates are whatever ops typed — an ISO timestamp from a live store sync, a bare
+ * `YYYY-MM-DD` from a hand-filled form, or nothing at all. Anything unparseable renders as the
+ * raw string rather than "Invalid Date".
+ */
+export function formatRegistryDate(value: string | undefined | null): string {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+    });
+}
+
+/** `v1.2.3 (45)`, skipping whichever half was never recorded. */
+export function versionLabel(version: string, build: string): string {
+    if (!version && !build) return '';
+    if (!version) return `(${build})`;
+    return build ? `${version} (${build})` : version;
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────────────────────
 
 /**
@@ -99,7 +146,9 @@ function statusLabel(status: string): string {
  * via admin_core_service's institute-scoped proxy.
  *
  * Registration and status updates are ops-only, done by the platform team in health-check —
- * there is intentionally no edit affordance here.
+ * there is intentionally no edit affordance here. What this screen does own is the two questions
+ * an institute actually asks once the status is not a plain "Live": why was it rejected, and
+ * where is the update.
  */
 export default function AppStatusSettings() {
     const { t } = useTranslation('settingsAppStatus');
@@ -129,6 +178,8 @@ export default function AppStatusSettings() {
     useEffect(() => {
         if (instituteId) fetchStatus();
     }, [instituteId]);
+
+    const apps = data?.apps ?? [];
 
     return (
         <div className="max-w-3xl space-y-6">
@@ -177,7 +228,7 @@ export default function AppStatusSettings() {
                 </Card>
             )}
 
-            {!error && !loading && data && data.apps.length === 0 && (
+            {!error && !loading && data && apps.length === 0 && (
                 <Card>
                     <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
                         <Package className="size-8 text-neutral-300" />
@@ -191,7 +242,7 @@ export default function AppStatusSettings() {
                 </Card>
             )}
 
-            {data?.apps.map((app) => (
+            {apps.map((app) => (
                 <Card key={app.id}>
                     <CardHeader>
                         <CardTitle className="text-body font-semibold">
@@ -204,54 +255,135 @@ export default function AppStatusSettings() {
                         )}
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        {app.platforms.length === 0 && (
-                            <p className="text-caption text-neutral-500">
-                                {t('noPlatforms')}
-                            </p>
+                        {(app.platforms ?? []).length === 0 && (
+                            <p className="text-caption text-neutral-500">{t('noPlatforms')}</p>
                         )}
-                        {app.platforms.map((p) => {
-                            const meta = platformMeta[p.platform];
-                            return (
-                                <div
-                                    key={p.platform}
-                                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-neutral-200 p-3"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <meta.Icon className="size-5 text-neutral-500" />
-                                        <span className="text-body font-medium text-neutral-600">
-                                            {meta.label}
-                                        </span>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        {(p.current_version || p.current_build) && (
-                                            <span className="text-caption text-neutral-500">
-                                                {p.current_version}
-                                                {p.current_build ? ` (${p.current_build})` : ''}
-                                            </span>
-                                        )}
-                                        <StatusChip
-                                            text={statusLabel(p.status)}
-                                            textSize="text-caption"
-                                            status={statusTone(p.status)}
-                                        />
-                                        {p.store_url && (
-                                            <a
-                                                href={p.store_url}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="flex items-center gap-1 text-caption text-primary-500 hover:underline"
-                                            >
-                                                {t('viewInStore')}
-                                                <ArrowSquareOut className="size-3.5" />
-                                            </a>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                        {(app.platforms ?? []).map((p) => (
+                            <PlatformRow
+                                key={p.platform}
+                                platform={p}
+                                meta={platformMeta[p.platform]}
+                                t={t}
+                            />
+                        ))}
                     </CardContent>
                 </Card>
             ))}
+        </div>
+    );
+}
+
+// ─── Per-platform block ─────────────────────────────────────────────────────────────────────
+
+function PlatformRow({
+    platform: p,
+    meta,
+    t,
+}: {
+    platform: PlatformStatus;
+    meta: { label: string; Icon: typeof AndroidLogo } | undefined;
+    t: TFunction;
+}) {
+    // A platform key the backend added but this build doesn't know yet must not blank the page —
+    // it renders under its own raw name with the generic device icon.
+    const Icon = meta?.Icon ?? DeviceMobile;
+    const label = meta?.label ?? p.platform ?? t('platforms.unknown');
+    const live = versionLabel(p.current_version, p.current_build);
+
+    return (
+        <div className="space-y-2 rounded-md border border-neutral-200 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <Icon className="size-5 text-neutral-500" />
+                    <span className="text-body font-medium text-neutral-600">{label}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                    {live && <span className="text-caption text-neutral-500">{live}</span>}
+                    <StatusChip
+                        text={statusLabel(p.status)}
+                        textSize="text-caption"
+                        status={statusTone(p.status)}
+                    />
+                    {p.store_url && (
+                        <a
+                            href={p.store_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1 text-caption text-primary-500 hover:underline"
+                        >
+                            {t('viewInStore')}
+                            <ArrowSquareOut className="size-3.5" />
+                        </a>
+                    )}
+                </div>
+            </div>
+
+            {p.rejection && <RejectionNote rejection={p.rejection} t={t} />}
+            {p.pending_update && <PendingUpdateNote update={p.pending_update} t={t} />}
+            {!p.pending_update && p.update_available && (
+                <p className="text-caption text-neutral-500">{t('update.availableGeneric')}</p>
+            )}
+        </div>
+    );
+}
+
+function RejectionNote({ rejection, t }: { rejection: Rejection; t: TFunction }) {
+    const version = versionLabel(rejection.version, rejection.build);
+    const decidedOn = formatRegistryDate(rejection.decided_at);
+
+    return (
+        <div className="rounded-md border border-danger-400 bg-danger-100 p-3">
+            <div className="flex items-center gap-2">
+                <WarningOctagon className="size-4 shrink-0 text-danger-600" weight="fill" />
+                <p className="text-caption font-semibold text-danger-600">{t('rejection.title')}</p>
+            </div>
+            <p className="mt-1 text-caption text-neutral-600">
+                {version && <span className="font-mono">{version}</span>}
+                {version && decidedOn && ' · '}
+                {decidedOn && t('rejection.decidedOn', { date: decidedOn })}
+            </p>
+            {rejection.reason ? (
+                <p className="mt-2 whitespace-pre-wrap text-caption text-neutral-600">
+                    <span className="font-semibold">{t('rejection.reasonLabel')}: </span>
+                    {rejection.reason}
+                </p>
+            ) : (
+                <p className="mt-2 text-caption text-neutral-500">{t('rejection.noReason')}</p>
+            )}
+        </div>
+    );
+}
+
+function PendingUpdateNote({ update, t }: { update: PendingUpdate; t: TFunction }) {
+    const version = versionLabel(update.version, update.build);
+    const submittedOn = formatRegistryDate(update.submitted_at);
+
+    return (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                    <ArrowCircleUp className="size-4 shrink-0 text-primary-500" />
+                    <p className="text-caption font-semibold text-neutral-600">
+                        {t('update.title')}
+                    </p>
+                </div>
+                <StatusChip
+                    text={statusLabel(update.status)}
+                    textSize="text-caption"
+                    status={statusTone(update.status)}
+                />
+            </div>
+            <p className="mt-1 text-caption text-neutral-600">
+                {version && <span className="font-mono">{version}</span>}
+                {version && submittedOn && ' · '}
+                {submittedOn && t('update.submittedOn', { date: submittedOn })}
+            </p>
+            {update.release_notes && (
+                <p className="mt-2 whitespace-pre-wrap text-caption text-neutral-500">
+                    <span className="font-semibold">{t('update.releaseNotes')}: </span>
+                    {update.release_notes}
+                </p>
+            )}
         </div>
     );
 }

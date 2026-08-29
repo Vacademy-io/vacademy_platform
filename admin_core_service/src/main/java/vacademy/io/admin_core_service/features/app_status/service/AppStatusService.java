@@ -26,56 +26,26 @@ public class AppStatusService {
     private final UserRoleRepository userRoleRepository;
 
     public AppStatusResponse getStatus(CustomUserDetails user, String instituteId) {
+        // Registry rows written before the institute field existed store a blank owner, so a blank
+        // id here would match them all and hand one institute another's registrations. A root user
+        // passes the access check, which is exactly who would hit this by accident.
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException("instituteId is required");
+        }
         assertInstituteAccess(user, instituteId);
 
         List<AppStatusResponse.RegisteredApp> apps = new ArrayList<>();
         for (JsonNode record : communityAppRegistryClient.fetchByInstitute(instituteId)) {
-            apps.add(toRegisteredApp(record));
+            if (record == null || !record.isObject()) {
+                continue;
+            }
+            apps.add(AppStatusMapper.toRegisteredApp(record));
         }
 
         return AppStatusResponse.builder()
                 .instituteId(instituteId)
                 .apps(apps)
                 .build();
-    }
-
-    private AppStatusResponse.RegisteredApp toRegisteredApp(JsonNode record) {
-        JsonNode basics = record.path("basics");
-
-        List<AppStatusResponse.PlatformStatus> platforms = new ArrayList<>();
-        JsonNode platformsNode = record.path("platforms");
-        platformsNode.fieldNames().forEachRemaining(platformKey -> {
-            JsonNode p = platformsNode.path(platformKey);
-            // An institute admin only cares about platforms actually turned on for this app —
-            // a disabled platform is registry bookkeeping, not something to show as "status".
-            if (!p.path("enabled").asBoolean(false)) {
-                return;
-            }
-            platforms.add(AppStatusResponse.PlatformStatus.builder()
-                    .platform(platformKey)
-                    .enabled(true)
-                    .status(textOrDefault(p, "status", "NOT_REGISTERED"))
-                    .storeUrl(textOrDefault(p, "storeUrl", ""))
-                    .currentVersion(textOrDefault(p, "currentVersion", ""))
-                    .currentBuild(textOrDefault(p, "currentBuild", ""))
-                    .releasedAt(textOrDefault(p, "releasedAt", ""))
-                    .lastSyncedAt(textOrDefault(p, "lastSyncedAt", ""))
-                    .build());
-        });
-
-        return AppStatusResponse.RegisteredApp.builder()
-                .id(textOrDefault(record, "id", ""))
-                .name(textOrDefault(basics, "name", ""))
-                .displayName(textOrDefault(basics, "displayName", ""))
-                .packageName(textOrDefault(basics, "packageName", ""))
-                .platforms(platforms)
-                .build();
-    }
-
-    private static String textOrDefault(JsonNode node, String field, String fallback) {
-        if (node == null) return fallback;
-        JsonNode value = node.get(field);
-        return value == null || value.isNull() ? fallback : value.asText(fallback);
     }
 
     /**

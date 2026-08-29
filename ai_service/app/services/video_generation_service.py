@@ -4135,9 +4135,16 @@ class VideoGenerationService:
                                 f"missing/blank: {_cov['missing']}"
                             )
                             logger.error(f"[VideoGenService] {video_id}: {_msg}")
-                            self.repository.update_status(
-                                video_id=video_id, status="PARTIAL", error_message=_msg
-                            )
+                            # Status stays COMPLETED — the film is watchable, and
+                            # PARTIAL is a value the frontend does not handle. The
+                            # point is that the shortfall stops being invisible.
+                            self.repository.record_warning(video_id, _msg)
+                            try:
+                                self.repository.update_metadata(
+                                    video_id, {"shot_coverage": _cov}
+                                )
+                            except Exception:
+                                pass
                     except Exception as _cov_err:
                         logger.warning(f"[VideoGenService] coverage check failed: {_cov_err}")
 

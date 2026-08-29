@@ -90,3 +90,32 @@ def test_an_unreadable_timeline_is_unknown_not_failed(tmp_path):
     tl.mkdir()
     (tl / "time_based_frame.json").write_text("{ not json")
     assert _timeline_coverage(tmp_path) is None
+
+
+def test_the_gate_calls_a_method_that_exists():
+    """The first version of this gate called repository.update_status(), which
+    does not exist on AiVideoRepository. Wrapped in its own try/except, it would
+    have raised, been swallowed, and reported nothing — the exact silent-failure
+    shape the gate was written to eliminate.
+    """
+    import re
+    base = os.path.join(os.path.dirname(__file__), "..", "app")
+    svc = open(os.path.join(base, "services", "video_generation_service.py")).read()
+    repo = open(os.path.join(base, "repositories", "ai_video_repository.py")).read()
+
+    called = set(re.findall(r"self\.repository\.(\w+)\(", svc))
+    defined = set(re.findall(r"    def (\w+)\(", repo))
+    missing = sorted(called - defined)
+    assert not missing, f"service calls repository methods that do not exist: {missing}"
+
+
+def test_the_gate_does_not_invent_a_status_the_frontend_cannot_read():
+    """A short film is still watchable. FAILED would be wrong, and PARTIAL is a
+    value nothing downstream handles — the fix is visibility, not a new state."""
+    svc = open(
+        os.path.join(os.path.dirname(__file__), "..", "app", "services", "video_generation_service.py")
+    ).read()
+    gate = svc[svc.index("Coverage gate"): svc.index("Coverage gate") + 2000]
+    assert "record_warning" in gate
+    assert 'status="PARTIAL"' not in gate
+    assert "mark_failed" not in gate

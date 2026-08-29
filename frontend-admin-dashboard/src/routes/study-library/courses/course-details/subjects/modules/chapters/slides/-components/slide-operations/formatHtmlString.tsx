@@ -169,6 +169,21 @@ export const normalizeTableColumns = (htmlString: string): string => {
     });
 };
 
+/**
+ * Remove content-less anchor tags: Word/mammoth heading "bookmark" anchors
+ * (`<a id="_Toc…"></a>`) and empty Yoopta links (`<a href="" …></a>`). They have
+ * no text and no child elements, so they render nothing — but on deserialize
+ * they become invalid inline `link` nodes that crash the Slate slide editor when
+ * one sits at the start of a heading ("Cannot resolve a DOM node from Slate
+ * node" / "no start text node" white-screen). Anchors with text or child
+ * elements (e.g. image links) are preserved. Shared by the docx importer (A) and
+ * this save-path formatter (B); the load path uses repairSlateChildren (C).
+ */
+export const stripEmptyAnchors = (htmlString: string): string => {
+    if (!htmlString) return htmlString;
+    return htmlString.replace(/<a\b[^>]*>(?:\s|&nbsp;|&#160;|&#xA0;)*<\/a>/gi, '');
+};
+
 export const formatHTMLString = (htmlString: string) => {
     // Strip any existing html/head/body wrappers first to make this idempotent.
     // This prevents double-wrapping on repeated save cycles.
@@ -195,6 +210,10 @@ export const formatHTMLString = (htmlString: string) => {
         /<img[^>]*\ssrc="(?:null|undefined|)"[^>]*\/?>(?!\s*<\/div>)/gi,
         ''
     );
+
+    // Remove content-less anchors (Word bookmark anchors / empty links) so a
+    // save can never persist the artifact that crashes the editor on next open.
+    cleanedHtml = stripEmptyAnchors(cleanedHtml);
 
     // Strip expired query params from public S3 URLs
     cleanedHtml = stripAwsQueryParamsFromUrls(cleanedHtml);

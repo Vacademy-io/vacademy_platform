@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { html } from '@yoopta/exports';
 import { SlidesMenuOption } from './slides-menu-options/slides-menu-option';
+import { EditorErrorBoundary } from './EditorErrorBoundary';
 import { plugins, TOOLS, MARKS } from '@/constants/study-library/yoopta-editor-plugins-tools';
 import { useRouter, useBlocker } from '@tanstack/react-router';
 import { getPublicUrl } from '@/services/upload_file';
@@ -964,6 +965,7 @@ export const SlideMaterial = ({
                         </div>
                     }
                 >
+                    <EditorErrorBoundary resetKey={activeItem?.id}>
                     <YooptaEditorWrapper
                         editor={editor}
                         plugins={plugins}
@@ -1096,6 +1098,7 @@ export const SlideMaterial = ({
                         className="size-full"
                         style={{ width: '100%', height: '100%', minHeight: '200px' }}
                     />
+                    </EditorErrorBoundary>
                 </Suspense>
             </div>
         );

@@ -285,16 +285,23 @@ describe('formatRegistryDate', () => {
         expect(formatRegistryDate(null)).toBe('');
     });
 
-    it('formats both the ISO timestamps a sync writes and the plain dates ops type', () => {
-        // Locale-agnostic on purpose: the day, month and year must all survive, in whatever order
-        // the viewer's locale puts them.
-        for (const stored of ['2026-08-22T10:15:00Z', '2026-08-22']) {
-            const formatted = formatRegistryDate(stored);
-            expect(formatted).toContain('2026');
-            expect(formatted).toContain('22');
-            expect(formatted).not.toBe(stored);
-            expect(formatted).not.toContain('Invalid');
-        }
+    it('reads a bare ops-typed date as that calendar day, in every timezone', () => {
+        // Regression: `new Date('2026-08-22')` is UTC midnight, so this read 21 Aug for any viewer
+        // behind UTC. Runs green under TZ=America/Los_Angeles as well as IST.
+        const formatted = formatRegistryDate('2026-08-22');
+        expect(formatted).toContain('2026');
+        expect(formatted).toContain('22');
+        expect(formatted).not.toBe('2026-08-22');
+        expect(formatted).not.toContain('Invalid');
+    });
+
+    it('formats the ISO timestamp a live store sync writes', () => {
+        // Only the year is asserted: this one IS an instant, so its local calendar day legitimately
+        // differs by timezone and pinning it would just re-create the bug above in the test.
+        const formatted = formatRegistryDate('2026-08-22T10:15:00Z');
+        expect(formatted).toContain('2026');
+        expect(formatted).not.toBe('2026-08-22T10:15:00Z');
+        expect(formatted).not.toContain('Invalid');
     });
 
     it('shows whatever was stored rather than the words "Invalid Date"', () => {

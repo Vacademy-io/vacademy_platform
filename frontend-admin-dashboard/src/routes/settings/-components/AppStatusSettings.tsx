@@ -122,7 +122,13 @@ function statusLabel(status: string): string {
  */
 export function formatRegistryDate(value: string | undefined | null): string {
     if (!value) return '';
-    const parsed = new Date(value);
+    // A bare YYYY-MM-DD — what the ops dashboard's <input type="date"> produces for submitted /
+    // reviewed / released dates — is parsed by Date as UTC midnight, so every viewer behind UTC
+    // reads it as the day before. Ops typed a calendar date, not an instant; read it as one.
+    const calendarDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    const parsed = calendarDay
+        ? new Date(Number(calendarDay[1]), Number(calendarDay[2]) - 1, Number(calendarDay[3]))
+        : new Date(value);
     if (Number.isNaN(parsed.getTime())) return value;
     return parsed.toLocaleDateString(undefined, {
         day: 'numeric',

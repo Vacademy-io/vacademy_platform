@@ -15,14 +15,21 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
+from ...config import get_settings
 from ...models.ai_token_usage import RequestType
 from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
 from . import annotator, callbacks, cancellation
-from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
+from .grader import DEFAULT_MODEL, VISION_MODEL, CopyCheckGrader, call_llm_for_criteria
 from .mathpix_fallback import MathpixFallback
+from .page_images import (
+    PageImage,
+    ordered_page_ids,
+    render_page_images,
+    select_pages_for_question,
+)
 from .render_client import CopyCheckRenderClient, OcrCancelled
 from .rubric import RubricResolver, load_snapshot
 from .validator import validate_and_cap
@@ -32,6 +39,30 @@ logger = logging.getLogger(__name__)
 
 def _new_job_id() -> str:
     return str(uuid.uuid4())
+
+
+def _manual_review_verdict(
+    question: dict[str, Any], question_number: int, reason: str,
+) -> dict[str, Any]:
+    """Verdict that routes a question to manual review instead of releasing a
+    (likely wrong) zero. Used when vision grading is required but the page
+    image is unavailable — grading handwriting from OCR alone is the exact
+    accuracy bug this pipeline change removes, so we never silently fall back
+    to it. Same shape as the retry-failure verdict the orchestrator already
+    emits, so the callback contract to Java is unchanged."""
+    return {
+        "question_id": question["question_id"],
+        "question_number": question_number,
+        "marks_awarded": 0.0,
+        "max_marks": float(question.get("max_marks") or 0),
+        "extracted_answer": "",
+        "feedback": "This answer could not be evaluated automatically and needs manual review.",
+        "confidence": 0.0,
+        "criteria_breakdown": [],
+        "annotations": [],
+        "status": "FAILED",
+        "error_detail": f"vision grading unavailable: {reason}"[:500],
+    }
 
 
 def _render_client() -> CopyCheckRenderClient:
@@ -145,18 +176,93 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         cancellation.check(job_id, process_id)
         layout_map = await mathpix.enrich_layout_for_math(pdf_url, layout_map)
 
+        # 2b. VISION: render each PDF page to a base64 image ONCE for the whole
+        # copy so the grader can send the actual handwriting (not just its OCR).
+        # Guarded by COPY_CHECK_VISION_GRADING; when off, page_images stays empty
+        # and grading runs the legacy text-only path unchanged.
+        settings = get_settings()
+        vision_enabled = bool(settings.copy_check_vision_grading)
+        page_url_by_id: dict[str, str] = {}
+        rendered_page_ids: list[str] = []
+        vision_render_error: Optional[str] = None
+        if vision_enabled:
+            cancellation.check(job_id, process_id)
+            try:
+                page_imgs: list[PageImage] = await render_page_images(
+                    pdf_url,
+                    dpi=settings.copy_check_vision_dpi,
+                    max_px=settings.copy_check_vision_max_image_px,
+                    max_pages=settings.copy_check_vision_max_pages_per_copy,
+                )
+                if not page_imgs:
+                    vision_render_error = "no pages rendered from the answer sheet"
+                else:
+                    page_url_by_id = {p.page_id: p.data_url for p in page_imgs}
+                    # Prefer the layout_map's page ordering (page_index) so image
+                    # selection and annotation agree; fall back to render order.
+                    rendered_page_ids = [
+                        pid for pid in ordered_page_ids(layout_map) if pid in page_url_by_id
+                    ] or [p.page_id for p in page_imgs]
+            except cancellation.Cancelled:
+                raise
+            except Exception as e:
+                logger.exception("copy-check vision page rendering failed")
+                vision_render_error = str(e) or type(e).__name__
+
         # 3. Per-question grading.
         total_awarded = 0.0
         total_max = 0.0
         evaluated = 0
+        max_pages_per_q = settings.copy_check_vision_max_pages_per_question
         # Kept so the annotator can draw every verdict in one pass at the end;
         # the per-question callback already fired for each of these.
         verdicts: list[dict[str, Any]] = []
-        for q in questions:
+        for ordinal, q in enumerate(questions, 1):
             cancellation.check(job_id, process_id)
+
+            # Resolve this question's page image(s) for the vision path.
+            q_page_images: Optional[list[str]] = None
+            if vision_enabled:
+                if vision_render_error is not None:
+                    # Required image is missing — route to manual review rather
+                    # than grading handwriting from OCR and releasing a wrong zero.
+                    verdict = _manual_review_verdict(q, ordinal, vision_render_error)
+                    total_awarded += verdict["marks_awarded"]
+                    total_max += verdict["max_marks"]
+                    evaluated += 1
+                    verdicts.append(verdict)
+                    await callbacks.question_done(
+                        callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
+                    )
+                    continue
+                selected_ids, reason = select_pages_for_question(
+                    ordinal, layout_map, rendered_page_ids, max_pages_per_q,
+                )
+                q_page_images = [
+                    page_url_by_id[pid] for pid in selected_ids if pid in page_url_by_id
+                ]
+                if not q_page_images:
+                    verdict = _manual_review_verdict(
+                        q, ordinal, "no page image available for this question",
+                    )
+                    total_awarded += verdict["marks_awarded"]
+                    total_max += verdict["max_marks"]
+                    evaluated += 1
+                    verdicts.append(verdict)
+                    await callbacks.question_done(
+                        callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
+                    )
+                    continue
+                logger.info(
+                    "Q%s vision: %d page image(s) [%s] via %s",
+                    q.get("question_id"), len(q_page_images), ",".join(selected_ids), reason,
+                )
+
             try:
                 rubric = await rubric_resolver.resolve(q, preferred_model)
-                raw = await grader.grade_question(q, rubric, layout_map, preferred_model)
+                raw = await grader.grade_question(
+                    q, rubric, layout_map, preferred_model, page_images=q_page_images,
+                )
                 verdict = validate_and_cap(raw, q, layout_map)
             except cancellation.Cancelled:
                 raise
@@ -167,12 +273,15 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                 # cap being hit mid-batch — both of which a single retry
                 # with a clean state often clears. Without this, a single
                 # failure mid-batch silently steals marks from the student.
+                retry_model = VISION_MODEL if q_page_images else DEFAULT_MODEL
                 logger.warning(
-                    f"Grading failed for question {q.get('question_id')}: {e}; retrying once with {DEFAULT_MODEL}",
+                    f"Grading failed for question {q.get('question_id')}: {e}; retrying once with {retry_model}",
                 )
                 try:
-                    rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
-                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL)
+                    rubric = await rubric_resolver.resolve(q, retry_model)
+                    raw = await grader.grade_question(
+                        q, rubric, layout_map, retry_model, page_images=q_page_images,
+                    )
                     verdict = validate_and_cap(raw, q, layout_map)
                 except cancellation.Cancelled:
                     raise
@@ -203,7 +312,7 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             total_awarded += verdict["marks_awarded"]
             total_max += verdict["max_marks"]
             evaluated += 1
-            verdict.setdefault("question_number", q.get("question_number") or evaluated)
+            verdict.setdefault("question_number", q.get("question_number") or ordinal)
             verdicts.append(verdict)
             await callbacks.question_done(
                 callback_base, process_id, job_id, verdict, rubric_version=rubric_version,
@@ -229,8 +338,10 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             evaluated_file_id=evaluated_file_id,
         )
         logger.info(
-            "copy-check job %s complete: %s/%s, %d Mathpix crops used, %d tokens",
-            job_id, total_awarded, total_max, mathpix.used, grader.tokens_used,
+            "copy-check job %s complete: %s/%s, %d Mathpix crops used, "
+            "%d page images sent (vision=%s), %d tokens",
+            job_id, total_awarded, total_max, mathpix.used,
+            grader.images_used, vision_enabled, grader.tokens_used,
         )
 
         # Meter the copy: charge the institute's credits once per completed

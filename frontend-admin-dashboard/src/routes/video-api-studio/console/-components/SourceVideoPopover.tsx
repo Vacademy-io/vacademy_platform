@@ -61,8 +61,7 @@ export function SourceVideoPopover({
     const atVideoLimit = selectedVideoCount >= MAX_SELECTED_VIDEOS;
     // An image never trips the video cap, so a run of screenshots keeps going
     // after five videos would have stopped.
-    const isBlocked = (kind?: string) =>
-        atSelectionLimit || (kind !== 'image' && atVideoLimit);
+    const isBlocked = (kind?: string) => atSelectionLimit || (kind !== 'image' && atVideoLimit);
 
     const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -245,9 +244,7 @@ export function SourceVideoPopover({
                     {(atSelectionLimit || atVideoLimit) && (
                         <p className="text-xs text-muted-foreground">
                             {t('limit.message', {
-                                count: atSelectionLimit
-                                    ? MAX_SELECTED_ASSETS
-                                    : MAX_SELECTED_VIDEOS,
+                                count: atSelectionLimit ? MAX_SELECTED_ASSETS : MAX_SELECTED_VIDEOS,
                             })}
                         </p>
                     )}

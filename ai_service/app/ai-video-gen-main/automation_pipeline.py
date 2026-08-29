@@ -1719,7 +1719,15 @@ class OpenRouterClient:
                 # doubled budget — which is exactly what the code's own hint
                 # ("raise max_tokens for this model") recommends.
                 _effective_max_tokens = max_tokens
-                for _length_bump in range(2):
+                # Measured on qwen3.8-max planning a 20-shot video: reasoning
+                # consumed the ENTIRE 16k completion budget (reasoning_tokens
+                # 16000/16000, finish_reason "length") and emitted zero content.
+                # One doubling to 32k is not obviously enough for that, so allow
+                # two — 16k → 32k → 64k. Note `reasoning: {exclude: true}` does
+                # NOT help: it hides the reasoning from the response, it does
+                # not stop the model spending the budget on it. Only headroom
+                # does.
+                for _length_bump in range(3):
                     payload: Dict[str, Any] = {
                         "model": model_to_use,
                         "messages": cached_messages,
@@ -1768,7 +1776,7 @@ class OpenRouterClient:
                             # Empty because the model exhausted its budget before
                             # emitting content → retry the same model once with a
                             # bigger budget before failing over to the next one.
-                            if _finish == "length" and _length_bump == 0:
+                            if _finish == "length" and _length_bump < 2:
                                 _effective_max_tokens = min(_effective_max_tokens * 2, 64000)
                                 print(
                                     f"   ↻ {model_to_use} hit max_tokens with empty content at "

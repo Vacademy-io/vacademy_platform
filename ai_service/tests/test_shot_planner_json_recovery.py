@@ -149,3 +149,29 @@ def test_the_requested_model_is_recorded_on_the_run():
     src = open(path).read()
     assert 'gen_metadata["model"] = model' in src
     assert 'gen_metadata["model_overrides"]' in src
+
+
+def test_a_reasoning_model_gets_two_budget_bumps():
+    """Measured on qwen3.8-max planning a 20-shot video from 19 screenshots:
+    reasoning_tokens 16000 of a 16000 completion budget, finish_reason
+    "length", content_len 0. It never reached the JSON.
+
+    One doubling to 32k is not obviously enough for that, so the client allows
+    two — 16k, 32k, 64k. `reasoning: {exclude: true}` is NOT an alternative:
+    measured, it still burned all 16000 reasoning tokens and returned empty. It
+    hides reasoning from the response; it does not stop the model doing it.
+    """
+    import os
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "app", "ai-video-gen-main", "automation_pipeline.py"
+    )
+    src = open(path).read()
+    assert "for _length_bump in range(3):" in src
+    assert 'if _finish == "length" and _length_bump < 2:' in src
+    assert "min(_effective_max_tokens * 2, 64000)" in src
+
+    budget, seen = 16000, []
+    for _ in range(3):
+        seen.append(budget)
+        budget = min(budget * 2, 64000)
+    assert seen == [16000, 32000, 64000]

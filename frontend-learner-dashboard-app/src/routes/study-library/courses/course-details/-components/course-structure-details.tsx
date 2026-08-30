@@ -86,47 +86,23 @@ import { getFilePublicUrlQuery } from "@/services/file-url-cache";
 import { getLatestResume } from "@/services/resume-thread";
 import { useTranslation } from "react-i18next";
 
-export interface Chapter {
-  id: string;
-  chapter_name: string;
-  status: string;
-  description: string;
-  file_id: string | null;
-  chapter_order: number;
-  // Server-computed rollup from /modules-with-chapters. Always present in the
-  // payload; typed optional only because a few local placeholder objects in
-  // this file construct a Chapter without it.
-  percentage_completed?: number;
-  drip_condition_json?: string | null;
-  drip_condition?: string | null; // JSON string from API
-}
-export interface ChapterMetadata {
-  chapter: Chapter;
-  slides_count: {
-    video_count: number;
-    pdf_count: number;
-    doc_count: number;
-    unknown_count: number;
-  };
-  chapter_in_package_sessions: string[];
-}
-export interface Module {
-  id: string;
-  module_name: string;
-  status: string;
-  description: string;
-  thumbnail_id: string;
-}
-export interface ModuleWithChapters {
-  module: Module;
-  module_order: number | null;
-  // Server-computed module rollup from /modules-with-chapters. Null when the
-  // module has no learner-visible content at all, which is why the subject
-  // average skips it instead of scoring it 0.
-  percentage_completed?: number | null;
-  chapters: Chapter[];
-}
-export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
+// Course-structure data contract — shared with the other course-details view so
+// the two cannot drift on the server payload. Re-exported because existing call
+// sites import these types from this module.
+import type {
+  Chapter,
+  ChapterMetadata,
+  Module,
+  ModuleWithChapters,
+  SubjectModulesMap,
+} from "@/types/course-structure";
+export type {
+  Chapter,
+  ChapterMetadata,
+  Module,
+  ModuleWithChapters,
+  SubjectModulesMap,
+};
 
 /** Minimal subject shape from course-init; used when form-based subjects aren't ready yet */
 export type CourseInitSubject = {

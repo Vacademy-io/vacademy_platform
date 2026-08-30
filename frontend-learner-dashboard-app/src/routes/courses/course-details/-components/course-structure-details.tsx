@@ -35,37 +35,23 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
-export interface Chapter {
-  id: string;
-  chapter_name: string;
-  status: string;
-  description: string;
-  file_id: string | null;
-  chapter_order: number;
-}
-export interface ChapterMetadata {
-  chapter: Chapter;
-  slides_count: {
-    video_count: number;
-    pdf_count: number;
-    doc_count: number;
-    unknown_count: number;
-  };
-  chapter_in_package_sessions: string[];
-}
-export interface Module {
-  id: string;
-  module_name: string;
-  status: string;
-  description: string;
-  thumbnail_id: string;
-}
-export interface ModuleWithChapters {
-  module: Module;
-  module_order: number | null;
-  chapters: Chapter[];
-}
-export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
+// Course-structure data contract — shared with the other course-details view so
+// the two cannot drift on the server payload. Re-exported because existing call
+// sites import these types from this module.
+import type {
+  Chapter,
+  ChapterMetadata,
+  Module,
+  ModuleWithChapters,
+  SubjectModulesMap,
+} from "@/types/course-structure";
+export type {
+  Chapter,
+  ChapterMetadata,
+  Module,
+  ModuleWithChapters,
+  SubjectModulesMap,
+};
 
 export const CourseStructureDetails = ({
   selectedSession,

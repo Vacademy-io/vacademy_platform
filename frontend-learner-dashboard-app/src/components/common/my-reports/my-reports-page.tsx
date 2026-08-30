@@ -55,8 +55,8 @@ function reportLabel(report: ReportListItem): string {
 function EmptyState({ title, message }: { title: string; message: string }) {
   return (
     <div className="flex items-center justify-center min-h-reg-400 px-6">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold text-neutral-700 mb-2">{title}</h2>
+      <div className="text-center space-y-2">
+        <h2 className="text-xl font-semibold text-neutral-700">{title}</h2>
         <p className="text-neutral-500">{message}</p>
       </div>
     </div>

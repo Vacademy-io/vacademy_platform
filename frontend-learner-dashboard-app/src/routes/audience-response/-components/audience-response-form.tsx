@@ -549,8 +549,8 @@ const AudienceResponseForm = ({
               />
             )}
             {campaignData.campaign_objective && (
-              <div className="mt-4">
-                <p className="text-sm font-semibold text-neutral-700 mb-2">
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold text-neutral-700">
                   {t("audienceResponse.form.campaign.objectiveLabel")}
                 </p>
                 <p className="text-neutral-600">{campaignData.campaign_objective}</p>
@@ -563,13 +563,13 @@ const AudienceResponseForm = ({
             variant="glass"
             padding="lg"
             rounded="lg"
-            className="border border-white/40 bg-white/90 backdrop-blur-md shadow-lg"
+            className="border border-white/40 bg-white/90 backdrop-blur-md shadow-lg space-y-section"
             id="response-form-card"
           >
-            <ModernCardHeader className="p-0 mb-6">
+            <ModernCardHeader className="p-0 space-y-2">
               <ModernCardTitle
                 size="md"
-                className="text-neutral-800 text-xl sm:text-2xl mb-2"
+                className="text-neutral-800 text-xl sm:text-2xl"
               >
                 {t("audienceResponse.form.details.title")}
               </ModernCardTitle>

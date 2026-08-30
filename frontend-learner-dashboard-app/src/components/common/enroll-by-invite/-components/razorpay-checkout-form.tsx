@@ -237,8 +237,8 @@ export const RazorpayCheckoutForm = forwardRef<
     return (
       <div className="w-full max-w-md mx-auto">
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+          <div className="text-center mb-6 space-y-2">
+            <h2 className="text-2xl font-bold text-gray-800">
               💳 {t("razorpayCheckout.title")}
             </h2>
             <p className="text-gray-600">

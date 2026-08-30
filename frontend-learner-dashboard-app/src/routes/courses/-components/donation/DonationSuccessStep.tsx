@@ -78,8 +78,8 @@ export const DonationSuccessStep = ({
                       </svg>
                     </div>
                   </div>
-                  <div className="flex-1 text-start">
-                    <h4 className="text-sm font-semibold text-red-800 mb-2">
+                  <div className="flex-1 text-start space-y-2">
+                    <h4 className="text-sm font-semibold text-red-800">
                       {t("donation.successStep.paymentIssueTitle")}
                     </h4>
                     <p className="text-sm text-red-700 leading-relaxed">

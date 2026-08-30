@@ -46,8 +46,8 @@ export const ContentOnlyCourseDetailsSkeleton = () => {
                 key={i}
                 className="h-full rounded-lg border-neutral-200 bg-card p-2"
               >
-                <CardContent className="p-0 flex flex-col h-full">
-                  <Skeleton className="mb-2 aspect-video w-full rounded-lg" />
+                <CardContent className="p-0 flex flex-col h-full gap-2">
+                  <Skeleton className="aspect-video w-full rounded-lg" />
                   <div className="flex flex-1 flex-col gap-2">
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-3 w-1/3" />

@@ -61,8 +61,8 @@ function CourseProgressSection({
           {subjects.map((s, i) => {
             const pct = avgCompletion(s);
             return (
-              <li key={String(s.subject_id ?? i)} className="rounded-xl bg-card px-4 py-3 shadow-sm">
-                <div className="mb-2 flex items-center justify-between">
+              <li key={String(s.subject_id ?? i)} className="rounded-xl bg-card px-4 py-3 shadow-sm space-y-2">
+                <div className="flex items-center justify-between">
                   <span className="text-body font-medium text-foreground">
                     {String(s.subject_name ?? t("progress.subject"))}
                   </span>

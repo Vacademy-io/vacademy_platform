@@ -298,8 +298,8 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                         suggestedMappings.length > 0;
                     if (!visible) return null;
                     return (
-                        <div>
-                            <h2 className="mb-3 text-sm font-semibold text-gray-700">
+                        <div className="space-y-stack">
+                            <h2 className="text-sm font-semibold text-gray-700">
                                 {settings.suggestedCourses!.heading || t('common.peopleAlsoBuy')}
                             </h2>
                             <div className="flex gap-3 overflow-x-auto pb-2">

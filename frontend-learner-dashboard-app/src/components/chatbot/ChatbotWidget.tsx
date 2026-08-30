@@ -280,9 +280,9 @@ export const ChatbotWidget = () => {
                               </PopoverTrigger>
                               <PopoverContent
                                 side="right"
-                                className="max-w-64 text-xs p-2 z-50"
+                                className="max-w-64 text-xs p-2 z-50 space-y-1"
                               >
-                                <p className="font-bold mb-1">{t("widget.context.title")}</p>
+                                <p className="font-bold">{t("widget.context.title")}</p>
                                 <div className="space-y-1">
                                   <p>
                                     <span className="font-semibold">

@@ -177,8 +177,8 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     return section(
       <div className="catalogue-card-elevated space-y-4 p-6" aria-busy="true">
         {Array.from({ length: 3 }, (_, i) => (
-          <div key={i}>
-            <div className="catalogue-skeleton-shimmer mb-2 h-4 w-1/3 rounded-catalogue-xs" />
+          <div className="space-y-2" key={i}>
+            <div className="catalogue-skeleton-shimmer h-4 w-1/3 rounded-catalogue-xs" />
             <div className="catalogue-skeleton-shimmer h-10 w-full rounded-catalogue-md" />
           </div>
         ))}

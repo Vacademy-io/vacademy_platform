@@ -84,8 +84,8 @@ const SuccessStep = ({
                                 <div className="p-1.5 bg-amber-100 rounded-lg flex-shrink-0">
                                     <Warning className="w-5 h-5 text-amber-600" />
                                 </div>
-                                <div className="text-start">
-                                    <h3 className="text-base font-semibold text-gray-900 mb-1">
+                                <div className="text-start space-y-1">
+                                    <h3 className="text-base font-semibold text-gray-900">
                                         {t("successStep.approvalRequired.title")}
                                     </h3>
                                     <p className="text-gray-600 text-sm leading-relaxed">

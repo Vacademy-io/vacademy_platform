@@ -345,8 +345,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 </div>
                             )}
                         </div>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-caption text-muted-foreground font-medium mb-0.5">
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                            <p className="text-caption text-muted-foreground font-medium">
                                 {toTitleCase(getTerminology(RoleTerms.Teacher, SystemTerms.Teacher))}
                             </p>
                             <div className="text-sm font-medium truncate">

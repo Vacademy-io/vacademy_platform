@@ -305,8 +305,8 @@ export default function RegistrationForm({
 
       <Separator className="mx-6 w-auto" />
 
-      <CardContent className="pt-5 px-6 pb-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary-100 bg-primary-50 px-4 py-3">
+      <CardContent className="pt-5 px-6 pb-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary-100 bg-primary-50 px-4 py-3">
           <span className="text-sm text-gray-700">{t("liveClass.registrationForm.alreadyRegistered")}</span>
           <button
             type="button"

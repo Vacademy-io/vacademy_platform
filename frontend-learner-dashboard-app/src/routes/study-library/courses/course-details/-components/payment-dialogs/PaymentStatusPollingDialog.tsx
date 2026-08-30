@@ -297,8 +297,8 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
                   </svg>
                 </div>
               </div>
-              <div className="flex-1 text-start">
-                <h4 className="text-sm font-semibold text-gray-900 mb-1">
+              <div className="flex-1 text-start space-y-1">
+                <h4 className="text-sm font-semibold text-gray-900">
                   Payment in Progress
                 </h4>
                 <p className="text-sm text-gray-700 leading-relaxed">
@@ -388,8 +388,8 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
                     <CheckCircle className="w-4 h-4 text-white" />
                   </div>
                 </div>
-                <div className="flex-1 text-start">
-                  <h4 className="text-sm font-semibold text-green-900 mb-1">
+                <div className="flex-1 text-start space-y-1">
+                  <h4 className="text-sm font-semibold text-green-900">
                     Ready to Explore!
                   </h4>
                   <p className="text-sm text-green-800">
@@ -448,8 +448,8 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
                   <XCircle className="w-4 h-4 text-white" />
                 </div>
               </div>
-              <div className="flex-1 text-start">
-                <h4 className="text-sm font-semibold text-red-900 mb-2">
+              <div className="flex-1 text-start space-y-2">
+                <h4 className="text-sm font-semibold text-red-900">
                   What to do next?
                 </h4>
                 <div className="space-y-2">

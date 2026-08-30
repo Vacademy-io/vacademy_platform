@@ -548,11 +548,11 @@ export const JupyterNotebookSlide: React.FC<JupyterNotebookSlideProps> = ({
       {/* Pause overlay */}
       {isPaused && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-lg bg-white p-6 text-center">
-            <h3 className="mb-4 text-lg font-semibold">
+          <div className="rounded-lg bg-white p-6 text-center space-y-4">
+            <h3 className="text-lg font-semibold">
               {t("jupyterSlide.paused.title")}
             </h3>
-            <p className="mb-4 text-sm text-gray-600">
+            <p className="text-sm text-gray-600">
               {t("jupyterSlide.paused.body", { count: tabSwitchCount })}
             </p>
             <button

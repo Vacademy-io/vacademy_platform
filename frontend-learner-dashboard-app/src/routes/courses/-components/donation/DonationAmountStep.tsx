@@ -80,8 +80,8 @@ export const DonationAmountStep = ({
 
   if (loading) {
     return (
-      <div className="text-center py-8">
-        <SpinnerGap className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-4" />
+      <div className="text-center py-8 space-y-4">
+        <SpinnerGap className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
         <p className="text-sm text-gray-600">{t("donation.amountStep.loadingOptions")}</p>
       </div>
     );

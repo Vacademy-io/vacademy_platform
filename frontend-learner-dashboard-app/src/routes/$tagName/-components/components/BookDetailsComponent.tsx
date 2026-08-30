@@ -238,8 +238,8 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                     <div className="p-4 sm:p-5">
                         {/* Show Price for Buy mode */}
                         {cartMode === 'buy' && (
-                            <div className="mb-4 pb-3 border-b border-gray-200">
-                                <p className="text-sm text-gray-500 mb-1">{t("bookDetails.price")}</p>
+                            <div className="mb-4 pb-3 border-b border-gray-200 space-y-1">
+                                <p className="text-sm text-gray-500">{t("bookDetails.price")}</p>
                                 <PriceWithMrp
                                     actual={courseData.price}
                                     elevated={courseData.elevatedPrice}
@@ -368,8 +368,8 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                     </div>
 
                     {/* About Book Section */}
-                    <div className="pt-2">
-                        <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 pb-2 border-b border-gray-200">
+                    <div className="pt-2 space-y-stack">
+                        <h3 className="text-base sm:text-lg font-semibold text-gray-900 pb-2 border-b border-gray-200">
                             {t("bookDetails.aboutThisBook")}
                         </h3>
                         <div

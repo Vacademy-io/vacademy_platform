@@ -540,8 +540,8 @@ export const SubjectMaterial = () => {
       </div>
     ),
     [TabType.TEACHERS]: (
-      <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600 space-y-stack">
+        <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-info-500 to-info-600 flex items-center justify-center">
             <span className="text-white text-xs font-bold">T</span>
           </div>
@@ -560,8 +560,8 @@ export const SubjectMaterial = () => {
       </div>
     ),
     [TabType.ASSESSMENT]: (
-      <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="rounded-lg bg-gradient-to-br from-white to-neutral-50/50 border border-neutral-200 p-6 text-sm text-neutral-600 space-y-stack">
+        <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-success-500 to-success-600 flex items-center justify-center">
             <span className="text-white text-xs font-bold">A</span>
           </div>

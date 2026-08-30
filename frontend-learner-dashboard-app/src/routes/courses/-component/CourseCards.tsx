@@ -147,8 +147,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
                             alt={instructorName}
                             className="w-6 h-6 sm:w-8 sm:h-8 rounded-full me-2 object-cover"
                         />
-                        <div className="min-w-0 flex-1">
-                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">
+                        <div className="min-w-0 flex-1 space-y-1">
+                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
                                 {getTerminology(
                                     RoleTerms.Teacher,
                                     SystemTerms.Teacher

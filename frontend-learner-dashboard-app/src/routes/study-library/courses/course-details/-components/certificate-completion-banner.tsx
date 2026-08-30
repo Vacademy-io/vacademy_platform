@@ -109,8 +109,8 @@ export const CertificateCompletionBanner = ({
                         </div>
 
                         {/* Content */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
+                        <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2">
                                 <h3 className="text-base font-semibold text-black dark:text-white">
                                     🎉 {t("certificate.completedTitle", { course })}
                                 </h3>

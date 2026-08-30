@@ -352,8 +352,8 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                     <div>
                       {/* Progress Bar */}
                       {leadCollectionSettings.formStyle.showProgress && (
-                        <div className="mb-6">
-                          <div className="flex items-center justify-between mb-2">
+                        <div className="mb-6 space-y-2">
+                          <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-700">{t("introPage.stepOfTotal", { total: leadCollectionSettings.fields.length })}</span>
                             <span className="text-sm text-gray-500">{t("introPage.progress")}</span>
                           </div>

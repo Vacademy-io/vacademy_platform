@@ -201,8 +201,8 @@ const CustomFieldsStep = ({
       <Separator className="mb-5" />
 
       {formFields.length === 0 ? (
-        <div className="py-8 text-center text-neutral-500">
-          <p className="mb-4">
+        <div className="py-8 text-center text-neutral-500 space-y-4">
+          <p>
             {t("subOrgRegistration.customFields.noFieldsMessage")}
           </p>
           <div className="flex flex-col-reverse items-center justify-center gap-stack sm:flex-row">

@@ -3074,8 +3074,8 @@ export const CourseStructureDetails = ({
                 key={i}
                 className="h-full rounded-lg border-neutral-200 bg-card p-2"
               >
-                <CardContent className="p-0 flex flex-col h-full">
-                  <Skeleton className="mb-2 aspect-video w-full rounded-lg" />
+                <CardContent className="p-0 flex flex-col h-full gap-2">
+                  <Skeleton className="aspect-video w-full rounded-lg" />
                   <div className="flex flex-1 flex-col gap-2">
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-3 w-1/3" />
@@ -3510,8 +3510,8 @@ export const CourseStructureDetails = ({
       </div>
     ),
     [TabType.TEACHERS]: (
-      <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600 space-y-stack">
+        <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center">
             <span className="text-white text-xs font-bold">T</span>
           </div>
@@ -3526,8 +3526,8 @@ export const CourseStructureDetails = ({
       </div>
     ),
     [TabType.ASSESSMENT]: (
-      <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600 space-y-stack">
+        <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
             <span className="text-white text-xs font-bold">A</span>
           </div>
@@ -3544,8 +3544,8 @@ export const CourseStructureDetails = ({
             <BatchChatPanel packageSessionId={packageSessionId} />
           </>
         ) : (
-          <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
-            <div className="flex items-center gap-3 mb-3">
+          <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600 space-y-stack">
+            <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center">
                 <span className="text-white text-xs font-bold">D</span>
               </div>

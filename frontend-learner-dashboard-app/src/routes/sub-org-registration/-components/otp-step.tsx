@@ -82,8 +82,8 @@ const OtpStep = ({
       <div className="mb-6 rounded-lg border border-warning-200 bg-warning-50 p-4">
         <div className="flex gap-3">
           <Info className="mt-0.5 size-5 flex-shrink-0 text-warning-600" />
-          <div className="text-sm text-warning-700">
-            <p className="mb-1 font-medium">
+          <div className="text-sm text-warning-700 space-y-1">
+            <p className="font-medium">
               {t("subOrgRegistration.otp.cantFindEmail")}
             </p>
             <ul className="list-inside list-disc space-y-1">

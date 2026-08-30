@@ -166,8 +166,8 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
             )}
 
             {/* Language picker */}
-            <div className="mb-5">
-              <label className="text-xs text-white/50 font-medium mb-1.5 block">
+            <div className="mb-5 space-y-1.5">
+              <label className="text-xs text-white/50 font-medium block">
                 {t("voiceModeSelector.languageLabel")}
               </label>
               <select

@@ -1223,8 +1223,8 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   if (isLoading) {
     return (
       <div className="bg-catalogue-bg-elevated rounded-catalogue-md shadow-sm border border-catalogue-border p-6">
-        <div className="animate-pulse">
-          <div className="h-4 bg-catalogue-bg-muted rounded-catalogue-xs w-1/4 mb-4"></div>
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 bg-catalogue-bg-muted rounded-catalogue-xs w-1/4"></div>
           <div className="space-y-2">
             <div className="h-3 bg-catalogue-bg-muted rounded-catalogue-xs"></div>
             <div className="h-3 bg-catalogue-bg-muted rounded-catalogue-xs w-5/6"></div>

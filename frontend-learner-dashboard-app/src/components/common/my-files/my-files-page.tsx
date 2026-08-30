@@ -116,8 +116,8 @@ export default function MyFilesPage() {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-reg-400">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-neutral-700 mb-2">
+        <div className="text-center space-y-2">
+          <h2 className="text-xl font-semibold text-neutral-700">
             {t("myFilesPage.errorLoading.title")}
           </h2>
           <p className="text-neutral-500">{t("myFilesPage.errorLoading.message")}</p>
@@ -131,8 +131,8 @@ export default function MyFilesPage() {
   if (files.length === 0 || !files) {
     return (
       <div className="flex items-center justify-center min-h-reg-400">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-neutral-700 mb-2">
+        <div className="text-center space-y-2">
+          <h2 className="text-xl font-semibold text-neutral-700">
             {t("myFilesPage.empty.title")}
           </h2>
           <p className="text-neutral-500">{t("myFilesPage.empty.message")}</p>
@@ -287,8 +287,8 @@ export default function MyFilesPage() {
               {/* Header with icon and name */}
               <div className="flex items-start gap-3 mb-3">
                 <div className="mt-1">{getFileIcon(file.file_type)}</div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-gray-900 dark:text-white break-words mb-1">
+                <div className="flex-1 min-w-0 space-y-1">
+                  <h3 className="font-semibold text-gray-900 dark:text-white break-words">
                     {file.name}
                   </h3>
                   <div className="flex flex-wrap items-center gap-2">
@@ -304,16 +304,16 @@ export default function MyFilesPage() {
 
               {/* File Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack mb-4 text-sm">
-                <div>
-                  <span className="text-gray-500 dark:text-gray-400 block mb-1">
+                <div className="space-y-1">
+                  <span className="text-gray-500 dark:text-gray-400 block">
                     {t("myFilesPage.table.addedBy")}
                   </span>
                   <p className="font-medium text-gray-900 dark:text-white">
                     {file.created_by}
                   </p>
                 </div>
-                <div>
-                  <span className="text-gray-500 dark:text-gray-400 block mb-1">
+                <div className="space-y-1">
+                  <span className="text-gray-500 dark:text-gray-400 block">
                     {t("myFilesPage.table.dateAdded")}
                   </span>
                   <p className="font-medium text-gray-900 dark:text-white">

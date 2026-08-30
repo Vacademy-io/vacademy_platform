@@ -990,8 +990,8 @@ export const CourseDetailsPage = () => {
                             {extractTextFromHTML(
                                 form.getValues("courseData").whatYoullLearn
                             ) && (
-                                <div className="mb-6 sm:mb-8">
-                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
+                                <div className="mb-6 sm:mb-8 space-y-stack">
+                                    <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
                                         {t("courseDetailsPage.sections.whatYoullLearn")}
                                     </h2>
                                     <div className="rounded-lg">
@@ -1011,8 +1011,8 @@ export const CourseDetailsPage = () => {
                             {extractTextFromHTML(
                                 form.getValues("courseData").aboutTheCourse
                             ) && (
-                                <div className="mb-6 sm:mb-8">
-                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
+                                <div className="mb-6 sm:mb-8 space-y-stack">
+                                    <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
                                         {t("courseDetailsPage.sections.aboutThisCourse", {
                                             course: getTerminology(ContentTerms.Course, SystemTerms.Course),
                                         })}
@@ -1034,8 +1034,8 @@ export const CourseDetailsPage = () => {
                             {extractTextFromHTML(
                                 form.getValues("courseData").whoShouldLearn
                             ) && (
-                                <div className="mb-6 sm:mb-8">
-                                    <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
+                                <div className="mb-6 sm:mb-8 space-y-stack">
+                                    <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
                                         {t("courseDetailsPage.sections.whoShouldJoin")}
                                     </h2>
                                     <div className="rounded-lg">
@@ -1055,8 +1055,8 @@ export const CourseDetailsPage = () => {
                             {form.getValues("courseData").instructors &&
                                 form.getValues("courseData").instructors
                                     .length > 0 && (
-                                    <div className="mb-6 sm:mb-8">
-                                        <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-bold">
+                                    <div className="mb-6 sm:mb-8 space-y-stack">
+                                        <h2 className="sm:mb-4 text-xl sm:text-2xl font-bold">
                                             {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
                                         </h2>
                                         <div className="space-y-3 sm:space-y-4">

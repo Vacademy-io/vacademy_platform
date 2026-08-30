@@ -374,8 +374,8 @@ export function ParentApplicationForm({
 
       {/* Prompt for parent type selection if needed */}
       {showParentTypePrompt && (
-        <div className="mb-4 p-4 border rounded bg-gray-50 flex flex-col items-start">
-          <span className="mb-2">
+        <div className="mb-4 p-4 border rounded bg-gray-50 flex flex-col items-start gap-2">
+          <span>
             {t("admissionPortal.applicationForm.parentTypePrompt")}
           </span>
           <div className="flex gap-2">
@@ -397,8 +397,8 @@ export function ParentApplicationForm({
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Student Section */}
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-2">
+        <div className="border rounded p-4 space-y-2">
+          <h3 className="font-semibold">
             {t("admissionPortal.applicationForm.sections.student")}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
@@ -514,8 +514,8 @@ export function ParentApplicationForm({
         </div>
 
         {/* Parent Section */}
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-2">
+        <div className="border rounded p-4 space-y-2">
+          <h3 className="font-semibold">
             {t("admissionPortal.applicationForm.sections.parent")}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
@@ -589,8 +589,8 @@ export function ParentApplicationForm({
         </div>
 
         {/* Academic Section */}
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-2">
+        <div className="border rounded p-4 space-y-2">
+          <h3 className="font-semibold">
             {t("admissionPortal.applicationForm.sections.academic")}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
@@ -689,8 +689,8 @@ export function ParentApplicationForm({
         </div>
 
         {/* Address Section */}
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-2">
+        <div className="border rounded p-4 space-y-2">
+          <h3 className="font-semibold">
             {t("admissionPortal.applicationForm.sections.address")}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
@@ -727,8 +727,8 @@ export function ParentApplicationForm({
         </div>
 
         {/* Identity Documents Section */}
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-2">
+        <div className="border rounded p-4 space-y-2">
+          <h3 className="font-semibold">
             {t("admissionPortal.applicationForm.sections.identityDocuments")}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
@@ -756,8 +756,8 @@ export function ParentApplicationForm({
         </div>
 
         {/* Transfer Certificate Section */}
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-2">
+        <div className="border rounded p-4 space-y-2">
+          <h3 className="font-semibold">
             {t(
               "admissionPortal.applicationForm.sections.transferCertificate",
             )}
@@ -802,8 +802,8 @@ export function ParentApplicationForm({
         </div>
 
         {/* Medical & Special Needs Section */}
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-2">
+        <div className="border rounded p-4 space-y-2">
+          <h3 className="font-semibold">
             {t("admissionPortal.applicationForm.sections.medical")}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">

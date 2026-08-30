@@ -100,8 +100,8 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
 
         {/* Recommendations */}
         {feedback.recommendations && feedback.recommendations.length > 0 && (
-          <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/10">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/10 space-y-2">
+            <div className="flex items-center gap-2">
               <Lightbulb className="h-4 w-4 text-primary" />
               <span className="text-xs font-semibold text-primary">
                 {t("quizFeedback.recommendations")}

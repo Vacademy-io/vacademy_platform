@@ -186,8 +186,8 @@ const CpoInstallmentSelectionStep = ({
         {/* Grouped installments */}
         <div className="space-y-4">
           {Object.entries(grouped).map(([feeTypeName, items]) => (
-            <div key={feeTypeName}>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <div className="space-y-2" key={feeTypeName}>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 {feeTypeName}
               </p>
               <div className="space-y-2">

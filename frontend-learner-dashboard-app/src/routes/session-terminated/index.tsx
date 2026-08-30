@@ -16,8 +16,8 @@ function SessionTerminatedPage() {
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
           {/* Header banner */}
-          <div className="bg-gradient-to-r from-primary-500 to-primary-400 px-8 py-6 text-center">
-            <div className="mx-auto w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3">
+          <div className="bg-gradient-to-r from-primary-500 to-primary-400 px-8 py-6 text-center space-y-stack">
+            <div className="mx-auto w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
               <ShieldWarning className="w-9 h-9 text-white" />
             </div>
             <h1 className="text-xl font-semibold text-white">

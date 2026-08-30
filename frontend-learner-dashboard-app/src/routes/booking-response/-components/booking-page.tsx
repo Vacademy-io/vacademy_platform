@@ -430,8 +430,8 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
             {step === "pick" && !(submitting && bookDirectly) && (
               <>
                 {sessionTypes.length > 0 && (
-                  <div className="mb-5">
-                    <ModernCardHeader className="mb-3 p-0">
+                  <div className="mb-5 space-y-stack">
+                    <ModernCardHeader className="p-0">
                       <ModernCardTitle size="md" className="text-neutral-700">
                         {t("bookingResponse.page.chooseSession")}
                       </ModernCardTitle>

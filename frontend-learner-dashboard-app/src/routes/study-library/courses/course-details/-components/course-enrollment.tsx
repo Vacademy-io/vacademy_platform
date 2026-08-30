@@ -227,8 +227,8 @@ export const CourseEnrollment = ({
           <div className="space-y-2.5">
             {/* Preview notice for ALL tab - only show if user is not enrolled */}
             {showPreviewNotice && (
-              <div className="p-2 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md text-sm">
-                <div className="flex items-center space-x-2 text-blue-700 dark:text-blue-300 font-medium mb-1">
+              <div className="p-2 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md text-sm space-y-1">
+                <div className="flex items-center gap-x-2 text-blue-700 dark:text-blue-300 font-medium">
                   <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                   <span>
                     {t("enrollment.previewMode", {
@@ -313,8 +313,8 @@ export const CourseEnrollment = ({
             </div>
           </div>
         ) : (
-          <div className="p-4 bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-            <div className="flex items-center space-x-2 mb-1.5">
+          <div className="p-4 bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg space-y-1.5">
+            <div className="flex items-center gap-x-2">
               <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
               <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
                 {selectedTab === "ALL"

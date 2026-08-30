@@ -330,8 +330,8 @@ const SessionSelectionPage = () => {
                           {new Date(session.start_time).toLocaleDateString()}
                         </span>
                       </div>
-                      <div className="pt-1">
-                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <div className="pt-1 space-y-1">
+                        <div className="flex justify-between text-xs text-gray-500">
                           <span>{t("sessionSelection.readyToStart")}</span>
                           <span>100%</span>
                         </div>

@@ -291,8 +291,8 @@ export function ErrorFeedbackDialog({
             <SheetTrigger asChild>
                 {trigger || <MyButton buttonType="secondary">{t('common.reportIssue')}</MyButton>}
             </SheetTrigger>
-            <SheetContent className="sm:max-w-md w-vw-90 overflow-y-auto bg-white border-s border-gray-200 p-6">
-                <SheetHeader className="mb-6">
+            <SheetContent className="sm:max-w-md w-vw-90 overflow-y-auto bg-white border-s border-gray-200 p-6 space-y-section">
+                <SheetHeader>
                     <SheetTitle className="text-xl font-bold text-gray-900">{t('common.reportIssue')}</SheetTitle>
                     <SheetDescription className="text-gray-500">
                         {t('errorFeedbackDialog.description')}

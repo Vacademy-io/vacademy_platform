@@ -109,8 +109,8 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
     return (
       // NEUTRAL: Loading skeleton background
       <section className="py-6 bg-gray-50 w-full">
-        <div className="w-full px-4 sm:px-6 lg:px-8">
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">{title}</h2>
+        <div className="w-full px-4 sm:px-6 lg:px-8 space-y-4">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900">{title}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[...Array(limit)].map((_, i) => (
               <div key={i} className="bg-gray-200 animate-pulse rounded-catalogue-md h-48" />

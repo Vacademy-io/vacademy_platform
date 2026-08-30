@@ -352,8 +352,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         return (
             <div className="flex flex-col items-center justify-center p-12 h-full">
                 <Card className="w-full max-w-2xl">
-                    <CardContent className="flex flex-col items-center justify-center py-16">
-                        <SpinnerGap className="h-10 w-10 animate-spin text-primary mb-4" />
+                    <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
+                        <SpinnerGap className="h-10 w-10 animate-spin text-primary" />
                         <p className="text-muted-foreground font-medium">{t("audioPlayer.loading")}</p>
                     </CardContent>
                 </Card>

@@ -1155,8 +1155,8 @@ export const CourseGridBlock = ({
 
       {/* Session */}
       {showSessionFilter && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
             {getTerminology(ContentTerms.Batch, SystemTerms.Batch)} /{" "}
             {getTerminology(ContentTerms.Session, SystemTerms.Session)}
           </p>
@@ -1179,11 +1179,11 @@ export const CourseGridBlock = ({
 
       {/* Price range */}
       {showPriceFilter && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{t("pageRenderer.courseGrid.priceRangeTitle")}</p>
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t("pageRenderer.courseGrid.priceRangeTitle")}</p>
           <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <p className="mb-1 text-caption text-gray-400">{t("pageRenderer.courseGrid.min")}</p>
+            <div className="flex-1 space-y-1">
+              <p className="text-caption text-gray-400">{t("pageRenderer.courseGrid.min")}</p>
               <input
                 type="number" min={0} value={priceMin} placeholder="0"
                 onChange={(e) => { setPriceMin(e.target.value); setPage(0); }}
@@ -1191,8 +1191,8 @@ export const CourseGridBlock = ({
               />
             </div>
             <span className="mt-4 text-xs text-gray-400">–</span>
-            <div className="flex-1">
-              <p className="mb-1 text-caption text-gray-400">{t("pageRenderer.courseGrid.max")}</p>
+            <div className="flex-1 space-y-1">
+              <p className="text-caption text-gray-400">{t("pageRenderer.courseGrid.max")}</p>
               <input
                 type="number" min={0} value={priceMax} placeholder={maxPriceAll.toString()}
                 onChange={(e) => { setPriceMax(e.target.value); setPage(0); }}
@@ -1928,8 +1928,8 @@ const VideoEmbedBlock = ({ props }: { props: Record<string, unknown> }) => {
             />
           ) : (
             <div className="flex size-full items-center justify-center bg-gray-800 text-center text-white/50">
-              <div>
-                <div className="mb-2 text-5xl">▶</div>
+              <div className="space-y-2">
+                <div className="text-5xl">▶</div>
                 <p className="text-sm">{t("pageRenderer.videoEmbed.addUrlPlaceholder")}</p>
               </div>
             </div>

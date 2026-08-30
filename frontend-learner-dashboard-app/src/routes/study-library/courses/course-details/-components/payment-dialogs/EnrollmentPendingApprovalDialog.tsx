@@ -68,8 +68,8 @@ export const EnrollmentPendingApprovalDialog: React.FC<EnrollmentPendingApproval
                     <Clock className="w-4 h-4 text-white" />
                   </div>
                 </div>
-                <div className="flex-1 text-start">
-                  <p className="text-sm text-yellow-800 mb-3">
+                <div className="flex-1 text-start space-y-stack">
+                  <p className="text-sm text-yellow-800">
                     Your enrollment request is being reviewed by an administrator.
                   </p>
                   <div className="space-y-2">

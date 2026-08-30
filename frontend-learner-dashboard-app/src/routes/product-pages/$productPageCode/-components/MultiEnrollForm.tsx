@@ -217,8 +217,8 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                         suggestedMappings.length > 0;
                     if (!visible) return null;
                     return (
-                        <div className="mb-6">
-                            <h2 className="mb-3 text-sm font-semibold text-gray-700">
+                        <div className="mb-6 space-y-stack">
+                            <h2 className="text-sm font-semibold text-gray-700">
                                 {settings.suggestedCourses!.heading || t('common.peopleAlsoBuy')}
                             </h2>
                             <div className="flex gap-3 overflow-x-auto pb-2">

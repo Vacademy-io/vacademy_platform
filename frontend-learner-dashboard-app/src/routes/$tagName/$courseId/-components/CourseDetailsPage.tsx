@@ -1120,8 +1120,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     >
       {/* Render header and footer - add them if not in JSON */}
       {!catalogueData && (
-        <div className="container mx-auto p-8 text-center">
-          <h2 className="text-2xl font-semibold text-catalogue-text-primary mb-4">
+        <div className="container mx-auto p-8 text-center space-y-4">
+          <h2 className="text-2xl font-semibold text-catalogue-text-primary">
             {t("courseDetails.loadingCatalogueTitle", {
               course: getTerminology(ContentTerms.Course, SystemTerms.Course),
             })}

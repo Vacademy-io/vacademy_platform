@@ -564,8 +564,8 @@ export const TestReportDialog = ({
                 <div className="p-2 bg-blue-50 rounded-lg">
                   <CalendarBlank size={20} weight="duotone" className="text-blue-600" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">{t("testReportDialog.attemptDate")}</div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{t("testReportDialog.attemptDate")}</div>
                   <div className="text-sm md:text-base font-semibold text-slate-900 leading-tight">
                     {extractDateTime(convertToLocalDateTime(studentReport.start_time)).date}
                   </div>
@@ -575,8 +575,8 @@ export const TestReportDialog = ({
                 <div className="p-2 bg-emerald-50 rounded-lg">
                   <Timer size={20} weight="duotone" className="text-emerald-600" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">{t("testReportDialog.duration")}</div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{t("testReportDialog.duration")}</div>
                   <div className="text-sm md:text-base font-semibold text-slate-900 leading-tight">
                     {formatDuration(studentReport.duration_in_seconds)}
                   </div>
@@ -586,8 +586,8 @@ export const TestReportDialog = ({
                 <div className="p-2 bg-amber-50 rounded-lg">
                   <Clock size={20} weight="duotone" className="text-amber-600" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">{t("testReportDialog.startTime")}</div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{t("testReportDialog.startTime")}</div>
                   <div className="text-sm md:text-base font-semibold text-slate-900 leading-tight">
                     {extractDateTime(convertToLocalDateTime(studentReport.start_time)).time}
                   </div>
@@ -597,8 +597,8 @@ export const TestReportDialog = ({
                 <div className="p-2 bg-rose-50 rounded-lg">
                   <Clock size={20} weight="duotone" className="text-rose-600" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">{t("testReportDialog.endTime")}</div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{t("testReportDialog.endTime")}</div>
                   <div className="text-sm md:text-base font-semibold text-slate-900 leading-tight">
                     {extractDateTime(convertToLocalDateTime(studentReport.end_time)).time}
                   </div>
@@ -856,8 +856,8 @@ export const TestReportDialog = ({
                   <Card key={index} className="border-slate-200 hover:shadow-md transition-shadow">
                     <CardHeader className="bg-slate-50 border-b border-slate-100">
                       <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-3">
                             <CardTitle className="text-lg font-semibold text-slate-900">
                               {t("testReportDialog.questionNumber", { number: index + 1 })}
                             </CardTitle>

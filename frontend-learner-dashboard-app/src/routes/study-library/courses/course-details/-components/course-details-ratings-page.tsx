@@ -728,9 +728,9 @@ export function CourseDetailsRatingsComponent({
                             {[1, 2, 3].map((i) => (
                                 <div
                                     key={i}
-                                    className="bg-white/60 rounded-md p-2.5 animate-pulse"
+                                    className="bg-white/60 rounded-md p-2.5 animate-pulse space-y-2"
                                 >
-                                    <div className="flex items-center space-x-2 mb-2">
+                                    <div className="flex items-center gap-x-2">
                                         <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
                                         <div className="flex-1 space-y-1">
                                             <div className="h-2.5 bg-gray-200 rounded w-1/4"></div>

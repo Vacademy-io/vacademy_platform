@@ -493,8 +493,8 @@ export const AssessmentCard = ({
       {/* Pop-up for Upcoming Tests */}
       <Dialog open={showPopup} onOpenChange={handleClosePopup}>
         <DialogContent className="max-w-sm rounded-lg p-6">
-          <DialogHeader>
-            <div className="mb-2 flex items-center gap-2">
+          <DialogHeader className="space-y-2">
+            <div className="flex items-center gap-2">
               <div className="rounded-full bg-warning-50 p-2">
                 <WarningCircle className="size-5 text-warning-600" />
               </div>

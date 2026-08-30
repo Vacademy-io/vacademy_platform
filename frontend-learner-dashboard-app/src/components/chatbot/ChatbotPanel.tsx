@@ -970,8 +970,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                 {/* LaTeX preview — show rendered formula when user types $ */}
                 {inputValue.includes('$') && (
-                  <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
-                    <span className="text-muted-foreground text-caption block mb-0.5">{t("common.preview")}</span>
+                  <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto space-y-0.5">
+                    <span className="text-muted-foreground text-caption block">{t("common.preview")}</span>
                     <ReactMarkdown
                       remarkPlugins={[remarkMath]}
                       rehypePlugins={[rehypeKatex]}

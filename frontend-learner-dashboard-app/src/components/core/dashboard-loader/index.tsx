@@ -75,8 +75,8 @@ export class ErrorBoundary extends Component<
           </div>
 
           {process.env.NODE_ENV === "development" && this.state.error && (
-            <details className="mt-6 max-w-full overflow-auto rounded-lg bg-red-100 p-4 text-start">
-              <summary className="mb-2 cursor-pointer text-sm font-medium text-red-800">
+            <details className="mt-6 max-w-full overflow-auto rounded-lg bg-red-100 p-4 text-start space-y-2">
+              <summary className="cursor-pointer text-sm font-medium text-red-800">
                 {i18n.t("courseComponentsExtra:dashboardLoader.errorDetailsDev")}
               </summary>
               <pre className="whitespace-pre-wrap break-words text-xs text-red-700">

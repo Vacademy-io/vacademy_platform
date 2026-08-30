@@ -105,8 +105,8 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
 
         {/* Strengths */}
         {strengths && strengths.length > 0 && (
-          <div className="mb-4">
-            <h4 className="text-xs font-semibold text-green-400 uppercase tracking-wider mb-2">
+          <div className="mb-4 space-y-2">
+            <h4 className="text-xs font-semibold text-green-400 uppercase tracking-wider">
               {t("sessionScorecard.strengths")}
             </h4>
             <ul className="space-y-1.5">
@@ -122,8 +122,8 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
 
         {/* Areas to improve */}
         {areas_to_improve && areas_to_improve.length > 0 && (
-          <div className="mb-4">
-            <h4 className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-2">
+          <div className="mb-4 space-y-2">
+            <h4 className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
               {t("sessionScorecard.areasToImprove")}
             </h4>
             <ul className="space-y-1.5">
@@ -139,8 +139,8 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
 
         {/* Feedback */}
         {feedback && (
-          <div className="mb-5">
-            <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">
+          <div className="mb-5 space-y-2">
+            <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">
               {t("sessionScorecard.feedback")}
             </h4>
             <p className="text-sm text-white/70 leading-relaxed">{feedback}</p>

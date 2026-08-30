@@ -148,8 +148,8 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
   if (layout === "carousel") {
     return (
       <section className="w-full catalogue-section" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="text-center">
             <h2 className="text-2xl sm:text-3xl font-bold text-catalogue-text-primary mb-2">{headerText}</h2>
             {description && <p className="text-base sm:text-lg text-catalogue-text-secondary max-w-2xl mx-auto">{description}</p>}
           </div>

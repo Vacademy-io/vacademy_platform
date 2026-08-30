@@ -219,8 +219,8 @@ export const PastSessionCard = ({ session }: PastSessionCardProps) => {
       )}
 
       {materials.length > 0 && (
-        <div className="mt-2">
-          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5">
+        <div className="mt-2 space-y-1.5">
+          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
             {t("liveClass.pastSession.materialsLabel")}
           </p>
           <div className="flex flex-wrap items-center gap-2">

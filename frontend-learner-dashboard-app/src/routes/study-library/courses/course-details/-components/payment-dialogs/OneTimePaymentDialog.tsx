@@ -868,8 +868,8 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             <DialogTitle>Loading Payment Options</DialogTitle>
           </DialogHeader>
           <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <div className="text-center space-y-4">
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto text-primary-600" />
               <p className="text-gray-600">Loading payment options...</p>
             </div>
           </div>
@@ -885,8 +885,8 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
           <DialogHeader>
             <DialogTitle>Payment Error</DialogTitle>
           </DialogHeader>
-          <div className="text-center py-6">
-            <p className="text-red-600 mb-4">{error}</p>
+          <div className="text-center py-6 space-y-4">
+            <p className="text-red-600">{error}</p>
             <Button onClick={fetchEnrollmentData} variant="outline">
               Try Again
             </Button>
@@ -1230,8 +1230,8 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
               {!isSupportedVendor ? (
                 /* PAYPAL / MANUAL etc. aren't wired into this in-course dialog —
                    show a clear notice instead of a broken Stripe form. */
-                <div className="mb-2 border border-orange-300 bg-orange-50 rounded p-4 text-sm">
-                  <div className="flex items-center gap-2 text-orange-700 mb-2">
+                <div className="mb-2 border border-orange-300 bg-orange-50 rounded p-4 text-sm space-y-2">
+                  <div className="flex items-center gap-2 text-orange-700">
                     <Lock size={16} />
                     <span className="font-medium">
                       {vendor} payments aren't available here yet

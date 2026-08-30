@@ -219,8 +219,8 @@ export const DetailBlocksComponent: React.FC<DetailBlocksProps> = ({
               {specs.length > 0 && (
                 <dl className={`catalogue-hairline-grid ${specCols}`}>
                   {specs.map((s, j) => (
-                    <div key={j} className="px-6 py-4">
-                      <dt className="mb-1 text-xs font-semibold uppercase tracking-wide-08 text-catalogue-text-muted">
+                    <div key={j} className="px-6 py-4 space-y-1">
+                      <dt className="text-xs font-semibold uppercase tracking-wide-08 text-catalogue-text-muted">
                         {s.label}
                       </dt>
                       <dd className="text-sm font-medium text-catalogue-text-secondary">{s.value}</dd>

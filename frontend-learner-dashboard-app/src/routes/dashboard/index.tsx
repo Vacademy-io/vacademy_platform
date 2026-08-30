@@ -210,8 +210,8 @@ function DashboardOnboardingGate() {
           </p>
         </div>
         <OnboardingStepForm stepInstance={pending.current.step} onSubmitted={() => {}} />
-        <ModernCard variant="outlined" padding="md" rounded="lg">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+        <ModernCard className="space-y-2" variant="outlined" padding="md" rounded="lg">
+          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
             {t("onboardingGate.progressLabel")}
           </p>
           <OnboardingProgressList stepInstances={pending.instance.step_instances} />

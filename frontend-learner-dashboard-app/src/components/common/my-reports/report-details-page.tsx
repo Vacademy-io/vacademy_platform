@@ -138,8 +138,8 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
     }
 
     return (
-      <Card id={sectionId} className="w-full p-4">
-        <CardTitle className="text-lg font-semibold text-neutral-800 mb-3">
+      <Card id={sectionId} className="w-full p-4 space-y-stack">
+        <CardTitle className="text-lg font-semibold text-neutral-800">
           {title}
         </CardTitle>
         <CardContent className="grid gap-2">

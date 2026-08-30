@@ -132,9 +132,9 @@ export function NotificationList() {
 
       <div className="max-w-4xl mx-auto relative z-10">
         <Tabs defaultValue="General" className="w-full">
-          <div className="mb-6 animate-fade-in-down">
-            <div className="text-center mb-4">
-              <h1 className="text-2xl font-bold text-foreground mb-2 tracking-tight">
+          <div className="mb-6 animate-fade-in-down space-y-4">
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl font-bold text-foreground tracking-tight">
                 {t("notifications.pageTitle")}
               </h1>
               <p className="text-sm text-muted-foreground">

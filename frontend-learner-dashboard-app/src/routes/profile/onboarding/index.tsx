@@ -200,8 +200,8 @@ function OnboardingInstanceCard({ instance }: OnboardingInstanceCardProps) {
         </ModernCard>
       )}
 
-      <ModernCard variant="outlined" padding="md" rounded="lg">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+      <ModernCard className="space-y-2" variant="outlined" padding="md" rounded="lg">
+        <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
           {t("onboarding.progress")}
         </p>
         <OnboardingProgressList stepInstances={instance.step_instances} />

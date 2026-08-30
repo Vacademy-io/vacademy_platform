@@ -518,8 +518,8 @@ const RegistrationStep = ({
               <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <div className="text-sm text-amber-800">
-                <p className="font-medium mb-1">{t("registrationStep.otp.cantFindEmail")}</p>
+              <div className="text-sm text-amber-800 space-y-1">
+                <p className="font-medium">{t("registrationStep.otp.cantFindEmail")}</p>
                 <ul className="list-disc list-inside space-y-1 text-amber-700">
                   <li>
                     {t("registrationStep.otp.checkSpamPrefix")}{" "}
@@ -537,8 +537,8 @@ const RegistrationStep = ({
 
           {/* OTP Input */}
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
                 {t("registrationStep.otp.enterCodeLabel")}
               </label>
               <input
@@ -616,8 +616,8 @@ const RegistrationStep = ({
   return (
     <>
       <Card id="registration-card" className="overflow-hidden border border-gray-200 w-full">
-        <CardContent className="p-card sm:p-5 md:p-card-lg">
-          <div className="flex items-start gap-2 sm:gap-3 mb-5">
+        <CardContent className="p-card sm:p-5 md:p-card-lg space-y-5">
+          <div className="flex items-start gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-gray-100 rounded-lg flex-shrink-0">
               <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
             </div>
@@ -631,7 +631,7 @@ const RegistrationStep = ({
             </div>
           </div>
 
-          <Separator className="mb-5" />
+          <Separator />
 
           <FormProvider {...form}>
             <form className="w-full flex flex-col gap-4">

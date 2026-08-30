@@ -305,8 +305,8 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                   <span className="ms-2 text-sm text-gray-500">{t('systemAlertsBar.loadingAlerts')}</span>
                 </div>
               ) : alerts.length === 0 ? (
-                <div className="text-center py-8">
-                  <Bell className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                <div className="text-center py-8 space-y-2">
+                  <Bell className="h-8 w-8 text-gray-400 mx-auto" />
                   <p className="text-sm text-gray-500">{t('systemAlertsBar.noAlerts')}</p>
                 </div>
               ) : (
@@ -351,8 +351,8 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
           className="w-full max-w-vw-95 sm:max-w-2xl max-h-screen-90  overflow-hidden flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          <CardContent className="p-1 sm:p-8 flex flex-col overflow-hidden">
-            <div className="flex items-start justify-between mb-4 flex-shrink-0">
+          <CardContent className="p-1 sm:p-8 flex flex-col overflow-hidden gap-4">
+            <div className="flex items-start justify-between flex-shrink-0">
               <div className="flex-1 min-w-0 me-2">
                 {selectedAlert.title && (
                   <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words">
@@ -385,7 +385,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
               </Button>
             </div>
 
-            <Separator className="mb-4 flex-shrink-0" />
+            <Separator className="flex-shrink-0" />
 
             <div className="overflow-y-auto flex-1 min-h-0">
               <div className="prose prose-sm max-w-none">

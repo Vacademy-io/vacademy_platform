@@ -177,8 +177,8 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   const renderVideoFallback = () => {
     return (
       <div className={`relative w-full aspect-video bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}>
-        <div className="flex flex-col items-center justify-center text-white/70">
-          <Play className="w-16 h-16 mb-2 opacity-50" />
+        <div className="flex flex-col items-center justify-center text-white/70 gap-2">
+          <Play className="w-16 h-16 opacity-50" />
           <p className="text-sm">{t("mediaShowcase.videoUnavailable")}</p>
         </div>
       </div>

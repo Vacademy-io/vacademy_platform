@@ -670,8 +670,8 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         style={{ backgroundColor, padding }}
       >
         {paymentBanner}
-        <div className="text-center">
-          <div className="text-5xl mb-2">🛒</div>
+        <div className="text-center space-y-2">
+          <div className="text-5xl">🛒</div>
           <p className="text-gray-600 text-sm sm:text-base">{resolvedEmptyStateMessage}</p>
         </div>
       </div>
@@ -705,8 +705,8 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         >
           {paymentBanner}
           {/* Cart Items Section */}
-          <div>
-            <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-3">{t("cart.yourBooks")}</h2>
+          <div className="space-y-stack">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-800">{t("cart.yourBooks")}</h2>
             <div className="flex overflow-x-auto gap-3 pb-4 snap-x pe-4 scrollbar-hide">
               {items.map((item) => (
                 <div
@@ -780,9 +780,9 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
           {/* Subtotal, Total and Checkout Button Section */}
           {items.length > 0 && (
-            <div className="mt-5 bg-gray-50 rounded-catalogue-md p-3 sm:p-4 border border-gray-200">
+            <div className="mt-5 bg-gray-50 rounded-catalogue-md p-3 sm:p-4 border border-gray-200 space-y-stack">
 
-              <div className="flex justify-between items-center pt-3 border-t border-gray-200 mb-3">
+              <div className="flex justify-between items-center pt-3 border-t border-gray-200">
                 <span className="text-base sm:text-lg font-semibold text-gray-900">{t("cart.total")}</span>
                 <span className="text-base sm:text-lg font-bold text-gray-900">₹{getTotal().toFixed(2)}</span>
               </div>
@@ -860,8 +860,8 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
       {/* Checkout Button for Buy mode */}
       {items.length > 0 && !isRentMode && (
-        <div className="mt-5 bg-gray-50 rounded-catalogue-md p-3 sm:p-4 border border-gray-200">
-          <div className="space-y-1.5 pt-2 mb-3">
+        <div className="mt-5 bg-gray-50 rounded-catalogue-md p-3 sm:p-4 border border-gray-200 space-y-stack">
+          <div className="space-y-1.5 pt-2">
             <div className="flex justify-between items-center text-sm text-gray-700">
               <span>{t("cart.subtotalCount", { count: buyModeItemQty })}</span>
               <span className="font-medium">₹{buyModeSubtotal.toFixed(2)}</span>

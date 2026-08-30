@@ -353,8 +353,8 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             <DialogTitle>Loading Payment Options</DialogTitle>
           </DialogHeader>
           <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <div className="text-center space-y-4">
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto text-primary-600" />
               <p className="text-gray-600">Loading payment options...</p>
             </div>
           </div>
@@ -370,8 +370,8 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
           <DialogHeader>
             <DialogTitle>Payment Error</DialogTitle>
           </DialogHeader>
-          <div className="text-center py-6">
-            <p className="text-red-600 mb-4">{error}</p>
+          <div className="text-center py-6 space-y-4">
+            <p className="text-red-600">{error}</p>
             <Button onClick={fetchEnrollmentData} variant="outline">
               Try Again
             </Button>

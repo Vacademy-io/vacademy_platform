@@ -22,8 +22,8 @@ export const DefaultClassCard = ({
     return (
         <div className="p-4 border rounded-xl bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 shadow-sm w-full">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex-1 w-full sm:w-auto">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                <div className="flex-1 w-full sm:w-auto space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold text-lg text-neutral-800 dark:text-neutral-100">
                             {displayTitle}
                         </h3>

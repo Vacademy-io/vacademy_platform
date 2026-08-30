@@ -86,8 +86,8 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
                     <CheckCircle className="w-4 h-4 text-white" />
                   </div>
                 </div>
-                <div className="flex-1 text-start">
-                  <h4 className="text-sm font-semibold text-green-900 mb-1">
+                <div className="flex-1 text-start space-y-1">
+                  <h4 className="text-sm font-semibold text-green-900">
                     {t("approval.success.readyTitle")}
                   </h4>
                   <p className="text-sm text-green-800">

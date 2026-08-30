@@ -134,8 +134,8 @@ const AssessmentClosedExpiredComponent = ({
             </div>
 
             {/* Assessment name */}
-            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
-              <p className="text-caption font-medium text-slate-500 uppercase tracking-wider mb-1">
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-1">
+              <p className="text-caption font-medium text-slate-500 uppercase tracking-wider">
                 {t("closedExpired.assessmentLabel")}
               </p>
               <p className="text-sm font-medium text-slate-900 truncate">

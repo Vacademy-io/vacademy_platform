@@ -53,9 +53,9 @@ export function ChildSelectionScreen({
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="text-center mb-10 sm:mb-14 relative z-10"
+        className="text-center mb-10 sm:mb-14 relative z-10 space-y-stack"
       >
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight mb-3">
+        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
           {t("admissionPortal.childSelect.hello", { name: parentName })}
         </h1>
         <p className="text-slate-600 font-medium text-sm sm:text-base">

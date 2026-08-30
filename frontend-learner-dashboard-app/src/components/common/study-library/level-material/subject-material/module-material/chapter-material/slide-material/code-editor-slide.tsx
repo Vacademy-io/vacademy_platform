@@ -931,9 +931,9 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
       {/* Pause overlay */}
       {isPaused && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-lg bg-white p-6 text-center">
-            <h3 className="mb-4 text-lg font-semibold">{t("codeEditor.pausedHeading")}</h3>
-            <p className="mb-4 text-sm text-gray-600">
+          <div className="rounded-lg bg-white p-6 text-center space-y-4">
+            <h3 className="text-lg font-semibold">{t("codeEditor.pausedHeading")}</h3>
+            <p className="text-sm text-gray-600">
               {t("codeEditor.pausedMessage", { count: tabSwitchCount })}
             </p>
             <button

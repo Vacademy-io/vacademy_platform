@@ -296,8 +296,8 @@ export function DashboardHero({
           {liveBanner}
           <div className="flex flex-col gap-section lg:flex-row lg:items-center lg:justify-between">
             {/* Left: greeting + checklist */}
-            <div className="min-w-0 flex-1">
-              <div className="mb-5 flex items-start gap-3">
+            <div className="min-w-0 flex-1 space-y-5">
+              <div className="flex items-start gap-3">
                 <span className="hidden size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex">
                   <Sparkle size={22} weight="fill" />
                 </span>

@@ -229,8 +229,8 @@ export function SessionFilter({
             >
                 <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-lg shadow-black/8 dark:shadow-black/30 overflow-hidden">
                     {/* ── Preset pills ─────────────────────────────────────────── */}
-                    <div className="p-3 pb-2.5">
-                        <p className="text-3xs font-bold uppercase tracking-wide-08 text-neutral-400 dark:text-neutral-500 mb-2 px-0.5">
+                    <div className="p-3 pb-2.5 space-y-2">
+                        <p className="text-3xs font-bold uppercase tracking-wide-08 text-neutral-400 dark:text-neutral-500 px-0.5">
                             {t("sessionFilter.showSessionsInNext", {
                                 sessions: getTerminologyPlural(ContentTerms.Session, SystemTerms.Session),
                             })}
@@ -278,8 +278,8 @@ export function SessionFilter({
                                 }`}
                         >
                             <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="block text-3xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1 px-0.5">
+                                <div className="space-y-1">
+                                    <label className="block text-3xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 px-0.5">
                                         {t("sessionFilter.fromLabel")}
                                     </label>
                                     <Input
@@ -290,8 +290,8 @@ export function SessionFilter({
                                         className="w-full text-xs h-8 rounded-lg text-neutral-700 dark:text-neutral-200"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-3xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1 px-0.5">
+                                <div className="space-y-1">
+                                    <label className="block text-3xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 px-0.5">
                                         {t("sessionFilter.toLabel")}
                                     </label>
                                     <Input

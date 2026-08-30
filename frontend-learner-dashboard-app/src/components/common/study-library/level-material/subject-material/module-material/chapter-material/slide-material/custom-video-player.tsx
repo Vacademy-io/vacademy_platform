@@ -1972,8 +1972,8 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                     {/* Error message */}
                     {error && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                            <div className="bg-white p-4 rounded-lg shadow-lg max-w-md">
-                                <p className="text-red-500 mb-2">{error}</p>
+                            <div className="bg-white p-4 rounded-lg shadow-lg max-w-md space-y-2">
+                                <p className="text-red-500">{error}</p>
                                 <button
                                     onClick={() => {
                                         setError(null);

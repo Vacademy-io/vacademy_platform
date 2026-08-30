@@ -261,8 +261,8 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
                       {/* Replies List */}
                       <div className="space-y-3">
                         {/* TODO: Implement replies list */}
-                        <div className="text-center py-8 text-gray-500">
-                          <ChatText className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                        <div className="text-center py-8 text-gray-500 space-y-2">
+                          <ChatText className="h-8 w-8 mx-auto text-gray-400" />
                           <p>{t('packageSessionMessages.repliesWillAppearHere')}</p>
                         </div>
                       </div>
@@ -319,8 +319,8 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
               <span className="ms-2 text-sm text-gray-500">{t('packageSessionMessages.loadingStreamMessages')}</span>
             </div>
           ) : stream.items.length === 0 ? (
-            <div className="text-center py-8">
-              <ChatText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+            <div className="text-center py-8 space-y-2">
+              <ChatText className="h-8 w-8 text-gray-400 mx-auto" />
               <p className="text-sm text-gray-500">{t('packageSessionMessages.noStreamMessages')}</p>
             </div>
           ) : (

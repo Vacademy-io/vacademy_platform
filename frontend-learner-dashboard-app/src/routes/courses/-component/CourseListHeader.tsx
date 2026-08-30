@@ -182,10 +182,10 @@ const CourseListHeader = ({
       {/* Mobile Navigation Menu */}
       {isMobileMenuOpen && (
         <div
-          className="lg:hidden w-full bg-white border-t border-gray-200 py-4 px-3 sm:px-4"
+          className="lg:hidden w-full bg-white border-t border-gray-200 py-4 px-3 sm:px-4 space-y-4"
           style={{ zIndex: 100 }}
         >
-          <ul className="flex flex-col space-y-3 sm:space-y-4 mb-4 sm:mb-6">
+          <ul className="flex flex-col space-y-3 sm:space-y-4 sm:mb-6">
             {navigationItems.map((item) => (
               <li key={item.href}>
                 <a

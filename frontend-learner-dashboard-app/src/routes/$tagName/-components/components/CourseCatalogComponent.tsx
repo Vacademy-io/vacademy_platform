@@ -1145,8 +1145,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   if (isLoading) {
     return (
       <div className="py-8 sm:py-10 w-full bg-catalogue-bg-subtle">
-        <div className="w-full px-4 sm:px-6 lg:px-8">
-          <div className="catalogue-skeleton-shimmer h-8 w-48 mb-6"></div>
+        <div className="w-full px-4 sm:px-6 lg:px-8 space-y-section">
+          <div className="catalogue-skeleton-shimmer h-8 w-48"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[...Array(6)].map((_, i) => (
               <div
@@ -1338,13 +1338,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     )}
 
                     {shouldShowPriceFilter && (
-                      <div className="mb-5">
-                        <h3 className="text-sm font-semibold text-catalogue-text-primary mb-2.5">
+                      <div className="mb-5 space-y-2.5">
+                        <h3 className="text-sm font-semibold text-catalogue-text-primary">
                           {priceFilterConfig?.label ?? t("courseCatalog.priceRange")}
                         </h3>
                         <div className="flex items-end gap-2 rounded-catalogue-md bg-catalogue-bg-subtle p-3">
-                          <div className="flex-1">
-                            <label className="block text-xs text-catalogue-text-secondary mb-1">
+                          <div className="flex-1 space-y-1">
+                            <label className="block text-xs text-catalogue-text-secondary">
                               {t("courseCatalog.min")}
                             </label>
                             <input
@@ -1358,8 +1358,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                             />
                           </div>
                           <span className="pb-2 text-catalogue-text-muted">–</span>
-                          <div className="flex-1">
-                            <label className="block text-xs text-catalogue-text-secondary mb-1">
+                          <div className="flex-1 space-y-1">
+                            <label className="block text-xs text-catalogue-text-secondary">
                               {t("courseCatalog.max")}
                             </label>
                             <input

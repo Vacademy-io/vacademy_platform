@@ -297,12 +297,12 @@ function RouteComponent() {
               {paginatedData?.map((cls, idx) => (
                 <div
                   key={idx}
-                  className="rounded-lg border border-neutral-200 bg-white p-3"
+                  className="rounded-lg border border-neutral-200 bg-white p-3 space-y-2"
                 >
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">
+                  <div className="text-sm font-semibold text-neutral-800">
                     {cls.sessionTitle}
                   </div>
-                  <div className="mb-2 text-xs text-neutral-600">
+                  <div className="text-xs text-neutral-600">
                     {formatDate(cls.meetingDate)}
                   </div>
                   <div className="flex flex-wrap gap-2">

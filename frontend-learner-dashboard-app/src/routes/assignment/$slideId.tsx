@@ -91,8 +91,8 @@ function AssignmentPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-6 sm:py-10">
-      <div className="mx-auto max-w-3xl">
-        <h1 className="mb-6 px-4 text-xl font-semibold text-gray-900 sm:text-2xl">
+      <div className="mx-auto max-w-3xl space-y-section">
+        <h1 className="px-4 text-xl font-semibold text-gray-900 sm:text-2xl">
           {slideData.title || t("assignment.defaultTitle")}
         </h1>
         <AssignmentSlide

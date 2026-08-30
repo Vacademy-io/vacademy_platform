@@ -72,8 +72,8 @@ const ProgressStats = ({ userId }: { userId: string }) => {
           <div className="text-muted-foreground">{t("progressStats.empty")}</div>
         ) : (
           displayedItems.map((item) => (
-            <div key={item.id} className="">
-              <CardTitle className="text-sm text-foreground mb-2">
+            <div key={item.id} className="space-y-2">
+              <CardTitle className="text-sm text-foreground">
                 {item.data}
               </CardTitle>
               <div className="flex items-center space-x-2">
@@ -111,8 +111,8 @@ const ProgressStats = ({ userId }: { userId: string }) => {
 
   if (loading) {
     return (
-      <div className="bg-card rounded-xl border shadow p-6">
-        <h3 className="text-sm font-semibold text-foreground mb-4">
+      <div className="bg-card rounded-xl border shadow p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-foreground">
           {t("progressStats.title")}
         </h3>
         <div className="text-center text-muted-foreground">{t("progressStats.loading")}</div>
@@ -121,8 +121,8 @@ const ProgressStats = ({ userId }: { userId: string }) => {
   }
 
   return (
-    <div className="bg-card rounded-xl border shadow p-6">
-      <h3 className="text-sm font-semibold text-foreground mb-4">
+    <div className="bg-card rounded-xl border shadow p-6 space-y-4">
+      <h3 className="text-sm font-semibold text-foreground">
         {t("progressStats.title")}
       </h3>
       <div className="space-y-6">

@@ -85,8 +85,8 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
                       <Clock className="w-4 h-4 text-white" />
                     </div>
                   </div>
-                  <div className="flex-1 text-start">
-                    <h4 className="text-sm font-semibold text-yellow-900 mb-2">
+                  <div className="flex-1 text-start space-y-2">
+                    <h4 className="text-sm font-semibold text-yellow-900">
                       {t("payment.success.approvalTitle", {
                         admin: getTerminology(RoleTerms.Admin, SystemTerms.Admin),
                       })}

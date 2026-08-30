@@ -101,8 +101,8 @@ export function AchievementsDialog({
 
             {/* How points are earned */}
             {breakdown.length > 0 && (
-              <div className="rounded-xl border border-border p-3">
-                <p className="mb-1.5 text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="rounded-xl border border-border p-3 space-y-1.5">
+                <p className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {t("xp.howYouEarnPoints")}
                 </p>
                 <div className="space-y-1">

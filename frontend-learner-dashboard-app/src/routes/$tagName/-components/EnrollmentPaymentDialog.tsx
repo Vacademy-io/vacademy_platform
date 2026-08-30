@@ -549,8 +549,8 @@ export const EnrollmentPaymentDialog: React.FC<
                   />
                 </svg>
               </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              <div className="space-y-2">
+                <h2 className="text-xl font-semibold text-gray-900">
                   {t("enrollmentPaymentDialog.enrollmentSuccessful")}
                 </h2>
                 <p className="text-gray-600">
@@ -569,8 +569,8 @@ export const EnrollmentPaymentDialog: React.FC<
             </div>
           ) : (
             <>
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              <div className="mb-6 space-y-2">
+                <h2 className="text-xl font-semibold text-gray-900">
                   {t("enrollmentPaymentDialog.enrollInCourse", { course })}
                 </h2>
                 <p className="text-sm text-gray-600">
@@ -655,8 +655,8 @@ export const EnrollmentPaymentDialog: React.FC<
 
                   {/* OTP Verification Section */}
                   <div className="border-t pt-4 mt-4">
-                    <div className="text-center mb-4">
-                      <h4 className="text-md font-semibold text-gray-900 mb-2">
+                    <div className="text-center mb-4 space-y-2">
+                      <h4 className="text-md font-semibold text-gray-900">
                         {t("enrollmentPaymentDialog.emailVerificationHeading")}
                       </h4>
                       <p className="text-sm text-gray-600">
@@ -695,8 +695,8 @@ export const EnrollmentPaymentDialog: React.FC<
 
                     {otpSent && !isEmailVerified && (
                       <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <div className="space-y-1">
+                          <label className="block text-sm font-medium text-gray-700">
                             {t("enrollmentPaymentDialog.enterSixDigitOtp")}
                           </label>
                           <input

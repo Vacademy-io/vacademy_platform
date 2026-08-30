@@ -500,8 +500,8 @@ function AISettings() {
   const { t } = useTranslation("miscRoutesB");
   return (
     <LayoutContainer>
-      <div className="container mx-auto py-8 px-4 max-w-6xl">
-        <div className="mb-8">
+      <div className="container mx-auto py-8 px-4 max-w-6xl space-y-8">
+        <div>
           <h1 className="text-3xl font-bold tracking-tight">{t("aiSettings.page.title")}</h1>
           <p className="text-muted-foreground mt-2">
             {t("aiSettings.page.description")}

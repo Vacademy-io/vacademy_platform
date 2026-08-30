@@ -271,8 +271,8 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
             <DialogTitle>Loading Free Enrollment</DialogTitle>
           </DialogHeader>
           <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <div className="text-center space-y-4">
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto text-primary-600" />
               <p className="text-gray-600">Loading enrollment options...</p>
             </div>
           </div>
@@ -288,8 +288,8 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
           <DialogHeader>
             <DialogTitle>Enrollment Error</DialogTitle>
           </DialogHeader>
-          <div className="text-center py-6">
-            <p className="text-red-600 mb-4">{error}</p>
+          <div className="text-center py-6 space-y-4">
+            <p className="text-red-600">{error}</p>
             <Button onClick={fetchEnrollmentData} variant="outline">
               Try Again
             </Button>
@@ -317,8 +317,8 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
                   <div className="text-center">
                     {/* Approval Required - Process Steps */}
                     {selectedPaymentOption?.require_approval && (
-                      <div className="bg-gradient-to-br from-slate-50 to-info-50 border border-slate-200 rounded-xl p-5 mb-4 shadow-sm">
-                        <div className="text-center mb-4">
+                      <div className="bg-gradient-to-br from-slate-50 to-info-50 border border-slate-200 rounded-xl p-5 mb-4 shadow-sm space-y-4">
+                        <div className="text-center">
                           <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-r from-info-500 to-indigo-600 rounded-full mb-3">
                             <svg
                               className="w-5 h-5 text-white"

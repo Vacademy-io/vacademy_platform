@@ -170,8 +170,8 @@ export const OnboardingStepForm = ({
           {t("onboardingStepForm.loadError")}
         </div>
       ) : fields.length === 0 ? (
-        <div className="py-6 text-center text-sm text-neutral-500">
-          <p className="mb-4">{t("onboardingStepForm.noFieldsConfigured")}</p>
+        <div className="py-6 text-center text-sm text-neutral-500 space-y-4">
+          <p>{t("onboardingStepForm.noFieldsConfigured")}</p>
           <MyButton
             type="button"
             buttonType="primary"

@@ -358,8 +358,8 @@ const PaymentInfoStep = ({
         vendor !== "CASHFREE" &&
         vendor !== "PHONEPE" && (
         <div className="w-full max-w-md mx-auto">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-6 text-center">
-            <h2 className="text-xl font-bold text-yellow-800 mb-2">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-6 text-center space-y-2">
+            <h2 className="text-xl font-bold text-yellow-800">
               ⚠️ {t("paymentInfoStep.gatewayNotConfiguredTitle")}
             </h2>
             <p className="text-yellow-700">

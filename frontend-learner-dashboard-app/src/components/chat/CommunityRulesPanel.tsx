@@ -73,8 +73,8 @@ export function CommunityRulesPanel({
           )}
 
           {needsAck && (
-            <div className="mt-3">
-              <p className="mb-2 text-caption text-muted-foreground">
+            <div className="mt-3 space-y-2">
+              <p className="text-caption text-muted-foreground">
                 {t("communityRules.acceptNotice")}
               </p>
               <Button

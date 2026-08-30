@@ -355,8 +355,8 @@ function InvoicePaymentPage() {
             <Skeleton className="h-5 w-36" />
           </div>
           <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-            <div className="bg-primary-50 border-b border-border px-6 py-5">
-              <Skeleton className="h-5 w-40 mb-2" />
+            <div className="bg-primary-50 border-b border-border px-6 py-5 space-y-2">
+              <Skeleton className="h-5 w-40" />
               <Skeleton className="h-4 w-28" />
             </div>
             <div className="px-6 py-5 space-y-3">

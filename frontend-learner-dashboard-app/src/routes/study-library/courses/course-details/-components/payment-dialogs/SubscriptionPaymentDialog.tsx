@@ -888,8 +888,8 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
               Please wait while we load the available subscription plans for
               this course.
             </DialogPrimitive.Description>
-            <div className="text-center py-8">
-              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <div className="text-center py-8 space-y-4">
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto text-primary-600" />
               <p className="text-gray-600">Loading subscription options...</p>
             </div>
           </DialogPrimitive.Content>
@@ -912,8 +912,8 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
               There was an error loading the subscription options. Please try
               again.
             </DialogPrimitive.Description>
-            <div className="text-center py-6">
-              <p className="text-red-600 mb-4">{error}</p>
+            <div className="text-center py-6 space-y-4">
+              <p className="text-red-600">{error}</p>
               <MyButton
                 buttonType="primary"
                 scale="medium"
@@ -1288,8 +1288,8 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                   {!isSupportedVendor ? (
                     /* PAYPAL / MANUAL etc. aren't wired into this in-course dialog —
                        show a clear notice instead of a broken Stripe form. */
-                    <div className="border border-orange-300 bg-orange-50 rounded p-4 text-sm">
-                      <div className="flex items-center gap-2 text-orange-700 mb-2">
+                    <div className="border border-orange-300 bg-orange-50 rounded p-4 text-sm space-y-2">
+                      <div className="flex items-center gap-2 text-orange-700">
                         <Lock size={16} />
                         <span className="font-medium">
                           {vendor} payments aren't available here yet

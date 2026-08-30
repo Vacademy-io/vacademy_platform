@@ -115,8 +115,8 @@ interface StatCardProps {
 }
 
 const StatCard = ({ label, value }: StatCardProps) => (
-  <div className="rounded-xl border border-neutral-200 bg-white px-3 py-3 sm:px-4">
-    <p className="mb-1.5 text-3xs font-bold uppercase tracking-wide text-neutral-400">
+  <div className="rounded-xl border border-neutral-200 bg-white px-3 py-3 sm:px-4 space-y-1.5">
+    <p className="text-3xs font-bold uppercase tracking-wide text-neutral-400">
       {label}
     </p>
     <p className="text-title font-bold text-neutral-900 sm:text-h3">{value}</p>
@@ -140,8 +140,8 @@ const RuleRow = ({ icon, title, body, isFirst }: RuleRowProps) => (
     <span className="grid size-8 flex-none place-items-center rounded-lg bg-neutral-100 text-neutral-600">
       {icon}
     </span>
-    <div className="min-w-0">
-      <p className="mb-1 text-body font-semibold text-neutral-900">{title}</p>
+    <div className="min-w-0 space-y-1">
+      <p className="text-body font-semibold text-neutral-900">{title}</p>
       <p className="text-caption leading-relaxed text-neutral-500">{body}</p>
     </div>
   </div>

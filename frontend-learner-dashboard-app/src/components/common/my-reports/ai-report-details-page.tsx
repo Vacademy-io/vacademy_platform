@@ -331,8 +331,8 @@ export default function AIReportDetailsPage({
                 </div>
               )}
               {confEntries.length > 0 && (
-                <div>
-                  <p className="text-3xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">{t("aiReportDetails.confidence.perQuestion")}</p>
+                <div className="space-y-2">
+                  <p className="text-3xs uppercase tracking-wider text-muted-foreground font-semibold">{t("aiReportDetails.confidence.perQuestion")}</p>
                   <div className="grid grid-cols-5 gap-2">
                     {confEntries.map(([q, c]) => (
                       <div key={q} className={`rounded-lg p-2 text-center border ${c >= 70 ? "bg-emerald-50 border-emerald-200" : c >= 40 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"}`}>
@@ -404,8 +404,8 @@ export default function AIReportDetailsPage({
                 <CardHeader className="pb-2"><CardTitle className="text-base text-emerald-600">{t("aiReportDetails.strengths.title")}</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
                   {strengths.map(([t, s]) => (
-                    <div key={t}>
-                      <div className="flex justify-between text-sm mb-1"><span>{t}</span><span className="font-mono font-bold text-emerald-600">{s}%</span></div>
+                    <div className="space-y-1" key={t}>
+                      <div className="flex justify-between text-sm"><span>{t}</span><span className="font-mono font-bold text-emerald-600">{s}%</span></div>
                       <Progress value={s} className="h-2 [&>div]:bg-emerald-500 bg-emerald-100" />
                     </div>
                   ))}
@@ -417,8 +417,8 @@ export default function AIReportDetailsPage({
                 <CardHeader className="pb-2"><CardTitle className="text-base text-red-500">{t("aiReportDetails.weaknesses.title")}</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
                   {weaknesses.map(([t, s]) => (
-                    <div key={t}>
-                      <div className="flex justify-between text-sm mb-1"><span>{t}</span><span className="font-mono font-bold text-red-500">{s}%</span></div>
+                    <div className="space-y-1" key={t}>
+                      <div className="flex justify-between text-sm"><span>{t}</span><span className="font-mono font-bold text-red-500">{s}%</span></div>
                       <Progress value={s} className="h-2 [&>div]:bg-red-500 bg-red-100" />
                     </div>
                   ))}

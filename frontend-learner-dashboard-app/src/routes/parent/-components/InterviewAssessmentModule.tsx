@@ -312,8 +312,8 @@ function ScheduleCard({
 
         {/* Feedback */}
         {feedback && isCompleted && (
-          <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-            <p className="text-xs font-medium text-muted-foreground mb-1">
+          <div className="p-3 rounded-lg bg-muted/30 border border-border/50 space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">
               {t("admissionPortal.interview.feedback")}
             </p>
             <p className="text-sm text-foreground">{feedback}</p>

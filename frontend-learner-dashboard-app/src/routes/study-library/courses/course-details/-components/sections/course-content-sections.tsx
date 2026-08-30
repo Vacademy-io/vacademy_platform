@@ -55,8 +55,8 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                     style={{ animationDelay: "0.3s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                    <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
+                    <div className="relative space-y-stack">
+                        <div className="flex items-center gap-x-2">
                             <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-lg shadow-sm">
                                 <BookOpen
                                     size={18}
@@ -85,8 +85,8 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                     style={{ animationDelay: "0.4s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-info-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                    <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
+                    <div className="relative space-y-stack">
+                        <div className="flex items-center gap-x-2">
                             <div className="p-1.5 bg-gradient-to-br from-info-100 to-info-200 rounded-lg shadow-sm">
                                 <File
                                     size={18}
@@ -117,8 +117,8 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                     style={{ animationDelay: "0.5s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                    <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
+                    <div className="relative space-y-stack">
+                        <div className="flex items-center gap-x-2">
                             <div className="p-1.5 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg shadow-sm">
                                 <GraduationCap
                                     size={18}
@@ -147,8 +147,8 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                     style={{ animationDelay: "0.6s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                    <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
+                    <div className="relative space-y-stack">
+                        <div className="flex items-center gap-x-2">
                             <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
                                 <ChalkboardTeacher
                                     size={18}

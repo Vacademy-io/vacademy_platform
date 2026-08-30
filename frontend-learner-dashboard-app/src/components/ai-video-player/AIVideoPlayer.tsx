@@ -850,8 +850,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   if (isLoading) {
     return (
       <div className={`flex items-center justify-center bg-gray-100 rounded-lg ${className}`} style={{ aspectRatio: "16/9" }}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
           <p className="text-gray-600">{t("loading", { type: contentTypeBadge })}</p>
         </div>
       </div>
@@ -861,8 +861,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   if (error) {
     return (
       <div className={`flex items-center justify-center bg-red-50 rounded-lg border border-red-200 ${className}`} style={{ aspectRatio: "16/9" }}>
-        <div className="text-center p-4">
-          <p className="text-red-600 font-semibold mb-2">{t("errorTitle")}</p>
+        <div className="text-center p-4 space-y-2">
+          <p className="text-red-600 font-semibold">{t("errorTitle")}</p>
           <p className="text-red-500 text-sm">{error}</p>
         </div>
       </div>

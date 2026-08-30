@@ -101,9 +101,16 @@ public class ChatbotEscalationService {
      * Record that the bot handed this conversation to a human, and notify the configured admins.
      * Idempotent per conversation: an already-open escalation is refreshed in place.
      *
+     * <p>Deliberately NOT {@code @Transactional}: {@link #notifyAdmins} makes external calls (a
+     * synchronous WhatsApp send, and an email send that can block on the SES rate limiter), and
+     * this runs on the inbound-webhook hot path. Wrapping it would hold a pooled DB connection for
+     * the duration of a provider round-trip and exhaust the pool under load — the same reason
+     * {@code ChatbotFlowEngine.handleIncomingMessage} is not transactional. The two writes here
+     * (the upsert, then the notified-at stamp) are fine-grained saves, each in its own repository
+     * transaction.
+     *
      * @return the open escalation, or {@code null} if it could not be recorded (never throws).
      */
-    @Transactional
     public ChatbotEscalation raise(EscalationRequest request) {
         if (request == null || request.getInstituteId() == null || request.getUserPhone() == null) {
             return null;

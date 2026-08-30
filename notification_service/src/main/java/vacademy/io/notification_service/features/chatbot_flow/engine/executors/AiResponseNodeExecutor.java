@@ -82,7 +82,7 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
         int currentTurns = getAiTurnCount(context.getSessionVariables());
         if (currentTurns >= maxTurns) {
             log.info("AI max turns reached: {}/{}", currentTurns, maxTurns);
-            String fallbackMessage = (String) config.getOrDefault("fallbackMessage",
+            String fallbackMessage = resolveFallbackMessage(config,
                     "Let me connect you with a human agent.");
             sendTextToUser(context, fallbackMessage);
             // The learner is mid-question and the bot has stopped answering — that IS someone
@@ -238,7 +238,7 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
 
         } catch (Exception e) {
             log.error("AI response failed: {}", e.getMessage(), e);
-            String fallbackMessage = (String) config.getOrDefault("fallbackMessage",
+            String fallbackMessage = resolveFallbackMessage(config,
                     "I'm having trouble understanding. Let me connect you with a human agent.");
             sendTextToUser(context, fallbackMessage);
             // The learner asked something and got a non-answer — that is a human hand-over too.
@@ -250,6 +250,18 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                     .outputVariables(Map.of("ai_last_response", fallbackMessage))
                     .build();
         }
+    }
+
+    /**
+     * The configured fallback text, or {@code defaultMessage}.
+     *
+     * <p>Not {@code getOrDefault}: that returns null when the key is PRESENT with a JSON null, and
+     * these values flow into {@code Map.of(...)} output variables, which rejects nulls with an NPE
+     * — from a path whose whole job is to keep a failing turn from breaking the flow.
+     */
+    private String resolveFallbackMessage(Map<String, Object> config, String defaultMessage) {
+        Object configured = config.get("fallbackMessage");
+        return (configured instanceof String s && !s.isBlank()) ? s : defaultMessage;
     }
 
     /** True when the model signalled that the answer is not in the context it was given. */

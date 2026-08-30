@@ -10,6 +10,9 @@ import { PAYMENT_LOGS_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
 import { ShoppingBag, CaretLeft, CaretRight, Package } from "@phosphor-icons/react";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
+import iconOrders from "@/assets/cleaner-play/icon-orders.webp";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface MyOrdersWidgetProps {
@@ -315,6 +318,8 @@ const OrderCard = ({
 // ─── Main Widget ──────────────────────────────────────────────────────────────
 
 export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => {
+    const isPlay = usePlayTheme();
+    const isCleanerPlay = useCleanerPlayTheme();
     const { t } = useTranslation("dashboard");
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState<PaymentLogEntry[]>([]);
@@ -409,7 +414,16 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
         <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
             <CardHeader className="p-4 pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
-                    <ShoppingBag className="w-5 h-5" />
+                    {isPlay || isCleanerPlay ? (
+                        <img
+                            src={iconOrders}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-9 w-9 object-contain"
+                        />
+                    ) : (
+                        <ShoppingBag className="w-5 h-5" />
+                    )}
                     {t("orders.title")}
                 </CardTitle>
             </CardHeader>

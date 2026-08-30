@@ -13,6 +13,7 @@ export function InboxPage() {
     const {
         selectedPhone,
         searchQuery,
+        filter,
         setConversations,
         appendConversations,
         setMessages,
@@ -33,9 +34,11 @@ export function InboxPage() {
             const offset = reset ? 0 : conversationOffset;
             if (reset) resetOffset();
 
+            // Search spans every conversation regardless of the active filter — a name you type
+            // should be findable whether or not it is currently waiting on a reply.
             const data = searchQuery
                 ? await searchConversations(instituteId, searchQuery)
-                : await getConversations(instituteId, offset);
+                : await getConversations(instituteId, offset, 30, filter);
 
             if (reset || searchQuery) {
                 setConversations(data);
@@ -48,7 +51,7 @@ export function InboxPage() {
         } finally {
             setIsLoadingConversations(false);
         }
-    }, [instituteId, searchQuery, conversationOffset]);
+    }, [instituteId, searchQuery, filter, conversationOffset]);
 
     const loadMessages = useCallback(async (phone: string, cursor?: string) => {
         setIsLoadingMessages(true);
@@ -72,7 +75,7 @@ export function InboxPage() {
     // Initial load
     useEffect(() => {
         loadConversations(true);
-    }, [instituteId, searchQuery]);
+    }, [instituteId, searchQuery, filter]);
 
     // Load messages when phone selected
     useEffect(() => {
@@ -114,13 +117,23 @@ export function InboxPage() {
         }
     };
 
+    // Conversations on the current page that the chatbot handed over and nobody has answered.
+    const waitingCount = useInboxStore((s) => s.conversations).filter((c) => c.awaitingReply).length;
+
     return (
         <div className="flex flex-col h-full">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b bg-white shrink-0">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-800">WhatsApp Inbox</h2>
-                    <p className="text-xs text-gray-400">View and reply to WhatsApp conversations</p>
+                    <p className="text-xs text-gray-400">
+                        View and reply to WhatsApp conversations
+                        {waitingCount > 0 && (
+                            <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-px font-medium text-amber-700">
+                                {waitingCount} waiting for a reply
+                            </span>
+                        )}
+                    </p>
                 </div>
                 <button
                     onClick={handleRefresh}

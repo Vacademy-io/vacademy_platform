@@ -649,6 +649,81 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     List<Object[]> batchCountUnreadMessages(@Param("phones") List<String> phones);
 
     /**
+     * Batch count undelivered outgoing messages per phone, in one query.
+     *
+     * <p>A send the provider refused is written to notification_log with a message_payload marking
+     * it FAILED (see {@code WhatsAppSendFailureService}) — the same {@code deliveryStatus} key the
+     * template renderer produces for rejected template sends. Matching on the raw JSON text keeps
+     * this a plain scan of the institute's WhatsApp rows rather than requiring a jsonb cast on a
+     * column that is declared TEXT. The marker comes in as a bind parameter rather than a literal
+     * so the JSON colon can never be mistaken for a named parameter by the query parser.
+     *
+     * <p>Returns rows of (channel_id, failed_count).
+     */
+    @Query(value = """
+            SELECT nl.channel_id, COUNT(*) AS failed_count
+            FROM notification_log nl
+            WHERE nl.institute_id = :instituteId
+              AND nl.channel_id IN (:phones)
+              AND nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              AND nl.message_payload LIKE :failedMarker
+            GROUP BY nl.channel_id
+            """, nativeQuery = true)
+    List<Object[]> batchCountFailedMessages(@Param("instituteId") String instituteId,
+                                            @Param("phones") List<String> phones,
+                                            @Param("failedMarker") String failedMarker);
+
+    /**
+     * Latest message per conversation, restricted to a set of phones — the "Unanswered" filter in
+     * the WhatsApp Inbox, where the phone list comes from the open-escalation table rather than
+     * from notification_log itself.
+     */
+    @Query(value = """
+            SELECT * FROM (
+                SELECT DISTINCT ON (nl.channel_id) nl.*
+                FROM notification_log nl
+                WHERE nl.institute_id = :instituteId
+                  AND nl.channel_id IN (:phones)
+                  AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
+                ORDER BY nl.channel_id, nl.notification_date DESC
+            ) conversations
+            ORDER BY conversations.notification_date DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<NotificationLog> findConversationsForPhones(
+            @Param("instituteId") String instituteId,
+            @Param("phones") List<String> phones,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    /**
+     * Latest message per conversation, restricted to conversations that contain at least one
+     * undelivered outgoing message — the "Not delivered" filter in the WhatsApp Inbox.
+     */
+    @Query(value = """
+            SELECT * FROM (
+                SELECT DISTINCT ON (nl.channel_id) nl.*
+                FROM notification_log nl
+                WHERE nl.institute_id = :instituteId
+                  AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
+                  AND nl.channel_id IN (
+                        SELECT f.channel_id FROM notification_log f
+                        WHERE f.institute_id = :instituteId
+                          AND f.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+                          AND f.message_payload LIKE :failedMarker
+                  )
+                ORDER BY nl.channel_id, nl.notification_date DESC
+            ) conversations
+            ORDER BY conversations.notification_date DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<NotificationLog> findConversationsWithFailedSends(
+            @Param("instituteId") String instituteId,
+            @Param("failedMarker") String failedMarker,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    /**
      * Search WhatsApp conversations by phone number or sender name, scoped to an institute.
      */
     @Query(value = """

@@ -30,6 +30,49 @@ export interface VariableMapping {
     defaultValue: string;
 }
 
+/**
+ * Flow-level configuration stored on `ChatbotFlow.settings`.
+ *
+ * These decide who is told — by email, WhatsApp, or both — when the chatbot hands a conversation
+ * to a human ("a learner is waiting for your reply"), and which of the institute's existing
+ * notification templates renders that alert. Set them in the flow builder's Settings panel.
+ */
+export interface ChatbotFlowSettings {
+    /** Email addresses that get the "a learner is waiting for your reply" alert. */
+    notificationEmails?: string[];
+    /** WhatsApp numbers that get the same alert. Requires `escalationWhatsappTemplate`. */
+    notificationPhones?: string[];
+    /** EMAIL notification_template name. Omitted = a built-in layout is used instead. */
+    escalationEmailTemplate?: string;
+    /**
+     * WHATSAPP notification_template name. Required to alert phones at all — Meta only accepts
+     * business-initiated messages built from an approved template.
+     */
+    escalationWhatsappTemplate?: string;
+    /** Language of the WhatsApp template above. Defaults to `en`. */
+    escalationWhatsappTemplateLanguage?: string;
+    /** Master switch for these alerts on this flow. Defaults to on. */
+    notifyOnEscalation?: boolean;
+    /** Minimum gap before the SAME unanswered conversation alerts the admins again. */
+    escalationRenotifyMinutes?: number;
+    [key: string]: unknown;
+}
+
+/**
+ * Placeholders the escalation alert passes to whichever template renders it. Named, so a WhatsApp
+ * template maps them onto its positional params via its stored variable names, and an email
+ * template substitutes `{{key}}` directly.
+ */
+export const ESCALATION_TEMPLATE_VARIABLES: Array<{ key: string; description: string }> = [
+    { key: 'contact_name', description: "The learner's name, or their phone if unknown" },
+    { key: 'phone', description: "The learner's WhatsApp number" },
+    { key: 'question', description: "The message the bot couldn't answer" },
+    { key: 'bot_reply', description: 'What the bot said instead' },
+    { key: 'reason', description: 'Why it handed over, in plain language' },
+    { key: 'institute_name', description: 'Your institute name' },
+    { key: 'inbox_url', description: 'Deep link to the WhatsApp Inbox' },
+];
+
 export interface ChatbotFlowDTO {
     id?: string;
     instituteId: string;
@@ -39,7 +82,7 @@ export interface ChatbotFlowDTO {
     status: ChatbotFlowStatus;
     version?: number;
     triggerConfig?: Record<string, unknown>;
-    settings?: Record<string, unknown>;
+    settings?: ChatbotFlowSettings;
     createdBy?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -171,6 +214,8 @@ export const NODE_TYPE_REGISTRY: NodeTypeInfo[] = [
             exitKeywords: ['agent', 'human'],
             maxTurns: 10,
             enableInteractive: false,
+            escalateWhenUnsure: true,
+            escalationMessage: '',
         },
     },
 ];

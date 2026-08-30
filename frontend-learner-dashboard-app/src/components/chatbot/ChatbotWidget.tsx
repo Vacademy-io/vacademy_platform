@@ -148,7 +148,7 @@ export const ChatbotWidget = () => {
                 isExpanded ? "h-full w-full" : "h-blob-lg"
               )}
             >
-              <CardHeader className="bg-primary text-primary-foreground p-4 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="bg-primary text-primary-foreground p-card flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center space-x-2">
                   <Avatar className="h-8 w-8 bg-background">
                     {avatarUrl ? (

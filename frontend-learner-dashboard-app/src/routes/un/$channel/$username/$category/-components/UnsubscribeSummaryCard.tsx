@@ -39,7 +39,7 @@ export const UnsubscribeSummaryCard = ({
 
   return (
     <Card className="w-full border border-slate-200/70 bg-white/90 shadow-lg ring-1 ring-white/40 backdrop-blur">
-      <CardContent className="space-y-6 p-6 sm:p-7">
+      <CardContent className="space-y-6 p-card-lg sm:p-7">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">

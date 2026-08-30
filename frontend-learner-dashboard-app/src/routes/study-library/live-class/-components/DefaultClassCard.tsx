@@ -35,7 +35,7 @@ export const DefaultClassCard = ({
                         {t("liveClass.defaultClassCard.description", { liveSession, session })}
                     </p>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <div className="flex flex-col sm:flex-row gap-stack w-full sm:w-auto">
                     <Button
                         variant="default"
                         size="sm"

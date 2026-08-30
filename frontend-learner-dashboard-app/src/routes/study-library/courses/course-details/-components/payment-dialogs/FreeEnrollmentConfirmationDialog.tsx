@@ -313,7 +313,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
             <div className="space-y-6">
               {/* Course Info Card */}
               <Card className="bg-green-50 border-green-200">
-                <CardContent className="p-6">
+                <CardContent className="p-card-lg">
                   <div className="text-center">
                     {/* Approval Required - Process Steps */}
                     {selectedPaymentOption?.require_approval && (

@@ -66,7 +66,7 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-stack">
       {/* Live / imminent class banner */}
       {isLoadingLive ? (
         <div className="h-11 w-full max-w-md animate-pulse self-start rounded-full bg-play-surface" />

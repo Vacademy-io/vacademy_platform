@@ -542,7 +542,7 @@ const AudienceResponseForm = ({
             <FormProvider {...form}>
               <form
                 onSubmit={form.handleSubmit(onSubmit)}
-                className="w-full flex flex-col gap-6"
+                className="w-full flex flex-col gap-section"
               >
                 {/* Student Details Section */}
                 <div className="space-y-4">

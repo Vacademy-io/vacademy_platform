@@ -186,7 +186,7 @@ const TncStep = ({
         </div>
       )}
 
-      <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+      <div className="mt-6 flex flex-col-reverse gap-stack sm:flex-row sm:justify-between">
         {onBack ? (
           <MyButton
             type="button"

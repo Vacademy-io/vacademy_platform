@@ -354,7 +354,7 @@ function RouteComponent() {
               key={file.id}
               className="border border-gray-200 dark:border-neutral-800 hover:shadow-md transition-all duration-200 hover:border-primary-300 dark:hover:border-primary-700"
             >
-              <CardContent className="p-4">
+              <CardContent className="p-card">
                 {/* Header with icon and name */}
                 <div className="flex items-start gap-3 mb-3">
                   <div className="mt-1">{getFileIcon(file.file_type)}</div>
@@ -374,7 +374,7 @@ function RouteComponent() {
                 </div>
 
                 {/* File Details */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack mb-4 text-sm">
                   <div>
                     <span className="text-gray-500 dark:text-gray-400 block mb-1">
                       Added By

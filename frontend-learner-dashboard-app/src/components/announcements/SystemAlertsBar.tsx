@@ -168,7 +168,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
       data-message-id={alert.messageId}
       onClick={() => handleAlertClick(alert)}
     >
-      <CardContent className="p-3 sm:p-4">
+      <CardContent className="p-3 sm:p-card">
         <div className="flex items-start justify-between gap-1">
           <div className="flex-1 min-w-0 overflow-hidden">
             <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2 flex-wrap">

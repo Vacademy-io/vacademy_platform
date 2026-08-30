@@ -452,7 +452,7 @@ const AudienceResponseForm = ({
                 </div>
 
                 {useCustomScreen && (actionButtons.length > 0 || showAnother) && (
-                  <div className="flex flex-col flex-wrap items-center justify-center gap-3 sm:flex-row">
+                  <div className="flex flex-col flex-wrap items-center justify-center gap-stack sm:flex-row">
                     {actionButtons.map((button) => (
                       // Anchors, not buttons: middle-click / "open in new tab"
                       // is what people expect from a link on a thank-you page.
@@ -581,7 +581,7 @@ const AudienceResponseForm = ({
             <FormProvider {...form}>
               <form
                 onSubmit={form.handleSubmit(onSubmit)}
-                className="w-full flex flex-col gap-6"
+                className="w-full flex flex-col gap-section"
               >
                 {/* Debug Info - Remove in production */}
                 {/* <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-xs">

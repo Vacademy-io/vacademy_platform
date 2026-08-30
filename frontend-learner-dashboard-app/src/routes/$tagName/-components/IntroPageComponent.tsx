@@ -493,7 +493,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
       {/* Mobile Action Buttons - Fixed at bottom */}
       {!showLeadForm && (
         <div className={`md:hidden fixed bottom-0 start-0 end-0 z-60 bg-white border-t border-gray-200 p-4 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-stack">
             {/* Login Button - Mobile */}
             {introPage.actions.buttons.some(btn => btn.action === 'navigateToLogin') && (
               <div className="flex flex-col gap-1">

@@ -249,7 +249,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                       }`}
                       onClick={() => setSelectedPaymentPlan(plan)}
                     >
-                      <CardContent className="p-6">
+                      <CardContent className="p-card-lg">
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
                             <div className="flex items-center space-x-3 mb-3">

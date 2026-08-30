@@ -93,7 +93,7 @@ export function MyMentorsWidget() {
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">{t("mentors.title")}</CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-3">
+                <CardContent className="flex flex-col gap-stack">
                     {Array.from({ length: 2 }, (_, i) => (
                         <div key={i} className="flex items-center gap-3">
                             <Skeleton className="h-9 w-9 rounded-full" />
@@ -124,7 +124,7 @@ export function MyMentorsWidget() {
                         {t("mentors.emptyStateTitle")}
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-col items-start gap-3">
+                <CardContent className="flex flex-col items-start gap-stack">
                     <p className="text-caption text-neutral-500">
                         {t("mentors.emptyStateBody")}
                     </p>
@@ -196,7 +196,7 @@ export function MyMentorsWidget() {
                     {t("mentors.viewAll")}
                 </button>
             </CardHeader>
-            <CardContent className="flex flex-col gap-3">
+            <CardContent className="flex flex-col gap-stack">
                 {nextSession && (
                     <div className="flex flex-col gap-1 rounded-lg border border-primary-200 bg-primary-50 p-3">
                         <span className="text-xs font-medium uppercase tracking-wide text-primary-600">

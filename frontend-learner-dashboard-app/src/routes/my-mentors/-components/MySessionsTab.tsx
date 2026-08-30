@@ -73,8 +73,8 @@ export function MySessionsTab({
     }
 
     return (
-        <div className="flex flex-col gap-6">
-            <section className="flex flex-col gap-3">
+        <div className="flex flex-col gap-section">
+            <section className="flex flex-col gap-stack">
                 <h2 className="text-body font-semibold text-neutral-700">
                     {t("myMentors.sessionsTab.upcoming")}
                     <span className="ms-1.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-caption font-medium text-neutral-500">
@@ -98,7 +98,7 @@ export function MySessionsTab({
             </section>
 
             {past.length > 0 && (
-                <section className="flex flex-col gap-3">
+                <section className="flex flex-col gap-stack">
                     <h2 className="text-body font-semibold text-neutral-700">
                         {t("myMentors.sessionsTab.past")}
                     </h2>

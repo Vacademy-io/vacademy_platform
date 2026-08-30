@@ -54,7 +54,7 @@ export class ErrorBoundary extends Component<
             {i18n.t("courseComponentsExtra:dashboardLoader.errorBoundaryDescription")}
           </p>
 
-          <div className="flex flex-col items-center gap-3 sm:flex-row">
+          <div className="flex flex-col items-center gap-stack sm:flex-row">
             <MyButton
               onClick={this.handleReset}
               buttonType="primary"

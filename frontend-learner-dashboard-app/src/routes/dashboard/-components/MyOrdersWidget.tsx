@@ -391,10 +391,10 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
     if (loading && orders.length === 0) {
         return (
             <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
-                <CardHeader className="p-4 pb-2">
+                <CardHeader className="p-card pb-2">
                     <Skeleton className="h-5 w-32" />
                 </CardHeader>
-                <CardContent className="p-4">
+                <CardContent className="p-card">
                     <div className="space-y-2">
                         <Skeleton className="h-16 w-full rounded-lg" />
                         <Skeleton className="h-16 w-full rounded-lg" />
@@ -412,7 +412,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
 
     return (
         <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
-            <CardHeader className="p-4 pb-2">
+            <CardHeader className="p-card pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
                     {isPlay || isCleanerPlay ? (
                         <img
@@ -427,7 +427,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
                     {t("orders.title")}
                 </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 pt-0">
+            <CardContent className="p-card pt-0">
                 {orders.length > 0 ? (
                     <>
                         {/* Desktop: Table */}

@@ -2116,7 +2116,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                 />
               </div>
 
-              <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
+              <div className="p-5 flex flex-col sm:flex-row items-center gap-section">
                 <div className="flex-1 text-center sm:text-start space-y-2">
                   <div className="flex items-center justify-center sm:justify-start gap-2.5">
                     <span className="relative flex h-3 w-3">
@@ -2190,7 +2190,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   />
                 </div>
 
-                <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
+                <div className="p-5 flex flex-col sm:flex-row items-center gap-section">
                   <div className="flex-1 text-center sm:text-start space-y-2">
                     <div className="flex items-center justify-center sm:justify-start gap-2.5">
                       <span className="relative flex h-3 w-3">
@@ -2515,7 +2515,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm animate-in fade-in duration-500">
             <button
               onClick={handleManualPlay}
-              className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-2xl hover:scale-105 transition-all duration-300 hover:shadow-primary-500/50 active:scale-95"
+              className="flex flex-col items-center gap-stack p-6 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-2xl hover:scale-105 transition-all duration-300 hover:shadow-primary-500/50 active:scale-95"
               aria-label={t("youtubePlayer.manualPlay.ariaLabel")}
             >
               <div className="p-4 rounded-full bg-white/20 backdrop-blur-sm">

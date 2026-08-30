@@ -609,7 +609,7 @@ export function CourseDetailsRatingsComponent({
                                 "[.ui-play_&]:hidden"
                             )}></div>
 
-                            <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-3">
+                            <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-stack">
                                 {/* Rating Score */}
                                 <div className="lg:col-span-2 text-center lg:text-start space-y-1.5">
                                     <div className="inline-flex flex-col items-center lg:items-start space-y-1">

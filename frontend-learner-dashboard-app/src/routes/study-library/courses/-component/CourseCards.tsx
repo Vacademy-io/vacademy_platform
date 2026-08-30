@@ -284,7 +284,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 )}
             </div>
 
-            <div className="flex flex-col flex-grow p-4 lg:p-5 gap-3">
+            <div className="flex flex-col flex-grow p-4 lg:p-5 gap-stack">
                 {/* Header */}
                 <div className="flex justify-between items-start gap-3">
                     <h3
@@ -464,7 +464,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 )}
             </div>
 
-            <CardFooter className="p-4 pt-0 mt-auto flex flex-col gap-2">
+            <CardFooter className="p-card pt-0 mt-auto flex flex-col gap-2">
                 <Button
                     className={cn(
                         "w-full font-semibold shadow-sm group/btn",

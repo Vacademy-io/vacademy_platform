@@ -107,7 +107,7 @@ export const SubscriptionPlanSection = ({
               onSelect(paymentPlan);
             }}
           >
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-stack">
               {/* Title */}
               <h4 className="text-xl font-bold text-gray-900">
                 {payment.name}

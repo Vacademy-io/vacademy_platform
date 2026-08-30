@@ -195,7 +195,7 @@ export function DashboardHero({
   if (!studyLibraryLoaded) {
     return (
       <section aria-busy="true" aria-label={t("dashboardHero.loadingAria")} className={bandClassName}>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-stack">
           <Skeleton className="h-3 w-32" />
           <Skeleton className="h-9 w-full max-w-md" />
           <Skeleton className="h-4 w-56" />
@@ -294,7 +294,7 @@ export function DashboardHero({
         />
         <div className="relative">
           {liveBanner}
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-section lg:flex-row lg:items-center lg:justify-between">
             {/* Left: greeting + checklist */}
             <div className="min-w-0 flex-1">
               <div className="mb-5 flex items-start gap-3">

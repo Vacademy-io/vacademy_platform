@@ -962,7 +962,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
 
             {step === "plans" ? (
               <Card className="shadow-lg border bg-white w-full">
-                <CardContent className="p-5 sm:p-6">
+                <CardContent className="p-5 sm:p-card-lg">
                   {/* Small Subheading */}
                   <div className="mb-4">
                     <h3 className="text-sm font-medium text-gray-700">
@@ -1026,7 +1026,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                                       setValidationError("");
                                     }}
                                   >
-                                    <CardContent className="p-6">
+                                    <CardContent className="p-card-lg">
                                       {/* Plan Name */}
                                       <h4 className="text-xl font-bold text-gray-900 mb-2">
                                         {plan.name}

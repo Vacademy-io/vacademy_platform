@@ -86,7 +86,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
         animate={{ opacity: 1, y: 0 }}
       >
         <Card className="shadow-sm overflow-hidden">
-          <CardContent className="p-4">
+          <CardContent className="p-card">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Flag size={16} className="text-primary" />
@@ -215,7 +215,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
           transition={{ delay: 0.3 }}
         >
           <Card className="shadow-sm bg-gradient-to-br from-success-50 to-success-50 dark:from-emerald-950/20 dark:to-green-950/20 border-emerald-200 dark:border-emerald-800">
-            <CardContent className="p-6 text-center">
+            <CardContent className="p-card-lg text-center">
               <Confetti
                 size={36}
                 className="mx-auto text-emerald-600 mb-3"

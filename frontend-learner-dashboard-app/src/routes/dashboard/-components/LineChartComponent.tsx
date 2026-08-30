@@ -100,7 +100,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
     return (
         <div className="space-y-3 sm:space-y-5">
             {/* Enhanced Header with Performance Metrics */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-stack sm:gap-4">
                 <div className="flex items-center space-x-3">
                     <div className={cn(
                         "p-2 bg-primary/10 rounded-lg [.ui-play_&]:bg-play-surface [.ui-play_&]:rounded-xl",
@@ -354,7 +354,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                 a friendly note (no zeros, no judgment) when there is none yet */}
             {chartData.length > 0 && (
                 hasActivity ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-stack sm:gap-4">
                         <div className={cn(
                             "bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl",
                             isCleanerPlay && "!bg-cp-bg-deep !border-cp-border !rounded-xl"

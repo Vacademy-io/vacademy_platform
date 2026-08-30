@@ -517,7 +517,7 @@ export function BulkUploadModal({
           </div>
 
           {/* Download Template Button */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-stack">
             <Button variant="outline" size="sm" onClick={downloadSampleSheet} className="w-full sm:w-auto">
               <DownloadSimple className="w-4 h-4 me-2" />
               {t('subOrgLearners.bulkUpload.downloadButton')}

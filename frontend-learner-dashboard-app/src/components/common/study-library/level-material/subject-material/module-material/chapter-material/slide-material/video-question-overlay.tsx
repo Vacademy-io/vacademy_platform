@@ -926,7 +926,7 @@ const VideoQuestionOverlay = ({
 
                 {/* Footer - Action buttons */}
                 <div className="flex-shrink-0 bg-white border-t border-gray-100 p-4 sm:p-6 rounded-b-xl">
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <div className="flex flex-col sm:flex-row gap-stack justify-center">
                         {response ? (
                             <MyButton
                                 buttonType="primary"

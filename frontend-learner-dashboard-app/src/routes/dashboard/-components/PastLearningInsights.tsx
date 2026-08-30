@@ -200,7 +200,7 @@ export const PastLearningInsights = () => {
   // else the chart/table toggle (LineChartComponent handles the truly-empty
   // case itself).
   const insightsContent = loadError ? (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-muted/40 p-6 text-center">
+    <div className="flex flex-col items-center gap-stack rounded-lg border border-border bg-muted/40 p-6 text-center">
       <p className="text-sm font-medium text-muted-foreground">
         {t("learningInsights.loadError")}
       </p>
@@ -221,7 +221,7 @@ export const PastLearningInsights = () => {
   if (isPlay) {
     return (
       <div className="animate-fade-in-up overflow-hidden rounded-play-card-sm border border-border bg-play-navy-soft shadow-play-soft-card">
-        <div className="flex flex-col gap-3 border-b border-white/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-stack border-b border-white/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <img
               src={iconProgress}
@@ -281,7 +281,7 @@ export const PastLearningInsights = () => {
   if (isCleanerPlay) {
     return (
       <div className="cp-card animate-fade-in-up overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-cp-border p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-stack border-b border-cp-border p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <img
               src={iconProgress}
@@ -348,7 +348,7 @@ export const PastLearningInsights = () => {
       )}>
         {/* Header: title + inline stats + view toggle */}
         <CardHeader className="px-5 py-3 border-b">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-stack">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary">
                 <TrendUp size={18} />
@@ -401,7 +401,7 @@ export const PastLearningInsights = () => {
         </CardHeader>
 
         {/* Content: chart or table based on toggle */}
-        <CardContent className="p-4">
+        <CardContent className="p-card">
           {insightsContent}
         </CardContent>
       </Card>

@@ -59,7 +59,7 @@ const ReviewStep = ({
     <div className="space-y-6">
       {/* Order Summary Card */}
       <Card className="shadow-lg">
-        <CardContent className="p-5 sm:p-6">
+        <CardContent className="p-5 sm:p-card-lg">
           <div className="flex items-start gap-2 sm:gap-3 mb-4">
             <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
               <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />

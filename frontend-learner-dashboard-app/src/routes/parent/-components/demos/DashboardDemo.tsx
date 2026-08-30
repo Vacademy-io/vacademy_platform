@@ -70,7 +70,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
         transition={{ delay: 0.05 }}
       >
         <Card className="border-s-4 border-s-yellow-500 shadow-sm">
-          <CardContent className="p-4 sm:p-5">
+          <CardContent className="p-card sm:p-5">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 shrink-0 mt-0.5">
                 <ClipboardText size={20} className="text-yellow-600" />
@@ -176,7 +176,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
               className="shadow-sm hover:shadow-md transition-all cursor-pointer group active:scale-[0.98]"
               onClick={() => onNavigate(c.id)}
             >
-              <CardContent className="p-4 flex flex-col items-start gap-2.5">
+              <CardContent className="p-card flex flex-col items-start gap-2.5">
                 <div className={`p-2 rounded-lg ${c.bg}`}>
                   <c.icon size={20} className={c.color} />
                 </div>

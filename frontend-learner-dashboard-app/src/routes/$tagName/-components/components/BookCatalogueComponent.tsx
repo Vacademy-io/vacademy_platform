@@ -691,7 +691,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
       {/* 3. Book Grid */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
         {rentRequiresStorePick ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+          <div className="flex flex-col items-center justify-center gap-stack py-16 text-center">
             <ShoppingBag className="h-10 w-10 text-gray-300" />
             <h3 className="text-lg font-semibold text-gray-700">{t("bookCatalogue.pickStoreTitle")}</h3>
             <p className="text-sm text-gray-500 max-w-md">
@@ -973,7 +973,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             {/* Infinite Scroll Loading Indicator */}
             <div ref={loadMoreRef} className="mt-8 flex justify-center items-center min-h-24">
               {isFetchingNextPage && (
-                <div className="flex flex-col items-center gap-3">
+                <div className="flex flex-col items-center gap-stack">
                   <div className="flex gap-2">
                     <div className="w-3 h-3 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <div className="w-3 h-3 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />

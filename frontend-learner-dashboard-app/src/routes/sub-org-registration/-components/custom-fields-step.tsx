@@ -205,7 +205,7 @@ const CustomFieldsStep = ({
           <p className="mb-4">
             {t("subOrgRegistration.customFields.noFieldsMessage")}
           </p>
-          <div className="flex flex-col-reverse items-center justify-center gap-3 sm:flex-row">
+          <div className="flex flex-col-reverse items-center justify-center gap-stack sm:flex-row">
             {onBack && (
               <MyButton
                 type="button"
@@ -307,7 +307,7 @@ const CustomFieldsStep = ({
               );
             })}
 
-            <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+            <div className="mt-2 flex flex-col-reverse gap-stack sm:flex-row sm:justify-between">
               {onBack ? (
                 <MyButton
                   type="button"

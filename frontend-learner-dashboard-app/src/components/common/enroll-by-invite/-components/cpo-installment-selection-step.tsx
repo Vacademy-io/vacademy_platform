@@ -130,7 +130,7 @@ const CpoInstallmentSelectionStep = ({
   if (dues.length === 0) {
     return (
       <Card className="shadow-lg w-full">
-        <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
+        <CardContent className="p-card-lg flex flex-col items-center gap-stack text-center">
           <CheckCircle2 className="w-10 h-10 text-green-500" />
           <p className="text-subtitle font-semibold text-gray-800">{t("cpoInstallment.noDuesFound")}</p>
           <p className="text-caption text-muted-foreground">{t("cpoInstallment.allSettled")}</p>
@@ -143,7 +143,7 @@ const CpoInstallmentSelectionStep = ({
 
   return (
     <Card className="shadow-lg w-full">
-      <CardContent className="p-5 sm:p-6 space-y-5">
+      <CardContent className="p-5 sm:p-card-lg space-y-5">
         {/* Header */}
         <div className="flex items-start gap-3">
           <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
@@ -304,7 +304,7 @@ const CpoInstallmentSelectionStep = ({
 
         {/* Summary */}
         <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="p-4">
+          <CardContent className="p-card">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">

@@ -74,7 +74,7 @@ export function RuntimeErrorPage({ error }: Props) {
                     </div>
                 )}
 
-                <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+                <div className="mt-8 flex flex-col sm:flex-row gap-stack justify-center">
                     <MyButton
                         className="w-full sm:w-auto"
                         onClick={() => window.location.reload()}

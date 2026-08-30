@@ -663,7 +663,7 @@ const AssessmentRegistrationForm = () => {
       {case1Status && (
         <div className="flex justify-center items-start w-full p-3 sm:p-6 bg-gradient-to-b from-primary-50/40 via-background to-background">
           <div className="flex flex-col w-full max-w-2xl gap-5 bg-white/90 backdrop-blur-sm border border-primary-100 rounded-2xl px-4 sm:px-6 py-6 shadow-sm">
-            <div className="flex flex-col items-center gap-3">
+            <div className="flex flex-col items-center gap-stack">
               <InstituteBrandingComponent
                 branding={branding}
                 size="large"
@@ -719,7 +719,7 @@ const AssessmentRegistrationForm = () => {
               />
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-stack">
               <h2 className="text-sm font-semibold text-neutral-800 flex items-center gap-1.5">
                 <Calendar
                   size={16}
@@ -728,7 +728,7 @@ const AssessmentRegistrationForm = () => {
                 />
                 {t("form.dates.heading")}
               </h2>
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-stack">
                 <DateBlock
                   icon={
                     <UserPlus
@@ -820,11 +820,11 @@ const AssessmentRegistrationForm = () => {
         />
       )}
       {!userHasAttemptCount && case2Status && (
-        <div className="flex w-full items-start justify-center bg-gradient-to-b from-primary-50/40 via-background to-background gap-6 lg:gap-10 flex-col sm:flex-row p-2 sm:p-4">
+        <div className="flex w-full items-start justify-center bg-gradient-to-b from-primary-50/40 via-background to-background gap-section lg:gap-10 flex-col sm:flex-row p-2 sm:p-4">
           <div className="flex justify-center items-start w-full mt-2 sm:mt-4">
             <div className="flex flex-col w-full sm:w-11/12 gap-5 bg-white/90 backdrop-blur-sm border border-primary-100 rounded-2xl px-4 sm:px-6 py-6 shadow-sm">
               {/* Branding + title */}
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-stack">
                 <InstituteBrandingComponent
                   branding={branding}
                   size="large"
@@ -925,12 +925,12 @@ const AssessmentRegistrationForm = () => {
               </div>
 
               {/* Important dates */}
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-stack">
                 <h2 className="text-sm font-semibold text-neutral-800 flex items-center gap-1.5">
                   <Calendar size={16} weight="bold" className="text-primary-500" />
                   {t("form.dates.heading")}
                 </h2>
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 gap-stack">
                   <DateBlock
                     icon={
                       <UserPlus
@@ -1050,7 +1050,7 @@ const AssessmentRegistrationForm = () => {
                 </div>
               )}
               <FormProvider {...form}>
-                <form className="w-full flex flex-col gap-6 mt-5 sm:max-h-screen-70 sm:overflow-auto pe-1">
+                <form className="w-full flex flex-col gap-section mt-5 sm:max-h-screen-70 sm:overflow-auto pe-1">
                   {Object.entries(form.getValues()).map(([key, value]) => {
                     if (key === "phone_number") {
                       return (
@@ -1124,7 +1124,7 @@ const AssessmentRegistrationForm = () => {
                       />
                     );
                   })}
-                  <div className="flex items-center justify-center flex-col gap-3 border-t border-neutral-100 pt-2">
+                  <div className="flex items-center justify-center flex-col gap-stack border-t border-neutral-100 pt-2">
                     <MyButton
                       type="button"
                       buttonType="primary"

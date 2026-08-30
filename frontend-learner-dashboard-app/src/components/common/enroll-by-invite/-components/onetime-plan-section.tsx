@@ -80,7 +80,7 @@ export const OneTimePlanSection = ({
                 onSelect(paymentPlan);
               }}
             >
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-stack">
                 <h4 className="text-base font-bold text-gray-900">
                   {payment.name}
                 </h4>

@@ -120,7 +120,7 @@ export const BookingConfirmation = ({
   const isPending = booking.status === "PENDING";
   const tz = booking.invitee_timezone;
   return (
-    <div className="flex flex-col items-center gap-6 py-6 text-center">
+    <div className="flex flex-col items-center gap-section py-6 text-center">
       <div
         className={
           isPending
@@ -376,7 +376,7 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
       </nav>
 
       <div className="px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-2xl flex-col gap-6">
+        <div className="mx-auto flex max-w-2xl flex-col gap-section">
           {/* Page header */}
           <ModernCard variant="glass" padding="lg" rounded="lg">
             <ModernCardHeader className="mb-2 p-0">
@@ -416,7 +416,7 @@ const BookingPage = ({ pageData, instituteId, slug, authed }: BookingPageProps) 
               // The direct path has no form to sit on while the POST runs, so the
               // picker is replaced rather than left tappable — a second tap would
               // race the first booking.
-              <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <div className="flex flex-col items-center gap-stack py-10 text-center">
                 <CircleNotch
                   size={28}
                   className="animate-spin text-primary-500"

@@ -420,7 +420,7 @@ export function ChapterPathView({
   let windCounter = 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-stack">
       {/* Module switcher (quiet prev/next chips around the module name) */}
       {entries.length > 1 && (
         <div className="flex items-center justify-between gap-2">
@@ -516,7 +516,7 @@ export function ChapterPathView({
         })}
         {!hasAnySlide &&
           nodes.every((n) => n.kind !== "chapter-loading") && (
-            <div className="relative flex flex-col items-center gap-3 py-6 text-center">
+            <div className="relative flex flex-col items-center gap-stack py-6 text-center">
               <playIllustrations.BookLover
                 className="h-28 w-auto text-play-muted"
                 aria-hidden="true"

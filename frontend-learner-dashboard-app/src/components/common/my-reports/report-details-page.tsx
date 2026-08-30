@@ -284,7 +284,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
               {renderSection(report.report.student_efforts, "efforts")}
               {renderSection(report.report.learning_frequency, "pattern")}
 
-              <div className="flex flex-col md:flex-row gap-6 w-full">
+              <div className="flex flex-col md:flex-row gap-section w-full">
                 {Object.keys(report.report?.strengths ?? {}).length > 0 &&
                   renderStrengthsWeaknesses(
                     "Strengths",

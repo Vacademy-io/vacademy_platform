@@ -1203,7 +1203,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         true && (
         <div className="pt-4 pb-24 sm:pt-6 bg-catalogue-bg-subtle w-full">
           <div className="w-full px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-section lg:gap-8">
               {/* Main Content */}
               <div className="lg:col-span-2 space-y-4">
                 {/* Tags+title are rendered by the JSON catalogue hero

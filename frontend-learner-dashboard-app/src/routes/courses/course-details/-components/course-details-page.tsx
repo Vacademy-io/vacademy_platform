@@ -741,7 +741,7 @@ export const CourseDetailsPage = () => {
                 </div>
                 {/* Main Content */}
                 <div className="px-12 py-6 sm:py-8">
-                    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+                    <div className="flex flex-col lg:flex-row gap-section lg:gap-8">
                         {/* Left Column - Full width on mobile, 2/3 on larger screens */}
                         <div className="w-full lg:w-2/3 lg:grow">
                             {/* Session and Level Selectors */}

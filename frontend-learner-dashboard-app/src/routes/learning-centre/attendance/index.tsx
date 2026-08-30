@@ -256,7 +256,7 @@ function RouteComponent() {
 
         {/* Filters card */}
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-stack md:grid-cols-2">
             {/* Date Range */}
             <RangeDateFilter range={dateRange} onChange={setDateRange} />
 
@@ -522,7 +522,7 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-dialog-lg p-3 sm:w-auto" align="start">
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-stack sm:flex-row">
             <Calendar
               mode="range"
               selected={range}

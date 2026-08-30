@@ -137,7 +137,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
       data-mode-type={modeType}
       onClick={() => handleMessageClick(message)}
     >
-      <CardContent className="p-4">
+      <CardContent className="p-card">
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-2">
             {message.title && (

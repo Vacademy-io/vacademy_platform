@@ -233,7 +233,7 @@ function RouteComponent() {
   return (
     <div className="min-h-screen w-full bg-neutral-50">
       <div className="px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-2xl flex-col gap-6">
+        <div className="mx-auto flex max-w-2xl flex-col gap-section">
           <ModernCard variant="glass" padding="lg" rounded="lg">
             {justRescheduled ? (
               <>
@@ -296,7 +296,7 @@ function RouteComponent() {
                       onSelectedDayKeyChange={setPickerDayKey}
                     />
                     {pendingSlot && (
-                      <div className="flex flex-col gap-3 rounded-lg border border-primary-100 bg-primary-50 p-4">
+                      <div className="flex flex-col gap-stack rounded-lg border border-primary-100 bg-primary-50 p-4">
                         <div className="flex items-center gap-2 text-body text-neutral-700">
                           <CalendarCheck
                             size={18}
@@ -342,7 +342,7 @@ function RouteComponent() {
                   </div>
                 </ModernCardHeader>
 
-                <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                <div className="flex flex-col gap-stack rounded-lg border border-neutral-200 bg-neutral-50 p-4">
                   {booking.host_name && (
                     <div className="flex items-center gap-2 text-body text-neutral-600">
                       <User size={18} className="shrink-0 text-primary-500" />
@@ -489,7 +489,7 @@ function RouteComponent() {
           </div>
         }
       >
-        <div className="flex flex-col gap-3 p-2">
+        <div className="flex flex-col gap-stack p-2">
           <p className="text-body text-neutral-600">
             <Trans
               t={t}

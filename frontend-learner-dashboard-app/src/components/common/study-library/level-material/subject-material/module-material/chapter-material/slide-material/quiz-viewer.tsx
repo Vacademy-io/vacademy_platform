@@ -1171,7 +1171,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       case "CMCQM":
       case "MCQM":
         return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack sm:gap-4 mt-4">
             {currentQuestion.options.map((option, index) => {
               const selected = Array.isArray(currentAnswer) && currentAnswer.includes(option.id);
               return (
@@ -1210,7 +1210,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       case "TRUE_FALSE":
       default:
         return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack sm:gap-4 mt-4">
             {currentQuestion.options.map((option, index) => {
               const selected = currentAnswer === option.id;
               return (

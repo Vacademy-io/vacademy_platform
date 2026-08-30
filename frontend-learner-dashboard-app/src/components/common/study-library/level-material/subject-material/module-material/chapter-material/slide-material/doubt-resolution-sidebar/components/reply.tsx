@@ -69,7 +69,7 @@ export const Reply = ({ reply, raiserUserId, viewerUserId, authors }: ReplyProps
                         {t("doubts.replies")} · {reply.replies.length}
                     </button>
                     {showNested && (
-                        <div className="flex flex-col gap-3 border-s border-neutral-200 ps-3">
+                        <div className="flex flex-col gap-stack border-s border-neutral-200 ps-3">
                             {reply.replies.map((subReply, key) => (
                                 <Reply
                                     key={subReply.id || key}

@@ -156,7 +156,7 @@ export const CourseEnrollment = ({
                             </div>
                         )}
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack lg:gap-4">
                             {/* Session Selector */}
                             {sessionOptions &&
                                 sessionOptions.length > 0 &&

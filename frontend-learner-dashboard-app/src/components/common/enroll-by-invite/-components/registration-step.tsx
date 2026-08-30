@@ -493,7 +493,7 @@ const RegistrationStep = ({
   if (subStep === 1) {
     return (
       <Card id="registration-card" className="overflow-hidden border border-gray-200 w-full">
-        <CardContent className="p-6 sm:p-8">
+        <CardContent className="p-card-lg sm:p-8">
           {/* Header */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -616,7 +616,7 @@ const RegistrationStep = ({
   return (
     <>
       <Card id="registration-card" className="overflow-hidden border border-gray-200 w-full">
-        <CardContent className="p-4 sm:p-5 md:p-6">
+        <CardContent className="p-card sm:p-5 md:p-card-lg">
           <div className="flex items-start gap-2 sm:gap-3 mb-5">
             <div className="p-1.5 sm:p-2 bg-gray-100 rounded-lg flex-shrink-0">
               <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
@@ -904,7 +904,7 @@ const RegistrationStep = ({
       
       {courseData?.customHtml && (
         <Card className="overflow-hidden border border-gray-200 w-full mt-4">
-          <CardContent className="p-4 sm:p-5 md:p-6">
+          <CardContent className="p-card sm:p-5 md:p-card-lg">
             <div
               className="w-full h-full"
               dangerouslySetInnerHTML={{
@@ -920,7 +920,7 @@ const RegistrationStep = ({
         selectedPlan?.type === "ONE_TIME") &&
         courseData.includePaymentPlans && (
           <Card className="mt-4 flex flex-col gap-0 border border-gray-200">
-            <div className="flex flex-col items-start gap-3 p-3 sm:p-4">
+            <div className="flex flex-col items-start gap-stack p-3 sm:p-4">
               <div className="flex items-center gap-3">
                 {getPaymentPlanIcon(selectedPlan?.type || "")}
                 <div className="flex flex-1 flex-col font-semibold">

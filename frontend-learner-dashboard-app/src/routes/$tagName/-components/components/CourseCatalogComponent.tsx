@@ -1389,7 +1389,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           >
             {/* Search and Sort Bar */}
             <div className="catalogue-toolbar p-3 sm:p-4 mb-6">
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col sm:flex-row gap-stack">
                 {/* Search */}
                 <div className="flex-1">
                   <div className="relative">
@@ -1670,7 +1670,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
             {/* No Results */}
             {filteredCourses.length === 0 && (
-              <div className="catalogue-card flex flex-col items-center gap-3 py-12 px-6 text-center">
+              <div className="catalogue-card flex flex-col items-center gap-stack py-12 px-6 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 text-primary-500">
                   <MagnifyingGlass size={26} />
                 </div>

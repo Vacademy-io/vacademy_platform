@@ -573,7 +573,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                 )}
                 
                 {/* Payment Buttons */}
-                <div className="flex flex-col gap-3 mt-6">
+                <div className="flex flex-col gap-stack mt-6">
                   <MyButton
                     buttonType="primary"
                     scale="large"

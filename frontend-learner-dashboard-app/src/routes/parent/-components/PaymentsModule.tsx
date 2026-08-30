@@ -222,10 +222,10 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+        className="grid grid-cols-1 sm:grid-cols-3 gap-stack"
       >
         <Card className="shadow-sm bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-          <CardContent className="p-4 text-center">
+          <CardContent className="p-card text-center">
             <p className="text-caption font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
               {t("admissionPortal.fees.totalDues")}
             </p>
@@ -236,7 +236,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
         </Card>
 
         <Card className="shadow-sm bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
-          <CardContent className="p-4 text-center">
+          <CardContent className="p-card text-center">
             <p className="text-caption font-medium text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">
               {t("admissionPortal.fees.overdueAmount")}
             </p>
@@ -247,7 +247,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
         </Card>
 
         <Card className="shadow-sm bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800">
-          <CardContent className="p-4 text-center">
+          <CardContent className="p-card text-center">
             <p className="text-caption font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">
               {t("admissionPortal.fees.totalPaid")}
             </p>
@@ -289,7 +289,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
           >
             <Card className="shadow-sm">
               <CardContent className="p-3">
-                <div className="flex flex-col sm:flex-row items-end gap-3">
+                <div className="flex flex-col sm:flex-row items-end gap-stack">
                   <div className="w-full sm:w-40">
                     <label className="text-xs font-medium text-muted-foreground mb-1 block">
                       {t("admissionPortal.fees.filters.status")}
@@ -426,7 +426,7 @@ function DuesTable({
   if (isLoading) {
     return (
       <Card className="shadow-sm">
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-card space-y-3">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
           ))}
@@ -690,7 +690,7 @@ function ReceiptsTable({
   if (isLoading) {
     return (
       <Card className="shadow-sm">
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-card space-y-3">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
           ))}

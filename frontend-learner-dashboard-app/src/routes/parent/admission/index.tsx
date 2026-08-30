@@ -189,7 +189,7 @@ function Section({
   return (
     <div className="border rounded-lg p-4 space-y-3">
       <h3 className="font-semibold text-sm">{title}</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">{children}</div>
     </div>
   );
 }

@@ -152,7 +152,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
     return (
         <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
             <MembershipCardHeader isCleanerPlay={isCleanerPlay} t={t} />
-            <CardContent className="p-4 pt-0 space-y-3">
+            <CardContent className="p-card pt-0 space-y-3">
                 {subscriptions.map((sub) => {
                     const accessUntil = formatDate(sub.end_date);
                     const nextCharge = formatDate(sub.next_charge_at);
@@ -387,7 +387,7 @@ function MembershipCardHeader({
     t: TFunction<"dashboard">;
 }) {
     return (
-        <CardHeader className="p-4 pb-2">
+        <CardHeader className="p-card pb-2">
             <CardTitle
                 className={cn(
                     "text-sm font-bold flex items-center gap-2 text-primary uppercase",
@@ -600,7 +600,7 @@ const EnrolledMembershipPackages: React.FC<MyMembershipWidgetProps> = ({ classNa
     return (
         <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
             <MembershipCardHeader isCleanerPlay={isCleanerPlay} t={t} />
-            <CardContent className="p-4 pt-0 space-y-3">
+            <CardContent className="p-card pt-0 space-y-3">
                 {memberships.map((membership, idx) => (
                     <div key={membership.id || idx} className="space-y-3">
                         {/* Membership Item */}

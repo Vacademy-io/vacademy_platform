@@ -735,7 +735,7 @@ export const TestReportDialog = ({
               <CardDescription>{t("testReportDialog.performanceAnalyticsDesc")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-section md:gap-8">
                 {/* Response Breakdown */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-slate-800">{t("testReportDialog.responseBreakdown")}</h3>
@@ -850,7 +850,7 @@ export const TestReportDialog = ({
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="p-card-lg space-y-6">
               {currentSectionAllQuestions && currentSectionAllQuestions.length > 0 ? (
                 currentSectionAllQuestions.map((review: any, index: number) => (
                   <Card key={index} className="border-slate-200 hover:shadow-md transition-shadow">
@@ -876,7 +876,7 @@ export const TestReportDialog = ({
                       </div>
                     </CardHeader>
 
-                    <CardContent className="p-6 space-y-5">
+                    <CardContent className="p-card-lg space-y-5">
                       {/* Student Response */}
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 mb-2">

@@ -127,7 +127,7 @@ export const NotificationsBell: React.FC<{ className?: string }> = ({
 
         {loading && latest.length === 0 ? (
           <div
-            className="flex flex-col gap-3 px-4 py-3"
+            className="flex flex-col gap-stack px-4 py-3"
             role="status"
             aria-live="polite"
           >

@@ -212,7 +212,7 @@ function RouteComponent() {
           </div>
         ) : generating ? (
           <div className="flex items-center justify-center min-h-screen w-full">
-            <div className="text-center flex flex-col items-center gap-3">
+            <div className="text-center flex flex-col items-center gap-stack">
               <DashboardLoader />
               <h2 className="text-xl font-semibold text-gray-900">
                 {t("aiReport.generating.title")}

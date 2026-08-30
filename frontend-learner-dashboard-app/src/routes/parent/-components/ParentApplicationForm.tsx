@@ -401,7 +401,7 @@ export function ParentApplicationForm({
           <h3 className="font-semibold mb-2">
             {t("admissionPortal.applicationForm.sections.student")}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
             <div>
               <label className="text-xs">
                 {t("admissionPortal.applicationForm.fields.studentName")}
@@ -518,7 +518,7 @@ export function ParentApplicationForm({
           <h3 className="font-semibold mb-2">
             {t("admissionPortal.applicationForm.sections.parent")}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
             <div>
               <label className="text-xs">
                 {t("admissionPortal.applicationForm.fields.fatherName")}
@@ -593,7 +593,7 @@ export function ParentApplicationForm({
           <h3 className="font-semibold mb-2">
             {t("admissionPortal.applicationForm.sections.academic")}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
             <div>
               <label className="text-xs">
                 {t(
@@ -693,7 +693,7 @@ export function ParentApplicationForm({
           <h3 className="font-semibold mb-2">
             {t("admissionPortal.applicationForm.sections.address")}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
             <div>
               <label className="text-xs">
                 {t("admissionPortal.applicationForm.fields.addressLine")}
@@ -731,7 +731,7 @@ export function ParentApplicationForm({
           <h3 className="font-semibold mb-2">
             {t("admissionPortal.applicationForm.sections.identityDocuments")}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
             <div>
               <label className="text-xs">
                 {t("admissionPortal.applicationForm.fields.idNumber")}
@@ -762,7 +762,7 @@ export function ParentApplicationForm({
               "admissionPortal.applicationForm.sections.transferCertificate",
             )}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
             <div>
               <label className="text-xs">
                 {t("admissionPortal.applicationForm.fields.tcNumber")}
@@ -806,7 +806,7 @@ export function ParentApplicationForm({
           <h3 className="font-semibold mb-2">
             {t("admissionPortal.applicationForm.sections.medical")}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-stack">
             <div className="flex items-center gap-2">
               <Checkbox
                 checked={form.has_special_education_needs || false}

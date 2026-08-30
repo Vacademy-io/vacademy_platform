@@ -480,7 +480,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   if (error || !catalogueData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-catalogue-bg px-4">
-        <div className="catalogue-card flex max-w-md flex-col items-center gap-3 p-8 text-center">
+        <div className="catalogue-card flex max-w-md flex-col items-center gap-stack p-8 text-center">
           <h2 className="text-xl font-semibold text-catalogue-text-primary">
             {error || t("courseSubPage.catalogueNotFound", { course })}
           </h2>

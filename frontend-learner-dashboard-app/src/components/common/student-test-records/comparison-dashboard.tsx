@@ -630,7 +630,7 @@ export function ComparisonDashboard({
             "[.ui-vibrant_&]:bg-primary-50"
           )}
         >
-          <CardContent className="flex h-full flex-col justify-between gap-2 p-4">
+          <CardContent className="flex h-full flex-col justify-between gap-2 p-card">
             <div className="flex items-center justify-between gap-2">
               <span className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground [.ui-play_&]:text-play-ink/70">
                 {t("comparisonDashboard.stats.yourScore")}

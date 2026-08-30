@@ -32,7 +32,7 @@ export function NotifcationCard({
         isNew && "notification-card-new [.ui-play_&]:text-play-info-soft-ink"
       )}
     >
-      <CardContent className="p-4 sm:p-5">
+      <CardContent className="p-card sm:p-5">
         <div className="flex items-start gap-3 md:gap-4">
           <div className={`p-2 rounded-md flex-shrink-0 ${isNew ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
             }`}>

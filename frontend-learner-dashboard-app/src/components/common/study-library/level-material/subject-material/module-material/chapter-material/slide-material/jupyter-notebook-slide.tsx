@@ -476,7 +476,7 @@ export const JupyterNotebookSlide: React.FC<JupyterNotebookSlideProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-stack">
           <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
           <div className="text-neutral-500">{t("jupyterSlide.loadingNotebook")}</div>
         </div>
@@ -487,7 +487,7 @@ export const JupyterNotebookSlide: React.FC<JupyterNotebookSlideProps> = ({
   if (error || !notebookData) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-stack">
           <div className="bg-red-50 rounded-full p-4">
             <BookOpen size={32} className="text-red-500" />
           </div>
@@ -620,7 +620,7 @@ export const JupyterNotebookSlide: React.FC<JupyterNotebookSlideProps> = ({
           {/* Loading overlay */}
           {isLoading && (
             <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-b-lg">
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-stack">
                 <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
                 <div className="text-neutral-500">
                   {t("jupyterSlide.loadingInterface")}

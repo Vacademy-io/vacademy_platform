@@ -1000,7 +1000,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
       {/* Video Unavailable Overlay */}
       {loadError && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black px-4">
-          <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl bg-white p-6 text-center shadow-2xl">
+          <div className="flex max-w-sm flex-col items-center gap-stack rounded-xl bg-white p-6 text-center shadow-2xl">
             <WarningCircle weight="fill" className="size-10 text-danger-500" />
             <p className="text-base font-semibold text-neutral-700">
               {t("vimeoPlayer.unavailable.title")}

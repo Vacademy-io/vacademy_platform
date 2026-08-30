@@ -146,10 +146,10 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
     if (initialLoading) {
         return (
             <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
-                <CardHeader className="p-4 pb-2">
+                <CardHeader className="p-card pb-2">
                     <Skeleton className="h-5 w-32" />
                 </CardHeader>
-                <CardContent className="p-4">
+                <CardContent className="p-card">
                     <Skeleton className="h-16 w-full rounded-lg" />
                 </CardContent>
             </Card>
@@ -163,7 +163,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
 
     return (
         <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
-            <CardHeader className="p-4 pb-2">
+            <CardHeader className="p-card pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
                     {isPlay || isCleanerPlay ? (
                         <img
@@ -178,7 +178,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                     {t("books.title")}
                 </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 pt-0">
+            <CardContent className="p-card pt-0">
                 <Tabs value={activeTab} className="w-full" onValueChange={(v) => {
                     setActiveTab(v);
                     setPage(0);

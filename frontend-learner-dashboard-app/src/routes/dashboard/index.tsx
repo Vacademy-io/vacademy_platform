@@ -198,7 +198,7 @@ function DashboardOnboardingGate() {
 
   if (pending) {
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-1 py-6">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-section px-1 py-6">
         <div>
           <h1 className="text-h3 font-semibold text-neutral-700">
             {pending.instance.subject_full_name
@@ -1162,7 +1162,7 @@ export function DashboardComponent() {
             {/* Developer Test Section - Only in development */}
             {process.env.NODE_ENV === "development" && (
               <Card className="border-dashed border-orange-300 bg-orange-50/50">
-                <CardContent className="p-4 flex items-center gap-4">
+                <CardContent className="p-card flex items-center gap-4">
                   <div className="p-2 bg-orange-100 rounded-lg text-orange-600">
                     <Bell weight="duotone" size={20} />
                   </div>
@@ -1226,7 +1226,7 @@ export function DashboardComponent() {
             {/* Institute announcements */}
             <DashboardPinsPanel maxPins={3} />
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-section">
               {/* Hero Section */}
               <div className="lg:col-span-8">
                 <Card className="h-full overflow-hidden border-0 shadow-sm relative bg-white">
@@ -1326,7 +1326,7 @@ export function DashboardComponent() {
                 </Card>
 
                 <Card>
-                  <CardContent className="p-4 flex items-center justify-between gap-4">
+                  <CardContent className="p-card flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
                         <Users weight="duotone" size={20} />

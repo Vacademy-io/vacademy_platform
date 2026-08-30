@@ -83,7 +83,7 @@ const AssessmentClosedExpiredComponent = ({
 
           <CardContent className="p-8 sm:p-10">
             {/* Branding */}
-            <div className="flex flex-col items-center gap-3 mb-6">
+            <div className="flex flex-col items-center gap-stack mb-6">
               <InstituteBrandingComponent
                 branding={branding}
                 size="medium"

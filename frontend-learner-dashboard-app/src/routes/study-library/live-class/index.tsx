@@ -649,7 +649,7 @@ function RouteComponent() {
         </div>
 
         {/* Mobile Layout: Button at the bottom */}
-        <div className="flex flex-col gap-3 sm:hidden">
+        <div className="flex flex-col gap-stack sm:hidden">
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <h3 className="font-semibold text-lg text-neutral-800 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors">
@@ -1308,7 +1308,7 @@ function RouteComponent() {
     return (
       <LayoutContainer>
         <div className="flex items-center justify-center min-h-52">
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-stack">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             <div className="text-neutral-600 dark:text-neutral-300">
               {t("liveClass.state.loadingSessions")}

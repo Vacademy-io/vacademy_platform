@@ -354,7 +354,7 @@ export default function SessionStatusCard({
         </div>
 
         {/* Action */}
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-stack">
           {renderSessionAction()}
         </div>
       </CardContent>

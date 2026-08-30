@@ -91,7 +91,7 @@ export function SessionSelectionDialog({
                   </div>
 
                   {/* Time Information */}
-                  <div className="flex flex-col sm:flex-row gap-3 text-sm">
+                  <div className="flex flex-col sm:flex-row gap-stack text-sm">
                     <div className="flex items-center gap-1.5">
                       <Clock size={16} className="text-neutral-500" />
                       <span className="text-neutral-600 dark:text-neutral-300">

@@ -3444,7 +3444,7 @@ export const CourseStructureDetails = ({
                           }
                         }}
                       >
-                        <CardContent className="p-3 sm:p-4 flex items-start gap-3 sm:gap-4">
+                        <CardContent className="p-3 sm:p-card flex items-start gap-3 sm:gap-4">
                           <div className="flex-shrink-0 flex w-10 h-10 items-center justify-center rounded-lg bg-neutral-100/80 text-sm font-bold text-neutral-500 group-hover:bg-primary-50 group-hover:text-primary-600 transition-colors">
                             {index + 1}
                           </div>
@@ -4033,7 +4033,7 @@ export const CourseStructureDetails = ({
       )}
 
       <PullToRefreshWrapper onRefresh={refreshData}>
-        <div className="flex size-full flex-col gap-3 rounded-lg bg-card pt-0 pb-3 text-neutral-700">
+        <div className="flex size-full flex-col gap-stack rounded-lg bg-card pt-0 pb-3 text-neutral-700">
           <Tabs
             value={activeStructureTab}
             onValueChange={handleTabChange}

@@ -323,7 +323,7 @@ export const AssessmentCard = ({
       >
         {/* ---------- PAST: collapsed row ---------- */}
         {isPast ? (
-          <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex flex-col gap-stack px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div className="min-w-0">
               <p className="line-clamp-1 text-body font-semibold text-foreground">
                 {assessmentInfo.name}
@@ -396,7 +396,7 @@ export const AssessmentCard = ({
           </div>
         ) : (
           /* ---------- LIVE / UPCOMING / PRACTICE / MOCK ---------- */
-          <div className="flex flex-col gap-3 p-4 sm:p-5">
+          <div className="flex flex-col gap-stack p-4 sm:p-5">
             {(isLoudLive || showStartCountdown || showPlayModeChip) && (
             <div className="flex flex-wrap items-center gap-2">
               {isLoudLive && (

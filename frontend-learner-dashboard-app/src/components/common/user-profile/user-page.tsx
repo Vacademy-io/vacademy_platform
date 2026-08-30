@@ -567,7 +567,7 @@ export default function ProfilePage() {
                     <span className="w-1 h-6 bg-primary-500 rounded-full"></span>
                     Academic Journey
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-section">
                     {showCourse && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
@@ -635,7 +635,7 @@ export default function ProfilePage() {
                     <span className="w-1 h-6 bg-secondary-500 rounded-full"></span>
                     Contact & Location
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-section">
                     {showMobile && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
@@ -746,7 +746,7 @@ export default function ProfilePage() {
                     <span className="w-1 h-6 bg-tertiary-500 rounded-full"></span>
                     Guardian Details
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-section">
                     {showFather && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">

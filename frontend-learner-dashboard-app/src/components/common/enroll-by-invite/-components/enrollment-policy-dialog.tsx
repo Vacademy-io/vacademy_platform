@@ -269,7 +269,7 @@ const EnrollmentPolicyDialog = ({
                 )}
             </div>
 
-            <DialogFooter className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row gap-3">
+            <DialogFooter className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row gap-stack">
                 <MyButton
                     type="button"
                     buttonType="secondary"

@@ -32,7 +32,7 @@ export const ContentOnlyCourseDetailsSkeleton = () => {
 
     {/* The Content Structure card */}
     <div className="relative z-10 w-full px-2 sm:px-0 py-2 lg:py-3">
-      <div className="flex size-full flex-col gap-3 rounded-lg bg-card pt-0 pb-3">
+      <div className="flex size-full flex-col gap-stack rounded-lg bg-card pt-0 pb-3">
         <div className="rounded-lg border border-neutral-200/60 bg-white p-3 md:p-4">
           {/* Card header: icon + "Content Structure" */}
           <div className="flex items-center gap-3 border-b border-neutral-200 pb-4">

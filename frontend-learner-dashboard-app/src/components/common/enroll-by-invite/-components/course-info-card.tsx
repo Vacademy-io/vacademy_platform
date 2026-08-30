@@ -76,7 +76,7 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
 
   return (
     <Card className="overflow-hidden shadow-lg border bg-white w-full">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5 sm:p-card-lg">
         {/* Course Name, Tags, and Description Removed as they duplicate the header info */}
 
         {/* Level Wedge - hidden when level is 'default' (case-insensitive) or empty */}

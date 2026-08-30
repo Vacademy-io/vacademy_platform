@@ -48,7 +48,7 @@ function CourseProgressSection({
   const label = courseName || String((wrapped ? first!.courseName : undefined) ?? "");
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-stack">
       {label ? <h2 className="text-body font-semibold text-foreground">{label}</h2> : null}
       {isLoading ? (
         <LoadingState variant="list" />
@@ -57,7 +57,7 @@ function CourseProgressSection({
           {t("progress.noCourseData")}
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-stack">
           {subjects.map((s, i) => {
             const pct = avgCompletion(s);
             return (
@@ -103,7 +103,7 @@ function ProgressScreen() {
       emptyTitle={t("progress.emptyTitle")}
       emptyBody={t("progress.emptyBody")}
     >
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-section">
         {enrollments.map((e) => (
           <CourseProgressSection
             key={e.packageSessionId}

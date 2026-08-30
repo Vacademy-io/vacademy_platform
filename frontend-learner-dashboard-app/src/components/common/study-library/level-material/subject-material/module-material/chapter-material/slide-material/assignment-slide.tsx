@@ -1298,7 +1298,7 @@ const AssignmentSlide = ({
                   </div>
 
                   <Card className="mx-auto hidden max-w-md sm:block">
-                    <CardContent className="p-4">
+                    <CardContent className="p-card">
                       <div className="grid grid-cols-3 gap-2">
                         {[7, 8, 9, 4, 5, 6, 1, 2, 3].map((num) => (
                           <Button
@@ -1517,7 +1517,7 @@ const AssignmentSlide = ({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-stack">
               {idAttachments.map((fileId, idx) => (
                 <AttachmentPreview
                   key={`id-${fileId}`}
@@ -1585,7 +1585,7 @@ const AssignmentSlide = ({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-stack">
               {previousFileIds.map((fileId: string, idx: number) => (
                 <AttachmentPreview
                   key={fileId}

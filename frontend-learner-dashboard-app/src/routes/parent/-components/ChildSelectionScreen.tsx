@@ -122,7 +122,7 @@ function ChildProfileCard({
       whileHover={{ scale: 1.08, y: -4 }}
       whileTap={{ scale: 0.97 }}
       onClick={() => onSelect(child)}
-      className="group flex flex-col items-center gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-2xl p-3"
+      className="group flex flex-col items-center gap-stack focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-2xl p-3"
       id={`child-profile-${child.id}`}
     >
       {/* Avatar Container */}

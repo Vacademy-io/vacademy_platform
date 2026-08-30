@@ -141,7 +141,7 @@ const SKINS: Record<Skin, SkinTokens> = {
     palette: [
       { surface: "", ink: "text-cp-sage", fill: "bg-cp-sage", thumbBg: "bg-cp-sage", thumbInk: "text-white" },
       { surface: "", ink: "text-cp-terracotta", fill: "bg-cp-terracotta", thumbBg: "bg-cp-terracotta", thumbInk: "text-white" },
-      // cp-gold (#D9A441) is too light to carry a white initial — dark letter.
+      // cp-gold (#D9A441) is too light to carry a white initial — dark letter. design-lint-ignore: documents the token value, not a used colour.
       { surface: "", ink: "text-cp-gold", fill: "bg-cp-gold", thumbBg: "bg-cp-gold", thumbInk: "text-cp-ink" },
       { surface: "", ink: "text-cp-sage", fill: "bg-cp-sage", thumbBg: "bg-cp-sage", thumbInk: "text-white" },
     ],
@@ -508,7 +508,7 @@ export const EnrolledCoursesWidget: React.FC<{ className?: string }> = ({
 
   if (courses.length === 0) {
     const empty = (
-      <div className="flex flex-col items-center gap-3 py-2 text-center">
+      <div className="flex flex-col items-center gap-stack py-2 text-center">
         {skin !== "default" && (
           <img
             src={emptyLearning}

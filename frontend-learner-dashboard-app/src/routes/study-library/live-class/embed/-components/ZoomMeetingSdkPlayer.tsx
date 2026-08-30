@@ -331,7 +331,7 @@ export default function ZoomMeetingSdkPlayer({
         // Capture the URL so TS narrows it (no non-null assertion in the handler).
         const fallbackUrl = Capacitor.isNativePlatform() ? nativeFallbackUrl : undefined;
         return (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-stack p-8 text-center">
                 <p className="text-red-600">{errorMsg ?? t("liveClass.zoomSdk.failedToLoad")}</p>
                 <p className="text-sm text-neutral-500">{t("liveClass.zoomSdk.refreshOrRejoin")}</p>
                 {fallbackUrl && (
@@ -351,7 +351,7 @@ export default function ZoomMeetingSdkPlayer({
 
     return (
         <div className="relative flex h-full w-full items-center justify-center bg-black">
-            <div className="flex flex-col items-center gap-3 text-white">
+            <div className="flex flex-col items-center gap-stack text-white">
                 <DashboardLoader />
                 <span className="text-sm">
                     {phase === "loading" ? t("liveClass.zoomSdk.preparingMeeting") : t("liveClass.zoomSdk.joiningMeeting")}

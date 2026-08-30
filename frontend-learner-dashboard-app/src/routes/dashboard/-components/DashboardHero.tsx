@@ -153,6 +153,9 @@ const firstRunBand = cn(
   "relative w-full overflow-hidden rounded-2xl border border-primary/15 p-5 sm:p-8",
   "bg-gradient-to-br from-primary/5 via-background to-background",
   "[.ui-vibrant_&]:from-primary-50 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
+  // Corporate: flat surface, hairline border. A brand-tinted band is exactly
+  // the "brand as fill" treatment this skin exists to avoid.
+  "[.ui-corporate_&]:bg-none [.ui-corporate_&]:border-border",
 );
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -358,9 +361,13 @@ export function DashboardHero({
 
             {/* Right: signature illustration fills the whitespace (currentColor
                 follows the tenant primary). Desktop only. */}
+            {/* Decorative only, so Corporate drops it rather than swapping in a
+                different illustration — a restrained enterprise surface is
+                typographic, and the honest corporate treatment of a spot
+                illustration is none. */}
             <playIllustrations.OnlineLearning
               aria-hidden="true"
-              className="hidden h-44 w-auto max-w-xs shrink-0 object-contain text-primary/70 lg:block"
+              className="hidden h-44 w-auto max-w-xs shrink-0 object-contain text-primary/70 lg:block [.ui-corporate_&]:lg:hidden"
             />
           </div>
         </div>

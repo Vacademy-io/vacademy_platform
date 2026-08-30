@@ -128,6 +128,30 @@ html.ui-corporate {
   }
 }
 
+/* ── Icons ────────────────────────────────────────────────────────────
+   The app renders 203 Phosphor icons at weight="duotone" and 216 at
+   weight="fill". Both read as consumer-friendly; a professional surface wants
+   line icons.
+
+   Phosphor duotone emits TWO paths — a translucent fill shape at
+   opacity="0.2" followed by the solid outline (verified in
+   @phosphor-icons/react/dist/index.umd.js). Dropping the translucent layer
+   leaves the outline alone, which is exactly what weight="regular" renders.
+   So this single rule converts every duotone icon in the app to a line icon
+   under Corporate, without touching 203 call sites or changing any other skin.
+
+   Scoped to the Phosphor viewBox so it cannot affect unrelated inline SVG
+   (illustrations, charts, the boot splash) that legitimately use opacity.
+
+   KNOWN LIMIT: weight="fill" and weight="bold" bake their weight into the path
+   geometry, so CSS cannot outline them. Those 342 icons stay as-authored.
+   Converting them would mean changing the prop at each call site, and the
+   weight is often semantic (a filled star = earned, an outline star = not), so
+   it is deliberately not done wholesale here. */
+.ui-corporate svg[viewBox="0 0 256 256"] path[opacity] {
+  opacity: 0;
+}
+
 @layer utilities {
   /* Section eyebrow — the small uppercase label above a block. Opt-in, for
      screens that want the denser enterprise header treatment. */

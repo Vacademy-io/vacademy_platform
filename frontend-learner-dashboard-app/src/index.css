@@ -8,6 +8,11 @@
 @import './styles/play-theme.css';
 /* Cleaner Play Theme - warm, premium, illustrated skin */
 @import './styles/cleaner-play-theme.css';
+/* Institute UI axes - corners / density / gradient (data-ui-* on <html>).
+   Imported last of the skin sheets so its --play-radius-* definitions,
+   which express the Play radii against --radius, win over the literals
+   play-theme.css used to hardcode. */
+@import './styles/ui-axes.css';
 /* Flaticon Uicons - Rounded bubbly icons for play theme */
 @import '@flaticon/flaticon-uicons/css/all/all';
 
@@ -340,6 +345,8 @@ html, body {
     --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.05);
     --shadow-lg: 0 12px 28px -6px rgb(15 23 42 / 0.12), 0 4px 8px -4px rgb(15 23 42 / 0.06);
     --shadow-xl: 0 24px 48px -12px rgb(15 23 42 / 0.18);
+    --shadow-2xl: 0 32px 64px -16px rgb(15 23 42 / 0.24);
+    --shadow-inner: inset 0 2px 4px 0 rgb(15 23 42 / 0.06);
 
     /* ========= Motion tokens (default / vibrant; play has its own) ========= */
     --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);

@@ -3,6 +3,10 @@ import { hslVar } from "@/lib/theme-ramp";
 import { resolveFontStack } from "@/utils/branding";
 import {
   THEME_ROLE_SETTINGS_KEY,
+  UI_AXIS_DEFAULTS,
+  UI_CORNERS_VALUES,
+  UI_DENSITY_VALUES,
+  UI_GRADIENT_VALUES,
   type ThemeRoleSettings,
 } from "@/types/theme-role-settings";
 
@@ -103,4 +107,46 @@ export function applyInstituteFont(): void {
   } catch {
     // ignore malformed institute-authored font
   }
+}
+
+/**
+ * Apply the institute-authored presentation axes (THEME_SETTING `density` /
+ * `corners` / `gradient` roles) as data-ui-* attributes on <html>. The token
+ * flips themselves live in styles/ui-axes.css.
+ *
+ * Attributes rather than inline custom properties on purpose: the axes each
+ * move several tokens at once, and theme-provider already writes --primary-*
+ * and --background inline. An inline declaration outranks any stylesheet rule,
+ * so writing the axis tokens inline here would silently win over an
+ * institute's --background/--radius work and, worse, could not be undone by a
+ * later stylesheet. Attributes keep the cascade intact and let
+ * applyInstituteBackground's inline --background continue to override the
+ * axis-set canvas, which is the precedence we want.
+ *
+ * Unknown/absent values fall back to the documented default for that axis, so
+ * a malformed or partially-saved blob degrades to today's look rather than to
+ * an unstyled one.
+ */
+export function applyInstituteUiAxes(): void {
+  const roles = readThemeRoleSettings()?.roles;
+  const root = document.documentElement;
+
+  const pick = <T extends string>(
+    value: unknown,
+    allowed: readonly T[],
+    fallback: T
+  ): T => (allowed.includes(value as T) ? (value as T) : fallback);
+
+  root.setAttribute(
+    "data-ui-density",
+    pick(roles?.density, UI_DENSITY_VALUES, UI_AXIS_DEFAULTS.density)
+  );
+  root.setAttribute(
+    "data-ui-corners",
+    pick(roles?.corners, UI_CORNERS_VALUES, UI_AXIS_DEFAULTS.corners)
+  );
+  root.setAttribute(
+    "data-ui-gradient",
+    pick(roles?.gradient, UI_GRADIENT_VALUES, UI_AXIS_DEFAULTS.gradient)
+  );
 }

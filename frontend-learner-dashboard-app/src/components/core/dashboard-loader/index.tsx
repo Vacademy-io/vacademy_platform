@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-reg-400 flex-col items-center justify-center rounded-xl border border-red-200 bg-gradient-to-br from-red-50 to-orange-50 px-6 py-12 text-center">
+        <div className="flex min-h-reg-400 flex-col items-center justify-center rounded-xl border border-red-200 bg-gradient-to-br from-danger-50 to-primary-50 px-6 py-12 text-center">
           <div className="mb-6 rounded-full bg-red-100 p-4">
             <Warning className="size-12 text-red-600" />
           </div>

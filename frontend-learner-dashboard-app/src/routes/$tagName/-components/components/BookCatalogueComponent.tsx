@@ -732,7 +732,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                     onClick={() => handleBookClick(book)}
                   >
                     {/* Book Cover */}
-                    <div className="relative aspect-[9/16] rounded-xl overflow-hidden shadow-lg transition-all duration-500 ease-out md:group-hover:-translate-y-2 ring-1 ring-black/5 bg-gradient-to-br from-amber-50 via-white to-amber-100">
+                    <div className="relative aspect-[9/16] rounded-xl overflow-hidden shadow-lg transition-all duration-500 ease-out md:group-hover:-translate-y-2 ring-1 ring-black/5 bg-gradient-to-br from-warning-50 via-white to-warning-100">
                       {/* Decorative frame inner shadow - desktop only (mobile has no hover so shows expanded state) */}
                       <div className="absolute inset-0 shadow-card-inset opacity-0 md:opacity-100 md:group-hover:opacity-0 transition-opacity duration-500 ease-out pointer-events-none rounded-xl" />
 

@@ -44,7 +44,7 @@ export const EnrollmentPendingApprovalDialog: React.FC<EnrollmentPendingApproval
             {/* Pending Icon */}
             <div className="flex justify-center mb-6">
               <div className="relative">
-                <div className="w-20 h-20 bg-gradient-to-br from-yellow-100 to-orange-200 rounded-full flex items-center justify-center shadow-lg">
+                <div className="w-20 h-20 bg-gradient-to-br from-warning-100 to-primary-200 rounded-full flex items-center justify-center shadow-lg">
                   <Clock className="w-10 h-10 text-yellow-600" />
                 </div>
                 <div className="absolute -top-1 -end-1 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
@@ -61,7 +61,7 @@ export const EnrollmentPendingApprovalDialog: React.FC<EnrollmentPendingApproval
             </div>
 
             {/* Approval Card */}
-            <div className="mt-8 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-6 shadow-sm">
+            <div className="mt-8 bg-gradient-to-r from-warning-50 to-primary-50 border border-yellow-200 rounded-xl p-6 shadow-sm">
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">

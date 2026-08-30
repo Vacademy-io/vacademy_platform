@@ -317,9 +317,9 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
                   <div className="text-center">
                     {/* Approval Required - Process Steps */}
                     {selectedPaymentOption?.require_approval && (
-                      <div className="bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200 rounded-xl p-5 mb-4 shadow-sm">
+                      <div className="bg-gradient-to-br from-slate-50 to-info-50 border border-slate-200 rounded-xl p-5 mb-4 shadow-sm">
                         <div className="text-center mb-4">
-                          <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full mb-3">
+                          <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-r from-info-500 to-indigo-600 rounded-full mb-3">
                             <svg
                               className="w-5 h-5 text-white"
                               fill="none"

@@ -60,8 +60,8 @@ export function SessionSelectionDialog({
               key={session.schedule_id}
               className={`p-5 border rounded-xl transition-all duration-200 hover:shadow-md ${
                 status.isInWaitingRoom
-                  ? "bg-gradient-to-r from-orange-50/50 to-orange-100/30 border-orange-200 dark:from-orange-950/30 dark:to-orange-900/20 dark:border-orange-900"
-                  : "bg-gradient-to-r from-red-50/50 to-red-100/30 border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-900"
+                  ? "bg-gradient-to-r from-primary-50/50 to-primary-100/30 border-orange-200 dark:from-orange-950/30 dark:to-orange-900/20 dark:border-orange-900"
+                  : "bg-gradient-to-r from-danger-50/50 to-danger-100/30 border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-900"
               }`}
             >
               <div className="flex justify-between items-start gap-4">
@@ -127,7 +127,7 @@ export function SessionSelectionDialog({
                   className={`flex-shrink-0 ${
                     status.isInWaitingRoom &&
                     session.waiting_room_type !== "PRE_JOINING"
-                      ? "bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700"
+                      ? "bg-gradient-to-r from-primary-500 to-primary-400 hover:from-primary-400 hover:to-primary-300"
                       : "bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700"
                   } text-white shadow-sm hover:shadow-md transition-all duration-200`}
                   size="lg"

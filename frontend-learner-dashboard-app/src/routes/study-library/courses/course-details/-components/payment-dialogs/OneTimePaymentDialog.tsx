@@ -915,7 +915,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             <>
               {/* Plan Summary */}
               {selectedPaymentPlan && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 mb-6">
+                <div className="bg-gradient-to-r from-info-50 to-indigo-50 border border-blue-200 rounded-xl p-6 mb-6">
                   <div className="text-center">
                     <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
                       <svg

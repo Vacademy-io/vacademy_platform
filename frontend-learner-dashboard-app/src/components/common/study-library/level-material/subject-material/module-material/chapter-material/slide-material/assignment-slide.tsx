@@ -1412,7 +1412,7 @@ const AssignmentSlide = ({
       {isGraded && (
         <Card className="mb-4 sm:mb-6 overflow-hidden border-2 border-emerald-200 bg-white shadow-md">
           {/* Hero strip */}
-          <div className="bg-gradient-to-r from-emerald-50 to-white px-4 sm:px-6 py-4 border-b border-emerald-100">
+          <div className="bg-gradient-to-r from-success-50 to-white px-4 sm:px-6 py-4 border-b border-emerald-100">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

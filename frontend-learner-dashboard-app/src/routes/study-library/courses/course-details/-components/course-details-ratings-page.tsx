@@ -470,7 +470,7 @@ export function CourseDetailsRatingsComponent({
                 {/* Enhanced Header */}
                 <div className="flex items-center space-x-2 animate-fade-in-down">
                     <div className={cn(
-                        "p-1 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-md shadow-sm",
+                        "p-1 bg-gradient-to-br from-warning-100 to-warning-200 rounded-md shadow-sm",
                         // Play Styles
                         "[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:rounded-xl"
                     )}>
@@ -594,7 +594,7 @@ export function CourseDetailsRatingsComponent({
                     >
                         {/* Enhanced Overall Rating Section */}
                         <div className={cn(
-                            "relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-2.5 overflow-hidden group/rating",
+                            "relative bg-gradient-to-br from-warning-50/80 to-primary-50/80 border border-yellow-200/60 rounded-md p-2.5 overflow-hidden group/rating",
                             // Vibrant — flat primary-50 wash (tenant family)
                             "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-primary-50/50 dark:[.ui-vibrant_&]:bg-primary-500/10",
                             "[.ui-vibrant_&]:border-primary-100 dark:[.ui-vibrant_&]:border-primary-500/30",
@@ -604,7 +604,7 @@ export function CourseDetailsRatingsComponent({
                         )}>
                             {/* Background pattern */}
                             <div className={cn(
-                                "absolute inset-0 bg-gradient-to-br from-yellow-100/20 via-transparent to-orange-100/20 opacity-0 group-hover/rating:opacity-100 transition-opacity duration-500",
+                                "absolute inset-0 bg-gradient-to-br from-warning-100/20 via-transparent to-primary-100/20 opacity-0 group-hover/rating:opacity-100 transition-opacity duration-500",
                                 "[.ui-vibrant_&]:hidden",
                                 "[.ui-play_&]:hidden"
                             )}></div>

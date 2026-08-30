@@ -210,7 +210,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           {/* Error Icon */}
           <div className="flex justify-center mb-6">
             <div className="relative">
-              <div className="w-20 h-20 bg-gradient-to-br from-red-100 to-red-200 rounded-full flex items-center justify-center shadow-lg">
+              <div className="w-20 h-20 bg-gradient-to-br from-danger-100 to-danger-200 rounded-full flex items-center justify-center shadow-lg">
                 <XCircle className="w-10 h-10 text-red-600" />
               </div>
               <div className="absolute -top-1 -end-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
@@ -230,7 +230,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           </div>
 
           {/* Error Details */}
-          <div className="mt-8 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-xl p-6 shadow-sm">
+          <div className="mt-8 bg-gradient-to-r from-danger-50 to-pink-50 border border-red-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
@@ -271,7 +271,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           {/* Animated Processing Icon */}
           <div className="flex justify-center mb-6">
             <div className="relative">
-              <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center shadow-lg">
+              <div className="w-20 h-20 bg-gradient-to-br from-info-100 to-info-200 rounded-full flex items-center justify-center shadow-lg">
                 <SpinnerGap className="w-10 h-10 text-blue-600 animate-spin" />
               </div>
               <div className="absolute -top-1 -end-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
@@ -288,7 +288,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           </div>
 
           {/* Processing Card */}
-          <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-sm">
+          <div className="mt-8 bg-gradient-to-r from-info-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
@@ -329,7 +329,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           {/* Success Icon */}
           <div className="flex justify-center mb-6">
             <div className="relative">
-              <div className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-full flex items-center justify-center shadow-lg">
+              <div className="w-20 h-20 bg-gradient-to-br from-success-100 to-success-200 rounded-full flex items-center justify-center shadow-lg">
                 <CheckCircle className="w-10 h-10 text-green-600" />
               </div>
               <div className="absolute -top-1 -end-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
@@ -349,7 +349,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           </div>
           
           {approvalRequired ? (
-            <div className="mt-8 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-6 shadow-sm">
+            <div className="mt-8 bg-gradient-to-r from-warning-50 to-primary-50 border border-yellow-200 rounded-xl p-6 shadow-sm">
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">
@@ -381,7 +381,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
               </div>
             </div>
           ) : (
-            <div className="mt-8 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6 shadow-sm">
+            <div className="mt-8 bg-gradient-to-r from-success-50 to-success-50 border border-green-200 rounded-xl p-6 shadow-sm">
               <div className="flex items-center space-x-3">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
@@ -420,7 +420,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           {/* Error Icon */}
           <div className="flex justify-center mb-6">
             <div className="relative">
-              <div className="w-20 h-20 bg-gradient-to-br from-red-100 to-red-200 rounded-full flex items-center justify-center shadow-lg">
+              <div className="w-20 h-20 bg-gradient-to-br from-danger-100 to-danger-200 rounded-full flex items-center justify-center shadow-lg">
                 <XCircle className="w-10 h-10 text-red-600" />
               </div>
               <div className="absolute -top-1 -end-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
@@ -441,7 +441,7 @@ export const PaymentStatusPollingDialog: React.FC<PaymentStatusPollingDialogProp
           </div>
 
           {/* Action Card */}
-          <div className="mt-8 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-xl p-6 shadow-sm">
+          <div className="mt-8 bg-gradient-to-r from-danger-50 to-pink-50 border border-red-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">

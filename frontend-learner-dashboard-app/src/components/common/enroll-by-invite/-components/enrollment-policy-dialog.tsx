@@ -219,7 +219,7 @@ const EnrollmentPolicyDialog = ({
     const renderAlreadyEnrolled = () => (
         <>
             <DialogHeader className="space-y-4 pb-4">
-                <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
+                <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-warning-400 to-primary-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
                     <Warning className="w-8 h-8 text-white" />
                 </div>
                 <div className="text-center space-y-2">
@@ -234,7 +234,7 @@ const EnrollmentPolicyDialog = ({
             </DialogHeader>
 
             <div className="py-4 space-y-4">
-                {/* <div className="rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-4">
+                {/* <div className="rounded-xl bg-gradient-to-br from-warning-50 to-primary-50 border border-amber-200 p-4">
                     <div className="flex items-start gap-3">
                         <Sparkle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
                         <p className="text-sm text-amber-800">
@@ -245,7 +245,7 @@ const EnrollmentPolicyDialog = ({
 
                 {/* Upgrade option if available */}
                 {!shouldHidePaidPurchaseUI() && reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
-                    <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
+                    <div className="rounded-xl bg-gradient-to-br from-primary-50 to-info-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">
                             <Sparkle className="w-6 h-6 text-primary-600" />
                             <h4 className="font-semibold text-gray-900">{t("enrollmentPolicy.wantToUpgrade")}</h4>
@@ -302,7 +302,7 @@ const EnrollmentPolicyDialog = ({
     const renderReenrollmentBlocked = () => (
         <>
             <DialogHeader className="space-y-4 pb-4">
-                <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-red-400 to-rose-500 flex items-center justify-center shadow-lg shadow-red-500/30">
+                <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-danger-400 to-danger-500 flex items-center justify-center shadow-lg shadow-red-500/30">
                     <Warning className="w-8 h-8 text-white" />
                 </div>
                 <div className="text-center space-y-2">
@@ -317,7 +317,7 @@ const EnrollmentPolicyDialog = ({
 
             {!shouldHidePaidPurchaseUI() && reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
                 <div className="py-4">
-                    <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
+                    <div className="rounded-xl bg-gradient-to-br from-primary-50 to-info-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">
                             <Sparkle className="w-6 h-6 text-primary-600" />
                             <h4 className="font-semibold text-gray-900">{t("enrollmentPolicy.upgradeToContinueLearning")}</h4>
@@ -347,7 +347,7 @@ const EnrollmentPolicyDialog = ({
     const renderPaidMemberBlocked = () => (
         <>
             <DialogHeader className="space-y-4 pb-4">
-                <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-info-400 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
                     <Warning className="w-8 h-8 text-white" />
                 </div>
                 <div className="text-center space-y-2">
@@ -363,7 +363,7 @@ const EnrollmentPolicyDialog = ({
 
             {!shouldHidePaidPurchaseUI() && reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
                 <div className="py-4">
-                    <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
+                    <div className="rounded-xl bg-gradient-to-br from-primary-50 to-info-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">
                             <Sparkle className="w-6 h-6 text-primary-600" />
                             <h4 className="font-semibold text-gray-900">{t("enrollmentPolicy.upgradeToContinueLearning")}</h4>

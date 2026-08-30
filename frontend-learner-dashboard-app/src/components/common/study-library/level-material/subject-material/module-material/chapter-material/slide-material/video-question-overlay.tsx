@@ -489,7 +489,7 @@ const VideoQuestionOverlay = ({
 
     //   return (
     //     <div className="w-full mb-4 px-1">
-    //       <div className="relative w-full h-1.5 bg-gradient-to-r from-red-400 via-orange-400 to-purple-400 rounded-full overflow-hidden">
+    //       <div className="relative w-full h-1.5 bg-gradient-to-r from-danger-400 via-primary-400 to-purple-400 rounded-full overflow-hidden">
     //         {/* Progress indicator */}
     //         <div
     //           className="absolute h-full bg-white/30 rounded-full transition-all duration-300"

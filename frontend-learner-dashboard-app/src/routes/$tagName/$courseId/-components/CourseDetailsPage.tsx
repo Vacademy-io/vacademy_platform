@@ -210,8 +210,8 @@ const CourseHighlightsAccordion: React.FC<{
                   weight="duotone"
                 />
               }
-              iconBgClass="from-blue-100 to-blue-200"
-              overlayClass="from-blue-500/5 to-transparent"
+              iconBgClass="from-info-100 to-info-200"
+              overlayClass="from-info-500/5 to-transparent"
             >
               <HtmlWithViewMore
                 html={aboutCourse || ""}
@@ -270,8 +270,8 @@ const CourseHighlightsAccordion: React.FC<{
                   weight="duotone"
                 />
               }
-              iconBgClass="from-orange-100 to-orange-200"
-              overlayClass="from-orange-500/5 to-transparent"
+              iconBgClass="from-primary-100 to-primary-200"
+              overlayClass="from-primary-500/5 to-transparent"
             >
               <div className="space-y-2">
                 {instructors.map((inst, idx) => (

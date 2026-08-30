@@ -11,13 +11,13 @@ import { BASE_URL } from "@/constants/urls";
 
 const AVATAR_GRADIENTS = [
   "from-violet-500 to-purple-600",
-  "from-sky-500 to-blue-600",
-  "from-emerald-500 to-teal-600",
-  "from-amber-500 to-orange-600",
-  "from-rose-500 to-pink-600",
-  "from-cyan-500 to-blue-500",
+  "from-sky-500 to-info-600",
+  "from-success-500 to-teal-600",
+  "from-warning-500 to-orange-600",
+  "from-danger-500 to-pink-600",
+  "from-cyan-500 to-info-500",
   "from-fuchsia-500 to-purple-500",
-  "from-lime-500 to-green-600",
+  "from-lime-500 to-success-600",
 ];
 
 const AVATAR_EMOJIS = ["🎓", "📚", "🌟", "🎨", "🏆", "🎵", "🔬", "⚽"];

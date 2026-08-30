@@ -365,7 +365,7 @@ const AudienceResponseForm = ({
   // Show success message after submission
   if (isSubmitted) {
     return (
-      <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+      <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-info-50 min-h-screen">
         {/* Navbar Header */}
         <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-6">
@@ -454,7 +454,7 @@ const AudienceResponseForm = ({
   }
 
   return (
-    <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-info-50 min-h-screen">
       {/* Navbar Header */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-6">

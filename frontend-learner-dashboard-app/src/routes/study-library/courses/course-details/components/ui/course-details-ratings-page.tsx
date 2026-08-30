@@ -452,7 +452,7 @@ export function CourseDetailsRatingsComponent({
             <div className="relative space-y-4 lg:space-y-6">
                 {/* Enhanced Header */}
                 <div className="flex items-center space-x-2 sm:space-x-3 animate-fade-in-down">
-                    <div className="p-1.5 sm:p-2 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-lg shadow-sm">
+                    <div className="p-1.5 sm:p-2 bg-gradient-to-br from-warning-100 to-warning-200 rounded-lg shadow-sm">
                         <Star
                             size={20}
                             className="text-yellow-600"
@@ -540,9 +540,9 @@ export function CourseDetailsRatingsComponent({
                         style={{ animationDelay: "0.1s" }}
                     >
                         {/* Enhanced Overall Rating Section */}
-                        <div className="relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-3 sm:p-4 lg:p-5 overflow-hidden group/rating">
+                        <div className="relative bg-gradient-to-br from-warning-50/80 to-primary-50/80 border border-yellow-200/60 rounded-md p-3 sm:p-4 lg:p-5 overflow-hidden group/rating">
                             {/* Background pattern */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/20 via-transparent to-orange-100/20 opacity-0 group-hover/rating:opacity-100 transition-opacity duration-500"></div>
+                            <div className="absolute inset-0 bg-gradient-to-br from-warning-100/20 via-transparent to-primary-100/20 opacity-0 group-hover/rating:opacity-100 transition-opacity duration-500"></div>
 
                             <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6">
                                 {/* Rating Score */}

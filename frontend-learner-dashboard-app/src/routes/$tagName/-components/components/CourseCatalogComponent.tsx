@@ -446,11 +446,11 @@ const CartControls: React.FC<{
 const CATEGORY_PALETTE = [
   { band: "from-violet-100 to-violet-50", text: "text-violet-600", icon: "text-violet-400" },
   { band: "from-teal-100 to-teal-50",    text: "text-teal-600",   icon: "text-teal-400"   },
-  { band: "from-amber-100 to-amber-50",  text: "text-amber-600",  icon: "text-amber-400"  },
+  { band: "from-warning-100 to-warning-50",  text: "text-amber-600",  icon: "text-amber-400"  },
   { band: "from-pink-100 to-pink-50",    text: "text-pink-600",   icon: "text-pink-400"   },
-  { band: "from-blue-100 to-blue-50",    text: "text-blue-600",   icon: "text-blue-400"   },
-  { band: "from-emerald-100 to-emerald-50", text: "text-emerald-600", icon: "text-emerald-400" },
-  { band: "from-orange-100 to-orange-50", text: "text-orange-600", icon: "text-orange-400" },
+  { band: "from-info-100 to-info-50",    text: "text-blue-600",   icon: "text-blue-400"   },
+  { band: "from-success-100 to-success-50", text: "text-emerald-600", icon: "text-emerald-400" },
+  { band: "from-primary-100 to-primary-50", text: "text-orange-600", icon: "text-orange-400" },
   { band: "from-indigo-100 to-indigo-50", text: "text-indigo-600", icon: "text-indigo-400" },
 ] as const;
 

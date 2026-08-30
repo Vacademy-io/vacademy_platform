@@ -52,10 +52,10 @@ export const CourseContentSections = ({ courseData, showInstructors = false }: C
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.3s" }}
                 >
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-info-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                     <div className="relative">
                         <div className="flex items-center space-x-2 mb-3">
-                            <div className="p-1.5 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg shadow-sm">
+                            <div className="p-1.5 bg-gradient-to-br from-info-100 to-info-200 rounded-lg shadow-sm">
                                 <File
                                     size={18}
                                     className="text-blue-600"
@@ -142,10 +142,10 @@ export const CourseContentSections = ({ courseData, showInstructors = false }: C
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.6s" }}
                 >
-                    <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                     <div className="relative">
                         <div className="flex items-center space-x-2 mb-3">
-                            <div className="p-1.5 bg-gradient-to-br from-orange-100 to-orange-200 rounded-lg shadow-sm">
+                            <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
                                 <ChalkboardTeacher
                                     size={18}
                                     className="text-orange-600"

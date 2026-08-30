@@ -79,7 +79,7 @@ const AssessmentClosedExpiredComponent = ({
       >
         <Card className="border-0 shadow-xl shadow-slate-200/60 overflow-hidden">
           {/* Header strip */}
-          <div className="h-1.5 bg-gradient-to-r from-orange-400 via-red-400 to-pink-400" />
+          <div className="h-1.5 bg-gradient-to-r from-primary-400 via-danger-400 to-pink-400" />
 
           <CardContent className="p-8 sm:p-10">
             {/* Branding */}

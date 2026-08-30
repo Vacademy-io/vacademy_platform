@@ -38,9 +38,9 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
   };
 
   const getScoreBg = () => {
-    if (feedback.percentage >= 80) return "from-green-500/20 to-green-600/10";
-    if (feedback.percentage >= 60) return "from-yellow-500/20 to-yellow-600/10";
-    return "from-red-500/20 to-red-600/10";
+    if (feedback.percentage >= 80) return "from-success-500/20 to-success-600/10";
+    if (feedback.percentage >= 60) return "from-warning-500/20 to-warning-600/10";
+    return "from-danger-500/20 to-danger-600/10";
   };
 
   return (

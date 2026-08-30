@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import ReactFlow, {
     Background,
     Controls,
@@ -12,6 +12,8 @@ import ChatbotCustomNode from './chatbot-custom-node';
 import ChatbotCustomEdge from './chatbot-custom-edge';
 import { NodePalette } from './node-palette';
 import { NodeConfigPanel } from './node-config-panel';
+import { FlowSettingsPanel } from './flow-settings-panel';
+import { Gear } from '@phosphor-icons/react';
 import { updateChatbotFlow, createChatbotFlow, activateChatbotFlow, deactivateChatbotFlow } from '../-services/chatbot-flow-api';
 import { toast } from 'sonner';
 
@@ -37,7 +39,14 @@ function FlowBuilderInner() {
         loadFlow,
         setIsSaving,
         selectNode,
+        flowSettings,
     } = useChatbotFlowStore();
+
+    const [showSettings, setShowSettings] = useState(false);
+    // Both channels count — the badge answers "will anyone be told?", not "how many emails".
+    const notifyRecipientCount =
+        (flowSettings.notificationEmails || []).length +
+        (flowSettings.notificationPhones || []).length;
 
     const handleSave = useCallback(async () => {
         setIsSaving(true);
@@ -140,6 +149,18 @@ function FlowBuilderInner() {
                 </div>
                 <div className="flex items-center gap-2">
                     <button
+                        onClick={() => setShowSettings(true)}
+                        className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                        title="Flow settings — including who is notified when the bot hands over"
+                    >
+                        <Gear size={14} /> Settings
+                        {notifyRecipientCount > 0 && (
+                            <span className="ml-0.5 rounded-full bg-gray-100 px-1.5 text-caption text-gray-600">
+                                {notifyRecipientCount}
+                            </span>
+                        )}
+                    </button>
+                    <button
                         onClick={handleSave}
                         disabled={isSaving}
                         className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
@@ -189,6 +210,8 @@ function FlowBuilderInner() {
 
                 <NodeConfigPanel />
             </div>
+
+            {showSettings && <FlowSettingsPanel onClose={() => setShowSettings(false)} />}
         </div>
     );
 }

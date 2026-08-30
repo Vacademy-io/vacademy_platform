@@ -1,9 +1,24 @@
 import { useInboxStore } from '../-stores/inbox-store';
-import { MagnifyingGlass } from '@phosphor-icons/react';
+import { InboxConversation, InboxFilter } from '../-services/inbox-api';
+import { MagnifyingGlass, WarningCircle, HandWaving } from '@phosphor-icons/react';
 
 interface Props {
     onLoadMore: () => void;
 }
+
+const FILTERS: Array<{ key: InboxFilter; label: string; title: string }> = [
+    { key: 'ALL', label: 'All', title: 'Every conversation' },
+    {
+        key: 'UNANSWERED',
+        label: 'Unanswered',
+        title: 'The chatbot handed these over and nobody has replied yet',
+    },
+    {
+        key: 'FAILED',
+        label: 'Not delivered',
+        title: 'Conversations where a message was refused by WhatsApp',
+    },
+];
 
 export function ConversationList({ onLoadMore }: Props) {
     const conversations = useInboxStore((s) => s.conversations);
@@ -11,6 +26,8 @@ export function ConversationList({ onLoadMore }: Props) {
     const selectPhone = useInboxStore((s) => s.selectPhone);
     const searchQuery = useInboxStore((s) => s.searchQuery);
     const setSearchQuery = useInboxStore((s) => s.setSearchQuery);
+    const filter = useInboxStore((s) => s.filter);
+    const setFilter = useInboxStore((s) => s.setFilter);
     const isLoading = useInboxStore((s) => s.isLoadingConversations);
     const hasMore = useInboxStore((s) => s.hasMoreConversations);
 
@@ -39,12 +56,32 @@ export function ConversationList({ onLoadMore }: Props) {
                         className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-400"
                     />
                 </div>
+
+                {/* Filters — hidden while searching, since search spans every conversation */}
+                {!searchQuery && (
+                    <div className="mt-2 flex gap-1">
+                        {FILTERS.map((f) => (
+                            <button
+                                key={f.key}
+                                onClick={() => setFilter(f.key)}
+                                title={f.title}
+                                className={`flex-1 rounded-md px-2 py-1 text-caption font-medium transition ${
+                                    filter === f.key
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'text-gray-500 hover:bg-gray-100'
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Conversation list */}
             <div className="flex-1 overflow-y-auto" onScroll={handleScroll}>
                 {conversations.length === 0 && !isLoading ? (
-                    <p className="p-4 text-sm text-gray-400 text-center">No conversations yet</p>
+                    <p className="p-4 text-sm text-gray-400 text-center">{emptyText(filter)}</p>
                 ) : (
                     conversations.map((c) => (
                         <button
@@ -74,6 +111,32 @@ export function ConversationList({ onLoadMore }: Props) {
                                     )}
                                 </div>
                             </div>
+
+                            {/* State badges: the bot handed over, or a message never landed */}
+                            {(c.awaitingReply || (c.failedCount ?? 0) > 0) && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                    {c.awaitingReply && (
+                                        <span
+                                            title={escalationTitle(c)}
+                                            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-px text-caption font-medium text-amber-700"
+                                        >
+                                            <HandWaving size={10} /> Unanswered
+                                        </span>
+                                    )}
+                                    {(c.failedCount ?? 0) > 0 && (
+                                        <span
+                                            title={`${c.failedCount} message(s) were not delivered`}
+                                            className="inline-flex items-center gap-1 rounded-full bg-red-100 px-1.5 py-px text-caption font-medium text-red-600"
+                                        >
+                                            <WarningCircle size={10} />
+                                            {c.failedCount === 1
+                                                ? 'Not delivered'
+                                                : `${c.failedCount} not delivered`}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
                             <p className="text-xs text-gray-500 mt-1 truncate">
                                 {c.lastMessageType === 'OUTGOING' && (
                                     <span className="text-green-600">✓ </span>
@@ -89,6 +152,25 @@ export function ConversationList({ onLoadMore }: Props) {
             </div>
         </div>
     );
+}
+
+function emptyText(filter: InboxFilter): string {
+    if (filter === 'UNANSWERED') return 'Nobody is waiting for a reply';
+    if (filter === 'FAILED') return 'Every message was delivered';
+    return 'No conversations yet';
+}
+
+/** Tooltip explaining why the bot stepped aside on this conversation. */
+function escalationTitle(c: InboxConversation): string {
+    const why =
+        c.escalationReason === 'MAX_TURNS'
+            ? 'The conversation reached its automated reply limit'
+            : c.escalationReason === 'AI_ERROR'
+              ? 'The assistant could not generate a reply'
+              : c.escalationReason === 'MANUAL'
+                ? 'Handed over by an admin'
+                : "The assistant didn't have the information to answer";
+    return c.escalationMessage ? `${why}\n\nThey asked: ${c.escalationMessage}` : why;
 }
 
 function formatTime(timestamp: string): string {

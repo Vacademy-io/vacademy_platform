@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
+import { useNavigate } from '@tanstack/react-router';
 import type { TFunction } from 'i18next';
 import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -47,7 +48,6 @@ import {
     type PasswordStrategy,
     type PasswordDelivery,
     type StudentAuthPresentation,
-    type StudentUiType,
     type SlidesSidebarNavigation,
     type ContentCardImageFit,
     type EnrolledCourseLayout,
@@ -96,6 +96,7 @@ function getStudentDisplaySections(t: TFunction): SettingsSectionGroup[] {
 
 export default function StudentDisplaySettings(): JSX.Element {
     const { t } = useTranslation('settingsStudentDisplay');
+    const navigate = useNavigate();
     const STUDENT_DISPLAY_SECTIONS = getStudentDisplaySections(t);
     // Precomputed labels for the tab/sub-tab list renderers below: those loops
     // use `t` as the loop variable name for the tab item (matching the
@@ -467,28 +468,27 @@ export default function StudentDisplaySettings(): JSX.Element {
                     <CardTitle>{t('ui.cardTitle')}</CardTitle>
                     <CardDescription>{t('ui.cardDescription')}</CardDescription>
                 </CardHeader>
+                {/* The theme-skin picker moved to Settings > Appearance, which now
+                    owns every "how the learner app looks" control (skin, corner
+                    style, density, surface style) in one THEME_SETTING blob.
+                    This card is kept as a signpost rather than deleted so admins
+                    who know where it used to live can find it. The legacy
+                    ui.type value is still READ by the learner app as a fallback
+                    for institutes saved before the move — see resolveUiSkin. */}
                 <div className="space-y-2 p-4 pt-0">
-                    <div className="flex items-center gap-2">
-                        <Label className="text-xs">{t('ui.themeSkin')}</Label>
-                        <Select
-                            value={settings.ui.type}
-                            onValueChange={(v) =>
-                                update('ui', {
-                                    type: v as StudentUiType,
-                                })
-                            }
-                        >
-                            <SelectTrigger className="h-8 w-48 text-xs">
-                                <SelectValue placeholder={t('ui.selectUiType')} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="default">default</SelectItem>
-                                <SelectItem value="vibrant">vibrant</SelectItem>
-                                <SelectItem value="play">play</SelectItem>
-                                <SelectItem value="cleanerPlay">{t('ui.cleanerPlay')}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    <p className="text-xs text-neutral-500">{t('ui.movedToAppearance')}</p>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                            navigate({
+                                to: '/settings',
+                                search: { selectedTab: 'appearance' },
+                            })
+                        }
+                    >
+                        {t('ui.openAppearance')}
+                    </Button>
                 </div>
             </Card>
 

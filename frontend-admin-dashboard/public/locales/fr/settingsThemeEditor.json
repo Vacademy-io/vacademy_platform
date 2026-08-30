@@ -69,5 +69,41 @@
     "save": {
         "saving": "Enregistrement…",
         "save": "Enregistrer le thème"
+    },
+    "common": {
+        "defaultSuffix": "Par défaut"
+    },
+    "learnerUi": {
+        "heading": "Apparence de l'application apprenant",
+        "description": "Forme, espacement et style de surface pour l'application apprenant. Ces réglages s'appliquent à ce que voient vos apprenants — le tableau de bord admin n'est pas affecté.",
+        "corners": {
+            "label": "Style des coins",
+            "help": "Arrondi des cartes, boutons et champs. Les avatars et pastilles restent ronds.",
+            "sharp": "Net",
+            "rounded": "Arrondi",
+            "pill": "Doux"
+        },
+        "density": {
+            "label": "Densité",
+            "help": "Marge des cartes, espacement entre éléments et hauteur des contrôles.",
+            "compact": "Compact",
+            "default": "Par défaut",
+            "comfortable": "Confortable"
+        },
+        "gradient": {
+            "label": "Style de surface",
+            "help": "Intensité des dégradés de marque sur les cartes et bannières.",
+            "flat": "Plat",
+            "subtle": "Subtil",
+            "full": "Complet"
+        },
+        "skin": {
+            "label": "Thème visuel",
+            "help": "Langage visuel global de l'application apprenant.",
+            "default": "Par défaut",
+            "vibrant": "Vif",
+            "play": "Play",
+            "cleanerPlay": "Cleaner Play"
+        }
     }
 }

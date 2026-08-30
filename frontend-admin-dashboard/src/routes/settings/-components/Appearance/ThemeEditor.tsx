@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -12,7 +12,23 @@ import { useTheme } from '@/providers/theme/theme-provider';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { handleUpdateInstituteDashboard } from '@/routes/dashboard/-services/dashboard-services';
 import { getThemeRoleSettings, saveThemeRoleSettings } from '@/services/theme-role-settings';
-import type { NavRoleColors } from '@/types/theme-role-settings';
+import { getStudentDisplaySettings } from '@/services/student-display-settings';
+import type {
+    NavRoleColors,
+    StudentUiType,
+    UiCorners,
+    UiDensity,
+    UiGradient,
+} from '@/types/theme-role-settings';
+import { UI_AXIS_DEFAULTS } from '@/types/theme-role-settings';
+import {
+    UiAxisPicker,
+    CornerPreview,
+    DensityPreview,
+    GradientPreview,
+    SkinPreview,
+    type AxisOption,
+} from './UiAxisPicker';
 import { navPresets } from '@/constants/themes/nav-presets';
 import {
     PRESET_THEMES,
@@ -26,6 +42,108 @@ import { resolveFontStack } from '@/utils/font';
 
 const toHex = (h: number, s: number, l: number) => `#${convert.hsl.hex([h, s, l])}`;
 const WHITE_HEX = toHex(0, 0, 100);
+
+/* ------------------------------------------------------------------ */
+/* Learner presentation axes                                           */
+/* ------------------------------------------------------------------ */
+/* The preview numbers below MUST track the token values in the learner
+   app's styles/ui-axes.css. They are duplicated here (rather than
+   imported) because the two apps share no package — the same
+   copy-by-convention the theme.json / theme-ramp.ts files already use.
+   If you change an axis's tokens there, update the previews here. */
+
+const CORNER_OPTIONS = (t: TFunction): ReadonlyArray<AxisOption<UiCorners>> => [
+    {
+        value: 'sharp',
+        label: t('learnerUi.corners.sharp'),
+        preview: <CornerPreview radiusPx={2} />,
+    },
+    {
+        value: 'rounded',
+        label: t('learnerUi.corners.rounded'),
+        description: t('common.defaultSuffix'),
+        preview: <CornerPreview radiusPx={8} />,
+    },
+    {
+        value: 'pill',
+        label: t('learnerUi.corners.pill'),
+        preview: <CornerPreview radiusPx={16} />,
+    },
+];
+
+const DENSITY_OPTIONS = (t: TFunction): ReadonlyArray<AxisOption<UiDensity>> => [
+    {
+        value: 'compact',
+        label: t('learnerUi.density.compact'),
+        preview: <DensityPreview padPx={6} gapPx={4} />,
+    },
+    {
+        value: 'default',
+        label: t('learnerUi.density.default'),
+        description: t('common.defaultSuffix'),
+        preview: <DensityPreview padPx={8} gapPx={6} />,
+    },
+    {
+        value: 'comfortable',
+        label: t('learnerUi.density.comfortable'),
+        preview: <DensityPreview padPx={12} gapPx={9} />,
+    },
+];
+
+const GRADIENT_OPTIONS = (
+    t: TFunction,
+    brandHex: string
+): ReadonlyArray<AxisOption<UiGradient>> => {
+    const ramp = rampHexFromHex(brandHex);
+    return [
+        {
+            value: 'flat',
+            label: t('learnerUi.gradient.flat'),
+            preview: <GradientPreview from={ramp['50']} to={ramp['50']} />,
+        },
+        {
+            value: 'subtle',
+            label: t('learnerUi.gradient.subtle'),
+            preview: <GradientPreview from={ramp['50']} to={WHITE_HEX} />,
+        },
+        {
+            value: 'full',
+            label: t('learnerUi.gradient.full'),
+            description: t('common.defaultSuffix'),
+            preview: <GradientPreview from={ramp['100']} to={ramp['50']} />,
+        },
+    ];
+};
+
+const SKIN_OPTIONS = (
+    t: TFunction,
+    brandHex: string
+): ReadonlyArray<AxisOption<StudentUiType>> => {
+    const ramp = rampHexFromHex(brandHex);
+    return [
+        {
+            value: 'default',
+            label: t('learnerUi.skin.default'),
+            description: t('common.defaultSuffix'),
+            preview: <SkinPreview radiusPx={8} accent={brandHex} />,
+        },
+        {
+            value: 'vibrant',
+            label: t('learnerUi.skin.vibrant'),
+            preview: <SkinPreview radiusPx={12} accent={ramp['300']} />,
+        },
+        {
+            value: 'play',
+            label: t('learnerUi.skin.play'),
+            preview: <SkinPreview radiusPx={20} accent={brandHex} bold />,
+        },
+        {
+            value: 'cleanerPlay',
+            label: t('learnerUi.skin.cleanerPlay'),
+            preview: <SkinPreview radiusPx={12} accent={ramp['200']} />,
+        },
+    ];
+};
 const CUSTOM_NAV_ID = 'custom';
 
 const buildNavColorFields = (
@@ -129,6 +247,16 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
     const [tertiaryOverride, setTertiaryOverride] = useState<string | null>(null);
     const [selectedNavPresetId, setSelectedNavPresetId] = useState(navPresets[0]!.id);
     const [customNav, setCustomNav] = useState<NavRoleColors | null>(null);
+    // Learner presentation axes + skin. These configure the LEARNER app only;
+    // the admin's own chrome deliberately does not ride them.
+    const [density, setDensity] = useState<UiDensity>(UI_AXIS_DEFAULTS.density);
+    const [corners, setCorners] = useState<UiCorners>(UI_AXIS_DEFAULTS.corners);
+    const [gradient, setGradient] = useState<UiGradient>(UI_AXIS_DEFAULTS.gradient);
+    const [skin, setSkin] = useState<StudentUiType>(UI_AXIS_DEFAULTS.skin);
+    // Legacy skin location (STUDENT_DISPLAY_SETTINGS.ui.type). Held in a ref
+    // rather than state because it is only ever a seed for `skin` — it must not
+    // re-render or re-trigger the hydration effect.
+    const legacySkinRef = useRef<StudentUiType | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
     // Hydrate from the saved brand code + THEME_SETTING on mount.
@@ -142,12 +270,30 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
         }
 
         let cancelled = false;
-        getThemeRoleSettings().then((saved) => {
+        // Both blobs are needed together: `skin` falls back to the legacy
+        // STUDENT_DISPLAY_SETTINGS.ui.type when THEME_SETTING has none, so the
+        // seed must be resolved BEFORE the theme roles are applied. Awaiting
+        // them as a pair avoids the race where THEME_SETTING lands first and
+        // reads an unset seed. The legacy read is allowed to fail (-> null
+        // seed, saved/default skin wins) without failing the whole hydration.
+        Promise.all([
+            getThemeRoleSettings(),
+            getStudentDisplaySettings().catch(() => null),
+        ]).then(([saved, legacy]) => {
             if (cancelled) return;
+            legacySkinRef.current = legacy?.ui?.type ?? null;
             setSecondaryOverride(saved?.roles?.secondary ?? null);
             setTertiaryOverride(saved?.roles?.tertiary ?? null);
             setBackgroundOverride(saved?.roles?.background ?? null);
             setFontFamily(saved?.roles?.fontFamily ?? null);
+            setDensity(saved?.roles?.density ?? UI_AXIS_DEFAULTS.density);
+            setCorners(saved?.roles?.corners ?? UI_AXIS_DEFAULTS.corners);
+            setGradient(saved?.roles?.gradient ?? UI_AXIS_DEFAULTS.gradient);
+            // Skin moved here from STUDENT_DISPLAY_SETTINGS.ui.type. Institutes
+            // configured before the move only have it there, so seed from the
+            // legacy value when THEME_SETTING has none — otherwise opening this
+            // tab and saving would silently reset their skin to default.
+            setSkin(saved?.roles?.skin ?? legacySkinRef.current ?? UI_AXIS_DEFAULTS.skin);
             if (!saved?.roles?.nav) {
                 setSelectedNavPresetId('match-brand');
                 return;
@@ -214,7 +360,7 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                       );
 
             await saveThemeRoleSettings({
-                version: 2,
+                version: 3,
                 mode: selectedNavPresetId === CUSTOM_NAV_ID ? 'custom' : nav ? 'preset' : 'legacy',
                 roles: {
                     ...(nav ? { nav } : {}),
@@ -222,6 +368,14 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                     ...(tertiaryOverride ? { tertiary: tertiaryOverride } : {}),
                     ...(backgroundOverride ? { background: backgroundOverride } : {}),
                     ...(fontFamily ? { fontFamily } : {}),
+                    // Axes are always written (never conditionally spread):
+                    // they are enums with a meaningful default, so omitting
+                    // "default" would make it impossible to move an institute
+                    // BACK to default once they had picked something else.
+                    density,
+                    corners,
+                    gradient,
+                    skin,
                 },
             });
 
@@ -399,6 +553,67 @@ export const ThemeEditor = ({ onSaved }: { onSaved?: () => void }) => {
                             </button>
                         );
                     })}
+                </div>
+            </section>
+
+            <Separator />
+
+            {/* ── Learner presentation axes ─────────────────────────────────
+                These configure the LEARNER app only. The admin dashboard's own
+                chrome deliberately does not ride them, so the previews are
+                scale models rather than live-applied styling. */}
+            <section>
+                <h2 className="mb-1 text-lg font-semibold">{t('learnerUi.heading')}</h2>
+                <p className="mb-4 text-sm text-neutral-500">{t('learnerUi.description')}</p>
+
+                <div className="mb-6">
+                    <h3 className="mb-1 text-sm font-medium">{t('learnerUi.corners.label')}</h3>
+                    <p className="mb-3 text-xs text-neutral-500">
+                        {t('learnerUi.corners.help')}
+                    </p>
+                    <UiAxisPicker
+                        ariaLabel={t('learnerUi.corners.label')}
+                        value={corners}
+                        onChange={setCorners}
+                        options={CORNER_OPTIONS(t)}
+                    />
+                </div>
+
+                <div className="mb-6">
+                    <h3 className="mb-1 text-sm font-medium">{t('learnerUi.density.label')}</h3>
+                    <p className="mb-3 text-xs text-neutral-500">
+                        {t('learnerUi.density.help')}
+                    </p>
+                    <UiAxisPicker
+                        ariaLabel={t('learnerUi.density.label')}
+                        value={density}
+                        onChange={setDensity}
+                        options={DENSITY_OPTIONS(t)}
+                    />
+                </div>
+
+                <div className="mb-6">
+                    <h3 className="mb-1 text-sm font-medium">{t('learnerUi.gradient.label')}</h3>
+                    <p className="mb-3 text-xs text-neutral-500">
+                        {t('learnerUi.gradient.help')}
+                    </p>
+                    <UiAxisPicker
+                        ariaLabel={t('learnerUi.gradient.label')}
+                        value={gradient}
+                        onChange={setGradient}
+                        options={GRADIENT_OPTIONS(t, brandHexForPreview)}
+                    />
+                </div>
+
+                <div>
+                    <h3 className="mb-1 text-sm font-medium">{t('learnerUi.skin.label')}</h3>
+                    <p className="mb-3 text-xs text-neutral-500">{t('learnerUi.skin.help')}</p>
+                    <UiAxisPicker
+                        ariaLabel={t('learnerUi.skin.label')}
+                        value={skin}
+                        onChange={setSkin}
+                        options={SKIN_OPTIONS(t, brandHexForPreview)}
+                    />
                 </div>
             </section>
 

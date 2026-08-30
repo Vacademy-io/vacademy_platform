@@ -36,7 +36,9 @@
         "cardDescription": "लर्नर पोर्टल के लिए विज़ुअल थीम चुनें",
         "themeSkin": "थीम स्किन",
         "selectUiType": "UI प्रकार चुनें",
-        "cleanerPlay": "क्लीनर प्ले"
+        "cleanerPlay": "क्लीनर प्ले",
+        "movedToAppearance": "थीम स्किन अब सेटिंग्स → रूप-रंग में है, कोने की शैली, घनत्व और सरफ़ेस शैली के साथ।",
+        "openAppearance": "रूप-रंग सेटिंग्स खोलें"
     },
     "widgets": {
         "cardTitle": "डैशबोर्ड विजेट",

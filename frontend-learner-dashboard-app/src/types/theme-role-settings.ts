@@ -50,8 +50,30 @@ export interface ThemeRoleSettings {
     corners?: UiCorners;
     /** Strength of brand surface gradients. Default "full". */
     gradient?: UiGradient;
+
+    /**
+     * Learner UI skin, migrated here from STUDENT_DISPLAY_SETTINGS.ui.type so
+     * that every "how the learner app looks" control lives in one blob.
+     *
+     * READ ORDER MATTERS: resolveUiSkin() prefers this field and falls back to
+     * ui.type, because ~every institute configured before the move still has
+     * its skin only in the old location. Never read this field bare.
+     */
+    skin?: StudentUiTypeMirror;
   };
 }
+
+/**
+ * Structural mirror of StudentUIType in types/student-display-settings.ts.
+ * Duplicated rather than imported to keep this file dependency-free — it is
+ * read by utils/institute-theme-roles.ts on the public/pre-login path, which
+ * must not pull in the student-display-settings module graph.
+ */
+export type StudentUiTypeMirror =
+  | "default"
+  | "vibrant"
+  | "play"
+  | "cleanerPlay";
 
 export type UiDensity = "compact" | "default" | "comfortable";
 export type UiCorners = "sharp" | "rounded" | "pill";

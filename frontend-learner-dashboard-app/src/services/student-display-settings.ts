@@ -9,6 +9,7 @@ import {
   type StudentDashboardWidgetId,
 } from "@/types/student-display-settings";
 import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from "@/constants/display-settings/student-defaults";
+import { resolveUiSkin } from "@/utils/institute-theme-roles";
 
 const LS_KEY = `${STUDENT_DISPLAY_SETTINGS_KEY}_CACHE_V1`;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -409,7 +410,8 @@ export function applyUiSkinFromSettings(
     ) {
       return; // QA override wins; __root's debug helpers manage it
     }
-    const t = settings?.ui?.type || "default";
+    // THEME_SETTING.roles.skin wins; ui.type is the pre-migration fallback.
+    const t = resolveUiSkin(settings?.ui?.type ?? null);
     const root = document.documentElement;
     root.classList.remove("ui-vibrant", "ui-play", "ui-cleaner-play");
     if (t === "vibrant") root.classList.add("ui-vibrant");

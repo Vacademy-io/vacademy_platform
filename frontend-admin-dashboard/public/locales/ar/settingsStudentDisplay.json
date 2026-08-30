@@ -36,7 +36,9 @@
         "cardDescription": "اختر السمة المرئية لبوابة المتعلم",
         "themeSkin": "مظهر السمة",
         "selectUiType": "اختر نوع الواجهة",
-        "cleanerPlay": "Play المبسّطة"
+        "cleanerPlay": "Play المبسّطة",
+        "movedToAppearance": "انتقلت سمة المظهر إلى الإعدادات ← المظهر، مع نمط الزوايا والكثافة ونمط الأسطح.",
+        "openAppearance": "فتح إعدادات المظهر"
     },
     "widgets": {
         "cardTitle": "أدوات لوحة التحكم",

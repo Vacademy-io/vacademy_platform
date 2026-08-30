@@ -54,6 +54,7 @@ import { getUserId } from "@/constants/getUserId";
 import { useOfflineInit } from "@/hooks/offline/useOfflineInit";
 import { RevokedDeviceDialog } from "@/components/common/offline/revoked-device-dialog";
 import { useLiveTestStore } from "@/stores/live-test-store";
+import { resolveUiSkin } from "@/utils/institute-theme-roles";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -426,7 +427,13 @@ const RootComponent = () => {
         applyUiType(override);
       } else {
         getStudentDisplaySettings(false)
-          .then((s) => applyUiType((s?.ui?.type as StudentUIType) || "default"))
+          // THEME_SETTING.roles.skin wins; ui.type is the pre-migration
+          // fallback (see resolveUiSkin — there is no migration job).
+          .then((s) =>
+            applyUiType(
+              resolveUiSkin((s?.ui?.type as StudentUIType) ?? null) as StudentUIType
+            )
+          )
           .catch(() => {
             /* ignore */
           });
@@ -466,7 +473,13 @@ const RootComponent = () => {
           console.warn("clearStudentUIType: failed to clear", e);
         }
         getStudentDisplaySettings(false)
-          .then((s) => applyUiType((s?.ui?.type as StudentUIType) || "default"))
+          // THEME_SETTING.roles.skin wins; ui.type is the pre-migration
+          // fallback (see resolveUiSkin — there is no migration job).
+          .then((s) =>
+            applyUiType(
+              resolveUiSkin((s?.ui?.type as StudentUIType) ?? null) as StudentUIType
+            )
+          )
           .catch(() => applyUiType("default"));
       };
     } catch (e) {

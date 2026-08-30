@@ -7,6 +7,7 @@ import {
   UI_CORNERS_VALUES,
   UI_DENSITY_VALUES,
   UI_GRADIENT_VALUES,
+  type StudentUiTypeMirror,
   type ThemeRoleSettings,
 } from "@/types/theme-role-settings";
 
@@ -149,4 +150,32 @@ export function applyInstituteUiAxes(): void {
     "data-ui-gradient",
     pick(roles?.gradient, UI_GRADIENT_VALUES, UI_AXIS_DEFAULTS.gradient)
   );
+}
+
+/**
+ * Resolve the learner UI skin, preferring the new THEME_SETTING `skin` role
+ * and falling back to the legacy STUDENT_DISPLAY_SETTINGS `ui.type`.
+ *
+ * The skin control moved from Student Display to the Appearance tab so that
+ * every "how the learner app looks" setting lives in one blob. Institutes
+ * configured before that move have their skin ONLY in ui.type, and there is no
+ * migration job — so this fallback is load-bearing, not defensive. Reading
+ * roles.skin bare would silently reset every already-configured institute to
+ * the default skin.
+ *
+ * @param legacyUiType STUDENT_DISPLAY_SETTINGS.ui.type, if the caller has it.
+ */
+export function resolveUiSkin(
+  legacyUiType?: StudentUiTypeMirror | null
+): StudentUiTypeMirror {
+  const allowed: readonly StudentUiTypeMirror[] = [
+    "default",
+    "vibrant",
+    "play",
+    "cleanerPlay",
+  ];
+  const fromTheme = readThemeRoleSettings()?.roles?.skin;
+  if (fromTheme && allowed.includes(fromTheme)) return fromTheme;
+  if (legacyUiType && allowed.includes(legacyUiType)) return legacyUiType;
+  return "default";
 }

@@ -126,6 +126,9 @@ public class UserPlanService {
     @Autowired
     private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
 
+    @Autowired
+    private UserInstitutePaymentGatewayMappingService mandateService;
+
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
             AppliedCouponDiscount appliedCouponDiscount,
@@ -1290,7 +1293,29 @@ public class UserPlanService {
                 .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
 
         userPlan.setStatus(force ? UserPlanStatusEnum.TERMINATED.name() : UserPlanStatusEnum.CANCELED.name());
+        // Cancelling has to stop autopay too. Leaving auto_renewal_enabled = true meant a
+        // cancelled plan was excluded from the renewal sweep only by its status, so any later
+        // reactivation (the manual "pay to continue" flow reuses the SAME UserPlan and flips it
+        // back to ACTIVE) silently resumed charging someone who had cancelled. Mirrors
+        // SubscriptionService.cancelSubscription, which the learner self-service path already did.
+        userPlan.setAutoRenewalEnabled(false);
         userPlanRepository.save(userPlan);
+
+        // Revoke the stored mandate for the same reason. Wrapped so a mandate failure
+        // can never undo the cancel itself.
+        try {
+            String mandateInstituteId = userPlan.getEnrollInvite() != null
+                    ? userPlan.getEnrollInvite().getInstituteId() : null;
+            String mandateVendor = userPlan.getEnrollInvite() != null
+                    ? userPlan.getEnrollInvite().getVendor() : null;
+            if (mandateInstituteId != null && !mandateInstituteId.isBlank()
+                    && mandateVendor != null && !mandateVendor.isBlank()) {
+                mandateService.revokeMandate(userPlan.getUserId(), mandateInstituteId,
+                        mandateVendor, userPlan.getId());
+            }
+        } catch (Exception me) {
+            logger.warn("Failed to revoke mandate on cancel for plan {}: {}", userPlanId, me.getMessage());
+        }
 
         // Fire the matching workflow trigger so admin/learner workflows can react
         // (welcome-back nudge on CANCEL, access-revoked email on TERMINATED, etc.).

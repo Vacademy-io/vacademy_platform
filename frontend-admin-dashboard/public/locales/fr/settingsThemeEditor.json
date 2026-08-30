@@ -103,7 +103,8 @@
             "default": "Par défaut",
             "vibrant": "Vif",
             "play": "Play",
-            "cleanerPlay": "Cleaner Play"
+            "cleanerPlay": "Cleaner Play",
+            "corporate": "Entreprise"
         }
     }
 }

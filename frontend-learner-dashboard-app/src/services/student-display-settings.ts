@@ -406,17 +406,24 @@ export function applyUiSkinFromSettings(
       override === "default" ||
       override === "vibrant" ||
       override === "play" ||
-      override === "cleanerPlay"
+      override === "cleanerPlay" ||
+      override === "corporate"
     ) {
       return; // QA override wins; __root's debug helpers manage it
     }
     // THEME_SETTING.roles.skin wins; ui.type is the pre-migration fallback.
     const t = resolveUiSkin(settings?.ui?.type ?? null);
     const root = document.documentElement;
-    root.classList.remove("ui-vibrant", "ui-play", "ui-cleaner-play");
+    root.classList.remove(
+      "ui-vibrant",
+      "ui-play",
+      "ui-cleaner-play",
+      "ui-corporate"
+    );
     if (t === "vibrant") root.classList.add("ui-vibrant");
     else if (t === "play") root.classList.add("ui-play");
     else if (t === "cleanerPlay") root.classList.add("ui-cleaner-play");
+    else if (t === "corporate") root.classList.add("ui-corporate");
   } catch {
     // noop — never let skin application break a login flow
   }

@@ -300,7 +300,12 @@ export interface StudentAllCoursesSettings {
 }
 
 // UI
-export type StudentUIType = "default" | "vibrant" | "play" | "cleanerPlay";
+export type StudentUIType =
+  | "default"
+  | "vibrant"
+  | "play"
+  | "cleanerPlay"
+  | "corporate";
 
 export interface StudentUISettings {
   type: StudentUIType;

@@ -8,10 +8,13 @@
 @import './styles/play-theme.css';
 /* Cleaner Play Theme - warm, premium, illustrated skin */
 @import './styles/cleaner-play-theme.css';
+/* Corporate Theme - restrained, dense, structural skin */
+@import './styles/corporate-theme.css';
 /* Institute UI axes - corners / density / gradient (data-ui-* on <html>).
    Imported last of the skin sheets so its --play-radius-* definitions,
    which express the Play radii against --radius, win over the literals
-   play-theme.css used to hardcode. */
+   play-theme.css used to hardcode — and so an explicitly-chosen axis beats
+   a skin's house defaults on the specificity tie (both are 0,1,1). */
 @import './styles/ui-axes.css';
 /* Flaticon Uicons - Rounded bubbly icons for play theme */
 @import '@flaticon/flaticon-uicons/css/all/all';

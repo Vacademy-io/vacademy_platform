@@ -142,6 +142,18 @@ const SKIN_OPTIONS = (
             label: t('learnerUi.skin.cleanerPlay'),
             preview: <SkinPreview radiusPx={12} accent={ramp['200']} />,
         },
+        {
+            value: 'corporate',
+            label: t('learnerUi.skin.corporate'),
+            // 4px corners and a neutral (non-brand) accent bar — the two things
+            // that most distinguish this skin: crisp edges, and brand reserved
+            // for actions rather than used as a surface fill.
+            // Neutral slate rather than the brand ramp: "brand as accent, not
+            // fill" is the point of this skin, so the preview must not show a
+            // brand-filled bar like the others do. toHex keeps it off a raw
+            // literal, matching how the nav presets in this file build colours.
+            preview: <SkinPreview radiusPx={4} accent={toHex(215, 16, 65)} />,
+        },
     ];
 };
 const CUSTOM_NAV_ID = 'custom';

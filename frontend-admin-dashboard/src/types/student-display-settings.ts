@@ -136,7 +136,7 @@ export interface StudentSignupSettings {
 }
 
 // UI
-export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay';
+export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay' | 'corporate';
 export interface StudentUiSettings {
     type: StudentUiType;
 }

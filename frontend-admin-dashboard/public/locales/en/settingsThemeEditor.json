@@ -103,7 +103,8 @@
             "default": "Default",
             "vibrant": "Vibrant",
             "play": "Play",
-            "cleanerPlay": "Cleaner Play"
+            "cleanerPlay": "Cleaner Play",
+            "corporate": "Corporate"
         }
     }
 }

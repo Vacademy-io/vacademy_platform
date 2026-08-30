@@ -73,7 +73,8 @@ export type StudentUiTypeMirror =
   | "default"
   | "vibrant"
   | "play"
-  | "cleanerPlay";
+  | "cleanerPlay"
+  | "corporate";
 
 export type UiDensity = "compact" | "default" | "comfortable";
 export type UiCorners = "sharp" | "rounded" | "pill";

@@ -3,7 +3,6 @@ import { hslVar } from "@/lib/theme-ramp";
 import { resolveFontStack } from "@/utils/branding";
 import {
   THEME_ROLE_SETTINGS_KEY,
-  UI_AXIS_DEFAULTS,
   UI_CORNERS_VALUES,
   UI_DENSITY_VALUES,
   UI_GRADIENT_VALUES,
@@ -132,24 +131,31 @@ export function applyInstituteUiAxes(): void {
   const roles = readThemeRoleSettings()?.roles;
   const root = document.documentElement;
 
-  const pick = <T extends string>(
+  // Write an axis attribute ONLY when the institute actually chose that axis.
+  //
+  // An always-present attribute would make "institute picked the default" and
+  // "institute never opened the Appearance tab" indistinguishable in CSS, and a
+  // skin could then never supply its own house defaults — the Corporate skin
+  // wants 4px corners and tighter spacing out of the box, but must still lose to
+  // an institute that explicitly picked "pill".
+  //
+  // Omitting the attribute falls through to :root, whose values are identical to
+  // the documented defaults, so this is a no-op for every institute that has not
+  // set an axis. Where the attribute IS present it beats the skin's defaults,
+  // because styles/ui-axes.css is imported after the skin stylesheets and the two
+  // selectors have equal specificity.
+  const setOrClear = <T extends string>(
+    attr: string,
     value: unknown,
-    allowed: readonly T[],
-    fallback: T
-  ): T => (allowed.includes(value as T) ? (value as T) : fallback);
+    allowed: readonly T[]
+  ) => {
+    if (allowed.includes(value as T)) root.setAttribute(attr, value as string);
+    else root.removeAttribute(attr);
+  };
 
-  root.setAttribute(
-    "data-ui-density",
-    pick(roles?.density, UI_DENSITY_VALUES, UI_AXIS_DEFAULTS.density)
-  );
-  root.setAttribute(
-    "data-ui-corners",
-    pick(roles?.corners, UI_CORNERS_VALUES, UI_AXIS_DEFAULTS.corners)
-  );
-  root.setAttribute(
-    "data-ui-gradient",
-    pick(roles?.gradient, UI_GRADIENT_VALUES, UI_AXIS_DEFAULTS.gradient)
-  );
+  setOrClear("data-ui-density", roles?.density, UI_DENSITY_VALUES);
+  setOrClear("data-ui-corners", roles?.corners, UI_CORNERS_VALUES);
+  setOrClear("data-ui-gradient", roles?.gradient, UI_GRADIENT_VALUES);
 }
 
 /**
@@ -173,6 +179,7 @@ export function resolveUiSkin(
     "vibrant",
     "play",
     "cleanerPlay",
+    "corporate",
   ];
   const fromTheme = readThemeRoleSettings()?.roles?.skin;
   if (fromTheme && allowed.includes(fromTheme)) return fromTheme;

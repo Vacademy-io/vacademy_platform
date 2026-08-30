@@ -109,7 +109,31 @@ Appearance tab must see no change — treat that as a hard invariant when adding
 
 ### Skin
 
-`THEME_SETTING.roles.skin` (`default | vibrant | play | cleanerPlay`) replaces the old
+Five skins, applied as a class on `<html>`:
+
+| Skin | Class | Character |
+|---|---|---|
+| `default` | *(none)* | neutral product UI |
+| `vibrant` | `.ui-vibrant` | pastel, friendly accents |
+| `play` | `.ui-play` | gamified, bold, 3D press, 20px radii |
+| `cleanerPlay` | `.ui-cleaner-play` | warm felted-clay, illustrated, generous |
+| `corporate` | `.ui-corporate` | restrained, dense, structural (B2B/professional) |
+
+**Skin vs axes.** A skin's token values are DEFAULTS; an explicitly-chosen axis
+overrides them. `applyInstituteUiAxes()` writes a `data-ui-*` attribute only when
+the institute actually picked that axis, and `styles/ui-axes.css` is imported
+after the skin stylesheets — both selectors are specificity (0,1,1), so the axis
+wins on the tie. A skin proposes, an explicit choice decides. When adding a skin,
+put its stylesheet's `@import` BEFORE `ui-axes.css` or it will stomp institute
+settings.
+
+Adding a skin touches 13 places: the two type unions in each app, the
+`resolveUiSkin` allowlist, the class add/remove lists and DEBUG override
+allowlists in `__root.tsx` and `services/student-display-settings.ts`, the admin
+`SKIN_OPTIONS`, and i18n for four locales. The add and remove lists must stay
+symmetric or switching away from the skin leaves its class stuck on `<html>`.
+
+`THEME_SETTING.roles.skin` replaces the old
 `STUDENT_DISPLAY_SETTINGS.ui.type`. Always read it through `resolveUiSkin()`, which falls back to the
 legacy field — there was no data migration, so institutes configured before the move still hold their
 skin only in the old location.

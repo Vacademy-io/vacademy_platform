@@ -113,7 +113,7 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
           <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">{title}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[...Array(limit)].map((_, i) => (
-              <div key={i} className="bg-gray-200 animate-pulse rounded-lg h-48" />
+              <div key={i} className="bg-gray-200 animate-pulse rounded-catalogue-md h-48" />
             ))}
           </div>
         </div>
@@ -137,7 +137,7 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
             // NEUTRAL: Card with subtle border
             <div
               key={course.id}
-              className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors cursor-pointer"
+              className="bg-white border border-gray-200 rounded-catalogue-md overflow-hidden hover:border-gray-300 transition-colors cursor-pointer"
               onClick={() => handleCourseClick(course.id)}
             >
               {/* Thumbnail */}

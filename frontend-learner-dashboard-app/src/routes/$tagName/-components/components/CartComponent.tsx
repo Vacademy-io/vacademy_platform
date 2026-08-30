@@ -89,10 +89,10 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
   }, [imageUrl, item.image]);
 
   return (
-    <div className="w-full max-w-page mx-auto flex flex-row gap-2.5 sm:gap-3 p-2.5 sm:p-3 border border-gray-200 rounded-lg bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 active:scale-[0.99]">
+    <div className="w-full max-w-page mx-auto flex flex-row gap-2.5 sm:gap-3 p-2.5 sm:p-3 border border-gray-200 rounded-catalogue-md bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 active:scale-[0.99]">
       {/* Item Image - Compact on mobile */}
       {showItemImage && (
-        <div className="flex-shrink-0 w-20 h-32 sm:w-28 sm:h-44 bg-gray-100 rounded-lg overflow-hidden shadow-sm">
+        <div className="flex-shrink-0 w-20 h-32 sm:w-28 sm:h-44 bg-gray-100 rounded-catalogue-md overflow-hidden shadow-sm">
           {imageLoading ? (
             <div className="w-full h-full bg-gray-200 animate-pulse flex items-center justify-center">
               <div className="text-gray-400 text-xs">...</div>
@@ -146,11 +146,11 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
         {/* Controls Row */}
         <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 sm:border-t-0 sm:pt-0">
           {showQuantitySelector ? (
-            <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg bg-gray-50 shadow-sm hover:bg-gray-100 transition-colors">
+            <div className="flex items-center gap-0.5 border border-gray-200 rounded-catalogue-md bg-gray-50 shadow-sm hover:bg-gray-100 transition-colors">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 sm:h-8 sm:w-8 hover:bg-white active:bg-gray-200 rounded-s-lg transition-all duration-150"
+                className="h-7 w-7 sm:h-8 sm:w-8 hover:bg-white active:bg-gray-200 rounded-s-catalogue-md transition-all duration-150"
                 onClick={() => item.enrollInviteId && onQuantityChange(item.enrollInviteId, item.quantity - 1)}
                 disabled={item.quantity <= quantityMin || !item.enrollInviteId}
               >
@@ -160,7 +160,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 sm:h-8 sm:w-8 hover:bg-white active:bg-gray-200 rounded-e-lg transition-all duration-150"
+                className="h-7 w-7 sm:h-8 sm:w-8 hover:bg-white active:bg-gray-200 rounded-e-catalogue-md transition-all duration-150"
                 onClick={() => item.enrollInviteId && onQuantityChange(item.enrollInviteId, item.quantity + 1)}
                 disabled={!item.enrollInviteId}
               >
@@ -171,7 +171,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
 
           {showRemoveButton && (
             <button
-              className="group flex items-center gap-1 text-red-500 hover:text-red-700 active:text-red-800 transition-all duration-200 px-2 py-1 rounded hover:bg-red-50 active:bg-red-100 active:scale-95"
+              className="group flex items-center gap-1 text-red-500 hover:text-red-700 active:text-red-800 transition-all duration-200 px-2 py-1 rounded-catalogue-xs hover:bg-red-50 active:bg-red-100 active:scale-95"
               onClick={() => item.enrollInviteId && onRemove(item.enrollInviteId)}
               disabled={!item.enrollInviteId}
             >
@@ -221,7 +221,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
   return (
     <div
       className={`
-        rounded-lg p-2 sm:p-3 border-2 transition-all duration-200 cursor-pointer active:scale-[0.97] hover:scale-[1.01]
+        rounded-catalogue-md p-2 sm:p-3 border-2 transition-all duration-200 cursor-pointer active:scale-[0.97] hover:scale-[1.01]
         ${isSelected
           ? 'bg-primary-500 border-primary-500 shadow-md'
           : 'bg-white border-gray-200 hover:border-primary-300 hover:shadow-sm'
@@ -277,7 +277,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
         {/* Select Button */}
         <button
           className={`
-            w-full mt-1.5 sm:mt-2 py-1.5 sm:py-2 px-2 rounded-md text-caption sm:text-xs font-semibold transition-all duration-200 active:scale-95
+            w-full mt-1.5 sm:mt-2 py-1.5 sm:py-2 px-2 rounded-catalogue-sm text-caption sm:text-xs font-semibold transition-all duration-200 active:scale-95
             ${isSelected
               ? 'bg-primary-600 text-white font-bold shadow-sm hover:bg-primary-700'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -328,7 +328,7 @@ const CrossStoreWarning: React.FC<{ items: CartItem[] }> = ({ items }) => {
   // Case A: multiple stores within the cart itself.
   if (distinctStoresInCart.length > 1) {
     return (
-      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+      <div className="rounded-catalogue-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
         {t("cart.crossStore.multiple", {
           count: distinctStoresInCart.length,
           stores: distinctStoresInCart.map((s) => s.name).join(", "),
@@ -341,7 +341,7 @@ const CrossStoreWarning: React.FC<{ items: CartItem[] }> = ({ items }) => {
   const cartStore = distinctStoresInCart[0];
   if (storeFilter && storeFilter !== cartStore.id) {
     return (
-      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+      <div className="rounded-catalogue-sm border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
         {t("cart.crossStore.mismatch", { store: cartStore.name })}
       </div>
     );
@@ -630,7 +630,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   };
 
   const padding = styles.padding || "10px";
-  const roundedEdges = styles.roundedEdges ? "rounded-lg" : "";
+  const roundedEdges = styles.roundedEdges ? "rounded-catalogue-md" : "";
   const backgroundColor = styles.backgroundColor || "white";
 
   // Buy-mode additional charges (shipping). Rent mode is intentionally excluded —
@@ -645,7 +645,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   const buyModeGrandTotal = buyModeSubtotal + additionalChargesTotal;
 
   const paymentBanner = paymentMessage ? (
-    <div className={`w-full p-4 mb-4 rounded-lg flex items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 ${paymentMessage.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+    <div className={`w-full p-4 mb-4 rounded-catalogue-md flex items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 ${paymentMessage.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
       paymentMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
         'bg-blue-50 text-blue-700 border border-blue-200'
       }`}>
@@ -711,7 +711,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
               {items.map((item) => (
                 <div
                   key={item.enrollInviteId || item.id}
-                  className="flex-shrink-0 w-32 sm:w-36 snap-start flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 relative group active:scale-[0.98]"
+                  className="flex-shrink-0 w-32 sm:w-36 snap-start flex flex-col bg-white rounded-catalogue-md border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 relative group active:scale-[0.98]"
                 >
                   {/* Delete Button - Overlay Top Right */}
                   {showRemoveButton && (
@@ -755,7 +755,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
             {isLoadingPlans ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[1, 2].map((i) => (
-                  <div key={i} className="h-32 bg-gray-200 rounded-lg animate-pulse" />
+                  <div key={i} className="h-32 bg-gray-200 rounded-catalogue-md animate-pulse" />
                 ))}
               </div>
             ) : sortedMembershipPlans.length > 0 ? (
@@ -771,7 +771,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
             )}
 
             {/* Security Deposit Notice */}
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-catalogue-md">
               <p className="text-xs sm:text-sm text-blue-700">
                 {t("cart.securityDeposit")}
               </p>
@@ -780,7 +780,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
           {/* Subtotal, Total and Checkout Button Section */}
           {items.length > 0 && (
-            <div className="mt-5 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+            <div className="mt-5 bg-gray-50 rounded-catalogue-md p-3 sm:p-4 border border-gray-200">
 
               <div className="flex justify-between items-center pt-3 border-t border-gray-200 mb-3">
                 <span className="text-base sm:text-lg font-semibold text-gray-900">{t("cart.total")}</span>
@@ -812,7 +812,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                   console.log("[CartComponent] Proceeding to checkout (Rent) with items:", items, "Plan:", membershipPlan);
                   setIsCheckoutFormOpen(true);
                 }}
-                className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
+                className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-catalogue-md shadow-md transition-all duration-200 active:scale-[0.98]"
                 size="lg"
               >
                 {t("cart.checkout")}
@@ -860,7 +860,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
       {/* Checkout Button for Buy mode */}
       {items.length > 0 && !isRentMode && (
-        <div className="mt-5 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+        <div className="mt-5 bg-gray-50 rounded-catalogue-md p-3 sm:p-4 border border-gray-200">
           <div className="space-y-1.5 pt-2 mb-3">
             <div className="flex justify-between items-center text-sm text-gray-700">
               <span>{t("cart.subtotalCount", { count: buyModeItemQty })}</span>
@@ -883,7 +883,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
               console.log("[CartComponent] Proceeding to checkout (Buy) with items:", items, "charges:", resolvedAdditionalCharges);
               setIsCheckoutFormOpen(true);
             }}
-            className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
+            className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-catalogue-md shadow-md transition-all duration-200 active:scale-[0.98]"
             size="lg"
           >
             {t("cart.checkout")}

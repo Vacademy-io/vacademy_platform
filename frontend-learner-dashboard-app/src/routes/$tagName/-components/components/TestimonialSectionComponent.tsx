@@ -81,7 +81,7 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect?: string
   const stars = testimonial.rating ? Math.max(0, Math.min(5, Math.round(testimonial.rating))) : 0;
 
   return (
-    <div className={`bg-catalogue-bg border rounded-xl p-6 sm:p-7 transition-all duration-200 ${hoverClass} ${
+    <div className={`bg-catalogue-bg border rounded-catalogue-lg p-6 sm:p-7 transition-all duration-200 ${hoverClass} ${
       testimonial.highlight ? 'border-primary-200 shadow-md ring-1 ring-primary-200' : 'border-catalogue-border-subtle'
     }`}>
       {/* Rating */}

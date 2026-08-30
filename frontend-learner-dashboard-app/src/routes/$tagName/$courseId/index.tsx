@@ -110,7 +110,7 @@ function RouteComponent() {
           </p>
           <button
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            className="px-4 py-2 bg-primary-600 text-white rounded-catalogue-sm hover:bg-primary-700"
           >
             {t("courseDetailsRoute.retry")}
           </button>

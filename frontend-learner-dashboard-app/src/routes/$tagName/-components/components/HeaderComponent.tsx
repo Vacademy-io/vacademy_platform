@@ -461,7 +461,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     sessionStorage.setItem('searchBarOpen', 'false');
                   }
                 }}
-                className="md:hidden p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover flex-shrink-0 transition-colors duration-200"
+                className="md:hidden p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover flex-shrink-0 transition-colors duration-200"
                 aria-label={t("header.toggleMenu")}
               >
                 <div className="relative w-5 h-5 flex flex-col justify-center items-center">
@@ -490,7 +490,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     src={jsonLogoUrl}
                     alt={t("header.logoAlt")}
                     onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                    className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                    className={`max-h-12 md:max-h-16 w-auto object-contain rounded-catalogue-sm transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
                       }`}
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
@@ -535,7 +535,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     <button
                       key={index}
                       onClick={() => handleNavigation(item.route, item.label, openInSameTab)}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isActive
+                      className={`px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${isActive
                         ? 'text-primary-500 bg-primary-50'
                         : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                         }`}
@@ -566,7 +566,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       sessionStorage.setItem('searchBarOpen', 'false');
                     }
                   }}
-                  className="md:hidden p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
+                  className="md:hidden p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
                   aria-label={t("header.toggleMenu")}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -592,7 +592,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         setIsMobileMenuOpen(false);
                       }
                     }}
-                    className="p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
+                    className="p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
                     aria-label={t("header.search")}
                   >
                     <MagnifyingGlass className="w-5 h-5" />
@@ -608,7 +608,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       const currentTagName = pathSegments[0] || tagName;
                       navigate({ to: `/${currentTagName}/cart` });
                     }}
-                    className="relative p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
+                    className="relative p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
                     aria-label={t("header.shoppingCart")}
                   >
                     <ShoppingCart className="w-5 h-5" />
@@ -626,7 +626,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
               {isCourseCatalogeTypeEnabled && !isAuthenticated && (
                 <button
                   onClick={() => navigate({ to: '/login' })}
-                  className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
+                  className="md:hidden px-3 py-1.5 rounded-catalogue-sm text-xs font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
                 >
                   {t("header.login")}
                 </button>
@@ -642,7 +642,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     <SystemAlertsBar />
                     <div className="w-px h-6 bg-primary-200/60 dark:bg-neutral-700"></div>
                     <button
-                      className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
+                      className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-catalogue-sm border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
                       onClick={() => {
                         setSidebarOpen();
                       }}
@@ -655,7 +655,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     <button
                       key={index}
                       onClick={() => handleAuthLinkClick(link)}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
+                      className={`px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${index === 0
                         ? 'bg-primary-500 text-white hover:bg-primary-400'
                         : 'border border-primary-500 text-primary-500 hover:bg-primary-50'
                         }`}
@@ -694,7 +694,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               setIsMobileMenuOpen(false);
                               handleNavigation(item.route, item.label, openInSameTab);
                             }}
-                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                            className={`block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 ${isActive
                               ? 'text-primary-500 bg-primary-50'
                               : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                               }`}
@@ -713,7 +713,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       setIsMobileMenuOpen(false);
                       navigate({ to: '/login' });
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-catalogue-md text-base font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
                   >
                     <span>{t("header.login")}</span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -729,7 +729,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         setIsMobileMenuOpen(false);
                         navigate({ to: '/dashboard' });
                       }}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-catalogue-md text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
                     >
                       <span>{t("header.dashboard")}</span>
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -754,7 +754,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         window.open('https://chat.whatsapp.com/Kvh1fsDcL1GFCBrIveQ8q8', '_blank', 'noopener,noreferrer');
                       }
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-catalogue-text-secondary bg-catalogue-bg-subtle hover:bg-catalogue-interactive-hover border border-catalogue-border transition-colors duration-200"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-catalogue-md text-base font-medium text-catalogue-text-secondary bg-catalogue-bg-subtle hover:bg-catalogue-interactive-hover border border-catalogue-border transition-colors duration-200"
                   >
                     <span className="flex items-center gap-3">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -774,7 +774,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         setIsMobileMenuOpen(false);
                         window.open(catalogueData.globalSettings.communityJoinLink!, '_blank', 'noopener,noreferrer');
                       }}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-whatsapp hover:bg-whatsapp-hover transition-colors duration-200 shadow-sm"
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-catalogue-md text-base font-medium text-white bg-whatsapp hover:bg-whatsapp-hover transition-colors duration-200 shadow-sm"
                     >
                       <span className="flex items-center gap-3">
                         <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -792,7 +792,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   {/* <div className="relative">
                   <button
                     onClick={() => setIsGenreDropdownOpen(!isGenreDropdownOpen)}
-                    className="group w-full flex items-center justify-between px-5 py-3.5 rounded-xl text-base font-medium text-catalogue-text-primary bg-catalogue-bg-subtle hover:bg-catalogue-bg-muted border border-catalogue-border hover:border-catalogue-border-strong transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
+                    className="group w-full flex items-center justify-between px-5 py-3.5 rounded-catalogue-lg text-base font-medium text-catalogue-text-primary bg-catalogue-bg-subtle hover:bg-catalogue-bg-muted border border-catalogue-border hover:border-catalogue-border-strong transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
                   >
                     <span className="flex items-center gap-2">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -817,7 +817,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       isGenreDropdownOpen ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'
                     }`}
                   >
-                    <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="bg-gradient-to-br from-gray-50 to-white rounded-catalogue-lg border border-gray-200 shadow-sm overflow-hidden">
                       {['Poetry', 'Drama', 'Fiction', 'Non-Fiction'].map((genre, index) => (
                         <button
                           key={index}
@@ -866,7 +866,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           setIsMobileMenuOpen(false);
                           handleNavigation(item.route, item.label, openInSameTab);
                         }}
-                        className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                        className={`block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 ${isActive
                           ? 'text-primary-500 bg-primary-50'
                           : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                           }`}
@@ -888,7 +888,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               setIsMobileMenuOpen(false);
                               navigate({ to: '/dashboard' });
                             }}
-                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 text-white bg-primary-500 hover:bg-primary-400`}
+                            className={`block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 text-white bg-primary-500 hover:bg-primary-400`}
                           >
                             {t("header.dashboard")}
                           </button>
@@ -924,7 +924,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                                 navigate({ to: link.route });
                               }
                             }}
-                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
+                            className={`block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 ${index === 0
                               ? 'bg-primary-500 text-white hover:bg-primary-400'
                               : 'text-primary-500 hover:bg-primary-50'
                               }`}

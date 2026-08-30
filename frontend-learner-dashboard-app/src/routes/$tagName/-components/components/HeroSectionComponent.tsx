@@ -245,7 +245,7 @@ const HeroStatChips: React.FC<{
       {visibleChips.slice(0, 4).map((c, i) => (
         <div
           key={`${c.label}-${i}`}
-          className="rounded-xl border border-catalogue-border-subtle bg-catalogue-bg px-4 py-2.5 text-center shadow-sm"
+          className="rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg px-4 py-2.5 text-center shadow-sm"
         >
           <div className="text-lg font-bold leading-tight text-catalogue-text-primary">{c.value}</div>
           <div className="text-xs text-catalogue-text-secondary">{c.label}</div>
@@ -469,7 +469,7 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg")}
       // Author-painted color must beat the token hero surface: the class's
       // opaque gradient stack would otherwise cover the inline color.
       style={{ textAlign, backgroundColor: backgroundColor || undefined, ...(backgroundColor ? { backgroundImage: 'none' } : {}) }} // design-lint-ignore: page-builder background color
@@ -495,7 +495,7 @@ const HeroSectionPlaceholder: React.FC<{
                   isHeroButtonEnabled(left?.button) && left?.button && (
                     <button
                       onClick={() => handleButtonClick(left.button!)}
-                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      className="mt-2 px-8 py-3 rounded-catalogue-md text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                       style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                     >
                       {left.button.text}
@@ -527,7 +527,7 @@ const HeroSectionPlaceholder: React.FC<{
                   isHeroButtonEnabled(left?.button) && left?.button && (
                     <button
                       onClick={() => handleButtonClick(left.button!)}
-                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      className="mt-2 px-8 py-3 rounded-catalogue-md text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                       style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                     >
                       {left.button.text}
@@ -591,7 +591,7 @@ const HeroVideo: React.FC<{ src: string; poster?: string; title?: string }> = ({
       : null;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-xl shadow-md">
+    <div className="relative w-full overflow-hidden rounded-catalogue-lg shadow-md">
       {embedUrl ? (
         <div className="relative w-full aspect-video">
           <iframe
@@ -673,7 +673,7 @@ const HeroCarousel: React.FC<{
       <img
         src={srcs[0]}
         alt={images[0].alt}
-        className="h-auto max-h-96 w-full rounded-xl object-contain shadow-md"
+        className="h-auto max-h-96 w-full rounded-catalogue-lg object-contain shadow-md"
         onError={(e) => {
           e.currentTarget.style.display = "none";
         }}
@@ -682,7 +682,7 @@ const HeroCarousel: React.FC<{
   }
 
   return (
-    <div className="group relative w-full overflow-hidden rounded-xl shadow-md">
+    <div className="group relative w-full overflow-hidden rounded-catalogue-lg shadow-md">
       <div
         className="flex transition-transform duration-500 ease-out"
         style={{ transform: `translateX(-${index * 100}%)` }} // design-lint-ignore: dynamic carousel offset
@@ -873,7 +873,7 @@ const HeroSectionWithState: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg")}
       style={{
         textAlign,
         backgroundColor: hasBgImage ? undefined : (backgroundColor || undefined), // design-lint-ignore: page-builder background color
@@ -925,7 +925,7 @@ const HeroSectionWithState: React.FC<{
                   isHeroButtonEnabled(left?.button) && left?.button && (
                     <button
                       onClick={() => handleButtonClick(left.button!)}
-                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      className="mt-2 px-8 py-3 rounded-catalogue-md text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                       style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                     >
                       {left.button.text}
@@ -968,7 +968,7 @@ const HeroSectionWithState: React.FC<{
                   isHeroButtonEnabled(left?.button) && left?.button && (
                     <button
                       onClick={() => handleButtonClick(left.button!)}
-                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      className="mt-2 px-8 py-3 rounded-catalogue-md text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                       style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                     >
                       {left.button.text}

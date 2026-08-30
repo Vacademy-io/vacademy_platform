@@ -46,7 +46,7 @@ const PINCODE_API = "https://api.postalpincode.in/pincode";
 
 const labelCls = "text-caption font-bold text-gray-900 uppercase flex items-center gap-1.5";
 const inputBase =
-  "w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium";
+  "w-full px-3 py-2 bg-gray-50 border rounded-catalogue-md transition-all focus:bg-white focus:ring-2 text-sm font-medium";
 const inputDefault = "border-gray-200 focus:ring-primary-50 focus:border-primary-400";
 const inputError = "border-red-300 focus:ring-red-50";
 const errorText = "text-red-500 text-caption font-semibold";

@@ -238,7 +238,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const themeSettings = (catalogueData?.globalSettings as any)?.theme;
   const themePreset = themeSettings?.preset || 'default';
-  const themeRadius = themeSettings?.borderRadius || 'rounded';
+  const themeRadius = themeSettings?.borderRadius || 'rounded-catalogue-xs';
   const isDarkMode = (catalogueData?.globalSettings as any)?.mode === 'dark';
 
   useEffect(() => {

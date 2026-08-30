@@ -76,7 +76,7 @@ export const ShareButton: React.FC<ShareButtonProps> = ({
         <Popover open={open} onOpenChange={handleOpen}>
             <PopoverTrigger asChild>
                 <button
-                    className={`flex items-center justify-center rounded-lg bg-white/90 backdrop-blur-sm shadow-sm border border-white/20 hover:bg-white transition-colors ${btnSize} ${className}`}
+                    className={`flex items-center justify-center rounded-catalogue-md bg-white/90 backdrop-blur-sm shadow-sm border border-white/20 hover:bg-white transition-colors ${btnSize} ${className}`}
                     onClick={(e) => e.stopPropagation()}
                     aria-label={t("shareButton.ariaLabel")}
                 >

@@ -804,8 +804,8 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         {Array.from({ length: cols }, (_, i) => (
           <div key={i} className="catalogue-card-elevated p-5">
             {showImage && <div className="catalogue-skeleton-shimmer mb-4 aspect-[16/9] w-full rounded-catalogue-lg" />}
-            <div className="catalogue-skeleton-shimmer mb-2 h-5 w-3/4 rounded" />
-            <div className="catalogue-skeleton-shimmer mb-4 h-4 w-full rounded" />
+            <div className="catalogue-skeleton-shimmer mb-2 h-5 w-3/4 rounded-catalogue-xs" />
+            <div className="catalogue-skeleton-shimmer mb-4 h-4 w-full rounded-catalogue-xs" />
             <div className="catalogue-skeleton-shimmer h-9 w-full rounded-catalogue-md" />
           </div>
         ))}

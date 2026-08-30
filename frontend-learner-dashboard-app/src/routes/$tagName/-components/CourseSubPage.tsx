@@ -282,7 +282,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
           </p>
           <button
             onClick={() => navigate({ to: "/courses" })}
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            className="px-4 py-2 bg-primary-600 text-white rounded-catalogue-sm hover:bg-primary-700"
           >
             {t("courseSubPage.goToCourses", { courses })}
           </button>
@@ -321,7 +321,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
           </p>
           <button
             onClick={() => navigate({ to: `/${tagName}` })}
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            className="px-4 py-2 bg-primary-600 text-white rounded-catalogue-sm hover:bg-primary-700"
           >
             {t("courseSubPage.goBackToCatalogue")}
           </button>
@@ -362,7 +362,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       // would just open the page on an 80px blank strip.
       className={`min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 ${hidesSiteChrome ? '' : 'pt-20'}`}
       data-catalogue-theme={themeSettings?.preset || "default"}
-      data-catalogue-radius={themeSettings?.borderRadius || "rounded"}
+      data-catalogue-radius={themeSettings?.borderRadius || "rounded-catalogue-xs"}
       data-heading-scale={themeSettings?.headingScale || "default"}
       data-catalogue-atmosphere={themeSettings?.atmosphere?.canvas || "flat"}
       data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}

@@ -67,7 +67,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
           {/* RENT Card - NEUTRAL with PRIMARY accent on hover */}
           <div
-            className={`relative overflow-hidden rounded-lg border transition-all duration-200 cursor-pointer ${
+            className={`relative overflow-hidden rounded-catalogue-md border transition-all duration-200 cursor-pointer ${
               hoveredCard === "rent" 
                 ? "border-primary-400 bg-primary-50" 
                 : "border-gray-200 bg-white hover:border-gray-300"
@@ -78,7 +78,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
           >
             <div className="p-3 sm:p-5 flex flex-col items-center text-center">
               {/* Icon - PRIMARY accent */}
-              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg mb-2 sm:mb-3 flex items-center justify-center transition-colors ${
+              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-catalogue-md mb-2 sm:mb-3 flex items-center justify-center transition-colors ${
                 hoveredCard === "rent" ? "bg-primary-500" : "bg-primary-100"
               }`}>
                 <BookOpen className={`h-5 w-5 sm:h-6 sm:w-6 ${hoveredCard === "rent" ? "text-white" : "text-primary-600"}`} />
@@ -94,7 +94,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
               </p>
 
               {/* Button - PRIMARY */}
-              <button className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 transition-colors flex items-center gap-1 sm:gap-2">
+              <button className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-catalogue-sm text-xs sm:text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 transition-colors flex items-center gap-1 sm:gap-2">
                 <span>{rent.buttonLabel}</span>
                 <ArrowRight className={`h-3 w-3 sm:h-4 sm:w-4 transition-transform ${hoveredCard === "rent" ? "translate-x-1" : ""}`} />
               </button>
@@ -103,7 +103,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
 
           {/* BUY Card - NEUTRAL with PRIMARY accent on hover */}
           <div
-            className={`relative overflow-hidden rounded-lg border transition-all duration-200 cursor-pointer ${
+            className={`relative overflow-hidden rounded-catalogue-md border transition-all duration-200 cursor-pointer ${
               hoveredCard === "buy" 
                 ? "border-primary-400 bg-primary-50" 
                 : "border-gray-200 bg-white hover:border-gray-300"
@@ -114,7 +114,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
           >
             <div className="p-3 sm:p-5 flex flex-col items-center text-center">
               {/* Icon - PRIMARY accent */}
-              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg mb-2 sm:mb-3 flex items-center justify-center transition-colors ${
+              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-catalogue-md mb-2 sm:mb-3 flex items-center justify-center transition-colors ${
                 hoveredCard === "buy" ? "bg-primary-500" : "bg-primary-100"
               }`}>
                 <ShoppingBag className={`h-5 w-5 sm:h-6 sm:w-6 ${hoveredCard === "buy" ? "text-white" : "text-primary-600"}`} />
@@ -130,7 +130,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
               </p>
 
               {/* Button - PRIMARY */}
-              <button className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 transition-colors flex items-center gap-1 sm:gap-2">
+              <button className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-catalogue-sm text-xs sm:text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 transition-colors flex items-center gap-1 sm:gap-2">
                 <span>{buy.buttonLabel}</span>
                 <ArrowRight className={`h-3 w-3 sm:h-4 sm:w-4 transition-transform ${hoveredCard === "buy" ? "translate-x-1" : ""}`} />
               </button>
@@ -140,7 +140,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
 
         {/* How it Works Section - NEUTRAL */}
         <div className="mt-4 sm:mt-6">
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-catalogue-md overflow-hidden">
             <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200">
               <h3 className="text-sm sm:text-base font-semibold text-gray-900">{t("buyRentSection.howItWorks")}</h3>
             </div>
@@ -176,7 +176,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
       {showRentConfirmation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           {/* NEUTRAL: Modal background */}
-          <div className="bg-white rounded-lg max-w-sm w-full p-4 relative">
+          <div className="bg-white rounded-catalogue-md max-w-sm w-full p-4 relative">
             <button
               onClick={handleRentCancel}
               className="absolute top-3 end-3 text-gray-400 hover:text-gray-600 transition-colors"
@@ -197,13 +197,13 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
                 {/* PRIMARY ACCENT: Buttons */}
                 <button
                   onClick={handleBuyRedirect}
-                  className="flex-1 px-3 py-2 text-sm font-medium text-primary-600 border border-primary-400 rounded-md hover:bg-primary-50 transition-colors"
+                  className="flex-1 px-3 py-2 text-sm font-medium text-primary-600 border border-primary-400 rounded-catalogue-sm hover:bg-primary-50 transition-colors"
                 >
                   {t("buyRentSection.buyInstead")}
                 </button>
                 <button
                   onClick={handleRentConfirm}
-                  className="flex-1 px-3 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors"
+                  className="flex-1 px-3 py-2 text-sm font-medium text-white bg-primary-500 rounded-catalogue-sm hover:bg-primary-600 transition-colors"
                 >
                   {t("buyRentSection.continue")}
                 </button>

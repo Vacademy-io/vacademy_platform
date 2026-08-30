@@ -119,3 +119,24 @@ def test_the_gate_does_not_invent_a_status_the_frontend_cannot_read():
     assert "record_warning" in gate
     assert 'status="PARTIAL"' not in gate
     assert "mark_failed" not in gate
+
+
+def test_the_binding_shot_error_cap_is_the_emit_not_the_aggregator():
+    """Raising run_state_aggregator's cap did not lengthen a stored shot error.
+
+    The emit clips first: `"error": str(e)[:200]` on the shot_error event, long
+    before the aggregator's own limit applies. 200 characters cut the model's
+    raw output mid-JSON, so a well-formed-but-rejected response and a genuinely
+    truncated one looked identical — that ambiguity produced a wrong diagnosis
+    on a real incident, twice.
+    """
+    import re
+    base = os.path.join(os.path.dirname(__file__), "..", "app", "ai-video-gen-main")
+    pipe = open(os.path.join(base, "automation_pipeline.py")).read()
+    agg = open(os.path.join(base, "run_state_aggregator.py")).read()
+
+    assert "_SHOT_ERROR_KEEP = 4000" in pipe
+    assert not re.search(r'"error": str\(e\)\[:200\]', pipe), "the emit still clips at 200"
+    # Both layers must be generous; the tighter one wins, so neither may regress.
+    assert "_ERROR_KEEP = 4000" in agg
+    assert "[:300]" not in agg

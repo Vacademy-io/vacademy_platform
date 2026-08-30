@@ -843,6 +843,14 @@ def _img_label_for(index: int) -> str:
     return label
 
 
+# How much of a per-shot failure to keep on the emitted event. 200 characters
+# cut the model's raw output mid-JSON, so a well-formed-but-rejected response
+# and a genuinely truncated one looked identical — that ambiguity cost a wrong
+# diagnosis on a real incident. Raising the aggregator's own cap did not help:
+# this emit is the binding one, and it clips before the aggregator ever sees it.
+_SHOT_ERROR_KEEP = 4000
+
+
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
         "script_temperature": 0.5,
@@ -20779,7 +20787,7 @@ class VideoGenerationPipeline:
                             "shot_index": shot_idx,
                             "total_shots": total_shots,
                             "shot_type": shot_type,
-                            "error": str(e)[:200],
+                            "error": str(e)[:_SHOT_ERROR_KEEP],
                             "retrying": False,
                             "attempt": max_attempts,
                             "max_attempts": max_attempts,
@@ -20913,7 +20921,7 @@ class VideoGenerationPipeline:
                         "shot_index": shot_idx,
                         "total_shots": total_shots,
                         "shot_type": shot_type,
-                        "error": str(e)[:200],
+                        "error": str(e)[:_SHOT_ERROR_KEEP],
                         "retrying": True,
                         "attempt": attempt + 1,
                         "max_attempts": max_attempts,

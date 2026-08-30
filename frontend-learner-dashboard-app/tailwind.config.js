@@ -452,18 +452,28 @@ module.exports = {
         "catalogue-xl": "var(--catalogue-radius-xl)",
         "catalogue-2xl": "var(--catalogue-radius-2xl)",
         "catalogue-full": "var(--catalogue-radius-full)",
-        // Bare `rounded` used to fall through to Tailwind's stock 0.25rem
-        // (4px) because DEFAULT was never declared here — 323 usages sitting
-        // at 4px right next to rounded-md's 8px, which was the app's single
-        // most visible radius inconsistency. Anchoring it to the same seed
-        // both fixes that and puts those 323 usages on the corners axis.
-        DEFAULT: "calc(var(--radius) - 2px)",
+        // Scale per docs/design-system/01-foundations.md §4:
+        //   sm = --radius - 4, md = --radius - 2, lg = --radius.
+        // The learner config previously had sm = --radius - 2 and md = --radius,
+        // which made rounded-md and rounded-lg BYTE-IDENTICAL (8px) across 1,494
+        // usages — the distinction developers were reaching for did not exist.
+        //
+        // `rounded` (DEFAULT) was never declared at all, so it fell through to
+        // Tailwind's stock 4px. Anchoring it to --radius - 4 keeps that exact 4px
+        // at the default seed while putting those 323 usages on the corners axis.
+        //
+        // max(0px, ...) is load-bearing, not defensive: the corners axis sets
+        // --radius to 2px on "sharp", where an unclamped calc() would evaluate
+        // negative. A negative border-radius is invalid, so the whole
+        // declaration would be dropped and the element would fall back to
+        // whatever it inherited rather than to a square corner.
+        sm: "max(0px, calc(var(--radius) - 4px))",
+        DEFAULT: "max(0px, calc(var(--radius) - 4px))",
+        md: "max(0px, calc(var(--radius) - 2px))",
         lg: "var(--radius)",
-        md: "calc(var(--radius))",
-        sm: "calc(var(--radius) - 2px)",
         xl: "calc(var(--radius) + 2px)",
-        "3xl": "calc(var(--radius) + 24px)",
         "2xl": "calc(var(--radius) + 4px)",
+        "3xl": "calc(var(--radius) + 24px)",
         // Play (gamified) card + button radius tokens.
         "play-card": "var(--play-radius-card)",
         "play-card-sm": "var(--play-radius-card-sm)",

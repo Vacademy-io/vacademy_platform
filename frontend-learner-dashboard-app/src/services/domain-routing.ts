@@ -2,6 +2,7 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { BASE_URL } from "../constants/urls";
 import { getDomainAndSubdomain } from "../utils/platform-flavor";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import themeData from "@/constants/themes/theme.json";
 
 export interface DomainRoutingResponse {
   instituteId: string;
@@ -71,6 +72,20 @@ export interface CachedInstituteBranding {
   instituteLogoFileId: string | null;
   instituteLogoUrl: string | null;
   instituteThemeCode: string | null;
+  /**
+   * instituteThemeCode resolved to an actual CSS colour (primary-500).
+   *
+   * index.html's pre-bundle splash script cannot import theme.json, and it used
+   * to assign instituteThemeCode straight to `style.background`. That is a theme
+   * CODE ("primary", "holistic", "navy"), not a colour: the invalid ones
+   * silently no-op, and the handful that collide with CSS named colours
+   * (navy/teal/purple/pink/red) painted a completely unrelated shade. Resolving
+   * it here — on the TS side, which can read theme.json — keeps the mapping in
+   * one place instead of duplicating the palette into index.html.
+   *
+   * Custom hex brands (instituteThemeCode starting with "#") pass through.
+   */
+  instituteThemeHex: string | null;
   homeIconClickRoute: string | null;
   // White-label display overrides. `null` / `false` = default behavior.
   hideInstituteName: boolean | null;
@@ -226,6 +241,22 @@ export const getCurrentDomainInfo = async () => {
   return await getDomainAndSubdomain();
 };
 
+/**
+ * Theme code -> primary-500 hex. Returns null for an unknown code so callers can
+ * fall back rather than paint something arbitrary.
+ */
+const resolveThemeHex = (code?: string | null): string | null => {
+  if (!code) return null;
+  if (code.startsWith("#")) return code;
+  const theme = (
+    themeData.themes as ReadonlyArray<{
+      code: string;
+      colors?: { primary?: Record<string, string> };
+    }>
+  ).find((t) => t.code === code);
+  return theme?.colors?.primary?.["500"] ?? null;
+};
+
 const normalizeBranding = (
   branding?: Partial<CachedInstituteBranding> | null
 ): CachedInstituteBranding => ({
@@ -234,6 +265,8 @@ const normalizeBranding = (
   instituteLogoFileId: branding?.instituteLogoFileId ?? null,
   instituteLogoUrl: branding?.instituteLogoUrl ?? null,
   instituteThemeCode: branding?.instituteThemeCode ?? null,
+  instituteThemeHex:
+    branding?.instituteThemeHex ?? resolveThemeHex(branding?.instituteThemeCode),
   homeIconClickRoute: branding?.homeIconClickRoute ?? null,
   hideInstituteName:
     typeof branding?.hideInstituteName === "boolean"

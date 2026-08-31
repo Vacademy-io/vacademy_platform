@@ -8,6 +8,7 @@
         "configureWorkflow": "Configure Workflow",
         "viewLinkedWorkflows": "View Linked Workflows",
         "bookingSettings": "Booking Settings",
+        "shareQrCode": "Share QR Code",
         "apiIntegration": "API Integration",
         "getEmbedCode": "Get Embed Code",
         "delete": "Delete"

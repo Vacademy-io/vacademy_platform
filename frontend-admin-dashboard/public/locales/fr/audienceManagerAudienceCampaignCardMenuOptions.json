@@ -8,6 +8,7 @@
         "configureWorkflow": "Configurer le flux de travail",
         "viewLinkedWorkflows": "Voir les flux de travail liés",
         "bookingSettings": "Paramètres de réservation",
+        "shareQrCode": "Partager le code QR",
         "apiIntegration": "Intégration API",
         "getEmbedCode": "Obtenir le code d'intégration",
         "delete": "Supprimer"

@@ -672,3 +672,48 @@ entity with their own creation flow and do not read this block.
 | [audience-post-submit-settings.ts](src/services/audience-post-submit-settings.ts) | Types, defaults, parse/merge, validation, institute-default fetch/save |
 | [PostSubmitConfigurationEditor.tsx](src/components/audience/PostSubmitConfigurationEditor.tsx) | The one editor UI (single column + Preview dialog), used by both the campaign form and Settings |
 | [AudienceFormSettings.tsx](src/routes/settings/-components/AudienceFormSettings.tsx) | Settings → Lead Settings → Forms |
+
+## 14. Share QR Code
+
+Every campaign card exposes a **QR** action (button in the card footer, and
+**Share QR Code** in the card's ⋮ menu). It opens `ShareQrDialog`: a scannable
+preview, the form link with a copy button, **Download PNG** / **Download SVG**,
+and **Print**.
+
+### 14.1 The QR encodes the long URL on purpose
+
+`createCampaignLink(...)` — the same `/audience-response?instituteId=…&audienceId=…`
+URL the card already shows — is what goes into the symbol. It is deliberately
+**not** routed through the platform shortener.
+
+A short link is revocable: `media_service` exposes `deactivateById`, and
+Settings → General → Short Links carries per-source toggles. A QR that has been
+printed onto standees, flyers or a backdrop cannot be reissued, so anything in
+the middle that somebody can switch off is a live outage waiting to happen.
+Encoding the destination directly means the only way to break the code is to
+delete the campaign itself.
+
+This also holds on the backend side: `AudienceService.getCampaignById` applies
+no status filter and no date comparison, and neither the learner route nor the
+form component reads `start_date` / `end_date` / `status`. The campaign's date
+window is display-only, so the form — and therefore the QR — keeps accepting
+submissions past the end date.
+
+### 14.2 Encoding parameters (don't change these casually)
+
+| Constant | Value | Why |
+|---|---|---|
+| `QR_ERROR_CORRECTION` | `'Q'` | 25% recovery — survives print smudges and a thumb over a corner. `'H'` pushes the URL to version 12 (65×65), and finer modules scan *worse* from a distance. |
+| `QR_MARGIN_MODULES` | `4` | The spec's quiet zone. **qrcode.react defaults this to 0**, which produces a symbol most scanners refuse once it sits on a coloured background. Must be passed on every symbol — preview, PNG, SVG and print. |
+| `QR_DOWNLOAD_PX` | `1024` | A4 at 300dpi. The PNG comes from a separate off-layout `QRCodeCanvas`, not from rasterising the 216px preview. |
+
+The export canvas is collapsed with `size-0 overflow-hidden`, never `hidden`
+(`display:none`), so it is guaranteed to have painted before `toDataURL` reads it.
+
+### 14.3 Key files
+
+| File | Role |
+|---|---|
+| [ShareQrDialog.tsx](src/routes/audience-manager/list/-components/share-qr-dialog/ShareQrDialog.tsx) | The dialog: preview, copy, PNG/SVG download, print sheet |
+| [createCampaignLink.ts](src/routes/audience-manager/list/-utils/createCampaignLink.ts) | Builds the encoded URL (shared with Copy link and the embed code) |
+| [audienceManagerShareQrDialog.json](public/locales/en/audienceManagerShareQrDialog.json) | Catalog (also `ar` / `fr` / `hi`) |

@@ -38,7 +38,12 @@
         "emailSent": "E-mail envoyé",
         "selectWaTemplateFirst": "Veuillez d'abord sélectionner un modèle WhatsApp",
         "whatsappSent": "Message WhatsApp envoyé",
-        "sendFailed": "Échec de l'envoi"
+        "sendFailed": "Échec de l'envoi",
+        "whatsappQueued": "WhatsApp a accepté le message — la livraison est confirmée séparément",
+        "whatsappRejected": "WhatsApp a refusé ce message — il n'a pas été envoyé",
+        "whatsappRejectedWithReason": "WhatsApp a refusé ce message : {{reason}}",
+        "emailRejected": "L'e-mail n'a pas été accepté pour la livraison",
+        "emailRejectedWithReason": "L'e-mail n'a pas été accepté : {{reason}}"
     },
     "emailTemplateStep": {
         "templateLabel": "Modèle",

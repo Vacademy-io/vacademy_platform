@@ -461,7 +461,17 @@ export function IndividualSendDialog({
                     },
                 });
                 setSendResult(result);
-                toast.success(t('toasts.emailSent'));
+                // Same trap as WhatsApp below: a rejected recipient rides back inside a 200.
+                if (result.failed > 0) {
+                    const reason = result.results?.find((r) => !r.success)?.error;
+                    toast.error(
+                        reason
+                            ? t('toasts.emailRejectedWithReason', { reason })
+                            : t('toasts.emailRejected')
+                    );
+                } else {
+                    toast.success(t('toasts.emailSent'));
+                }
             } else {
                 if (!selectedWaTemplate) {
                     toast.error(t('toasts.selectWaTemplateFirst'));
@@ -495,7 +505,20 @@ export function IndividualSendDialog({
                     },
                 });
                 setSendResult(result);
-                toast.success(t('toasts.whatsappSent'));
+                // A per-recipient rejection comes back inside a 200 (failed: 1), so only reading
+                // the promise resolving showed "message sent" for sends the provider refused
+                // outright. And even a clean acceptance is not delivery — WhatsApp confirms that
+                // later on its status webhook — so the success copy promises handover, not arrival.
+                if (result.failed > 0) {
+                    const reason = result.results?.find((r) => !r.success)?.error;
+                    toast.error(
+                        reason
+                            ? t('toasts.whatsappRejectedWithReason', { reason })
+                            : t('toasts.whatsappRejected')
+                    );
+                } else {
+                    toast.success(t('toasts.whatsappQueued'));
+                }
             }
         } catch (err) {
             const msg = err instanceof Error ? err.message : t('toasts.sendFailed');

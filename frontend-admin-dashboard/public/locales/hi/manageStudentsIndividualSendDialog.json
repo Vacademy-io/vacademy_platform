@@ -38,7 +38,12 @@
         "emailSent": "ईमेल भेज दिया गया",
         "selectWaTemplateFirst": "पहले एक व्हाट्सएप टेम्पलेट चुनें",
         "whatsappSent": "व्हाट्सएप संदेश भेज दिया गया",
-        "sendFailed": "भेजने में विफल"
+        "sendFailed": "भेजने में विफल",
+        "whatsappQueued": "व्हाट्सएप ने संदेश स्वीकार कर लिया — डिलीवरी की पुष्टि अलग से होगी",
+        "whatsappRejected": "व्हाट्सएप ने यह संदेश अस्वीकार कर दिया — यह भेजा नहीं गया",
+        "whatsappRejectedWithReason": "व्हाट्सएप ने यह संदेश अस्वीकार कर दिया: {{reason}}",
+        "emailRejected": "ईमेल डिलीवरी के लिए स्वीकार नहीं किया गया",
+        "emailRejectedWithReason": "ईमेल स्वीकार नहीं किया गया: {{reason}}"
     },
     "emailTemplateStep": {
         "templateLabel": "टेम्पलेट",

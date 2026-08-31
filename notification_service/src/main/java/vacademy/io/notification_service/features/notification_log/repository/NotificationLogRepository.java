@@ -1084,6 +1084,37 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
      * have been sent by a path that stores no wamid. The status row itself is saved either way, so
      * nothing is lost.
      */
+    /**
+     * What the provider ended up doing with these messages, keyed by wamid. Exists so a caller that
+     * just sent something can find out whether it ARRIVED — the send response can only report that
+     * the provider accepted it, and the verdict lands a second or two later on the status webhook.
+     * <p>
+     * A message with no row here, or a null deliveryStatus, is still awaiting its webhook; that is
+     * not a failure and must not be rendered as one.
+     */
+    interface DeliveryStatusRow {
+        String getMessageId();
+        String getDeliveryStatus();
+        String getErrorCode();
+        String getErrorMessage();
+        java.sql.Timestamp getReportedAt();
+    }
+
+    @Query(value = """
+            SELECT source_id AS "messageId",
+                   delivery_status AS "deliveryStatus",
+                   delivery_error_code AS "errorCode",
+                   delivery_error_message AS "errorMessage",
+                   delivery_updated_at AS "reportedAt"
+            FROM notification_log
+            WHERE notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              AND source_id = ANY(CAST(:messageIds AS text[]))
+            """, nativeQuery = true)
+    // The literal notification_type (rather than a bound parameter) is what lets the planner use
+    // the partial index idx_nl_source_id_outgoing instead of scanning the table.
+    List<DeliveryStatusRow> findDeliveryStatusByProviderMessageIds(
+            @Param("messageIds") String[] messageIds);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
     @Query(value = """

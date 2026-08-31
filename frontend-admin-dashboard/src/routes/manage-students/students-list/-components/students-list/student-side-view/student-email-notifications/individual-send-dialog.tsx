@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -38,8 +38,8 @@ import {
     TemplateSearchableSelect,
     toTemplateOptions,
 } from '@/components/templates/TemplateSearchableSelect';
-import { sendNotification } from '@/services/unified-send-service';
-import type { UnifiedSendResponse } from '@/services/unified-send-service';
+import { sendNotification, getDeliveryStatus } from '@/services/unified-send-service';
+import type { DeliveryStatus, UnifiedSendResponse } from '@/services/unified-send-service';
 import {
     fetchCustomFieldSetup,
     type CustomFieldSetupItem,
@@ -171,6 +171,13 @@ export function IndividualSendDialog({
     // Send state
     const [isSending, setIsSending] = useState(false);
     const [sendResult, setSendResult] = useState<UnifiedSendResponse | null>(null);
+    // What WhatsApp did with the message AFTER accepting it. The send response cannot know:
+    // acceptance is a queue receipt and the verdict arrives on the status webhook a moment later.
+    const [delivery, setDelivery] = useState<DeliveryStatus | null>(null);
+    const [awaitingDelivery, setAwaitingDelivery] = useState(false);
+    // Bumped on every new send and on close, so a poll that is still in flight cannot write a
+    // verdict into a dialog that has moved on to a different message.
+    const deliveryPollToken = useRef(0);
 
     // Reset on close
     useEffect(() => {
@@ -187,6 +194,9 @@ export function IndividualSendDialog({
             setLiteralValues({});
             setIsSending(false);
             setSendResult(null);
+            setDelivery(null);
+            setAwaitingDelivery(false);
+            deliveryPollToken.current += 1;
         }
     }, [open]);
 
@@ -425,6 +435,37 @@ export function IndividualSendDialog({
         setLiteralValues((prev) => ({ ...prev, [varKey]: text }));
     }, []);
 
+    /**
+     * Follow an accepted WhatsApp message until the provider says what happened to it.
+     *
+     * The send response is a queue receipt: WhatsApp acknowledges the message, then reports the real
+     * outcome on its status webhook a second or two later. Without this the dialog showed a green
+     * tick for messages that were rejected outright (131042 payment issue kills every send on an
+     * account, and looks identical to a healthy send at this point).
+     */
+    const pollDeliveryStatus = useCallback(async (messageId: string) => {
+        const token = ++deliveryPollToken.current;
+        setAwaitingDelivery(true);
+        const deadline = Date.now() + 12000;
+        try {
+            while (Date.now() < deadline && token === deliveryPollToken.current) {
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+                if (token !== deliveryPollToken.current) return;
+                const [status] = await getDeliveryStatus([messageId]);
+                if (token !== deliveryPollToken.current) return;
+                if (!status || status.status === 'PENDING') continue;
+                setDelivery(status);
+                if (status.settled) return;
+            }
+        } catch (err) {
+            // Never let a failed lookup become a claim about delivery — leave the panel saying
+            // "accepted, not confirmed" rather than inventing either outcome.
+            console.warn('Could not confirm WhatsApp delivery status', err);
+        } finally {
+            if (token === deliveryPollToken.current) setAwaitingDelivery(false);
+        }
+    }, []);
+
     const handleSend = useCallback(async () => {
         if (!student || !instituteId) return;
 
@@ -518,6 +559,10 @@ export function IndividualSendDialog({
                     );
                 } else {
                     toast.success(t('toasts.whatsappQueued'));
+                    // Accepted is not delivered. Follow the message for a few seconds so the panel
+                    // can report what WhatsApp actually did instead of a green tick it cannot back up.
+                    const messageId = result.results?.find((r) => r.success)?.messageId;
+                    if (messageId) void pollDeliveryStatus(messageId);
                 }
             }
         } catch (err) {
@@ -537,6 +582,7 @@ export function IndividualSendDialog({
         selectedWaTemplate,
         languageCode,
         interpolate,
+        pollDeliveryStatus,
         t,
     ]);
 
@@ -864,17 +910,40 @@ export function IndividualSendDialog({
 
     const renderReviewStep = () => {
         if (sendResult) {
-            const ok = sendResult.status === 'COMPLETED' || sendResult.accepted > 0;
+            const accepted = sendResult.status === 'COMPLETED' || sendResult.accepted > 0;
+            // For WhatsApp, "accepted" is only the provider taking the message. The outcome comes
+            // from the status webhook, so the panel stays non-committal until it arrives instead of
+            // showing a green tick it cannot back up.
+            const failedOnDelivery = delivery?.status === 'FAILED';
+            const confirmedDelivered =
+                delivery?.status === 'DELIVERED' || delivery?.status === 'READ';
+            const unconfirmed = accepted && channel === 'WHATSAPP' && !confirmedDelivered;
+
+            let heading = t('reviewStep.sendCompleted');
+            if (failedOnDelivery) heading = t('reviewStep.notDelivered');
+            else if (confirmedDelivered) heading = t('reviewStep.delivered');
+            else if (unconfirmed && awaitingDelivery) heading = t('reviewStep.confirmingDelivery');
+            else if (unconfirmed) heading = t('reviewStep.acceptedNotConfirmed');
+            else if (accepted) heading = t('reviewStep.messageSent');
+
             return (
                 <div className="flex flex-col items-center gap-4 py-8">
-                    {ok ? (
-                        <CheckCircle className="size-12 text-green-500" />
-                    ) : (
+                    {failedOnDelivery || !accepted ? (
                         <XCircle className="size-12 text-destructive" />
+                    ) : unconfirmed && awaitingDelivery ? (
+                        <CircleNotch className="size-12 animate-spin text-neutral-400" />
+                    ) : unconfirmed ? (
+                        <CheckCircle className="size-12 text-neutral-400" />
+                    ) : (
+                        <CheckCircle className="size-12 text-green-500" />
                     )}
-                    <h3 className="text-lg font-semibold">
-                        {ok ? t('reviewStep.messageSent') : t('reviewStep.sendCompleted')}
-                    </h3>
+                    <h3 className="text-lg font-semibold">{heading}</h3>
+                    {failedOnDelivery && (
+                        <p className="max-w-sm text-center text-sm text-destructive">
+                            {delivery?.errorMessage}
+                            {delivery?.errorCode ? ` (${delivery.errorCode})` : ''}
+                        </p>
+                    )}
                     <div className="w-full max-w-sm space-y-2 rounded-md border p-4 text-sm">
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">
@@ -898,6 +967,24 @@ export function IndividualSendDialog({
                                 {sendResult.failed}
                             </span>
                         </div>
+                        {accepted && channel === 'WHATSAPP' && (
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground">
+                                    {t('reviewStep.deliveryLabel')}
+                                </span>
+                                <span
+                                    className={`font-medium ${
+                                        failedOnDelivery
+                                            ? 'text-destructive'
+                                            : confirmedDelivered
+                                              ? 'text-green-600'
+                                              : 'text-muted-foreground'
+                                    }`}
+                                >
+                                    {delivery?.status ?? t('reviewStep.deliveryPending')}
+                                </span>
+                            </div>
+                        )}
                     </div>
                     <Button variant="outline" onClick={() => onOpenChange(false)} className="mt-2">
                         {t('reviewStep.close')}

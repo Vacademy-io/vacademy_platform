@@ -138,8 +138,12 @@ interface CreateCampaignFormProps {
 
 export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSuccess, campaign }) => {
     const { t } = useTranslation('audienceManagerCreateCampaignForm');
-    const { t: tUpdateAudienceCampaign } = useTranslation('audienceManagerUseUpdateAudienceCampaign');
-    const { t: tCreateAudienceCampaign } = useTranslation('audienceManagerUseCreateAudienceCampaign');
+    const { t: tUpdateAudienceCampaign } = useTranslation(
+        'audienceManagerUseUpdateAudienceCampaign'
+    );
+    const { t: tCreateAudienceCampaign } = useTranslation(
+        'audienceManagerUseCreateAudienceCampaign'
+    );
     const { instituteDetails } = useInstituteDetailsStore();
     const isEditMode = Boolean(campaign);
     const editingCampaignId = useMemo(() => getCampaignIdentifier(campaign), [campaign]);
@@ -889,9 +893,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         <form onSubmit={onFormSubmit} className="w-full min-w-0 space-y-6 overflow-hidden">
             {isStatusActive && latestCampaignShareLink && (
                 <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
-                    <p className="text-sm font-semibold text-primary-700">
-                        {t('shareLink.ready')}
-                    </p>
+                    <p className="text-sm font-semibold text-primary-700">{t('shareLink.ready')}</p>
                     <CampaignLink
                         presetLink={latestCampaignShareLink}
                         className="mt-2"
@@ -1010,7 +1012,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 />
 
                 {/* Share Campaign Analytics */}
-                <div className="flex items-center justify-between gap-2 px-2 py-2">
+                <div className="flex items-center justify-between gap-2 p-2">
                     <div className="flex items-center gap-2">
                         <label className="block text-sm font-semibold text-neutral-700">
                             {t('shareAnalytics.label')}
@@ -1350,6 +1352,17 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                             watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
                         }
                         previewCampaignDescription={watch('description') || ''}
+                        previewCampaignObjective={watch('campaign_objective') || ''}
+                        previewInstituteName={instituteDetails?.institute_name || 'Your Institute'}
+                        // The campaign's own fields, so the preview shows real
+                        // labels instead of placeholder rows. Deleted rows are
+                        // excluded because they are not sent to the API either.
+                        previewFields={(watch('custom_fields') || [])
+                            .filter((field) => field?.status !== 'DELETED')
+                            .map((field) => ({
+                                name: field?.name || '',
+                                required: Boolean(field?.isRequired),
+                            }))}
                         title={t('formAppearance.title')}
                         description={t('formAppearance.description')}
                     />

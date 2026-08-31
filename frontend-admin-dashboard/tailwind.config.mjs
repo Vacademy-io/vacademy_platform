@@ -35,6 +35,11 @@ module.exports = {
                 // AI intake chat surface inside the create-page dialog — a
                 // named token because the design system bans arbitrary values.
                 'dialog-chat': 'min(65vh, 42rem)',
+                // Sandboxed live previews of the public audience form. Named for
+                // the same reason: the inline one sits beside the controls, the
+                // dialog one is the "show me properly" view.
+                'preview-inline': '22rem',
+                'preview-dialog': 'min(72vh, 44rem)',
             },
             maxHeight: {
                 // Tall dialogs that scroll their own body (section-variant

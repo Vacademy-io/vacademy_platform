@@ -17,11 +17,15 @@ interface ReplyProps {
     raiserUserId?: string;
     /** Viewer's user id, resolved once by the panel (not per reply). */
     viewerUserId?: string | null;
-    /** Names + avatars for the whole thread, fetched in one batch by the panel. */
-    authors: DoubtAuthorMap;
+    /**
+     * Names + avatars for the whole thread, fetched in one batch by the panel. Optional so a
+     * caller that has no author map (e.g. the "My Queries" list) degrades to the name carried on
+     * the reply itself instead of throwing on `authors[reply.user_id]`.
+     */
+    authors?: DoubtAuthorMap;
 }
 
-export const Reply = ({ reply, raiserUserId, viewerUserId, authors }: ReplyProps) => {
+export const Reply = ({ reply, raiserUserId, viewerUserId, authors = {} }: ReplyProps) => {
     const { t, i18n } = useTranslation("studyContent");
     const [showNested, setShowNested] = useState<boolean>(true);
 

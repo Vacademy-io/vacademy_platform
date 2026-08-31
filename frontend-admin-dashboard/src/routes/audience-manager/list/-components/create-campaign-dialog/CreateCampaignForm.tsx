@@ -46,6 +46,13 @@ import {
     validatePostSubmitConfiguration,
     type AudiencePostSubmitConfiguration,
 } from '@/services/audience-post-submit-settings';
+import FormAppearanceEditor from '@/components/audience/FormAppearanceEditor';
+import {
+    applyFormAppearance,
+    DEFAULT_FORM_APPEARANCE,
+    parseFormAppearance,
+    validateFormAppearance,
+} from '@/services/audience-form-appearance';
 
 const parseEmailsFromCsv = (value?: string | null) => {
     if (!value) return [];
@@ -109,6 +116,10 @@ const buildInitialFormValues = (
         // parse* tolerates a missing/legacy/unparsable blob and returns defaults,
         // so campaigns created before this feature still open with a full card.
         postSubmitConfiguration: parsePostSubmitConfiguration(campaign.setting_json),
+        // Same blob, different key. Also tolerant of a missing/legacy/unparsable
+        // setting_json, so campaigns created before this feature open on the
+        // shipped defaults rather than a blank card.
+        formAppearance: parseFormAppearance(campaign.setting_json),
         default_initial_score:
             typeof campaign.default_initial_score === 'number'
                 ? campaign.default_initial_score
@@ -716,6 +727,16 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             return;
         }
 
+        // Same reasoning for the cover image — a broken src only shows itself on
+        // the public form, after the admin has closed this dialog.
+        const appearanceError = validateFormAppearance(
+            data.formAppearance ?? DEFAULT_FORM_APPEARANCE
+        );
+        if (appearanceError) {
+            toast.error(appearanceError);
+            return;
+        }
+
         // Flush any half-typed email in the Team Notifications box into the
         // committed list before building the payload. Returns the final list
         // synchronously so we don't depend on React state having re-rendered
@@ -786,10 +807,15 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             send_respondent_email: Boolean(data.send_respondent_email),
             json_web_metadata: data.json_web_metadata?.trim() || '',
             // Merge into (not replace) the existing blob — setting_json also
-            // carries other per-campaign settings the backend writes.
-            setting_json: applyPostSubmitConfiguration(
-                campaignData?.setting_json,
-                data.postSubmitConfiguration ?? DEFAULT_POST_SUBMIT_CONFIGURATION
+            // carries other per-campaign settings the backend writes. Chained,
+            // because each helper spreads what it was given and overwrites only
+            // its own key.
+            setting_json: applyFormAppearance(
+                applyPostSubmitConfiguration(
+                    campaignData?.setting_json,
+                    data.postSubmitConfiguration ?? DEFAULT_POST_SUBMIT_CONFIGURATION
+                ),
+                data.formAppearance ?? DEFAULT_FORM_APPEARANCE
             ),
             created_by_user_id: userId,
             start_date_local: formatDateTimeForPayload(data.start_date_local, false),
@@ -1300,6 +1326,32 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                             watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
                         }
                         description={t('postSubmit.description')}
+                    />
+                )}
+            />
+
+            {/* Form Appearance — how the public response form looks while it is
+                being filled in. Sits above the post-submit card because it is
+                about the form itself, not what follows it. */}
+            <Controller
+                name="formAppearance"
+                control={control}
+                render={({ field }) => (
+                    <FormAppearanceEditor
+                        // `?? DEFAULT` guards the window between a form.reset()
+                        // and the value landing — the editor is fully controlled
+                        // and would crash on an undefined value.
+                        value={field.value ?? DEFAULT_FORM_APPEARANCE}
+                        onChange={field.onChange}
+                        // Collapsed by default: the create form must look the way
+                        // it always did for admins who don't need this.
+                        collapsible
+                        previewCampaignName={
+                            watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
+                        }
+                        previewCampaignDescription={watch('description') || ''}
+                        title={t('formAppearance.title')}
+                        description={t('formAppearance.description')}
                     />
                 )}
             />

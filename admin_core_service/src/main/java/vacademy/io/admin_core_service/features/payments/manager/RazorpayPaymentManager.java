@@ -289,8 +289,13 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
 
             JSONObject rec = new JSONObject();
             rec.put("email", request.getEmail());
-            if (StringUtils.hasText(request.getVendorId())) {
-                rec.put("contact", request.getVendorId());
+            // The payer's phone number -- NOT vendorId, which is the invite's gateway
+            // id ("RAZORPAY") and is rejected as an invalid contact.
+            String contact = request.getRazorpayRequest() != null
+                    ? request.getRazorpayRequest().getContact()
+                    : null;
+            if (StringUtils.hasText(contact)) {
+                rec.put("contact", contact);
             }
             rec.put("amount", amountInPaise);
             rec.put("currency", request.getCurrency().toUpperCase());

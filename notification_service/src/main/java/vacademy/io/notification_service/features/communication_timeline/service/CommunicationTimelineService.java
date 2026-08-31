@@ -340,15 +340,38 @@ public class CommunicationTimelineService {
         // for structured template sends; other payload shapes keep the legacy parse above, and the
         // send-failure surfaces as a FAILED status instead of the misleading default DELIVERED.
         String status = "DELIVERED"; // WA messages in log are typically already delivered
+        // Whether the SEND itself was refused (no message ever left), as opposed to a message the
+        // provider took and later rejected. Only the former makes the send entry of the timeline a
+        // failure; the latter is a second event after a real handover.
+        boolean sendRefusedAtHandover = false;
         WhatsAppTemplateRenderer.Rendered rendered =
                 templateRenderer.render(nl, nl.getInstituteId(), templateCache);
         if (rendered != null) {
             if (rendered.templateName != null) templateName = rendered.templateName;
             if (rendered.body != null) messageBody = rendered.body;
-            if ("FAILED".equals(rendered.deliveryStatus)) status = "FAILED";
+            if ("FAILED".equals(rendered.deliveryStatus)) {
+                status = "FAILED";
+                sendRefusedAtHandover = true;
+            }
             // Surface the header media (image/video/document) so the UI can display the attachment.
             builder.headerType(rendered.headerType);
             builder.headerMediaUrl(rendered.headerMediaUrl);
+        }
+
+        // The optimistic default above assumes acceptance equals arrival. It does not: a provider
+        // 2xx is a queue receipt, and the outcome lands later on the status webhook — which now
+        // stamps it here. When the provider has actually spoken, say what it said; when it hasn't
+        // (null), keep the historical assumption so nothing that reads this API shifts underneath it.
+        String failureDetail = null;
+        if (nl.getDeliveryStatus() != null) {
+            status = nl.getDeliveryStatus();
+            if ("FAILED".equals(status)) {
+                failureDetail = nl.getDeliveryErrorMessage() != null
+                        ? nl.getDeliveryErrorMessage() : "Not delivered";
+                if (nl.getDeliveryErrorCode() != null) {
+                    failureDetail = failureDetail + " (" + nl.getDeliveryErrorCode() + ")";
+                }
+            }
         }
 
         String title = templateName != null ? templateName : truncate(body, 60);
@@ -359,14 +382,29 @@ public class CommunicationTimelineService {
         builder.status(status);
         builder.metadata(metadata.isEmpty() ? null : metadata);
 
-        // Simple status timeline for WA
-        String outboundStatus = "FAILED".equals(status) ? "FAILED" : "SENT";
+        // Simple status timeline for WA. This entry is the SEND, so it keeps its pre-existing
+        // meaning: FAILED only when the provider refused to take the message at all. A message that
+        // was handed over and rejected afterwards still genuinely left at this timestamp, and its
+        // rejection is the separate entry below — collapsing the two would lose the handover.
+        String outboundStatus = sendRefusedAtHandover ? "FAILED" : "SENT";
         List<UnifiedCommunicationDTO.StatusEvent> timeline = new ArrayList<>();
         timeline.add(UnifiedCommunicationDTO.StatusEvent.builder()
                 .status("INBOUND".equals(direction) ? "RECEIVED" : outboundStatus)
                 .timestamp(nl.getNotificationDate())
                 .details(body)
                 .build());
+
+        // Second entry: what the provider reported afterwards. Kept separate from the send entry so
+        // the timeline shows both facts — we handed it over at T, the provider rejected it at T+1s —
+        // which is the whole story a support agent needs and could not previously see anywhere.
+        if (nl.getDeliveryStatus() != null && !"INBOUND".equals(direction)) {
+            timeline.add(UnifiedCommunicationDTO.StatusEvent.builder()
+                    .status(nl.getDeliveryStatus())
+                    .timestamp(nl.getDeliveryUpdatedAt() != null
+                            ? nl.getDeliveryUpdatedAt() : nl.getNotificationDate())
+                    .details(failureDetail != null ? failureDetail : "Reported by WhatsApp")
+                    .build());
+        }
         builder.statusTimeline(timeline);
     }
 

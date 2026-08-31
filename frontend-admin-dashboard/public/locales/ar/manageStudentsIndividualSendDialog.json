@@ -38,7 +38,12 @@
         "emailSent": "تم إرسال البريد الإلكتروني",
         "selectWaTemplateFirst": "يرجى اختيار قالب واتساب أولاً",
         "whatsappSent": "تم إرسال رسالة واتساب",
-        "sendFailed": "تعذر الإرسال"
+        "sendFailed": "تعذر الإرسال",
+        "whatsappQueued": "قبل واتساب الرسالة — يتم تأكيد التسليم بشكل منفصل",
+        "whatsappRejected": "رفض واتساب هذه الرسالة — لم يتم إرسالها",
+        "whatsappRejectedWithReason": "رفض واتساب هذه الرسالة: {{reason}}",
+        "emailRejected": "لم يتم قبول البريد الإلكتروني للتسليم",
+        "emailRejectedWithReason": "لم يتم قبول البريد الإلكتروني: {{reason}}"
     },
     "emailTemplateStep": {
         "templateLabel": "القالب",

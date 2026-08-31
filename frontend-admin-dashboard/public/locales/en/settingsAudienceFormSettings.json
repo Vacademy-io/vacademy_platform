@@ -12,5 +12,11 @@
         "restoreDefaults": "Restore Defaults",
         "saving": "Saving…",
         "saveChanges": "Save Changes"
+    },
+    "formAppearance": {
+        "title": "Form Appearance",
+        "description": "Advanced. Lets each campaign restyle its public response form — layout, colours, wording, and custom HTML/CSS.",
+        "toggleLabel": "Allow campaigns to restyle their form",
+        "toggleHelp": "Off: every campaign uses the standard form design. On: a Form Appearance card appears when creating or editing a campaign."
     }
 }

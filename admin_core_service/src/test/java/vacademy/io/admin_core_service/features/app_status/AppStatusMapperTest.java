@@ -63,6 +63,71 @@ class AppStatusMapperTest {
     }
 
     @Nested
+    @DisplayName("store id and release track")
+    class AppIdAndTrack {
+
+        private static AppStatusResponse.PlatformStatus platformOf(String platform, String fields) {
+            JsonNode record = record("{"
+                    + "\"id\":\"app-1\",\"basics\":{\"packageName\":\"com.hcca.app\"},"
+                    + "\"platforms\":{\"" + platform + "\":{\"enabled\":true,\"status\":\"LIVE\""
+                    + (fields.isEmpty() ? "" : ",\"fields\":" + fields)
+                    + "}}}");
+            List<AppStatusResponse.PlatformStatus> platforms =
+                    AppStatusMapper.toRegisteredApp(record).getPlatforms();
+            assertEquals(1, platforms.size());
+            return platforms.get(0);
+        }
+
+        @Test
+        @DisplayName("iOS reports its own bundle id, not the record's Android package name")
+        void iosUsesBundleId() {
+            assertEquals("io.hcca.app",
+                    platformOf("IOS", "{\"bundle_id\":\"io.hcca.app\"}").getAppId());
+        }
+
+        @Test
+        @DisplayName("Android reports its package name")
+        void androidUsesPackageName() {
+            assertEquals("com.hcca.app",
+                    platformOf("ANDROID", "{\"package_name\":\"com.hcca.app\"}").getAppId());
+        }
+
+        @Test
+        @DisplayName("Windows reports its package identity")
+        void windowsUsesPackageIdentity() {
+            assertEquals("12345Vidyayatan.HCCA",
+                    platformOf("WINDOWS", "{\"package_identity\":\"12345Vidyayatan.HCCA\"}").getAppId());
+        }
+
+        @Test
+        @DisplayName("a platform with no id of its own falls back to the record's package name")
+        void fallsBackToBasics() {
+            assertEquals("com.hcca.app", platformOf("ANDROID", "").getAppId());
+        }
+
+        @Test
+        @DisplayName("the release track comes through verbatim — the catalogue owns the wording")
+        void trackPassesThrough() {
+            assertEquals("Closed testing",
+                    platformOf("ANDROID", "{\"release_track\":\"Closed testing\"}").getTrack());
+        }
+
+        @Test
+        @DisplayName("a track nobody recorded is empty, never guessed from the status")
+        void trackNotRecorded() {
+            assertEquals("", platformOf("ANDROID", "{\"package_name\":\"com.hcca.app\"}").getTrack());
+        }
+
+        @Test
+        @DisplayName("a record written before platforms had fields at all still maps")
+        void legacyRecordWithoutFields() {
+            AppStatusResponse.PlatformStatus platform = platformOf("ANDROID", "");
+            assertEquals("", platform.getTrack());
+            assertEquals("com.hcca.app", platform.getAppId());
+        }
+    }
+
+    @Nested
     @DisplayName("which platforms are shown at all")
     class PlatformSelection {
 

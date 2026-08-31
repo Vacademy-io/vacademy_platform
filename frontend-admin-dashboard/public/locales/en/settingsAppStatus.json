@@ -31,5 +31,11 @@
         "submittedOn": "Submitted {{date}}",
         "releaseNotes": "What's new",
         "availableGeneric": "A newer build is ready and not on the store yet."
+    },
+    "ota": {
+        "label": "App content (OTA)",
+        "publishedOn": "published {{date}}",
+        "minNativeVersion": "needs app version {{version}} or newer",
+        "sharedBundle": "shared bundle, not built for your app"
     }
 }

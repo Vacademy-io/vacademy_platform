@@ -7,12 +7,15 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.app_status.client.CommunityAppRegistryClient;
 import vacademy.io.admin_core_service.features.app_status.dto.AppStatusResponse;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.ota_update.entity.OtaBundleVersion;
+import vacademy.io.admin_core_service.features.ota_update.service.OtaUpdateService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ public class AppStatusService {
     private static final String ROLE_NAME_ADMIN = "ADMIN";
 
     private final CommunityAppRegistryClient communityAppRegistryClient;
+    private final OtaUpdateService otaUpdateService;
     private final InstituteRepository instituteRepository;
     private final UserRoleRepository userRoleRepository;
 
@@ -39,12 +43,54 @@ public class AppStatusService {
             if (record == null || !record.isObject()) {
                 continue;
             }
-            apps.add(AppStatusMapper.toRegisteredApp(record));
+            AppStatusResponse.RegisteredApp app = AppStatusMapper.toRegisteredApp(record);
+            attachOtaBundles(app);
+            apps.add(app);
         }
 
         return AppStatusResponse.builder()
                 .instituteId(instituteId)
                 .apps(apps)
+                .build();
+    }
+
+    /**
+     * Fills in what each platform is running over the air.
+     *
+     * <p>The store version is the shell; the OTA bundle is the code inside it, and asking about a
+     * white-label app's version without it answers the wrong question — a shell can sit on the
+     * store for months while the bundle changes weekly, and the difference between "your app is on
+     * 1.0.4" and "your app is running a bundle from June that was never built for you" is the whole
+     * point of showing it.
+     *
+     * <p>Never fatal: the registry half of this screen is worth showing on its own, so a failure
+     * here leaves {@code ota} null rather than taking the settings page down with it.
+     */
+    private void attachOtaBundles(AppStatusResponse.RegisteredApp app) {
+        if (app.getPlatforms() == null) {
+            return;
+        }
+        for (AppStatusResponse.PlatformStatus platform : app.getPlatforms()) {
+            try {
+                Optional<OtaBundleVersion> served =
+                        otaUpdateService.resolveServedBundle(platform.getPlatform(), platform.getAppId());
+                served.ifPresent(bundle -> platform.setOta(toOtaBundle(bundle)));
+            } catch (Exception e) {
+                log.warn("[AppStatus] OTA lookup failed for appId={} platform={}: {}",
+                        platform.getAppId(), platform.getPlatform(), e.getMessage());
+            }
+        }
+    }
+
+    private AppStatusResponse.OtaBundle toOtaBundle(OtaBundleVersion bundle) {
+        String targets = bundle.getTargetAppIds();
+        return AppStatusResponse.OtaBundle.builder()
+                .version(bundle.getVersion())
+                .publishedAt(bundle.getCreatedAt() == null ? "" : bundle.getCreatedAt().toString())
+                .releaseNotes(bundle.getReleaseNotes() == null ? "" : bundle.getReleaseNotes())
+                .minNativeVersion(bundle.getMinNativeVersion() == null ? "" : bundle.getMinNativeVersion())
+                .forceUpdate(Boolean.TRUE.equals(bundle.getForceUpdate()))
+                .sharedBundle(targets == null || targets.isBlank())
                 .build();
     }
 

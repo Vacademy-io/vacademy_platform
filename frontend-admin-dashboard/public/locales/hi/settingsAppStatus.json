@@ -31,5 +31,11 @@
         "submittedOn": "{{date}} को भेजा गया",
         "releaseNotes": "इस अपडेट में नया",
         "availableGeneric": "नया बिल्ड तैयार है और अभी स्टोर पर नहीं आया है।"
+    },
+    "ota": {
+        "label": "ऐप कॉन्टेंट (OTA)",
+        "publishedOn": "{{date}} को प्रकाशित",
+        "minNativeVersion": "ऐप वर्शन {{version}} या उससे नया चाहिए",
+        "sharedBundle": "साझा बंडल, आपके ऐप के लिए नहीं बनाया गया"
     }
 }

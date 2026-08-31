@@ -31,5 +31,11 @@
         "submittedOn": "Soumise le {{date}}",
         "releaseNotes": "Nouveautés",
         "availableGeneric": "Une version plus récente est prête et n'est pas encore sur le store."
+    },
+    "ota": {
+        "label": "Contenu de l'app (OTA)",
+        "publishedOn": "publié le {{date}}",
+        "minNativeVersion": "nécessite la version {{version}} ou ultérieure",
+        "sharedBundle": "bundle partagé, pas conçu pour votre app"
     }
 }

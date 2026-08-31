@@ -112,7 +112,13 @@
         "variablesLabel": "Variables",
         "empty": "(empty)",
         "sending": "Sending...",
-        "sendTo": "Send to {{name}}"
+        "sendTo": "Send to {{name}}",
+        "delivered": "Delivered",
+        "notDelivered": "Not delivered",
+        "confirmingDelivery": "Confirming delivery…",
+        "acceptedNotConfirmed": "Accepted by WhatsApp",
+        "deliveryLabel": "Delivery",
+        "deliveryPending": "Awaiting confirmation"
     },
     "footer": {
         "back": "Back",

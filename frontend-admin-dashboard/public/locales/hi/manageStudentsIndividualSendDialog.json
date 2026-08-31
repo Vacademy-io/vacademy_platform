@@ -112,7 +112,13 @@
         "variablesLabel": "वेरिएबल",
         "empty": "(खाली)",
         "sending": "भेजा जा रहा है...",
-        "sendTo": "{{name}} को भेजें"
+        "sendTo": "{{name}} को भेजें",
+        "delivered": "डिलीवर हो गया",
+        "notDelivered": "डिलीवर नहीं हुआ",
+        "confirmingDelivery": "डिलीवरी की पुष्टि हो रही है…",
+        "acceptedNotConfirmed": "व्हाट्सएप ने स्वीकार किया",
+        "deliveryLabel": "डिलीवरी",
+        "deliveryPending": "पुष्टि की प्रतीक्षा"
     },
     "footer": {
         "back": "पीछे",

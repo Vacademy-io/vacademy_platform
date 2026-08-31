@@ -112,7 +112,13 @@
         "variablesLabel": "Variables",
         "empty": "(vide)",
         "sending": "Envoi en cours...",
-        "sendTo": "Envoyer à {{name}}"
+        "sendTo": "Envoyer à {{name}}",
+        "delivered": "Remis",
+        "notDelivered": "Non remis",
+        "confirmingDelivery": "Confirmation de la remise…",
+        "acceptedNotConfirmed": "Accepté par WhatsApp",
+        "deliveryLabel": "Remise",
+        "deliveryPending": "En attente de confirmation"
     },
     "footer": {
         "back": "Retour",

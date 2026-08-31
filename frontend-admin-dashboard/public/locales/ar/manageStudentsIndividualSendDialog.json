@@ -112,7 +112,13 @@
         "variablesLabel": "المتغيرات",
         "empty": "(فارغ)",
         "sending": "جارٍ الإرسال...",
-        "sendTo": "إرسال إلى {{name}}"
+        "sendTo": "إرسال إلى {{name}}",
+        "delivered": "تم التسليم",
+        "notDelivered": "لم يتم التسليم",
+        "confirmingDelivery": "جارٍ تأكيد التسليم…",
+        "acceptedNotConfirmed": "قبله واتساب",
+        "deliveryLabel": "التسليم",
+        "deliveryPending": "في انتظار التأكيد"
     },
     "footer": {
         "back": "رجوع",

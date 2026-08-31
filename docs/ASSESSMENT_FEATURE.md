@@ -531,6 +531,76 @@ GIN index on `source_meta`.
 
 ---
 
+## 6A. Automatic AI evaluation on submit
+
+AI evaluation (the "copy-check" pipeline in `docs/ai_tools/ai_evaluation.md`) already
+existed end to end. What was missing was a trigger other than a teacher clicking
+**Evaluate with AI** on the submissions table.
+
+### 6A.1 Turning it on
+
+Step 1 of the wizard has an **Evaluate submissions with AI** toggle, **off by default**.
+It maps to two nullable columns added in `V43`:
+
+| Column | Meaning |
+|---|---|
+| `assessment.ai_evaluation_enabled` | NULL/false = off. Every assessment created before V43 reads NULL, so none of them start spending on their own |
+| `assessment.ai_evaluation_model` | Preferred model. NULL falls back to the ai_service default |
+
+This is **independent of `evaluation_type`**. That field decides how the AUTO scorer treats
+the paper; this one decides whether the AI grader is additionally queued on submit.
+
+### 6A.2 Enqueue, then poll
+
+```
+learner submits
+   -> AiEvaluationSubmissionEnqueuer.enqueueIfEnabled()   (REQUIRES_NEW, never throws)
+        -> INSERT ai_evaluation_process (status = PENDING)
+                                    |
+   AiEvaluationQueuePoller (every 15s, on every replica)
+        -> claimPendingJobs()  single atomic UPDATE ... FOR UPDATE SKIP LOCKED
+        -> AiEvaluationAsyncService.evaluateAttemptAsync()   [same worker as the manual path]
+                                    |
+        -> callbacks -> teacher review -> Release Result -> learner sees marks
+```
+
+Why the split: the job belongs to a **row in the database**, not to whichever pod served
+the submit. A deploy or crash right after submission does not lose anybody's grading.
+
+**The claim is a single UPDATE, not a read-then-write.** Prod runs several replicas and
+they all poll; with a SELECT followed by a separate UPDATE, two pods routinely read the
+same PENDING row and both start grading — and since evaluation is metered per graded
+question, that means **charging the institute twice for one submission**.
+
+### 6A.3 Safety properties
+
+- **Opt-in.** NULL means off; existing assessments are untouched.
+- **Never breaks a submission.** `REQUIRES_NEW` plus a catch-all: a submission that
+  succeeded is never reported as failed because grading could not be queued.
+- **Idempotent per attempt.** The learner client retries submit 3x with backoff and submit
+  is not idempotent, so an in-flight check stops a flaky network paying repeatedly.
+- **Two kill switches.** `assessment.ai-evaluation.on-submit-enabled` (stop queueing) and
+  `assessment.ai-evaluation.poller-enabled` (stop draining). Neither affects the
+  teacher-triggered path.
+- **Nothing reaches a learner automatically.** The existing review-and-release gates are
+  unchanged: AI drafts, a teacher approves, a teacher releases.
+
+### 6A.4 Settings
+
+| Property | Default | Notes |
+|---|---|---|
+| `assessment.ai-evaluation.on-submit-enabled` | `true` | Queue on submit |
+| `assessment.ai-evaluation.poller-enabled` | **`false`** | Drain the queue. Off so this can ship and be watched before it spends |
+| `assessment.ai-evaluation.poller-interval-ms` | `15000` | |
+| `assessment.ai-evaluation.poller-batch-size` | `5` | Small: each job is a multi-minute OCR+LLM pipeline on a shared pool |
+| `assessment.ai-evaluation.claim-stale-minutes` | `15` | A claim older than this is re-claimable |
+
+> Note: the existing `AiEvaluationStaleJobSweeper` treats `PENDING` as non-terminal and
+> fails it after 30 minutes. With the poller enabled a job leaves PENDING within seconds,
+> so this only bites when nothing is draining the queue — which is the correct signal.
+
+---
+
 ## 7. Key File Index
 
 ### Backend

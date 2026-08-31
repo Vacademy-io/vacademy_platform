@@ -9,6 +9,7 @@ interface BasicInfoState {
     durationDistribution?: string;
     evaluationType?: string;
     resultType?: string;
+    aiEvaluationEnabled?: boolean;
     raiseReattemptRequest?: boolean;
     raiseTimeIncreaseRequest?: boolean;
     status?: string;
@@ -35,6 +36,7 @@ const initialState: Omit<BasicInfoState, 'setBasicInfo' | 'getBasicInfo' | 'rese
     durationDistribution: undefined,
     evaluationType: undefined,
     resultType: undefined,
+    aiEvaluationEnabled: undefined,
     raiseReattemptRequest: undefined,
     raiseTimeIncreaseRequest: undefined,
     status: undefined,

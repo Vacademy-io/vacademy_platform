@@ -15,9 +15,12 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { MyButton } from '@/components/design-system/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import PostSubmitConfigurationEditor from '@/components/audience/PostSubmitConfigurationEditor';
 import {
-    AudiencePostSubmitConfiguration,
+    AudienceFormSettings as AudienceFormSettingsShape,
+    DEFAULT_AUDIENCE_FORM_SETTINGS,
     DEFAULT_POST_SUBMIT_CONFIGURATION,
     fetchAudienceFormSettings,
     saveAudienceFormSettings,
@@ -29,10 +32,11 @@ export const AUDIENCE_FORM_SETTINGS_QUERY_KEY = ['audience-form-settings'];
 export default function AudienceFormSettings() {
     const { t } = useTranslation('settingsAudienceFormSettings');
     const queryClient = useQueryClient();
-    const [config, setConfig] = useState<AudiencePostSubmitConfiguration>(
-        DEFAULT_POST_SUBMIT_CONFIGURATION
+    const [settings, setSettings] = useState<AudienceFormSettingsShape>(
+        DEFAULT_AUDIENCE_FORM_SETTINGS
     );
     const [hasChanges, setHasChanges] = useState(false);
+    const config = settings.postSubmit;
 
     const { data, isLoading } = useQuery({
         queryKey: AUDIENCE_FORM_SETTINGS_QUERY_KEY,
@@ -42,7 +46,7 @@ export default function AudienceFormSettings() {
 
     useEffect(() => {
         if (data) {
-            setConfig(data);
+            setSettings(data);
             setHasChanges(false);
         }
     }, [data]);
@@ -65,11 +69,16 @@ export default function AudienceFormSettings() {
             toast.error(error);
             return;
         }
-        save(config);
+        save(settings);
     };
 
     const handleResetToDefaults = () => {
-        setConfig(DEFAULT_POST_SUBMIT_CONFIGURATION);
+        // Copy, not the shared module constant: `buttons` is an array and one
+        // stray mutation would poison every later read of the default.
+        setSettings((prev) => ({
+            ...prev,
+            postSubmit: { ...DEFAULT_POST_SUBMIT_CONFIGURATION, buttons: [] },
+        }));
         setHasChanges(true);
     };
 
@@ -89,10 +98,42 @@ export default function AudienceFormSettings() {
                         value={config}
                         withCard={false}
                         onChange={(next) => {
-                            setConfig(next);
+                            setSettings((prev) => ({ ...prev, postSubmit: next }));
                             setHasChanges(true);
                         }}
                     />
+                </CardContent>
+            </Card>
+
+            {/* Feature switch, not a default: this decides whether the Form
+                Appearance card appears in the campaign create/edit dialog at
+                all. Off means the dialog looks exactly as it always did. */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>{t('formAppearance.title')}</CardTitle>
+                    <CardDescription>{t('formAppearance.description')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-row items-center justify-between gap-4 rounded-lg border border-neutral-200 p-4">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-semibold">
+                                {t('formAppearance.toggleLabel')}
+                            </Label>
+                            <p className="text-xs text-neutral-500">
+                                {t('formAppearance.toggleHelp')}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.formAppearanceEnabled}
+                            onCheckedChange={(checked) => {
+                                setSettings((prev) => ({
+                                    ...prev,
+                                    formAppearanceEnabled: checked,
+                                }));
+                                setHasChanges(true);
+                            }}
+                        />
+                    </div>
                 </CardContent>
             </Card>
 

@@ -12,5 +12,11 @@
         "restoreDefaults": "Restaurer les valeurs par défaut",
         "saving": "Enregistrement…",
         "saveChanges": "Enregistrer les modifications"
+    },
+    "formAppearance": {
+        "title": "Apparence du formulaire",
+        "description": "Avancé. Permet à chaque campagne de personnaliser son formulaire public — mise en page, couleurs, libellés et HTML/CSS personnalisés.",
+        "toggleLabel": "Autoriser les campagnes à personnaliser leur formulaire",
+        "toggleHelp": "Désactivé : toutes les campagnes utilisent le design standard. Activé : une carte « Apparence du formulaire » apparaît lors de la création ou de la modification d'une campagne."
     }
 }

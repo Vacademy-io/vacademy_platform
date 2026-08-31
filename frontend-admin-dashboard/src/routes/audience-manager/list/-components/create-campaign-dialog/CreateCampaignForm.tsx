@@ -47,6 +47,7 @@ import {
     type AudiencePostSubmitConfiguration,
 } from '@/services/audience-post-submit-settings';
 import FormAppearanceEditor from '@/components/audience/FormAppearanceEditor';
+import { AUDIENCE_FORM_SETTINGS_QUERY_KEY } from '@/routes/settings/-components/AudienceFormSettings';
 import {
     applyFormAppearance,
     DEFAULT_FORM_APPEARANCE,
@@ -381,10 +382,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         if (isLoadingCampaign) return;
 
         let cancelled = false;
-        fetchAudienceFormSettings().then((config) => {
+        fetchAudienceFormSettings().then((settings) => {
             if (cancelled) return;
-            initialCreateModePostSubmit.current = config;
-            setValue('postSubmitConfiguration', config, {
+            initialCreateModePostSubmit.current = settings.postSubmit;
+            setValue('postSubmitConfiguration', settings.postSubmit, {
                 shouldDirty: false,
                 shouldTouch: false,
             });
@@ -394,6 +395,18 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             cancelled = true;
         };
     }, [isEditMode, isLoadingCampaign, setValue]);
+
+    // Institute feature switch for the Form Appearance card. Unlike the
+    // post-submit default above this is needed in edit mode too, so it is a
+    // query rather than a create-mode-only effect — and it shares the settings
+    // page's cache key, so flipping the switch there is reflected here without
+    // a reload. Defaults to hidden while it loads.
+    const { data: audienceFormSettings } = useQuery({
+        queryKey: AUDIENCE_FORM_SETTINGS_QUERY_KEY,
+        queryFn: fetchAudienceFormSettings,
+        staleTime: 5 * 60 * 1000,
+    });
+    const formAppearanceEnabled = audienceFormSettings?.formAppearanceEnabled === true;
 
     // Custom fields array management
     const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
@@ -1335,39 +1348,48 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Form Appearance — how the public response form looks while it is
                 being filled in. Sits above the post-submit card because it is
                 about the form itself, not what follows it. */}
-            <Controller
-                name="formAppearance"
-                control={control}
-                render={({ field }) => (
-                    <FormAppearanceEditor
-                        // `?? DEFAULT` guards the window between a form.reset()
-                        // and the value landing — the editor is fully controlled
-                        // and would crash on an undefined value.
-                        value={field.value ?? DEFAULT_FORM_APPEARANCE}
-                        onChange={field.onChange}
-                        // Collapsed by default: the create form must look the way
-                        // it always did for admins who don't need this.
-                        collapsible
-                        previewCampaignName={
-                            watch('campaign_name') || t('postSubmit.previewCampaignNameFallback')
-                        }
-                        previewCampaignDescription={watch('description') || ''}
-                        previewCampaignObjective={watch('campaign_objective') || ''}
-                        previewInstituteName={instituteDetails?.institute_name || 'Your Institute'}
-                        // The campaign's own fields, so the preview shows real
-                        // labels instead of placeholder rows. Deleted rows are
-                        // excluded because they are not sent to the API either.
-                        previewFields={(watch('custom_fields') || [])
-                            .filter((field) => field?.status !== 'DELETED')
-                            .map((field) => ({
-                                name: field?.name || '',
-                                required: Boolean(field?.isRequired),
-                            }))}
-                        title={t('formAppearance.title')}
-                        description={t('formAppearance.description')}
-                    />
-                )}
-            />
+            {/* Hidden until an institute turns it on in Settings → Lead
+                Settings → Forms. A campaign that already has a saved
+                formAppearance keeps it either way — this hides the editor, it
+                does not clear the stored config. */}
+            {formAppearanceEnabled && (
+                <Controller
+                    name="formAppearance"
+                    control={control}
+                    render={({ field }) => (
+                        <FormAppearanceEditor
+                            // `?? DEFAULT` guards the window between a form.reset()
+                            // and the value landing — the editor is fully controlled
+                            // and would crash on an undefined value.
+                            value={field.value ?? DEFAULT_FORM_APPEARANCE}
+                            onChange={field.onChange}
+                            // Collapsed by default: the create form must look the way
+                            // it always did for admins who don't need this.
+                            collapsible
+                            previewCampaignName={
+                                watch('campaign_name') ||
+                                t('postSubmit.previewCampaignNameFallback')
+                            }
+                            previewCampaignDescription={watch('description') || ''}
+                            previewCampaignObjective={watch('campaign_objective') || ''}
+                            previewInstituteName={
+                                instituteDetails?.institute_name || 'Your Institute'
+                            }
+                            // The campaign's own fields, so the preview shows real
+                            // labels instead of placeholder rows. Deleted rows are
+                            // excluded because they are not sent to the API either.
+                            previewFields={(watch('custom_fields') || [])
+                                .filter((field) => field?.status !== 'DELETED')
+                                .map((field) => ({
+                                    name: field?.name || '',
+                                    required: Boolean(field?.isRequired),
+                                }))}
+                            title={t('formAppearance.title')}
+                            description={t('formAppearance.description')}
+                        />
+                    )}
+                />
+            )}
 
             {/* Custom HTML Card */}
             {/* <CustomHTMLCard form={form} /> */}

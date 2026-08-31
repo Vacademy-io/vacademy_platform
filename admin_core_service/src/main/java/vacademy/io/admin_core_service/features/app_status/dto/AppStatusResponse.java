@@ -65,6 +65,27 @@ public class AppStatusResponse {
         @JsonProperty("status")
         private String status;
 
+        /**
+         * The store id this platform actually ships under — the Play package name, the Apple bundle
+         * id, the Windows package identity. Worth showing next to the status because they differ
+         * per platform (com.hcca.app on Play, io.hcca.app on the App Store), and because it is the
+         * key everything else about the app — OTA targeting included — is keyed on.
+         */
+        @JsonProperty("app_id")
+        private String appId;
+
+        /**
+         * Which store track the current build sits on, verbatim from the registry's
+         * {@code release_track} field: "Closed testing", "TestFlight — external testers",
+         * "Production"… Empty when ops has not recorded one.
+         *
+         * <p>Without it "Live" is ambiguous: an Android build live on the closed-testing track is
+         * installable by twelve named testers and by nobody else, which is not what an institute
+         * reads into that word.
+         */
+        @JsonProperty("track")
+        private String track;
+
         @JsonProperty("store_url")
         private String storeUrl;
 
@@ -104,6 +125,52 @@ public class AppStatusResponse {
          */
         @JsonProperty("update_available")
         private boolean updateAvailable;
+
+        /**
+         * The OTA bundle this app is being served right now. Unlike everything else here it is not
+         * registry bookkeeping — it is read live from {@code ota_bundle_version}, so it says what
+         * the installed app actually runs rather than what anyone wrote down.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @JsonProperty("ota")
+        private OtaBundle ota;
+    }
+
+    /**
+     * The over-the-air JavaScript bundle an installed app pulls on launch. The store version is
+     * only the shell; this is the code inside it, and the two move independently — an app can sit
+     * on store version 1.0.4 for months while its bundle ships weekly.
+     */
+    @Data
+    @Builder
+    public static class OtaBundle {
+        @JsonProperty("version")
+        private String version;
+
+        /** When the bundle was published, not when the store released the shell around it. */
+        @JsonProperty("published_at")
+        private String publishedAt;
+
+        @JsonProperty("release_notes")
+        private String releaseNotes;
+
+        /**
+         * Installs on a native version below this floor never receive the bundle — so a low
+         * store version and a high floor together mean "published, but not to these users".
+         */
+        @JsonProperty("min_native_version")
+        private String minNativeVersion;
+
+        @JsonProperty("force_update")
+        private boolean forceUpdate;
+
+        /**
+         * True when the bundle serving this app targets no app in particular. It is still a real
+         * answer to "what is my app running", but a shared bundle is rarely what a white-label app
+         * is meant to be on, so the reader is told.
+         */
+        @JsonProperty("shared_bundle")
+        private boolean sharedBundle;
     }
 
     /**

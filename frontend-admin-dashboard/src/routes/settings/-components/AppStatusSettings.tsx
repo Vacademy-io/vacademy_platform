@@ -46,10 +46,25 @@ interface PendingUpdate {
     ota_status: string;
 }
 
+/** The JavaScript bundle an installed app pulls on launch — read live, not recorded by ops. */
+interface OtaBundle {
+    version: string;
+    published_at: string;
+    release_notes: string;
+    min_native_version: string;
+    force_update: boolean;
+    shared_bundle: boolean;
+}
+
 interface PlatformStatus {
     platform: Platform;
     enabled: boolean;
     status: string;
+    /** The Play package name / Apple bundle id / Windows package identity for THIS platform. */
+    app_id?: string;
+    /** "Closed testing", "TestFlight — external testers", "Production"… empty when not recorded. */
+    track?: string;
+    ota?: OtaBundle | null;
     store_url: string;
     current_version: string;
     current_build: string;
@@ -105,6 +120,15 @@ function statusTone(status: string): StatusType {
         default:
             return 'INFO';
     }
+}
+
+/**
+ * A track is not a status, so it never borrows the status palette's green. What it must not do is
+ * let "Live" on a testing track read as publicly downloadable — so anything short of the public
+ * track is tinted as a caution.
+ */
+function trackTone(track: string): StatusType {
+    return /^(production|app store|mac app store)/i.test(track) ? 'INFO' : 'WARNING';
 }
 
 function statusLabel(status: string): string {
@@ -269,6 +293,7 @@ export default function AppStatusSettings() {
                                 key={p.platform}
                                 platform={p}
                                 meta={platformMeta[p.platform]}
+                                appPackageName={app.package_name}
                                 t={t}
                             />
                         ))}
@@ -284,10 +309,12 @@ export default function AppStatusSettings() {
 function PlatformRow({
     platform: p,
     meta,
+    appPackageName,
     t,
 }: {
     platform: PlatformStatus;
     meta: { label: string; Icon: typeof AndroidLogo } | undefined;
+    appPackageName: string;
     t: TFunction;
 }) {
     // A platform key the backend added but this build doesn't know yet must not blank the page —
@@ -295,13 +322,22 @@ function PlatformRow({
     const Icon = meta?.Icon ?? DeviceMobile;
     const label = meta?.label ?? p.platform ?? t('platforms.unknown');
     const live = versionLabel(p.current_version, p.current_build);
+    const track = p.track?.trim();
+    // The app-level heading already carries one id; repeating it on the Android row is noise. An
+    // iOS bundle that differs from it is not — the same app ships under two different ids.
+    const ownId = p.app_id?.trim() && p.app_id.trim() !== appPackageName ? p.app_id.trim() : '';
 
     return (
         <div className="space-y-2 rounded-md border border-neutral-200 p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <Icon className="size-5 text-neutral-500" />
-                    <span className="text-body font-medium text-neutral-600">{label}</span>
+                    <div>
+                        <span className="text-body font-medium text-neutral-600">{label}</span>
+                        {ownId && (
+                            <p className="font-mono text-caption text-neutral-400">{ownId}</p>
+                        )}
+                    </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                     {live && <span className="text-caption text-neutral-500">{live}</span>}
@@ -310,6 +346,16 @@ function PlatformRow({
                         textSize="text-caption"
                         status={statusTone(p.status)}
                     />
+                    {track && (
+                        <StatusChip
+                            text={track}
+                            textSize="text-caption"
+                            status={trackTone(track)}
+                            // The status chip beside this one carries the icon; the INFO icon is a
+                            // cross, which next to the word "Production" reads as a failure.
+                            showIcon={false}
+                        />
+                    )}
                     {p.store_url && (
                         <a
                             href={p.store_url}
@@ -323,6 +369,8 @@ function PlatformRow({
                     )}
                 </div>
             </div>
+
+            {p.ota && <OtaNote ota={p.ota} t={t} />}
 
             {p.rejection && <RejectionNote rejection={p.rejection} t={t} />}
             {p.pending_update && <PendingUpdateNote update={p.pending_update} t={t} />}
@@ -389,6 +437,36 @@ function PendingUpdateNote({ update, t }: { update: PendingUpdate; t: TFunction 
                     <span className="font-semibold">{t('update.releaseNotes')}: </span>
                     {update.release_notes}
                 </p>
+            )}
+        </div>
+    );
+}
+
+/**
+ * What the installed app is actually running.
+ *
+ * The store version is only the shell; this is the JavaScript inside it, shipped over the air and
+ * moving on its own schedule — an app can sit on store version 1.0.4 for months while its bundle
+ * changes weekly. Read live from the OTA registry rather than recorded by hand, which is why it is
+ * the one line here that cannot be out of date.
+ */
+function OtaNote({ ota, t }: { ota: OtaBundle; t: TFunction }) {
+    const publishedOn = formatRegistryDate(ota.published_at);
+    // 1.0.0 is the default floor every bundle carries; saying it out loud would just be noise.
+    const floor =
+        ota.min_native_version && ota.min_native_version !== '1.0.0' ? ota.min_native_version : '';
+
+    return (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-caption text-neutral-500">
+            <span className="flex items-center gap-1 font-medium text-neutral-600">
+                <Package className="size-3.5" />
+                {t('ota.label')}
+            </span>
+            <span className="font-mono text-neutral-600">{ota.version}</span>
+            {publishedOn && <span>{t('ota.publishedOn', { date: publishedOn })}</span>}
+            {floor && <span>· {t('ota.minNativeVersion', { version: floor })}</span>}
+            {ota.shared_bundle && (
+                <span className="text-warning-600">· {t('ota.sharedBundle')}</span>
             )}
         </div>
     );

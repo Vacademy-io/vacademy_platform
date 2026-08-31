@@ -15,14 +15,20 @@ import vacademy.io.admin_core_service.features.app_status.client.CommunityAppReg
 import vacademy.io.admin_core_service.features.app_status.dto.AppStatusResponse;
 import vacademy.io.admin_core_service.features.app_status.service.AppStatusService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.ota_update.entity.OtaBundleVersion;
+import vacademy.io.admin_core_service.features.ota_update.service.OtaUpdateService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
+import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -52,6 +58,9 @@ class AppStatusServiceTest {
 
     @Mock
     private UserRoleRepository userRoleRepository;
+
+    @Mock
+    private OtaUpdateService otaUpdateService;
 
     @Mock
     private CustomUserDetails user;
@@ -180,6 +189,86 @@ class AppStatusServiceTest {
 
         assertEquals(1, response.getApps().size());
         assertEquals("app-1", response.getApps().get(0).getId());
+    }
+
+    private static final String APP_WITH_BUNDLE_ID =
+            "{\"id\":\"app-1\",\"basics\":{\"name\":\"HCCA Learning\",\"packageName\":\"com.hcca.app\"},"
+                    + "\"platforms\":{\"IOS\":{\"enabled\":true,\"status\":\"LIVE\","
+                    + "\"fields\":{\"bundle_id\":\"io.hcca.app\"}}}}";
+
+    private static OtaBundleVersion bundle(String version, String targets) {
+        return OtaBundleVersion.builder()
+                .version(version)
+                .platform("IOS")
+                .targetAppIds(targets)
+                .minNativeVersion("1.0.0")
+                .forceUpdate(false)
+                .releaseNotes("Fixes")
+                .createdAt(ZonedDateTime.parse("2026-06-16T10:00:00Z"))
+                .build();
+    }
+
+    @Test
+    @DisplayName("the OTA bundle is looked up under the platform's own store id, not the record's package name")
+    void otaIsResolvedPerPlatformId() {
+        when(user.isRootUser()).thenReturn(true);
+        when(communityAppRegistryClient.fetchByInstitute("inst-1"))
+                .thenReturn(List.of(json(APP_WITH_BUNDLE_ID)));
+        when(otaUpdateService.resolveServedBundle("IOS", "io.hcca.app"))
+                .thenReturn(Optional.of(bundle("2.5.1", "io.hcca.app")));
+
+        AppStatusResponse.PlatformStatus platform =
+                service.getStatus(user, "inst-1").getApps().get(0).getPlatforms().get(0);
+
+        assertEquals("2.5.1", platform.getOta().getVersion());
+        assertEquals("1.0.0", platform.getOta().getMinNativeVersion());
+        assertFalse(platform.getOta().isSharedBundle());
+        verify(otaUpdateService).resolveServedBundle("IOS", "io.hcca.app");
+    }
+
+    @Test
+    @DisplayName("a bundle targeting nobody in particular is reported as shared — that is how a white-label app ends up on another app's JS")
+    void untargetedBundleIsFlaggedShared() {
+        when(user.isRootUser()).thenReturn(true);
+        when(communityAppRegistryClient.fetchByInstitute("inst-1"))
+                .thenReturn(List.of(json(APP_WITH_BUNDLE_ID)));
+        when(otaUpdateService.resolveServedBundle("IOS", "io.hcca.app"))
+                .thenReturn(Optional.of(bundle("2.2.2", "  ")));
+
+        AppStatusResponse.PlatformStatus platform =
+                service.getStatus(user, "inst-1").getApps().get(0).getPlatforms().get(0);
+
+        assertTrue(platform.getOta().isSharedBundle());
+    }
+
+    @Test
+    @DisplayName("an app no bundle serves reports no OTA at all, rather than an invented one")
+    void noBundleMeansNoOtaBlock() {
+        when(user.isRootUser()).thenReturn(true);
+        when(communityAppRegistryClient.fetchByInstitute("inst-1"))
+                .thenReturn(List.of(json(APP_WITH_BUNDLE_ID)));
+        when(otaUpdateService.resolveServedBundle("IOS", "io.hcca.app")).thenReturn(Optional.empty());
+
+        AppStatusResponse.PlatformStatus platform =
+                service.getStatus(user, "inst-1").getApps().get(0).getPlatforms().get(0);
+
+        assertNull(platform.getOta());
+    }
+
+    @Test
+    @DisplayName("an OTA lookup that blows up costs the OTA line, not the whole settings page")
+    void otaFailureDoesNotSinkTheResponse() {
+        when(user.isRootUser()).thenReturn(true);
+        when(communityAppRegistryClient.fetchByInstitute("inst-1"))
+                .thenReturn(List.of(json(APP_WITH_BUNDLE_ID)));
+        when(otaUpdateService.resolveServedBundle("IOS", "io.hcca.app"))
+                .thenThrow(new RuntimeException("ota_bundle_version is unreachable"));
+
+        AppStatusResponse.PlatformStatus platform =
+                service.getStatus(user, "inst-1").getApps().get(0).getPlatforms().get(0);
+
+        assertNull(platform.getOta());
+        assertEquals("LIVE", platform.getStatus());
     }
 
     @Test

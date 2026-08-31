@@ -31,5 +31,11 @@
         "submittedOn": "أُرسل في {{date}}",
         "releaseNotes": "الجديد في هذا التحديث",
         "availableGeneric": "هناك إصدار أحدث جاهز ولم يصل إلى المتجر بعد."
+    },
+    "ota": {
+        "label": "محتوى التطبيق (OTA)",
+        "publishedOn": "نُشر في {{date}}",
+        "minNativeVersion": "يتطلب إصدار التطبيق {{version}} أو أحدث",
+        "sharedBundle": "حزمة مشتركة، لم تُبنَ لتطبيقك"
     }
 }

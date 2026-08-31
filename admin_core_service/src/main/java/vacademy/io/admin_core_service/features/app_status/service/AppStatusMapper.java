@@ -81,6 +81,8 @@ public final class AppStatusMapper {
                 .platform(platformKey)
                 .enabled(true)
                 .status(status)
+                .appId(appId(record, config))
+                .track(text(config.path("fields"), "release_track"))
                 .storeUrl(text(config, "storeUrl"))
                 .currentVersion(currentVersion)
                 .currentBuild(text(config, "currentBuild"))
@@ -90,6 +92,22 @@ public final class AppStatusMapper {
                 .pendingUpdate(pendingUpdate(newest, status, currentVersion))
                 .updateAvailable(updateAvailable(newest, currentVersion))
                 .build();
+    }
+
+    /**
+     * The store id this platform ships under. Every store names it differently and the catalogue
+     * keeps that naming, so the field is looked up under each of them before falling back to the
+     * record's own package name — which is the Android one, and wrong for iOS on most apps.
+     */
+    private static String appId(JsonNode record, JsonNode config) {
+        JsonNode fields = config.path("fields");
+        for (String key : new String[]{"bundle_id", "package_name", "package_identity", "application_id"}) {
+            String value = text(fields, key);
+            if (!value.isEmpty()) {
+                return value;
+            }
+        }
+        return text(record.path("basics"), "packageName");
     }
 
     /* --------------------------------------------------------------- rejection */

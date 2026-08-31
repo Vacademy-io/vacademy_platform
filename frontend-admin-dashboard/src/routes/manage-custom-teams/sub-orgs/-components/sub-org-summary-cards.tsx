@@ -11,8 +11,12 @@ import { cn } from '@/lib/utils';
  * One headline figure: tinted icon badge on the left, number and label stacked on the
  * right. The badge tint is what separates the four at a glance — four bare numbers in a
  * row all look the same from across a desk.
+ *
+ * Exported because the single-sub-org page (/manage-suborg-teams) shows the same row of
+ * figures for one channel partner. Sharing the component — rather than copying the
+ * classes — is what keeps the two headers identical when either is restyled.
  */
-function StatCard({
+export function StatCard({
     label,
     value,
     icon,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { getSubOrgsWithDetails, type SubOrgListItem } from '../../-services/custom-team-services';
@@ -23,9 +23,11 @@ import { ManageColumnsPopover } from '@/components/shared/leads/manage-columns-p
 import {
     useLeadColumnPrefs,
     useColumnOrderPrefs,
+    useColumnWidthPrefs,
     orderColumnIds,
     type LeadColumnToggle,
 } from '@/components/shared/leads/use-lead-column-prefs';
+import { ColumnResizeHandle } from '@/components/shared/leads/column-resize-handle';
 import {
     Plus,
     Buildings,
@@ -47,6 +49,7 @@ import {
     type SubOrgColumn,
 } from '../../-utils/sub-org-columns';
 import { CreateSubOrgModal } from './create-sub-org-modal';
+import { FilterChip } from '../../-components/filter-chip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MyPagination } from '@/components/design-system/pagination';
 import { toast } from 'sonner';
@@ -68,8 +71,9 @@ import { cn } from '@/lib/utils';
  * more columns off screen. Anything that still does not fit is reachable by scrolling the
  * table, or by switching a column off in Manage Column.
  */
-const HEAD_CLASS = 'h-12 whitespace-nowrap px-3 text-sm font-medium text-neutral-600';
-const CELL_CLASS = 'px-3 py-4 align-middle';
+const HEAD_CLASS =
+    'h-10 whitespace-nowrap bg-neutral-50 px-3 text-xs font-semibold uppercase tracking-wide text-neutral-500';
+const CELL_CLASS = 'px-3 py-2.5 align-middle text-sm';
 
 /** Default rows-per-page; the footer's selector can change it. */
 const SUB_ORG_PAGE_SIZE = 10;
@@ -80,6 +84,7 @@ const NO_PLAN = '__NO_PLAN__';
 /** Per-browser column layout, same keys convention as Manage Payments / submissions. */
 const COLUMN_PREFS_KEY = 'sub-orgs:hidden-columns';
 const COLUMN_ORDER_KEY = 'sub-orgs:column-order';
+const COLUMN_WIDTH_KEY = 'sub-orgs:column-widths';
 
 /** Distinct, sorted non-blank values of one field across the rows → filter options. */
 const facetOptions = (
@@ -93,20 +98,6 @@ const facetOptions = (
     });
     return [...values].sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
 };
-
-/**
- * A filter control under its own label. MultiSelectFilter renders its own trigger, so the
- * label is a plain <p> rather than a <label htmlFor> — there is no single form control to
- * point at, and a label pointing nowhere is worse than none for a screen reader.
- */
-function FilterField({ label, children }: { label: string; children: ReactNode }) {
-    return (
-        <div>
-            <p className="mb-1 text-xs font-medium text-neutral-600">{label}</p>
-            {children}
-        </div>
-    );
-}
 
 /**
  * Placeholder rows while the list loads. Replaces a full-page spinner: the toolbar and the
@@ -280,6 +271,13 @@ export function SubOrgList() {
         DEFAULT_HIDDEN_SUB_ORG_COLUMNS
     );
     const { columnOrder, setColumnOrder, resetColumnOrder } = useColumnOrderPrefs(COLUMN_ORDER_KEY);
+    const {
+        columnWidths,
+        setColumnWidth,
+        commitColumnWidths,
+        clearColumnWidth,
+        resetColumnWidths,
+    } = useColumnWidthPrefs(COLUMN_WIDTH_KEY);
 
     /** Every column this table can render, in their natural order. */
     const naturalColumns = useMemo<SubOrgColumn[]>(
@@ -344,10 +342,23 @@ export function SubOrgList() {
         });
     };
 
-    /** "Reset" restores both halves of the layout — hidden columns and order. */
+    /** "Reset" restores all three halves of the layout — visibility, order and widths. */
     const handleResetColumns = () => {
         resetColumns();
         resetColumnOrder();
+        resetColumnWidths();
+    };
+
+    /**
+     * Pixel width for a column: what the user dragged it to, else its natural default, else
+     * nothing (the column sizes to its content as before). Returned as a style object
+     * rather than classes because a dragged width is a per-user number with no token.
+     */
+    const widthStyle = (c: SubOrgColumn) => {
+        const w = columnWidths[c.id] ?? c.defaultWidth;
+        // width alone is only a hint to the auto table layout; min+max are what actually
+        // pin the column so a long name can't stretch it back open.
+        return w ? { width: w, minWidth: w, maxWidth: w } : undefined;
     };
 
     /**
@@ -404,89 +415,185 @@ export function SubOrgList() {
     return (
         <div className="space-y-4">
             {/*
-              Filters and actions share one row, as the design has them. Fitting all six
-              inside ~1140px is tight, so each control is sized to its own longest label
-              rather than padded: the City select drops its pin icon (it was pushing "All
-              Cities" into an ellipsis at this width) and the search sits at w-40. Squeezing
-              further truncates labels; giving more forces the actions onto a second line
-              with a wide empty band beside them, which is what this row used to do.
+              One row: search, the four filters, then the actions pinned right.
+              The per-control <Label> stack this used to carry is gone — MultiSelectFilter
+              already captions itself ("Status", then "Status · 2" once something is picked),
+              so the labels were repeating the trigger text while adding a 20px band that
+              knocked the unlabelled search box off the shared baseline. Dropping them buys
+              back the width that was forcing the three action buttons onto a line of their
+              own beside a wide empty gap.
             */}
             <div className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-                <div className="flex flex-wrap items-end gap-x-1.5 gap-y-2 p-3">
-                    {/*
-                      The search is the one elastic control: it takes the width the fixed
-                      filters and the action buttons leave over (min-w-32 so it can never
-                      collapse to just its icon, max-w-52 so it does not sprawl on a wide
-                      screen). That absorbs the ~20px shortfall that was tipping the whole
-                      row onto a second line on a laptop.
+                <div className="space-y-2 p-3">
+                    {/* Tier 1: the search — what people reach for first — sharing a line with
+                        the actions, whose width therefore never competes with a filter. */}
+                    <div className="flex items-center gap-2">
+                        {/*
+                          The search is the one elastic control: it takes the width the fixed
+                          filters and the action buttons leave over (min-w-40 so it never
+                          collapses to just its icon, max-w-64 so it does not sprawl on a wide
+                          screen).
 
-                      No visible label in the design, so the box carries an aria-label — a
-                      placeholder alone leaves the field nameless to a screen reader.
-                    */}
-                    <div className="relative w-full min-w-32 sm:w-auto sm:max-w-52 sm:flex-1">
-                        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Input
-                            id={searchId}
-                            aria-label="Search"
-                            value={searchInput}
-                            onChange={(e) => setSearchInput(e.target.value)}
-                            placeholder="Search by name, email or phone"
-                            className="h-10 pl-8"
-                        />
+                          No visible label, so the box carries an aria-label — a placeholder
+                          alone leaves the field nameless to a screen reader.
+                        */}
+                        <div className="relative w-full min-w-40 sm:w-auto sm:max-w-56 sm:flex-1">
+                            <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id={searchId}
+                                aria-label="Search"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                placeholder="Search by name, email or phone"
+                                className="h-10 px-8"
+                            />
+                            {searchInput && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchInput('')}
+                                    aria-label="Clear search"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                >
+                                    <X className="size-3.5" weight="bold" />
+                                </button>
+                            )}
+                        </div>
+                        <div className="ml-auto flex shrink-0 items-center gap-2">
+                            {/* Compact labels ("Columns"/"Export", icons carrying the rest) buy
+                                back the ~90px that was tipping State and Pincode onto a second
+                                line at 1440 while these buttons kept the first one to themselves. */}
+                            <ManageColumnsPopover
+                                compact
+                                columns={columnToggles}
+                                hiddenColumns={hiddenColumns}
+                                onToggle={toggleColumn}
+                                onReset={handleResetColumns}
+                                onReorder={setColumnOrder}
+                            />
+                            {canExport && (
+                                <MyButton
+                                    buttonType="secondary"
+                                    onClick={handleExport}
+                                    disable={filteredSubOrgs.length === 0}
+                                >
+                                    <DownloadSimple className="mr-2 size-4" />
+                                    Export
+                                </MyButton>
+                            )}
+                            {canCreate && (
+                                <MyButton onClick={() => setIsCreateModalOpen(true)}>
+                                    <Plus className="mr-2 size-4" />
+                                    Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
+                                </MyButton>
+                            )}
+                        </div>
                     </div>
-                    {statusOptions.length > 0 && (
-                        <FilterField label="Status">
+
+                    {/* Tier 2: the filters, on a line of their own. Giving them the full width is
+                        what stops the last one orphaning onto a row by itself beside a wide empty
+                        band, and it holds however long the institute's word for a sub-org is. */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {statusOptions.length > 0 && (
                             <MultiSelectFilter
-                                label="All Status"
-                                showSelectedLabel
+                                label="Status"
                                 options={statusOptions}
                                 selected={statusFilter}
                                 onChange={setStatusFilter}
                                 placeholder="Search status…"
-                                widthClass="w-28"
+                                widthClass="w-auto min-w-24"
                             />
-                        </FilterField>
-                    )}
-                    {cityOptions.length > 0 && (
-                        <FilterField label="City">
+                        )}
+                        {cityOptions.length > 0 && (
                             <MultiSelectFilter
-                                label="All Cities"
-                                showSelectedLabel
+                                label="City"
                                 options={cityOptions}
                                 selected={cityFilter}
                                 onChange={setCityFilter}
                                 placeholder="Search city…"
-                                widthClass="w-28"
+                                widthClass="w-auto min-w-20"
                             />
-                        </FilterField>
-                    )}
-                    {stateOptions.length > 0 && (
-                        <FilterField label="State">
+                        )}
+                        {stateOptions.length > 0 && (
                             <MultiSelectFilter
-                                label="All States"
-                                showSelectedLabel
+                                label="State"
                                 options={stateOptions}
                                 selected={stateFilter}
                                 onChange={setStateFilter}
                                 placeholder="Search state…"
-                                widthClass="w-28"
+                                widthClass="w-auto min-w-24"
                             />
-                        </FilterField>
-                    )}
-                    <FilterField label="Pincode">
+                        )}
+                        {/* Placeholder is the field name, not a sample value: "110001" read as a
+                            pincode that was already applied. */}
                         <Input
                             aria-label="Pincode"
                             value={pincodeFilter}
                             onChange={(e) => setPincodeFilter(e.target.value)}
-                            placeholder="110001"
+                            placeholder="Pincode"
                             inputMode="numeric"
-                            className="h-10 w-24"
+                            className={cn(
+                                'h-10 w-24',
+                                pincodeFilter.trim() && 'border-primary-300 bg-primary-50'
+                            )}
                         />
-                    </FilterField>
-                    {hasActiveFilters && (
-                        <MyButton
-                            buttonType="secondary"
-                            scale="small"
+                    </div>
+                </div>
+
+                {hasActiveFilters && (
+                    <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
+                        <span className="text-xs text-muted-foreground">
+                            {filteredSubOrgs.length} of {allSubOrgs.length}{' '}
+                            {getTerminologyPlural(
+                                OtherTerms.SubOrg,
+                                SystemTerms.SubOrg
+                            ).toLowerCase()}
+                        </span>
+                        {!!q && (
+                            <FilterChip
+                                label="Search"
+                                value={searchInput.trim()}
+                                onRemove={() => setSearchInput('')}
+                            />
+                        )}
+                        {statusFilter.map((value) => (
+                            <FilterChip
+                                key={`status-${value}`}
+                                label="Status"
+                                value={value === NO_PLAN ? 'No plan' : humanizeStatus(value)}
+                                onRemove={() =>
+                                    setStatusFilter(statusFilter.filter((v) => v !== value))
+                                }
+                            />
+                        ))}
+                        {cityFilter.map((value) => (
+                            <FilterChip
+                                key={`city-${value}`}
+                                label="City"
+                                value={value}
+                                onRemove={() =>
+                                    setCityFilter(cityFilter.filter((v) => v !== value))
+                                }
+                            />
+                        ))}
+                        {stateFilter.map((value) => (
+                            <FilterChip
+                                key={`state-${value}`}
+                                label="State"
+                                value={value}
+                                onRemove={() =>
+                                    setStateFilter(stateFilter.filter((v) => v !== value))
+                                }
+                            />
+                        ))}
+                        {!!pincodeFilter.trim() && (
+                            <FilterChip
+                                label="Pincode"
+                                value={pincodeFilter.trim()}
+                                onRemove={() => setPincodeFilter('')}
+                            />
+                        )}
+                        <button
+                            type="button"
                             onClick={() => {
                                 setSearchInput('');
                                 setStatusFilter([]);
@@ -494,63 +601,55 @@ export function SubOrgList() {
                                 setStateFilter([]);
                                 setPincodeFilter('');
                             }}
+                            className="rounded-sm text-xs font-medium text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                         >
-                            <X className="mr-1 size-3.5" />
-                            Clear
-                        </MyButton>
-                    )}
-                    <div className="ml-auto flex items-center gap-2">
-                        <ManageColumnsPopover
-                            columns={columnToggles}
-                            hiddenColumns={hiddenColumns}
-                            onToggle={toggleColumn}
-                            onReset={handleResetColumns}
-                            onReorder={setColumnOrder}
-                        />
-                        {canExport && (
-                            <MyButton
-                                buttonType="secondary"
-                                onClick={handleExport}
-                                disable={filteredSubOrgs.length === 0}
-                            >
-                                <DownloadSimple className="mr-2 size-4" />
-                                Export CSV
-                            </MyButton>
-                        )}
-                        {canCreate && (
-                            <MyButton onClick={() => setIsCreateModalOpen(true)}>
-                                <Plus className="mr-2 size-4" />
-                                Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
-                            </MyButton>
-                        )}
+                            Clear all
+                        </button>
                     </div>
-                </div>
-
-                {hasActiveFilters && (
-                    <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-                        {filteredSubOrgs.length} of {allSubOrgs.length}{' '}
-                        {getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()}{' '}
-                        match your filters
-                    </p>
                 )}
 
-                <div className="border-t">
+                {/*
+                  Eleven columns need more width than a laptop gives, so the table scrolls
+                  inside its own box rather than pushing the page sideways. It used to be a
+                  plain <div>: the overflow columns were simply cut off at the card's edge
+                  with no scrollbar and no hint they existed.
+                */}
+                <div className="overflow-x-auto border-t">
                     <Table>
                         <TableHeader>
-                            <TableRow>
+                            <TableRow className="hover:bg-transparent">
                                 {visibleColumns.map((c) => {
                                     const active = sort?.id === c.id;
                                     if (!c.sortValue) {
                                         return (
-                                            <TableHead key={c.id} className={HEAD_CLASS}>
-                                                {c.label}
+                                            <TableHead
+                                                key={c.id}
+                                                /* eslint-disable-next-line -- a dragged width is a per-user
+                                                   pixel value; no design token can express it. */
+                                                style={widthStyle(c)}
+                                                className={cn(
+                                                    HEAD_CLASS,
+                                                    'relative',
+                                                    c.headClassName
+                                                )}
+                                            >
+                                                <span className="block truncate">{c.label}</span>
+                                                <ColumnResizeHandle
+                                                    columnId={c.id}
+                                                    label={c.label}
+                                                    onResize={setColumnWidth}
+                                                    onCommit={commitColumnWidths}
+                                                    onClear={clearColumnWidth}
+                                                />
                                             </TableHead>
                                         );
                                     }
                                     return (
                                         <TableHead
                                             key={c.id}
-                                            className={HEAD_CLASS}
+                                            /* eslint-disable-next-line -- see above */
+                                            style={widthStyle(c)}
+                                            className={cn(HEAD_CLASS, 'relative', c.headClassName)}
                                             // Announces the direction to screen readers, which
                                             // otherwise get no hint that the order changed.
                                             aria-sort={
@@ -564,7 +663,11 @@ export function SubOrgList() {
                                             <button
                                                 type="button"
                                                 onClick={() => toggleSort(c.id)}
-                                                className="-mx-2 flex items-center gap-1 rounded-sm px-2 py-1 text-left transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                                className={cn(
+                                                    '-mx-2 flex items-center gap-1 rounded-sm px-2 py-1 text-left transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                                                    c.headClassName?.includes('text-right') &&
+                                                        'ml-auto flex-row-reverse'
+                                                )}
                                                 // The visible text is just the column name, which
                                                 // does not say the control sorts. The label keeps
                                                 // that visible text inside it, so voice control
@@ -594,6 +697,13 @@ export function SubOrgList() {
                                                     />
                                                 )}
                                             </button>
+                                            <ColumnResizeHandle
+                                                columnId={c.id}
+                                                label={c.label}
+                                                onResize={setColumnWidth}
+                                                onCommit={commitColumnWidths}
+                                                onClear={clearColumnWidth}
+                                            />
                                         </TableHead>
                                     );
                                 })}
@@ -634,12 +744,20 @@ export function SubOrgList() {
                                         // <tr> with role="button" would buy keyboard access at the
                                         // cost of the row no longer being announced as a row.
                                         onClick={() => openSubOrg(org)}
-                                        className="cursor-pointer transition-colors focus-within:bg-muted/50 hover:bg-muted/50"
+                                        className="cursor-pointer transition-colors focus-within:bg-primary-50 hover:bg-primary-50"
                                     >
                                         {visibleColumns.map((c) => (
                                             <TableCell
                                                 key={c.id}
-                                                className={cn(CELL_CLASS, c.cellClassName)}
+                                                /* eslint-disable-next-line -- matches the header width. */
+                                                style={widthStyle(c)}
+                                                className={cn(
+                                                    CELL_CLASS,
+                                                    // Without this a long value re-widens the column
+                                                    // and the drag looks like it was ignored.
+                                                    widthStyle(c) && 'overflow-hidden',
+                                                    c.cellClassName
+                                                )}
                                             >
                                                 {c.cell(org)}
                                             </TableCell>

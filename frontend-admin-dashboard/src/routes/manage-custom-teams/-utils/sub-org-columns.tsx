@@ -34,6 +34,19 @@ export interface SubOrgColumn {
     cell: (org: SubOrgListItem) => ReactNode;
     cellClassName?: string;
     /**
+     * Natural width in pixels, applied to the header and every cell of this column.
+     * Only the columns that genuinely need taming carry one — the rest size to content.
+     * A user drag overrides it and is remembered per browser, which is the whole point:
+     * a channel partner with a long legal name can be widened until it reads in full.
+     */
+    defaultWidth?: number;
+    /**
+     * Extra classes for the header cell. Exists so a numeric column can right-align its
+     * heading with its values — a right-aligned "128" under a left-aligned "Learners"
+     * reads as two different columns.
+     */
+    headClassName?: string;
+    /**
      * Value this column sorts on. Omit to make the column unsortable — the invite code is a
      * random string, so ordering by it would only ever look like a shuffle.
      *
@@ -98,8 +111,12 @@ const avatarTone = (name: string) => {
     return AVATAR_TONES[hash % AVATAR_TONES.length]!;
 };
 
-/** Muted dash used wherever a row has no value for a column. */
-const Blank = () => <span className="text-sm text-muted-foreground">-</span>;
+/**
+ * Muted dash used wherever a row has no value for a column. An en dash rather than a
+ * hyphen: at 14px a hyphen next to real values reads as a stray mark, and half the columns
+ * used to return a bare '-' string that skipped this muted styling entirely.
+ */
+const Blank = () => <span className="text-muted-foreground">–</span>;
 
 interface BuildSubOrgColumnsArgs {
     /** Institute-configured word for an invite (the column's header). */
@@ -130,12 +147,12 @@ export function buildSubOrgColumns({
             csvHeaders: ['Name', 'Admin'],
             csvValues: (o) => [o.name, o.admin_name],
             sortValue: (o) => o.name,
-            cellClassName: 'w-64 min-w-56 max-w-64',
+            defaultWidth: 256,
             cell: (o) => {
                 const name = o.name || 'Unknown';
                 return (
                     <div className="flex items-center gap-2">
-                        <Avatar className="size-9 shrink-0">
+                        <Avatar className="size-8 shrink-0">
                             <AvatarFallback
                                 className={cn('text-xs font-semibold', avatarTone(name))}
                             >
@@ -180,7 +197,15 @@ export function buildSubOrgColumns({
             csvHeaders: ['Email'],
             csvValues: (o) => [o.admin_email],
             sortValue: (o) => o.admin_email,
-            cell: (o) => o.admin_email || '-',
+            defaultWidth: 176,
+            cell: (o) =>
+                o.admin_email ? (
+                    <span className="block truncate" title={o.admin_email}>
+                        {o.admin_email}
+                    </span>
+                ) : (
+                    <Blank />
+                ),
         },
         {
             id: 'phone',
@@ -188,11 +213,16 @@ export function buildSubOrgColumns({
             csvHeaders: ['Phone'],
             csvValues: (o) => [o.admin_phone],
             sortValue: (o) => o.admin_phone,
-            cell: (o) => o.admin_phone || '-',
+            cell: (o) =>
+                o.admin_phone ? <span className="tabular-nums">{o.admin_phone}</span> : <Blank />,
         },
         {
             id: 'address',
             label: 'Address',
+            // 192px rather than the old 320: address is reference data you look up on one
+            // row, while the extra 128px was pushing Seats — a number you scan down the
+            // whole column — past the right edge.
+            defaultWidth: 192,
             csvHeaders: ['Address'],
             csvValues: (o) => [o.address_line],
             sortValue: (o) => o.address_line,
@@ -200,8 +230,10 @@ export function buildSubOrgColumns({
                 o.address_line ? (
                     // Free text with no length ceiling — a live row runs to 87 characters and
                     // would push every column after it off screen. Clamp the cell and put the
-                    // whole value in the tooltip; the CSV still carries it in full.
-                    <span className="block max-w-xs truncate" title={o.address_line}>
+                    // whole value in the tooltip; the CSV still carries it in full. The
+                    // clamp lives on the column's width (below) rather than this span, so
+                    // dragging the header wider actually reveals more of the address.
+                    <span className="block truncate" title={o.address_line}>
                         {o.address_line}
                     </span>
                 ) : (
@@ -214,7 +246,7 @@ export function buildSubOrgColumns({
             csvHeaders: ['City'],
             csvValues: (o) => [o.city],
             sortValue: (o) => o.city,
-            cell: (o) => o.city || '-',
+            cell: (o) => o.city || <Blank />,
         },
         {
             id: 'state',
@@ -222,7 +254,7 @@ export function buildSubOrgColumns({
             csvHeaders: ['State'],
             csvValues: (o) => [o.state],
             sortValue: (o) => o.state,
-            cell: (o) => o.state || '-',
+            cell: (o) => o.state || <Blank />,
         },
         {
             id: 'pincode',
@@ -230,7 +262,8 @@ export function buildSubOrgColumns({
             csvHeaders: ['Pincode'],
             csvValues: (o) => [o.pincode],
             sortValue: (o) => o.pincode,
-            cell: (o) => o.pincode || '-',
+            cell: (o) =>
+                o.pincode ? <span className="tabular-nums">{o.pincode}</span> : <Blank />,
         },
         {
             id: 'status',
@@ -253,7 +286,11 @@ export function buildSubOrgColumns({
             csvHeaders: ['Learners'],
             csvValues: (o) => [o.learner_count ?? o.used_seats ?? ''],
             sortValue: (o) => o.learner_count ?? o.used_seats,
-            cell: (o) => <span className="text-sm">{o.learner_count ?? o.used_seats ?? 0}</span>,
+            cellClassName: 'text-right',
+            headClassName: 'text-right',
+            cell: (o) => (
+                <span className="tabular-nums">{o.learner_count ?? o.used_seats ?? 0}</span>
+            ),
         },
         {
             id: 'seats',
@@ -265,15 +302,50 @@ export function buildSubOrgColumns({
             // Occupancy, not raw seats — "4/1000" is emptier than "9/10".
             sortValue: (o) =>
                 o.total_seats ? (o.used_seats ?? 0) / o.total_seats : o.used_seats ?? null,
-            cell: (o) =>
-                o.used_seats == null && o.total_seats == null ? (
-                    <Blank />
-                ) : (
-                    <span className="text-sm">
-                        {o.used_seats ?? 0}
-                        {o.total_seats != null ? `/${o.total_seats}` : ''}
-                    </span>
-                ),
+            cellClassName: 'text-right',
+            headClassName: 'text-right',
+            // A bare "128/400" makes you do the division. The bar under it answers the only
+            // question this column is ever asked — how full is this one — and tints once a
+            // partner is close enough to the ceiling to need more seats ordered.
+            cell: (o) => {
+                if (o.used_seats == null && o.total_seats == null) return <Blank />;
+                const used = o.used_seats ?? 0;
+                const total = o.total_seats ?? null;
+                const pct = total ? Math.min(100, Math.round((used / total) * 100)) : null;
+                return (
+                    <div className="ml-auto w-20">
+                        <p className="tabular-nums">
+                            {used}
+                            {total != null && (
+                                <span className="text-muted-foreground">{`/${total}`}</span>
+                            )}
+                        </p>
+                        {pct != null && (
+                            <div
+                                className="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100"
+                                role="img"
+                                aria-label={`${pct}% of seats used`}
+                            >
+                                {/* eslint-disable-next-line -- the width IS the datum: a
+                                    per-row percentage has no Tailwind token, and rounding it
+                                    to a fixed scale would hide the difference between 71%
+                                    and 89%. Colour and size stay on tokens. */}
+                                <div
+                                    className={cn(
+                                        'h-full rounded-full',
+                                        pct >= 90
+                                            ? 'bg-danger-500'
+                                            : pct >= 70
+                                              ? 'bg-warning-500'
+                                              : 'bg-success-500'
+                                    )}
+                                    style={{ width: `${pct}%` }}
+                                />
+                            </div>
+                        )}
+                    </div>
+                );
+            },
         },
         {
             id: 'invite',
@@ -315,6 +387,7 @@ export function buildSubOrgColumns({
             csvHeaders: [],
             csvValues: () => [],
             cellClassName: 'text-right',
+            headClassName: 'text-right',
             cell: (o) => (
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>

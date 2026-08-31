@@ -56,7 +56,9 @@
             },
             "details": {
                 "title": "Veuillez renseigner vos coordonnées",
-                "subtitle": "Ces informations serviront à vous contacter au sujet de la campagne."
+                "subtitle": "Ces informations serviront à vous contacter au sujet de la campagne.",
+                "requiredLegend": "Champ obligatoire",
+                "progress": "{{completed}} champ(s) obligatoire(s) sur {{total}} complété(s)"
             },
             "noFields": {
                 "title": "Aucun champ de formulaire disponible",
@@ -66,6 +68,9 @@
             "submitButton": {
                 "submitting": "Envoi en cours...",
                 "default": "Envoyer la réponse"
+            },
+            "errors": {
+                "title": "Veuillez compléter les champs signalés"
             }
         }
     },

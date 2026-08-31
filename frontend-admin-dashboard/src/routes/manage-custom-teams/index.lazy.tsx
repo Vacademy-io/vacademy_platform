@@ -72,7 +72,7 @@ function ManageCustomTeams() {
                                     className={cn(
                                         'flex gap-1.5 rounded-t-md px-10 py-2.5 !shadow-none',
                                         selectedTab === tab.value
-                                            ? '!bg-primary-500 text-white'
+                                            ? '!bg-primary-500 !text-white'
                                             : 'border-none bg-transparent text-neutral-600'
                                     )}
                                 >

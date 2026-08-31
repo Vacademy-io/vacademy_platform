@@ -271,6 +271,29 @@ class AppStatusServiceTest {
         assertEquals("LIVE", platform.getStatus());
     }
 
+    private static final String DESKTOP_APP =
+            "{\"id\":\"app-1\",\"basics\":{\"name\":\"ZOE\",\"packageName\":\"com.zoeedtech.app\"},"
+                    + "\"platforms\":{"
+                    + "\"MACOS\":{\"enabled\":true,\"status\":\"LIVE\",\"fields\":{\"bundle_id\":\"io.zoeedtech.app\"}},"
+                    + "\"WINDOWS\":{\"enabled\":true,\"status\":\"LIVE\",\"fields\":{\"store_id\":\"9NG12PX12ZSK\"}}}}";
+
+    @Test
+    @DisplayName("desktop rows carry no OTA line — the shells never receive a bundle")
+    void desktopPlatformsAreNotGivenAnOtaBundle() {
+        // The learner app's updater returns "no update" on anything that is not android or ios, so
+        // an untargeted bundle would never reach the Windows or macOS build. Showing one — and
+        // worse, warning that it is a "shared bundle" — describes something that cannot happen.
+        when(user.isRootUser()).thenReturn(true);
+        when(communityAppRegistryClient.fetchByInstitute("inst-1")).thenReturn(List.of(json(DESKTOP_APP)));
+
+        List<AppStatusResponse.PlatformStatus> platforms =
+                service.getStatus(user, "inst-1").getApps().get(0).getPlatforms();
+
+        assertEquals(2, platforms.size());
+        platforms.forEach(platform -> assertNull(platform.getOta(), platform.getPlatform()));
+        verifyNoInteractions(otaUpdateService);
+    }
+
     @Test
     @DisplayName("the institute asked for is the institute fetched — never one off the payload")
     void fetchesExactlyTheRequestedInstitute() {

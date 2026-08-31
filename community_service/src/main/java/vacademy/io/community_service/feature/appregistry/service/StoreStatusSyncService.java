@@ -183,7 +183,24 @@ public class StoreStatusSyncService {
     }
 
     /** Common shape every provider branch reduces to before the shared persist/response step. */
-    private record Result(String status, String version, String build, String storeUrl, String releasedAt) {
+    private record Result(String status, String version, String build, String storeUrl, String releasedAt,
+                          Rejection rejection) {
+
+        Result(String status, String version, String build, String storeUrl, String releasedAt) {
+            this(status, version, build, storeUrl, releasedAt, null);
+        }
+    }
+
+    /**
+     * What the store refused, and why if it will say.
+     *
+     * <p>{@code reason} is empty for Apple and Google on purpose: Apple's message lives in
+     * Resolution Center and no API returns it, and Play exposes policy decisions only in the
+     * console. Microsoft is the one that hands back real text. An empty reason still reaches the
+     * institute as "rejected, reason not recorded yet" — which is the honest answer and the one
+     * that makes them ask us the right question.
+     */
+    private record Rejection(String version, String reason, String submittedAt, String decidedAt) {
     }
 
     private Result syncApple(JsonNode platformNode, String instituteId, String platformKey) {
@@ -209,7 +226,24 @@ public class StoreStatusSyncService {
         String status = mapAppStoreState(ascStatus.appStoreState());
         String storeUrl = "https://appstoreconnect.apple.com/apps/" + ascStatus.ascAppId() + "/appstore";
         String releasedAt = "LIVE".equals(status) ? ascStatus.createdDate() : "";
-        return new Result(status, ascStatus.versionString(), ascStatus.buildNumber(), storeUrl, releasedAt);
+
+        Rejection rejection = null;
+        if ("REJECTED".equals(status)) {
+            rejection = new Rejection(ascStatus.versionString(), "", "", "");
+        } else if (!"LIVE".equals(status)) {
+            // A version can read READY_FOR_REVIEW while App Review has actually bounced it back —
+            // verified on a real app. The submission is the authority on "is this blocked", but
+            // only while nothing is live: a rejection that a later release superseded is history,
+            // and re-raising it would alarm an institute whose app is working.
+            AppStoreConnectClient.ReviewSubmission submission =
+                    client.fetchLatestReviewSubmission(ascStatus.ascAppId(), ascPlatform);
+            if (submission != null && submission.hasUnresolvedIssues()) {
+                status = "REJECTED";
+                rejection = new Rejection(ascStatus.versionString(), "", submission.submittedDate(), "");
+            }
+        }
+        return new Result(status, ascStatus.versionString(), ascStatus.buildNumber(), storeUrl,
+                releasedAt, rejection);
     }
 
     private Result syncGooglePlay(JsonNode platformNode, String instituteId) {
@@ -244,8 +278,12 @@ public class StoreStatusSyncService {
         if (pcStatus == null) {
             return unsyncable(storeId, "WINDOWS", "Partner Center");
         }
-        return new Result(mapPartnerCenterStatus(pcStatus.submissionStatus()), "", "",
-                "https://partner.microsoft.com/dashboard/products/" + storeId, "");
+        String status = mapPartnerCenterStatus(pcStatus.submissionStatus());
+        Rejection rejection = "REJECTED".equals(status)
+                ? new Rejection("", pcStatus.failureReason(), "", "")
+                : null;
+        return new Result(status, "", "",
+                "https://partner.microsoft.com/dashboard/products/" + storeId, "", rejection);
     }
 
     private void persist(AppRegistration row, ObjectNode record, String platformKey, Result result,
@@ -257,6 +295,17 @@ public class StoreStatusSyncService {
         if (!result.build.isBlank()) platformNode.put("currentBuild", result.build);
         if (!result.storeUrl.isBlank()) platformNode.put("storeUrl", result.storeUrl);
         if (!result.releasedAt.isBlank()) platformNode.put("releasedAt", result.releasedAt);
+        if (result.rejection == null) {
+            // Whatever the store said last time is over — a rejection that has been resolved must
+            // not linger on the institute's screen.
+            platformNode.remove("rejection");
+        } else {
+            ObjectNode rejection = platformNode.putObject("rejection");
+            rejection.put("version", result.rejection.version());
+            rejection.put("reason", result.rejection.reason());
+            rejection.put("submittedAt", result.rejection.submittedAt());
+            rejection.put("decidedAt", result.rejection.decidedAt());
+        }
         platformNode.put("lastSyncedAt", syncedAt);
         record.put("updatedAt", syncedAt);
 

@@ -88,7 +88,7 @@ public final class AppStatusMapper {
                 .currentBuild(text(config, "currentBuild"))
                 .releasedAt(text(config, "releasedAt"))
                 .lastSyncedAt(text(config, "lastSyncedAt"))
-                .rejection(rejection(record, platformKey, status, versions, newest))
+                .rejection(rejection(record, config, platformKey, status, versions, newest))
                 .pendingUpdate(pendingUpdate(newest, status, currentVersion))
                 .updateAvailable(updateAvailable(newest, currentVersion))
                 .build();
@@ -113,7 +113,7 @@ public final class AppStatusMapper {
     /* --------------------------------------------------------------- rejection */
 
     private static AppStatusResponse.Rejection rejection(
-            JsonNode record, String platformKey, String platformStatus,
+            JsonNode record, JsonNode config, String platformKey, String platformStatus,
             List<JsonNode> versions, JsonNode newest) {
 
         boolean newestRejected = newest != null && REJECTED.equals(text(newest, "status"));
@@ -147,6 +147,21 @@ public final class AppStatusMapper {
                     .reason(text(submission, "reason"))
                     .submittedAt(text(submission, "submittedAt"))
                     .decidedAt(text(submission, "decidedAt"))
+                    .build();
+        }
+
+        // Nothing in the hand-kept history, but the live store sync may have recorded one — it
+        // writes what the store said onto the platform itself. Checked after the version and
+        // submission rows because those are where a human pastes the store's actual wording, and
+        // Apple and Google never hand us that text through an API.
+        JsonNode synced = config.path("rejection");
+        if (synced.isObject()) {
+            return AppStatusResponse.Rejection.builder()
+                    .version(text(synced, "version"))
+                    .build(text(synced, "build"))
+                    .reason(text(synced, "reason"))
+                    .submittedAt(text(synced, "submittedAt"))
+                    .decidedAt(text(synced, "decidedAt"))
                     .build();
         }
 

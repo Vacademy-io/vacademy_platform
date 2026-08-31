@@ -410,6 +410,10 @@ function PlatformRow({
 function RejectionNote({ rejection, t }: { rejection: Rejection; t: TFunction }) {
     const version = versionLabel(rejection.version, rejection.build);
     const decidedOn = formatRegistryDate(rejection.decided_at);
+    // Apple tells us when a submission went in but never when review decided against it, so for
+    // the commonest rejection there is no decided date at all. Falling back to the submitted date
+    // keeps the line from reading as a rejection with no history whatsoever.
+    const submittedOn = decidedOn ? '' : formatRegistryDate(rejection.submitted_at);
 
     return (
         <div className="rounded-md border border-danger-400 bg-danger-100 p-3">
@@ -419,8 +423,9 @@ function RejectionNote({ rejection, t }: { rejection: Rejection; t: TFunction })
             </div>
             <p className="mt-1 text-caption text-neutral-600">
                 {version && <span className="font-mono">{version}</span>}
-                {version && decidedOn && ' · '}
+                {version && (decidedOn || submittedOn) && ' · '}
                 {decidedOn && t('rejection.decidedOn', { date: decidedOn })}
+                {submittedOn && t('rejection.submittedOn', { date: submittedOn })}
             </p>
             {rejection.reason ? (
                 <p className="mt-2 whitespace-pre-wrap text-caption text-neutral-600">

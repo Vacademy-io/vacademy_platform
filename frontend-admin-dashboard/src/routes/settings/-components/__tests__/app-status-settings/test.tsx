@@ -150,6 +150,21 @@ describe('AppStatusSettings — what an institute sees about its own app', () =>
         });
     });
 
+    describe('desktop platforms', () => {
+        it('shows no OTA line on Windows or macOS — those shells never receive a bundle', async () => {
+            respondWith([
+                platform({ platform: 'MACOS', app_id: 'io.zoeedtech.app', ota: null }),
+                platform({ platform: 'WINDOWS', app_id: 'ShikshaNation.ZOEEdtech', ota: null }),
+            ]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('macOS');
+            expect(screen.getByText('Windows')).toBeInTheDocument();
+            expect(screen.queryByText('App content (OTA)')).not.toBeInTheDocument();
+            expect(screen.queryByText(/shared bundle/)).not.toBeInTheDocument();
+        });
+    });
+
     describe('how fresh the status is', () => {
         it('says when the store was last checked, so a stale reading is visible as one', async () => {
             respondWith([platform({ last_synced_at: '2026-08-31T06:10:00Z' })]);
@@ -257,6 +272,27 @@ describe('AppStatusSettings — what an institute sees about its own app', () =>
             ).toBeInTheDocument();
             expect(screen.getByText('2.5.0 (250)')).toBeInTheDocument();
             expect(screen.getByText(line('Rejected on', '2026-08-22'))).toBeInTheDocument();
+        });
+
+        it('falls back to the submitted date when the store never told us when it decided', async () => {
+            // Apple's shape: App Store Connect reports that a submission has unresolved issues and
+            // when it went in, but never when review decided against it.
+            respondWith([
+                platform({
+                    status: 'REJECTED',
+                    rejection: {
+                        version: '1.0.5',
+                        build: '',
+                        reason: '',
+                        submitted_at: '2026-05-31T13:15:08Z',
+                        decided_at: '',
+                    },
+                }),
+            ]);
+            render(<AppStatusSettings />);
+
+            expect(await screen.findByText('Rejected by the store')).toBeInTheDocument();
+            expect(screen.getByText(line('Submitted', '2026-05-31T13:15:08Z'))).toBeInTheDocument();
         });
 
         it('says the reason is not recorded yet rather than showing an empty box', async () => {

@@ -37,5 +37,6 @@
         "publishedOn": "{{date}} को प्रकाशित",
         "minNativeVersion": "ऐप वर्शन {{version}} या उससे नया चाहिए",
         "sharedBundle": "साझा बंडल, आपके ऐप के लिए नहीं बनाया गया"
-    }
+    },
+    "lastCheckedOn": "स्टोर {{date}} को जाँचा गया"
 }

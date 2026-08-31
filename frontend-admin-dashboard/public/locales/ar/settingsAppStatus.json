@@ -17,6 +17,19 @@
         "android": "أندرويد",
         "ios": "iOS",
         "windows": "ويندوز",
-        "macos": "macOS"
+        "macos": "macOS",
+        "unknown": "أخرى"
+    },
+    "rejection": {
+        "title": "رفض المتجر التطبيق",
+        "reasonLabel": "السبب المذكور",
+        "noReason": "لم يُسجَّل سبب المتجر بعد — فريق المنصّة يتابع الأمر.",
+        "decidedOn": "تم الرفض في {{date}}"
+    },
+    "update": {
+        "title": "التحديث قيد التنفيذ",
+        "submittedOn": "أُرسل في {{date}}",
+        "releaseNotes": "الجديد في هذا التحديث",
+        "availableGeneric": "هناك إصدار أحدث جاهز ولم يصل إلى المتجر بعد."
     }
 }

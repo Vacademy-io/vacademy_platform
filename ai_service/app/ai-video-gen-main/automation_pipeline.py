@@ -29333,6 +29333,36 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 meta_dict["shots"] = shot_clips
                 print(f"   🎬 Added {len(shot_clips)} shot clips to timeline.meta.shots (v3 editor unit)")
 
+        # Last gate before the timeline is written: motion the frame-stepped
+        # renderer cannot seek is silently dropped from the video — the frame
+        # looks right in a browser and renders frozen, with no error anywhere.
+        # The load-handler case is repairable in place (re-dispatch the events so
+        # the handler runs at inject time); the rest can only be reported, since
+        # a CSS keyframe animation has no mechanical rewrite into GSAP.
+        try:
+            from seekable_motion import apply_ready_kick, unseekable_techniques
+            _repaired = 0
+            _still_broken = {}
+            for _e in timeline_entries:
+                _h = _e.get("html") or ""
+                if not _h:
+                    continue
+                _fixed = apply_ready_kick(_h)
+                if _fixed is not _h and _fixed != _h:
+                    _e["html"] = _fixed
+                    _repaired += 1
+                _bad = unseekable_techniques(_e["html"])
+                if _bad:
+                    _still_broken[_e.get("id") or "?"] = _bad
+            if _repaired:
+                print(f"   🔧 Motion repair: {_repaired} shot(s) had tweens in a load "
+                      f"handler that would never have fired — re-dispatch injected.")
+            if _still_broken:
+                print(f"   ⚠️ Unseekable motion will be DROPPED from the render in "
+                      f"{len(_still_broken)} shot(s): {_still_broken}")
+        except Exception as _sm_err:
+            print(f"   ⚠️ Seekable-motion check skipped: {_sm_err}")
+
         timeline_output = {
             "meta": meta_dict,
             "entries": timeline_entries

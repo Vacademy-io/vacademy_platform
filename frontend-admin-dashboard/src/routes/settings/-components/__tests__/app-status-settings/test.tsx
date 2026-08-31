@@ -36,6 +36,7 @@ vi.mock('@/lib/auth/axiosInstance', () => ({ default: { get: vi.fn() } }));
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import AppStatusSettings, {
     formatRegistryDate,
+    formatSyncedAt,
     versionLabel,
 } from '@/routes/settings/-components/AppStatusSettings';
 
@@ -146,6 +147,36 @@ describe('AppStatusSettings — what an institute sees about its own app', () =>
             await screen.findByText('Live');
             // Once, in the card header — not a second time on the Android row.
             expect(screen.getAllByText('com.vacademy.sn')).toHaveLength(1);
+        });
+    });
+
+    describe('how fresh the status is', () => {
+        it('says when the store was last checked, so a stale reading is visible as one', async () => {
+            respondWith([platform({ last_synced_at: '2026-08-31T06:10:00Z' })]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            expect(
+                screen.getByText(
+                    new RegExp(`Store checked ${formatSyncedAt('2026-08-31T06:10:00Z')}`)
+                )
+            ).toBeInTheDocument();
+        });
+
+        it('says nothing at all when no sync has ever reached the store', async () => {
+            respondWith([platform({ last_synced_at: '' })]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            expect(screen.queryByText(/Store checked/)).not.toBeInTheDocument();
+        });
+
+        it('drops an unparseable timestamp rather than printing Invalid Date', async () => {
+            respondWith([platform({ last_synced_at: 'whenever' })]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            expect(screen.queryByText(/Store checked/)).not.toBeInTheDocument();
         });
     });
 

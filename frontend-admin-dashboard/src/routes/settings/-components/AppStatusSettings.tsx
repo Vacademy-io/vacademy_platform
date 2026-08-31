@@ -161,6 +161,25 @@ export function formatRegistryDate(value: string | undefined | null): string {
     });
 }
 
+/**
+ * When the platform team's sync last reached the store for this platform.
+ *
+ * Only ever an ISO instant — it is stamped by the server, never typed — so unlike the registry's
+ * hand-entered dates this one carries a time worth showing: the sweep runs several times a day,
+ * and "checked at 06:10" answers "is this current?" in a way "checked on 31 Aug" does not.
+ */
+export function formatSyncedAt(value: string | undefined | null): string {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+}
+
 /** `v1.2.3 (45)`, skipping whichever half was never recorded. */
 export function versionLabel(version: string, build: string): string {
     if (!version && !build) return '';
@@ -326,6 +345,7 @@ function PlatformRow({
     // The app-level heading already carries one id; repeating it on the Android row is noise. An
     // iOS bundle that differs from it is not — the same app ships under two different ids.
     const ownId = p.app_id?.trim() && p.app_id.trim() !== appPackageName ? p.app_id.trim() : '';
+    const checkedAt = formatSyncedAt(p.last_synced_at);
 
     return (
         <div className="space-y-2 rounded-md border border-neutral-200 p-3">
@@ -371,6 +391,12 @@ function PlatformRow({
             </div>
 
             {p.ota && <OtaNote ota={p.ota} t={t} />}
+
+            {checkedAt && (
+                <p className="text-caption text-neutral-400">
+                    {t('lastCheckedOn', { date: checkedAt })}
+                </p>
+            )}
 
             {p.rejection && <RejectionNote rejection={p.rejection} t={t} />}
             {p.pending_update && <PendingUpdateNote update={p.pending_update} t={t} />}

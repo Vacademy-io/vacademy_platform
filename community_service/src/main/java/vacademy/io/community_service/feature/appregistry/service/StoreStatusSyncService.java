@@ -16,6 +16,8 @@ import vacademy.io.community_service.feature.appregistry.store.MicrosoftPartnerC
 import vacademy.io.community_service.feature.appregistry.store.StoreCredentialResolver;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -100,6 +102,86 @@ public class StoreStatusSyncService {
                 "storeUrl", result.storeUrl);
     }
 
+    /**
+     * Refreshes every platform of every live app the registry knows about.
+     *
+     * <p>This is what makes the status on an institute's settings page <em>tracked</em> rather than
+     * <em>remembered</em>: without it a status is only as fresh as the last time an ops person
+     * happened to open health-check and press refresh, which for most apps is the day it was
+     * registered. Runs on a schedule (see {@code StoreStatusScheduler}).
+     *
+     * <p>One app's failure never stops the sweep — a revoked Apple key or a Play account that
+     * cannot see one package must not cost every other institute its update. Platforms with no
+     * credential simply return null from {@link #sync} and are counted as skipped, not failed.
+     *
+     * @return how many platform rows were refreshed, skipped and errored.
+     */
+    public SweepResult syncAll() {
+        int synced = 0;
+        int skipped = 0;
+        int failed = 0;
+
+        for (AppRegistration row : repository.findAllByOrderByNameAsc()) {
+            if (Boolean.TRUE.equals(row.getArchived())) {
+                continue;
+            }
+            for (String platformKey : enabledPlatformsOf(row)) {
+                try {
+                    if (sync(row.getId(), platformKey) == null) {
+                        skipped++;
+                    } else {
+                        synced++;
+                    }
+                } catch (Exception e) {
+                    failed++;
+                    log.warn("[StoreStatusSync] {} / {} failed to sync: {}",
+                            row.getName(), platformKey, e.getMessage());
+                }
+            }
+        }
+
+        log.info("[StoreStatusSync] Sweep finished: {} synced, {} skipped (no credential or no store id), {} failed",
+                synced, skipped, failed);
+        return new SweepResult(synced, skipped, failed);
+    }
+
+    public record SweepResult(int synced, int skipped, int failed) {
+    }
+
+    /**
+     * The platforms this app is actually shipped on. A platform nobody enabled is registry
+     * bookkeeping — syncing it would spend a store API call to learn nothing.
+     */
+    private List<String> enabledPlatformsOf(AppRegistration row) {
+        List<String> enabled = new ArrayList<>();
+        try {
+            JsonNode platforms = objectMapper.readTree(row.getPayload()).path("platforms");
+            platforms.fieldNames().forEachRemaining(name -> {
+                if (platforms.path(name).path("enabled").asBoolean(false)) {
+                    enabled.add(name.toUpperCase(Locale.ROOT));
+                }
+            });
+        } catch (Exception e) {
+            log.warn("[StoreStatusSync] Could not read platforms for record {}: {}", row.getId(), e.getMessage());
+        }
+        return enabled;
+    }
+
+    /**
+     * The store had nothing to say about this app under the credential we hold — it belongs to a
+     * different developer account, the id is wrong, or the call failed.
+     *
+     * <p>Returning null means "not synced": the caller answers 501 / manual, and crucially the
+     * record keeps whatever status it already had. The alternative — writing NOT_REGISTERED — is
+     * an invented fact, and a scheduled sweep would keep re-inventing it every few hours over
+     * data a person verified by hand.
+     */
+    private Result unsyncable(String identifier, String platformKey, String provider) {
+        log.info("[StoreStatusSync] {} has nothing for {} on {} under the credential on file — "
+                + "leaving the recorded status untouched", provider, identifier, platformKey);
+        return null;
+    }
+
     /** Common shape every provider branch reduces to before the shared persist/response step. */
     private record Result(String status, String version, String build, String storeUrl, String releasedAt) {
     }
@@ -113,15 +195,21 @@ public class StoreStatusSyncService {
         if (client == null) {
             return null;
         }
-        AppStoreConnectClient.AppStatus ascStatus = client.fetchStatus(bundleId);
-        String status = ascStatus == null ? "NOT_REGISTERED" : mapAppStoreState(ascStatus.appStoreState());
-        String storeUrl = ascStatus == null ? ""
-                : "https://appstoreconnect.apple.com/apps/" + ascStatus.ascAppId() + "/appstore";
-        String releasedAt = "LIVE".equals(status) && ascStatus != null ? ascStatus.createdDate() : "";
-        return new Result(status,
-                ascStatus == null ? "" : ascStatus.versionString(),
-                ascStatus == null ? "" : ascStatus.buildNumber(),
-                storeUrl, releasedAt);
+        // App Store Connect names the Mac platform MAC_OS; the registry calls it MACOS.
+        String ascPlatform = "MACOS".equals(platformKey) ? "MAC_OS" : "IOS";
+        AppStoreConnectClient.AppStatus ascStatus = client.fetchStatus(bundleId, ascPlatform);
+        if (ascStatus == null) {
+            // The bundle isn't visible to THIS credential — which is not the same as "no app
+            // exists". Vidyayatan's key cannot see Shiksha Nation's or ZOE's apps, because those
+            // live in a second Apple team; writing NOT_REGISTERED here would overwrite a verified
+            // Live release with a falsehood, on a schedule, for exactly the institutes whose apps
+            // are hardest to check by hand. Say nothing instead — see #unsyncable.
+            return unsyncable(bundleId, platformKey, "App Store Connect");
+        }
+        String status = mapAppStoreState(ascStatus.appStoreState());
+        String storeUrl = "https://appstoreconnect.apple.com/apps/" + ascStatus.ascAppId() + "/appstore";
+        String releasedAt = "LIVE".equals(status) ? ascStatus.createdDate() : "";
+        return new Result(status, ascStatus.versionString(), ascStatus.buildNumber(), storeUrl, releasedAt);
     }
 
     private Result syncGooglePlay(JsonNode platformNode, String instituteId) {
@@ -134,13 +222,13 @@ public class StoreStatusSyncService {
             return null;
         }
         GooglePlayClient.AppStatus playStatus = client.fetchStatus(packageName);
-        String status = playStatus == null ? "NOT_REGISTERED" : mapPlayReleaseStatus(playStatus.releaseStatus());
-        String storeUrl = playStatus == null ? ""
-                : "https://play.google.com/console/developers/app/" + packageName;
-        return new Result(status,
-                playStatus == null ? "" : playStatus.releaseName(),
-                playStatus == null ? "" : playStatus.versionCode(),
-                storeUrl, "");
+        if (playStatus == null) {
+            return unsyncable(packageName, "ANDROID", "Google Play");
+        }
+        return new Result(mapPlayReleaseStatus(playStatus.releaseStatus()),
+                playStatus.releaseName(),
+                playStatus.versionCode(),
+                "https://play.google.com/console/developers/app/" + packageName, "");
     }
 
     private Result syncPartnerCenter(JsonNode platformNode, String instituteId) {
@@ -153,10 +241,11 @@ public class StoreStatusSyncService {
             return null;
         }
         MicrosoftPartnerCenterClient.AppStatus pcStatus = client.fetchStatus(storeId);
-        String status = pcStatus == null ? "NOT_REGISTERED" : mapPartnerCenterStatus(pcStatus.submissionStatus());
-        String storeUrl = pcStatus == null ? ""
-                : "https://partner.microsoft.com/dashboard/products/" + storeId;
-        return new Result(status, "", "", storeUrl, "");
+        if (pcStatus == null) {
+            return unsyncable(storeId, "WINDOWS", "Partner Center");
+        }
+        return new Result(mapPartnerCenterStatus(pcStatus.submissionStatus()), "", "",
+                "https://partner.microsoft.com/dashboard/products/" + storeId, "");
     }
 
     private void persist(AppRegistration row, ObjectNode record, String platformKey, Result result,
@@ -184,8 +273,9 @@ public class StoreStatusSyncService {
      * / unrecognised states fall back to SUBMITTED rather than a guess in either direction — that
      * reads as "something is in flight, go check" rather than falsely implying success or failure.
      */
-    private static String mapAppStoreState(String appStoreState) {
+    static String mapAppStoreState(String appStoreState) {
         return switch (appStoreState) {
+            // appStoreState — the field Apple is retiring.
             case "READY_FOR_SALE" -> "LIVE";
             case "PREPARE_FOR_SUBMISSION" -> "DRAFT";
             case "WAITING_FOR_REVIEW", "WAITING_FOR_EXPORT_COMPLIANCE" -> "SUBMITTED";
@@ -195,6 +285,22 @@ public class StoreStatusSyncService {
             case "DEVELOPER_REMOVED_FROM_SALE", "REMOVED_FROM_SALE" -> "REMOVED";
             case "PENDING_CONTRACT" -> "SUSPENDED";
             case "PROCESSING_FOR_APP_STORE" -> "BUILD_PROCESSING";
+
+            // appVersionState — the field replacing it. Same states, different spellings, and both
+            // arrive in the same response today (verified live: a ZOE macOS version reads
+            // appStoreState=READY_FOR_SALE and appVersionState=READY_FOR_DISTRIBUTION).
+            case "READY_FOR_DISTRIBUTION" -> "LIVE";
+            case "READY_FOR_REVIEW" -> "READY_FOR_SUBMISSION";
+            case "PROCESSING_FOR_DISTRIBUTION" -> "BUILD_PROCESSING";
+            case "ACCEPTED" -> "APPROVED";
+            // The version was superseded by a newer one. It is only ever picked when nothing on
+            // this platform is live, so what it really says is "the release that was live is gone".
+            case "REPLACED_WITH_NEW_VERSION" -> "REMOVED";
+
+            // A platform the app record exists for but has never shipped on — see
+            // AppStoreConnectClient#noVersionsStateFor. Passed through rather than mapped.
+            case "NOT_REGISTERED" -> "NOT_REGISTERED";
+
             default -> "SUBMITTED";
         };
     }

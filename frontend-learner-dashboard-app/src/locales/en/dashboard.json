@@ -16,7 +16,21 @@
         "loadMore": "Load more",
         "announcementsErrorTitle": "Could not load announcements",
         "announcementsEmptyTitle": "No announcements yet",
-        "announcementsEmptyDescription": "Announcements from your institute will show up here."
+        "announcementsEmptyDescription": "Announcements from your institute will show up here.",
+        "receivedTimes": "Received {{count}} times",
+        "noContent": "This notification has no additional details.",
+        "close": "Close",
+        "openLink": "Open link",
+        "unreadSummary_one": "You have {{count}} unread notification",
+        "unreadSummary_other": "You have {{count}} unread notifications",
+        "clear": "Clear",
+        "clearOne": "Clear notification: {{title}}",
+        "clearAll": "Clear all",
+        "clearing": "Clearing...",
+        "clearAllTitle": "Clear all notifications?",
+        "cancel": "Cancel",
+        "clearAllDescription_one": "This removes {{count}} notification from your inbox. It cannot be undone.",
+        "clearAllDescription_other": "This removes all {{count}} notifications from your inbox. It cannot be undone."
     },
     "hero": {
         "greeting": {

@@ -73,13 +73,15 @@ public class AppStoreConnectClient {
     }
 
     /**
-     * @return the latest app-store-version info for {@code bundleId}, or null if ASC has no app
-     *         with that bundle id under *this credential's* Apple Developer account, or the
-     *         lookup failed. A null here does not prove the app doesn't exist anywhere — only
-     *         that it isn't visible to this specific account.
+     * @param bundleId    the app's bundle id.
+     * @param ascPlatform IOS or MAC_OS — App Store Connect's own platform values.
+     * @return the latest app-store-version info for that bundle id <em>on that platform</em>, or
+     *         null if ASC has no app with the bundle id under *this credential's* Apple Developer
+     *         account, or the lookup failed. A null here does not prove the app doesn't exist
+     *         anywhere — only that it isn't visible to this specific account.
      */
-    public AppStatus fetchStatus(String bundleId) {
-        if (!StringUtils.hasText(bundleId)) {
+    public AppStatus fetchStatus(String bundleId, String ascPlatform) {
+        if (!StringUtils.hasText(bundleId) || !StringUtils.hasText(ascPlatform)) {
             return null;
         }
         try {
@@ -100,11 +102,17 @@ public class AppStoreConnectClient {
             // include=build resolves the CFBundleVersion in the same call; it's matched back to
             // THIS version specifically via its build relationship id — with limit>1, `included`
             // can contain builds for other versions too, so "first builds entry" would be wrong.
-            JsonNode versionsBody = get("/v1/apps/" + ascAppId + "/appStoreVersions?limit=50&include=build");
+            //
+            // filter[platform] is not optional here. One ASC app record holds the versions for
+            // EVERY platform that bundle ships on, and Shiksha Nation and ZOE both ship iOS and
+            // macOS under a single bundle id — verified live: io.zoeedtech.app is on iOS 2.5.5
+            // while its Mac app is on 1.0.1 with a 1.0.2 still in PREPARE_FOR_SUBMISSION. Without
+            // the filter, the Mac App Store row would report the iPhone app's version and state.
+            JsonNode versionsBody = get("/v1/apps/" + ascAppId
+                    + "/appStoreVersions?limit=50&include=build&filter[platform]=" + ascPlatform);
             JsonNode versions = versionsBody.path("data");
             if (!versions.isArray() || versions.isEmpty()) {
-                // App record exists but has never had a version submitted.
-                return new AppStatus(ascAppId, "PREPARE_FOR_SUBMISSION", "", "", "");
+                return new AppStatus(ascAppId, noVersionsStateFor(ascAppId), "", "", "");
             }
 
             // "Most recently created version" is NOT the same question as "what's live right now" —
@@ -117,10 +125,7 @@ public class AppStoreConnectClient {
             // So: prefer the most recent version that is actually READY_FOR_SALE (what's live),
             // and only fall back to the overall most recent version when nothing has ever gone
             // live yet (a brand-new app still in its first submission).
-            JsonNode latest = mostRecentByState(versions, "READY_FOR_SALE");
-            if (latest == null) {
-                latest = mostRecentByState(versions, null);
-            }
+            JsonNode latest = selectVersion(versions);
 
             JsonNode attrs = latest.path("attributes");
             String buildRelId = latest.path("relationships").path("build").path("data").path("id").asText(null);
@@ -136,13 +141,39 @@ public class AppStoreConnectClient {
             }
             return new AppStatus(
                     ascAppId,
-                    attrs.path("appStoreState").asText(""),
+                    stateOf(latest),
                     attrs.path("versionString").asText(""),
                     buildNumber,
                     attrs.path("createdDate").asText(""));
         } catch (Exception e) {
             log.warn("[AppStoreConnect] Status lookup failed for bundleId={}: {}", bundleId, e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * No versions came back for the platform asked about. That means one of two very different
+     * things, and telling an institute the wrong one is worse than saying nothing:
+     *
+     * <ul>
+     *   <li>the app record has no versions at all — a brand-new app still being prepared, which is
+     *       genuinely PREPARE_FOR_SUBMISSION;</li>
+     *   <li>the app ships on some other platform but not this one — the Mac App Store row for an
+     *       iPhone-only app. That is NOT_REGISTERED, and calling it "Draft" would invent a Mac
+     *       release nobody has started.</li>
+     * </ul>
+     *
+     * <p>Costs one extra call, and only in the empty case.
+     */
+    private String noVersionsStateFor(String ascAppId) {
+        try {
+            JsonNode any = get("/v1/apps/" + ascAppId + "/appStoreVersions?limit=1");
+            boolean hasVersionsOnSomePlatform = any.path("data").isArray() && !any.path("data").isEmpty();
+            return hasVersionsOnSomePlatform ? "NOT_REGISTERED" : "PREPARE_FOR_SUBMISSION";
+        } catch (Exception e) {
+            log.warn("[AppStoreConnect] Could not tell a never-submitted app from a platform it "
+                    + "does not ship on (appId={}): {}", ascAppId, e.getMessage());
+            return "NOT_REGISTERED";
         }
     }
 
@@ -155,8 +186,7 @@ public class AppStoreConnectClient {
         JsonNode best = null;
         String bestCreatedDate = "";
         for (JsonNode version : versions) {
-            if (requiredState != null
-                    && !requiredState.equals(version.path("attributes").path("appStoreState").asText(""))) {
+            if (requiredState != null && !requiredState.equals(stateOf(version))) {
                 continue;
             }
             String createdDate = version.path("attributes").path("createdDate").asText("");
@@ -166,6 +196,52 @@ public class AppStoreConnectClient {
             }
         }
         return best;
+    }
+
+    /**
+     * Which of an app's versions this platform's status should be read from.
+     *
+     * <p>"Most recently created" is NOT the question — see the note in {@link #fetchStatus}. The
+     * live version wins; only when nothing has ever gone live does the newest one stand in.
+     *
+     * <p>Apple is retiring {@code appStoreState} in favour of {@code appVersionState}, and the two
+     * spell the live state differently (READY_FOR_SALE vs READY_FOR_DISTRIBUTION). Both ship in
+     * the same response today, so match on either rather than pinning to the one going away.
+     *
+     * <p>Package-private for the test that pins this against a captured live response.
+     */
+    static JsonNode selectVersion(JsonNode versions) {
+        JsonNode live = mostRecentLive(versions);
+        return live != null ? live : mostRecentByState(versions, null);
+    }
+
+    /** The most recent version that is actually live, under either spelling of that state. */
+    private static JsonNode mostRecentLive(JsonNode versions) {
+        JsonNode readyForSale = mostRecentByState(versions, "READY_FOR_SALE");
+        JsonNode readyForDistribution = mostRecentByState(versions, "READY_FOR_DISTRIBUTION");
+        if (readyForSale == null) {
+            return readyForDistribution;
+        }
+        if (readyForDistribution == null) {
+            return readyForSale;
+        }
+        return createdDateOf(readyForDistribution).compareTo(createdDateOf(readyForSale)) > 0
+                ? readyForDistribution : readyForSale;
+    }
+
+    /**
+     * The version's review/release state. {@code appVersionState} is the field Apple is moving to;
+     * {@code appStoreState} is the one it is replacing. Both ship in the same response today, so
+     * read the new one first and fall back rather than depending on the deprecated field.
+     */
+    static String stateOf(JsonNode version) {
+        JsonNode attributes = version.path("attributes");
+        String versionState = attributes.path("appVersionState").asText("");
+        return versionState.isEmpty() ? attributes.path("appStoreState").asText("") : versionState;
+    }
+
+    private static String createdDateOf(JsonNode version) {
+        return version.path("attributes").path("createdDate").asText("");
     }
 
     /* ------------------------------------------------------------------ internals */

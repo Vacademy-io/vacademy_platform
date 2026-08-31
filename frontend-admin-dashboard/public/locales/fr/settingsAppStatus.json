@@ -37,5 +37,6 @@
         "publishedOn": "publié le {{date}}",
         "minNativeVersion": "nécessite la version {{version}} ou ultérieure",
         "sharedBundle": "bundle partagé, pas conçu pour votre app"
-    }
+    },
+    "lastCheckedOn": "Store vérifié le {{date}}"
 }

@@ -68,6 +68,20 @@ public class AiEvaluationProcess {
         @Column(name = "completed_at")
         private Date completedAt;
 
+        /**
+         * Which instance picked this job up, and when (V43).
+         *
+         * Dispatch used to be a plain in-JVM @Async call, so a pod dying between the
+         * INSERT and the work starting left the job PENDING until the sweeper noticed.
+         * A claim lets any replica drain the queue, and claimedAt is what makes an
+         * abandoned claim recoverable rather than permanent.
+         */
+        @Column(name = "claimed_by", length = 120)
+        private String claimedBy;
+
+        @Column(name = "claimed_at")
+        private Date claimedAt;
+
         @Column(name = "created_at", insertable = false, updatable = false)
         private Date createdAt;
 

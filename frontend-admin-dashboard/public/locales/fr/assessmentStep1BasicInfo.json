@@ -75,6 +75,10 @@
         "switchSections": {
             "label": "Autoriser les {{role}}s à changer de section",
             "description": "Les participants peuvent naviguer librement entre les sections."
+        },
+        "aiEvaluation": {
+            "label": "Évaluer les copies avec l'IA",
+            "description": "Corrige chaque copie automatiquement dès son envoi. Consomme des crédits par question corrigée ; un enseignant relit et publie le résultat."
         }
     },
     "unusedFields": {

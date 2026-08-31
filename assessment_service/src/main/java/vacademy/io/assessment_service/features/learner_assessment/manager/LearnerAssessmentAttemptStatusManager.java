@@ -62,6 +62,9 @@ public class LearnerAssessmentAttemptStatusManager {
         RestartAssessmentService restartAssessmentService;
 
         @Autowired
+        vacademy.io.assessment_service.features.assessment.service.evaluation_ai.AiEvaluationSubmissionEnqueuer aiEvaluationSubmissionEnqueuer;
+
+        @Autowired
         AssessmentLLMAnalyticsService assessmentLLMAnalyticsService;
 
         @Autowired
@@ -460,6 +463,13 @@ public class LearnerAssessmentAttemptStatusManager {
                         log.error("Failed to send assessment data for analysis - continuing anyway: {}", e.getMessage(),
                                         e);
                 }
+
+                // Queue AI evaluation for assessments that opted in (V43). Enqueue only --
+                // the poller dispatches -- so the work belongs to a database row rather
+                // than to this pod, and survives a deploy or crash right after submit.
+                // Self-contained and non-throwing: a submission that succeeded must never
+                // be reported as failed because an optional grading step could not start.
+                aiEvaluationSubmissionEnqueuer.enqueueIfEnabled(attempt, assessment);
 
                 log.info("[SUBMIT-ASSESSMENT] Submission completed successfully for attemptId: {}", attemptId);
                 return ResponseEntity.ok("Done");

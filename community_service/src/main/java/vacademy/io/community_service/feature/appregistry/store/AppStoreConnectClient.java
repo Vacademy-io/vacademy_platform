@@ -67,6 +67,63 @@ public class AppStoreConnectClient {
         return privateKey == null ? null : new AppStoreConnectClient(issuerId, keyId, privateKey);
     }
 
+    /**
+     * The newest review submission for a platform. {@code state} is the one that matters:
+     * UNRESOLVED_ISSUES means App Review raised something and the app is blocked on it.
+     */
+    public record ReviewSubmission(String state, String submittedDate) {
+
+        private static final String BLOCKED = "UNRESOLVED_ISSUES";
+
+        public boolean hasUnresolvedIssues() {
+            return BLOCKED.equals(state);
+        }
+    }
+
+    /**
+     * The most recent review submission Apple has for this app on this platform.
+     *
+     * <p>Worth a second call because the version's own state does not always say the app is stuck:
+     * verified live on a real rejected app (io.shikshanation.app), the version reads
+     * READY_FOR_REVIEW while its submission reads UNRESOLVED_ISSUES. Going by the version alone,
+     * an institute would be told their app is ready to submit when App Review has in fact bounced
+     * it back.
+     *
+     * <p>Apple exposes the state and the date, but <b>not the reason</b> — the review's actual
+     * message lives in Resolution Center and no endpoint returns it (checked against a real
+     * UNRESOLVED_ISSUES submission: its items carry a state and nothing else). So the reason stays
+     * something a person pastes in; this only makes sure the rejection itself is never missed.
+     *
+     * @return the newest submission for that platform, or null if there are none or the call failed.
+     */
+    public ReviewSubmission fetchLatestReviewSubmission(String ascAppId, String ascPlatform) {
+        if (!StringUtils.hasText(ascAppId) || !StringUtils.hasText(ascPlatform)) {
+            return null;
+        }
+        try {
+            JsonNode body = get("/v1/apps/" + ascAppId + "/reviewSubmissions?limit=50");
+            JsonNode best = null;
+            String bestDate = "";
+            for (JsonNode submission : body.path("data")) {
+                JsonNode attributes = submission.path("attributes");
+                if (!ascPlatform.equals(attributes.path("platform").asText(""))) {
+                    continue;
+                }
+                String submitted = attributes.path("submittedDate").asText("");
+                if (best == null || submitted.compareTo(bestDate) > 0) {
+                    best = attributes;
+                    bestDate = submitted;
+                }
+            }
+            return best == null ? null
+                    : new ReviewSubmission(best.path("state").asText(""), bestDate);
+        } catch (Exception e) {
+            log.warn("[AppStoreConnect] Review submission lookup failed for appId={} platform={}: {}",
+                    ascAppId, ascPlatform, e.getMessage());
+            return null;
+        }
+    }
+
     /** Result of a status lookup, or null if no app is registered in ASC for that bundle id. */
     public record AppStatus(String ascAppId, String appStoreState, String versionString,
                              String buildNumber, String createdDate) {

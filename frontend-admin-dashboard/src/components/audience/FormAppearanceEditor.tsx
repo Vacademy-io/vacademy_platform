@@ -22,10 +22,11 @@
  * this card sits directly above the post-submit one and has to match it. (MyInput
  * also carries a `sm:w-60` width cap that a full-width form field has to fight.)
  */
-import { useState, type ReactNode } from 'react';
-import { CaretDown, Plus, TrashSimple } from '@phosphor-icons/react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ArrowsOut, CaretDown, Plus, TrashSimple } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -56,6 +57,7 @@ import {
     type AudienceFormHighlight,
     type AudienceFormHighlightIcon,
 } from '@/services/audience-form-appearance';
+import { buildFormAppearancePreview, type PreviewField } from './form-appearance-preview';
 
 interface FormAppearanceEditorProps {
     value: AudienceFormAppearance;
@@ -72,6 +74,12 @@ interface FormAppearanceEditorProps {
     previewCampaignName?: string;
     /** Shown in the preview where the campaign's own description would appear. */
     previewCampaignDescription?: string;
+    /** Shown in the preview's objective block. */
+    previewCampaignObjective?: string;
+    /** Branding name in the preview's header bar. */
+    previewInstituteName?: string;
+    /** The campaign's own fields, so the preview shows real labels. */
+    previewFields?: PreviewField[];
 }
 
 /** Human labels for the closed enums. Order follows the service's arrays. */
@@ -115,21 +123,6 @@ const HIGHLIGHT_ICON_LABELS: Record<AudienceFormHighlightIcon, string> = {
     check: 'Check',
     users: 'People',
     chat: 'Chat',
-};
-
-/** Preview swatch per accent. Spelled out — Tailwind can't read an interpolation. */
-const ACCENT_SWATCH: Record<AudienceFormAccent, string> = {
-    primary: 'bg-primary-500',
-    success: 'bg-success-600',
-    info: 'bg-info-600',
-    warning: 'bg-warning-600',
-    neutral: 'bg-neutral-600',
-};
-
-const PREVIEW_BACKGROUND: Record<(typeof FORM_BACKGROUNDS)[number], string> = {
-    muted: 'bg-neutral-100',
-    plain: 'bg-white',
-    gradient: 'bg-gradient-to-br from-primary-100 to-primary-50',
 };
 
 /**
@@ -222,6 +215,9 @@ export const FormAppearanceEditor = ({
     disabled = false,
     previewCampaignName = 'Your Campaign',
     previewCampaignDescription = '',
+    previewCampaignObjective = '',
+    previewInstituteName = 'Your Institute',
+    previewFields = [],
 }: FormAppearanceEditorProps) => {
     const [open, setOpen] = useState(false);
     // The card opens on Basics only. Everything else is a step the admin has to
@@ -229,6 +225,15 @@ export const FormAppearanceEditor = ({
     // rather than a wall of forty inputs.
     const [advancedOpen, setAdvancedOpen] = useState(false);
     const [codeOpen, setCodeOpen] = useState(false);
+    const [previewOpen, setPreviewOpen] = useState(false);
+
+    // Rebuilding the preview document swaps the iframe's srcDoc, which reloads
+    // it — on every keystroke that flickers. Settle first, then repaint.
+    const [debouncedValue, setDebouncedValue] = useState(value);
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedValue(value), 250);
+        return () => window.clearTimeout(timer);
+    }, [value]);
 
     const patch = (changes: Partial<AudienceFormAppearance>) => onChange({ ...value, ...changes });
 
@@ -250,113 +255,73 @@ export const FormAppearanceEditor = ({
 
     const hasCustomCode = Boolean(value.heroHtml.trim() || value.customCss.trim());
 
-    // ── Live miniature ──
-    // Not a faithful render — a shape sketch. Layout, width, background, accent
-    // and card style are judged by looking, and the alternative (open the public
-    // link in another tab) costs a save.
-    const previewHeadline = value.headline.trim() || previewCampaignName;
-    const previewBody = value.showDescription
-        ? value.subheadline.trim() || previewCampaignDescription.trim()
-        : '';
-
-    const previewCard = (
-        <div
-            className={cn(
-                'rounded-md border border-neutral-200 bg-white p-2',
-                value.cardStyle === 'flat' && 'border-transparent',
-                value.cardStyle === 'elevated' && 'shadow-sm',
-                value.cardStyle === 'glass' && 'bg-white/80'
-            )}
-        >
-            <div className="h-1.5 w-1/2 rounded-full bg-neutral-300" />
-            <div className="mt-1.5 space-y-1">
-                <div className="h-3 rounded-sm border border-neutral-200" />
-                <div className="h-3 rounded-sm border border-neutral-200" />
-                <div className="h-3 rounded-sm border border-neutral-200" />
-            </div>
-            <div className="mt-1.5 flex justify-end">
-                <div className={cn('h-2.5 w-10 rounded-sm', ACCENT_SWATCH[value.accent])} />
-            </div>
-        </div>
+    // ── Live preview ──
+    // A real render of the page in a sandboxed iframe, not a skeleton sketch:
+    // it is the only way the admin's own Custom CSS can be shown applying, and
+    // grey placeholder bars never answered "does my wording fit".
+    const previewDoc = useMemo(
+        () =>
+            buildFormAppearancePreview(debouncedValue, {
+                campaignName: previewCampaignName,
+                campaignDescription: previewCampaignDescription,
+                campaignObjective: previewCampaignObjective,
+                instituteName: previewInstituteName,
+                fields: previewFields,
+            }),
+        [
+            debouncedValue,
+            previewCampaignName,
+            previewCampaignDescription,
+            previewCampaignObjective,
+            previewInstituteName,
+            previewFields,
+        ]
     );
 
-    // A hand-built heading block replaces all of this, so the miniature says so
-    // rather than drawing a shape the page will not render.
-    const previewHero = value.heroHtml.trim() ? (
-        <div className="flex h-16 items-center justify-center rounded-sm border border-dashed border-neutral-300 bg-white/60">
-            <span className="text-xs font-semibold text-neutral-500">Custom HTML</span>
-        </div>
-    ) : (
-        <div className="space-y-1">
-            {value.coverImageUrl.trim() && (
-                <div className="h-6 rounded-sm bg-neutral-200" aria-hidden="true" />
-            )}
-            {value.eyebrow.trim() && (
-                <div
-                    className={cn(
-                        'inline-block h-2 w-12 rounded-full opacity-40',
-                        ACCENT_SWATCH[value.accent]
-                    )}
-                    aria-hidden="true"
-                />
-            )}
-            <p className="truncate text-xs font-semibold text-neutral-800">{previewHeadline}</p>
-            {previewBody && <div className="h-1.5 w-4/5 rounded-full bg-neutral-300" />}
-            {value.showObjective && <div className="h-4 rounded-sm bg-neutral-100" />}
-            {value.highlights.some((highlight) => highlight.text.trim()) && (
-                <div className="flex gap-1 pt-0.5">
-                    {value.highlights
-                        .filter((highlight) => highlight.text.trim())
-                        .map((highlight) => (
-                            <div
-                                key={highlight.id}
-                                className="h-2 w-8 rounded-full border border-neutral-200"
-                            />
-                        ))}
-                </div>
-            )}
-        </div>
+    const previewFrame = (className: string) => (
+        <iframe
+            // sandbox="" grants nothing: no scripts, no forms, no navigation,
+            // no same-origin. The admin's HTML and CSS render but cannot reach
+            // the dashboard around them.
+            sandbox=""
+            title="Response form preview"
+            srcDoc={previewDoc}
+            className={cn('w-full rounded-md border border-neutral-200 bg-white', className)}
+        />
     );
 
     const preview = (
         <div className="rounded-lg border border-neutral-200 p-3">
-            <p className="mb-2 text-xs font-semibold text-neutral-600">Preview</p>
-            <div className={cn('rounded-md p-2', PREVIEW_BACKGROUND[value.background])}>
-                <div className="mb-1.5 h-3 rounded-sm bg-white" aria-hidden="true" />
-                <div
-                    className={cn(
-                        'mx-auto',
-                        value.width === 'narrow' && 'w-4/5',
-                        value.width === 'wide' && 'w-full'
-                    )}
+            <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-neutral-600">Preview</p>
+                <MyButton
+                    type="button"
+                    buttonType="secondary"
+                    scale="small"
+                    onClick={() => setPreviewOpen(true)}
                 >
-                    {value.layout === 'split' ? (
-                        <div className="grid grid-cols-12 gap-2">
-                            <div className="col-span-5">{previewHero}</div>
-                            <div className="col-span-7">{previewCard}</div>
-                        </div>
-                    ) : (
-                        <div className="space-y-2">
-                            {value.layout === 'classic' ? (
-                                <div className="rounded-md border border-neutral-200 bg-white p-2">
-                                    {previewHero}
-                                </div>
-                            ) : (
-                                previewHero
-                            )}
-                            {previewCard}
-                        </div>
-                    )}
-                </div>
-                {value.footerNote.trim() && (
-                    <div className="mx-auto mt-2 h-1.5 w-1/2 rounded-full bg-neutral-300" />
-                )}
+                    <ArrowsOut className="size-4" weight="bold" />
+                    Full preview
+                </MyButton>
             </div>
-            <HelpText>
-                A sketch of the shape, not the finished page.
-                {value.customCss.trim() && ' Custom CSS is not applied here.'}
-            </HelpText>
+            {previewFrame('h-preview-inline')}
+            <HelpText>An approximation of the live page, including your custom CSS.</HelpText>
         </div>
+    );
+
+    const previewDialog = (
+        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+            <DialogContent className="w-dialog-xl">
+                <DialogHeader>
+                    <DialogTitle>Response form preview</DialogTitle>
+                </DialogHeader>
+                {previewFrame('h-preview-dialog')}
+                <p className="text-xs text-neutral-500">
+                    An approximation for layout and colour. The live page uses the institute&rsquo;s
+                    own theme, fonts and real inputs.
+                </p>
+            </DialogContent>
+        </Dialog>
     );
 
     // ── Basics: the four things admins actually change ──
@@ -742,6 +707,7 @@ export const FormAppearanceEditor = ({
 
     const body = (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {previewDialog}
             <div className="lg:col-span-7">{controls}</div>
             <div className="lg:col-span-5">
                 <div className="lg:sticky lg:top-4">{preview}</div>

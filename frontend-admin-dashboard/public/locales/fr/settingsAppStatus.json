@@ -24,7 +24,8 @@
         "title": "Rejeté par le store",
         "reasonLabel": "Motif indiqué",
         "noReason": "Le motif du store n'a pas encore été consigné — l'équipe plateforme s'en occupe.",
-        "decidedOn": "Rejeté le {{date}}"
+        "decidedOn": "Rejeté le {{date}}",
+        "submittedOn": "Soumis le {{date}}"
     },
     "update": {
         "title": "Mise à jour en cours",

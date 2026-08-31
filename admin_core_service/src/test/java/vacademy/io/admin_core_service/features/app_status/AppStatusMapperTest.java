@@ -63,6 +63,71 @@ class AppStatusMapperTest {
     }
 
     @Nested
+    @DisplayName("a rejection the live sync recorded")
+    class SyncedRejection {
+
+        private static AppStatusResponse.PlatformStatus platformWith(String rejectionJson, String history) {
+            return AppStatusMapper.toRegisteredApp(record("{"
+                    + "\"id\":\"app-1\",\"basics\":{\"packageName\":\"com.x.app\"},"
+                    + "\"platforms\":{\"ANDROID\":{\"enabled\":true,\"status\":\"REJECTED\""
+                    + (rejectionJson.isEmpty() ? "" : ",\"rejection\":" + rejectionJson)
+                    + "}},"
+                    + "\"versions\":" + history + ",\"submissions\":[]}"))
+                    .getPlatforms().get(0);
+        }
+
+        @Test
+        @DisplayName("the store's own reason reaches the institute")
+        void syncedReasonIsShown() {
+            AppStatusResponse.Rejection rejection = platformWith(
+                    "{\"version\":\"1.0.4\",\"reason\":\"Package validation failed: missing capability\","
+                            + "\"submittedAt\":\"2026-08-20\",\"decidedAt\":\"2026-08-22\"}",
+                    "[]").getRejection();
+
+            assertNotNull(rejection);
+            assertEquals("Package validation failed: missing capability", rejection.getReason());
+            assertEquals("1.0.4", rejection.getVersion());
+            assertEquals("2026-08-20", rejection.getSubmittedAt());
+        }
+
+        @Test
+        @DisplayName("a rejection with no reason still says the app was rejected, and when")
+        void syncedRejectionWithoutReason() {
+            // Apple's case: the API gives the state and the date, never the review's message.
+            AppStatusResponse.Rejection rejection = platformWith(
+                    "{\"version\":\"1.0.5\",\"reason\":\"\",\"submittedAt\":\"2026-05-31\",\"decidedAt\":\"\"}",
+                    "[]").getRejection();
+
+            assertNotNull(rejection);
+            assertEquals("", rejection.getReason());
+            assertEquals("1.0.5", rejection.getVersion());
+            assertEquals("2026-05-31", rejection.getSubmittedAt());
+        }
+
+        @Test
+        @DisplayName("a reason someone typed against the build wins over the bare synced one")
+        void handWrittenReasonWins() {
+            AppStatusResponse.Rejection rejection = platformWith(
+                    "{\"version\":\"1.0.5\",\"reason\":\"\",\"submittedAt\":\"2026-05-31\",\"decidedAt\":\"\"}",
+                    "[{\"platform\":\"ANDROID\",\"version\":\"1.0.5\",\"status\":\"REJECTED\","
+                            + "\"rejectionReason\":\"Guideline 5.1.1 — account deletion missing\","
+                            + "\"createdAt\":\"2026-05-31\"}]").getRejection();
+
+            assertEquals("Guideline 5.1.1 — account deletion missing", rejection.getReason());
+        }
+
+        @Test
+        @DisplayName("with nothing recorded anywhere it still says rejected, reason unknown")
+        void noSourceAtAll() {
+            AppStatusResponse.Rejection rejection = platformWith("", "[]").getRejection();
+
+            assertNotNull(rejection);
+            assertEquals("", rejection.getReason());
+            assertEquals("", rejection.getVersion());
+        }
+    }
+
+    @Nested
     @DisplayName("store id and release track")
     class AppIdAndTrack {
 

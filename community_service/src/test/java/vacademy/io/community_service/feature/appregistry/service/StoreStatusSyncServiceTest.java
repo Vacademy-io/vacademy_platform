@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -240,6 +241,82 @@ class StoreStatusSyncServiceTest {
             assertEquals(0, result.synced());
             assertEquals(2, result.skipped());
             verify(repository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("rejections")
+    class Rejections {
+
+        private void appleReturns(String state, String version) {
+            AppRegistration row = appleApp("app-1");
+            when(repository.findById("app-1")).thenReturn(Optional.of(row));
+            when(storeCredentialResolver.resolveAppStoreConnect(anyString(), anyString()))
+                    .thenReturn(appStoreConnectClient);
+            when(appStoreConnectClient.fetchStatus(anyString(), anyString()))
+                    .thenReturn(new AppStoreConnectClient.AppStatus("1", state, version, "1", "2026-08-01"));
+        }
+
+        @Test
+        @DisplayName("App Review's unresolved issues outrank a version that still says ready")
+        void unresolvedIssuesMakeItRejected() {
+            // Verified live on io.shikshanation.app: the version reads READY_FOR_REVIEW while its
+            // submission reads UNRESOLVED_ISSUES. Going by the version alone tells an institute
+            // their app is ready to submit when Apple has bounced it back.
+            appleReturns("READY_FOR_REVIEW", "1.0.5");
+            when(appStoreConnectClient.fetchLatestReviewSubmission(anyString(), anyString()))
+                    .thenReturn(new AppStoreConnectClient.ReviewSubmission(
+                            "UNRESOLVED_ISSUES", "2026-05-31T13:15:08.29Z"));
+
+            assertEquals("REJECTED", service.sync("app-1", "IOS").get("status"));
+
+            ArgumentCaptor<AppRegistration> saved = ArgumentCaptor.forClass(AppRegistration.class);
+            verify(repository).save(saved.capture());
+            String payload = saved.getValue().getPayload();
+            assertTrue(payload.contains("\"rejection\""), payload);
+            assertTrue(payload.contains("2026-05-31T13:15:08.29Z"), payload);
+            // Apple never hands over the review's message, so the reason stays empty rather than invented.
+            assertTrue(payload.contains("\"reason\":\"\""), payload);
+        }
+
+        @Test
+        @DisplayName("a live app is not re-rejected by a submission it has already superseded")
+        void anOldRejectionDoesNotUnseatALiveRelease() {
+            appleReturns("READY_FOR_DISTRIBUTION", "2.5.5");
+
+            assertEquals("LIVE", service.sync("app-1", "IOS").get("status"));
+            verify(appStoreConnectClient, never()).fetchLatestReviewSubmission(anyString(), anyString());
+        }
+
+        @Test
+        @DisplayName("a rejected version records the rejection without a second call")
+        void rejectedVersionIsEnough() {
+            appleReturns("REJECTED", "1.0.6");
+
+            assertEquals("REJECTED", service.sync("app-1", "IOS").get("status"));
+            verify(appStoreConnectClient, never()).fetchLatestReviewSubmission(anyString(), anyString());
+        }
+
+        @Test
+        @DisplayName("a resolved rejection stops being shown — it is cleared, not left behind")
+        void resolvedRejectionIsCleared() {
+            AppRegistration row = appleApp("app-1");
+            row.setPayload(row.getPayload().replace(
+                    "\"IOS\":{\"enabled\":true,\"status\":\"NOT_REGISTERED\"",
+                    "\"IOS\":{\"enabled\":true,\"status\":\"REJECTED\","
+                            + "\"rejection\":{\"version\":\"1.0.5\",\"reason\":\"old\"}"));
+            when(repository.findById("app-1")).thenReturn(Optional.of(row));
+            when(storeCredentialResolver.resolveAppStoreConnect(anyString(), anyString()))
+                    .thenReturn(appStoreConnectClient);
+            when(appStoreConnectClient.fetchStatus(anyString(), anyString()))
+                    .thenReturn(new AppStoreConnectClient.AppStatus("1", "READY_FOR_DISTRIBUTION", "1.0.6", "2", "2026-08-30"));
+
+            service.sync("app-1", "IOS");
+
+            ArgumentCaptor<AppRegistration> saved = ArgumentCaptor.forClass(AppRegistration.class);
+            verify(repository).save(saved.capture());
+            assertFalse(saved.getValue().getPayload().contains("\"reason\":\"old\""),
+                    "a rejection the store has moved past must not linger on the institute's screen");
         }
     }
 

@@ -16,6 +16,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +24,9 @@ import java.util.Optional;
 public class AppStatusService {
 
     private static final String ROLE_NAME_ADMIN = "ADMIN";
+
+    /** The platforms that actually run the OTA updater. See {@link #attachOtaBundles}. */
+    private static final Set<String> OTA_PLATFORMS = Set.of("ANDROID", "IOS");
 
     private final CommunityAppRegistryClient communityAppRegistryClient;
     private final OtaUpdateService otaUpdateService;
@@ -63,6 +67,13 @@ public class AppStatusService {
      * 1.0.4" and "your app is running a bundle from June that was never built for you" is the whole
      * point of showing it.
      *
+     * <p>Mobile only, and that is not an oversight. The learner app's updater bails out before it
+     * ever asks — {@code ota-update.ts} returns "no update" on anything that is not android or ios
+     * — so the Windows and macOS shells never receive a bundle at all. They load the deployed web
+     * app directly, which means an OTA version on a desktop row would describe something that
+     * cannot happen to it, and the "shared bundle" warning would be raising an alarm about a
+     * bundle that is never delivered.
+     *
      * <p>Never fatal: the registry half of this screen is worth showing on its own, so a failure
      * here leaves {@code ota} null rather than taking the settings page down with it.
      */
@@ -71,6 +82,9 @@ public class AppStatusService {
             return;
         }
         for (AppStatusResponse.PlatformStatus platform : app.getPlatforms()) {
+            if (!OTA_PLATFORMS.contains(platform.getPlatform())) {
+                continue;
+            }
             try {
                 Optional<OtaBundleVersion> served =
                         otaUpdateService.resolveServedBundle(platform.getPlatform(), platform.getAppId());

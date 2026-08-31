@@ -10,6 +10,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppTemplateRenderer;
 import vacademy.io.notification_service.features.communication_timeline.dto.CommunicationTimelineRequest;
 import vacademy.io.notification_service.features.communication_timeline.dto.UnifiedCommunicationDTO;
@@ -194,14 +195,30 @@ public class CommunicationTimelineService {
         builder.bodyPreview(truncate(body, 150));
         builder.fullBody(body);
 
-        // Email status from tracking events
+        // Email status, in order of authority:
+        //   1. an SES tracking event   — the provider's own outcome, always freshest
+        //   2. the stored deliveryStatus — a send we ourselves refused/failed before SMTP
+        //   3. SENT                     — the default
+        // (3) is not optimism: an EMAIL row is written only AFTER the SMTP handoff succeeded
+        // (EmailService.saveEmailNotificationLog is called on the line after mailSender.send),
+        // so "no tracking event" means "we have no delivery confirmation", never "not sent".
+        // Reporting that as PENDING made every successful send read as a failure the moment SES
+        // event ingestion stopped — it has produced nothing since 2026-07-28, so ~113k emails
+        // were sitting on an amber "Pending" chip while their own timeline said "Email sent".
+        String failureStatus = storedFailureStatus(nl);
+        String eventStatus = null;
         NotificationLog latestEvent = latestEmailEvents.get(nl.getId());
         if (latestEvent != null) {
-            String eventType = extractEmailEventType(latestEvent.getBody());
-            builder.status(normalizeEmailStatus(eventType));
-        } else {
-            builder.status("PENDING");
+            eventStatus = normalizeEmailStatus(extractEmailEventType(latestEvent.getBody()));
+            // An unrecognised event body normalizes to PENDING; that is an unparseable event,
+            // not evidence the mail is unsent, so let it fall through rather than surface it.
+            if ("PENDING".equals(eventStatus)) {
+                eventStatus = null;
+            }
         }
+        builder.status(eventStatus != null ? eventStatus
+                : failureStatus != null ? failureStatus
+                : "SENT");
 
         // Build status timeline from all events
         List<NotificationLog> events = allEmailEvents.getOrDefault(nl.getId(), List.of());
@@ -216,14 +233,42 @@ public class CommunicationTimelineService {
                         .build())
                 .toList());
 
-        // Always prepend SENT event
-        timeline.add(0, UnifiedCommunicationDTO.StatusEvent.builder()
-                .status("SENT")
-                .timestamp(nl.getNotificationDate())
-                .details("Email sent")
-                .build());
+        // Open the timeline with what happened at our end: the send, or the reason we never sent.
+        if (failureStatus != null) {
+            timeline.add(0, UnifiedCommunicationDTO.StatusEvent.builder()
+                    .status(failureStatus)
+                    .timestamp(nl.getNotificationDate())
+                    .details(StringUtils.hasText(nl.getDeliveryErrorMessage())
+                            ? nl.getDeliveryErrorMessage()
+                            : "Email not sent")
+                    .build());
+        } else {
+            timeline.add(0, UnifiedCommunicationDTO.StatusEvent.builder()
+                    .status("SENT")
+                    .timestamp(nl.getNotificationDate())
+                    .details("Email sent")
+                    .build());
+        }
 
         builder.statusTimeline(timeline);
+    }
+
+    /**
+     * The delivery outcome recorded by our own send path, for the rows where we know the mail
+     * never reached SES at all — an unsubscribed recipient, a missing address, a send that threw.
+     * Only failures are stored; a successful send leaves the column null and defers to SES.
+     * Returns null when there is no recorded failure, so callers can fall through.
+     */
+    private String storedFailureStatus(NotificationLog nl) {
+        String stored = nl.getDeliveryStatus();
+        if (!StringUtils.hasText(stored)) {
+            return null;
+        }
+        String normalized = stored.trim().toUpperCase();
+        return switch (normalized) {
+            case "FAILED", "BOUNCED", "COMPLAINT" -> normalized;
+            default -> null;
+        };
     }
 
     private void mapInboundEmailFields(

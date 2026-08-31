@@ -11,6 +11,7 @@ import {
     Lightning as Zap,
     FlowArrow as WorkflowIcon,
     CalendarCheck,
+    QrCode,
 } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -40,6 +41,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useNavigate } from '@tanstack/react-router';
 import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDialog';
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
+import { ShareQrDialog } from '../share-qr-dialog/ShareQrDialog';
 import { LeadBulkImportDialog } from '../campaign-users/LeadBulkImportDialog';
 import { SendMessageDialog } from '../campaign-users/SendMessageDialog';
 import { LinkedWorkflowsDialog } from './linked-workflows-dialog';
@@ -66,6 +68,7 @@ export const AudienceCampaignCardMenuOptions = ({
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const [openApiDialog, setOpenApiDialog] = useState(false);
     const [openEmbedDialog, setOpenEmbedDialog] = useState(false);
+    const [openQrDialog, setOpenQrDialog] = useState(false);
     const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
     const [openSendMessageDialog, setOpenSendMessageDialog] = useState(false);
     const [openLinkedWorkflowsDialog, setOpenLinkedWorkflowsDialog] = useState(false);
@@ -243,6 +246,18 @@ export const AudienceCampaignCardMenuOptions = ({
                         {t('menu.bookingSettings')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        onClick={() => {
+                            if (!campaignId) {
+                                toast.error(t('toast.campaignIdMissing'));
+                                return;
+                            }
+                            setOpenQrDialog(true);
+                        }}
+                    >
+                        <QrCode className="mr-2 size-4" />
+                        {t('menu.shareQrCode')}
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setOpenApiDialog(true)}>
                         <Code className="mr-2 size-4" />
                         {t('menu.apiIntegration')}
@@ -308,6 +323,12 @@ export const AudienceCampaignCardMenuOptions = ({
             <EmbedCodeDialog
                 isOpen={openEmbedDialog}
                 onClose={() => setOpenEmbedDialog(false)}
+                campaign={campaign}
+            />
+
+            <ShareQrDialog
+                isOpen={openQrDialog}
+                onClose={() => setOpenQrDialog(false)}
                 campaign={campaign}
             />
 

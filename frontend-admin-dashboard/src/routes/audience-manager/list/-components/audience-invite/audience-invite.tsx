@@ -19,6 +19,7 @@ import {
     Info,
     Megaphone,
     Globe,
+    QrCode,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -41,6 +42,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDialog';
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
+import { ShareQrDialog } from '../share-qr-dialog/ShareQrDialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LeadPagination } from '@/components/shared/leads';
 import {
@@ -92,6 +94,7 @@ export const AudienceInvite = () => {
     const [campaignBeingEdited, setCampaignBeingEdited] = useState<CampaignItem | null>(null);
     const [apiDialogCampaign, setApiDialogCampaign] = useState<CampaignItem | null>(null);
     const [embedDialogCampaign, setEmbedDialogCampaign] = useState<CampaignItem | null>(null);
+    const [qrDialogCampaign, setQrDialogCampaign] = useState<CampaignItem | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
     const navigate = useNavigate();
 
@@ -649,6 +652,24 @@ export const AudienceInvite = () => {
                                                         size="sm"
                                                         className={CARD_OUTLINE_BTN}
                                                         onClick={() =>
+                                                            setQrDialogCampaign(campaign)
+                                                        }
+                                                    >
+                                                        <QrCode className="size-3.5" />
+                                                        {t('actions.qr')}
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>{t('actions.qrTooltip')}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className={CARD_OUTLINE_BTN}
+                                                        onClick={() =>
                                                             setApiDialogCampaign(campaign)
                                                         }
                                                     >
@@ -712,6 +733,13 @@ export const AudienceInvite = () => {
                     isOpen={!!embedDialogCampaign}
                     onClose={() => setEmbedDialogCampaign(null)}
                     campaign={embedDialogCampaign}
+                />
+            )}
+            {qrDialogCampaign && (
+                <ShareQrDialog
+                    isOpen={!!qrDialogCampaign}
+                    onClose={() => setQrDialogCampaign(null)}
+                    campaign={qrDialogCampaign}
                 />
             )}
         </div>

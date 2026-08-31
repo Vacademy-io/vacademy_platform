@@ -8,6 +8,7 @@
         "configureWorkflow": "إعداد سير العمل",
         "viewLinkedWorkflows": "عرض مسارات العمل المرتبطة",
         "bookingSettings": "إعدادات الحجز",
+        "shareQrCode": "مشاركة رمز QR",
         "apiIntegration": "تكامل API",
         "getEmbedCode": "الحصول على كود التضمين",
         "delete": "حذف"

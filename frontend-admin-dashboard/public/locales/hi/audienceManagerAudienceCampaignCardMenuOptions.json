@@ -8,6 +8,7 @@
         "configureWorkflow": "वर्कफ़्लो कॉन्फ़िगर करें",
         "viewLinkedWorkflows": "लिंक किए गए वर्कफ़्लो देखें",
         "bookingSettings": "बुकिंग सेटिंग्स",
+        "shareQrCode": "QR कोड साझा करें",
         "apiIntegration": "एपीआई एकीकरण",
         "getEmbedCode": "एम्बेड कोड प्राप्त करें",
         "delete": "हटाएं"

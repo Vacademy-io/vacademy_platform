@@ -1,0 +1,35 @@
+{
+    "dialogTitle": "Share QR Code",
+    "dialogDescription": "Anyone who scans this opens \"{{campaignName}}\" straight away — no app, no login.",
+    "qrTitle": "QR code for {{campaignName}}",
+    "scanPrompt": "Scan with any phone camera to open the form",
+    "linkLabel": "Form link",
+    "missingLink": "This audience list has no shareable link yet. Save the campaign and try again.",
+    "actions": {
+        "copyLink": "Copy link",
+        "copied": "Copied",
+        "downloadPng": "Download PNG",
+        "downloadSvg": "Download SVG",
+        "print": "Print"
+    },
+    "noExpiry": {
+        "title": "This QR code never expires",
+        "body": "It encodes the form's own address rather than a short link, so there is no redirect in between that anyone can switch off. Print it once and it keeps working."
+    },
+    "print": {
+        "eyebrow": "Scan to register",
+        "cta": "Point your phone camera at the code"
+    },
+    "toasts": {
+        "linkCopied": "Form link copied",
+        "copyFailed": "Could not copy the link",
+        "downloaded": "QR code downloaded",
+        "downloadFailed": "Could not generate the QR image",
+        "printFailed": "Could not open the print view",
+        "popupBlocked": "Allow pop-ups for this site to print the QR code"
+    },
+    "defaults": {
+        "campaignName": "this audience list",
+        "fileSlug": "audience-form"
+    }
+}

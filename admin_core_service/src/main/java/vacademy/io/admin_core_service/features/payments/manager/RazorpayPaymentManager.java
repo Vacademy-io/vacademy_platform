@@ -280,6 +280,13 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             orderRequest.put("currency", request.getCurrency().toUpperCase());
             orderRequest.put("receipt", request.getOrderId());
             orderRequest.put("payment_capture", 1);
+            // token_id is MANDATORY on an order that a subsequent recurring payment will
+            // charge -- it is what marks the order as recurring. Razorpay documents it for
+            // both the card and UPI Autopay flows (they share POST payments/create/recurring).
+            // Without it we created a plain order and then asked Razorpay to charge it as a
+            // recurring one, which it rejects with the misleading
+            // "BAD_REQUEST_ERROR: The requested URL was not found on the server".
+            orderRequest.put("token_id", mandate.getProviderRef());
             JSONObject notes = new JSONObject();
             notes.put("orderId", request.getOrderId());
             notes.put("instituteId", request.getInstituteId());

@@ -10,11 +10,21 @@ export interface StatBucket {
 export interface PaymentSummary {
     total: StatBucket;
     paid: StatBucket;
-    /** Every unsettled payment record, live enrolment or not. Backs the "Payment pending" card. */
+    /**
+     * Unsettled records on a LIVE enrolment — money genuinely still in flight. Backs the "Payment
+     * pending" card.
+     */
     pending: StatBucket;
-    /** The subset of `pending` the institute is actually owed — see {@link isDueEligibleEntry}. */
+    /** The balance still owed. Same rows as `pending`; kept separate because the two cards fall
+     * back to different server figures. */
     due: StatBucket;
     failed: StatBucket;
+    /**
+     * Unsettled records on a cancelled / terminated / expired enrolment. Deliberately in NO card:
+     * this money will never arrive, so showing it as pending or due overstated both. The rows stay
+     * in the table under "All" for audit.
+     */
+    notCounted: StatBucket;
 }
 
 const emptyBucket = (): StatBucket => ({ count: 0, amountByCurrency: {} });
@@ -25,6 +35,7 @@ export const emptyPaymentSummary = (): PaymentSummary => ({
     pending: emptyBucket(),
     due: emptyBucket(),
     failed: emptyBucket(),
+    notCounted: emptyBucket(),
 });
 
 const addToBucket = (bucket: StatBucket, amount: number, currency: string) => {
@@ -99,11 +110,17 @@ export const computePaymentSummary = (entries: PaymentLogEntry[]): PaymentSummar
 
         const bucket = classifyEntry(entry);
         addToBucket(summary.total, amount, currency);
-        addToBucket(summary[bucket], amount, currency);
-        // "Due" is the honest subset of "pending": drop the rows hanging off a dead enrolment.
-        if (bucket === 'pending' && isDueEligibleEntry(entry)) {
-            addToBucket(summary.due, amount, currency);
+
+        // An unsettled record on a dead enrolment is money that will never arrive. It belongs in
+        // neither card — counting it as "pending" overstated the gateway backlog exactly as
+        // counting it as "due" overstated the debt.
+        if (bucket === 'pending' && !isDueEligibleEntry(entry)) {
+            addToBucket(summary.notCounted, amount, currency);
+            continue;
         }
+
+        addToBucket(summary[bucket], amount, currency);
+        if (bucket === 'pending') addToBucket(summary.due, amount, currency);
     }
 
     return summary;

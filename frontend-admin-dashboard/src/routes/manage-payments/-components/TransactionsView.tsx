@@ -41,6 +41,7 @@ import { DateRangeDropdown } from './DateRangeDropdown';
 import { exportEntriesToCsv, fetchAllPaymentLogs } from '../-utils/exportPaymentLogsCsv';
 import {
     classifyEntry,
+    isDueEligibleEntry,
     computeBillingFromEntries,
     computePaymentSummary,
     summarizeBucketAmount,
@@ -189,7 +190,15 @@ export function TransactionsView() {
         () =>
             statusBucket === 'total'
                 ? allEntries
-                : allEntries.filter((entry) => classifyEntry(entry) === statusBucket),
+                : allEntries.filter((entry) => {
+                      if (classifyEntry(entry) !== statusBucket) return false;
+                      // The Pending tile no longer counts records on a cancelled/terminated/expired
+                      // enrolment, so the rows it filters to must not include them either — the
+                      // count on the tile and the rows in the table have to describe one set. They
+                      // remain visible under "All".
+                      if (statusBucket === 'pending') return isDueEligibleEntry(entry);
+                      return true;
+                  }),
         [allEntries, statusBucket]
     );
 

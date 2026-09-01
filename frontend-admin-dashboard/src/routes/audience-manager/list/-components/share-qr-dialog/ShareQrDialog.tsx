@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import {
     Dialog,
@@ -9,12 +9,26 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Check, Copy, DownloadSimple, Printer, QrCode, ShieldCheck } from '@phosphor-icons/react';
+import { Switch } from '@/components/ui/switch';
+import {
+    Check,
+    Copy,
+    DownloadSimple,
+    Printer,
+    QrCode,
+    ShieldCheck,
+    SpinnerGap,
+    Warning,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { CampaignItem } from '../../-services/get-campaigns-list';
 import createCampaignLink from '../../-utils/createCampaignLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useShortLink } from '@/hooks/use-short-link';
+import { useAudienceShortLinksEnabled } from '@/hooks/use-audience-short-links-enabled';
+import { SHORT_LINK_SOURCE } from '@/services/short-link';
+import { copyTextToClipboard } from '@/lib/clipboard';
 
 interface ShareQrDialogProps {
     isOpen: boolean;
@@ -90,23 +104,48 @@ const triggerDownload = (href: string, filename: string) => {
 /**
  * "Share QR" for an audience form.
  *
- * The code encodes the campaign's own long URL, deliberately NOT a short link.
- * Short links are revocable — media_service exposes `deactivateById` and the
- * per-source toggles under Settings -> Short Links — so a printed QR routed
- * through one dies the moment somebody flips a switch, long after the posters
- * have shipped. Encoding the destination directly leaves nothing in the middle
- * that can expire.
+ * Offers both addresses for the same form: the campaign's own long URL and a
+ * `u.<domain>/s/<code>` short link, which is the one that fits in a WhatsApp
+ * message or gets read aloud. The short link is get-or-create'd once per
+ * campaign and cached, so the code an admin shares today is the code they share
+ * next month.
+ *
+ * **The QR encodes the long URL by default, and that default matters.** A short
+ * link is a redirect somebody can later switch off in media_service, and a
+ * printed QR outlives the poster run — encode the destination directly and there
+ * is nothing in the middle that can expire. The toggle is there because a
+ * shorter payload also means a lower-version, coarser-module symbol that scans
+ * better from a distance; the dialog states the trade-off rather than deciding
+ * it silently.
  */
 export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrDialogProps) => {
     const { t } = useTranslation('audienceManagerShareQrDialog');
     const { instituteDetails } = useInstituteDetailsStore();
     const [copied, setCopied] = useState(false);
+    const [shortCopied, setShortCopied] = useState(false);
+    const [encodeShortLinkInQr, setEncodeShortLinkInQr] = useState(false);
+    const shortLinksEnabled = useAudienceShortLinksEnabled();
 
     // Full-size canvas, kept out of the layout. It is what "Download PNG"
     // reads: rasterising the 216px preview instead would hand people a blurry
     // code that fails to scan the moment it is enlarged for print.
     const exportCanvasRef = useRef<HTMLCanvasElement>(null);
     const previewSvgRef = useRef<SVGSVGElement>(null);
+
+    // The card's ⋮ menu renders this dialog UNCONDITIONALLY (only `isOpen`
+    // flips), so it never unmounts and its state would otherwise survive a
+    // close. That would quietly break the guarantee the panel below states: the
+    // second and every later open would start with the short link already
+    // encoded, and a poster run could go out depending on a revocable redirect
+    // that nobody chose this time. Opting into a short-link QR has to be a
+    // deliberate decision on every single open.
+    useEffect(() => {
+        if (!isOpen) {
+            setEncodeShortLinkInQr(false);
+            setCopied(false);
+            setShortCopied(false);
+        }
+    }, [isOpen]);
 
     const campaignId = campaign.id || campaign.campaign_id || campaign.audience_id || '';
     const campaignName = campaign.campaign_name || t('defaults.campaignName');
@@ -115,6 +154,39 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
         () => createCampaignLink(campaignId, instituteDetails?.learner_portal_base_url, isEnquiry),
         [campaignId, instituteDetails?.learner_portal_base_url, isEnquiry]
     );
+
+    // Fetched on open rather than behind another click: opening this dialog is
+    // already an explicit "I want to share this" action, and get-or-create is
+    // idempotent, so re-opening costs nothing and returns the same code.
+    const {
+        shortUrl,
+        isLoading: isShortening,
+        isError: shortLinkFailed,
+    } = useShortLink({
+        source: isEnquiry
+            ? SHORT_LINK_SOURCE.ENQUIRY_CAMPAIGN
+            : SHORT_LINK_SOURCE.AUDIENCE_CAMPAIGN,
+        sourceId: campaignId,
+        destinationUrl: formUrl,
+        instituteId: instituteDetails?.id,
+        // The raw name, not `campaignName` — falling back to the translated
+        // "this audience list" would slugify into a code that says nothing about
+        // the campaign and reads differently in every locale.
+        hint: campaign.campaign_name,
+        enabled: isOpen && !!formUrl && shortLinksEnabled,
+    });
+
+    // Everything the QR touches — preview, PNG, SVG and the print sheet — reads
+    // this single value, so the downloaded artefact can never disagree with the
+    // symbol the admin was looking at.
+    // ONE source of truth for "is a redirect baked into this code?". The value
+    // the symbol encodes and the panel that explains it must never be derived
+    // separately — a QR that says "never expires" over a revocable short link is
+    // the single worst thing this dialog could do. Gated on the institute switch
+    // as well as the toggle, so an institute that turned short links off can
+    // never end up with one in a printed QR.
+    const qrUsesShortLink = shortLinksEnabled && encodeShortLinkInQr && !!shortUrl;
+    const qrValue = qrUsesShortLink && shortUrl ? shortUrl : formUrl;
 
     const fileSlug = useMemo(
         () => toFileSlug(campaignName, t('defaults.fileSlug')),
@@ -131,6 +203,18 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
             toast.error(t('toasts.copyFailed'));
         }
     }, [formUrl, t]);
+
+    const handleCopyShort = useCallback(async () => {
+        if (!shortUrl) return;
+        const didCopy = await copyTextToClipboard(shortUrl);
+        if (!didCopy) {
+            toast.error(t('toasts.copyFailed'));
+            return;
+        }
+        setShortCopied(true);
+        toast.success(t('toasts.shortLinkCopied'));
+        setTimeout(() => setShortCopied(false), 2000);
+    }, [shortUrl, t]);
 
     const handleDownloadPng = useCallback(() => {
         const canvas = exportCanvasRef.current;
@@ -226,7 +310,7 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
     <h1>${escapeHtml(campaignName)}</h1>
     <div class="frame">${svgMarkup}</div>
     <p class="cta">${escapeHtml(t('print.cta'))}</p>
-    <p class="url">${escapeHtml(formUrl)}</p>
+    <p class="url">${escapeHtml(qrValue)}</p>
   </div>
 </body>
 </html>`);
@@ -234,7 +318,7 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
         printWindow.focus();
         // Let the inline SVG lay out before the (blocking) print dialog opens.
         printWindow.setTimeout(() => printWindow.print(), 250);
-    }, [campaignName, formUrl, t]);
+    }, [campaignName, qrValue, t]);
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -260,7 +344,7 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
                             <div className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
                                 <QRCodeSVG
                                     ref={previewSvgRef}
-                                    value={formUrl}
+                                    value={qrValue}
                                     size={QR_PREVIEW_PX}
                                     level={QR_ERROR_CORRECTION}
                                     marginSize={QR_MARGIN_MODULES}
@@ -302,6 +386,68 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
                             </div>
                         </div>
 
+                        {/* Short link — the one that fits in an SMS or gets read
+                            aloud. Falls back to a plain note if the shortener is
+                            unreachable; the long link above always works. Hidden
+                            entirely when the institute switched short links off. */}
+                        {shortLinksEnabled && (
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-xs font-medium text-neutral-600">
+                                    {t('shortLink.label')}
+                                </span>
+                                {shortLinkFailed ? (
+                                    <p className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+                                        {t('shortLink.unavailable')}
+                                    </p>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            readOnly
+                                            value={shortUrl ?? ''}
+                                            placeholder={t('shortLink.generating')}
+                                            onFocus={(e) => e.currentTarget.select()}
+                                            className="h-9 flex-1 bg-neutral-50 text-xs text-neutral-700"
+                                        />
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-9 shrink-0 gap-1.5"
+                                            disabled={!shortUrl}
+                                            onClick={handleCopyShort}
+                                        >
+                                            {isShortening ? (
+                                                <SpinnerGap className="size-3.5 animate-spin" />
+                                            ) : shortCopied ? (
+                                                <Check className="size-3.5 text-success-600" />
+                                            ) : (
+                                                <Copy className="size-3.5" />
+                                            )}
+                                            {shortCopied
+                                                ? t('actions.copied')
+                                                : t('actions.copyShortLink')}
+                                        </Button>
+                                    </div>
+                                )}
+                                {shortUrl && (
+                                    <label className="mt-1 flex items-start gap-2.5 rounded-lg border border-neutral-200 bg-neutral-50/60 p-3">
+                                        <Switch
+                                            checked={encodeShortLinkInQr}
+                                            onCheckedChange={setEncodeShortLinkInQr}
+                                            aria-label={t('shortLink.useInQr')}
+                                        />
+                                        <span className="flex flex-col gap-0.5">
+                                            <span className="text-xs font-semibold text-neutral-800">
+                                                {t('shortLink.useInQr')}
+                                            </span>
+                                            <span className="text-xs leading-relaxed text-neutral-600">
+                                                {t('shortLink.useInQrHint')}
+                                            </span>
+                                        </span>
+                                    </label>
+                                )}
+                            </div>
+                        )}
+
                         {/* Downloads */}
                         <div className="flex flex-wrap gap-2">
                             <Button
@@ -332,18 +478,35 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
                             </Button>
                         </div>
 
-                        {/* Why this code keeps working */}
-                        <div className="flex items-start gap-2.5 rounded-lg border border-success-100 bg-success-50 p-3">
-                            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success-600" />
-                            <div className="flex flex-col gap-0.5">
-                                <span className="text-xs font-semibold text-success-700">
-                                    {t('noExpiry.title')}
-                                </span>
-                                <span className="text-xs leading-relaxed text-neutral-600">
-                                    {t('noExpiry.body')}
-                                </span>
+                        {/* What this particular code depends on. The wording has
+                            to follow the toggle: telling someone their QR can
+                            never expire while it in fact encodes a revocable
+                            redirect is the one thing this panel must not do. */}
+                        {qrUsesShortLink ? (
+                            <div className="flex items-start gap-2.5 rounded-lg border border-warning-100 bg-warning-50 p-3">
+                                <Warning className="mt-0.5 size-4 shrink-0 text-warning-600" />
+                                <div className="flex flex-col gap-0.5">
+                                    <span className="text-xs font-semibold text-warning-700">
+                                        {t('shortLinkInQr.title')}
+                                    </span>
+                                    <span className="text-xs leading-relaxed text-neutral-600">
+                                        {t('shortLinkInQr.body')}
+                                    </span>
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="flex items-start gap-2.5 rounded-lg border border-success-100 bg-success-50 p-3">
+                                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success-600" />
+                                <div className="flex flex-col gap-0.5">
+                                    <span className="text-xs font-semibold text-success-700">
+                                        {t('noExpiry.title')}
+                                    </span>
+                                    <span className="text-xs leading-relaxed text-neutral-600">
+                                        {t('noExpiry.body')}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -357,7 +520,7 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
                     >
                         <QRCodeCanvas
                             ref={exportCanvasRef}
-                            value={formUrl}
+                            value={qrValue}
                             size={QR_DOWNLOAD_PX}
                             level={QR_ERROR_CORRECTION}
                             marginSize={QR_MARGIN_MODULES}

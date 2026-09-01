@@ -9,6 +9,7 @@
         "viewLinkedWorkflows": "View Linked Workflows",
         "bookingSettings": "Booking Settings",
         "shareQrCode": "Share QR Code",
+        "copyShortLink": "Copy Short Link",
         "apiIntegration": "API Integration",
         "getEmbedCode": "Get Embed Code",
         "delete": "Delete"
@@ -24,7 +25,10 @@
         "deleteSuccess": "Campaign deleted successfully",
         "deleteError": "Failed to delete the campaign",
         "editComingSoon": "Edit campaign functionality coming soon",
-        "campaignIdMissing": "Campaign ID is missing"
+        "campaignIdMissing": "Campaign ID is missing",
+        "shortLinkCopied": "Short link copied",
+        "shortLinkCopyFailed": "Short link created, but copying it failed",
+        "shortLinkFailed": "Could not create a short link"
     },
     "defaults": {
         "campaignName": "Campaign",

@@ -18,5 +18,11 @@
         "description": "Advanced. Lets each campaign restyle its public response form — layout, colours, wording, and custom HTML/CSS.",
         "toggleLabel": "Allow campaigns to restyle their form",
         "toggleHelp": "Off: every campaign uses the standard form design. On: a Form Appearance card appears when creating or editing a campaign."
+    },
+    "shortLinks": {
+        "title": "Short Links",
+        "description": "Offers a short, shareable address next to the full form link — for messages, print, and anywhere the long URL is unwieldy. Institutes with their own short domain get it on that domain.",
+        "toggleLabel": "Offer short links when sharing a campaign",
+        "toggleHelp": "On: campaign cards, the ⋮ menu and the Share QR dialog each offer a short link. Off: only the full form address is shown. Links already created keep working either way."
     }
 }

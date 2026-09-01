@@ -137,6 +137,37 @@ export default function AudienceFormSettings() {
                 </CardContent>
             </Card>
 
+            {/* Short links. Unlike the switch above this one ships ON — it adds a
+                convenience to a link the admin was already sharing rather than a
+                new respondent-facing surface — so the copy has to describe
+                turning it OFF, not on. */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>{t('shortLinks.title')}</CardTitle>
+                    <CardDescription>{t('shortLinks.description')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-row items-center justify-between gap-4 rounded-lg border border-neutral-200 p-4">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-semibold">
+                                {t('shortLinks.toggleLabel')}
+                            </Label>
+                            <p className="text-xs text-neutral-500">{t('shortLinks.toggleHelp')}</p>
+                        </div>
+                        <Switch
+                            checked={settings.shortLinksEnabled}
+                            onCheckedChange={(checked) => {
+                                setSettings((prev) => ({
+                                    ...prev,
+                                    shortLinksEnabled: checked,
+                                }));
+                                setHasChanges(true);
+                            }}
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
             <div className="flex items-center justify-end gap-3">
                 <MyButton
                     type="button"

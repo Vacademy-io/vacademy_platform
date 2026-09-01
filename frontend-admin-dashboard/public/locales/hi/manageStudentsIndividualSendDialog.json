@@ -116,9 +116,15 @@
         "delivered": "डिलीवर हो गया",
         "notDelivered": "डिलीवर नहीं हुआ",
         "confirmingDelivery": "डिलीवरी की पुष्टि हो रही है…",
-        "acceptedNotConfirmed": "व्हाट्सएप ने स्वीकार किया",
         "deliveryLabel": "डिलीवरी",
-        "deliveryPending": "पुष्टि की प्रतीक्षा"
+        "sendFailed": "संदेश नहीं भेजा गया",
+        "noReason": "प्रदाता ने कोई कारण नहीं बताया।",
+        "deliveryStatus": {
+            "SENT": "भेजा गया",
+            "DELIVERED": "डिलीवर हो गया",
+            "READ": "पढ़ा गया",
+            "FAILED": "विफल"
+        }
     },
     "footer": {
         "back": "पीछे",

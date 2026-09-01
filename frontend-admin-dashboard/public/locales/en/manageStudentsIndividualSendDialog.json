@@ -116,9 +116,15 @@
         "delivered": "Delivered",
         "notDelivered": "Not delivered",
         "confirmingDelivery": "Confirming delivery…",
-        "acceptedNotConfirmed": "Accepted by WhatsApp",
         "deliveryLabel": "Delivery",
-        "deliveryPending": "Awaiting confirmation"
+        "sendFailed": "Message Not Sent",
+        "noReason": "No reason reported by the provider.",
+        "deliveryStatus": {
+            "SENT": "Sent",
+            "DELIVERED": "Delivered",
+            "READ": "Read",
+            "FAILED": "Failed"
+        }
     },
     "footer": {
         "back": "Back",

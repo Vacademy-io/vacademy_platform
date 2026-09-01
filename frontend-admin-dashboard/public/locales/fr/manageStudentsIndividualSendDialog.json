@@ -116,9 +116,15 @@
         "delivered": "Remis",
         "notDelivered": "Non remis",
         "confirmingDelivery": "Confirmation de la remise…",
-        "acceptedNotConfirmed": "Accepté par WhatsApp",
         "deliveryLabel": "Remise",
-        "deliveryPending": "En attente de confirmation"
+        "sendFailed": "Message non envoyé",
+        "noReason": "Aucun motif communiqué par le fournisseur.",
+        "deliveryStatus": {
+            "SENT": "Envoyé",
+            "DELIVERED": "Remis",
+            "READ": "Lu",
+            "FAILED": "Échec"
+        }
     },
     "footer": {
         "back": "Retour",

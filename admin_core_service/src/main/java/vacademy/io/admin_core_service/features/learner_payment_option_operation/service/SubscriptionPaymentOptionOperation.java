@@ -401,20 +401,23 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
      * back to "as_presented", which imposes no fixed cadence and always registers.
      */
     private String resolveMandateFrequency(PaymentPlan paymentPlan) {
-        if (paymentPlan == null || paymentPlan.getValidityInDays() == null) {
-            return "as_presented";
-        }
-        int days = paymentPlan.getValidityInDays();
-        if (days <= 31) {
-            return "monthly";
-        } else if (days <= 95) {
-            return "quarterly";
-        } else if (days <= 190) {
-            return "halfyearly";
-        } else if (days <= 370) {
-            return "yearly";
-        }
+        // Always "as_presented".
+        //
+        // Razorpay only accepts a named cadence (monthly / quarterly / halfyearly /
+        // yearly) when the token also carries a numeric recurring_value (day 1-31).
+        // We never sent one, so every mandate registration on a plan whose validity
+        // mapped to a named cadence was rejected at source with
+        //   BAD_REQUEST_ERROR: Recurring value should be between 1 and 31 for the provided frequency
+        // -- taking the whole enrolment down with it (the learner sees "already
+        // enrolled", because the FE maps every 510 to that) and leaving orphan
+        // ledger accruals behind, since recordDebitAccrual is REQUIRES_NEW.
+        //
+        // "as_presented" is also the semantically correct value for us: we drive the
+        // charge schedule ourselves from RenewalChargeService, so the mandate should
+        // advertise "debited as presented by the merchant" rather than a fixed cycle.
+        // Every mandate in the database that actually works carries this value.
         return "as_presented";
     }
+
 
 }

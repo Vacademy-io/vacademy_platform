@@ -116,8 +116,8 @@
         "domainPlaceholder": "learn.myschool.com",
         "primary": "أساسي",
         "setPrimary": "تعيين كأساسي",
-        "primaryTooltip": "النطاق الأساسي لهذا الدور",
-        "setPrimaryTooltip": "تعيين كأساسي",
+        "primaryTooltip": "رابط البوابة لهذا الدور — يُستخدم في رسائل البريد بمجرد أن يصبح النطاق نشطًا",
+        "setPrimaryTooltip": "استخدام هذا النطاق كرابط للبوابة لهذا الدور",
         "settingsToggle": "الإعدادات",
         "toggleSettingsTooltip": "إظهار/إخفاء الإعدادات",
         "removeTooltip": "إزالة",
@@ -131,7 +131,8 @@
         "noInstituteSelected": "لم يتم تحديد مؤسسة",
         "addAtLeastOneDomain": "أضف إدخال نطاق واحدًا على الأقل",
         "setupCompleted": "اكتمل إعداد العلامة البيضاء! 🎉",
-        "setupFailed": "فشل الإعداد."
+        "setupFailed": "فشل الإعداد.",
+        "portalUrlAdopted": "رابط بوابة {{roles}} أصبح نشطًا وتم حفظه."
     },
     "setupResult": {
         "title": "اكتمل الإعداد",
@@ -179,6 +180,17 @@
             "logoWidth": "عرض الشعار (بكسل)",
             "logoHeight": "ارتفاع الشعار (بكسل)",
             "stackNameBelowLogo": "الاسم أسفل الشعار"
-        }
+        },
+        "portalUrl": "رابط البوابة",
+        "portalUrlTooltip": "تستخدم رسائل البريد والروابط المشتركة هذا النطاق حاليًا",
+        "primaryPending": "أساسي · قيد الانتظار",
+        "primaryPendingTooltip": "تم اختياره كرابط للبوابة — سيُحفظ بمجرد أن يصبح النطاق نشطًا",
+        "willBeAdoptedOnceActive": "تم اختياره كرابط للبوابة. سيُحفظ تلقائيًا بمجرد أن يصبح هذا النطاق نشطًا — وحتى ذلك الحين ستستمر رسائل البريد والروابط في استخدام رابط البوابة الحالي."
+    },
+    "subOrg": {
+        "label": "المؤسسة الفرعية",
+        "none": "المؤسسة الأم",
+        "untitled": "مؤسسة فرعية بلا اسم",
+        "badgeTooltip": "هذه البوابة تحمل هوية هذه المؤسسة الفرعية وهي مقصورة عليها"
     }
 }

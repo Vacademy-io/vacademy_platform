@@ -175,6 +175,7 @@
         "applicationTab": "Application Tab",
         "leadTab": "Lead Profile Tab",
         "fullHistoryTab": "Full History Tab",
+        "workflowsTab": "Workflows Tab",
         "parentTab": "Guardian Tab",
         "onboardingTab": "Onboarding Tab"
     },

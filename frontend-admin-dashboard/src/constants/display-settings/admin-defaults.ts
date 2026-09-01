@@ -231,6 +231,10 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         applicationTab: false,
         leadTab: false,
         fullHistoryTab: false,
+        // OFF by default for every role. Re-running an automation re-sends its
+        // messages, so the tab is opt-in per role from Display Settings rather
+        // than something that appears on every learner profile unasked.
+        workflowsTab: false,
         parentTab: false,
         onboardingTab: false,
         // Default rendering order. Tabs render left-to-right by ascending number.
@@ -254,6 +258,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
             lead: 16,
             fullHistory: 17,
             parent: 18,
+            workflows: 19,
         },
         defaultTab: 'overview',
     },

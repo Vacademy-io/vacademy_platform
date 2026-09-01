@@ -764,6 +764,7 @@ function mergeDisplayWithDefaults(
         applicationTab: false,
         leadTab: false,
         fullHistoryTab: false,
+        workflowsTab: false,
         parentTab: false,
         onboardingTab: false,
     };
@@ -791,6 +792,8 @@ function mergeDisplayWithDefaults(
         leadTab: incoming?.studentSideView?.leadTab ?? defStudentSideView.leadTab,
         fullHistoryTab:
             incoming?.studentSideView?.fullHistoryTab ?? defStudentSideView.fullHistoryTab ?? false,
+        workflowsTab:
+            incoming?.studentSideView?.workflowsTab ?? defStudentSideView.workflowsTab ?? false,
         parentTab: incoming?.studentSideView?.parentTab ?? defStudentSideView.parentTab ?? false,
         onboardingTab:
             incoming?.studentSideView?.onboardingTab ?? defStudentSideView.onboardingTab ?? false,

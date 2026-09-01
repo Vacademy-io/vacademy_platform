@@ -30,6 +30,7 @@ import { StudentEnquiry } from './student-enquiry/student-enquiry';
 import { StudentApplication } from './student-application/student-application';
 import { StudentLeadProfile } from './student-lead-profile/student-lead-profile';
 import { StudentFullHistory } from './student-full-history/student-full-history';
+import { StudentWorkflows } from './student-workflows/student-workflows';
 import { StudentParentProfile } from './student-parent/student-parent-profile';
 import { StudentOnboardingProfile } from './student-onboarding/student-onboarding-profile';
 import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
@@ -92,6 +93,7 @@ function orderedVisibleTabIds(settings: StudentSideViewSettings): StudentSideVie
         'application',
         'lead',
         'fullHistory',
+        'workflows',
         'parent',
         'onboarding',
     ];
@@ -811,6 +813,20 @@ export const StudentSidebar = ({
                             !isEnrollRequestStudentList &&
                             selectedStudent?.user_id && (
                                 <StudentFullHistory studentUserId={selectedStudent.user_id} />
+                            )}
+                        {/* Workflows — the automations that ran for this person, each
+                            with a Retry. Gated only on its own visibility flag: it has
+                            nothing to do with the lead system, so an institute that
+                            never turned leads on still gets it. */}
+                        {category === 'workflows' &&
+                            tabSettings?.workflowsTab &&
+                            !isEnrollRequestStudentList &&
+                            selectedStudent?.user_id &&
+                            currentInstituteId && (
+                                <StudentWorkflows
+                                    userId={selectedStudent.user_id}
+                                    instituteId={currentInstituteId}
+                                />
                             )}
                         {category === 'parent' &&
                             tabSettings?.parentTab &&

@@ -17,6 +17,7 @@ import {
     Buildings,
     Users,
     Path,
+    Robot,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import type { TFunction } from 'i18next';
@@ -126,6 +127,10 @@ export const SECTION_REGISTRY: readonly SectionMeta[] = [
     // Records — "What's the audit trail?"
     { id: 'reports', label: 'Reports', icon: FileText, group: 'Records' },
     { id: 'fullHistory', label: 'Full History', icon: ClockCounterClockwise, group: 'Records' },
+    // Automations that ran FOR this person (with a Retry per run). Sits in
+    // Records because it answers the same audit-trail question as Full
+    // History — what happened to this learner, and did it work?
+    { id: 'workflows', label: 'Workflows', icon: Robot, group: 'Records' },
 ] as const;
 
 /**

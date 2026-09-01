@@ -249,6 +249,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         applicationTab: false,
         leadTab: false,
         fullHistoryTab: false,
+        workflowsTab: false,
         parentTab: false,
         onboardingTab: false,
         tabOrders: {
@@ -270,6 +271,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
             lead: 16,
             fullHistory: 17,
             parent: 18,
+            workflows: 19,
         },
         defaultTab: 'overview',
     },

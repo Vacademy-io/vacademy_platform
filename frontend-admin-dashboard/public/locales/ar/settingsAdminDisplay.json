@@ -141,6 +141,7 @@
         "applicationTab": "تبويب الطلب",
         "leadTab": "تبويب ملف العميل المحتمل",
         "fullHistoryTab": "تبويب السجل الكامل",
+        "workflowsTab": "تبويب سير العمل",
         "parentTab": "تبويب ولي الأمر",
         "onboardingTab": "تبويب التهيئة"
     },

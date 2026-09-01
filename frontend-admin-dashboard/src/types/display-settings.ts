@@ -184,6 +184,7 @@ export type StudentSideViewTabId =
     | 'application'
     | 'lead'
     | 'fullHistory'
+    | 'workflows'
     | 'parent'
     | 'onboarding';
 
@@ -205,6 +206,10 @@ export interface StudentSideViewSettings {
     applicationTab: boolean;
     leadTab: boolean;
     fullHistoryTab?: boolean;
+    // Workflows tab — the automations that ran for this person, with a Retry
+    // action per run. Optional for backward-compat with settings saved before
+    // this tab existed.
+    workflowsTab?: boolean;
     // Guardian tab — surfaces the linked guardian/children (parent-link feature).
     // Optional for backward-compat with settings saved before this tab existed.
     parentTab?: boolean;
@@ -280,6 +285,7 @@ export type StudentSideViewVisibilityKey =
     | 'applicationTab'
     | 'leadTab'
     | 'fullHistoryTab'
+    | 'workflowsTab'
     | 'parentTab'
     | 'onboardingTab';
 

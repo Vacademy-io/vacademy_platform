@@ -140,6 +140,7 @@
         "applicationTab": "Onglet Candidature",
         "leadTab": "Onglet Profil du prospect",
         "fullHistoryTab": "Onglet Historique complet",
+        "workflowsTab": "Onglet Workflows",
         "parentTab": "Onglet Tuteur",
         "onboardingTab": "Onglet Intégration"
     },

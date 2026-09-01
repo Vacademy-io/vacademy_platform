@@ -19,6 +19,7 @@
         "onboarding": "Intégration",
         "subOrg": "Sous-organisation",
         "reports": "Rapports",
-        "fullHistory": "Historique complet"
+        "fullHistory": "Historique complet",
+        "workflows": "Workflows"
     }
 }

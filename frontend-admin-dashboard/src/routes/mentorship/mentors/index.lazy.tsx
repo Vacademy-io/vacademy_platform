@@ -12,6 +12,7 @@ import {
     Plus,
     Star,
     Trash,
+    UserPlus,
     UsersThree,
     WarningCircle,
 } from '@phosphor-icons/react';
@@ -331,7 +332,10 @@ function MentorsPage() {
                                 aria-label={`Assign students to ${label}`}
                                 title="Assign students to this mentor"
                             >
-                                <UsersThree size={18} />
+                                {/* Not UsersThree: that icon is the header's
+                                    "Bulk assign", and one icon for two different
+                                    actions is what made this row unreadable. */}
+                                <UserPlus size={18} />
                             </MyButton>
                             <MyButton
                                 type="button"

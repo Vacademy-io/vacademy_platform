@@ -9,6 +9,7 @@ import {
     Eye,
     MagnifyingGlass,
     Star,
+    UserPlus,
     UsersThree,
     WarningCircle,
 } from '@phosphor-icons/react';
@@ -30,6 +31,7 @@ import { MentorAvatar } from './MentorAvatar';
 import { MentorSessionsPanel } from './MentorSessionsPanel';
 import { MenteeDetailSheet } from './MenteeDetailSheet';
 import { ScheduleSessionDialog } from './ScheduleSessionDialog';
+import { AssignMenteesDialog } from './AssignMenteesDialog';
 import { AvailabilitySummary, DAY_ORDER } from './MentorAvailabilitySummary';
 import { createDirectConversation, describeDirectChatError } from '@/services/chat/chatApi';
 import { reportApiError } from '@/lib/report-api-error';
@@ -376,6 +378,7 @@ function MentorStudentsTab({
     isLoading: boolean;
 }) {
     const [search, setSearch] = useState('');
+    const [assignOpen, setAssignOpen] = useState(false);
     const [openMentee, setOpenMentee] = useState<MenteeDTO | null>(null);
     const [scheduleFor, setScheduleFor] = useState<MenteeDTO | null>(null);
     const [messagingId, setMessagingId] = useState<string | null>(null);
@@ -533,14 +536,36 @@ function MentorStudentsTab({
 
     if (isLoading) return <Skeleton className="h-24 w-full rounded-md" />;
 
+    // The assign dialog lives outside the early return so it is reachable from
+    // the empty state too — which used to just tell the admin to go somewhere
+    // else ("assign students from the mentor list") with no way to get there.
+    const assignDialog = instituteId ? (
+        <AssignMenteesDialog
+            instituteId={instituteId}
+            mentor={mentor}
+            open={assignOpen}
+            onOpenChange={setAssignOpen}
+        />
+    ) : null;
+
     if (mentees.length === 0) {
         return (
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                 <UsersThree size={32} className="text-neutral-300" />
                 <p className="text-body font-medium text-neutral-700">No students assigned yet</p>
                 <p className="text-caption text-neutral-500">
-                    Assign students to this mentor from the mentor list.
+                    Pick a whole batch, or search for individual students.
                 </p>
+                <MyButton
+                    type="button"
+                    buttonType="primary"
+                    scale="small"
+                    onClick={() => setAssignOpen(true)}
+                    disable={!instituteId}
+                >
+                    <UserPlus size={16} /> Assign students
+                </MyButton>
+                {assignDialog}
             </div>
         );
     }
@@ -563,9 +588,22 @@ function MentorStudentsTab({
                         className="pl-9 sm:w-full"
                     />
                 </div>
-                <span className="text-caption text-neutral-500">
-                    {query ? `${visible.length} of ${mentees.length} match` : `${mentees.length} students`}
-                </span>
+                <div className="flex items-center gap-3">
+                    <span className="text-caption text-neutral-500">
+                        {query
+                            ? `${visible.length} of ${mentees.length} match`
+                            : `${mentees.length} students`}
+                    </span>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => setAssignOpen(true)}
+                        disable={!instituteId}
+                    >
+                        <UserPlus size={16} /> Assign students
+                    </MyButton>
+                </div>
             </div>
 
             {visible.length === 0 ? (
@@ -626,6 +664,8 @@ function MentorStudentsTab({
                         : null
                 }
             />
+
+            {assignDialog}
         </div>
     );
 }

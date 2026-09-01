@@ -57,7 +57,7 @@ interface CardDef {
     iconClass: string;
     barClass: string;
     /** Which summary bucket backs the amount when no server billing figures are available. */
-    bucket: 'total' | 'paid' | 'pending' | 'failed';
+    bucket: 'total' | 'paid' | 'pending' | 'due' | 'failed';
 }
 
 /**
@@ -95,7 +95,10 @@ const CARDS: CardDef[] = [
         icon: HourglassMedium,
         iconClass: 'bg-warning-50 text-warning-600',
         barClass: 'bg-warning-500',
-        bucket: 'pending',
+        // 'due', not 'pending': an unfinished payment on a cancelled or terminated enrolment is an
+        // abandoned checkout, not money owed. Only this card makes that distinction — "Payment
+        // pending" below is about gateway traffic and deliberately still counts them.
+        bucket: 'due',
     },
     {
         key: 'pending',
@@ -171,8 +174,8 @@ export function PaymentKpiCards({
             {CARDS.map((card) => {
                 const bucket = summary[card.bucket];
                 const count = card.key === 'total' ? overallCount : bucket.count;
-                // 'due' has no record bucket of its own — without server figures it falls back to
-                // the unsettled records, which is the closest thing the rows can tell us.
+                // Without server figures each card falls back to its own record bucket — for 'due'
+                // that is summary.due, the unsettled rows minus the ones on a dead enrolment.
                 const amount = summarizeBucketAmount(bucket.amountByCurrency);
                 const billed = billing ? BILLING_AMOUNT[card.key]?.(billing) : undefined;
                 const truncatedSuffix = card.key === 'total' && truncated && !billing ? '+' : '';

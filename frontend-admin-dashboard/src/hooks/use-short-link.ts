@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getOrCreateShortLink } from '@/services/short-link';
+import { getOrCreateShortLink, toShortCodeHint } from '@/services/short-link';
 
 interface UseShortLinkArgs {
     /** A `SHORT_LINK_SOURCE` value. */
@@ -10,8 +10,6 @@ interface UseShortLinkArgs {
     destinationUrl?: string;
     /** Picks the institute's own short domain, when it has one. */
     instituteId?: string;
-    /** Human-readable slug hint, usually the entity's name. */
-    hint?: string;
     /**
      * Gate the request. Defaults to `false` on purpose: shortening is a *write*
      * (it inserts a `short_links` row), so a list of cards must not mint a link
@@ -47,18 +45,21 @@ export function useShortLink({
     sourceId,
     destinationUrl,
     instituteId,
-    hint,
     enabled = false,
 }: UseShortLinkArgs): UseShortLinkResult {
     const query = useQuery({
-        queryKey: ['short-link', source, sourceId, destinationUrl, instituteId, hint],
+        queryKey: ['short-link', source, sourceId, destinationUrl, instituteId],
         queryFn: () =>
             getOrCreateShortLink({
                 source,
                 sourceId: sourceId as string,
                 destinationUrl: destinationUrl as string,
                 instituteId,
-                shortCode: hint,
+                // Derived here, not passed in: the code is an implementation
+                // detail of shortening, and letting callers supply it is how one
+                // of them ends up handing over a live-watched form value that
+                // changes the query key on every keystroke.
+                shortCode: toShortCodeHint(sourceId as string),
             }),
         enabled: enabled && !!source && !!sourceId && !!destinationUrl,
         staleTime: Infinity,

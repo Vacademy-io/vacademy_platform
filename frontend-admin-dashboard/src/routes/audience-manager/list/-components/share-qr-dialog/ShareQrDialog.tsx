@@ -124,7 +124,8 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
     const [copied, setCopied] = useState(false);
     const [shortCopied, setShortCopied] = useState(false);
     const [encodeShortLinkInQr, setEncodeShortLinkInQr] = useState(false);
-    const shortLinksEnabled = useAudienceShortLinksEnabled();
+    const { enabled: shortLinksEnabled, isResolved: shortLinksResolved } =
+        useAudienceShortLinksEnabled();
 
     // Full-size canvas, kept out of the layout. It is what "Download PNG"
     // reads: rasterising the 216px preview instead would hand people a blurry
@@ -169,11 +170,10 @@ export const ShareQrDialog = ({ isOpen, onClose, campaign, isEnquiry }: ShareQrD
         sourceId: campaignId,
         destinationUrl: formUrl,
         instituteId: instituteDetails?.id,
-        // The raw name, not `campaignName` — falling back to the translated
-        // "this audience list" would slugify into a code that says nothing about
-        // the campaign and reads differently in every locale.
-        hint: campaign.campaign_name,
-        enabled: isOpen && !!formUrl && shortLinksEnabled,
+        // Gated on `shortLinksResolved` too — this INSERTs a row, and the switch
+        // reads optimistically ON while loading, so an opted-out institute could
+        // otherwise mint a link just by opening this dialog quickly.
+        enabled: isOpen && !!formUrl && shortLinksEnabled && shortLinksResolved,
     });
 
     // Everything the QR touches — preview, PNG, SVG and the print sheet — reads

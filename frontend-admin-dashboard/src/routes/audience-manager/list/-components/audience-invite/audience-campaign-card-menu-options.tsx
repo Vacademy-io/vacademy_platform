@@ -81,7 +81,8 @@ export const AudienceCampaignCardMenuOptions = ({
     const [openConfigureWorkflowDialog, setOpenConfigureWorkflowDialog] = useState(false);
     const [openBookingSettingsDialog, setOpenBookingSettingsDialog] = useState(false);
     const [copyShortLinkRequested, setCopyShortLinkRequested] = useState(false);
-    const shortLinksEnabled = useAudienceShortLinksEnabled();
+    const { enabled: shortLinksEnabled, isResolved: shortLinksResolved } =
+        useAudienceShortLinksEnabled();
     const { instituteDetails } = useInstituteDetailsStore();
     const bulkImportCustomFields = useMemo(
         () =>
@@ -209,8 +210,9 @@ export const AudienceCampaignCardMenuOptions = ({
         sourceId: campaignId,
         destinationUrl: campaignFormUrl,
         instituteId: instituteId ?? undefined,
-        hint: campaign.campaign_name,
-        enabled: copyShortLinkRequested && shortLinksEnabled,
+        // See use-audience-short-links-enabled: the write must wait until the
+        // institute's preference is actually known, not just optimistically ON.
+        enabled: copyShortLinkRequested && shortLinksEnabled && shortLinksResolved,
     });
 
     useEffect(() => {

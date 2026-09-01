@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.user_subscription.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import java.util.List;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.user_subscription.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
@@ -87,6 +88,18 @@ public class UserPlanController {
             @RequestParam(value = "pageNo", defaultValue = "0") int pageNo,
             @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
         return ResponseEntity.ok(paymentLogService.getOutstandingLearners(request, pageNo, pageSize));
+    }
+
+    /**
+     * The enrolments behind one learner's Due row — the side view. Returns cancelled plans too,
+     * flagged, so an admin can verify a cancellation actually removed the balance.
+     */
+    @PostMapping("/payment-logs/learner-plan-breakdown")
+    public ResponseEntity<List<LearnerPlanBreakdownDTO>> getLearnerPlanBreakdown(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody BillingSummaryRequestDTO request,
+            @RequestParam("userId") String userId) {
+        return ResponseEntity.ok(paymentLogService.getLearnerPlanBreakdown(request, userId));
     }
 
     @PostMapping("/payment-logs/update-tracking")

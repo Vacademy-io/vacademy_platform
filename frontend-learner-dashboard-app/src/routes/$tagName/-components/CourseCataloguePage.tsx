@@ -12,6 +12,11 @@ import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
 import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
 import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
+import {
+  clearCourseFinderSelection,
+  courseFinderScope,
+  saveCourseFinderSelection,
+} from "../-utils/course-finder-bus";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -457,6 +462,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const handleCourseFinderComplete = (selection: CourseFinderSelection) => {
     setShowCourseFinder(false);
     markCourseFinderSeen();
+    // Store the ANSWER alongside the seen flag. Without this the flag outlives
+    // the filter: a reload (or "View course" and back) re-mounts the grid with
+    // no selection and no second chance to be asked, so the visitor lands on
+    // every class's subjects at once. See course-finder-bus.
+    saveCourseFinderSelection(courseFinderScope(instituteId, tagName), {
+      levels: selection.levels,
+      sessions: selection.sessions,
+      tags: selection.tags,
+      labels: selection.labels,
+    });
     // Answering the picker normally starts a fresh basket. Answering it after
     // "Back to courses" must not: that visitor already has courses selected and
     // came back to add more, so wiping them loses work they cannot recover.
@@ -470,6 +485,10 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const handleCourseFinderSkip = () => {
     setShowCourseFinder(false);
     markCourseFinderSeen();
+    // Skipping IS an answer — "show me everything" — so it has to erase any
+    // stored one, or a visitor who skips on a second visit gets silently
+    // re-filtered by a class they picked weeks ago.
+    clearCourseFinderSelection(courseFinderScope(instituteId, tagName));
     reopenedFromCheckout.current = false;
   };
 

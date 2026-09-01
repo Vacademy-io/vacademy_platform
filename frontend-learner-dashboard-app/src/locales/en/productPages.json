@@ -221,6 +221,8 @@
     "success": {
         "title": "You're enrolled!",
         "defaultMessage": "Successfully enrolled in {{count}} {{course}}. Start learning right away.",
+        "totalPaid": "Total paid",
+        "youSaved": "You saved {{amount}}",
         "access": {
             "oneYear": "1 year access",
             "months_one": "{{count}} month access",

@@ -106,6 +106,15 @@ public class BasketPricingCalculator {
          */
         private final double itemTotal;
         private final List<String> breakdown = new ArrayList<>();
+        /**
+         * The rule that priced each item, in the order the items were passed in
+         * ("Class 5 — EMS combo + 1 more", "Class 5 — full pack", "Class 5 — 4
+         * subjects"). The caller books a per-course reduction on the learner's
+         * invoice and needs to say WHY it is there; taking the reason from the
+         * engine that decided it means the label always names the rule the admin
+         * actually configured, instead of a phrase hard-coded somewhere else.
+         */
+        private final List<String> itemLabels = new ArrayList<>();
 
         BasketPrice(double total, double itemTotal) {
             this.total = total;
@@ -151,12 +160,23 @@ public class BasketPricingCalculator {
             double total = 0;
             double itemTotal = 0;
             List<String> lines = new ArrayList<>();
+            Map<String, String> labelByGroup = new LinkedHashMap<>();
 
             for (Map.Entry<String, List<BasketItem>> entry : grouped.entrySet()) {
                 GroupQuote quote = priceGroup(cfg, entry.getKey(), entry.getValue(), ladder, perExtra);
                 total += quote.amount;
                 itemTotal += quote.baseAmount;
                 lines.add(quote.label);
+                labelByGroup.put(entry.getKey(), quote.label);
+            }
+
+            // Back to the ORIGINAL item order, so the caller can zip these
+            // against the courses it passed in without re-deriving the grouping.
+            Map<String, String> levelToGroup = levelToGroup(cfg.path("groups"));
+            List<String> itemLabels = new ArrayList<>();
+            for (BasketItem item : items) {
+                String group = levelToGroup.getOrDefault(key(item.levelName()), "");
+                itemLabels.add(labelByGroup.getOrDefault(group, ""));
             }
 
             if (ladderAcrossBasket) {
@@ -168,8 +188,11 @@ public class BasketPricingCalculator {
                         : ladderPrice(ladder, perExtra, items.size());
                 if (whole < total) {
                     total = whole;
+                    String wholeLabel = items.size() + " subject" + (items.size() == 1 ? "" : "s");
                     lines.clear();
-                    lines.add(items.size() + " subject" + (items.size() == 1 ? "" : "s"));
+                    lines.add(wholeLabel);
+                    // One rule priced the whole basket, so it is every item's rule.
+                    itemLabels.replaceAll(ignored -> wholeLabel);
                 }
             }
 
@@ -177,6 +200,7 @@ public class BasketPricingCalculator {
                     Math.max(0, Math.round(total)),
                     Math.max(0, Math.round(itemTotal)));
             priced.breakdown.addAll(lines);
+            priced.itemLabels.addAll(itemLabels);
             return priced;
 
         } catch (Exception e) {
@@ -186,10 +210,8 @@ public class BasketPricingCalculator {
         }
     }
 
-    /** Splits the basket by configured group; anything unmatched shares one bucket. */
-    private Map<String, List<BasketItem>> groupItems(JsonNode groups, List<BasketItem> items) {
-        Map<String, List<BasketItem>> out = new LinkedHashMap<>();
-
+    /** Which configured group each level name belongs to; unlisted levels share "". */
+    private Map<String, String> levelToGroup(JsonNode groups) {
         Map<String, String> levelToGroup = new LinkedHashMap<>();
         if (groups.isArray()) {
             for (JsonNode group : groups) {
@@ -199,7 +221,13 @@ public class BasketPricingCalculator {
                 }
             }
         }
+        return levelToGroup;
+    }
 
+    /** Splits the basket by configured group; anything unmatched shares one bucket. */
+    private Map<String, List<BasketItem>> groupItems(JsonNode groups, List<BasketItem> items) {
+        Map<String, List<BasketItem>> out = new LinkedHashMap<>();
+        Map<String, String> levelToGroup = levelToGroup(groups);
         for (BasketItem item : items) {
             String label = levelToGroup.getOrDefault(key(item.levelName()), "");
             out.computeIfAbsent(label, k -> new ArrayList<>()).add(item);
@@ -305,20 +333,40 @@ public class BasketPricingCalculator {
         return Math.max(0, off);
     }
 
+    /**
+     * What a set of courses costs under the page's ordinary rule - the ladder
+     * under FLAT, the item sum less its best tier under DISCOUNT - before full
+     * packs and combos get their turn at beating it.
+     *
+     * Factored out because a combo now prices its EXTENSION with it: growing a
+     * matched combo by one subject must cost what growing any basket by one
+     * subject costs, and the only honest source for that is this function.
+     */
+    private double ordinaryPrice(JsonNode cfg, List<BasketItem> picked,
+            List<Double> ladder, double perExtra) {
+        if (picked.isEmpty()) {
+            return 0;
+        }
+        if (discountBasis(cfg)) {
+            // The courses' own prices are the base, so the single-subject rate
+            // lives in exactly one place: the payment plan on the enroll invite.
+            double base = baseFor(picked, ladder);
+            return base - tierDiscount(cfg, base, picked.size());
+        }
+        return ladderPrice(ladder, perExtra, picked.size());
+    }
+
     private GroupQuote priceGroup(JsonNode cfg, String groupLabel, List<BasketItem> picked,
             List<Double> ladder, double perExtra) {
         int count = picked.size();
         double base = baseFor(picked, ladder);
 
-        double best;
+        // Kept separate from `best`: a full pack may lower `best` below it, and
+        // the combo extension below has to measure against the ORDINARY price
+        // of this group, not against whatever rule is currently winning.
+        double ordinary = ordinaryPrice(cfg, picked, ladder, perExtra);
+        double best = ordinary;
         String how = count + " subject" + (count == 1 ? "" : "s");
-        if (discountBasis(cfg)) {
-            // The courses' own prices are the base, so the single-subject rate
-            // lives in exactly one place: the payment plan on the enroll invite.
-            best = base - tierDiscount(cfg, base, count);
-        } else {
-            best = ladderPrice(ladder, perExtra, count);
-        }
 
         // Full pack: every level configured for this group is in the basket.
         Double wholeGroup = wholeGroupPrice(cfg, groupLabel, picked, count);
@@ -327,22 +375,46 @@ public class BasketPricingCalculator {
             how = "full pack";
         }
 
-        // Named combo: the group's packages are exactly a combo's set.
-        Set<String> pickedPackages = new LinkedHashSet<>();
-        for (BasketItem item : picked) {
-            pickedPackages.add(key(item.packageName()));
-        }
+        // Named combo: the group CONTAINS a combo's packages.
+        //
+        // A subset, not an exact set. All-or-nothing matching is what made a
+        // Class 5 basket jump by Rs 200 for the fourth subject: English+Maths+
+        // Science took the Rs 749 EMS combo, adding G.K. stopped the combo
+        // matching, and the basket fell back onto the plain Rs 949 rung - so a
+        // page advertising "+Rs 150 for each extra subject" charged Rs 200.
+        //
+        // The extension is priced at exactly what this page charges to grow a
+        // basket from the combo's size to this one, so the combo's own saving
+        // rides along instead of evaporating: 749 + (949 - 799) = 899. At an
+        // exact match the extension is 0, which is the old behaviour untouched.
         for (JsonNode combo : cfg.path("combos")) {
             Set<String> comboPackages = new LinkedHashSet<>();
             for (JsonNode name : combo.path("packages")) {
                 comboPackages.add(key(name.asText()));
             }
-            if (!comboPackages.isEmpty() && comboPackages.equals(pickedPackages)) {
-                double comboPrice = combo.path("price").asDouble(Double.MAX_VALUE);
-                if (comboPrice < best) {
-                    best = comboPrice;
-                    how = combo.path("label").asText("combo");
+            if (comboPackages.isEmpty()) {
+                continue;
+            }
+            List<BasketItem> inCombo = new ArrayList<>();
+            for (BasketItem item : picked) {
+                if (comboPackages.contains(key(item.packageName()))) {
+                    inCombo.add(item);
                 }
+            }
+            // One basket line per named package, or the combo is ambiguous -
+            // which of two courses sharing a package name did the price cover?
+            if (inCombo.size() != comboPackages.size()) {
+                continue;
+            }
+            double comboPrice = combo.path("price").asDouble(Double.MAX_VALUE);
+            if (comboPrice == Double.MAX_VALUE) {
+                continue;
+            }
+            double price = comboPrice + (ordinary - ordinaryPrice(cfg, inCombo, ladder, perExtra));
+            if (price < best) {
+                best = price;
+                int extras = count - inCombo.size();
+                how = combo.path("label").asText("combo") + (extras > 0 ? " + " + extras + " more" : "");
             }
         }
 

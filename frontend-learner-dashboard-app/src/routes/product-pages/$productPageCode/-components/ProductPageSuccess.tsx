@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { CheckCircle, BookOpen, ArrowRight } from "@phosphor-icons/react";
+import { formatPriceAmount } from "@/components/common/price-with-mrp";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import {
   getTerminology,
   getTerminologyPlural,
@@ -29,7 +31,7 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
   const { t } = useTranslation("productPages");
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const coursePlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
-  const { selectedPsOptionIds, utmParams } = useProductPageStore();
+  const { selectedPsOptionIds, utmParams, finalPrice, totalPrice } = useProductPageStore();
 
   const settings: ProductPageSettings = pageData.settings_json
     ? (() => {
@@ -52,6 +54,21 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
   const enrolledMappings = pageData.mappings.filter((m) =>
     selectedPsOptionIds.includes(m.ps_invite_payment_option_id),
   );
+
+  // What was actually PAID, not what each course lists for.
+  //
+  // This page used to print the payment plan's price beside every course, so a
+  // ₹949 four-subject order read "₹349" four times — ₹1,396 of receipts for one
+  // ₹949 payment, and no total anywhere to reconcile it against. On a page that
+  // prices the basket as a whole (any 3 for ₹799, +₹150 each) the per-course
+  // list price is not a figure the parent ever paid, so it is the one number
+  // that must NOT appear on a receipt. The order total is; the saving beside it
+  // is what makes the smaller figure legible.
+  const amountPaid = finalPrice();
+  const listTotal = totalPrice();
+  const saved = Math.max(0, Math.round(listTotal - amountPaid));
+  // Prices are hidden wholesale inside Apple's reader-app builds.
+  const showAmount = !shouldHidePaidPurchaseUI() && enrolledMappings.length > 0;
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -120,13 +137,28 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
                 </p>
               )}
             </div>
-            {m.payment_plan?.actual_price > 0 && (
-              <span className="shrink-0 text-xs text-gray-400">
-                {currency} {m.payment_plan.actual_price.toLocaleString()}
-              </span>
-            )}
           </div>
         ))}
+
+        {showAmount && (
+          <div className="rounded-xl border bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-gray-900">
+                {t("success.totalPaid")}
+              </span>
+              <span className="text-sm font-semibold text-gray-900">
+                {formatPriceAmount(amountPaid, currency)}
+              </span>
+            </div>
+            {saved > 0 && (
+              <p className="mt-1 text-xs text-green-600">
+                {t("success.youSaved", {
+                  amount: formatPriceAmount(saved, currency),
+                })}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {showLoginButton && (

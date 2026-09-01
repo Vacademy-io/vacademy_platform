@@ -393,8 +393,27 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     FROM payment_log pl
                     LEFT JOIN user_plan up ON up.id = pl.user_plan_id
                     LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
-                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
-                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                    -- ONE invoice per payment log. A single payment can be mapped to more than
+                    -- one invoice (duplicate invoices do get generated for the same payment), and
+                    -- joining the mapping table directly fanned that payment out into a row per
+                    -- invoice, so SUM(payment_amount) counted the same money once per invoice —
+                    -- Suchbliss reported ~2x collected off one such ₹7,200 payment. The lateral
+                    -- collapses it back to a single row, preferring an invoice belonging to the
+                    -- institute being queried so the scoping predicate below can never drop a
+                    -- payment that is mapped to another institute's invoice as well.
+                    LEFT JOIN LATERAL (
+                      SELECT i2.institute_id, i2.user_id
+                        FROM invoice_payment_log_mapping m
+                        JOIN invoice i2 ON i2.id = m.invoice_id
+                       WHERE m.payment_log_id = pl.id
+                       -- CASE, not `(... = :instituteId) DESC`: in Postgres DESC means NULLS
+                       -- FIRST, so a NULL institute_id would outrank the institute we want
+                       -- and silently drop the payment from this institute's total. id is a
+                       -- tie-break so the pick is deterministic.
+                       ORDER BY CASE WHEN i2.institute_id = :instituteId THEN 0 ELSE 1 END,
+                                i2.created_at, i2.id
+                       LIMIT 1
+                    ) inv ON true
                    WHERE pl.payment_status = 'PAID'
                      AND pl.created_at >= :startDate
                      AND pl.created_at <= :endDate
@@ -513,8 +532,27 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     FROM payment_log pl
                     LEFT JOIN user_plan up ON up.id = pl.user_plan_id
                     LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
-                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
-                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                    -- ONE invoice per payment log. A single payment can be mapped to more than
+                    -- one invoice (duplicate invoices do get generated for the same payment), and
+                    -- joining the mapping table directly fanned that payment out into a row per
+                    -- invoice, so SUM(payment_amount) counted the same money once per invoice —
+                    -- Suchbliss reported ~2x collected off one such ₹7,200 payment. The lateral
+                    -- collapses it back to a single row, preferring an invoice belonging to the
+                    -- institute being queried so the scoping predicate below can never drop a
+                    -- payment that is mapped to another institute's invoice as well.
+                    LEFT JOIN LATERAL (
+                      SELECT i2.institute_id, i2.user_id
+                        FROM invoice_payment_log_mapping m
+                        JOIN invoice i2 ON i2.id = m.invoice_id
+                       WHERE m.payment_log_id = pl.id
+                       -- CASE, not `(... = :instituteId) DESC`: in Postgres DESC means NULLS
+                       -- FIRST, so a NULL institute_id would outrank the institute we want
+                       -- and silently drop the payment from this institute's total. id is a
+                       -- tie-break so the pick is deterministic.
+                       ORDER BY CASE WHEN i2.institute_id = :instituteId THEN 0 ELSE 1 END,
+                                i2.created_at, i2.id
+                       LIMIT 1
+                    ) inv ON true
                    WHERE pl.payment_status = 'PAID'
                      AND pl.created_at >= :startDate
                      AND pl.created_at <= :endDate
@@ -597,8 +635,27 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     FROM payment_log pl
                     LEFT JOIN user_plan up ON up.id = pl.user_plan_id
                     LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
-                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
-                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                    -- ONE invoice per payment log. A single payment can be mapped to more than
+                    -- one invoice (duplicate invoices do get generated for the same payment), and
+                    -- joining the mapping table directly fanned that payment out into a row per
+                    -- invoice, so SUM(payment_amount) counted the same money once per invoice —
+                    -- Suchbliss reported ~2x collected off one such ₹7,200 payment. The lateral
+                    -- collapses it back to a single row, preferring an invoice belonging to the
+                    -- institute being queried so the scoping predicate below can never drop a
+                    -- payment that is mapped to another institute's invoice as well.
+                    LEFT JOIN LATERAL (
+                      SELECT i2.institute_id, i2.user_id
+                        FROM invoice_payment_log_mapping m
+                        JOIN invoice i2 ON i2.id = m.invoice_id
+                       WHERE m.payment_log_id = pl.id
+                       -- CASE, not `(... = :instituteId) DESC`: in Postgres DESC means NULLS
+                       -- FIRST, so a NULL institute_id would outrank the institute we want
+                       -- and silently drop the payment from this institute's total. id is a
+                       -- tie-break so the pick is deterministic.
+                       ORDER BY CASE WHEN i2.institute_id = :instituteId THEN 0 ELSE 1 END,
+                                i2.created_at, i2.id
+                       LIMIT 1
+                    ) inv ON true
                    WHERE pl.payment_status = 'PAID'
                      AND pl.created_at >= :startDate
                      AND pl.created_at <= :endDate

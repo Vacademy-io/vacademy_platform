@@ -165,6 +165,7 @@ export function DueLearnerDetailSheet({
                                                     </span>
                                                     <StatusChip
                                                         text={statusMeta(plan.plan_status).label}
+                                                        textSize="text-caption"
                                                         status={statusMeta(plan.plan_status).chip}
                                                         showIcon={false}
                                                     />
@@ -208,6 +209,7 @@ export function DueLearnerDetailSheet({
                                                     </span>
                                                     <StatusChip
                                                         text={statusMeta(plan.plan_status).label}
+                                                        textSize="text-caption"
                                                         status={statusMeta(plan.plan_status).chip}
                                                         showIcon={false}
                                                     />

@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.CombinedPaymentRowProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryRequestDTO;
@@ -1115,6 +1116,54 @@ public class PaymentLogService {
                         row != null && row.getSettledPlanCount() != null ? row.getSettledPlanCount() : 0L)
                 .currency(row != null ? row.getCurrency() : null)
                 .build();
+    }
+
+    /**
+     * Every enrolment behind one learner's Due row, cancelled ones included and flagged.
+     *
+     * The Due list shows a learner as owing a single netted figure; without this an admin who
+     * cancelled somebody's plan had no way to confirm the cancellation was actually honoured. Rows
+     * with {@code countsTowardsDue = false} contribute 0 and say so.
+     */
+    public List<LearnerPlanBreakdownDTO> getLearnerPlanBreakdown(
+            BillingSummaryRequestDTO request, String userId) {
+        if (!StringUtils.hasText(request.getInstituteId())) {
+            throw new VacademyException("institute_id is required");
+        }
+        if (!StringUtils.hasText(userId)) {
+            throw new VacademyException("user_id is required");
+        }
+        // Same defaults as getOutstandingLearners, so an unfiltered sheet sees an unfiltered row.
+        LocalDateTime startDate = request.getStartDateInUtc() != null
+                ? request.getStartDateInUtc()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime endDate = request.getEndDateInUtc() != null
+                ? request.getEndDateInUtc()
+                : LocalDateTime.now();
+        List<String> packageSessionIds = request.getPackageSessionIds();
+        boolean noPackageSessions = packageSessionIds == null || packageSessionIds.isEmpty();
+        return userPlanRepository.findLearnerPlanBreakdown(
+                request.getInstituteId(), userId, startDate, endDate, noPackageSessions,
+                // Postgres rejects an empty IN list, so hand it a value that can never match.
+                noPackageSessions ? List.of("__none__") : packageSessionIds).stream()
+                .map(row -> {
+                    double billed = row.getBilled() != null ? row.getBilled() : 0d;
+                    double paid = row.getPaid() != null ? row.getPaid() : 0d;
+                    boolean counts = Boolean.TRUE.equals(row.getCountsTowardsDue());
+                    return LearnerPlanBreakdownDTO.builder()
+                            .userPlanId(row.getUserPlanId())
+                            .courseName(row.getCourseName())
+                            .planStatus(row.getPlanStatus())
+                            .paymentType(row.getPaymentType())
+                            .billed(billed)
+                            .paid(paid)
+                            // A dead plan owes nothing, whatever its price says — mirrors the card.
+                            .due(counts ? Math.max(0d, billed - paid) : 0d)
+                            .countsTowardsDue(counts)
+                            .currency(row.getCurrency())
+                            .build();
+                })
+                .toList();
     }
 
     /**

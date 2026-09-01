@@ -116,8 +116,8 @@
         "domainPlaceholder": "learn.myschool.com",
         "primary": "Principal",
         "setPrimary": "Définir comme principal",
-        "primaryTooltip": "Domaine principal pour ce rôle",
-        "setPrimaryTooltip": "Définir comme principal",
+        "primaryTooltip": "URL du portail pour ce rôle — utilisée dans les e-mails une fois le domaine actif",
+        "setPrimaryTooltip": "Utiliser ce domaine comme URL du portail pour ce rôle",
         "settingsToggle": "Paramètres",
         "toggleSettingsTooltip": "Afficher/masquer les paramètres",
         "removeTooltip": "Supprimer",
@@ -131,7 +131,8 @@
         "noInstituteSelected": "Aucun établissement sélectionné",
         "addAtLeastOneDomain": "Ajoutez au moins une entrée de domaine",
         "setupCompleted": "Configuration en marque blanche terminée ! 🎉",
-        "setupFailed": "Échec de la configuration."
+        "setupFailed": "Échec de la configuration.",
+        "portalUrlAdopted": "L'URL du portail {{roles}} est maintenant active et enregistrée."
     },
     "setupResult": {
         "title": "Configuration terminée",
@@ -179,6 +180,17 @@
             "logoWidth": "Largeur du logo (px)",
             "logoHeight": "Hauteur du logo (px)",
             "stackNameBelowLogo": "Nom empilé sous le logo"
-        }
+        },
+        "portalUrl": "URL du portail",
+        "portalUrlTooltip": "Les e-mails et les liens partagés utilisent actuellement ce domaine",
+        "primaryPending": "Principal · en attente",
+        "primaryPendingTooltip": "Choisi comme URL du portail — enregistré dès que ce domaine est actif",
+        "willBeAdoptedOnceActive": "Choisi comme URL du portail. Il sera enregistré automatiquement dès que ce domaine sera actif — d'ici là, les e-mails et les liens continueront d'utiliser l'URL du portail actuelle."
+    },
+    "subOrg": {
+        "label": "Sous-organisation",
+        "none": "Établissement parent",
+        "untitled": "Sous-organisation sans nom",
+        "badgeTooltip": "Ce portail est aux couleurs de cette sous-organisation et lui est réservé"
     }
 }

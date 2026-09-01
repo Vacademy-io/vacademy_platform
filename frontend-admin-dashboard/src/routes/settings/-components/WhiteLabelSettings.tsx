@@ -34,6 +34,7 @@ import {
     Phone
 } from 'lucide-react';
 import PreferredCountriesSelector from './PreferredCountriesSelector';
+import { getSubOrgs } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import {
     parsePreferredCountriesString,
     stringifyPreferredCountries,
@@ -141,7 +142,65 @@ interface RoutingConfig {
      * (undefined / false): name sits beside the logo, as before.
      */
     stack_name_below_logo?: boolean;
+    /**
+     * Sub-organisation this domain serves. Not styling — the routing row's
+     * institute stays the PARENT, so this id is the only thing that tells one
+     * sub-org's portal from another's. It drives the logo/name/theme overlay AND
+     * the login scoping in loginFlowHandler.
+     *
+     * Null or omitted leaves an existing mapping alone; '' clears it.
+     */
+    sub_org_id?: string | null;
 }
+
+/**
+ * How often, and how many times, the settings page re-asks the server whether a
+ * pending domain has gone live. ~10 minutes covers the common in-zone case
+ * (Cloudflare provisions a *.vacademy.io host in under a minute) without
+ * hammering the Cloudflare API on behalf of an external domain whose owner has
+ * not added their CNAME yet — that one is picked up on the next page visit.
+ */
+/**
+ * Radix's Select refuses an empty-string item value, so "not linked" needs a
+ * sentinel. It maps back to '' on submit, which is what the backend reads as
+ * "clear the link" — an omitted field means "leave it alone" instead.
+ */
+const NO_SUB_ORG = '__none__';
+
+/** Sub-org list rows come back under several field spellings depending on endpoint. */
+type RawSubOrg = Record<string, unknown>;
+
+interface SubOrgOption {
+    id: string;
+    /** Absent when the row carries no name — the label is resolved at render. */
+    name?: string;
+}
+
+const firstString = (org: RawSubOrg | undefined, keys: string[]): string | undefined => {
+    for (const key of keys) {
+        const value = org?.[key];
+        if (typeof value === 'string' && value.trim()) return value;
+    }
+    return undefined;
+};
+
+/**
+ * Deliberately does NOT resolve a fallback label. This runs inside a fetch
+ * effect, and calling `t()` there without `t` in the dependency array freezes
+ * whatever the catalog held at that moment — which, before the lazy namespace
+ * lands, is the raw key. The label is resolved at render instead.
+ */
+const normaliseSubOrg = (org: RawSubOrg | undefined): SubOrgOption | null => {
+    const id = firstString(org, ['sub_org_id', 'suborgId', 'subOrgId', 'suborg_id', 'id']);
+    if (!id) return null;
+    return {
+        id,
+        name: firstString(org, ['name', 'institute_name', 'instituteName', 'subOrgName']),
+    };
+};
+
+const ACTIVATION_POLL_INTERVAL_MS = 30_000;
+const MAX_ACTIVATION_POLLS = 20;
 
 // UI-enforced caps so operators can't enter values that break the layout.
 export const LOGO_DIMENSION_LIMITS = {
@@ -159,6 +218,16 @@ interface RoutingEntry extends RoutingConfig {
     pages_status?: string | null;
     /** CNAME target (<project>.pages.dev) the customer must point an external domain at. */
     pages_cname_target?: string | null;
+    /**
+     * The admin picked this host as the portal URL for the roles it serves. An
+     * intent — it only becomes `is_portal_url` once Cloudflare activates the host.
+     */
+    is_primary?: boolean;
+    /**
+     * This host is what the institute's <role>_portal_base_url actually holds, i.e.
+     * the domain outbound learner emails use right now.
+     */
+    is_portal_url?: boolean;
 }
 
 interface WhiteLabelStatusResponse {
@@ -168,6 +237,8 @@ interface WhiteLabelStatusResponse {
     learner_portal_url: string | null;
     admin_portal_url: string | null;
     teacher_portal_url: string | null;
+    /** Roles whose portal URL the server adopted during THIS read, because the chosen host had just gone live. */
+    roles_adopted_now?: string[];
     routing_entries: RoutingEntry[];
 }
 
@@ -211,7 +282,30 @@ const fqdn = (entry: RoutingEntry): string => {
 let nextFormId = 1;
 const makeFormId = () => `form-${nextFormId++}`;
 
-const emptyConfig = (): RoutingConfig => ({});
+/**
+ * A new entry starts on the same values the backend would apply if these were
+ * left unsent (DomainRoutingAdminService).
+ *
+ * <p>They have to match. The switches render `checked={!!config[field]}`, so an
+ * empty config drew six OFF switches — while the backend stored NULL and every
+ * login page read NULL as ON. Admins configured portals seeing "all off" and
+ * shipped "all on", self-signup included. Stating the defaults here is what
+ * makes the form agree with what saving it actually does.
+ */
+const emptyConfig = (): RoutingConfig => ({
+    // Off until somebody asks for it — an open self-registration link is the one
+    // flag here with real consequence.
+    allow_signup: false,
+    allow_google_auth: true,
+    allow_github_auth: true,
+    allow_email_otp_auth: true,
+    // Off, unlike its siblings: the login pages read this one as
+    // `allowPhoneAuth === true`, so null already meant off — and it also decides
+    // whether learners get enrolled with a phone number as their username.
+    allow_phone_auth: false,
+    allow_username_password_auth: true,
+    convert_username_password_to_lowercase: false,
+});
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -723,19 +817,45 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
 
     useEffect(() => { if (instituteId) fetchStatus(); }, [instituteId]);
 
+    // Sub-orgs of this institute, for the per-domain linkage picker. Most
+    // institutes have none, in which case the picker never renders and the page
+    // looks exactly as it did. Best-effort: a failure here must not block
+    // white-label setup, so it degrades to "no sub-orgs" rather than erroring.
+    const [subOrgs, setSubOrgs] = useState<SubOrgOption[]>([]);
+
+    useEffect(() => {
+        if (!instituteId) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const raw: unknown = await getSubOrgs(instituteId);
+                const list: RawSubOrg[] = Array.isArray(raw)
+                    ? (raw as RawSubOrg[])
+                    : (raw as { content?: RawSubOrg[] } | null)?.content ?? [];
+                const options = list
+                    .map((o) => normaliseSubOrg(o))
+                    .filter((o): o is SubOrgOption => o !== null);
+                if (!cancelled) setSubOrgs(options);
+            } catch (err) {
+                console.error('[WhiteLabel] Failed to load sub-orgs', err);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [instituteId]);
+
     // ── Pre-fill from existing routing entries ────────────────────────────────
     const prefillFromStatus = (data: WhiteLabelStatusResponse) => {
         if (!data.routing_entries || data.routing_entries.length === 0) return;
 
         const newEntries: DomainFormEntry[] = data.routing_entries.map((r) => {
             const fullDomain = fqdn(r);
-            let isPrimary = false;
-            if (r.role === 'LEARNER' && data.learner_portal_url)
-                isPrimary = data.learner_portal_url.replace(/^https?:\/\//, '') === fullDomain;
-            else if (r.role === 'ADMIN' && data.admin_portal_url)
-                isPrimary = data.admin_portal_url.replace(/^https?:\/\//, '') === fullDomain;
-            else if (r.role === 'TEACHER' && data.teacher_portal_url)
-                isPrimary = data.teacher_portal_url.replace(/^https?:\/\//, '') === fullDomain;
+            // The server stores the primary choice on the routing row, so read it
+            // rather than inferring it from the portal URL. Inferring is wrong now
+            // that a choice is only applied once its host goes live: a pending
+            // primary would come back un-starred, and the next Save would clear it.
+            const isPrimary = r.is_primary === true;
 
             return {
                 id: makeFormId(),
@@ -771,6 +891,11 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     logo_width_px: r.logo_width_px ?? undefined,
                     logo_height_px: r.logo_height_px ?? undefined,
                     stack_name_below_logo: r.stack_name_below_logo ?? undefined,
+                    // Round-trip the linkage. Before this the wizard didn't know the
+                    // field existed, so every save posted a config without it and the
+                    // backend blanked sub_org_id — un-branding the portal and
+                    // disabling its login scoping.
+                    sub_org_id: r.sub_org_id ?? undefined,
                 },
             };
         });
@@ -789,12 +914,51 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
             console.log('[WhiteLabel] Status response:', res.data);
             setStatus(res.data);
             prefillFromStatus(res.data);
+
+            // The server adopts a chosen domain into the institute's portal URL the
+            // moment Cloudflare activates it. That can land on a poll rather than an
+            // action, so say so — otherwise the change is invisible.
+            const adopted = res.data.roles_adopted_now ?? [];
+            if (adopted.length > 0) {
+                toast.success(
+                    t('toast.portalUrlAdopted', {
+                        roles: adopted.map((r) => roleLabel(r, t)).join(', '),
+                    })
+                );
+            }
         } catch (err) {
             console.error('[WhiteLabel] Failed to load status', err);
         } finally {
             setStatusLoading(false);
         }
     };
+
+    // ── Auto-poll while a domain is still activating ──────────────────────────
+    // Cloudflare validates an external domain minutes — sometimes hours — after
+    // it is added, and it has no webhook to tell us. Every status read reconciles
+    // server-side, so simply asking again is what turns "stored once the URL goes
+    // active" into something that happens while the admin watches, rather than
+    // the next time somebody happens to open this page. Bounded, so a domain
+    // whose CNAME never lands doesn't poll forever.
+    const [pollsLeft, setPollsLeft] = useState(MAX_ACTIVATION_POLLS);
+
+    const hasActivatingDomain = (status?.routing_entries ?? []).some(
+        (e) => !!e.pages_status && e.pages_status.toLowerCase() !== 'active'
+    );
+
+    // Held in a ref so the poll effect doesn't re-run on every render just
+    // because fetchStatus is a new closure each time.
+    const fetchStatusRef = useRef(fetchStatus);
+    fetchStatusRef.current = fetchStatus;
+
+    useEffect(() => {
+        if (!hasActivatingDomain || pollsLeft <= 0) return;
+        const timer = setTimeout(() => {
+            setPollsLeft((n) => n - 1);
+            void fetchStatusRef.current();
+        }, ACTIVATION_POLL_INTERVAL_MS);
+        return () => clearTimeout(timer);
+    }, [hasActivatingDomain, pollsLeft]);
 
     const handleSetup = async () => {
         if (!instituteId) { toast.error(t('toast.noInstituteSelected')); return; }
@@ -820,6 +984,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
             );
             setLastSetupResult(res.data);
             toast.success(t('toast.setupCompleted'));
+            setPollsLeft(MAX_ACTIVATION_POLLS);
             await fetchStatus();
         } catch (err: any) {
             const errMsg = err?.response?.data?.message || err?.response?.data || t('toast.setupFailed');
@@ -954,7 +1119,11 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                     </div>
                                     <div className="space-y-2">
                                         {status.routing_entries.map((entry) => (
-                                            <RoutingEntryCard key={entry.id} entry={entry} />
+                                            <RoutingEntryCard
+                                                key={entry.id}
+                                                entry={entry}
+                                                subOrgs={subOrgs}
+                                            />
                                         ))}
                                     </div>
                                 </div>
@@ -995,7 +1164,13 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                         {idx + 1}
                                     </span>
 
-                                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-3">
+                                    <div
+                                        className={`grid flex-1 grid-cols-1 gap-3 ${
+                                            subOrgs.length > 0
+                                                ? 'sm:grid-cols-[140px_1fr_200px]'
+                                                : 'sm:grid-cols-[140px_1fr]'
+                                        }`}
+                                    >
                                         <div className="space-y-1">
                                             <Label className="text-xs text-slate-500">{t('setupCard.roleLabel')}</Label>
                                             <Select value={entry.role}
@@ -1016,6 +1191,45 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                                                        e.target.value.toLowerCase().replace(/\s/g, ''))}
                                                    className="h-9" />
                                         </div>
+
+                                        {/* Sub-org linkage. Only rendered when this institute
+                                            actually has sub-orgs, so the row is unchanged for
+                                            everyone else. Picking one brands the portal with
+                                            that sub-org's logo/name/theme AND restricts login
+                                            to its members. */}
+                                        {subOrgs.length > 0 && (
+                                            <div className="space-y-1">
+                                                <Label className="text-xs text-slate-500">
+                                                    {t('subOrg.label')}
+                                                </Label>
+                                                <Select
+                                                    value={entry.config.sub_org_id || NO_SUB_ORG}
+                                                    onValueChange={(v) =>
+                                                        updateEntryConfig(
+                                                            entry.id,
+                                                            'sub_org_id',
+                                                            v === NO_SUB_ORG ? '' : v
+                                                        )
+                                                    }
+                                                >
+                                                    <SelectTrigger className="h-9">
+                                                        <SelectValue
+                                                            placeholder={t('subOrg.none')}
+                                                        />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value={NO_SUB_ORG}>
+                                                            {t('subOrg.none')}
+                                                        </SelectItem>
+                                                        {subOrgs.map((o) => (
+                                                            <SelectItem key={o.id} value={o.id}>
+                                                                {o.name || t('subOrg.untitled')}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Primary */}
@@ -1151,8 +1365,12 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
 
 // ─── Routing Entry Card (current config display) ──────────────────────────────
 
-function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
+function RoutingEntryCard({ entry, subOrgs }: { entry: RoutingEntry; subOrgs: SubOrgOption[] }) {
     const { t } = useTranslation('settingsWhiteLabel');
+    const subOrgName = entry.sub_org_id
+        ? subOrgs.find((o) => o.id === entry.sub_org_id)?.name ?? entry.sub_org_id
+        : null;
+
     const [expanded, setExpanded] = useState(false);
     const full = fqdn(entry);
 
@@ -1190,6 +1408,38 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                     </a>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                    {/* Two different facts, deliberately shown separately: which host
+                        the admin chose, and which one outbound links actually use.
+                        They diverge for as long as a chosen host stays pending, and
+                        that gap is the thing an admin otherwise cannot explain. */}
+                    {entry.is_portal_url ? (
+                        <Badge
+                            variant="outline"
+                            className="gap-1 border-emerald-200 bg-emerald-50 text-xs text-emerald-700"
+                            title={t('routingEntryCard.portalUrlTooltip')}
+                        >
+                            <CheckCircle2 className="size-3" />
+                            {t('routingEntryCard.portalUrl')}
+                        </Badge>
+                    ) : entry.is_primary ? (
+                        <Badge
+                            variant="outline"
+                            className="gap-1 border-amber-200 bg-amber-50 text-xs text-amber-700"
+                            title={t('routingEntryCard.primaryPendingTooltip')}
+                        >
+                            <Star className="size-3" />
+                            {t('routingEntryCard.primaryPending')}
+                        </Badge>
+                    ) : null}
+                    {subOrgName && (
+                        <Badge
+                            variant="outline"
+                            className="border-sky-200 bg-sky-50 text-xs text-sky-700"
+                            title={t('subOrg.badgeTooltip')}
+                        >
+                            {subOrgName}
+                        </Badge>
+                    )}
                     {entry.pages_status && (
                         <Badge
                             variant="outline"
@@ -1218,6 +1468,16 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                     )}
                 </div>
             </div>
+
+            {/* Chosen but not yet live: say what happens next, so the admin doesn't
+                assume the choice failed to save and re-submit it. */}
+            {entry.is_primary && !entry.is_portal_url && (
+                <div className="border-t border-amber-100 bg-amber-50/60 px-4 py-2">
+                    <p className="text-xs text-amber-800">
+                        {t('routingEntryCard.willBeAdoptedOnceActive')}
+                    </p>
+                </div>
+            )}
 
             {/* CNAME record to add — shown for a pending external (non-vacademy.io) domain */}
             {entry.pages_status &&

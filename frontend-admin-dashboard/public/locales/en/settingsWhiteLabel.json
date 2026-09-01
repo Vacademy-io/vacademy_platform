@@ -116,8 +116,8 @@
         "domainPlaceholder": "learn.myschool.com",
         "primary": "Primary",
         "setPrimary": "Set primary",
-        "primaryTooltip": "Primary domain for this role",
-        "setPrimaryTooltip": "Set as primary",
+        "primaryTooltip": "Portal URL for this role — used in emails once the domain is active",
+        "setPrimaryTooltip": "Use this domain as the portal URL for this role",
         "settingsToggle": "Settings",
         "toggleSettingsTooltip": "Toggle settings",
         "removeTooltip": "Remove",
@@ -131,7 +131,8 @@
         "noInstituteSelected": "No institute selected",
         "addAtLeastOneDomain": "Add at least one domain entry",
         "setupCompleted": "White-label setup completed! 🎉",
-        "setupFailed": "Setup failed."
+        "setupFailed": "Setup failed.",
+        "portalUrlAdopted": "{{roles}} portal URL is now live and saved."
     },
     "setupResult": {
         "title": "Setup Complete",
@@ -179,6 +180,17 @@
             "logoWidth": "Logo Width (px)",
             "logoHeight": "Logo Height (px)",
             "stackNameBelowLogo": "Stack Name Below Logo"
-        }
+        },
+        "portalUrl": "Portal URL",
+        "portalUrlTooltip": "Emails and shared links currently use this domain",
+        "primaryPending": "Primary · pending",
+        "primaryPendingTooltip": "Chosen as the portal URL — saved once this domain goes active",
+        "willBeAdoptedOnceActive": "Chosen as the portal URL. It is saved automatically once this domain goes active — until then, emails and links keep using the current portal URL."
+    },
+    "subOrg": {
+        "label": "Sub-organization",
+        "none": "Parent institute",
+        "untitled": "Untitled sub-organization",
+        "badgeTooltip": "This portal is branded for, and restricted to, this sub-organization"
     }
 }

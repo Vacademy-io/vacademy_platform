@@ -116,4 +116,18 @@ public class InstituteDomainRouting {
 
     @Column(name = "apply_naming_setting", nullable = false)
     private boolean applyNamingSetting;
+
+    /**
+     * True when this host is the institute's chosen portal URL for the roles it
+     * serves — i.e. the one that belongs in
+     * <code>institutes.&lt;role&gt;_portal_base_url</code> and therefore in every
+     * outbound learner link.
+     *
+     * <p>It is an intent, not a fact: the host is only copied into the institute
+     * row once Cloudflare reports it ACTIVE. Until then the institute keeps
+     * whatever origin it had, because a pending Pages domain does not serve.
+     * See {@code PortalUrlReconciler}.
+     */
+    @Column(name = "is_primary", nullable = false)
+    private boolean primary;
 }

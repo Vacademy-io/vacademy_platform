@@ -222,6 +222,8 @@
     "success": {
         "title": "Vous êtes inscrit(e) !",
         "defaultMessage": "Inscription réussie à {{count}} {{course}}. Commencez à apprendre dès maintenant.",
+        "totalPaid": "Total payé",
+        "youSaved": "Vous avez économisé {{amount}}",
         "access": {
             "oneYear": "Accès 1 an",
             "months_one": "Accès {{count}} mois",

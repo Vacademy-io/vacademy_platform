@@ -10,6 +10,9 @@ import {
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import {
   clearCourseFinderOptions,
+  clearCourseFinderSelection,
+  courseFinderScope,
+  loadCourseFinderSelection,
   publishCourseFinderOptions,
 } from "../../-utils/course-finder-bus";
 import { urlCourseDetails } from "@/constants/urls";
@@ -506,9 +509,23 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   }, [defaultSort]);
 
   // Filter states
-  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
-  const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  // Seeded from the Course Finder's stored answer. The wizard only opens once
+  // per visitor, so holding its picks in state alone meant a reload — or the
+  // trip into a course details page and back — silently widened the grid to
+  // every level again with no way to be re-asked. See course-finder-bus.
+  const finderRestored = useMemo(
+    () => loadCourseFinderSelection(courseFinderScope(instituteId, tagName)),
+    [instituteId, tagName],
+  );
+  const [selectedLevels, setSelectedLevels] = useState<string[]>(
+    () => finderRestored?.levels ?? [],
+  );
+  const [selectedSessions, setSelectedSessions] = useState<string[]>(
+    () => finderRestored?.sessions ?? [],
+  );
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    () => finderRestored?.tags ?? [],
+  );
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
 
   // Mobile filter state
@@ -1091,6 +1108,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   };
 
   const clearAllFilters = () => {
+    // Forget the Course Finder's answer too, or the levels it chose come
+    // straight back on the next reload — the wizard opens once per visitor and
+    // will not reopen to ask again, so "clear" has to mean cleared for good.
+    clearCourseFinderSelection(courseFinderScope(instituteId, tagName));
     setSelectedLevels([]);
     setSelectedSessions([]);
     setSelectedTags([]);

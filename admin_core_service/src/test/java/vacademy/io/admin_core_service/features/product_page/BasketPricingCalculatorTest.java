@@ -243,4 +243,97 @@ class BasketPricingCalculatorTest {
             assertEquals(499, calculator.price(withPack, items(3)).getTotal());
         }
     }
+
+    @Nested
+    @DisplayName("a combo the basket has outgrown")
+    class OutgrownCombo {
+
+        /**
+         * iThinkers sells English+Maths+Science together for 749 while the plain
+         * three-subject price is 799 — a 50 saving. The reported bug: adding a
+         * fourth subject to that trio charged 200, not the 150 the page
+         * advertises, because the combo simply stopped applying.
+         */
+        private static final String COMBO =
+                "\"combos\":[{\"label\":\"EMS combo\",\"price\":749,"
+                        + "\"packages\":[\"English\",\"Maths\",\"Science\"]}]";
+
+        private String withCombo(String settings) {
+            return settings.replace(GROUPS, COMBO + "," + GROUPS);
+        }
+
+        private List<BasketPricingCalculator.BasketItem> subjects(String... names) {
+            List<BasketPricingCalculator.BasketItem> out = new ArrayList<>();
+            for (String name : names) {
+                out.add(new BasketPricingCalculator.BasketItem("Class 5", name, PRICE));
+            }
+            return out;
+        }
+
+        @Test
+        @DisplayName("prices the combo itself unchanged")
+        void comboUnchanged() {
+            var picked = subjects("English", "Maths", "Science");
+            assertEquals(749, calculator.price(withCombo(FLAT), picked).getTotal());
+            assertEquals(749, calculator.price(withCombo(DISCOUNT), picked).getTotal());
+        }
+
+        @Test
+        @DisplayName("charges the ladder step, not 200, for the fourth subject")
+        void fourthSubjectCostsTheLadderStep() {
+            var picked = subjects("English", "Maths", "Science", "G.K.");
+            // 749 + (949 - 799)
+            assertEquals(899, calculator.price(withCombo(FLAT), picked).getTotal());
+            assertEquals(899, calculator.price(withCombo(DISCOUNT), picked).getTotal());
+        }
+
+        @Test
+        @DisplayName("keeps the combo saving as the basket grows")
+        void savingRidesAlong() {
+            var picked = subjects("English", "Maths", "Science", "G.K.", "Cyber AI");
+            assertEquals(1099 - 50, calculator.price(withCombo(DISCOUNT), picked).getTotal());
+        }
+
+        @Test
+        @DisplayName("ignores a combo the basket only partly holds")
+        void partialComboIgnored() {
+            assertEquals(599,
+                    calculator.price(withCombo(DISCOUNT), subjects("English", "Maths")).getTotal());
+        }
+
+        @Test
+        @DisplayName("names the rule that priced each course, in the order they came in")
+        void itemLabelsNameTheAdminsOwnRule() {
+            // The label reaches the learner's invoice as the reason their price
+            // was reduced, so it has to be the admin's configured combo label —
+            // not a phrase this codebase chose.
+            var picked = subjects("English", "Maths", "Science", "G.K.");
+            var labels = calculator.price(withCombo(DISCOUNT), picked).getItemLabels();
+            assertEquals(picked.size(), labels.size());
+            for (String label : labels) {
+                assertEquals("Class 5 — EMS combo + 1 more", label);
+            }
+
+            // Rename the combo in config and the label follows it.
+            String renamed = withCombo(DISCOUNT).replace("EMS combo", "Trio pack");
+            assertEquals("Class 5 — Trio pack + 1 more",
+                    calculator.price(renamed, picked).getItemLabels().get(0));
+
+            // No combo matched — the label states how the price WAS reached.
+            assertEquals("Class 5 — 2 subjects",
+                    calculator.price(withCombo(DISCOUNT), subjects("English", "Maths"))
+                            .getItemLabels().get(0));
+        }
+
+        @Test
+        @DisplayName("never charges more than the plain price")
+        void overpricedComboLoses() {
+            String overpriced = withCombo(DISCOUNT).replace("\"price\":749", "\"price\":900");
+            assertEquals(799,
+                    calculator.price(overpriced, subjects("English", "Maths", "Science")).getTotal());
+            assertEquals(949,
+                    calculator.price(overpriced, subjects("English", "Maths", "Science", "G.K."))
+                            .getTotal());
+        }
+    }
 }

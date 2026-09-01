@@ -225,6 +225,8 @@
     "success": {
         "title": "تم تسجيلك بنجاح!",
         "defaultMessage": "تم تسجيلك بنجاح في {{count}} {{course}}. ابدأ التعلم الآن.",
+        "totalPaid": "إجمالي المدفوع",
+        "youSaved": "لقد وفّرت {{amount}}",
         "access": {
             "oneYear": "الوصول لمدة سنة واحدة",
             "months_zero": "الوصول لمدة {{count}} شهر",

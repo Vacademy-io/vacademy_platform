@@ -173,6 +173,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     );
     const multiEmailRef = useRef<MultiEmailInputHandle>(null);
     const [latestCampaignShareLink, setLatestCampaignShareLink] = useState<string | null>(null);
+    // Kept beside the link purely so the "share link ready" panel can offer a
+    // short URL: shortening is keyed on the campaign id, and the panel is handed
+    // a presetLink that carries no id of its own.
+    const [latestCampaignId, setLatestCampaignId] = useState<string | null>(null);
     const { form, handleDateChange, handleSubmit, handleReset, isSubmitting } =
         useAudienceCampaignForm(initialFormValues);
     const {
@@ -229,8 +233,10 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 instituteDetails?.learner_portal_base_url
             );
             setLatestCampaignShareLink(shareLink);
+            setLatestCampaignId(editingCampaignId);
         } else if (!campaignData) {
             setLatestCampaignShareLink(null);
+            setLatestCampaignId(null);
         }
     }, [campaignData, editingCampaignId, instituteDetails?.learner_portal_base_url]);
 
@@ -856,6 +862,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     instituteDetails?.learner_portal_base_url
                 );
                 setLatestCampaignShareLink(shareLink);
+                setLatestCampaignId(editingCampaignId);
                 onSuccess?.();
             } else {
                 const createdCampaign = await createCampaign.mutateAsync(payload);
@@ -866,6 +873,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                         instituteDetails?.learner_portal_base_url
                     );
                     setLatestCampaignShareLink(shareLink);
+                    setLatestCampaignId(createdCampaignId);
                 }
                 handleFormReset();
                 onSuccess?.();
@@ -874,6 +882,11 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             console.error('Error saving campaign:', error);
             if (!isEditMode) {
                 setLatestCampaignShareLink(null);
+                // Cleared together with the link, always. The panel is guarded on
+                // the link alone, so a stale id is invisible today — but the two
+                // are one fact ("the campaign we just saved"), and letting them
+                // drift is how a later change ends up shortening the wrong one.
+                setLatestCampaignId(null);
             }
         }
     });
@@ -909,6 +922,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     <p className="text-sm font-semibold text-primary-700">{t('shareLink.ready')}</p>
                     <CampaignLink
                         presetLink={latestCampaignShareLink}
+                        campaignId={latestCampaignId ?? undefined}
+                        enableShortLink
+                        shortLinkHint={watch('campaign_name')}
                         className="mt-2"
                         label={undefined}
                     />

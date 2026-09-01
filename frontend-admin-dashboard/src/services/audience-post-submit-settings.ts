@@ -91,6 +91,9 @@ export const AUDIENCE_FORM_SETTING_KEY = 'AUDIENCE_FORM_SETTING';
 /** Key inside that setting for the Form Appearance feature switch. */
 export const FORM_APPEARANCE_ENABLED_KEY = 'formAppearanceEnabled';
 
+/** Key inside that setting for the short-link feature switch. */
+export const SHORT_LINKS_ENABLED_KEY = 'shortLinksEnabled';
+
 /**
  * Everything the `AUDIENCE_FORM_SETTING` institute setting holds.
  *
@@ -110,11 +113,29 @@ export interface AudienceFormSettings {
      * Forms is what reveals the editor.
      */
     formAppearanceEnabled: boolean;
+    /**
+     * Whether campaign share surfaces offer a short URL (u.<domain>/s/<code>)
+     * next to the full form link.
+     *
+     * **ON by default** — the opposite of `formAppearanceEnabled` above, and
+     * deliberately so. A short link is a convenience on a link the admin was
+     * already going to share, not a new respondent-facing surface, so it is
+     * useful to everyone from the moment it ships. Institutes that would rather
+     * hand out only their own domain can switch it off in Settings → Lead
+     * Settings → Forms.
+     *
+     * Because the default is ON, absence must read as ON: every institute
+     * already has an `AUDIENCE_FORM_SETTING` row without this key, and treating
+     * a missing key as OFF would ship the feature switched off for all of them.
+     * See the `!== false` read in fetchAudienceFormSettings.
+     */
+    shortLinksEnabled: boolean;
 }
 
 export const DEFAULT_AUDIENCE_FORM_SETTINGS: AudienceFormSettings = {
     postSubmit: DEFAULT_POST_SUBMIT_CONFIGURATION,
     formAppearanceEnabled: false,
+    shortLinksEnabled: true,
 };
 
 // ─── Parse / serialize ───────────────────────────────────────────────────────
@@ -248,6 +269,7 @@ const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
 interface AudienceFormSettingData {
     postSubmitConfiguration?: Partial<AudiencePostSubmitConfiguration>;
     formAppearanceEnabled?: boolean;
+    shortLinksEnabled?: boolean;
 }
 
 /**
@@ -269,6 +291,10 @@ export const fetchAudienceFormSettings = async (): Promise<AudienceFormSettings>
         return {
             postSubmit: normalizePostSubmitConfiguration(saved?.[POST_SUBMIT_CONFIG_KEY]),
             formAppearanceEnabled: saved?.[FORM_APPEARANCE_ENABLED_KEY] === true,
+            // `!== false`, not `=== true`: this switch defaults ON, and every
+            // institute that saved this setting before short links existed has
+            // no such key. Only an explicit `false` turns it off.
+            shortLinksEnabled: saved?.[SHORT_LINKS_ENABLED_KEY] !== false,
         };
     } catch {
         // No setting row yet (or a transient failure) — defaults are the right
@@ -286,6 +312,10 @@ export const saveAudienceFormSettings = async (settings: AudienceFormSettings): 
             setting_data: {
                 [POST_SUBMIT_CONFIG_KEY]: normalizePostSubmitConfiguration(settings.postSubmit),
                 [FORM_APPEARANCE_ENABLED_KEY]: settings.formAppearanceEnabled,
+                // Must be written here too: this POST REPLACES setting_data, so
+                // omitting the key would wipe an institute's opt-out the next
+                // time anything else on this page is saved.
+                [SHORT_LINKS_ENABLED_KEY]: settings.shortLinksEnabled,
             } satisfies AudienceFormSettingData,
         },
         { params: { instituteId, settingKey: AUDIENCE_FORM_SETTING_KEY } }

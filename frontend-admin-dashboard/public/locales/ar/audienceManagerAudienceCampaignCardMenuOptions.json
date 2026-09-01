@@ -9,6 +9,7 @@
         "viewLinkedWorkflows": "عرض مسارات العمل المرتبطة",
         "bookingSettings": "إعدادات الحجز",
         "shareQrCode": "مشاركة رمز QR",
+        "copyShortLink": "نسخ الرابط المختصر",
         "apiIntegration": "تكامل API",
         "getEmbedCode": "الحصول على كود التضمين",
         "delete": "حذف"
@@ -24,7 +25,10 @@
         "deleteSuccess": "تم حذف الحملة بنجاح",
         "deleteError": "فشل حذف الحملة",
         "editComingSoon": "ميزة تعديل الحملة قادمة قريبًا",
-        "campaignIdMissing": "معرّف الحملة مفقود"
+        "campaignIdMissing": "معرّف الحملة مفقود",
+        "shortLinkCopied": "تم نسخ الرابط المختصر",
+        "shortLinkCopyFailed": "تم إنشاء الرابط المختصر، لكن تعذّر نسخه",
+        "shortLinkFailed": "تعذّر إنشاء رابط مختصر"
     },
     "defaults": {
         "campaignName": "حملة",

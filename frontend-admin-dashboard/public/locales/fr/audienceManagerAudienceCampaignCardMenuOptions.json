@@ -9,6 +9,7 @@
         "viewLinkedWorkflows": "Voir les flux de travail liés",
         "bookingSettings": "Paramètres de réservation",
         "shareQrCode": "Partager le code QR",
+        "copyShortLink": "Copier le lien court",
         "apiIntegration": "Intégration API",
         "getEmbedCode": "Obtenir le code d'intégration",
         "delete": "Supprimer"
@@ -24,7 +25,10 @@
         "deleteSuccess": "Campagne supprimée avec succès",
         "deleteError": "Échec de la suppression de la campagne",
         "editComingSoon": "La fonctionnalité de modification de campagne arrive bientôt",
-        "campaignIdMissing": "L'identifiant de la campagne est manquant"
+        "campaignIdMissing": "L'identifiant de la campagne est manquant",
+        "shortLinkCopied": "Lien court copié",
+        "shortLinkCopyFailed": "Lien court créé, mais la copie a échoué",
+        "shortLinkFailed": "Impossible de créer un lien court"
     },
     "defaults": {
         "campaignName": "Campagne",

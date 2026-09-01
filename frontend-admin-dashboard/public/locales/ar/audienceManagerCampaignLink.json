@@ -2,5 +2,12 @@
     "copy": "نسخ",
     "copied": "تم النسخ",
     "copyLinkAriaLabel": "نسخ الرابط",
-    "copiedAriaLabel": "تم النسخ"
+    "copiedAriaLabel": "تم النسخ",
+    "shortLink": {
+        "shorten": "مختصر",
+        "showFull": "كامل",
+        "shortenHint": "استبدله برابط قصير يسهل إرساله أو قراءته",
+        "showFullHint": "إظهار عنوان النموذج الكامل مرة أخرى",
+        "failed": "تعذّر إنشاء رابط مختصر — يتم عرض العنوان الكامل"
+    }
 }

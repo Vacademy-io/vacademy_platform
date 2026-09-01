@@ -113,6 +113,7 @@
     "close": "बंद करें",
     "goToDashboard": "डैशबोर्ड पर जाएं",
     "readyToContinue": "जारी रखने के लिए तैयार हैं?",
+    "reenrollmentBlockedFallback": "पुनः नामांकन अभी उपलब्ध नहीं है। कृपया बाद में पुनः प्रयास करें।",
     "upgradeToContinueLearning": "सीखना जारी रखने के लिए अपग्रेड करें",
     "clickBelowToJoin": "सदस्यता से जुड़ने के लिए नीचे क्लिक करें।",
     "activeMembershipTitle": "आपकी एक सक्रिय सदस्यता है",

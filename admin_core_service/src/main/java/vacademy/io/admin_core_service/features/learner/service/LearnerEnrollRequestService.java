@@ -50,6 +50,7 @@ import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.EnrollmentConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
@@ -376,8 +377,9 @@ public class LearnerEnrollRequestService {
                 ReenrollmentGapValidationService.GapBlockedPackageSession blocked = gapValidationResult
                         .getBlockedPackageSessions().get(0);
                 String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(blocked.getRetryDate());
-                throw new VacademyException(
-                        new String("You are already enrolled in this demo. Please complete your current trial first."));
+                throw new EnrollmentConflictException(
+                        EnrollmentConflictException.ConflictType.ALREADY_ENROLLED,
+                        "You are already enrolled in this demo. Please complete your current trial first.");
             } else {
                 // Multiple package sessions - check if at least one is allowed
                 if (gapValidationResult.getAllowedPackageSessionIds().isEmpty()) {
@@ -388,7 +390,8 @@ public class LearnerEnrollRequestService {
                             .min(java.util.Date::compareTo)
                             .orElse(new java.util.Date());
                     String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(earliestRetryDate);
-                    throw new VacademyException(
+                    throw new EnrollmentConflictException(
+                            EnrollmentConflictException.ConflictType.ALREADY_ENROLLED,
                             String.format("You can retry operation on %s", retryDateStr));
                 } else {
                     // At least one is allowed - filter out blocked ones

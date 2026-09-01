@@ -11,6 +11,7 @@ import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.InvalidRequestException;
 import vacademy.io.common.exceptions.ResourceNotFoundException;
 import vacademy.io.common.exceptions.UserNotFoundException;
+import vacademy.io.common.exceptions.EnrollmentConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Date;
@@ -46,6 +47,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorInfo> handleInvalidRequest(HttpServletRequest req, InvalidRequestException ex) {
         log.warn("Invalid Request: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorInfo(req.getRequestURL().toString(), ex.getLocalizedMessage(), String.valueOf(HttpStatus.BAD_REQUEST), new Date()));
+    }
+
+    /**
+     * Enrollment conflicts keep VacademyException's 510 status -- deployed clients
+     * match on "510" and must not change behaviour -- but carry an
+     * ENROLLMENT_CONFLICT:<TYPE> marker in responseCode so a client can tell a real
+     * conflict from an unrelated failure without matching human-readable copy.
+     * Spring resolves to the most specific handler, so this wins over the
+     * VacademyException one below regardless of declaration order.
+     */
+    @ExceptionHandler(EnrollmentConflictException.class)
+    public ResponseEntity<ErrorInfo> handleEnrollmentConflict(HttpServletRequest req, EnrollmentConflictException ex) {
+        log.info("Enrollment conflict ({}): {}", ex.getConflictType(), ex.getMessage());
+        return ResponseEntity.status(ex.getStatus()).body(new ErrorInfo(req.getRequestURL().toString(), ex.getLocalizedMessage(), ex.getResponseCode(), new Date()));
     }
 
     @ExceptionHandler(VacademyException.class)

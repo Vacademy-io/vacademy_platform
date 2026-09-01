@@ -596,7 +596,6 @@ export const AudienceInvite = () => {
                                                 <CampaignLink
                                                     campaignId={campaignId}
                                                     enableShortLink
-                                                    shortLinkHint={campaign.campaign_name}
                                                 />
                                             ) : (
                                                 <div className="flex items-center gap-2 rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-3 py-2.5 text-sm text-neutral-500">

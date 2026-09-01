@@ -924,7 +924,6 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                         presetLink={latestCampaignShareLink}
                         campaignId={latestCampaignId ?? undefined}
                         enableShortLink
-                        shortLinkHint={watch('campaign_name')}
                         className="mt-2"
                         label={undefined}
                     />

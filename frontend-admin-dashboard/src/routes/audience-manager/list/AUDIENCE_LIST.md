@@ -748,7 +748,26 @@ live — and it is the one that needs a note. It hands `CampaignLink` an already
 `presetLink`, which carries no campaign id, and shortening is keyed on that id. So the form
 now also tracks `latestCampaignId` beside `latestCampaignShareLink` and passes it through.
 `presetLink` still wins for what is *displayed*, so the short link's destination is the preset
-URL rather than one rebuilt from the id — pinned by a test. A `presetLink` with no id (the
+URL rather than one rebuilt from the id — pinned by a test.
+
+### 15.3 The code is 6 characters, and NOT the campaign name
+
+`toShortCodeHint(sourceId)` in `short-link.ts` derives a stable 6-character
+lowercase code from the campaign id, and `useShortLink` applies it internally —
+callers cannot supply one.
+
+The name is deliberately not used. media_service slugifies a hint into up to 50
+characters, so "Class 10 Science Olympiad Registration 2026" produces a *short*
+link longer than the URL it replaces. Prod carries the evidence: of ~22,400
+`short_links` rows, **22,310 are exactly 6 characters**, and every outlier is a
+slug — the longest being `/s/dont-believe-everything-you-think`.
+
+It is deterministic rather than random because the code is part of the react-query
+key: a fresh random string per render would change the key and refire the request.
+Hashing the id gives the same code in every component, on every render, across
+reloads. Distribution measured at 5 collisions per 200,000 ids (~0.0025%), and the
+server resolves a collision by appending a suffix, so those degrade to a slightly
+longer code rather than a wrong one. A `presetLink` with no id (the
 only other caller shape) still gets no toggle at all.
 
 **Not wired: `/admissions/enquiries`.** Its Copy button builds an enquiry link via
@@ -792,8 +811,20 @@ every institute on the platform. Absence must read as ON; only an explicit
 `false` hides it.
 
 It also reads ON while the request is in flight, so the controls do not pop in a
-beat late for the ~100% of institutes that never touch the setting. The cost of
-that optimism is one transitional state, and it is handled: `CampaignLink`'s
+beat late for the ~100% of institutes that never touch the setting. That optimism
+is safe for *rendering* and unsafe for *writing*, so the hook returns two flags,
+not one:
+
+- `enabled` — optimistic. Gates what is DISPLAYED. Showing a control speculatively
+  costs nothing.
+- `isResolved` — whether the institute's real preference is known. Gates anything
+  that can WRITE. Shortening INSERTs a `short_links` row, so an institute that has
+  explicitly opted out must not get one minted just because an admin reached a
+  share surface before the settings GET came back. All four surfaces gate their
+  `useShortLink({ enabled })` on this; two tests pin it by asserting no POST is
+  issued while unresolved.
+
+The other cost of the optimism is one transitional state, and it is handled: `CampaignLink`'s
 `displayedLink` is gated on `canShorten`, so an admin who toggles to the short URL
 just before the switch resolves OFF is dropped back to the full address instead of
 being stranded on a short link with the toggle gone.

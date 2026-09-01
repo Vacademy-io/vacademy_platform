@@ -29,8 +29,6 @@ interface CampaignLinkProps {
      * subject to the institute's Short links switch.
      */
     enableShortLink?: boolean;
-    /** Campaign name, used to give the short code a readable slug. */
-    shortLinkHint?: string;
 }
 
 const CampaignLink: React.FC<CampaignLinkProps> = ({
@@ -39,13 +37,13 @@ const CampaignLink: React.FC<CampaignLinkProps> = ({
     label,
     className,
     enableShortLink = false,
-    shortLinkHint,
 }) => {
     const { t } = useTranslation('audienceManagerCampaignLink');
     const { instituteDetails } = useInstituteDetailsStore();
     const [copySuccess, setCopySuccess] = useState(false);
     const [preferShort, setPreferShort] = useState(false);
-    const shortLinksEnabled = useAudienceShortLinksEnabled();
+    const { enabled: shortLinksEnabled, isResolved: shortLinksResolved } =
+        useAudienceShortLinksEnabled();
 
     const shareableLink = useMemo(() => {
         if (presetLink) return presetLink;
@@ -67,8 +65,11 @@ const CampaignLink: React.FC<CampaignLinkProps> = ({
         sourceId: campaignId,
         destinationUrl: shareableLink,
         instituteId: instituteDetails?.id,
-        hint: shortLinkHint,
-        enabled: canShorten && preferShort,
+        // `shortLinksResolved` as well as `canShorten`: this call WRITES a row,
+        // and `shortLinksEnabled` reads optimistically true while the institute's
+        // preference is still loading. Without it an opted-out institute would
+        // still get a short link minted on a fast click.
+        enabled: canShorten && preferShort && shortLinksResolved,
     });
 
     // Gated on `canShorten`, not just `preferShort`: the institute switch reads

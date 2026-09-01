@@ -52,6 +52,67 @@ import type { TFunction } from 'i18next';
 
 type Channel = 'EMAIL' | 'WHATSAPP';
 
+/**
+ * What the result panel should say about a finished send.
+ *
+ * WhatsApp answers twice — the send call says whether the provider TOOK the message, its status
+ * webhook says what happened to it a second or two later — and either answer can be a refusal that
+ * arrives inside a 200. Pure and exported so those combinations are covered by tests rather than
+ * eyeballed one send at a time.
+ */
+export function resolveSendVerdict({
+    sendResult,
+    delivery,
+    channel,
+    awaitingDelivery,
+}: {
+    sendResult: UnifiedSendResponse;
+    delivery: DeliveryStatus | null;
+    channel: Channel;
+    awaitingDelivery: boolean;
+}) {
+    // A rejected recipient rides back inside a 200, and a batch can report COMPLETED while
+    // carrying failed: 1 — with one recipient the counts are the truth, not the envelope.
+    const rejected = sendResult.failed > 0 || sendResult.status === 'FAILED';
+    const accepted = !rejected && (sendResult.status === 'COMPLETED' || sendResult.accepted > 0);
+    const failedOnDelivery = delivery?.status === 'FAILED';
+    const confirmedDelivered = delivery?.status === 'DELIVERED' || delivery?.status === 'READ';
+    const unconfirmed = accepted && channel === 'WHATSAPP' && !confirmedDelivered;
+
+    let headingKey = 'reviewStep.sendCompleted';
+    if (rejected) headingKey = 'reviewStep.sendFailed';
+    else if (failedOnDelivery) headingKey = 'reviewStep.notDelivered';
+    else if (confirmedDelivered) headingKey = 'reviewStep.delivered';
+    else if (unconfirmed && awaitingDelivery) headingKey = 'reviewStep.confirmingDelivery';
+    else if (accepted) headingKey = 'reviewStep.messageSent';
+
+    // The reason only ever appeared in a toast that had already gone by the time the admin read the
+    // panel. Null means the provider gave none, and the caller shows its own fallback copy.
+    let reason: string | null = null;
+    if (rejected) {
+        reason = sendResult.results?.find((r) => !r.success)?.error ?? null;
+    } else if (failedOnDelivery) {
+        const code = delivery?.errorCode ? ` (${delivery.errorCode})` : '';
+        reason = delivery?.errorMessage ? `${delivery.errorMessage}${code}` : null;
+    }
+
+    return {
+        tone: (rejected || failedOnDelivery
+            ? 'failed'
+            : unconfirmed && awaitingDelivery
+              ? 'confirming'
+              : 'ok') as 'failed' | 'confirming' | 'ok',
+        headingKey,
+        reason,
+        showDelivery: accepted && channel === 'WHATSAPP',
+        // No verdict yet reads as SENT, not as a question: WhatsApp has the message and has not
+        // rejected it — the same one tick it shows the sender. Anything worse arrives as a status.
+        deliveryWord: delivery?.status ?? 'SENT',
+        failedOnDelivery,
+        confirmedDelivered,
+    };
+}
+
 interface IndividualSendDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -455,7 +516,9 @@ export function IndividualSendDialog({
                 if (token !== deliveryPollToken.current) return;
                 if (!status || status.status === 'PENDING') continue;
                 setDelivery(status);
-                if (status.settled) return;
+                // DELIVERED can still become READ, but this panel says "Delivered" for both, so
+                // there is nothing left to wait for — stopping here saves ~8 polls per send.
+                if (status.settled || status.status === 'DELIVERED') return;
             }
         } catch (err) {
             // Never let a failed lookup become a claim about delivery — leave the panel saying
@@ -908,40 +971,37 @@ export function IndividualSendDialog({
         );
     };
 
+    /**
+     * Provider status vocabulary → something an admin reads. Falls back to the raw word so a status
+     * WhatsApp adds later shows up as itself rather than as a missing translation key.
+     */
+    const deliveryStatusLabel = useCallback(
+        (status: string) => t(`reviewStep.deliveryStatus.${status}`, { defaultValue: status }),
+        [t]
+    );
+
     const renderReviewStep = () => {
         if (sendResult) {
-            const accepted = sendResult.status === 'COMPLETED' || sendResult.accepted > 0;
-            // For WhatsApp, "accepted" is only the provider taking the message. The outcome comes
-            // from the status webhook, so the panel stays non-committal until it arrives instead of
-            // showing a green tick it cannot back up.
-            const failedOnDelivery = delivery?.status === 'FAILED';
-            const confirmedDelivered =
-                delivery?.status === 'DELIVERED' || delivery?.status === 'READ';
-            const unconfirmed = accepted && channel === 'WHATSAPP' && !confirmedDelivered;
-
-            let heading = t('reviewStep.sendCompleted');
-            if (failedOnDelivery) heading = t('reviewStep.notDelivered');
-            else if (confirmedDelivered) heading = t('reviewStep.delivered');
-            else if (unconfirmed && awaitingDelivery) heading = t('reviewStep.confirmingDelivery');
-            else if (unconfirmed) heading = t('reviewStep.acceptedNotConfirmed');
-            else if (accepted) heading = t('reviewStep.messageSent');
+            const verdict = resolveSendVerdict({
+                sendResult,
+                delivery,
+                channel,
+                awaitingDelivery,
+            });
 
             return (
                 <div className="flex flex-col items-center gap-4 py-8">
-                    {failedOnDelivery || !accepted ? (
+                    {verdict.tone === 'failed' ? (
                         <XCircle className="size-12 text-destructive" />
-                    ) : unconfirmed && awaitingDelivery ? (
+                    ) : verdict.tone === 'confirming' ? (
                         <CircleNotch className="size-12 animate-spin text-neutral-400" />
-                    ) : unconfirmed ? (
-                        <CheckCircle className="size-12 text-neutral-400" />
                     ) : (
                         <CheckCircle className="size-12 text-green-500" />
                     )}
-                    <h3 className="text-lg font-semibold">{heading}</h3>
-                    {failedOnDelivery && (
+                    <h3 className="text-lg font-semibold">{t(verdict.headingKey)}</h3>
+                    {verdict.tone === 'failed' && (
                         <p className="max-w-sm text-center text-sm text-destructive">
-                            {delivery?.errorMessage}
-                            {delivery?.errorCode ? ` (${delivery.errorCode})` : ''}
+                            {verdict.reason ?? t('reviewStep.noReason')}
                         </p>
                     )}
                     <div className="w-full max-w-sm space-y-2 rounded-md border p-4 text-sm">
@@ -967,21 +1027,21 @@ export function IndividualSendDialog({
                                 {sendResult.failed}
                             </span>
                         </div>
-                        {accepted && channel === 'WHATSAPP' && (
+                        {verdict.showDelivery && (
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">
                                     {t('reviewStep.deliveryLabel')}
                                 </span>
                                 <span
                                     className={`font-medium ${
-                                        failedOnDelivery
+                                        verdict.failedOnDelivery
                                             ? 'text-destructive'
-                                            : confirmedDelivered
+                                            : verdict.confirmedDelivered
                                               ? 'text-green-600'
                                               : 'text-muted-foreground'
                                     }`}
                                 >
-                                    {delivery?.status ?? t('reviewStep.deliveryPending')}
+                                    {deliveryStatusLabel(verdict.deliveryWord)}
                                 </span>
                             </div>
                         )}

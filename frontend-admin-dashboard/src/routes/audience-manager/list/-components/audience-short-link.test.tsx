@@ -63,8 +63,14 @@ vi.mock('@/lib/auth/instituteUtils', () => ({
 // settings-page module graph in; the switch's own default-ON parsing is covered
 // in src/services/__tests__/audience-form-settings/test.ts.
 let shortLinksEnabled = true;
+let shortLinksResolved = true;
 vi.mock('@/hooks/use-audience-short-links-enabled', () => ({
-    useAudienceShortLinksEnabled: () => shortLinksEnabled,
+    // isResolved:true = the institute's preference is known, which is what gates
+    // the WRITE. Tests that need the unresolved state set it explicitly.
+    useAudienceShortLinksEnabled: () => ({
+        enabled: shortLinksEnabled,
+        isResolved: shortLinksResolved,
+    }),
 }));
 
 // Rendering a real QR needs a canvas 2d context happy-dom does not provide, and
@@ -107,6 +113,7 @@ describe('audience campaign short links', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         shortLinksEnabled = true;
+        shortLinksResolved = true;
         postMock.mockResolvedValue({ data: { shortName: 'open-day', absoluteUrl: SHORT_URL } });
         Object.defineProperty(navigator, 'clipboard', {
             configurable: true,
@@ -115,14 +122,14 @@ describe('audience campaign short links', () => {
     });
 
     it('does not shorten until asked, so a list of cards mints no links on render', () => {
-        withQuery(<CampaignLink campaignId="camp-1" enableShortLink shortLinkHint="Open Day" />);
+        withQuery(<CampaignLink campaignId="camp-1" enableShortLink />);
 
         expect(screen.getByRole('link')).toHaveAttribute('href', LONG_URL);
         expect(postMock).not.toHaveBeenCalled();
     });
 
     it('swaps in the short link on demand and copies that one', async () => {
-        withQuery(<CampaignLink campaignId="camp-1" enableShortLink shortLinkHint="Open Day" />);
+        withQuery(<CampaignLink campaignId="camp-1" enableShortLink />);
 
         fireEvent.click(screen.getByRole('button', { name: 'Short' }));
 
@@ -133,8 +140,11 @@ describe('audience campaign short links', () => {
             sourceId: 'camp-1',
             destinationUrl: LONG_URL,
             instituteId: 'inst-1',
-            shortCode: 'Open Day',
         });
+        // The code must be 6 lowercase alphanumerics — NOT the campaign name.
+        // A name-derived slug is what produced prod's /s/dont-believe-everything-
+        // you-think, a "short" link longer than the URL it replaces.
+        expect(postMock.mock.calls[0]?.[1]?.shortCode).toMatch(/^[a-z0-9]{6}$/);
 
         fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
         await waitFor(() => expect(writeText).toHaveBeenCalledWith(SHORT_URL));
@@ -142,7 +152,7 @@ describe('audience campaign short links', () => {
 
     it('falls back to the full address when the shortener is down', async () => {
         postMock.mockRejectedValue(new Error('boom'));
-        withQuery(<CampaignLink campaignId="camp-1" enableShortLink shortLinkHint="Open Day" />);
+        withQuery(<CampaignLink campaignId="camp-1" enableShortLink />);
 
         fireEvent.click(screen.getByRole('button', { name: 'Short' }));
 
@@ -153,7 +163,7 @@ describe('audience campaign short links', () => {
 
     it('can retry after a failure instead of replaying the stale error', async () => {
         postMock.mockRejectedValueOnce(new Error('boom'));
-        withQuery(<CampaignLink campaignId="camp-1" enableShortLink shortLinkHint="Open Day" />);
+        withQuery(<CampaignLink campaignId="camp-1" enableShortLink />);
 
         fireEvent.click(screen.getByRole('button', { name: 'Short' }));
         await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
@@ -215,9 +225,7 @@ describe('audience campaign short links', () => {
         onlineManager.setOnline(false);
         try {
             postMock.mockRejectedValue(new Error('offline'));
-            withQuery(
-                <CampaignLink campaignId="camp-1" enableShortLink shortLinkHint="Open Day" />
-            );
+            withQuery(<CampaignLink campaignId="camp-1" enableShortLink />);
 
             fireEvent.click(screen.getByRole('button', { name: 'Short' }));
 
@@ -236,14 +244,7 @@ describe('audience campaign short links', () => {
         // the preset URL, not at a URL rebuilt from the id.
         const PRESET =
             'https://learn.example.com/audience-response?instituteId=inst-1&audienceId=camp-1';
-        withQuery(
-            <CampaignLink
-                presetLink={PRESET}
-                campaignId="camp-1"
-                enableShortLink
-                shortLinkHint="Open Day"
-            />
-        );
+        withQuery(<CampaignLink presetLink={PRESET} campaignId="camp-1" enableShortLink />);
 
         fireEvent.click(screen.getByRole('button', { name: 'Short' }));
 
@@ -254,6 +255,21 @@ describe('audience campaign short links', () => {
         });
     });
 
+    it('asks for the same 6-char code every time, so the query key never churns', async () => {
+        const first = withQuery(<CampaignLink campaignId="camp-9" enableShortLink />);
+        fireEvent.click(screen.getByRole('button', { name: 'Short' }));
+        await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
+        const codeA = postMock.mock.calls[0]?.[1]?.shortCode;
+        first.unmount();
+
+        withQuery(<CampaignLink campaignId="camp-9" enableShortLink />);
+        fireEvent.click(screen.getByRole('button', { name: 'Short' }));
+        await waitFor(() => expect(postMock).toHaveBeenCalledTimes(2));
+
+        expect(postMock.mock.calls[1]?.[1]?.shortCode).toBe(codeA);
+        expect(codeA).toMatch(/^[a-z0-9]{6}$/);
+    });
+
     it('offers no Short control for a preset link with no campaign behind it', () => {
         withQuery(<CampaignLink presetLink="https://example.com/x" enableShortLink />);
 
@@ -261,9 +277,34 @@ describe('audience campaign short links', () => {
         expect(postMock).not.toHaveBeenCalled();
     });
 
+    it('writes nothing until the institute preference is actually known', async () => {
+        // The switch reads optimistically ON while its request is in flight, so the
+        // controls appear immediately. Showing a control speculatively is free;
+        // shortening is not — it INSERTs a row. An institute that has explicitly
+        // opted out must not get one minted just because an admin clicked fast.
+        shortLinksResolved = false;
+        withQuery(<CampaignLink campaignId="camp-1" enableShortLink />);
+
+        // Still offered — that is the point of the optimistic read.
+        const toggle = screen.getByRole('button', { name: 'Short' });
+        fireEvent.click(toggle);
+
+        await waitFor(() => expect(screen.getByRole('link')).toHaveAttribute('href', LONG_URL));
+        expect(postMock).not.toHaveBeenCalled();
+    });
+
+    it('does not mint a link on dialog open before the preference resolves', async () => {
+        shortLinksResolved = false;
+        withQuery(<ShareQrDialog isOpen onClose={vi.fn()} campaign={campaign} />);
+
+        expect(await screen.findByDisplayValue(LONG_URL)).toBeInTheDocument();
+        expect(postMock).not.toHaveBeenCalled();
+        expect(screen.getByTestId('qr-preview')).toHaveAttribute('data-value', LONG_URL);
+    });
+
     it('hides the Short control when the institute switched short links off', () => {
         shortLinksEnabled = false;
-        withQuery(<CampaignLink campaignId="camp-1" enableShortLink shortLinkHint="Open Day" />);
+        withQuery(<CampaignLink campaignId="camp-1" enableShortLink />);
 
         expect(screen.queryByRole('button', { name: 'Short' })).not.toBeInTheDocument();
         expect(screen.getByRole('link')).toHaveAttribute('href', LONG_URL);
@@ -281,7 +322,7 @@ describe('audience campaign short links', () => {
         // rerender below a no-op and the test vacuous.
         const tree = () => (
             <QueryClientProvider client={client}>
-                <CampaignLink campaignId="camp-1" enableShortLink shortLinkHint="Open Day" />
+                <CampaignLink campaignId="camp-1" enableShortLink />
             </QueryClientProvider>
         );
         const { rerender } = render(tree());

@@ -80,7 +80,7 @@ vi.mock('@/services/workflow-service', () => ({
 
 let shortLinksEnabled = true;
 vi.mock('@/hooks/use-audience-short-links-enabled', () => ({
-    useAudienceShortLinksEnabled: () => shortLinksEnabled,
+    useAudienceShortLinksEnabled: () => ({ enabled: shortLinksEnabled, isResolved: true }),
 }));
 
 // The sibling dialogs are irrelevant here and drag in large trees. Paths are

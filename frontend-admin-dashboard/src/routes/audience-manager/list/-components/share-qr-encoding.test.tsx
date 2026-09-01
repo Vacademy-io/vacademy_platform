@@ -40,7 +40,7 @@ vi.mock('@/stores/students/students-list/useInstituteDetailsStore', () => ({
 }));
 vi.mock('@/lib/auth/instituteUtils', () => ({ getCurrentInstituteId: () => 'inst-1' }));
 vi.mock('@/hooks/use-audience-short-links-enabled', () => ({
-    useAudienceShortLinksEnabled: () => true,
+    useAudienceShortLinksEnabled: () => ({ enabled: true, isResolved: true }),
 }));
 
 // Real QRCodeSVG, stubbed QRCodeCanvas.

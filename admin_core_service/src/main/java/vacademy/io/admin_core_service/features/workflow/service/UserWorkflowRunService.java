@@ -108,10 +108,21 @@ public class UserWorkflowRunService {
      * <p>Dispatch is asynchronous ({@link AsyncWorkflowExecutor}, the same path the trigger
      * queue uses) because a workflow can take far longer than an HTTP request should. The
      * caller gets the new execution id back immediately and polls the run list.</p>
+     *
+     * <p><b>Deliberately NOT {@code @Transactional}.</b> {@code executeAsync} hands the run to
+     * another thread immediately, and that thread finishes by calling
+     * {@code markAsCompleted(idempotencyKey)} in its OWN transaction. If this method held a
+     * transaction, the new execution row would still be uncommitted when the worker looked it
+     * up — the lookup would miss, the completion would be dropped, and the run would sit at
+     * PROCESSING forever (which also permanently blocks retrying it again, since a PROCESSING
+     * run is refused below). Letting {@code createRetryExecution} commit on return, and only
+     * then dispatching, closes that race. Same reasoning as the afterCommit deferral in
+     * {@code StudentRegistrationManager.triggerEnrollmentWorkflow}.</p>
      */
-    @Transactional
     public WorkflowRetryResponseDTO retry(String executionId, String instituteId, String retriedByUserId) {
-        WorkflowExecution original = workflowExecutionRepository.findById(executionId)
+        // findByIdForRetry, not findById: without a transaction the entity comes back detached,
+        // so workflow/schedule/trigger must already be fetched or reading them throws.
+        WorkflowExecution original = workflowExecutionRepository.findByIdForRetry(executionId)
                 .orElseThrow(() -> new VacademyException("Workflow execution not found: " + executionId));
 
         if (original.getWorkflow() == null) {
@@ -141,7 +152,17 @@ public class UserWorkflowRunService {
         ctx.put("retriedManually", true);
         ctx.put("triggerTime", Instant.now().toString());
 
-        asyncWorkflowExecutor.executeAsync(original.getWorkflow().getId(), idempotencyKey, ctx);
+        try {
+            asyncWorkflowExecutor.executeAsync(original.getWorkflow().getId(), idempotencyKey, ctx);
+        } catch (Exception e) {
+            // The row is already committed, so a rejected hand-off (saturated executor, shutting
+            // down) would otherwise leave it stuck at PROCESSING and un-retryable. Mark it FAILED
+            // with the real reason so the tab shows what happened and the button comes back.
+            log.error("Could not queue retry {} of execution {}: {}",
+                    retry.getId(), original.getId(), e.getMessage(), e);
+            idempotencyService.markAsFailed(idempotencyKey, "Could not queue the re-run: " + e.getMessage());
+            throw new VacademyException("Could not start the re-run right now — please try again shortly.");
+        }
 
         log.info("Queued retry {} of execution {} (workflow {}) by user {}",
                 retry.getId(), original.getId(), original.getWorkflow().getId(), retriedByUserId);

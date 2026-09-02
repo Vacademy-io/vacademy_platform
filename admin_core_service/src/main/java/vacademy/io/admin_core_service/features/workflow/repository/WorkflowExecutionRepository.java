@@ -84,6 +84,21 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
                         @Param("instituteId") String instituteId,
                         Pageable pageable);
 
+        /**
+         * Load one execution with every association the Retry path copies onto the new run.
+         *
+         * <p>All three are {@code LAZY}, and retry deliberately runs OUTSIDE a transaction (the
+         * new row must be committed before the async worker looks it up), so touching any of
+         * them on a detached entity would throw {@code LazyInitializationException}. Fetching
+         * them up-front is what makes the detached entity safe to read.</p>
+         */
+        @Query("SELECT we FROM WorkflowExecution we " +
+                        "JOIN FETCH we.workflow " +
+                        "LEFT JOIN FETCH we.workflowSchedule " +
+                        "LEFT JOIN FETCH we.workflowTrigger " +
+                        "WHERE we.id = :id")
+        Optional<WorkflowExecution> findByIdForRetry(@Param("id") String id);
+
         List<WorkflowExecution> findByWorkflowIdOrderByStartedAtDesc(String workflowId);
 
         List<WorkflowExecution> findByWorkflowScheduleIdOrderByStartedAtDesc(String workflowScheduleId);

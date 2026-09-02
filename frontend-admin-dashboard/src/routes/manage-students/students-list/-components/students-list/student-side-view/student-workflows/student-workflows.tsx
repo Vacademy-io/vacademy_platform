@@ -285,10 +285,14 @@ export const StudentWorkflows = ({ userId, instituteId }: StudentWorkflowsProps)
             setPage(0);
         },
         onError: (err: unknown) => {
-            const message =
-                (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-                'Could not start the re-run. Please try again.';
-            toast.error(message);
+            // GlobalExceptionHandler returns ErrorInfo — a record of {url, ex, responseCode,
+            // date}. The reason is in `ex`; there is no `message` field, so reading one would
+            // always fall through to the generic text and hide why the retry was refused.
+            const data = (err as { response?: { data?: { ex?: string; message?: string } } })
+                ?.response?.data;
+            toast.error(
+                data?.ex ?? data?.message ?? 'Could not start the re-run. Please try again.'
+            );
         },
     });
 

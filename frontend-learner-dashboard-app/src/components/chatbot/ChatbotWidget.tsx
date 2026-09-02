@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -82,6 +82,7 @@ const markdownComponents = {
 };
 
 export const ChatbotWidget = () => {
+  const avatarUrl = useChatbotAvatarUrl();
   const { t } = useTranslation("chatFeatureB");
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const slide = getTerminology(ContentTerms.Slides, SystemTerms.Slides);

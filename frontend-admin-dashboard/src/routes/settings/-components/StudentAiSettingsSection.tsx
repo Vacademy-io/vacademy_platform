@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -13,23 +13,55 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
-import { FloppyDisk, Plus, Sparkle, Trash } from '@phosphor-icons/react';
+import {
+    ArrowCounterClockwise,
+    FloppyDisk,
+    Plus,
+    Sparkle,
+    Trash,
+    UploadSimple,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL, GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getPublicUrl, UploadFileInS3 } from '@/services/upload_file';
+import { getUserId } from '@/utils/userDetails';
 
 /**
  * Student AI (learner chatbot) configuration, persisted as the institute's
  * `CHATBOT_SETTING`. Extracted from AiSettings so the same form can be reached
  * from Settings -> AI -> Student AI and from LMS -> Student AI -> Settings.
  */
+/**
+ * Ships with the product: the avatar the learner chatbot uses when an institute
+ * has not uploaded its own icon. Kept in sync with DEFAULT_CHATBOT_SETTINGS in
+ * the learner app (src/services/chatbot-settings.ts).
+ */
+export const DEFAULT_CHATBOT_AVATAR_URL =
+    'https://res.cloudinary.com/dwtmtd0oz/image/upload/t_chatbot/chatbot-avatar_xsyf0n';
+
+/**
+ * Images the icon uploader accepts; anything else is rejected client-side.
+ * SVG is deliberately excluded — uploads are served byte-for-byte from the
+ * public bucket with their own Content-Type, so a scripted SVG would be stored
+ * XSS the moment that bucket is fronted by an institute's own CDN domain.
+ */
+const AVATAR_ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
 export interface TutorConfiguration {
     enable: boolean;
     role: string;
     assistant_name: string;
     institute_name: string;
+    /**
+     * Chatbot icon — either a direct image URL or a media-service file id. The
+     * learner app resolves file ids and falls back to the default avatar when
+     * this is empty.
+     */
+    avatarUrl?: string;
     core_instruction: string;
     hard_rules: string[];
     adherence_settings: {
@@ -58,6 +90,11 @@ export const StudentAiSettingsSection = () => {
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
     const [isSavingTutor, setIsSavingTutor] = useState(false);
     const [newHardRule, setNewHardRule] = useState('');
+    const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+    // The stored value may be a media-service file id, so keep the displayable
+    // URL separate from what we persist.
+    const [avatarPreview, setAvatarPreview] = useState(DEFAULT_CHATBOT_AVATAR_URL);
+    const avatarInputRef = useRef<HTMLInputElement>(null);
     const [tutorConfig, setTutorConfig] = useState<TutorConfiguration>({
         enable: false,
         role: 'Tutor',
@@ -65,6 +102,7 @@ export const StudentAiSettingsSection = () => {
             ? `${instituteDetails.institute_name} Chatbot`
             : 'Vacademy Chatbot',
         institute_name: instituteDetails?.institute_name || 'Vacademy',
+        avatarUrl: DEFAULT_CHATBOT_AVATAR_URL,
         core_instruction: 'You are a helpful tutor assisting students with their doubts.',
         hard_rules: [
             'Never provide the final answer directly.',
@@ -113,6 +151,63 @@ export const StudentAiSettingsSection = () => {
         fetchTutorSettings();
     }, [fetchTutorSettings]);
 
+    // Resolve the stored icon into something an <img> can render: direct URLs
+    // pass through, file ids are exchanged for a public URL.
+    useEffect(() => {
+        const stored = tutorConfig.avatarUrl?.trim();
+        if (!stored) {
+            setAvatarPreview(DEFAULT_CHATBOT_AVATAR_URL);
+            return;
+        }
+        if (stored.startsWith('http://') || stored.startsWith('https://')) {
+            setAvatarPreview(stored);
+            return;
+        }
+        let cancelled = false;
+        getPublicUrl(stored)
+            .then((url) => {
+                if (!cancelled) setAvatarPreview(url || DEFAULT_CHATBOT_AVATAR_URL);
+            })
+            .catch(() => {
+                if (!cancelled) setAvatarPreview(DEFAULT_CHATBOT_AVATAR_URL);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [tutorConfig.avatarUrl]);
+
+    const handleAvatarUpload = async (file: File | undefined) => {
+        if (!file) return;
+        if (!AVATAR_ACCEPTED_TYPES.includes(file.type)) {
+            toast.error(t('avatar.invalidType'));
+            return;
+        }
+        if (file.size > AVATAR_MAX_BYTES) {
+            toast.error(t('avatar.tooLarge'));
+            return;
+        }
+        setIsUploadingAvatar(true);
+        try {
+            const fileId = await UploadFileInS3(
+                file,
+                () => {},
+                getUserId() || 'admin',
+                'CHATBOT_AVATAR',
+                'INSTITUTE',
+                true
+            );
+            if (!fileId) throw new Error('Upload returned no file id');
+            setTutorConfig((prev) => ({ ...prev, avatarUrl: fileId }));
+            toast.success(t('avatar.uploaded'));
+        } catch (error) {
+            console.error('Error uploading chatbot avatar:', error);
+            toast.error(t('avatar.uploadFailed'));
+        } finally {
+            setIsUploadingAvatar(false);
+            if (avatarInputRef.current) avatarInputRef.current.value = '';
+        }
+    };
+
     // Institute details load asynchronously — seed the names once they arrive,
     // but never overwrite a name the admin has customised.
     useEffect(() => {
@@ -141,6 +236,7 @@ export const StudentAiSettingsSection = () => {
                         role: tutorConfig.role,
                         assistant_name: tutorConfig.assistant_name,
                         institute_name: tutorConfig.institute_name,
+                        avatarUrl: tutorConfig.avatarUrl || DEFAULT_CHATBOT_AVATAR_URL,
                         core_instruction: tutorConfig.core_instruction,
                         hard_rules: tutorConfig.hard_rules,
                         adherence_settings: {
@@ -238,6 +334,67 @@ export const StudentAiSettingsSection = () => {
                                     placeholder={t('fields.assistantNamePlaceholder')}
                                     className="border-indigo-100 focus:border-indigo-300"
                                 />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">{t('avatar.label')}</Label>
+                            <div className="flex flex-wrap items-center gap-4 rounded-lg border border-indigo-100 p-3">
+                                <img
+                                    src={avatarPreview}
+                                    alt={t('avatar.previewAlt')}
+                                    className="size-14 shrink-0 rounded-full border border-indigo-100 bg-white object-cover"
+                                    onError={(e) => {
+                                        e.currentTarget.src = DEFAULT_CHATBOT_AVATAR_URL;
+                                    }}
+                                />
+                                <div className="flex flex-1 flex-col gap-2">
+                                    <p className="text-xs text-muted-foreground">
+                                        {t('avatar.helpText')}
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <input
+                                            ref={avatarInputRef}
+                                            type="file"
+                                            accept={AVATAR_ACCEPTED_TYPES.join(',')}
+                                            className="hidden"
+                                            onChange={(e) =>
+                                                handleAvatarUpload(e.target.files?.[0] ?? undefined)
+                                            }
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={isUploadingAvatar}
+                                            onClick={() => avatarInputRef.current?.click()}
+                                            className="border-indigo-100 text-indigo-600 hover:bg-indigo-50"
+                                        >
+                                            <UploadSimple className="me-1 size-4" />
+                                            {isUploadingAvatar
+                                                ? t('avatar.uploading')
+                                                : t('avatar.upload')}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={
+                                                isUploadingAvatar ||
+                                                !tutorConfig.avatarUrl ||
+                                                tutorConfig.avatarUrl === DEFAULT_CHATBOT_AVATAR_URL
+                                            }
+                                            onClick={() =>
+                                                setTutorConfig({
+                                                    ...tutorConfig,
+                                                    avatarUrl: DEFAULT_CHATBOT_AVATAR_URL,
+                                                })
+                                            }
+                                            className="border-indigo-100 text-neutral-600 hover:bg-indigo-50"
+                                        >
+                                            <ArrowCounterClockwise className="me-1 size-4" />
+                                            {t('avatar.reset')}
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -555,36 +712,24 @@ export const StudentAiSettingsSection = () => {
                                         className="mt-1 w-full rounded-md border border-indigo-100 px-2 py-1.5 text-sm"
                                     >
                                         <optgroup label={t('voice.male')}>
-                                            <option value="shubh">
-                                                {t('voice.voices.shubh')}
-                                            </option>
+                                            <option value="shubh">{t('voice.voices.shubh')}</option>
                                             <option value="aditya">
                                                 {t('voice.voices.aditya')}
                                             </option>
-                                            <option value="rahul">
-                                                {t('voice.voices.rahul')}
-                                            </option>
-                                            <option value="rohan">
-                                                {t('voice.voices.rohan')}
-                                            </option>
+                                            <option value="rahul">{t('voice.voices.rahul')}</option>
+                                            <option value="rohan">{t('voice.voices.rohan')}</option>
                                             <option value="amit">{t('voice.voices.amit')}</option>
                                             <option value="dev">{t('voice.voices.dev')}</option>
                                         </optgroup>
                                         <optgroup label={t('voice.female')}>
                                             <option value="ritu">{t('voice.voices.ritu')}</option>
-                                            <option value="priya">
-                                                {t('voice.voices.priya')}
-                                            </option>
+                                            <option value="priya">{t('voice.voices.priya')}</option>
                                             <option value="neha">{t('voice.voices.neha')}</option>
-                                            <option value="pooja">
-                                                {t('voice.voices.pooja')}
-                                            </option>
+                                            <option value="pooja">{t('voice.voices.pooja')}</option>
                                             <option value="simran">
                                                 {t('voice.voices.simran')}
                                             </option>
-                                            <option value="kavya">
-                                                {t('voice.voices.kavya')}
-                                            </option>
+                                            <option value="kavya">{t('voice.voices.kavya')}</option>
                                         </optgroup>
                                     </select>
                                 </div>
@@ -594,9 +739,7 @@ export const StudentAiSettingsSection = () => {
 
                     {/* Chatbot Page Visibility */}
                     <div className="space-y-3 border-t border-indigo-100 pt-4">
-                        <Label className="text-sm font-medium">
-                            {t('pageVisibility.label')}
-                        </Label>
+                        <Label className="text-sm font-medium">{t('pageVisibility.label')}</Label>
                         <p className="text-xs text-muted-foreground">
                             {t('pageVisibility.helpText')}
                         </p>
@@ -671,9 +814,7 @@ export const StudentAiSettingsSection = () => {
                     {/* Floating Launcher Behavior */}
                     <div className="space-y-3 border-t border-indigo-100 pt-4">
                         <Label className="text-sm font-medium">{t('launcher.label')}</Label>
-                        <p className="text-xs text-muted-foreground">
-                            {t('launcher.helpText')}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{t('launcher.helpText')}</p>
 
                         <div className="flex items-center justify-between gap-3 rounded-lg border border-indigo-100 p-2.5">
                             <div>

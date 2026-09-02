@@ -13,6 +13,18 @@
         "coreInstruction": "Instruction principale",
         "coreInstructionPlaceholder": "Définissez le comportement principal de votre tuteur IA..."
     },
+    "avatar": {
+        "label": "Icône de l'assistant",
+        "helpText": "Affichée sur le bouton de chat et à côté de chaque message de l'assistant. PNG, JPG ou WEBP, jusqu'à 2 Mo. Les images carrées rendent le mieux.",
+        "upload": "Importer une icône",
+        "uploading": "Import en cours...",
+        "reset": "Utiliser celle par défaut",
+        "previewAlt": "Aperçu de l'icône de l'assistant",
+        "uploaded": "Icône importée. Enregistrez les paramètres pour l'appliquer.",
+        "uploadFailed": "Échec de l'import de l'icône",
+        "invalidType": "Veuillez choisir une image PNG, JPG ou WEBP",
+        "tooLarge": "Image trop volumineuse. Choisissez un fichier de moins de 2 Mo"
+    },
     "hardRules": {
         "label": "Règles strictes",
         "addPlaceholder": "Ajouter une nouvelle règle stricte...",

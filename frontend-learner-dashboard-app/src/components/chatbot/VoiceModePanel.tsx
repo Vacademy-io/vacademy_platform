@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { VoiceAvatar } from "./VoiceAvatar";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { useVoiceWebSocket } from "@/hooks/useVoiceWebSocket";
@@ -42,6 +42,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   chatbotSettings,
 }) => {
   const { t } = useTranslation("chatFeatureB");
+  const avatarUrl = useChatbotAvatarUrl();
   const MODE_LABELS: Record<VoiceModePanelProps["mode"], { label: string; icon: string }> = {
     voice_interview: { label: t("voiceModeLabels.interview"), icon: "briefcase" },
     voice_doubt: { label: t("voiceModeLabels.doubt"), icon: "message" },

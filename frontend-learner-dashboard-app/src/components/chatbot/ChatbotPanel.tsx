@@ -40,7 +40,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@/styles/katex-dark.css";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
@@ -64,6 +64,7 @@ const DEFAULT_WIDTH = 380;
 const DEFAULT_HEIGHT = 520;
 
 export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
+  const avatarUrl = useChatbotAvatarUrl();
   const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {

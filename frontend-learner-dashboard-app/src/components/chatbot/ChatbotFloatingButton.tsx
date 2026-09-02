@@ -10,7 +10,7 @@ import { useQuizActiveStore } from "@/stores/study-library/quiz-active-store";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import type { FabPosition, FabSide } from "@/stores/chatbot/useChatbotPanelStore";
 import { cn } from "@/lib/utils";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { AnimatePresence, motion } from "framer-motion";
 
 // Fallbacks when the institute hasn't configured launcher_settings
@@ -26,6 +26,7 @@ const isValidFabPosition = (p: FabPosition | null): p is FabPosition =>
   !!p && (p.side === "left" || p.side === "right") && typeof p.yRatio === "number";
 
 export const ChatbotFloatingButton = () => {
+  const avatarUrl = useChatbotAvatarUrl();
   const { t } = useTranslation("chatFeatureB");
   const { isOpen, setIsOpen, shouldShowChatbot, chatbotSettings } =
     useChatbotContext();

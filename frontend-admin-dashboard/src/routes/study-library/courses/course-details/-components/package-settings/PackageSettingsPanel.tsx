@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PackageCourseSettingEditor } from './PackageCourseSettingEditor';
 import { LmsSettingsCard } from './LmsSettingsCard';
+import { LmsExistingUserPolicyCard } from './LmsExistingUserPolicyCard';
 import { CourseWorkflowTriggersCard } from './CourseWorkflowTriggersCard';
 import { SubOrgAssociatedCard } from './SubOrgAssociatedCard';
 
@@ -37,9 +38,17 @@ export const PackageSettingsPanel: React.FC<PackageSettingsPanelProps> = ({ pack
                 </TabsList>
                 {/* key={packageId} remounts the cards when you switch courses, so prefilled
                     connection/courseId/triggers never leak from a previously-open course. */}
-                <TabsContent value="lms" className="mt-4">
+                <TabsContent value="lms" className="mt-4 space-y-4">
                     <LmsSettingsCard
                         key={packageId}
+                        packageId={packageId}
+                        refreshKey={refreshKey}
+                    />
+                    {/* Behaviour flag rather than connection config, so it sits in its own card
+                        below the connection form — it stays relevant even once the connection
+                        is set up and the form above is collapsed. */}
+                    <LmsExistingUserPolicyCard
+                        key={`existing-user-${packageId}`}
                         packageId={packageId}
                         refreshKey={refreshKey}
                     />

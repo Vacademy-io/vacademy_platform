@@ -80,6 +80,9 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
     ]);
 
     const orderedIds: DashboardWidgetConfig['id'][] = [
+        // 0. Integration health — first on the page. Hidden for teachers (absent from
+        //    teacherOn): integration health is an admin concern.
+        'lmsConnectionHealth',
         // 1. Navigation shortcuts
         'quickActions',
         // 2. KPIs

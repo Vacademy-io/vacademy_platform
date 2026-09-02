@@ -144,6 +144,8 @@ interface LmsConnectionHealthWidgetProps {
     instituteId: string;
 }
 
+const POLL_INTERVAL_MS = 60_000;
+
 /**
  * Dashboard widget: are the institute's LMS connections actually reachable right now?
  *
@@ -154,9 +156,12 @@ interface LmsConnectionHealthWidgetProps {
  * Renders nothing when the institute has no external LMS connected: an institute on the built-in
  * Vacademy LMS has no integration to be unhealthy, and an empty card would be noise on every
  * dashboard. Same self-hiding convention the sub-org widgets use.
+ *
+ * Renders first on the dashboard and full-bleed: a broken LMS connection silently breaks
+ * enrolment for every course wired to it. It nonetheless ships hidden for every role — only an
+ * institute that has actually connected an LMS wants it, and turning it on starts polling that
+ * customer's site every minute.
  */
-const POLL_INTERVAL_MS = 60_000;
-
 export const LmsConnectionHealthWidget = ({ instituteId }: LmsConnectionHealthWidgetProps) => {
     const router = useRouter();
 
@@ -211,7 +216,7 @@ export const LmsConnectionHealthWidget = ({ instituteId }: LmsConnectionHealthWi
 
     if (isLoading) {
         return (
-            <Card className="grow shadow-none">
+            <Card className="w-full shadow-none">
                 <CardHeader className="p-4">
                     <CardTitle className="flex items-center gap-2 text-body font-semibold text-neutral-700">
                         <CircleNotch className="size-4 animate-spin text-neutral-400" />
@@ -226,7 +231,7 @@ export const LmsConnectionHealthWidget = ({ instituteId }: LmsConnectionHealthWi
     // LMS is down because our own endpoint errored. Offer a retry and say what actually happened.
     if (error) {
         return (
-            <Card className="grow border-neutral-200 shadow-none">
+            <Card className="w-full border-neutral-200 shadow-none">
                 <CardHeader className="p-4">
                     <CardTitle className="flex items-center gap-2 text-body font-semibold text-neutral-700">
                         <WarningCircle weight="duotone" className="size-4 text-warning-500" />
@@ -260,7 +265,7 @@ export const LmsConnectionHealthWidget = ({ instituteId }: LmsConnectionHealthWi
     return (
         <Card
             className={cn(
-                'grow shadow-none transition-all',
+                'w-full shadow-none transition-all',
                 allHealthy ? 'border-neutral-200' : 'border-danger-200 bg-danger-50/40'
             )}
         >

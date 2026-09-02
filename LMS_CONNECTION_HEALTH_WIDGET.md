@@ -114,12 +114,31 @@ New widget id `lmsConnectionHealth`, threaded through the four places
 
 1. the `DashboardWidgetId` union (`types/display-settings.ts`)
 2. `DASHBOARD_WIDGET_LABELS` → "LMS connection health"
-3. admin defaults — bucket 6 (LMS operations), **visible**
-4. teacher defaults — same position, **hidden** (integration health is an admin concern; an
-   admin can still switch it on per role)
+3. admin defaults — **first** in the order, **hidden**
+4. teacher defaults — same position, **hidden**
 
-Rendered behind `isWidgetVisible('lmsConnectionHealth')` and wrapped in `TrackedWidget` for
-view telemetry, exactly like the other widgets.
+### Position and width
+
+Rendered as the **first child of the dashboard's full-width main-content column**, so it spans
+the screen instead of sharing a row. First because a broken LMS connection silently breaks
+enrolment for every course wired to it — that outranks anything else on the page.
+
+Note the main dashboard layout is fixed JSX order; the `order` field only sorts one analytics
+sub-group and drives the Settings list. So "first" had to be a JSX move, not an order change —
+the order value is set to match so the two don't disagree.
+
+### Hidden by default, strictly
+
+Ships `visible: false` for **every** role. A connection-health card is only meaningful to an
+institute that has actually connected an external LMS, and enabling it starts polling that
+customer's site every minute — so it is opt-in.
+
+Gated on `isWidgetExplicitlyVisible`, not the shared `isWidgetVisible`. The shared helper fails
+**open** (`vis !== false`), which is right for widgets that have always shipped on — a
+settings-load failure shouldn't blank the dashboard. But an opt-in widget must not switch
+itself on that way, and this one starts hitting the customer's LMS the moment it renders.
+
+Wrapped in `TrackedWidget` for view telemetry, like the other widgets.
 
 **Existing institutes pick it up automatically.** `mergeDisplayWithDefaults` starts from the
 defaults, so a widget missing from a saved blob is auto-added with the default visibility and

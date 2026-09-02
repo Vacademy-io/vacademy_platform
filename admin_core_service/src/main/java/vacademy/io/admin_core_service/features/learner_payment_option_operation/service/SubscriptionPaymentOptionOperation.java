@@ -391,40 +391,25 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
     }
 
     /**
-     * Razorpay mandate frequency derived from the plan's validity, so the UPI-app /
-     * bank mandate screen shows the real cadence (monthly, quarterly, ...) instead of
-     * the generic "as presented".
+     * Razorpay mandate frequency. Always {@code as_presented}.
      *
-     * We charge on our own schedule (RenewalChargeService), so any frequency Razorpay
-     * accepts is fine functionally; this only affects what the mandate advertises.
-     * Only values we can map from a known plan length are sent — anything else falls
-     * back to "as_presented", which imposes no fixed cadence and always registers.
+     * A fixed cadence is NOT cosmetic. Razorpay/NPCI enforce it as the mandate's
+     * debit cycle, so a "monthly" mandate permits exactly one debit per calendar
+     * month and a "yearly" one exactly one per calendar year -- and the Rs 1
+     * authorization transaction consumes that cycle's only slot. Every later charge
+     * inside the same period is then refused with:
+     *   BAD_REQUEST_ERROR: Customer has been already debited for the current cycle.
+     *
+     * Verified on live UPI Autopay mandates 2026-09-02 -- same customer, same hour,
+     * same code path, only the registered frequency differing:
+     *   token_TXCR7TVC28E598 (monthly)       Rs 1 auth 14:22 -> Rs 1,200 at 14:30  REFUSED
+     *   token_TXDVlb9TqcY6Hm (as_presented)  Rs 1 auth 15:25 -> Rs 4,800 at 15:51  CHARGED
+     *
+     * We drive the schedule ourselves (RenewalChargeService), so the mandate must
+     * impose none. max_amount still caps every individual debit and expire_at still
+     * bounds the mandate's life, so the learner keeps both protections.
      */
     private String resolveMandateFrequency(PaymentPlan paymentPlan) {
-        if (paymentPlan == null || paymentPlan.getValidityInDays() == null) {
-            return "as_presented";
-        }
-        int days = paymentPlan.getValidityInDays();
-        if (days <= 31) {
-            return "monthly";
-        } else if (days <= 95) {
-            return "quarterly";
-        } else if (days <= 190) {
-            // NOT "halfyearly". Razorpay rejects it with
-            //   BAD_REQUEST_ERROR: Recurring value should be between 1 and 31 for the provided frequency
-            // which kills mandate registration, and with it the whole enrolment:
-            // initiateMandatePayment throws, recordLearnerRequest rolls back, and the learner
-            // is shown "already enrolled" (the FE maps every 510 to that). The committed
-            // REQUIRES_NEW ledger accrual survives, leaving phantom debt behind.
-            //
-            // monthly / quarterly / yearly are all accepted -- verified against live UPI
-            // enrolments on 2026-08-31/09-01 -- so only this bucket is changed.
-            // as_presented is correct for us anyway: RenewalChargeService drives the
-            // schedule, so the mandate advertises "debited as presented by the merchant".
-            return "as_presented";
-        } else if (days <= 370) {
-            return "yearly";
-        }
         return "as_presented";
     }
 

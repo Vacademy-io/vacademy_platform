@@ -7,6 +7,7 @@ import { ReactNode } from 'react';
 import { useEnrollRequestsDialogStore } from './bulk-actions-store';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { toast } from 'sonner';
 
 interface BulkActionsMenuProps {
     selectedCount: number;
@@ -24,6 +25,16 @@ const MENU_ACTION = {
     ACCEPT_REQUEST: 'ACCEPT_REQUEST',
     DECLINE_REQUEST: 'DECLINE_REQUEST',
 } as const;
+
+/**
+ * Actions that act on an ENROLMENT and so need the batch the learner is enrolled in.
+ * Share Credentials / WhatsApp / Email act on the person and need only a user id — see the
+ * same set in the learner-list menu for why requiring a batch there dropped contacts silently.
+ */
+const BATCH_SCOPED_ACTIONS: ReadonlySet<string> = new Set([
+    MENU_ACTION.ACCEPT_REQUEST,
+    MENU_ACTION.DECLINE_REQUEST,
+]);
 
 const buildEnrollRequestsBulkActionDropdownList = (t: TFunction): DropdownItem[] => [
     { label: t('menu.shareCredentials'), value: MENU_ACTION.SHARE_CREDENTIALS },
@@ -47,13 +58,25 @@ export const EnrollRequestsBulkActionsMenu = ({
     } = useEnrollRequestsDialogStore();
 
     const handleMenuOptionsChange = (value: string) => {
-        const validStudents = selectedStudents.filter(
-            (student) => student && student.user_id && student.package_session_id
-        );
+        const needsBatch = BATCH_SCOPED_ACTIONS.has(value);
+        const withUser = selectedStudents.filter((student) => student && student.user_id);
+        const validStudents = needsBatch
+            ? withUser.filter((student) => student.package_session_id)
+            : withUser;
 
         if (validStudents.length === 0) {
-            console.error('No valid students selected');
+            // A console.error is invisible to the admin: the menu item simply did nothing.
+            toast.error(needsBatch ? t('errors.noneEnrolled') : t('errors.noneActionable'));
             return;
+        }
+
+        const excluded = selectedStudents.length - validStudents.length;
+        if (excluded > 0) {
+            toast.warning(
+                t(needsBatch ? 'errors.someNotEnrolled' : 'errors.someNoAccount', {
+                    count: excluded,
+                })
+            );
         }
 
         const bulkActionInfo: BulkActionInfo = {

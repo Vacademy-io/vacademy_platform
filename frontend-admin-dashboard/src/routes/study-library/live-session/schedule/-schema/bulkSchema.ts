@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AccessType, WaitingRoomType } from '../../-constants/enums';
+import { hasRequiredIdentityField } from '@/components/common/custom-fields/field-roles';
 
 /**
  * Single row in the Bulk Schedule grid. Each row produces one independent
@@ -256,6 +257,22 @@ export const bulkSessionFormSchema = z.object({
                         path: ['rows', index, 'selectedLevels'],
                     });
                 }
+            });
+        }
+
+        // Any registration field can be made optional, phone number included — but a registrant
+        // is identified by their email or their mobile number, and a submission carrying
+        // neither is rejected server-side. One of the two has to stay required.
+        if (
+            data.accessType === AccessType.PUBLIC &&
+            data.fields.length > 0 &&
+            !hasRequiredIdentityField(data.fields)
+        ) {
+            ctx.addIssue({
+                code: 'custom',
+                message:
+                    'Keep either Email or Phone Number required — a registration needs one of them to identify the learner.',
+                path: ['fields'],
             });
         }
     });

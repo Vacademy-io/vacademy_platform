@@ -81,21 +81,39 @@ public final class AppStatusMapper {
                 .platform(platformKey)
                 .enabled(true)
                 .status(status)
+                .appId(appId(record, config))
+                .track(text(config.path("fields"), "release_track"))
                 .storeUrl(text(config, "storeUrl"))
                 .currentVersion(currentVersion)
                 .currentBuild(text(config, "currentBuild"))
                 .releasedAt(text(config, "releasedAt"))
                 .lastSyncedAt(text(config, "lastSyncedAt"))
-                .rejection(rejection(record, platformKey, status, versions, newest))
+                .rejection(rejection(record, config, platformKey, status, versions, newest))
                 .pendingUpdate(pendingUpdate(newest, status, currentVersion))
                 .updateAvailable(updateAvailable(newest, currentVersion))
                 .build();
     }
 
+    /**
+     * The store id this platform ships under. Every store names it differently and the catalogue
+     * keeps that naming, so the field is looked up under each of them before falling back to the
+     * record's own package name — which is the Android one, and wrong for iOS on most apps.
+     */
+    private static String appId(JsonNode record, JsonNode config) {
+        JsonNode fields = config.path("fields");
+        for (String key : new String[]{"bundle_id", "package_name", "package_identity", "application_id"}) {
+            String value = text(fields, key);
+            if (!value.isEmpty()) {
+                return value;
+            }
+        }
+        return text(record.path("basics"), "packageName");
+    }
+
     /* --------------------------------------------------------------- rejection */
 
     private static AppStatusResponse.Rejection rejection(
-            JsonNode record, String platformKey, String platformStatus,
+            JsonNode record, JsonNode config, String platformKey, String platformStatus,
             List<JsonNode> versions, JsonNode newest) {
 
         boolean newestRejected = newest != null && REJECTED.equals(text(newest, "status"));
@@ -129,6 +147,21 @@ public final class AppStatusMapper {
                     .reason(text(submission, "reason"))
                     .submittedAt(text(submission, "submittedAt"))
                     .decidedAt(text(submission, "decidedAt"))
+                    .build();
+        }
+
+        // Nothing in the hand-kept history, but the live store sync may have recorded one — it
+        // writes what the store said onto the platform itself. Checked after the version and
+        // submission rows because those are where a human pastes the store's actual wording, and
+        // Apple and Google never hand us that text through an API.
+        JsonNode synced = config.path("rejection");
+        if (synced.isObject()) {
+            return AppStatusResponse.Rejection.builder()
+                    .version(text(synced, "version"))
+                    .build(text(synced, "build"))
+                    .reason(text(synced, "reason"))
+                    .submittedAt(text(synced, "submittedAt"))
+                    .decidedAt(text(synced, "decidedAt"))
                     .build();
         }
 

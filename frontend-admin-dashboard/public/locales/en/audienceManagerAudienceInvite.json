@@ -42,6 +42,8 @@
     "actions": {
         "addResponse": "Add Response",
         "addResponseTooltip": "Add a response on behalf of a respondent",
+        "qr": "QR",
+        "qrTooltip": "Show a QR code people can scan to open this form",
         "api": "API",
         "apiTooltip": "Get API integration details for automation",
         "embed": "Embed",

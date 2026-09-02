@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -38,8 +38,8 @@ import {
     TemplateSearchableSelect,
     toTemplateOptions,
 } from '@/components/templates/TemplateSearchableSelect';
-import { sendNotification } from '@/services/unified-send-service';
-import type { UnifiedSendResponse } from '@/services/unified-send-service';
+import { sendNotification, getDeliveryStatus } from '@/services/unified-send-service';
+import type { DeliveryStatus, UnifiedSendResponse } from '@/services/unified-send-service';
 import {
     fetchCustomFieldSetup,
     type CustomFieldSetupItem,
@@ -51,6 +51,67 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 
 type Channel = 'EMAIL' | 'WHATSAPP';
+
+/**
+ * What the result panel should say about a finished send.
+ *
+ * WhatsApp answers twice — the send call says whether the provider TOOK the message, its status
+ * webhook says what happened to it a second or two later — and either answer can be a refusal that
+ * arrives inside a 200. Pure and exported so those combinations are covered by tests rather than
+ * eyeballed one send at a time.
+ */
+export function resolveSendVerdict({
+    sendResult,
+    delivery,
+    channel,
+    awaitingDelivery,
+}: {
+    sendResult: UnifiedSendResponse;
+    delivery: DeliveryStatus | null;
+    channel: Channel;
+    awaitingDelivery: boolean;
+}) {
+    // A rejected recipient rides back inside a 200, and a batch can report COMPLETED while
+    // carrying failed: 1 — with one recipient the counts are the truth, not the envelope.
+    const rejected = sendResult.failed > 0 || sendResult.status === 'FAILED';
+    const accepted = !rejected && (sendResult.status === 'COMPLETED' || sendResult.accepted > 0);
+    const failedOnDelivery = delivery?.status === 'FAILED';
+    const confirmedDelivered = delivery?.status === 'DELIVERED' || delivery?.status === 'READ';
+    const unconfirmed = accepted && channel === 'WHATSAPP' && !confirmedDelivered;
+
+    let headingKey = 'reviewStep.sendCompleted';
+    if (rejected) headingKey = 'reviewStep.sendFailed';
+    else if (failedOnDelivery) headingKey = 'reviewStep.notDelivered';
+    else if (confirmedDelivered) headingKey = 'reviewStep.delivered';
+    else if (unconfirmed && awaitingDelivery) headingKey = 'reviewStep.confirmingDelivery';
+    else if (accepted) headingKey = 'reviewStep.messageSent';
+
+    // The reason only ever appeared in a toast that had already gone by the time the admin read the
+    // panel. Null means the provider gave none, and the caller shows its own fallback copy.
+    let reason: string | null = null;
+    if (rejected) {
+        reason = sendResult.results?.find((r) => !r.success)?.error ?? null;
+    } else if (failedOnDelivery) {
+        const code = delivery?.errorCode ? ` (${delivery.errorCode})` : '';
+        reason = delivery?.errorMessage ? `${delivery.errorMessage}${code}` : null;
+    }
+
+    return {
+        tone: (rejected || failedOnDelivery
+            ? 'failed'
+            : unconfirmed && awaitingDelivery
+              ? 'confirming'
+              : 'ok') as 'failed' | 'confirming' | 'ok',
+        headingKey,
+        reason,
+        showDelivery: accepted && channel === 'WHATSAPP',
+        // No verdict yet reads as SENT, not as a question: WhatsApp has the message and has not
+        // rejected it — the same one tick it shows the sender. Anything worse arrives as a status.
+        deliveryWord: delivery?.status ?? 'SENT',
+        failedOnDelivery,
+        confirmedDelivered,
+    };
+}
 
 interface IndividualSendDialogProps {
     open: boolean;
@@ -171,6 +232,13 @@ export function IndividualSendDialog({
     // Send state
     const [isSending, setIsSending] = useState(false);
     const [sendResult, setSendResult] = useState<UnifiedSendResponse | null>(null);
+    // What WhatsApp did with the message AFTER accepting it. The send response cannot know:
+    // acceptance is a queue receipt and the verdict arrives on the status webhook a moment later.
+    const [delivery, setDelivery] = useState<DeliveryStatus | null>(null);
+    const [awaitingDelivery, setAwaitingDelivery] = useState(false);
+    // Bumped on every new send and on close, so a poll that is still in flight cannot write a
+    // verdict into a dialog that has moved on to a different message.
+    const deliveryPollToken = useRef(0);
 
     // Reset on close
     useEffect(() => {
@@ -187,6 +255,9 @@ export function IndividualSendDialog({
             setLiteralValues({});
             setIsSending(false);
             setSendResult(null);
+            setDelivery(null);
+            setAwaitingDelivery(false);
+            deliveryPollToken.current += 1;
         }
     }, [open]);
 
@@ -425,6 +496,39 @@ export function IndividualSendDialog({
         setLiteralValues((prev) => ({ ...prev, [varKey]: text }));
     }, []);
 
+    /**
+     * Follow an accepted WhatsApp message until the provider says what happened to it.
+     *
+     * The send response is a queue receipt: WhatsApp acknowledges the message, then reports the real
+     * outcome on its status webhook a second or two later. Without this the dialog showed a green
+     * tick for messages that were rejected outright (131042 payment issue kills every send on an
+     * account, and looks identical to a healthy send at this point).
+     */
+    const pollDeliveryStatus = useCallback(async (messageId: string) => {
+        const token = ++deliveryPollToken.current;
+        setAwaitingDelivery(true);
+        const deadline = Date.now() + 12000;
+        try {
+            while (Date.now() < deadline && token === deliveryPollToken.current) {
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+                if (token !== deliveryPollToken.current) return;
+                const [status] = await getDeliveryStatus([messageId]);
+                if (token !== deliveryPollToken.current) return;
+                if (!status || status.status === 'PENDING') continue;
+                setDelivery(status);
+                // DELIVERED can still become READ, but this panel says "Delivered" for both, so
+                // there is nothing left to wait for — stopping here saves ~8 polls per send.
+                if (status.settled || status.status === 'DELIVERED') return;
+            }
+        } catch (err) {
+            // Never let a failed lookup become a claim about delivery — leave the panel saying
+            // "accepted, not confirmed" rather than inventing either outcome.
+            console.warn('Could not confirm WhatsApp delivery status', err);
+        } finally {
+            if (token === deliveryPollToken.current) setAwaitingDelivery(false);
+        }
+    }, []);
+
     const handleSend = useCallback(async () => {
         if (!student || !instituteId) return;
 
@@ -461,7 +565,17 @@ export function IndividualSendDialog({
                     },
                 });
                 setSendResult(result);
-                toast.success(t('toasts.emailSent'));
+                // Same trap as WhatsApp below: a rejected recipient rides back inside a 200.
+                if (result.failed > 0) {
+                    const reason = result.results?.find((r) => !r.success)?.error;
+                    toast.error(
+                        reason
+                            ? t('toasts.emailRejectedWithReason', { reason })
+                            : t('toasts.emailRejected')
+                    );
+                } else {
+                    toast.success(t('toasts.emailSent'));
+                }
             } else {
                 if (!selectedWaTemplate) {
                     toast.error(t('toasts.selectWaTemplateFirst'));
@@ -495,7 +609,24 @@ export function IndividualSendDialog({
                     },
                 });
                 setSendResult(result);
-                toast.success(t('toasts.whatsappSent'));
+                // A per-recipient rejection comes back inside a 200 (failed: 1), so only reading
+                // the promise resolving showed "message sent" for sends the provider refused
+                // outright. And even a clean acceptance is not delivery — WhatsApp confirms that
+                // later on its status webhook — so the success copy promises handover, not arrival.
+                if (result.failed > 0) {
+                    const reason = result.results?.find((r) => !r.success)?.error;
+                    toast.error(
+                        reason
+                            ? t('toasts.whatsappRejectedWithReason', { reason })
+                            : t('toasts.whatsappRejected')
+                    );
+                } else {
+                    toast.success(t('toasts.whatsappQueued'));
+                    // Accepted is not delivered. Follow the message for a few seconds so the panel
+                    // can report what WhatsApp actually did instead of a green tick it cannot back up.
+                    const messageId = result.results?.find((r) => r.success)?.messageId;
+                    if (messageId) void pollDeliveryStatus(messageId);
+                }
             }
         } catch (err) {
             const msg = err instanceof Error ? err.message : t('toasts.sendFailed');
@@ -514,6 +645,7 @@ export function IndividualSendDialog({
         selectedWaTemplate,
         languageCode,
         interpolate,
+        pollDeliveryStatus,
         t,
     ]);
 
@@ -839,19 +971,39 @@ export function IndividualSendDialog({
         );
     };
 
+    /**
+     * Provider status vocabulary → something an admin reads. Falls back to the raw word so a status
+     * WhatsApp adds later shows up as itself rather than as a missing translation key.
+     */
+    const deliveryStatusLabel = useCallback(
+        (status: string) => t(`reviewStep.deliveryStatus.${status}`, { defaultValue: status }),
+        [t]
+    );
+
     const renderReviewStep = () => {
         if (sendResult) {
-            const ok = sendResult.status === 'COMPLETED' || sendResult.accepted > 0;
+            const verdict = resolveSendVerdict({
+                sendResult,
+                delivery,
+                channel,
+                awaitingDelivery,
+            });
+
             return (
                 <div className="flex flex-col items-center gap-4 py-8">
-                    {ok ? (
-                        <CheckCircle className="size-12 text-green-500" />
-                    ) : (
+                    {verdict.tone === 'failed' ? (
                         <XCircle className="size-12 text-destructive" />
+                    ) : verdict.tone === 'confirming' ? (
+                        <CircleNotch className="size-12 animate-spin text-neutral-400" />
+                    ) : (
+                        <CheckCircle className="size-12 text-green-500" />
                     )}
-                    <h3 className="text-lg font-semibold">
-                        {ok ? t('reviewStep.messageSent') : t('reviewStep.sendCompleted')}
-                    </h3>
+                    <h3 className="text-lg font-semibold">{t(verdict.headingKey)}</h3>
+                    {verdict.tone === 'failed' && (
+                        <p className="max-w-sm text-center text-sm text-destructive">
+                            {verdict.reason ?? t('reviewStep.noReason')}
+                        </p>
+                    )}
                     <div className="w-full max-w-sm space-y-2 rounded-md border p-4 text-sm">
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">
@@ -875,6 +1027,24 @@ export function IndividualSendDialog({
                                 {sendResult.failed}
                             </span>
                         </div>
+                        {verdict.showDelivery && (
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground">
+                                    {t('reviewStep.deliveryLabel')}
+                                </span>
+                                <span
+                                    className={`font-medium ${
+                                        verdict.failedOnDelivery
+                                            ? 'text-destructive'
+                                            : verdict.confirmedDelivered
+                                              ? 'text-green-600'
+                                              : 'text-muted-foreground'
+                                    }`}
+                                >
+                                    {deliveryStatusLabel(verdict.deliveryWord)}
+                                </span>
+                            </div>
+                        )}
                     </div>
                     <Button variant="outline" onClick={() => onOpenChange(false)} className="mt-2">
                         {t('reviewStep.close')}

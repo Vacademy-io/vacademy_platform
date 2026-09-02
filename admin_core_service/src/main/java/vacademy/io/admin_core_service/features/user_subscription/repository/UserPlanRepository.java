@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.user_subscription.dto.BillingSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.LearnerPlanBreakdownProjection;
 import vacademy.io.admin_core_service.features.user_subscription.dto.OutstandingLearnerProjection;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
@@ -323,6 +324,75 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
          * than looked up per plan: as a correlated subquery this took 33 s on an institute with
          * 8,380 live plans, and 172 ms this way.
          */
+        /**
+         * Every enrolment one learner holds at an institute, priced individually — the Due side
+         * view.
+         *
+         * Deliberately NOT filtered by status. {@link #findOutstandingLearners} answers "how much
+         * is owed" and so bills only live plans; this answers "why", and an admin cannot check that
+         * a cancelled enrolment was excluded if the row is missing entirely. The
+         * counts_towards_due flag carries the same ACTIVE / PENDING_FOR_PAYMENT rule, so the rows
+         * that DO count always re-add to the figure on the card.
+         *
+         * paid is per plan here, not per learner: the side view is a breakdown, so an invoice
+         * payment that belongs to no plan is out of scope by construction.
+         */
+        @Query(value = """
+                SELECT up.id AS userPlanId,
+                       ei.name AS courseName,
+                       up.status AS planStatus,
+                       CASE WHEN po.type = 'CPO' THEN 'Custom Installment'
+                            WHEN ei.tag = 'SUB_ORG' THEN 'Sub-Org Admin'
+                            WHEN ei.tag = 'SUBORG_LEARNER' THEN 'Sub-Org Learner'
+                            WHEN po.source = 'LIVE_SESSION' THEN 'Live Class'
+                            WHEN po.source = 'PACKAGE_SESSION' THEN 'Course / Package'
+                            ELSE 'Enroll Invite' END AS paymentType,
+                       COALESCE(sfp_tot.expected, pp.actual_price, 0) AS billed,
+                       COALESCE(paid_tot.amt, 0) AS paid,
+                       (up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')) AS countsTowardsDue,
+                       UPPER(COALESCE(NULLIF(TRIM(pp.currency), ''),
+                                      NULLIF(TRIM(ei.currency), ''))) AS currency
+                  FROM user_plan up
+                  JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+                  LEFT JOIN payment_plan pp ON pp.id = up.plan_id
+                  LEFT JOIN payment_option po ON po.id = up.payment_option_id
+                  LEFT JOIN (
+                    SELECT user_plan_id, SUM(amount_expected) AS expected
+                      FROM student_fee_payment
+                     GROUP BY user_plan_id
+                  ) sfp_tot ON sfp_tot.user_plan_id = up.id
+                  LEFT JOIN (
+                    SELECT pl.user_plan_id, SUM(pl.payment_amount) AS amt
+                      FROM payment_log pl
+                     WHERE pl.payment_status = 'PAID'
+                     GROUP BY pl.user_plan_id
+                  ) paid_tot ON paid_tot.user_plan_id = up.id
+                 WHERE ei.institute_id = :instituteId
+                   AND up.user_id = :userId
+                   -- Same window and course scope as billed_plans. The sheet claims to break down
+                   -- ONE row of the Due list, so it has to see exactly the plans that row was
+                   -- computed from; unfiltered, a learner who enrolled outside the window showed a
+                   -- plan the row never counted and the sections stopped adding up to the header.
+                   AND up.created_at >= :startDate
+                   AND up.created_at <= :endDate
+                   AND (:noPackageSessions = true OR EXISTS (
+                         SELECT 1
+                           FROM package_session_learner_invitation_to_payment_option psli
+                          WHERE psli.enroll_invite_id = ei.id
+                            AND psli.status = 'ACTIVE'
+                            AND psli.package_session_id IN (:packageSessionIds)))
+                 ORDER BY (up.status IN ('ACTIVE', 'PENDING_FOR_PAYMENT')) DESC,
+                          COALESCE(sfp_tot.expected, pp.actual_price, 0) DESC,
+                          up.created_at DESC
+                """, nativeQuery = true)
+        List<LearnerPlanBreakdownProjection> findLearnerPlanBreakdown(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("noPackageSessions") boolean noPackageSessions,
+                        @Param("packageSessionIds") List<String> packageSessionIds);
+
         @Query(value = """
                 WITH billed_plans AS (
                   SELECT up.user_id AS user_id,
@@ -393,8 +463,27 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     FROM payment_log pl
                     LEFT JOIN user_plan up ON up.id = pl.user_plan_id
                     LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
-                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
-                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                    -- ONE invoice per payment log. A single payment can be mapped to more than
+                    -- one invoice (duplicate invoices do get generated for the same payment), and
+                    -- joining the mapping table directly fanned that payment out into a row per
+                    -- invoice, so SUM(payment_amount) counted the same money once per invoice —
+                    -- Suchbliss reported ~2x collected off one such ₹7,200 payment. The lateral
+                    -- collapses it back to a single row, preferring an invoice belonging to the
+                    -- institute being queried so the scoping predicate below can never drop a
+                    -- payment that is mapped to another institute's invoice as well.
+                    LEFT JOIN LATERAL (
+                      SELECT i2.institute_id, i2.user_id
+                        FROM invoice_payment_log_mapping m
+                        JOIN invoice i2 ON i2.id = m.invoice_id
+                       WHERE m.payment_log_id = pl.id
+                       -- CASE, not `(... = :instituteId) DESC`: in Postgres DESC means NULLS
+                       -- FIRST, so a NULL institute_id would outrank the institute we want
+                       -- and silently drop the payment from this institute's total. id is a
+                       -- tie-break so the pick is deterministic.
+                       ORDER BY CASE WHEN i2.institute_id = :instituteId THEN 0 ELSE 1 END,
+                                i2.created_at, i2.id
+                       LIMIT 1
+                    ) inv ON true
                    WHERE pl.payment_status = 'PAID'
                      AND pl.created_at >= :startDate
                      AND pl.created_at <= :endDate
@@ -513,8 +602,27 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     FROM payment_log pl
                     LEFT JOIN user_plan up ON up.id = pl.user_plan_id
                     LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
-                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
-                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                    -- ONE invoice per payment log. A single payment can be mapped to more than
+                    -- one invoice (duplicate invoices do get generated for the same payment), and
+                    -- joining the mapping table directly fanned that payment out into a row per
+                    -- invoice, so SUM(payment_amount) counted the same money once per invoice —
+                    -- Suchbliss reported ~2x collected off one such ₹7,200 payment. The lateral
+                    -- collapses it back to a single row, preferring an invoice belonging to the
+                    -- institute being queried so the scoping predicate below can never drop a
+                    -- payment that is mapped to another institute's invoice as well.
+                    LEFT JOIN LATERAL (
+                      SELECT i2.institute_id, i2.user_id
+                        FROM invoice_payment_log_mapping m
+                        JOIN invoice i2 ON i2.id = m.invoice_id
+                       WHERE m.payment_log_id = pl.id
+                       -- CASE, not `(... = :instituteId) DESC`: in Postgres DESC means NULLS
+                       -- FIRST, so a NULL institute_id would outrank the institute we want
+                       -- and silently drop the payment from this institute's total. id is a
+                       -- tie-break so the pick is deterministic.
+                       ORDER BY CASE WHEN i2.institute_id = :instituteId THEN 0 ELSE 1 END,
+                                i2.created_at, i2.id
+                       LIMIT 1
+                    ) inv ON true
                    WHERE pl.payment_status = 'PAID'
                      AND pl.created_at >= :startDate
                      AND pl.created_at <= :endDate
@@ -597,8 +705,27 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                     FROM payment_log pl
                     LEFT JOIN user_plan up ON up.id = pl.user_plan_id
                     LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
-                    LEFT JOIN invoice_payment_log_mapping m ON m.payment_log_id = pl.id
-                    LEFT JOIN invoice inv ON inv.id = m.invoice_id
+                    -- ONE invoice per payment log. A single payment can be mapped to more than
+                    -- one invoice (duplicate invoices do get generated for the same payment), and
+                    -- joining the mapping table directly fanned that payment out into a row per
+                    -- invoice, so SUM(payment_amount) counted the same money once per invoice —
+                    -- Suchbliss reported ~2x collected off one such ₹7,200 payment. The lateral
+                    -- collapses it back to a single row, preferring an invoice belonging to the
+                    -- institute being queried so the scoping predicate below can never drop a
+                    -- payment that is mapped to another institute's invoice as well.
+                    LEFT JOIN LATERAL (
+                      SELECT i2.institute_id, i2.user_id
+                        FROM invoice_payment_log_mapping m
+                        JOIN invoice i2 ON i2.id = m.invoice_id
+                       WHERE m.payment_log_id = pl.id
+                       -- CASE, not `(... = :instituteId) DESC`: in Postgres DESC means NULLS
+                       -- FIRST, so a NULL institute_id would outrank the institute we want
+                       -- and silently drop the payment from this institute's total. id is a
+                       -- tie-break so the pick is deterministic.
+                       ORDER BY CASE WHEN i2.institute_id = :instituteId THEN 0 ELSE 1 END,
+                                i2.created_at, i2.id
+                       LIMIT 1
+                    ) inv ON true
                    WHERE pl.payment_status = 'PAID'
                      AND pl.created_at >= :startDate
                      AND pl.created_at <= :endDate

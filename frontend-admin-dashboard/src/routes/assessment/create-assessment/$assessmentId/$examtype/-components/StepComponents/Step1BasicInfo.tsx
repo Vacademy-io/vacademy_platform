@@ -1,7 +1,7 @@
 import { MyButton } from '@/components/design-system/button';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
-import { Info, CalendarBlank, Gear, Eye, ArrowsLeftRight } from '@phosphor-icons/react';
+import { Info, CalendarBlank, Gear, Eye, ArrowsLeftRight, Sparkle } from '@phosphor-icons/react';
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
@@ -608,6 +608,9 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             submissionType: storeDataStep1.submissionType || '',
             durationDistribution: storeDataStep1.durationDistribution || '',
             evaluationType: storeDataStep1.evaluationType || '',
+            // `??` not `||`: a stored `false` must survive a remount. Off by default
+            // because AI evaluation charges institute credits per graded question.
+            aiEvaluationEnabled: storeDataStep1.aiEvaluationEnabled ?? false,
             switchSections: storeDataStep1.switchSections || true, // Default to false
             raiseReattemptRequest: storeDataStep1.raiseReattemptRequest || true, // Default to true
             raiseTimeIncreaseRequest: storeDataStep1.raiseTimeIncreaseRequest || true, // Default to false
@@ -786,6 +789,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             submissionType: savedData?.submission_type || '',
             durationDistribution: savedData?.duration_distribution || '',
             evaluationType: savedData?.evaluation_type || '',
+            aiEvaluationEnabled: savedData?.ai_evaluation_enabled ?? false,
             resultType: savedData?.result_type || 'MANUAL',
             switchSections: savedData?.can_switch_section,
             raiseReattemptRequest: savedData?.reattempt_consent,
@@ -1179,6 +1183,39 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                     </div>
 
                     <div className="flex flex-col gap-6" id="attempt-settings">
+                        {/*
+                          * Automatic AI evaluation. Deliberately OFF by default and shown
+                          * with its cost stated: every submission that this grades charges
+                          * institute credits per question, so it must be a decision someone
+                          * made, not something that happens because a default said so.
+                          */}
+                        <FormField
+                            control={form.control}
+                            name="aiEvaluationEnabled"
+                            render={({ field }) => (
+                                <FormItem className="flex items-start justify-between gap-4 space-y-0 rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-primary-200 hover:bg-primary-50/20">
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                                            <Sparkle className="h-4 w-4" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <FormLabel className="text-sm font-semibold text-slate-900">
+                                                {t('attemptSettingsSection.aiEvaluation.label')}
+                                            </FormLabel>
+                                            <span className="text-xs text-slate-500">
+                                                {t('attemptSettingsSection.aiEvaluation.description')}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <FormControl>
+                                        <Switch
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
                         {getStepKey({
                             assessmentDetails,
                             currentStep,

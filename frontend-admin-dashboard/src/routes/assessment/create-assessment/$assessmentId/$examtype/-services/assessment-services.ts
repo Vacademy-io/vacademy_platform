@@ -160,6 +160,9 @@ export const handlePostStep1Data = async (
         result_type: data.resultType,
         raise_reattempt_request: data.raiseReattemptRequest,
         raise_time_increase_request: data.raiseTimeIncreaseRequest,
+        // Queue an AI evaluation when a learner submits. Metered per graded
+        // question, so it is only ever sent as an explicit true/false.
+        ai_evaluation_enabled: data.aiEvaluationEnabled ?? false,
     };
     const response = await authenticatedAxiosInstance({
         method: 'POST',

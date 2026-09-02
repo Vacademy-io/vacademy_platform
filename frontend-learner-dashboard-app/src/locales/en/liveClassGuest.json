@@ -55,7 +55,9 @@
       },
       "details": {
         "title": "Please fill in your details",
-        "subtitle": "This information will be used to contact you about the campaign."
+        "subtitle": "This information will be used to contact you about the campaign.",
+        "requiredLegend": "Required field",
+        "progress": "{{completed}} of {{total}} required fields completed"
       },
       "noFields": {
         "title": "No form fields available",
@@ -65,6 +67,9 @@
       "submitButton": {
         "submitting": "Submitting...",
         "default": "Submit Response"
+      },
+      "errors": {
+        "title": "Please complete the highlighted fields"
       }
     }
   },

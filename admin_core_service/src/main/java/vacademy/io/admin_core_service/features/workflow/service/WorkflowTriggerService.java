@@ -36,6 +36,9 @@ public class WorkflowTriggerService {
     @Autowired
     private vacademy.io.admin_core_service.features.workflow.service.idempotency.IdempotencyStrategyFactory idempotencyStrategyFactory;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.workflow.util.WorkflowSubjectResolver workflowSubjectResolver;
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Map<String, Object> handleTriggerEvents(String eventName, String eventId, String instituteId,
             Map<String, Object> contextData) {
@@ -187,6 +190,13 @@ public class WorkflowTriggerService {
                     // SpEL (which the body evaluator doesn't pick up).
                     seedContext.put("triggerTime", Instant.now().toString());
                     log.info("Seed context prepared for workflow run ({} keys): {}", seedContext.size(), seedContext);
+
+                    // Record WHO this run is for and WHAT it started from, before running it.
+                    // Written up-front so a run that crashes mid-way still shows up on the
+                    // learner's Workflows tab (as FAILED) and can still be retried — recording
+                    // it after the run would lose exactly the failures worth retrying.
+                    recordRunSubject(execution.getId(), seedContext);
+
                     log.info("Starting workflowEngineService.run for workflowId='{}'", trigger.getWorkflow().getId());
 
                     // Execute workflow
@@ -237,6 +247,28 @@ public class WorkflowTriggerService {
 
         log.info("---- Workflow Trigger Event END ----");
         return response;
+    }
+
+    /**
+     * Record which learner a run is for, and the inputs it started from, so the run can be
+     * listed on that learner's Workflows tab and retried from there.
+     *
+     * <p>Wholly best-effort and wholly swallowed. It sits inside the per-trigger try block,
+     * whose catch marks the execution FAILED and moves on — so an exception escaping here
+     * would fail a workflow that was about to run perfectly well. This is bookkeeping for a
+     * UI tab; it is never a reason not to run the automation. The worst outcome of a failure
+     * is one run missing from one tab.</p>
+     */
+    private void recordRunSubject(String executionId, Map<String, Object> seedContext) {
+        try {
+            idempotencyService.recordSubjectAndContext(
+                    executionId,
+                    workflowSubjectResolver.resolveSubjectUserId(seedContext),
+                    workflowSubjectResolver.toStorableContext(seedContext));
+        } catch (Exception e) {
+            log.warn("Could not record workflow run subject for execution {} — continuing with the run: {}",
+                    executionId, e.getMessage());
+        }
     }
 
     /**

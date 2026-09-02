@@ -146,6 +146,16 @@ public class WhatsAppInboxService {
             // template renderer returns null for them. Read the marker directly.
             SendFailure failure = rm == null ? readSendFailure(nl.getMessagePayload()) : null;
 
+            // What the SEND said (rm/failure) vs. what the PROVIDER later did (delivery_status,
+            // stamped by the status webhook). The webhook wins whenever it has spoken: a send the
+            // provider accepted reads SUCCESS here forever, even when the message was rejected
+            // seconds later, so preferring the send-time value would keep showing a green bubble for
+            // a message that never arrived. Null delivery_status → nothing was reported → legacy
+            // behaviour, unchanged.
+            String sendTimeStatus = rm != null ? rm.deliveryStatus : (failure != null ? failure.status : null);
+            String sendTimeError = rm != null ? rm.error : (failure != null ? failure.error : null);
+            boolean providerReported = nl.getDeliveryStatus() != null;
+
             return InboxMessageDTO.builder()
                     .id(nl.getId())
                     .body(body)
@@ -156,14 +166,24 @@ public class WhatsAppInboxService {
                     .status(nl.getNotificationType())
                     .templateName(rm != null ? rm.templateName : null)
                     .provider(rm != null ? rm.provider : null)
-                    .deliveryStatus(rm != null ? rm.deliveryStatus
-                            : (failure != null ? failure.status : null))
-                    .error(rm != null ? rm.error : (failure != null ? failure.error : null))
+                    .deliveryStatus(providerReported ? nl.getDeliveryStatus() : sendTimeStatus)
+                    .error(providerReported ? deliveryFailureReason(nl) : sendTimeError)
                     .headerType(rm != null ? rm.headerType : null)
                     .headerMediaUrl(rm != null ? rm.headerMediaUrl : null)
                     .attemptedType(failure != null ? failure.attemptedType : null)
                     .build();
         }).collect(Collectors.toList());
+    }
+
+    /**
+     * Reason line for a message the provider rejected after accepting it, e.g.
+     * "Business eligibility payment issue (131042)". Null for any other delivery status — a
+     * delivered or read message has nothing to explain.
+     */
+    private String deliveryFailureReason(NotificationLog nl) {
+        if (!"FAILED".equals(nl.getDeliveryStatus())) return null;
+        String reason = nl.getDeliveryErrorMessage() != null ? nl.getDeliveryErrorMessage() : "Not delivered";
+        return nl.getDeliveryErrorCode() != null ? reason + " (" + nl.getDeliveryErrorCode() + ")" : reason;
     }
 
     /** The FAILED marker {@code WhatsAppSendFailureService} writes on non-template sends. */

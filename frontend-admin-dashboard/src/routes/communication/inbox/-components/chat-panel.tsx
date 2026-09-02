@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useInboxStore } from '../-stores/inbox-store';
+import type { InboxMessage } from '../-services/inbox-api';
 import { ReplyBox } from './reply-box';
 import {
     ChatCircle,
@@ -183,8 +184,8 @@ export function ChatPanel({ onLoadOlder }: Props) {
                             }`}>
                                 {msg.timestamp ? formatTime(msg.timestamp) : ''}
                                 {msg.direction === 'OUTGOING' && msg.deliveryStatus !== 'FAILED' && (
-                                    <span className="ml-1">
-                                        {msg.status?.includes('READ') ? '✓✓' : msg.status?.includes('DELIVERED') ? '✓✓' : '✓'}
+                                    <span className="ml-1" title={msg.deliveryStatus}>
+                                        {deliveryTicks(msg)}
                                     </span>
                                 )}
                             </p>
@@ -199,6 +200,19 @@ export function ChatPanel({ onLoadOlder }: Props) {
             <ReplyBox phone={selectedPhone} />
         </div>
     );
+}
+
+/**
+ * WhatsApp-style ticks. deliveryStatus is WhatsApp's own verdict from its status webhook; msg.status
+ * is only the log row type ("WHATSAPP_MESSAGE_OUTGOING"), which never contains READ or DELIVERED —
+ * so before the webhook was reconciled onto the row, every outgoing message showed a single tick.
+ */
+function deliveryTicks(msg: InboxMessage): string {
+    const seen = (value?: string) =>
+        !!value && (value.includes('READ') || value.includes('DELIVERED'));
+    // Both, not one or the other: the msg.status check is the pre-existing rule and stays exactly as
+    // it was, deliveryStatus only adds the cases it could never see.
+    return seen(msg.deliveryStatus) || seen(msg.status) ? '✓✓' : '✓';
 }
 
 function formatTime(timestamp: string): string {

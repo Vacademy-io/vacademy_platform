@@ -114,6 +114,7 @@
         "close": "Fermer",
         "goToDashboard": "Aller au tableau de bord",
         "readyToContinue": "Prêt à continuer ?",
+        "reenrollmentBlockedFallback": "La réinscription n'est pas encore disponible. Veuillez réessayer plus tard.",
         "upgradeToContinueLearning": "Passez à une offre supérieure pour continuer à apprendre",
         "clickBelowToJoin": "Cliquez ci-dessous pour rejoindre l'abonnement.",
         "activeMembershipTitle": "Vous avez un abonnement actif",

@@ -232,6 +232,23 @@ export const tierDiscount = (
     return Math.min(Math.max(0, best), base);
 };
 
+/**
+ * What a set of courses costs under the page's ordinary rule — the ladder under
+ * FLAT, the item sum less its best tier under DISCOUNT — before full packs and
+ * combos get their turn at beating it.
+ *
+ * Factored out because a combo now prices its EXTENSION with it: growing a
+ * matched combo by one subject must cost what growing any basket by one subject
+ * costs, and the only honest source for that is the same function.
+ */
+const groupPrice = (settings: BasketPricingSettings, picked: BasketItem[]): number => {
+    if (picked.length === 0) return 0;
+    const base = baseFor(settings, picked);
+    return isDiscountBasis(settings)
+        ? base - tierDiscount(settings, base, picked.length)
+        : ladderPrice(settings.ladder?.prices ?? [], settings.ladder?.perExtra ?? 0, picked.length);
+};
+
 const groupBasket = (
     settings: BasketPricingSettings,
     items: BasketItem[]
@@ -260,9 +277,11 @@ export const quoteBasket = (
     for (const [label, picked] of groupBasket(settings, items)) {
         const count = picked.length;
         const base = baseFor(settings, picked);
-        let best = isDiscountBasis(settings)
-            ? base - tierDiscount(settings, base, count)
-            : ladderPrice(prices, perExtra, count);
+        // Kept separate from `best`: a full pack may lower `best` below it, and
+        // the combo extension below has to measure against the ORDINARY price
+        // of this group, not against whatever rule is currently winning.
+        const ordinary = groupPrice(settings, picked);
+        let best = ordinary;
         let how = `${count} subject${count === 1 ? '' : 's'}`;
 
         // Full pack — every level configured for this group is in the basket.
@@ -287,18 +306,30 @@ export const quoteBasket = (
             }
         }
 
-        // Combo — the group's packages are exactly a combo's set.
-        const pickedPackages = new Set(picked.map((p) => key(p.packageName)));
+        // Combo — the group CONTAINS a combo's packages.
+        //
+        // A subset, not an exact set. All-or-nothing matching is what made a
+        // Class 5 basket jump ₹200 for the fourth subject: English+Maths+
+        // Science took the ₹749 EMS combo, adding G.K. stopped the combo
+        // matching, and the basket fell back onto the plain ₹949 rung — so a
+        // page advertising "+₹150 for each extra subject" charged ₹200 for it.
+        //
+        // The extension is priced at exactly what this page charges to grow a
+        // basket from the combo's size to this one, so the combo's own saving
+        // rides along instead of evaporating: 749 + (949 − 799) = 899. At an
+        // exact match the extension is 0, which is the old behaviour untouched.
         for (const combo of settings.combos ?? []) {
-            const comboPackages = (combo.packages ?? []).map(key);
-            if (
-                comboPackages.length > 0 &&
-                comboPackages.length === pickedPackages.size &&
-                comboPackages.every((p) => pickedPackages.has(p)) &&
-                combo.price < best
-            ) {
-                best = combo.price;
-                how = combo.label;
+            const comboPackages = new Set((combo.packages ?? []).map(key));
+            if (comboPackages.size === 0) continue;
+            const inCombo = picked.filter((p) => comboPackages.has(key(p.packageName)));
+            // One basket line per named package, or the combo is ambiguous —
+            // which of two courses sharing a package name did the price cover?
+            if (inCombo.length !== comboPackages.size) continue;
+            const price = combo.price + (ordinary - groupPrice(settings, inCombo));
+            if (price < best) {
+                best = price;
+                const extras = count - inCombo.length;
+                how = extras > 0 ? `${combo.label} + ${extras} more` : combo.label;
             }
         }
 

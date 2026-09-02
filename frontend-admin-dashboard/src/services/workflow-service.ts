@@ -16,6 +16,8 @@ import {
     WorkflowExecutionLogDTO,
     ExecutionSummary,
     EnrollmentWorkflowRun,
+    PagedUserWorkflowRuns,
+    WorkflowRetryResponse,
     AiDraftRequest,
     AiDraftResponse,
 } from '@/types/workflow/workflow-types';
@@ -449,6 +451,58 @@ export function getEnrollmentWorkflowRunsQuery(instituteId: string, packageSessi
         staleTime: 30_000,
         enabled: !!instituteId && ids.length > 0,
     });
+}
+
+// Per-learner automation runs (learner side-view "Workflows" tab)
+/**
+ * The automations that ran FOR one learner/lead, newest first.
+ *
+ * Only runs whose subject was recorded at dispatch are returned — runs that
+ * pre-date that are invisible here rather than guessed at, so the tab never
+ * claims someone else's automation ran for this person.
+ */
+export async function fetchUserWorkflowRuns(
+    userId: string,
+    instituteId: string,
+    pageNo = 0,
+    pageSize = 20
+): Promise<PagedUserWorkflowRuns> {
+    const response = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/v1/workflow-execution/user/${userId}`,
+        { params: { instituteId, pageNo, pageSize } }
+    );
+    return response.data;
+}
+
+export function getUserWorkflowRunsQuery(
+    userId: string,
+    instituteId: string,
+    pageNo = 0,
+    pageSize = 20
+) {
+    return queryOptions({
+        queryKey: ['USER_WORKFLOW_RUNS', userId, instituteId, pageNo, pageSize],
+        queryFn: () => fetchUserWorkflowRuns(userId, instituteId, pageNo, pageSize),
+        staleTime: 15_000,
+        enabled: !!userId && !!instituteId,
+    });
+}
+
+/**
+ * Re-run a past execution with the inputs it originally started from. The backend
+ * creates a NEW execution and dispatches it asynchronously, so this resolves as
+ * soon as the run is queued — poll the run list to watch it finish.
+ */
+export async function retryWorkflowExecution(
+    executionId: string,
+    instituteId: string
+): Promise<WorkflowRetryResponse> {
+    const response = await authenticatedAxiosInstance.post(
+        `${BASE_URL}/admin-core-service/v1/workflow-execution/${executionId}/retry`,
+        null,
+        { params: { instituteId } }
+    );
+    return response.data;
 }
 
 // Context schema for variable picker

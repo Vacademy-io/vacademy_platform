@@ -125,7 +125,10 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
             );
             setPassword(credentials?.password || t('password.notFound'));
         }
-    }, [selectedStudent]);
+        // `t` is a dependency: it changes identity when the language switches, and
+        // this effect bakes translated text into state, so without it the stored
+        // string stays in the previous language.
+    }, [selectedStudent, t]);
 
     useEffect(() => {
         const details = getDetailsFromPackageSessionId({
@@ -190,7 +193,7 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
             })
         );
 
-    }, [selectedStudent, instituteDetails, password, studentDetails]);
+    }, [selectedStudent, instituteDetails, password, studentDetails, t]);
 
     if (isLoading) {
         return <DashboardLoader />;
@@ -298,7 +301,7 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                     <dl>
                         {group.fields.map((field) => {
                             const value =
-                                selectedStudent?.custom_fields?.[field.id] || t('fields.notAvailable');
+                                selectedStudent?.custom_fields?.[field.id] || t('fallback.notAvailable');
                             return (
                                 <ProfileFieldRow
                                     key={field.id}
@@ -317,7 +320,7 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                     <dl>
                         {customFields.map((field) => {
                             const value =
-                                selectedStudent?.custom_fields?.[field.id] || t('fields.notAvailable');
+                                selectedStudent?.custom_fields?.[field.id] || t('fallback.notAvailable');
                             return (
                                 <ProfileFieldRow
                                     key={field.id}

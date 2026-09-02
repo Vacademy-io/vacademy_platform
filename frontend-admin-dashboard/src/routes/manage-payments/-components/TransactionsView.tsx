@@ -15,6 +15,7 @@ import type {
 } from '@/types/payment-logs';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { fetchBillingSummary, fetchOutstandingLearners } from '@/services/payment-logs';
+import type { OutstandingLearner } from '@/services/payment-logs';
 import { ManageColumnsPopover } from '@/components/shared/leads/manage-columns-popover';
 import {
     useLeadColumnPrefs,
@@ -30,6 +31,7 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { PaymentFilters } from './PaymentFilters';
 import { PaymentControlBar, type SegmentKey, type StatusSegment } from './PaymentControlBar';
 import { DueLearnersTable } from './DueLearnersTable';
+import { DueLearnerDetailSheet } from './DueLearnerDetailSheet';
 import { PaymentLogsTable } from './PaymentLogsTable';
 import { PaymentKpiCards, type RecordStatusKey, type SummaryStatusKey } from './PaymentKpiCards';
 import { PaymentDetailSheet } from './PaymentDetailSheet';
@@ -39,6 +41,7 @@ import { DateRangeDropdown } from './DateRangeDropdown';
 import { exportEntriesToCsv, fetchAllPaymentLogs } from '../-utils/exportPaymentLogsCsv';
 import {
     classifyEntry,
+    isDueEligibleEntry,
     computeBillingFromEntries,
     computePaymentSummary,
     summarizeBucketAmount,
@@ -103,6 +106,9 @@ export function TransactionsView() {
     const [recordOpen, setRecordOpen] = useState(false);
     const [detailEntry, setDetailEntry] = useState<PaymentLogEntry | null>(null);
     const [detailOpen, setDetailOpen] = useState(false);
+    // The Due list nets a learner to one figure; this opens the plans behind it.
+    const [dueLearner, setDueLearner] = useState<OutstandingLearner | null>(null);
+    const [dueDetailOpen, setDueDetailOpen] = useState(false);
 
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
 
@@ -184,7 +190,15 @@ export function TransactionsView() {
         () =>
             statusBucket === 'total'
                 ? allEntries
-                : allEntries.filter((entry) => classifyEntry(entry) === statusBucket),
+                : allEntries.filter((entry) => {
+                      if (classifyEntry(entry) !== statusBucket) return false;
+                      // The Pending tile no longer counts records on a cancelled/terminated/expired
+                      // enrolment, so the rows it filters to must not include them either — the
+                      // count on the tile and the rows in the table have to describe one set. They
+                      // remain visible under "All".
+                      if (statusBucket === 'pending') return isDueEligibleEntry(entry);
+                      return true;
+                  }),
         [allEntries, statusBucket]
     );
 
@@ -654,6 +668,10 @@ export function TransactionsView() {
                         error={outstandingError as Error}
                         currentPage={currentPage}
                         onPageChange={handlePageChange}
+                        onSelectLearner={(learner) => {
+                            setDueLearner(learner);
+                            setDueDetailOpen(true);
+                        }}
                     />
                 ) : (
                     <PaymentLogsTable
@@ -739,6 +757,20 @@ export function TransactionsView() {
                     entry={detailEntry}
                     open={detailOpen}
                     onOpenChange={setDetailOpen}
+                />
+
+                {/* Balance breakdown, opened from a Due row */}
+                <DueLearnerDetailSheet
+                    learner={dueLearner}
+                    open={dueDetailOpen}
+                    onOpenChange={setDueDetailOpen}
+                    // The exact scope the clicked row was computed under, so the enrolments in the
+                    // sheet always add up to the totals it shows.
+                    filters={{
+                        start_date_in_utc: startDate ? startDate.slice(0, 19) : undefined,
+                        end_date_in_utc: endDate ? endDate.slice(0, 19) : undefined,
+                        package_session_ids: requestFilters.package_session_ids,
+                    }}
                 />
 
                 {/* Invoice PDF preview, opened from the Invoice column */}

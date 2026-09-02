@@ -52,8 +52,16 @@ public class MicrosoftPartnerCenterClient {
         return new MicrosoftPartnerCenterClient(tenantId, clientId, clientSecret);
     }
 
-    /** Result of an application lookup, or null if this account has no such application. */
-    public record AppStatus(String submissionStatus, String versionOrPackageFamily) {
+    /**
+     * Result of an application lookup, or null if this account has no such application.
+     *
+     * @param failureReason what certification actually objected to, when the submission failed.
+     *                      Microsoft is the only one of the three stores that returns this text —
+     *                      Apple keeps its review message in Resolution Center and Play keeps
+     *                      policy decisions in the console — so it is the one rejection an
+     *                      institute can be shown a real reason for.
+     */
+    public record AppStatus(String submissionStatus, String versionOrPackageFamily, String failureReason) {
     }
 
     /**
@@ -76,12 +84,12 @@ public class MicrosoftPartnerCenterClient {
             }
             if (submission.isMissingNode() || submission.isNull()) {
                 // App is registered in Partner Center but has never had a submission.
-                return new AppStatus("None", "");
+                return new AppStatus("None", "", "");
             }
 
             String status = submission.path("status").asText("");
             String packageFamilyName = app.path("packageFamilyName").asText("");
-            return new AppStatus(status, packageFamilyName);
+            return new AppStatus(status, packageFamilyName, failureReasonOf(submission));
         } catch (HttpClientErrorException.NotFound e) {
             return null;
         } catch (Exception e) {
@@ -89,6 +97,35 @@ public class MicrosoftPartnerCenterClient {
                     applicationId, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * The certification errors on a failed submission, joined into one readable line.
+     *
+     * <p>Microsoft returns them under {@code statusDetails.errors[]} as a code and a details
+     * string; the code alone ("PackageValidationFailed") tells an institute nothing, so the
+     * details are what is kept, with the code as a fallback when a details string is missing.
+     */
+    private static String failureReasonOf(JsonNode submission) {
+        JsonNode errors = submission.path("statusDetails").path("errors");
+        if (!errors.isArray() || errors.isEmpty()) {
+            return "";
+        }
+        StringBuilder reason = new StringBuilder();
+        for (JsonNode error : errors) {
+            String details = error.path("details").asText("");
+            if (details.isBlank()) {
+                details = error.path("code").asText("");
+            }
+            if (details.isBlank()) {
+                continue;
+            }
+            if (reason.length() > 0) {
+                reason.append(" · ");
+            }
+            reason.append(details);
+        }
+        return reason.toString();
     }
 
     /* ------------------------------------------------------------------ internals */

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { TFunction } from 'i18next';
 import { DEFAULT_POST_SUBMIT_CONFIGURATION } from '@/services/audience-post-submit-settings';
+import { DEFAULT_FORM_APPEARANCE } from '@/services/audience-form-appearance';
 
 const testInputFieldSchema = z.object({
     id: z.string(),
@@ -81,6 +82,54 @@ const postSubmitConfigurationSchema = z.object({
     redirectDelaySeconds: z.number().catch(0),
 });
 
+/**
+ * Form Appearance — how the public response form itself looks.
+ *
+ * Unfailable for the same reason as `postSubmitConfigurationSchema` above: it
+ * has no error UI of its own, and one failing leaf here would make "Save
+ * Changes" a dead button. Real enforcement lives in `validateFormAppearance`
+ * (blocks the save with a toast) and `normalizeFormAppearance` (coerces on the
+ * way to the API).
+ */
+const formAppearanceSchema = z.object({
+    layout: z.enum(['classic', 'hero', 'split']).catch(DEFAULT_FORM_APPEARANCE.layout),
+    width: z.enum(['narrow', 'regular', 'wide']).catch(DEFAULT_FORM_APPEARANCE.width),
+    background: z.enum(['gradient', 'plain', 'muted']).catch(DEFAULT_FORM_APPEARANCE.background),
+    accent: z
+        .enum(['primary', 'success', 'info', 'warning', 'neutral'])
+        .catch(DEFAULT_FORM_APPEARANCE.accent),
+    cardStyle: z
+        .enum(['glass', 'elevated', 'outlined', 'flat'])
+        .catch(DEFAULT_FORM_APPEARANCE.cardStyle),
+    coverImageUrl: z.string().catch(''),
+    eyebrow: z.string().catch(''),
+    headline: z.string().catch(''),
+    subheadline: z.string().catch(''),
+    showDescription: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showDescription),
+    showObjective: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showObjective),
+    formTitle: z.string().catch(''),
+    formSubtitle: z.string().catch(''),
+    submitLabel: z.string().catch(''),
+    showRequiredLegend: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showRequiredLegend),
+    showProgress: z.boolean().catch(DEFAULT_FORM_APPEARANCE.showProgress),
+    highlights: z
+        .array(
+            z.object({
+                id: z.string().catch(''),
+                icon: z
+                    .enum(['sparkle', 'shield', 'clock', 'check', 'users', 'chat'])
+                    .catch('check'),
+                text: z.string().catch(''),
+            })
+        )
+        // No .max(): the editor caps adding at MAX_FORM_HIGHLIGHTS and
+        // applyFormAppearance slices on the way out.
+        .catch([]),
+    footerNote: z.string().catch(''),
+    heroHtml: z.string().catch(''),
+    customCss: z.string().catch(''),
+});
+
 // Only `campaign_name`, `campaign_type`, `start_date_local`, `end_date_local`, and
 // `default_initial_score` have validation rules that can actually fail (and are rendered via
 // `errors.<field>.message` in CreateCampaignForm.tsx / CampaignTypeDropdown / StatusDropdown).
@@ -121,6 +170,10 @@ export const buildAudienceCampaignSchema = (t: TFunction) =>
             postSubmitConfiguration: postSubmitConfigurationSchema.default(
                 DEFAULT_POST_SUBMIT_CONFIGURATION
             ),
+            // How the public response form LOOKS while it is being filled in.
+            // Same storage as the block above — `setting_json` → `formAppearance`.
+            // See services/audience-form-appearance.ts.
+            formAppearance: formAppearanceSchema.default(DEFAULT_FORM_APPEARANCE),
             custom_fields: z.array(testInputFieldSchema).default([]),
             customHtml: z.string().default(''),
             selectedOptionValue: z.string().default('textfield'),
@@ -175,6 +228,9 @@ export const defaultFormValues: AudienceCampaignForm = {
     // Fresh `buttons` array: a shallow spread would share the module-level
     // DEFAULT's array, so one stray mutation would poison every new form.
     postSubmitConfiguration: { ...DEFAULT_POST_SUBMIT_CONFIGURATION, buttons: [] },
+    // Fresh `highlights` array for the same reason as `buttons` above — a
+    // shallow spread would share the module-level DEFAULT's array.
+    formAppearance: { ...DEFAULT_FORM_APPEARANCE, highlights: [] },
     // custom_fields are loaded dynamically from settings via getCampaignCustomFields()
     // If no fields are configured in settings, the form will start with an empty array
     // Users can add fields manually or configure them in settings

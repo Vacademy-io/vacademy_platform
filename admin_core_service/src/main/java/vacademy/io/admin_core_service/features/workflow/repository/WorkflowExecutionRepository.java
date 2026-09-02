@@ -62,6 +62,28 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
         List<WorkflowExecution> findByWorkflowTriggerIdInOrderByStartedAtDesc(
                         @Param("triggerIds") List<String> triggerIds);
 
+        /**
+         * The automations that ran for one learner, newest first — backs the Workflows tab
+         * on the learner side-view.
+         *
+         * <p>Scoped by institute as well as user because an auth user can be a learner at
+         * more than one institute, and an admin of institute A must not see the runs
+         * institute B fired for the same person. The institute comes off the workflow (the
+         * execution has no institute column of its own).</p>
+         *
+         * <p>Backed by {@code idx_workflow_execution_subject_user} (V488), a partial index on
+         * the non-null subject rows.</p>
+         */
+        @Query(value = "SELECT we FROM WorkflowExecution we JOIN FETCH we.workflow w " +
+                        "WHERE we.subjectUserId = :userId " +
+                        "  AND w.instituteId = :instituteId",
+                        countQuery = "SELECT COUNT(we) FROM WorkflowExecution we " +
+                                        "WHERE we.subjectUserId = :userId " +
+                                        "  AND we.workflow.instituteId = :instituteId")
+        Page<WorkflowExecution> findBySubjectUserId(@Param("userId") String userId,
+                        @Param("instituteId") String instituteId,
+                        Pageable pageable);
+
         List<WorkflowExecution> findByWorkflowIdOrderByStartedAtDesc(String workflowId);
 
         List<WorkflowExecution> findByWorkflowScheduleIdOrderByStartedAtDesc(String workflowScheduleId);

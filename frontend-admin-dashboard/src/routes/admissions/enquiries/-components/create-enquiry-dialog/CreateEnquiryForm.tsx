@@ -96,6 +96,12 @@ const convertFieldsToPayload = (fields: any[], instituteId: string) => {
             status: field.status || 'ACTIVE',
             individual_order: field.individual_order ?? field.order ?? index,
             group_internal_order: field.group_internal_order ?? 0,
+            // Per-form required-ness. The nested `isMandatory` below is the shared master row
+            // that every other form using this field reads; this key is the one that belongs to
+            // THIS form, and it is what the Required switch must persist to.
+            is_mandatory: Boolean(
+                typeof field.isRequired === 'boolean' ? field.isRequired : true
+            ),
             custom_field: {
                 ...(customFieldData.id && { id: customFieldData.id }),
                 ...(customFieldData.guestId && { guestId: customFieldData.guestId }),

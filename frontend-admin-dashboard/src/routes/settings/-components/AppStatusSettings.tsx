@@ -46,10 +46,25 @@ interface PendingUpdate {
     ota_status: string;
 }
 
+/** The JavaScript bundle an installed app pulls on launch — read live, not recorded by ops. */
+interface OtaBundle {
+    version: string;
+    published_at: string;
+    release_notes: string;
+    min_native_version: string;
+    force_update: boolean;
+    shared_bundle: boolean;
+}
+
 interface PlatformStatus {
     platform: Platform;
     enabled: boolean;
     status: string;
+    /** The Play package name / Apple bundle id / Windows package identity for THIS platform. */
+    app_id?: string;
+    /** "Closed testing", "TestFlight — external testers", "Production"… empty when not recorded. */
+    track?: string;
+    ota?: OtaBundle | null;
     store_url: string;
     current_version: string;
     current_build: string;
@@ -107,6 +122,15 @@ function statusTone(status: string): StatusType {
     }
 }
 
+/**
+ * A track is not a status, so it never borrows the status palette's green. What it must not do is
+ * let "Live" on a testing track read as publicly downloadable — so anything short of the public
+ * track is tinted as a caution.
+ */
+function trackTone(track: string): StatusType {
+    return /^(production|app store|mac app store)/i.test(track) ? 'INFO' : 'WARNING';
+}
+
 function statusLabel(status: string): string {
     return status
         .toLowerCase()
@@ -134,6 +158,25 @@ export function formatRegistryDate(value: string | undefined | null): string {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
+    });
+}
+
+/**
+ * When the platform team's sync last reached the store for this platform.
+ *
+ * Only ever an ISO instant — it is stamped by the server, never typed — so unlike the registry's
+ * hand-entered dates this one carries a time worth showing: the sweep runs several times a day,
+ * and "checked at 06:10" answers "is this current?" in a way "checked on 31 Aug" does not.
+ */
+export function formatSyncedAt(value: string | undefined | null): string {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
     });
 }
 
@@ -269,6 +312,7 @@ export default function AppStatusSettings() {
                                 key={p.platform}
                                 platform={p}
                                 meta={platformMeta[p.platform]}
+                                appPackageName={app.package_name}
                                 t={t}
                             />
                         ))}
@@ -284,10 +328,12 @@ export default function AppStatusSettings() {
 function PlatformRow({
     platform: p,
     meta,
+    appPackageName,
     t,
 }: {
     platform: PlatformStatus;
     meta: { label: string; Icon: typeof AndroidLogo } | undefined;
+    appPackageName: string;
     t: TFunction;
 }) {
     // A platform key the backend added but this build doesn't know yet must not blank the page —
@@ -295,13 +341,23 @@ function PlatformRow({
     const Icon = meta?.Icon ?? DeviceMobile;
     const label = meta?.label ?? p.platform ?? t('platforms.unknown');
     const live = versionLabel(p.current_version, p.current_build);
+    const track = p.track?.trim();
+    // The app-level heading already carries one id; repeating it on the Android row is noise. An
+    // iOS bundle that differs from it is not — the same app ships under two different ids.
+    const ownId = p.app_id?.trim() && p.app_id.trim() !== appPackageName ? p.app_id.trim() : '';
+    const checkedAt = formatSyncedAt(p.last_synced_at);
 
     return (
         <div className="space-y-2 rounded-md border border-neutral-200 p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <Icon className="size-5 text-neutral-500" />
-                    <span className="text-body font-medium text-neutral-600">{label}</span>
+                    <div>
+                        <span className="text-body font-medium text-neutral-600">{label}</span>
+                        {ownId && (
+                            <p className="font-mono text-caption text-neutral-400">{ownId}</p>
+                        )}
+                    </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                     {live && <span className="text-caption text-neutral-500">{live}</span>}
@@ -310,6 +366,16 @@ function PlatformRow({
                         textSize="text-caption"
                         status={statusTone(p.status)}
                     />
+                    {track && (
+                        <StatusChip
+                            text={track}
+                            textSize="text-caption"
+                            status={trackTone(track)}
+                            // The status chip beside this one carries the icon; the INFO icon is a
+                            // cross, which next to the word "Production" reads as a failure.
+                            showIcon={false}
+                        />
+                    )}
                     {p.store_url && (
                         <a
                             href={p.store_url}
@@ -324,6 +390,14 @@ function PlatformRow({
                 </div>
             </div>
 
+            {p.ota && <OtaNote ota={p.ota} t={t} />}
+
+            {checkedAt && (
+                <p className="text-caption text-neutral-400">
+                    {t('lastCheckedOn', { date: checkedAt })}
+                </p>
+            )}
+
             {p.rejection && <RejectionNote rejection={p.rejection} t={t} />}
             {p.pending_update && <PendingUpdateNote update={p.pending_update} t={t} />}
             {!p.pending_update && p.update_available && (
@@ -336,6 +410,10 @@ function PlatformRow({
 function RejectionNote({ rejection, t }: { rejection: Rejection; t: TFunction }) {
     const version = versionLabel(rejection.version, rejection.build);
     const decidedOn = formatRegistryDate(rejection.decided_at);
+    // Apple tells us when a submission went in but never when review decided against it, so for
+    // the commonest rejection there is no decided date at all. Falling back to the submitted date
+    // keeps the line from reading as a rejection with no history whatsoever.
+    const submittedOn = decidedOn ? '' : formatRegistryDate(rejection.submitted_at);
 
     return (
         <div className="rounded-md border border-danger-400 bg-danger-100 p-3">
@@ -345,8 +423,9 @@ function RejectionNote({ rejection, t }: { rejection: Rejection; t: TFunction })
             </div>
             <p className="mt-1 text-caption text-neutral-600">
                 {version && <span className="font-mono">{version}</span>}
-                {version && decidedOn && ' · '}
+                {version && (decidedOn || submittedOn) && ' · '}
                 {decidedOn && t('rejection.decidedOn', { date: decidedOn })}
+                {submittedOn && t('rejection.submittedOn', { date: submittedOn })}
             </p>
             {rejection.reason ? (
                 <p className="mt-2 whitespace-pre-wrap text-caption text-neutral-600">
@@ -389,6 +468,36 @@ function PendingUpdateNote({ update, t }: { update: PendingUpdate; t: TFunction 
                     <span className="font-semibold">{t('update.releaseNotes')}: </span>
                     {update.release_notes}
                 </p>
+            )}
+        </div>
+    );
+}
+
+/**
+ * What the installed app is actually running.
+ *
+ * The store version is only the shell; this is the JavaScript inside it, shipped over the air and
+ * moving on its own schedule — an app can sit on store version 1.0.4 for months while its bundle
+ * changes weekly. Read live from the OTA registry rather than recorded by hand, which is why it is
+ * the one line here that cannot be out of date.
+ */
+function OtaNote({ ota, t }: { ota: OtaBundle; t: TFunction }) {
+    const publishedOn = formatRegistryDate(ota.published_at);
+    // 1.0.0 is the default floor every bundle carries; saying it out loud would just be noise.
+    const floor =
+        ota.min_native_version && ota.min_native_version !== '1.0.0' ? ota.min_native_version : '';
+
+    return (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-caption text-neutral-500">
+            <span className="flex items-center gap-1 font-medium text-neutral-600">
+                <Package className="size-3.5" />
+                {t('ota.label')}
+            </span>
+            <span className="font-mono text-neutral-600">{ota.version}</span>
+            {publishedOn && <span>{t('ota.publishedOn', { date: publishedOn })}</span>}
+            {floor && <span>· {t('ota.minNativeVersion', { version: floor })}</span>}
+            {ota.shared_bundle && (
+                <span className="text-warning-600">· {t('ota.sharedBundle')}</span>
             )}
         </div>
     );

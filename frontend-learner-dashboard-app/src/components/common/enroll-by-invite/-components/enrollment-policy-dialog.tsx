@@ -91,6 +91,12 @@ interface EnrollmentPolicyDialogProps {
     dialogType: EnrollmentPolicyDialogType;
     policyResponse: EnrollmentPolicyResponse | null;
     courseName?: string;
+    /**
+     * The message the backend actually returned for this failure. Used only by
+     * the re-enrollment dialog, whose configured copy is a template the backend
+     * has already resolved (see below); the other variants keep their own copy.
+     */
+    serverMessage?: string;
     onContinue?: () => void;
     onUpgrade?: (url: string) => void;
 }
@@ -101,6 +107,7 @@ const EnrollmentPolicyDialog = ({
     dialogType,
     policyResponse,
     courseName,
+    serverMessage,
     onContinue,
     onUpgrade,
 }: EnrollmentPolicyDialogProps) => {
@@ -310,7 +317,14 @@ const EnrollmentPolicyDialog = ({
                         {t("enrollmentPolicy.readyToContinue")}
                     </DialogTitle>
                     <DialogDescription className="text-gray-600 text-sm sm:text-base leading-relaxed">
-                        {reenrollmentPolicy?.reenrollmentBlockedMessage}
+                        {/* The backend substitutes {{allowed_date}} into the configured
+                            copy before throwing, so its message is the only version with
+                            a real date in it — the stored template still reads
+                            "{{allowed_date}}" literally. Prefer the resolved text, and
+                            keep a fallback so this never renders an empty dialog. */}
+                        {serverMessage ||
+                            reenrollmentPolicy?.reenrollmentBlockedMessage ||
+                            t("enrollmentPolicy.reenrollmentBlockedFallback")}
                     </DialogDescription>
                 </div>
             </DialogHeader>

@@ -11,8 +11,10 @@ import {
     Lightning as Zap,
     FlowArrow as WorkflowIcon,
     CalendarCheck,
+    QrCode,
+    LinkSimple,
 } from '@phosphor-icons/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -40,6 +42,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useNavigate } from '@tanstack/react-router';
 import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDialog';
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
+import { ShareQrDialog } from '../share-qr-dialog/ShareQrDialog';
 import { LeadBulkImportDialog } from '../campaign-users/LeadBulkImportDialog';
 import { SendMessageDialog } from '../campaign-users/SendMessageDialog';
 import { LinkedWorkflowsDialog } from './linked-workflows-dialog';
@@ -47,6 +50,11 @@ import { ConfigureAudienceWorkflowDialog } from './configure-audience-workflow-d
 import { BookingSettingsDialog } from '../booking-settings/BookingSettingsDialog';
 import { getActiveWorkflowsQuery } from '@/services/workflow-service';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
+import createCampaignLink from '../../-utils/createCampaignLink';
+import { useShortLink } from '@/hooks/use-short-link';
+import { useAudienceShortLinksEnabled } from '@/hooks/use-audience-short-links-enabled';
+import { SHORT_LINK_SOURCE } from '@/services/short-link';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -66,11 +74,15 @@ export const AudienceCampaignCardMenuOptions = ({
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const [openApiDialog, setOpenApiDialog] = useState(false);
     const [openEmbedDialog, setOpenEmbedDialog] = useState(false);
+    const [openQrDialog, setOpenQrDialog] = useState(false);
     const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
     const [openSendMessageDialog, setOpenSendMessageDialog] = useState(false);
     const [openLinkedWorkflowsDialog, setOpenLinkedWorkflowsDialog] = useState(false);
     const [openConfigureWorkflowDialog, setOpenConfigureWorkflowDialog] = useState(false);
     const [openBookingSettingsDialog, setOpenBookingSettingsDialog] = useState(false);
+    const [copyShortLinkRequested, setCopyShortLinkRequested] = useState(false);
+    const { enabled: shortLinksEnabled, isResolved: shortLinksResolved } =
+        useAudienceShortLinksEnabled();
     const { instituteDetails } = useInstituteDetailsStore();
     const bulkImportCustomFields = useMemo(
         () =>
@@ -174,6 +186,59 @@ export const AudienceCampaignCardMenuOptions = ({
         }).length;
     }, [allWorkflows, campaignId]);
 
+    // "Copy short link": get-or-create the campaign's u.<domain>/s/<code> URL and
+    // put it on the clipboard. The request is gated on the click (shortening
+    // inserts a row server-side) and its result is cached on the campaign id, so
+    // a second copy is instant and hands out the *same* code — a link an admin
+    // has already shared must never quietly change.
+    const campaignFormUrl = useMemo(
+        () =>
+            campaignId
+                ? createCampaignLink(campaignId, instituteDetails?.learner_portal_base_url)
+                : '',
+        [campaignId, instituteDetails?.learner_portal_base_url]
+    );
+
+    const {
+        shortUrl,
+        // Selecting a menu item closes the dropdown, so there is no surface left
+        // on which to render a busy state — the toast is the feedback.
+        isLoading: isShorteningLink,
+        isError: shortLinkFailed,
+    } = useShortLink({
+        source: SHORT_LINK_SOURCE.AUDIENCE_CAMPAIGN,
+        sourceId: campaignId,
+        destinationUrl: campaignFormUrl,
+        instituteId: instituteId ?? undefined,
+        // See use-audience-short-links-enabled: the write must wait until the
+        // institute's preference is actually known, not just optimistically ON.
+        enabled: copyShortLinkRequested && shortLinksEnabled && shortLinksResolved,
+    });
+
+    useEffect(() => {
+        if (!copyShortLinkRequested || isShorteningLink) return;
+
+        if (shortUrl) {
+            setCopyShortLinkRequested(false);
+            // The clipboard write happens after a network round-trip, which is
+            // outside Safari's user-gesture window — copyTextToClipboard falls
+            // back to execCommand there rather than failing.
+            copyTextToClipboard(shortUrl).then((copied) => {
+                if (copied) {
+                    toast.success(t('toast.shortLinkCopied'));
+                } else {
+                    toast.error(t('toast.shortLinkCopyFailed'));
+                }
+            });
+            return;
+        }
+
+        if (shortLinkFailed) {
+            setCopyShortLinkRequested(false);
+            toast.error(t('toast.shortLinkFailed'));
+        }
+    }, [copyShortLinkRequested, isShorteningLink, shortUrl, shortLinkFailed, t]);
+
     const handleConfigureWorkflow = () => {
         if (!campaignId) {
             toast.error(t('toast.campaignIdMissing'));
@@ -225,7 +290,7 @@ export const AudienceCampaignCardMenuOptions = ({
                         <WorkflowIcon className="mr-2 size-4" />
                         {t('menu.viewLinkedWorkflows')}
                         {linkedCount > 0 && (
-                            <span className="ml-auto rounded-full bg-primary-100 text-primary-700 px-2 py-0.5 text-caption font-semibold">
+                            <span className="ml-auto rounded-full bg-primary-100 px-2 py-0.5 text-caption font-semibold text-primary-700">
                                 {linkedCount}
                             </span>
                         )}
@@ -243,6 +308,32 @@ export const AudienceCampaignCardMenuOptions = ({
                         {t('menu.bookingSettings')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        onClick={() => {
+                            if (!campaignId) {
+                                toast.error(t('toast.campaignIdMissing'));
+                                return;
+                            }
+                            setOpenQrDialog(true);
+                        }}
+                    >
+                        <QrCode className="mr-2 size-4" />
+                        {t('menu.shareQrCode')}
+                    </DropdownMenuItem>
+                    {shortLinksEnabled && (
+                        <DropdownMenuItem
+                            onClick={() => {
+                                if (!campaignFormUrl) {
+                                    toast.error(t('toast.campaignIdMissing'));
+                                    return;
+                                }
+                                setCopyShortLinkRequested(true);
+                            }}
+                        >
+                            <LinkSimple className="mr-2 size-4" />
+                            {t('menu.copyShortLink')}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => setOpenApiDialog(true)}>
                         <Code className="mr-2 size-4" />
                         {t('menu.apiIntegration')}
@@ -308,6 +399,12 @@ export const AudienceCampaignCardMenuOptions = ({
             <EmbedCodeDialog
                 isOpen={openEmbedDialog}
                 onClose={() => setOpenEmbedDialog(false)}
+                campaign={campaign}
+            />
+
+            <ShareQrDialog
+                isOpen={openQrDialog}
+                onClose={() => setOpenQrDialog(false)}
                 campaign={campaign}
             />
 

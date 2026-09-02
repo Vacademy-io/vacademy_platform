@@ -332,6 +332,22 @@ function isFlatStringMap(value: unknown): boolean {
 }
 
 /**
+ * Key order for the map editors. Weekday maps (weekdayLinks, weekdayTitles) must
+ * read Monday→Sunday: sorted alphabetically they come out FRI, MON, SAT, SUN, THU,
+ * TUE, WED, which is meaningless to an admin filling in a week. Any non-weekday key
+ * set keeps the previous natural/numeric ordering.
+ */
+const WEEKDAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+const weekdayRank = (key: string) =>
+    WEEKDAY_ORDER.indexOf(key.trim().toUpperCase().slice(0, 3));
+function compareConfigKeys(a: string, b: string) {
+    const ra = weekdayRank(a);
+    const rb = weekdayRank(b);
+    if (ra !== -1 && rb !== -1) return ra - rb;
+    return a.localeCompare(b, undefined, { numeric: true });
+}
+
+/**
  * Editor for a one-level string map — a value per key, e.g. one class link per
  * trial day. Blank values are kept as keys so the row still reads as "this day
  * has no link of its own", which the workflow resolves to the fallback.
@@ -345,9 +361,7 @@ function FlatMapEditor({
     map: Record<string, string>;
     onChange: (next: Record<string, string>) => void;
 }) {
-    const entries = Object.entries(map).sort(([a], [b]) =>
-        a.localeCompare(b, undefined, { numeric: true })
-    );
+    const entries = Object.entries(map).sort(([a], [b]) => compareConfigKeys(a, b));
     const writeValue = (key: string, value: string) => onChange({ ...map, [key]: value });
     const removeKey = (key: string) => {
         const next = { ...map };
@@ -417,9 +431,7 @@ function NestedMapGridEditor({
     grid: Record<string, Record<string, string>>;
     onChange: (next: Record<string, Record<string, string>>) => void;
 }) {
-    const outerKeys = Object.keys(grid).sort((a, b) =>
-        a.localeCompare(b, undefined, { numeric: true })
-    );
+    const outerKeys = Object.keys(grid).sort(compareConfigKeys);
     return (
         <div className="rounded-md border border-neutral-200 bg-white p-2">
             <p className="mb-1 text-xs font-medium text-neutral-600">

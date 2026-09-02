@@ -171,8 +171,9 @@ export function ScheduleSessionDialog({
                             instituteId={instituteId}
                             // One session, one learner: selecting a second replaces the first
                             // rather than silently booking only one of them.
+                            singleSelect
                             selected={picked}
-                            onChange={(rows) => setPicked(rows.slice(-1))}
+                            onChange={setPicked}
                         />
                     )
                 )}

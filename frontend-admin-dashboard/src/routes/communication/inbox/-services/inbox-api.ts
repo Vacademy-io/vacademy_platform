@@ -58,7 +58,12 @@ export interface InboxMessage {
     // Template-send context (present only on outgoing template messages)
     templateName?: string;
     provider?: string;
-    deliveryStatus?: 'SUCCESS' | 'FAILED';
+    /**
+     * SUCCESS/FAILED describe the SEND (did the provider accept the request). SENT/DELIVERED/READ
+     * come from WhatsApp's own status webhook afterwards and describe what actually happened to the
+     * message — an accepted send can still end as FAILED seconds later.
+     */
+    deliveryStatus?: 'SUCCESS' | 'FAILED' | 'SENT' | 'DELIVERED' | 'READ';
     error?: string;
     headerType?: string;
     /** Media URL for an IMAGE/VIDEO/DOCUMENT template header. */

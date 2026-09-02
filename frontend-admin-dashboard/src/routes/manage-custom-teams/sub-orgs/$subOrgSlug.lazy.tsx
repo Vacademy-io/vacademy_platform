@@ -10,6 +10,7 @@ import { MyButton } from '@/components/design-system/button';
 import { getSubOrgs, resyncSubOrgInvites } from '../-services/custom-team-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { SubOrgAnalyticsPanel } from '@/routes/manage-suborg-teams/-components/sub-org-analytics-panel';
+import { SubOrgStatCards } from '@/routes/manage-suborg-teams/-components/sub-org-stat-cards';
 import {
     buildSubOrgSlug,
     resolveSubOrgBySlug,
@@ -154,9 +155,13 @@ function InstituteAdminSubOrgPage() {
                         : `Manage ${termPlural}`}
                 </title>
             </Helmet>
-            <div className="p-6">
+            <div className="p-5">
                 <SubOrgModuleGate>
-                <div className="mb-6 flex flex-col gap-3">
+                {/* Same header shape as the Manage <SubOrgs> list this page drills down
+                    from: title and subtitle on the left, the headline figures on the
+                    right. The two mutating actions move to their own right-aligned row
+                    below — the header's right slot now belongs to the cards. */}
+                <div className="mb-5 flex flex-col gap-3">
                     <Link
                         to="/manage-custom-teams"
                         className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
@@ -164,43 +169,44 @@ function InstituteAdminSubOrgPage() {
                         <ArrowLeft className="h-3 w-3" />
                         Back to {termPlural.toLowerCase()}
                     </Link>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                            <h1 className="text-h2 font-bold text-neutral-900">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="max-w-md">
+                            <h1 className="text-3xl font-bold text-neutral-900">
                                 {selectedSubOrg?.name || term}
                             </h1>
-                            <p className="text-caption text-neutral-500">
+                            <p className="mt-1 text-sm text-neutral-500">
                                 {canEditConfig
                                     ? `Manage this ${term.toLowerCase()}'s admin payment, learners, invoices, and team members.`
                                     : `View this ${term.toLowerCase()}'s admin payment, learners, invoices, and team members.`}
                             </p>
                         </div>
-                        {selectedSubOrg && canEditConfig && (
-                            <div className="flex shrink-0 items-center gap-2">
-                                <MyButton
-                                    type="button"
-                                    buttonType="secondary"
-                                    scale="small"
-                                    onClick={() => setEditOpen(true)}
-                                >
-                                    <PencilSimple className="size-4" />
-                                    Edit {term.toLowerCase()}
-                                </MyButton>
-                                <MyButton
-                                    type="button"
-                                    buttonType="secondary"
-                                    scale="small"
-                                    disable={resyncMutation.isPending}
-                                    onClick={() => resyncMutation.mutate(selectedSubOrg.id)}
-                                >
-                                    <ArrowsClockwise
-                                        className={`size-4 ${resyncMutation.isPending ? 'animate-spin' : ''}`}
-                                    />
-                                    {resyncMutation.isPending ? 'Re-syncing…' : 'Re-sync invites'}
-                                </MyButton>
-                            </div>
-                        )}
+                        {selectedSubOrg && <SubOrgStatCards subOrgId={selectedSubOrg.id} full />}
                     </div>
+                    {selectedSubOrg && canEditConfig && (
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setEditOpen(true)}
+                            >
+                                <PencilSimple className="size-4" />
+                                Edit {term.toLowerCase()}
+                            </MyButton>
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                disable={resyncMutation.isPending}
+                                onClick={() => resyncMutation.mutate(selectedSubOrg.id)}
+                            >
+                                <ArrowsClockwise
+                                    className={`size-4 ${resyncMutation.isPending ? 'animate-spin' : ''}`}
+                                />
+                                {resyncMutation.isPending ? 'Re-syncing…' : 'Re-sync invites'}
+                            </MyButton>
+                        </div>
+                    )}
                 </div>
 
                 {isLoading ? (
@@ -224,6 +230,7 @@ function InstituteAdminSubOrgPage() {
                         <SubOrgAnalyticsPanel
                             subOrgId={selectedSubOrg.id}
                             subOrgName={selectedSubOrg.name}
+                            variant="page"
                         />
                     </div>
                 )}

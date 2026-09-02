@@ -36,6 +36,7 @@ vi.mock('@/lib/auth/axiosInstance', () => ({ default: { get: vi.fn() } }));
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import AppStatusSettings, {
     formatRegistryDate,
+    formatSyncedAt,
     versionLabel,
 } from '@/routes/settings/-components/AppStatusSettings';
 
@@ -113,6 +114,142 @@ describe('AppStatusSettings — what an institute sees about its own app', () =>
         expect(screen.queryByText('No app registered yet')).not.toBeInTheDocument();
     });
 
+    describe('release track', () => {
+        it('says which track a build is on, so "Live" is not read as publicly downloadable', async () => {
+            respondWith([platform({ track: 'Closed testing' })]);
+            render(<AppStatusSettings />);
+
+            expect(await screen.findByText('Closed testing')).toBeInTheDocument();
+            expect(screen.getByText('Live')).toBeInTheDocument();
+        });
+
+        it('shows no track chip at all when ops never recorded one', async () => {
+            respondWith([platform()]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            expect(screen.queryByText('Production')).not.toBeInTheDocument();
+        });
+    });
+
+    describe('the store id each platform ships under', () => {
+        it('shows an iOS bundle id that differs from the app package name', async () => {
+            respondWith([platform({ platform: 'IOS', app_id: 'io.vacademy.sn' })]);
+            render(<AppStatusSettings />);
+
+            expect(await screen.findByText('io.vacademy.sn')).toBeInTheDocument();
+        });
+
+        it('does not repeat the id already printed under the app name', async () => {
+            respondWith([platform({ app_id: 'com.vacademy.sn' })]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            // Once, in the card header — not a second time on the Android row.
+            expect(screen.getAllByText('com.vacademy.sn')).toHaveLength(1);
+        });
+    });
+
+    describe('desktop platforms', () => {
+        it('shows no OTA line on Windows or macOS — those shells never receive a bundle', async () => {
+            respondWith([
+                platform({ platform: 'MACOS', app_id: 'io.zoeedtech.app', ota: null }),
+                platform({ platform: 'WINDOWS', app_id: 'ShikshaNation.ZOEEdtech', ota: null }),
+            ]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('macOS');
+            expect(screen.getByText('Windows')).toBeInTheDocument();
+            expect(screen.queryByText('App content (OTA)')).not.toBeInTheDocument();
+            expect(screen.queryByText(/shared bundle/)).not.toBeInTheDocument();
+        });
+    });
+
+    describe('how fresh the status is', () => {
+        it('says when the store was last checked, so a stale reading is visible as one', async () => {
+            respondWith([platform({ last_synced_at: '2026-08-31T06:10:00Z' })]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            expect(
+                screen.getByText(
+                    new RegExp(`Store checked ${formatSyncedAt('2026-08-31T06:10:00Z')}`)
+                )
+            ).toBeInTheDocument();
+        });
+
+        it('says nothing at all when no sync has ever reached the store', async () => {
+            respondWith([platform({ last_synced_at: '' })]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            expect(screen.queryByText(/Store checked/)).not.toBeInTheDocument();
+        });
+
+        it('drops an unparseable timestamp rather than printing Invalid Date', async () => {
+            respondWith([platform({ last_synced_at: 'whenever' })]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            expect(screen.queryByText(/Store checked/)).not.toBeInTheDocument();
+        });
+    });
+
+    describe('the OTA bundle the app is actually running', () => {
+        const ota = (overrides: Record<string, unknown> = {}) => ({
+            version: '2.5.6',
+            published_at: '2026-08-26T00:00:00Z',
+            release_notes: '',
+            min_native_version: '1.0.0',
+            force_update: false,
+            shared_bundle: false,
+            ...overrides,
+        });
+
+        it('shows the bundle version and when it was published, next to the store version', async () => {
+            respondWith([platform({ ota: ota() })]);
+            render(<AppStatusSettings />);
+
+            expect(await screen.findByText('App content (OTA)')).toBeInTheDocument();
+            expect(screen.getByText('2.5.6')).toBeInTheDocument();
+            expect(screen.getByText(line('published', '2026-08-26T00:00:00Z'))).toBeInTheDocument();
+            // The store shell and the bundle inside it are different numbers, and both are shown.
+            expect(screen.getByText('2.4.5 (245)')).toBeInTheDocument();
+        });
+
+        it('says nothing about OTA when no bundle serves this app', async () => {
+            respondWith([platform()]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('Live');
+            expect(screen.queryByText('App content (OTA)')).not.toBeInTheDocument();
+        });
+
+        it('flags a bundle that was never built for this app', async () => {
+            respondWith([platform({ ota: ota({ shared_bundle: true }) })]);
+            render(<AppStatusSettings />);
+
+            expect(
+                await screen.findByText(/shared bundle, not built for your app/)
+            ).toBeInTheDocument();
+        });
+
+        it('mentions the native floor only when it is not the default every bundle carries', async () => {
+            respondWith([platform({ ota: ota({ min_native_version: '2.0.0' }) })]);
+            render(<AppStatusSettings />);
+
+            expect(await screen.findByText(/needs app version 2.0.0 or newer/)).toBeInTheDocument();
+        });
+
+        it('does not print the 1.0.0 floor every bundle carries', async () => {
+            respondWith([platform({ ota: ota() })]);
+            render(<AppStatusSettings />);
+
+            await screen.findByText('App content (OTA)');
+            expect(screen.queryByText(/needs app version/)).not.toBeInTheDocument();
+        });
+    });
+
     describe('rejections', () => {
         it('spells out the store‑cited reason, the build and when it was decided', async () => {
             respondWith([
@@ -135,6 +272,27 @@ describe('AppStatusSettings — what an institute sees about its own app', () =>
             ).toBeInTheDocument();
             expect(screen.getByText('2.5.0 (250)')).toBeInTheDocument();
             expect(screen.getByText(line('Rejected on', '2026-08-22'))).toBeInTheDocument();
+        });
+
+        it('falls back to the submitted date when the store never told us when it decided', async () => {
+            // Apple's shape: App Store Connect reports that a submission has unresolved issues and
+            // when it went in, but never when review decided against it.
+            respondWith([
+                platform({
+                    status: 'REJECTED',
+                    rejection: {
+                        version: '1.0.5',
+                        build: '',
+                        reason: '',
+                        submitted_at: '2026-05-31T13:15:08Z',
+                        decided_at: '',
+                    },
+                }),
+            ]);
+            render(<AppStatusSettings />);
+
+            expect(await screen.findByText('Rejected by the store')).toBeInTheDocument();
+            expect(screen.getByText(line('Submitted', '2026-05-31T13:15:08Z'))).toBeInTheDocument();
         });
 
         it('says the reason is not recorded yet rather than showing an empty box', async () => {

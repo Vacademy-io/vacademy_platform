@@ -8,7 +8,7 @@ import {
 } from '@/components/common/custom-fields/AddCustomFieldDialog';
 import { useFieldArray, useFormContext } from 'react-hook-form';
 import { InviteForm } from '../../-schema/InviteFormSchema';
-import { MandatoryKeys } from '../../-utils/inviteLinkKeyChecks';
+import { FieldRole, classifyFieldRole } from '@/components/common/custom-fields/field-roles';
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -84,7 +84,6 @@ export const CustomFieldsSection = ({
             >
                 <div className="flex flex-col gap-4">
                     {fields.map((field, index) => {
-                        const locked = field.oldKey || MandatoryKeys(field.name);
                         const isEditing = editingIndex === index;
                         return (
                             <SortableItem key={field.id} value={field.id} asChild>
@@ -94,7 +93,6 @@ export const CustomFieldsSection = ({
                                         name={field.name}
                                         type={field.type}
                                         isRequired={field.isRequired}
-                                        locked={locked}
                                         isEditing={isEditing}
                                         onToggleRequired={() => toggleIsRequired(field.id)}
                                         onEdit={() => setEditingIndex(index)}
@@ -119,6 +117,21 @@ export const CustomFieldsSection = ({
                     })}
                 </div>
             </Sortable>
+            {/* Nothing stops an admin removing Email any more — but a learner is enrolled under
+                their email address, so a form without one cannot create their account. Say so
+                rather than letting the invite go out broken. */}
+            {!(customFields ?? [])
+                .filter((field) => field.status !== 'DELETED')
+                .some(
+                    (field) =>
+                        classifyFieldRole({ type: field.type, label: field.name }) ===
+                        FieldRole.EMAIL
+                ) && (
+                <p className="text-caption text-warning-600">
+                    Learners are enrolled under their email address — without an Email field on
+                    this form, an account cannot be created for them.
+                </p>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-3">
                 {!customFields
                     ?.filter((field) => field.status === 'ACTIVE')

@@ -76,6 +76,10 @@ import {
 } from "./-components";
 import { getCurrencySymbol } from "./-components/payment-selection-step";
 import {
+  detectEnrollmentConflict,
+  hasEnrollmentPolicyContent,
+} from "./-utils/enrollment-conflict";
+import {
   enrollCpoWithoutPayment,
   enrollCpoLearnerForPaymentViaInvite,
   fetchCpoDues,
@@ -224,6 +228,11 @@ const EnrollByInvite = ({
     useState(false);
   const [enrollmentPolicyDialogType, setEnrollmentPolicyDialogType] =
     useState<EnrollmentPolicyDialogType>("success_with_actions");
+  // The message the backend returned for this failure. The re-enrollment dialog
+  // needs it because the institute's configured copy is a {{allowed_date}}
+  // template that only the backend has resolved.
+  const [enrollmentPolicyServerMessage, setEnrollmentPolicyServerMessage] =
+    useState<string | undefined>(undefined);
   const [enrollmentPolicyResponse, setEnrollmentPolicyResponse] =
     useState<EnrollmentPolicyResponse | null>(null);
 
@@ -1045,6 +1054,7 @@ const EnrollByInvite = ({
   const fetchAndHandleEnrollmentPolicy = async (
     scenario: "success" | "error_already_enrolled" = "success",
     enrollmentErrorMessage?: string,
+    enrollmentResponseCode?: string,
   ): Promise<boolean> => {
     try {
       const packageSessionId =
@@ -1063,7 +1073,11 @@ const EnrollByInvite = ({
         policyResponse,
       );
 
-      if (policyResponse && Object.keys(policyResponse).length > 0) {
+      // A package session with no enrollment policy configured does NOT come back
+      // as `{}` -- older backends serialize the empty DTO as five null keys, so the
+      // previous `Object.keys(...).length > 0` check read as "policy exists" and
+      // every enrollment failure reached the dialog below.
+      if (hasEnrollmentPolicyContent(policyResponse)) {
         setEnrollmentPolicyResponse(policyResponse);
 
         if (scenario === "success") {
@@ -1074,40 +1088,28 @@ const EnrollByInvite = ({
             Object.keys(policyResponse.workflow.frontendActions).length > 0;
 
           if (hasFrontendActions) {
+            setEnrollmentPolicyServerMessage(undefined);
             setEnrollmentPolicyDialogType("success_with_actions");
             setEnrollmentPolicyDialogOpen(true);
             return true;
           }
         } else if (scenario === "error_already_enrolled") {
-          // Determine strictness and type of blockage
-          let dialogType: EnrollmentPolicyDialogType = "already_enrolled";
+          // Only a real enrollment conflict gets a dialog. HTTP 510 is this
+          // backend's generic business-error status, so an unrelated failure
+          // (payment mandate rejected, seat limit reached, plan/invite mismatch)
+          // arrives here looking identical to a conflict. Returning null lets the
+          // caller surface the actual error instead of "Already Enrolled".
+          const dialogType = detectEnrollmentConflict({
+            policyResponse,
+            errorMessage: enrollmentErrorMessage,
+            responseCode: enrollmentResponseCode,
+          });
 
-          // Determine dialog type based on the actual enrollment error message
-          // If the error message matches the onEnrollment.blockMessage, it's a paid member block
-          // Otherwise, it's a re-enrollment case
-          if (
-            policyResponse?.onEnrollment?.blockIfActiveIn?.length &&
-            policyResponse?.onEnrollment?.blockMessage &&
-            enrollmentErrorMessage &&
-            enrollmentErrorMessage === policyResponse.onEnrollment.blockMessage
-          ) {
-            dialogType = "paid_member_blocked";
-          }
-          // If the error matches alreadyEnrolledMessage, keep already_enrolled dialog
-          else if (
-            policyResponse?.reenrollmentPolicy?.alreadyEnrolledMessage &&
-            enrollmentErrorMessage ===
-              policyResponse.reenrollmentPolicy.alreadyEnrolledMessage
-          ) {
-            dialogType = "already_enrolled";
-          }
-          // If there are upgrade options and error matches reenrollmentBlockedMessage, show upsell
-          else if (
-            policyResponse?.reenrollmentPolicy?.upgradeOptions?.paid_upgrade
-          ) {
-            dialogType = "reenrollment_blocked";
+          if (!dialogType) {
+            return false;
           }
 
+          setEnrollmentPolicyServerMessage(enrollmentErrorMessage);
           setEnrollmentPolicyDialogType(dialogType);
           setEnrollmentPolicyDialogOpen(true);
           return true;
@@ -1528,6 +1530,7 @@ const EnrollByInvite = ({
           const dialogOpened = await fetchAndHandleEnrollmentPolicy(
             "error_already_enrolled",
             errorData?.ex,
+            errorData?.responseCode,
           );
           if (!dialogOpened) {
             toast.error(errorData?.ex || t("errors.enrollmentFailed"));
@@ -1606,6 +1609,7 @@ const EnrollByInvite = ({
           const dialogOpened = await fetchAndHandleEnrollmentPolicy(
             "error_already_enrolled",
             errorData?.ex,
+            errorData?.responseCode,
           );
           if (!dialogOpened) {
             toast.error(errorData?.ex || t("errors.paymentFailed"));
@@ -1717,6 +1721,7 @@ const EnrollByInvite = ({
           const dialogOpened = await fetchAndHandleEnrollmentPolicy(
             "error_already_enrolled",
             errorData?.ex,
+            errorData?.responseCode,
           );
           if (!dialogOpened) {
             toast.error(errorData?.ex || t("errors.paymentFailed"));
@@ -1860,6 +1865,7 @@ const EnrollByInvite = ({
           const dialogOpened = await fetchAndHandleEnrollmentPolicy(
             "error_already_enrolled",
             errorData?.ex,
+            errorData?.responseCode,
           );
           if (!dialogOpened) {
             toast.error(errorData?.ex || t("errors.paymentFailed"));
@@ -1958,6 +1964,7 @@ const EnrollByInvite = ({
           const dialogOpened = await fetchAndHandleEnrollmentPolicy(
             "error_already_enrolled",
             errorData?.ex,
+            errorData?.responseCode,
           );
           if (!dialogOpened) {
             toast.error(errorData?.ex || t("errors.failedToInitiatePayment"));
@@ -2047,6 +2054,7 @@ const EnrollByInvite = ({
         const dialogOpened = await fetchAndHandleEnrollmentPolicy(
           "error_already_enrolled",
           errorData?.ex,
+          errorData?.responseCode,
         );
         if (!dialogOpened) {
           toast.error(errorData?.ex || t("errors.paymentFailed"));
@@ -2163,6 +2171,7 @@ const EnrollByInvite = ({
             const dialogOpened = await fetchAndHandleEnrollmentPolicy(
               "error_already_enrolled",
               errorData?.ex,
+              errorData?.responseCode,
             );
             if (!dialogOpened) {
               toast.error(errorData?.ex || t("errors.failedToCompleteEnrollment"));
@@ -2322,6 +2331,7 @@ const EnrollByInvite = ({
           const dialogOpened = await fetchAndHandleEnrollmentPolicy(
             "error_already_enrolled",
             errData?.ex,
+            errData?.responseCode,
           );
           if (!dialogOpened) {
             toast.error(errData?.ex || t("errors.paymentFailed"));
@@ -3491,6 +3501,7 @@ const EnrollByInvite = ({
         onOpenChange={setEnrollmentPolicyDialogOpen}
         dialogType={enrollmentPolicyDialogType}
         policyResponse={enrollmentPolicyResponse}
+        serverMessage={enrollmentPolicyServerMessage}
         courseName={courseData.course || inviteData?.name || t("defaultThisCourse", { course })}
         onContinue={() => {
           // Navigate to dashboard after dialog is closed

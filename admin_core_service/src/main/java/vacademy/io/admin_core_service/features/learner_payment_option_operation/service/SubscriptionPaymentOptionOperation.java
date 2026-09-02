@@ -410,7 +410,18 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         } else if (days <= 95) {
             return "quarterly";
         } else if (days <= 190) {
-            return "halfyearly";
+            // NOT "halfyearly". Razorpay rejects it with
+            //   BAD_REQUEST_ERROR: Recurring value should be between 1 and 31 for the provided frequency
+            // which kills mandate registration, and with it the whole enrolment:
+            // initiateMandatePayment throws, recordLearnerRequest rolls back, and the learner
+            // is shown "already enrolled" (the FE maps every 510 to that). The committed
+            // REQUIRES_NEW ledger accrual survives, leaving phantom debt behind.
+            //
+            // monthly / quarterly / yearly are all accepted -- verified against live UPI
+            // enrolments on 2026-08-31/09-01 -- so only this bucket is changed.
+            // as_presented is correct for us anyway: RenewalChargeService drives the
+            // schedule, so the mandate advertises "debited as presented by the merchant".
+            return "as_presented";
         } else if (days <= 370) {
             return "yearly";
         }

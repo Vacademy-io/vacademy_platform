@@ -221,6 +221,8 @@
     "success": {
         "title": "आपका नामांकन हो गया है!",
         "defaultMessage": "{{count}} {{course}} में सफलतापूर्वक नामांकन हो गया है। अभी सीखना शुरू करें।",
+        "totalPaid": "कुल भुगतान",
+        "youSaved": "आपने {{amount}} बचाए",
         "access": {
             "oneYear": "1 वर्ष की एक्सेस",
             "months_one": "{{count}} महीने की एक्सेस",

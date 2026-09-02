@@ -116,8 +116,8 @@
         "domainPlaceholder": "learn.myschool.com",
         "primary": "प्राइमरी",
         "setPrimary": "प्राइमरी सेट करें",
-        "primaryTooltip": "इस भूमिका के लिए प्राइमरी डोमेन",
-        "setPrimaryTooltip": "प्राइमरी के रूप में सेट करें",
+        "primaryTooltip": "इस भूमिका के लिए पोर्टल URL — डोमेन सक्रिय होने पर ईमेल में उपयोग होगा",
+        "setPrimaryTooltip": "इस भूमिका के पोर्टल URL के रूप में इस डोमेन का उपयोग करें",
         "settingsToggle": "सेटिंग्स",
         "toggleSettingsTooltip": "सेटिंग्स टॉगल करें",
         "removeTooltip": "हटाएं",
@@ -131,7 +131,8 @@
         "noInstituteSelected": "कोई संस्थान चयनित नहीं है",
         "addAtLeastOneDomain": "कम से कम एक डोमेन प्रविष्टि जोड़ें",
         "setupCompleted": "व्हाइट-लेबल सेटअप पूरा हुआ! 🎉",
-        "setupFailed": "सेटअप विफल रहा।"
+        "setupFailed": "सेटअप विफल रहा।",
+        "portalUrlAdopted": "{{roles}} पोर्टल URL अब लाइव है और सहेज लिया गया है।"
     },
     "setupResult": {
         "title": "सेटअप पूर्ण",
@@ -179,6 +180,17 @@
             "logoWidth": "लोगो चौड़ाई (px)",
             "logoHeight": "लोगो ऊंचाई (px)",
             "stackNameBelowLogo": "नाम लोगो के नीचे"
-        }
+        },
+        "portalUrl": "पोर्टल URL",
+        "portalUrlTooltip": "ईमेल और साझा लिंक अभी इसी डोमेन का उपयोग करते हैं",
+        "primaryPending": "प्राइमरी · लंबित",
+        "primaryPendingTooltip": "पोर्टल URL के रूप में चुना गया — यह डोमेन सक्रिय होते ही सहेजा जाएगा",
+        "willBeAdoptedOnceActive": "पोर्टल URL के रूप में चुना गया। यह डोमेन सक्रिय होते ही अपने आप सहेज लिया जाएगा — तब तक ईमेल और लिंक मौजूदा पोर्टल URL का ही उपयोग करेंगे।"
+    },
+    "subOrg": {
+        "label": "उप-संगठन",
+        "none": "मूल संस्थान",
+        "untitled": "अनामांकित उप-संगठन",
+        "badgeTooltip": "यह पोर्टल इसी उप-संगठन के लिए ब्रांडेड है और इसी तक सीमित है"
     }
 }

@@ -14,7 +14,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { SpinnerGap } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
-import "react-phone-input-2/lib/style.css";
+// bootstrap.css is the ONE variant this app loads. Importing a second
+// variant anywhere puts two incompatible geometries in the same bundle and
+// the country flag lands on top of the country name — see the
+// "react-phone-input-2 — design-system geometry" block in src/index.css.
+import "react-phone-input-2/lib/bootstrap.css";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { getTokenFromCookie, getTokenDecodedData } from "@/lib/auth/sessionUtility";
 import { getPreferredPhoneCountries } from "@/services/domain-routing";
@@ -243,8 +247,11 @@ export const CustomFieldRenderer = ({
             enableSearch={true}
             disabled={disabled}
             placeholder={placeholder || t("customFields.enterField", { name })}
-            inputStyle={{ width: "100%" }}
-            containerStyle={{ width: "100%" }}
+            // !h-10 matches the `size="large"` inputs this renderer uses for
+            // every other field type; without it the library's padding-derived
+            // height makes the phone field visibly taller than its neighbours.
+            inputClass="!w-full !h-10"
+            containerClass="!w-full"
           />
         );
       }

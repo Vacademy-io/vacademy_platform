@@ -63,6 +63,136 @@ class AppStatusMapperTest {
     }
 
     @Nested
+    @DisplayName("a rejection the live sync recorded")
+    class SyncedRejection {
+
+        private static AppStatusResponse.PlatformStatus platformWith(String rejectionJson, String history) {
+            return AppStatusMapper.toRegisteredApp(record("{"
+                    + "\"id\":\"app-1\",\"basics\":{\"packageName\":\"com.x.app\"},"
+                    + "\"platforms\":{\"ANDROID\":{\"enabled\":true,\"status\":\"REJECTED\""
+                    + (rejectionJson.isEmpty() ? "" : ",\"rejection\":" + rejectionJson)
+                    + "}},"
+                    + "\"versions\":" + history + ",\"submissions\":[]}"))
+                    .getPlatforms().get(0);
+        }
+
+        @Test
+        @DisplayName("the store's own reason reaches the institute")
+        void syncedReasonIsShown() {
+            AppStatusResponse.Rejection rejection = platformWith(
+                    "{\"version\":\"1.0.4\",\"reason\":\"Package validation failed: missing capability\","
+                            + "\"submittedAt\":\"2026-08-20\",\"decidedAt\":\"2026-08-22\"}",
+                    "[]").getRejection();
+
+            assertNotNull(rejection);
+            assertEquals("Package validation failed: missing capability", rejection.getReason());
+            assertEquals("1.0.4", rejection.getVersion());
+            assertEquals("2026-08-20", rejection.getSubmittedAt());
+        }
+
+        @Test
+        @DisplayName("a rejection with no reason still says the app was rejected, and when")
+        void syncedRejectionWithoutReason() {
+            // Apple's case: the API gives the state and the date, never the review's message.
+            AppStatusResponse.Rejection rejection = platformWith(
+                    "{\"version\":\"1.0.5\",\"reason\":\"\",\"submittedAt\":\"2026-05-31\",\"decidedAt\":\"\"}",
+                    "[]").getRejection();
+
+            assertNotNull(rejection);
+            assertEquals("", rejection.getReason());
+            assertEquals("1.0.5", rejection.getVersion());
+            assertEquals("2026-05-31", rejection.getSubmittedAt());
+        }
+
+        @Test
+        @DisplayName("a reason someone typed against the build wins over the bare synced one")
+        void handWrittenReasonWins() {
+            AppStatusResponse.Rejection rejection = platformWith(
+                    "{\"version\":\"1.0.5\",\"reason\":\"\",\"submittedAt\":\"2026-05-31\",\"decidedAt\":\"\"}",
+                    "[{\"platform\":\"ANDROID\",\"version\":\"1.0.5\",\"status\":\"REJECTED\","
+                            + "\"rejectionReason\":\"Guideline 5.1.1 — account deletion missing\","
+                            + "\"createdAt\":\"2026-05-31\"}]").getRejection();
+
+            assertEquals("Guideline 5.1.1 — account deletion missing", rejection.getReason());
+        }
+
+        @Test
+        @DisplayName("with nothing recorded anywhere it still says rejected, reason unknown")
+        void noSourceAtAll() {
+            AppStatusResponse.Rejection rejection = platformWith("", "[]").getRejection();
+
+            assertNotNull(rejection);
+            assertEquals("", rejection.getReason());
+            assertEquals("", rejection.getVersion());
+        }
+    }
+
+    @Nested
+    @DisplayName("store id and release track")
+    class AppIdAndTrack {
+
+        private static AppStatusResponse.PlatformStatus platformOf(String platform, String fields) {
+            JsonNode record = record("{"
+                    + "\"id\":\"app-1\",\"basics\":{\"packageName\":\"com.hcca.app\"},"
+                    + "\"platforms\":{\"" + platform + "\":{\"enabled\":true,\"status\":\"LIVE\""
+                    + (fields.isEmpty() ? "" : ",\"fields\":" + fields)
+                    + "}}}");
+            List<AppStatusResponse.PlatformStatus> platforms =
+                    AppStatusMapper.toRegisteredApp(record).getPlatforms();
+            assertEquals(1, platforms.size());
+            return platforms.get(0);
+        }
+
+        @Test
+        @DisplayName("iOS reports its own bundle id, not the record's Android package name")
+        void iosUsesBundleId() {
+            assertEquals("io.hcca.app",
+                    platformOf("IOS", "{\"bundle_id\":\"io.hcca.app\"}").getAppId());
+        }
+
+        @Test
+        @DisplayName("Android reports its package name")
+        void androidUsesPackageName() {
+            assertEquals("com.hcca.app",
+                    platformOf("ANDROID", "{\"package_name\":\"com.hcca.app\"}").getAppId());
+        }
+
+        @Test
+        @DisplayName("Windows reports its package identity")
+        void windowsUsesPackageIdentity() {
+            assertEquals("12345Vidyayatan.HCCA",
+                    platformOf("WINDOWS", "{\"package_identity\":\"12345Vidyayatan.HCCA\"}").getAppId());
+        }
+
+        @Test
+        @DisplayName("a platform with no id of its own falls back to the record's package name")
+        void fallsBackToBasics() {
+            assertEquals("com.hcca.app", platformOf("ANDROID", "").getAppId());
+        }
+
+        @Test
+        @DisplayName("the release track comes through verbatim — the catalogue owns the wording")
+        void trackPassesThrough() {
+            assertEquals("Closed testing",
+                    platformOf("ANDROID", "{\"release_track\":\"Closed testing\"}").getTrack());
+        }
+
+        @Test
+        @DisplayName("a track nobody recorded is empty, never guessed from the status")
+        void trackNotRecorded() {
+            assertEquals("", platformOf("ANDROID", "{\"package_name\":\"com.hcca.app\"}").getTrack());
+        }
+
+        @Test
+        @DisplayName("a record written before platforms had fields at all still maps")
+        void legacyRecordWithoutFields() {
+            AppStatusResponse.PlatformStatus platform = platformOf("ANDROID", "");
+            assertEquals("", platform.getTrack());
+            assertEquals("com.hcca.app", platform.getAppId());
+        }
+    }
+
+    @Nested
     @DisplayName("which platforms are shown at all")
     class PlatformSelection {
 

@@ -3,8 +3,10 @@ package vacademy.io.notification_service.features.notification_log.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 
 import java.time.Instant;
@@ -1067,4 +1069,74 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("instituteId") String instituteId,
             @Param("emails") List<String> emails,
             @Param("recentSince") Instant recentSince);
+
+    /**
+     * Copy a status webhook's verdict onto the outbound row that produced the message, matched by
+     * wamid (both rows carry it in source_id). Without this the outbound row keeps its send-time
+     * "Status: SUCCESS" forever and every read surface reports an undelivered message as delivered.
+     * <p>
+     * Monotonic by design: status webhooks are not ordered, so a late SENT must never overwrite a
+     * DELIVERED/READ already recorded, and nothing may overwrite FAILED — which is terminal, and the
+     * one verdict a human needs to see. The rank comparison, not "last write wins", enforces that.
+     * <p>
+     * Returns rows updated; 0 is normal and NOT an error — the outbound row may not be written yet
+     * (WhatsAppService saves the batch's log rows after the whole send loop), or the message may
+     * have been sent by a path that stores no wamid. The status row itself is saved either way, so
+     * nothing is lost.
+     */
+    /**
+     * What the provider ended up doing with these messages, keyed by wamid. Exists so a caller that
+     * just sent something can find out whether it ARRIVED — the send response can only report that
+     * the provider accepted it, and the verdict lands a second or two later on the status webhook.
+     * <p>
+     * A message with no row here, or a null deliveryStatus, is still awaiting its webhook; that is
+     * not a failure and must not be rendered as one.
+     */
+    interface DeliveryStatusRow {
+        String getMessageId();
+        String getDeliveryStatus();
+        String getErrorCode();
+        String getErrorMessage();
+        java.sql.Timestamp getReportedAt();
+    }
+
+    @Query(value = """
+            SELECT source_id AS "messageId",
+                   delivery_status AS "deliveryStatus",
+                   delivery_error_code AS "errorCode",
+                   delivery_error_message AS "errorMessage",
+                   delivery_updated_at AS "reportedAt"
+            FROM notification_log
+            WHERE notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              AND source_id = ANY(CAST(:messageIds AS text[]))
+            """, nativeQuery = true)
+    // The literal notification_type (rather than a bound parameter) is what lets the planner use
+    // the partial index idx_nl_source_id_outgoing instead of scanning the table.
+    List<DeliveryStatusRow> findDeliveryStatusByProviderMessageIds(
+            @Param("messageIds") String[] messageIds);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(value = """
+            UPDATE notification_log
+            SET delivery_status = :status,
+                delivery_error_code = LEFT(:errorCode, 50),
+                delivery_error_message = LEFT(:errorMessage, 500),
+                delivery_updated_at = :reportedAt
+            WHERE source_id = :providerMessageId
+              AND notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              AND (delivery_status IS NULL
+                   OR CASE CAST(:status AS varchar)
+                          WHEN 'SENT' THEN 1 WHEN 'DELIVERED' THEN 2
+                          WHEN 'READ' THEN 3 WHEN 'FAILED' THEN 4 ELSE 0 END
+                      > CASE delivery_status
+                          WHEN 'SENT' THEN 1 WHEN 'DELIVERED' THEN 2
+                          WHEN 'READ' THEN 3 WHEN 'FAILED' THEN 4 ELSE 0 END)
+            """, nativeQuery = true)
+    int applyDeliveryStatusByProviderMessageId(
+            @Param("providerMessageId") String providerMessageId,
+            @Param("status") String status,
+            @Param("errorCode") String errorCode,
+            @Param("errorMessage") String errorMessage,
+            @Param("reportedAt") Instant reportedAt);
 }

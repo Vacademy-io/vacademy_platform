@@ -175,6 +175,59 @@ describe('guardrails', () => {
     });
 });
 
+describe('a combo the basket has outgrown', () => {
+    // iThinkers sells English+Maths+Science together for ₹749 while the plain
+    // three-subject price is ₹799 — a ₹50 saving. The reported bug: adding a
+    // fourth subject to that trio charged ₹200, not the ₹150 the page
+    // advertises, because the combo simply stopped applying.
+    const EMS = ['English', 'Maths', 'Science'];
+    const subject = (packageName: string) => ({
+        levelName: 'Class 5',
+        packageName,
+        price: PRICE,
+    });
+    const withCombo = (base: BasketPricingSettings): BasketPricingSettings => ({
+        ...base,
+        combos: [{ label: 'EMS combo', packages: EMS, price: 749 }],
+    });
+
+    it.each([
+        ['FLAT', FLAT],
+        ['DISCOUNT', DISCOUNT],
+    ])('prices the combo itself unchanged on a %s page', (_name, base) => {
+        expect(quoteBasket(withCombo(base), EMS.map(subject))!.total).toBe(749);
+    });
+
+    it.each([
+        ['FLAT', FLAT],
+        ['DISCOUNT', DISCOUNT],
+    ])('charges the ladder step, not ₹200, for the fourth subject on a %s page', (_name, base) => {
+        const quote = quoteBasket(withCombo(base), [...EMS, 'G.K.'].map(subject))!;
+        expect(quote.total).toBe(899); // 749 + (949 − 799)
+        expect(quote.total - 749).toBe(CARD[4] - CARD[3]);
+    });
+
+    it('keeps the combo saving as the basket grows', () => {
+        const five = quoteBasket(withCombo(DISCOUNT), [...EMS, 'G.K.', 'Cyber AI'].map(subject))!;
+        expect(five.total).toBe(CARD[5] - 50);
+    });
+
+    it('ignores a combo the basket only partly holds', () => {
+        const two = quoteBasket(withCombo(DISCOUNT), ['English', 'Maths'].map(subject))!;
+        expect(two.total).toBe(CARD[2]);
+    });
+
+    it('never charges more than the plain price', () => {
+        // A combo priced above the ordinary rung must lose, extension or not.
+        const overpriced: BasketPricingSettings = {
+            ...DISCOUNT,
+            combos: [{ label: 'bad combo', packages: EMS, price: 900 }],
+        };
+        expect(quoteBasket(overpriced, EMS.map(subject))!.total).toBe(CARD[3]);
+        expect(quoteBasket(overpriced, [...EMS, 'G.K.'].map(subject))!.total).toBe(CARD[4]);
+    });
+});
+
 describe('amount-gated tiers', () => {
     const spend = (tiers: BasketPricingSettings['tiers']): BasketPricingSettings => ({
         enabled: true,

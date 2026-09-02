@@ -24,12 +24,20 @@
         "title": "رفض المتجر التطبيق",
         "reasonLabel": "السبب المذكور",
         "noReason": "لم يُسجَّل سبب المتجر بعد — فريق المنصّة يتابع الأمر.",
-        "decidedOn": "تم الرفض في {{date}}"
+        "decidedOn": "تم الرفض في {{date}}",
+        "submittedOn": "قُدّم في {{date}}"
     },
     "update": {
         "title": "التحديث قيد التنفيذ",
         "submittedOn": "أُرسل في {{date}}",
         "releaseNotes": "الجديد في هذا التحديث",
         "availableGeneric": "هناك إصدار أحدث جاهز ولم يصل إلى المتجر بعد."
-    }
+    },
+    "ota": {
+        "label": "محتوى التطبيق (OTA)",
+        "publishedOn": "نُشر في {{date}}",
+        "minNativeVersion": "يتطلب إصدار التطبيق {{version}} أو أحدث",
+        "sharedBundle": "حزمة مشتركة، لم تُبنَ لتطبيقك"
+    },
+    "lastCheckedOn": "تم فحص المتجر {{date}}"
 }

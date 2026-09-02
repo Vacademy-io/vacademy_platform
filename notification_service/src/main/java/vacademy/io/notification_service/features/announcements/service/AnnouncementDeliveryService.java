@@ -624,6 +624,15 @@ public class AnnouncementDeliveryService {
             }
             notificationLog.setInstituteId(announcement.getInstituteId());
             notificationLog.setNotificationDate(Instant.now());
+            // This method is called for BOTH outcomes — an unsubscribed recipient, a missing
+            // address and a thrown send all land here with status=FAILED. Record that, or the row
+            // is indistinguishable from a successful send and every read surface has to guess.
+            // Successes stay null so SES tracking events remain the source of truth for them.
+            if ("FAILED".equalsIgnoreCase(status)) {
+                notificationLog.setDeliveryStatus("FAILED");
+                notificationLog.setDeliveryErrorMessage(truncateForColumn(errorMessage, 500));
+                notificationLog.setDeliveryUpdatedAt(Instant.now());
+            }
 
             log.info("Saving EMAIL notification log: sourceId={}, channelId={}, userId={}",
                 notificationLog.getSourceId(), notificationLog.getChannelId(), notificationLog.getUserId());
@@ -636,6 +645,16 @@ public class AnnouncementDeliveryService {
                 announcement.getId(), message.getUserId(), userEmail, e);
             throw e; // Re-throw to be caught by the calling method
         }
+    }
+
+    /**
+     * Clip a value to its column width. delivery_error_message is varchar(500) and the failure
+     * text can be a full exception message; this method re-throws on save failure, so an
+     * oversized reason would turn a logging detail into a delivery error.
+     */
+    private String truncateForColumn(String value, int maxLen) {
+        if (value == null) return null;
+        return value.length() <= maxLen ? value : value.substring(0, maxLen);
     }
 
     private String resolveUserPhone(String userId) {

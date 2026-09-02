@@ -100,6 +100,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     applicationTab: false,
     leadTab: false,
     fullHistoryTab: false,
+    workflowsTab: false,
     parentTab: false,
     onboardingTab: false,
 };
@@ -197,6 +198,11 @@ const buildStudentSideViewOptions = (
         key: 'fullHistoryTab',
         label: t('studentSideView.fullHistoryTab'),
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fullHistoryTab ?? false,
+    },
+    {
+        key: 'workflowsTab',
+        label: t('studentSideView.workflowsTab'),
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.workflowsTab ?? false,
     },
     {
         key: 'parentTab',

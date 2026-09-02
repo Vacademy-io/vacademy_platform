@@ -118,6 +118,47 @@ public class PaymentNotificatonService {
             String invoiceNumber,
             String courseName,
             PaymentLog paymentLog) {
+        return sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
+                paymentInitiationRequestDTO, userDTO, invoicePdfBytes, invoiceNumber, courseName,
+                paymentLog, null);
+    }
+
+    /**
+     * What ONE order cost, when that order paid for several courses at once.
+     *
+     * A multi-course checkout is recorded as one child PaymentLog per course, so
+     * the log this email is sent from knows only its own share. Quoting that made
+     * a parent who paid ₹949 for four subjects receive four emails each announcing
+     * ₹349 — none of which matched their bank. These are the order's figures, so
+     * the one email that goes out can state what was actually charged and what
+     * was taken off to get there.
+     *
+     * @param grossAmount   the courses at list price, before any reduction
+     * @param discountAmount what the basket price, offer and coupon took off
+     * @param paidAmount    what the gateway actually charged
+     * @param itemCount     how many courses the order bought
+     */
+    public record OrderAmountSummary(double grossAmount, double discountAmount, double paidAmount,
+            int itemCount) {
+        boolean coversMultipleCourses() {
+            return itemCount > 1;
+        }
+
+        boolean hasDiscount() {
+            return discountAmount > 0.005 && grossAmount > paidAmount;
+        }
+    }
+
+    public boolean sendPaymentConfirmationNotification(
+            String instituteId,
+            PaymentResponseDTO paymentResponseDTO,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            UserDTO userDTO,
+            byte[] invoicePdfBytes,
+            String invoiceNumber,
+            String courseName,
+            PaymentLog paymentLog,
+            OrderAmountSummary orderAmounts) {
         if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null
                 || userDTO == null) {
             return false;
@@ -145,7 +186,7 @@ public class PaymentNotificatonService {
         // and overlays the template's own dynamic_parameters for anything left blank.
         NotificationTemplateVariables templateVars = buildPaymentConfirmationVariables(
                 institute, userDTO, paymentInitiationRequestDTO, paymentResponseDTO,
-                invoiceNumber, courseName, paymentLog, invoicePdfBytes);
+                invoiceNumber, courseName, paymentLog, invoicePdfBytes, orderAmounts);
         Map<String, String> variables = sendUniqueLinkService.buildVariablesMap(template, templateVars);
 
         String emailBody = applyVariables(template.getContent(), variables);
@@ -316,7 +357,8 @@ public class PaymentNotificatonService {
     private NotificationTemplateVariables buildPaymentConfirmationVariables(
             Institute institute, UserDTO userDTO, PaymentInitiationRequestDTO requestDTO,
             PaymentResponseDTO responseDTO, String invoiceNumber, String courseName,
-            PaymentLog paymentLog, byte[] invoicePdfBytes) {
+            PaymentLog paymentLog, byte[] invoicePdfBytes,
+            OrderAmountSummary orderAmounts) {
 
         Map<String, Object> responseData = responseDTO.getResponseData() != null
                 ? responseDTO.getResponseData()
@@ -328,7 +370,13 @@ public class PaymentNotificatonService {
 
         // PaymentLog carries the amount in major units; responseData carries minor units when it
         // carries anything, so it is never used as a numeric source.
-        Double amountValue = paymentLog != null ? paymentLog.getPaymentAmount() : null;
+        // The ORDER's total wins over this log's own share. A multi-course checkout
+        // fans out into one child log per course, so the log driving this email
+        // knows only a fraction of what was charged — see OrderAmountSummary.
+        Double amountValue = orderAmounts != null ? orderAmounts.paidAmount() : null;
+        if (amountValue == null) {
+            amountValue = paymentLog != null ? paymentLog.getPaymentAmount() : null;
+        }
         if (amountValue == null) {
             amountValue = requestDTO.getAmount();
         }
@@ -374,6 +422,16 @@ public class PaymentNotificatonService {
                 .packageName(safe(courseName))
                 .amount(amount)
                 .paymentAmount(amount)
+                .orderTotal(orderAmounts != null && orderAmounts.hasDiscount()
+                        ? String.format(Locale.ENGLISH, "%,.2f", orderAmounts.grossAmount())
+                        : "")
+                .discountAmount(orderAmounts != null && orderAmounts.hasDiscount()
+                        ? String.format(Locale.ENGLISH, "%,.2f", orderAmounts.discountAmount())
+                        : "")
+                .itemCount(orderAmounts != null && orderAmounts.coversMultipleCourses()
+                        ? String.valueOf(orderAmounts.itemCount())
+                        : "")
+                .amountBreakdownHtml(buildAmountBreakdownHtml(orderAmounts, currencySymbol(currency)))
                 .paymentStatus(PaymentStatusEnum.PAID.name())
                 .currency(currency)
                 .currencySymbol(currencySymbol(currency))
@@ -430,6 +488,37 @@ public class PaymentNotificatonService {
             filled = filled.replace("{{" + var.getKey() + "}}", var.getValue() != null ? var.getValue() : "");
         }
         return filled;
+    }
+
+    /**
+     * The "Subtotal / Discount" rows that sit above "Amount Paid", pre-rendered.
+     *
+     * Built here rather than in the template because placeholder substitution is a
+     * literal {@code {{key}}} replace with no conditionals — a template carrying a
+     * discount row unconditionally would print an empty "Discount" line on every
+     * ordinary single-course receipt. Returning "" collapses the receipt back to
+     * the single row it has always had.
+     *
+     * Deliberately inline-styled and using the same table the surrounding rows do,
+     * so it inherits whatever the institute's template looks like instead of
+     * importing a second visual language into their receipt.
+     */
+    static String buildAmountBreakdownHtml(OrderAmountSummary orderAmounts, String symbol) {
+        if (orderAmounts == null || !orderAmounts.hasDiscount()) {
+            return "";
+        }
+        String sym = symbol == null ? "" : symbol;
+        String subtotalLabel = orderAmounts.coversMultipleCourses()
+                ? orderAmounts.itemCount() + " courses"
+                : "Subtotal";
+        return "<tr><td style=\"padding:2px 0;color:#6b7280;font-size:14px;\">" + subtotalLabel
+                + "</td><td style=\"padding:2px 0;text-align:right;color:#6b7280;font-size:14px;\">"
+                + sym + String.format(Locale.ENGLISH, "%,.2f", orderAmounts.grossAmount())
+                + "</td></tr>"
+                + "<tr><td style=\"padding:2px 0 10px;color:#059669;font-size:14px;\">Discount</td>"
+                + "<td style=\"padding:2px 0 10px;text-align:right;color:#059669;font-size:14px;\">-"
+                + sym + String.format(Locale.ENGLISH, "%,.2f", orderAmounts.discountAmount())
+                + "</td></tr>";
     }
 
     private String resolveInstituteLogoUrl(Institute institute) {

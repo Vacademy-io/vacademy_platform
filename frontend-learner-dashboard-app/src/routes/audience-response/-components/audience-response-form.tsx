@@ -110,7 +110,11 @@ const convertAudienceCustomFields = (
         comma_separated_options: customField.config || "",
         config: customField.config || "{}",
         status: field.status || "ACTIVE",
-        is_mandatory: customField.isMandatory || false,
+        // Per-form answer first, master row second — same precedence as field_order above.
+        // The mapping's is_mandatory is what the campaign builder's Required switch writes;
+        // reading only the shared master meant that switch changed nothing on this form.
+        // `??` (not ||) so an explicit false is respected.
+        is_mandatory: field.is_mandatory ?? customField.isMandatory ?? false,
         field_type: customField.fieldType || "text",
         created_at: customField.createdAt,
         updated_at: customField.updatedAt,

@@ -166,7 +166,6 @@ const EnquiryCustomFieldsCard = ({
                                                         name={typedField.name}
                                                         type={typedField.type}
                                                         isRequired={typedField.isRequired}
-                                                        locked={typedField.oldKey}
                                                         isEditing={isEditing}
                                                         onToggleRequired={() =>
                                                             toggleIsRequired(index)

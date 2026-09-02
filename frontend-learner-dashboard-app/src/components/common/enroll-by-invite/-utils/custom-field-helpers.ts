@@ -35,6 +35,8 @@ export interface InstituteCustomFieldResponse {
   type_id: string;
   group_name: string | null;
   custom_field: CustomField;
+  /** Per-form required-ness. Takes precedence over the shared `custom_field.isMandatory`. */
+  is_mandatory?: boolean | null;
   individual_order: number | null;
   group_internal_order: number | null;
   status: string;
@@ -368,7 +370,9 @@ export const transformCustomFieldsToFormValues = (
       id: custom_field.id,
       name: custom_field.fieldName,
       value: initialValue,
-      is_mandatory: custom_field.isMandatory ?? false,
+      // The form builder's Required switch writes the per-form mapping row, so read that
+      // first and fall back to the master only when this form never answered.
+      is_mandatory: field.is_mandatory ?? custom_field.isMandatory ?? false,
       type: fieldType,
       render_type: getFieldRenderType(fieldKey, fieldType),
       config: custom_field.config,

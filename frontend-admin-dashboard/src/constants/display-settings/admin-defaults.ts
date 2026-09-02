@@ -77,7 +77,15 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
     //   6. LMS operations                — classes, courses, assessments
     //   7. Reference data                — team makeup, institute summary
     //   8. Promotional                   — discovery cards, last slot
+    // Ships OFF for everyone. A connection-health card is only meaningful to an institute
+    // that has actually connected an external LMS, and enabling it starts polling that
+    // customer's site every minute — so an admin opts in rather than opting out.
+    const defaultOff = new Set<DashboardWidgetConfig['id']>(['lmsConnectionHealth']);
+
     const ids: DashboardWidgetConfig['id'][] = [
+        // 0. Integration health — first on the page: a broken LMS connection silently
+        //    breaks enrolment for every course wired to it.
+        'lmsConnectionHealth',
         // 1. Navigation shortcuts
         'quickActions',
         // 2. KPIs
@@ -117,7 +125,7 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         // 8. Promotional
         'aiFeaturesCard',
     ];
-    return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
+    return ids.map((id, idx) => ({ id, order: idx + 1, visible: !defaultOff.has(id) }));
 }
 
 export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {

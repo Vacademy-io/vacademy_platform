@@ -494,6 +494,17 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
         return vis !== false; // default to true
     };
 
+    /**
+     * Strict variant of isWidgetVisible: hidden unless settings EXPLICITLY say visible.
+     *
+     * isWidgetVisible fails open (`vis !== false`), which is right for widgets that have always
+     * shipped on — a settings-load failure shouldn't blank the dashboard. But an opt-in widget
+     * must not switch itself on that way, and this one starts polling the customer's LMS the
+     * moment it renders.
+     */
+    const isWidgetExplicitlyVisible = (id: DashboardWidgetId): boolean =>
+        roleDisplay?.dashboard.widgets.find((w) => w.id === id)?.visible === true;
+
     const orderOf = (id: DashboardWidgetId): number => {
         return roleDisplay?.dashboard.widgets.find((w) => w.id === id)?.order ?? 0;
     };
@@ -628,6 +639,16 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
             )}
             {/* Main content */}
             <div className="mt-5 flex w-full flex-col gap-4">
+                {/* LMS connection health — first, and full-bleed. A broken LMS connection
+                    silently breaks enrolment for every course wired to it, so it outranks
+                    anything else on the page. Direct child of this w-full flex column, so it
+                    spans the screen rather than sharing a row. Self-hides when nothing was
+                    actually probed, and ships hidden by default. */}
+                {isWidgetExplicitlyVisible('lmsConnectionHealth') && (
+                    <TrackedWidget widgetId="lmsConnectionHealth">
+                        <LmsConnectionHealthWidget instituteId={instituteDetails?.id || ''} />
+                    </TrackedWidget>
+                )}
                 {/* Super-admin-managed widgets (onboarding tracker / info cards) — additive, renders
                     nothing when none are configured. Role filtering is enforced server-side. */}
                 <TrackedWidget widgetId="superAdminWidgets">
@@ -1024,18 +1045,6 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                             </Card>
                         )}
                     </div>
-                    {/* LMS operations: is the external LMS integration actually up?
-                        Self-hides when the institute has no external LMS connected, so an
-                        institute on the built-in Vacademy LMS never sees an empty card. */}
-                    {isWidgetVisible('lmsConnectionHealth') && (
-                        <TrackedWidget widgetId="lmsConnectionHealth">
-                            <div className="flex flex-1 flex-col gap-4 md:flex-row">
-                                <LmsConnectionHealthWidget
-                                    instituteId={instituteDetails?.id || ''}
-                                />
-                            </div>
-                        </TrackedWidget>
-                    )}
                     <div className="flex flex-1 flex-col gap-4 md:flex-row">
                         {isWidgetVisible('liveClasses') && (
                             <LiveClassesWidget instituteId={instituteDetails?.id || ''} />

@@ -106,6 +106,7 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
         'realTimeActiveUsers',
         'currentlyActiveUsers',
         // 6. LMS operations
+        'lmsConnectionHealth',
         'liveClasses',
         'enrollLearners',
         'learningCenter',

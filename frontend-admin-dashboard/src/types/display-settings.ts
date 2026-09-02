@@ -59,7 +59,8 @@ export type DashboardWidgetId =
     | 'topVles'
     | 'subOrgSeatCourses'
     | 'subOrgActivityDues'
-    | 'mentorshipStats';
+    | 'mentorshipStats'
+    | 'lmsConnectionHealth';
 
 export interface DashboardWidgetConfig {
     id: DashboardWidgetId;

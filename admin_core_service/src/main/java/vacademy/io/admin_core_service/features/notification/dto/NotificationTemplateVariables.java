@@ -97,6 +97,22 @@ public class NotificationTemplateVariables {
         private String learnerName;
         private String courseName;
         private String amount;
+        /**
+         * What the order cost BEFORE any basket price, offer or coupon — i.e. the
+         * courses at list price. Blank on an order with nothing taken off.
+         */
+        private String orderTotal;
+        /** What was taken off. Blank when nothing was. */
+        private String discountAmount;
+        /** How many courses this one payment bought. Blank for a single course. */
+        private String itemCount;
+        /**
+         * Pre-rendered receipt rows for the breakdown above "Amount Paid", so a
+         * template can show "Subtotal / Discount / You pay" without needing
+         * conditionals the placeholder substitution does not have. Blank when
+         * there is nothing to break down, which collapses to today's single row.
+         */
+        private String amountBreakdownHtml;
         private String currency;
         private String currencySymbol;
         private String paymentDate;

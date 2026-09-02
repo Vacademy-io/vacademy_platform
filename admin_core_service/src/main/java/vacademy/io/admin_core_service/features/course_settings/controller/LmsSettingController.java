@@ -57,8 +57,13 @@ public class LmsSettingController {
     @GetMapping("/connection-health")
     public ResponseEntity<LmsConnectionHealthDTO> getConnectionHealth(
             @RequestAttribute("user") CustomUserDetails userDetails,
-            @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(lmsSettingService.getConnectionHealth(instituteId));
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "force", required = false, defaultValue = "false") boolean force) {
+        // force=true is the widget's manual refresh: skip the 1-minute cache so an admin who has
+        // just fixed a connection sees the real result instead of the failure that is still cached.
+        return ResponseEntity.ok(force
+                ? lmsSettingService.refreshConnectionHealth(instituteId)
+                : lmsSettingService.getConnectionHealth(instituteId));
     }
 
     /**

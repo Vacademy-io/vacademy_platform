@@ -188,6 +188,16 @@ public class CacheConfiguration {
                                 "parentPortalSettings",
                                 caffeineCache2mBuilder().build());
 
+                // lmsConnectionHealth: the dashboard's LMS connection-health sweep, keyed on
+                // instituteId. The widget polls every 60s, so without this each open dashboard
+                // would independently probe the customer's WordPress/Moodle site every minute --
+                // N admins means N times the outbound traffic to a third party we don't own.
+                // 1m TTL matches the poll interval, so the widget is never showing anything older
+                // than it claims. The manual refresh bypasses this (see LmsSettingService).
+                CaffeineCache lmsConnectionHealth = new CaffeineCache(
+                                "lmsConnectionHealth",
+                                caffeineCache1mBuilder().build());
+
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
                                 facultyByPackageSessions,
@@ -225,7 +235,8 @@ public class CacheConfiguration {
                                 learnerModulesStructure,
                                 learnerPackageSlidesStructure,
                                 guardianChildren,
-                                parentPortalSettings));
+                                parentPortalSettings,
+                                lmsConnectionHealth));
 
                 return cacheManager;
         }

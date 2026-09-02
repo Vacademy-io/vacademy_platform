@@ -58,8 +58,15 @@ point is reported as a timeout rather than holding the response open.
 Only LearnDash and Moodle have real probes. Reporting a custom LMS as unhealthy because we
 have no endpoint for it would cry wolf on every dashboard load.
 
-**Not cached server-side.** A cache would show admins a stale "healthy" right after they had
-fixed a broken connection. Rate-limiting is the widget's job instead (below).
+**Cached 1 minute, per institute** (`lmsConnectionHealth` Caffeine cache). The widget polls
+every 60s, so without this every open dashboard would independently probe the customer's
+WordPress/Moodle site every minute — five admins with the tab open means five times the
+outbound traffic to a third party we don't own. The TTL matches the poll interval, so the
+result is never older than the widget claims.
+
+The obvious objection to caching — an admin fixes a connection and keeps seeing the failure —
+is handled by `?force=true`, which the manual refresh button sends. That path
+(`refreshConnectionHealth`, `@CachePut`) probes live and replaces the cached entry.
 
 ## Frontend
 
@@ -70,8 +77,17 @@ fixed a broken connection. Rate-limiting is the widget's job instead (below).
 - Header summarises `N of M not reachable`, plus a manual re-check button.
 - When something is down, a link deep-links to **Settings → LMS** (`selectedTab: 'lms'`), not
   the settings root.
-- `staleTime` 5 min and `refetchOnWindowFocus: false`. Every check makes real outbound calls
-  to the customer's LMS, so it must not fire on every dashboard mount or tab focus.
+- **Polls every 60s** (`refetchInterval`), served by the backend's 1-minute cache, so N open
+  dashboards still cost the LMS one probe per minute rather than N. `refetchOnWindowFocus` and
+  `refetchIntervalInBackground` are both off — nobody is reading the widget in a background tab.
+- The **"checked N ago" label runs off a ticking clock** (15s interval), not off the query. If it
+  only re-rendered on refetch, a paused poll (backgrounded tab) or a failing one would go on
+  claiming the data was fresh.
+- The **manual refresh does not go through `refetch()`**. It fetches with `force=true` and writes
+  the result into the query cache with `setQueryData`. Threading a force flag through the queryFn
+  would have meant either putting it in the query key — forking the cache entry, so the forced
+  result would never replace the stale polled one — or smuggling it via a ref, which is what the
+  `@tanstack/query/exhaustive-deps` lint rule exists to catch.
 
 ### Two deliberate distinctions
 

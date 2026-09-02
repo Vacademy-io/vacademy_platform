@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import {
     ArrowClockwise,
@@ -43,9 +44,15 @@ interface LmsConnectionHealthResponse {
     connections: ConnectionHealth[];
 }
 
-async function fetchLmsConnectionHealth(instituteId: string): Promise<LmsConnectionHealthResponse> {
+async function fetchLmsConnectionHealth(
+    instituteId: string,
+    force = false
+): Promise<LmsConnectionHealthResponse> {
     const response = await authenticatedAxiosInstance.get(LMS_CONNECTION_HEALTH, {
-        params: { instituteId },
+        // force=true skips the backend's 1-minute cache. Only the manual refresh sets it —
+        // the 60s poll must stay cacheable, or every open dashboard would probe the
+        // customer's LMS independently every minute.
+        params: force ? { instituteId, force: true } : { instituteId },
     });
     return response.data;
 }
@@ -63,13 +70,21 @@ const statusIcon = (status: ConnectionStatus) => {
     }
 };
 
-const relativeTime = (iso: string): string => {
+/**
+ * "checked 1 min ago". `now` is passed in rather than read from Date.now() inside so the label
+ * re-renders on a ticking clock — otherwise it would only change when the query refetched, and
+ * a poll that is paused (backgrounded tab) or failing would keep claiming the data is fresh.
+ */
+const relativeTime = (iso: string, now: number): string => {
     try {
-        const diffMs = Date.now() - new Date(iso).getTime();
-        const mins = Math.floor(diffMs / 60000);
-        if (mins < 1) return 'just now';
-        if (mins === 1) return '1 minute ago';
-        if (mins < 60) return `${mins} minutes ago`;
+        const diffMs = now - new Date(iso).getTime();
+        if (diffMs < 0) return 'just now';
+        const secs = Math.floor(diffMs / 1000);
+        if (secs < 30) return 'just now';
+        const mins = Math.floor(secs / 60);
+        if (mins < 1) return 'less than a min ago';
+        if (mins === 1) return '1 min ago';
+        if (mins < 60) return `${mins} mins ago`;
         const hours = Math.floor(mins / 60);
         return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
     } catch {
@@ -140,20 +155,59 @@ interface LmsConnectionHealthWidgetProps {
  * Vacademy LMS has no integration to be unhealthy, and an empty card would be noise on every
  * dashboard. Same self-hiding convention the sub-org widgets use.
  */
+const POLL_INTERVAL_MS = 60_000;
+
 export const LmsConnectionHealthWidget = ({ instituteId }: LmsConnectionHealthWidgetProps) => {
     const router = useRouter();
 
+    const queryClient = useQueryClient();
+    const QUERY_KEY = ['LMS_CONNECTION_HEALTH', instituteId];
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // Ticking clock behind the "checked N ago" label. Without it the label would only change
+    // when the query refetched, so a paused poll (backgrounded tab) or a failing one would go on
+    // claiming the data was fresh. 15s is fine for a minute-granularity label.
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 15_000);
+        return () => clearInterval(id);
+    }, []);
+
     const { data, isLoading, isFetching, error, refetch } = useQuery({
-        queryKey: ['LMS_CONNECTION_HEALTH', instituteId],
+        queryKey: QUERY_KEY,
         queryFn: () => fetchLmsConnectionHealth(instituteId),
         enabled: !!instituteId,
-        // Each check makes real outbound calls to the customer's LMS, so this must not run on
-        // every dashboard mount or window focus. Five minutes is fresh enough for "is it up?",
-        // and the refresh button covers "I just fixed it, check again".
-        staleTime: 5 * 60_000,
+        // Poll every minute. Each poll is served by the backend's 1-minute per-institute cache,
+        // so N open dashboards still cost the customer's LMS one probe per minute, not N.
+        refetchInterval: POLL_INTERVAL_MS,
+        // Left at the default (false): polling pauses while the tab is backgrounded. Nobody is
+        // reading the widget then, and the ticking label above keeps the age honest on return.
+        refetchIntervalInBackground: false,
+        staleTime: POLL_INTERVAL_MS,
         refetchOnWindowFocus: false,
         retry: 1,
     });
+
+    /**
+     * Manual refresh: fetch with force=true (skipping the backend's 1-minute cache) and write the
+     * result straight into the query cache.
+     *
+     * Not `refetch()` with a flag threaded through the queryFn — the force flag must NOT reach the
+     * query key, or a forced fetch would populate a separate cache entry and the polled one would
+     * keep showing the stale failure it was meant to replace.
+     */
+    const refreshNow = async () => {
+        setIsRefreshing(true);
+        try {
+            const fresh = await fetchLmsConnectionHealth(instituteId, true);
+            queryClient.setQueryData(QUERY_KEY, fresh);
+        } catch {
+            // Let the normal query surface the failure through its own error state.
+            await refetch();
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
     if (isLoading) {
         return (
@@ -183,7 +237,7 @@ export const LmsConnectionHealthWidget = ({ instituteId }: LmsConnectionHealthWi
                         LMS is down.
                     </CardDescription>
                     <div className="mt-3">
-                        <MyButton buttonType="secondary" scale="small" onClick={() => refetch()}>
+                        <MyButton buttonType="secondary" scale="small" onClick={refreshNow}>
                             <span className="flex items-center gap-1.5">
                                 <ArrowClockwise className="size-3.5" weight="bold" />
                                 Try again
@@ -249,20 +303,20 @@ export const LmsConnectionHealthWidget = ({ instituteId }: LmsConnectionHealthWi
                             {data.checked_at && (
                                 <span className="text-neutral-400">
                                     {' '}
-                                    · checked {relativeTime(data.checked_at)}
+                                    · checked {relativeTime(data.checked_at, now)}
                                 </span>
                             )}
                         </CardDescription>
                     </div>
                     <button
                         type="button"
-                        onClick={() => refetch()}
-                        disabled={isFetching}
+                        onClick={refreshNow}
+                        disabled={isFetching || isRefreshing}
                         aria-label="Re-check LMS connections"
                         className="shrink-0 rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:cursor-not-allowed"
                     >
                         <ArrowClockwise
-                            className={cn('size-4', isFetching && 'animate-spin')}
+                            className={cn('size-4', (isFetching || isRefreshing) && 'animate-spin')}
                             weight="bold"
                         />
                     </button>

@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.course_settings.dto.LmsConnectionHealthDTO;
@@ -447,11 +449,32 @@ public class LmsSettingService {
      * by {@link #HEALTH_SWEEP_TIMEOUT_SECONDS} — anything still running by then is reported as a
      * timeout rather than holding the response open.</p>
      *
-     * <p>Not cached server-side. The widget is responsible for not hammering this (long staleTime,
-     * no focus refetch) — a cache here would instead have admins looking at a stale "healthy" after
-     * they had just fixed a broken connection.</p>
+     * <p><b>Cached for 1 minute, per institute.</b> The widget polls every 60s, so without a cache
+     * every open dashboard would independently probe the customer's WordPress/Moodle site every
+     * minute — five admins with the tab open means five times the outbound traffic to a third
+     * party we don't own. The TTL matches the poll interval, so the result is never older than the
+     * widget's own "checked N ago" claims.</p>
+     *
+     * <p>The stale-after-a-fix problem a cache would otherwise introduce is handled by
+     * {@link #refreshConnectionHealth}: the widget's manual refresh button bypasses the cache, so
+     * an admin who has just fixed a connection gets a live answer immediately.</p>
      */
+    @Cacheable(value = "lmsConnectionHealth", key = "#instituteId")
     public LmsConnectionHealthDTO getConnectionHealth(String instituteId) {
+        return runConnectionHealthSweep(instituteId);
+    }
+
+    /**
+     * A live sweep that ignores (and replaces) the cached result — what the widget's refresh
+     * button calls. Without this, an admin who just fixed a broken connection would keep seeing
+     * the failure for up to a minute and reasonably conclude the fix hadn't worked.
+     */
+    @CachePut(value = "lmsConnectionHealth", key = "#instituteId")
+    public LmsConnectionHealthDTO refreshConnectionHealth(String instituteId) {
+        return runConnectionHealthSweep(instituteId);
+    }
+
+    private LmsConnectionHealthDTO runConnectionHealthSweep(String instituteId) {
         ResolvedConnections resolved = resolveInstituteConnections(instituteId);
         ArrayNode connections = resolved.connections();
 

@@ -51,6 +51,21 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 
 const CONVERSATIONS_KEY = ['chat', 'conversations'] as const;
 
+/**
+ * Shown both when the open thread reports CHAT_DISABLED and when the whole institute has chat off
+ * (so there is no thread to open at all).
+ */
+const ChatDisabledNotice = () => (
+    <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+        <Prohibit size={48} weight="duotone" className="mb-3 text-neutral-300" />
+        <p className="text-sm font-medium text-neutral-600">Chat is currently disabled</p>
+        <p className="mt-1 max-w-xs text-xs text-neutral-400">
+            Chat has been turned off for this institute. Reach out to an administrator if you think
+            this is a mistake.
+        </p>
+    </div>
+);
+
 const conversationTitle = (c: ChatConversationResponse): string => {
     if (c.title) return c.title;
     if (c.type === 'COMMUNITY') return 'Community';
@@ -151,11 +166,24 @@ export function ChatScreen({
     const {
         data: conversations = [],
         isLoading: conversationsLoading,
+        error: conversationsError,
     } = useQuery({
         queryKey: CONVERSATIONS_KEY,
         queryFn: () => listConversations(),
         refetchOnWindowFocus: false,
+        // Chat being off for the institute is a permanent answer, not a blip — retrying only
+        // repeats the same 403.
+        retry: (failureCount, err) =>
+            classifyChatSendError(err)?.code !== 'CHAT_DISABLED' && failureCount < 2,
     });
+
+    // Chat stays off until an institute opts in, so every chat endpoint answers 403 CHAT_DISABLED
+    // and the list comes back empty. The per-thread `chatDisabled` below can't cover that: it is
+    // set while opening a conversation, and here there is none to open. Without this the screen
+    // sits on "Select a conversation to start chatting" beside an empty list — an instruction that
+    // can never be followed.
+    const instituteChatDisabled =
+        classifyChatSendError(conversationsError)?.code === 'CHAT_DISABLED';
 
     const activeConversation = useMemo(() => {
         const fromList = conversations.find((c) => c.id === activeId);
@@ -746,6 +774,17 @@ export function ChatScreen({
     const shellClass =
         'flex h-[calc(100dvh-9rem)] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm'; // design-lint-ignore: viewport-relative chat height has no spacing token
 
+    // Chat off for the whole institute leaves nothing to render in either pane — no conversations to
+    // list, no thread to open, and the reports queue is chat's own moderation queue. Say so once,
+    // full width, instead of showing an empty list beside "Select a conversation to start chatting".
+    if (instituteChatDisabled) {
+        return (
+            <div className={shellClass}>
+                <ChatDisabledNotice />
+            </div>
+        );
+    }
+
     return (
         <div className={shellClass}>
             {/* Left: conversation list */}
@@ -877,20 +916,7 @@ export function ChatScreen({
                         </header>
 
                         {chatDisabled ? (
-                            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-                                <Prohibit
-                                    size={48}
-                                    weight="duotone"
-                                    className="mb-3 text-neutral-300"
-                                />
-                                <p className="text-sm font-medium text-neutral-600">
-                                    Chat is currently disabled
-                                </p>
-                                <p className="mt-1 max-w-xs text-xs text-neutral-400">
-                                    Chat has been turned off for this institute. Reach out to an
-                                    administrator if you think this is a mistake.
-                                </p>
-                            </div>
+                            <ChatDisabledNotice />
                         ) : (
                             <>
                                 {isCommunity && rules && (

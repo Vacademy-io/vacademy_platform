@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { CheckCircle, BookOpen, ArrowRight } from "@phosphor-icons/react";
 import { formatPriceAmount } from "@/components/common/price-with-mrp";
+import { itemSubject } from "../-utils/cart-item-display";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import {
   getTerminology,
@@ -70,6 +71,14 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
   // Prices are hidden wholesale inside Apple's reader-app builds.
   const showAmount = !shouldHidePaidPurchaseUI() && enrolledMappings.length > 0;
 
+  /** "1 year access" / "6 months access" / "45 days access"; "" when unset. */
+  const accessLabel = (days?: number): string => {
+    if (!days || days <= 0) return "";
+    if (days === 365) return t("success.access.oneYear");
+    if (days % 30 === 0) return t("success.access.months", { count: days / 30 });
+    return t("success.access.days", { count: days });
+  };
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -117,28 +126,32 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
 
       {/* Enrolled course list */}
       <div className="mt-8 w-full max-w-sm space-y-2">
-        {enrolledMappings.map((m) => (
-          <div
-            key={m.ps_invite_payment_option_id}
-            className="flex items-center gap-3 rounded-xl border bg-white p-4 shadow-sm"
-          >
-            <CheckCircle className="size-4 shrink-0 text-green-500" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-gray-900">
-                {m.payment_plan?.name || course}
-              </p>
-              {m.payment_plan?.validity_in_days > 0 && (
-                <p className="text-xs text-gray-400">
-                  {m.payment_plan.validity_in_days === 365
-                    ? t("success.access.oneYear")
-                    : m.payment_plan.validity_in_days % 30 === 0
-                      ? t("success.access.months", { count: m.payment_plan.validity_in_days / 30 })
-                      : t("success.access.days", { count: m.payment_plan.validity_in_days })}
-                </p>
-              )}
+        {enrolledMappings.map((m) => {
+          // The COURSE's name, not the plan's. Every course on a basket-priced
+          // page shares one plan ("Per Subject"), so a receipt built from the
+          // plan name lists the same row four times and cannot be checked
+          // against what was actually bought. itemSubject is the same label the
+          // cart showed two screens earlier, so the two agree.
+          //
+          // Class and session sit on the meta line because a parent buying for
+          // two children needs to see WHICH child each row is for; the plan's
+          // validity joins them rather than owning a line of its own.
+          const meta = [m.level_name, m.session_name, accessLabel(m.payment_plan?.validity_in_days)]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <div
+              key={m.ps_invite_payment_option_id}
+              className="flex items-center gap-3 rounded-xl border bg-white p-4 shadow-sm"
+            >
+              <CheckCircle className="size-4 shrink-0 text-green-500" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900">{itemSubject(m, course)}</p>
+                {meta && <p className="mt-0.5 text-xs text-gray-400">{meta}</p>}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {showAmount && (
           <div className="rounded-xl border bg-white p-4 shadow-sm">

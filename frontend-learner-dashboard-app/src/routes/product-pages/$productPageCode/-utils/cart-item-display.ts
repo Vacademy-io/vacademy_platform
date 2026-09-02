@@ -32,10 +32,16 @@ export function getInitials(name: string): string {
     return (words[0]![0]! + words[1]![0]!).toUpperCase();
 }
 
-/** Course label, preferring the package/level/session triple over the plan name. */
-export function itemTitle(mapping: ProductPageMappingResponse): string {
+/**
+ * Course label, preferring the package/level/session triple over the plan name.
+ *
+ * `fallback` lets a caller supply the institute's own word for a course (the
+ * Course/Subject/Module terminology setting) instead of the literal below, for
+ * the case where a mapping carries no names at all.
+ */
+export function itemTitle(mapping: ProductPageMappingResponse, fallback = 'Course'): string {
     const parts = [mapping.package_name, mapping.level_name, mapping.session_name].filter(Boolean);
-    return parts.join(' · ') || mapping.payment_plan?.name || 'Course';
+    return parts.join(' · ') || mapping.payment_plan?.name || fallback;
 }
 
 /**
@@ -43,6 +49,6 @@ export function itemTitle(mapping: ProductPageMappingResponse): string {
  * Repeating "Class 5" on every row under a "Class 5" header is noise the
  * parent has to read past to find the one row they want to remove.
  */
-export function itemSubject(mapping: ProductPageMappingResponse): string {
-    return mapping.package_name || mapping.payment_plan?.name || 'Course';
+export function itemSubject(mapping: ProductPageMappingResponse, fallback = 'Course'): string {
+    return mapping.package_name || mapping.payment_plan?.name || fallback;
 }

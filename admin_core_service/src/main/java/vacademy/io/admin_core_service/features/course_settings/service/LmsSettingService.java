@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.course_settings.dto.LmsConnectionHealthDTO;
 import vacademy.io.admin_core_service.features.course_settings.dto.LmsConnectionTestRequest;
 import vacademy.io.admin_core_service.features.course_settings.dto.LmsConnectionTestResultDTO;
 import vacademy.io.admin_core_service.features.course_settings.dto.LmsProviderDTO;
@@ -32,12 +33,18 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Institute LMS connections (a library of saved external LMSes), the provider catalog the
@@ -65,6 +72,13 @@ public class LmsSettingService {
     private static final String ENROLL_EVENT = "LEARNER_BATCH_ENROLLMENT";
     private static final String PACKAGE_SESSION_TYPE = "PACKAGE_SESSION";
 
+    /** Concurrent LMS probes per health sweep. Bounded so a long connection list can't
+     *  open an unbounded number of sockets from one dashboard load. */
+    private static final int HEALTH_MAX_PARALLEL_CHECKS = 4;
+    /** Hard ceiling on a whole sweep. Each probe already allows 10s; this stops a slow LMS
+     *  from holding the dashboard request open indefinitely. */
+    private static final long HEALTH_SWEEP_TIMEOUT_SECONDS = 25;
+
     private static final List<String> LEARNDASH_KEYS = List.of(
             "apiUrl", "ldLmsApiUrl", "apiKey", "apiSecret", "fullAccessGroupId", "sendcredentialsCrmSecret");
     private static final List<String> MOODLE_KEYS = List.of("moodleBaseUrl", "moodleToken");
@@ -82,6 +96,19 @@ public class LmsSettingService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
+     * The institute's LMS connections plus where they were resolved from.
+     *
+     * <p>Extracted so the settings page ({@link #getProviders}) and the dashboard health check
+     * ({@link #getConnectionHealth}) resolve connections through exactly the same path. If they
+     * each had their own copy, the health widget could report on a different set of connections
+     * than the one the admin is looking at in Settings.</p>
+     */
+    private record ResolvedConnections(ArrayNode connections, String activeLms,
+                                       String defaultConnectionId, String configSource,
+                                       JsonNode inner) {
+    }
+
+    /**
      * Everything the LMS settings UI needs: the provider catalog (types + field schema), the
      * institute's saved connections, the default connection, and back-compat fields. Never blank:
      * if the institute hasn't set anything but a course already has LMS config, that is surfaced.
@@ -90,8 +117,27 @@ public class LmsSettingService {
         // Selectable LMS = the full provider catalog (Vacademy + LearnDash + Moodle + Custom),
         // not just LmsSourcesEnum — the integration is provider-agnostic (any LMS via Custom).
         List<String> available = buildProviderCatalog().stream().map(LmsProviderDTO::getId).toList();
-        String activeLms = LmsSourcesEnum.VACADEMY.name();
+        ResolvedConnections resolved = resolveInstituteConnections(instituteId);
+
         Object instituteLmsConfig = null;
+        if (resolved.inner() != null && resolved.inner().isObject()) {
+            instituteLmsConfig = objectMapper.convertValue(resolved.inner(), Object.class);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("availableLms", available);
+        response.put("activeLms", resolved.activeLms());
+        response.put("instituteLmsConfig", instituteLmsConfig);
+        response.put("providers", buildProviderCatalog());
+        response.put("connections", objectMapper.convertValue(resolved.connections(), List.class));
+        response.put("defaultConnectionId", resolved.defaultConnectionId());
+        response.put("configSource", resolved.configSource());
+        return response;
+    }
+
+    /** @see ResolvedConnections */
+    private ResolvedConnections resolveInstituteConnections(String instituteId) {
+        String activeLms = LmsSourcesEnum.VACADEMY.name();
         String configSource = "NONE";
         String defaultConnectionId = null;
 
@@ -100,9 +146,6 @@ public class LmsSettingService {
             inner = readInstituteSettingInner(instituteId, LMS_SETTING_KEY);
         } catch (Exception e) {
             log.warn("Could not read institute LMS settings for {}: {}", instituteId, e.getMessage());
-        }
-        if (inner != null && inner.isObject()) {
-            instituteLmsConfig = objectMapper.convertValue(inner, Object.class);
         }
 
         ArrayNode connections;
@@ -140,15 +183,7 @@ public class LmsSettingService {
             }
         }
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("availableLms", available);
-        response.put("activeLms", activeLms);
-        response.put("instituteLmsConfig", instituteLmsConfig);
-        response.put("providers", buildProviderCatalog());
-        response.put("connections", objectMapper.convertValue(connections, List.class));
-        response.put("defaultConnectionId", defaultConnectionId);
-        response.put("configSource", configSource);
-        return response;
+        return new ResolvedConnections(connections, activeLms, defaultConnectionId, configSource, inner);
     }
 
     /**
@@ -399,6 +434,152 @@ public class LmsSettingService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /** Live-tests a connection from form values. Never throws — returns a friendly ok/fail message. */
+    /**
+     * Live health of every saved LMS connection — backs the dashboard's connection-health widget.
+     *
+     * <p>Runs the same {@link #testConnection} the settings form uses, but against the STORED
+     * credentials instead of form values, so nothing secret has to travel to the browser and back.
+     * Only the connection's host is returned.</p>
+     *
+     * <p>Checks run concurrently: each test allows up to 10s, so a serial sweep of an institute
+     * with several connections could outlast the request. Concurrency is capped so a large
+     * connection list can't open an unbounded number of sockets, and the whole sweep is bounded
+     * by {@link #HEALTH_SWEEP_TIMEOUT_SECONDS} — anything still running by then is reported as a
+     * timeout rather than holding the response open.</p>
+     *
+     * <p>Not cached server-side. The widget is responsible for not hammering this (long staleTime,
+     * no focus refetch) — a cache here would instead have admins looking at a stale "healthy" after
+     * they had just fixed a broken connection.</p>
+     */
+    public LmsConnectionHealthDTO getConnectionHealth(String instituteId) {
+        ResolvedConnections resolved = resolveInstituteConnections(instituteId);
+        ArrayNode connections = resolved.connections();
+
+        List<JsonNode> nodes = new ArrayList<>();
+        connections.forEach(nodes::add);
+
+        List<LmsConnectionHealthDTO.ConnectionHealth> results = new ArrayList<>();
+        if (!nodes.isEmpty()) {
+            int parallelism = Math.min(nodes.size(), HEALTH_MAX_PARALLEL_CHECKS);
+            ExecutorService pool = Executors.newFixedThreadPool(parallelism);
+            try {
+                List<Callable<LmsConnectionHealthDTO.ConnectionHealth>> tasks = nodes.stream()
+                        .map(node -> (Callable<LmsConnectionHealthDTO.ConnectionHealth>) () ->
+                                checkOneConnection(node, resolved.defaultConnectionId()))
+                        .toList();
+                List<Future<LmsConnectionHealthDTO.ConnectionHealth>> futures =
+                        pool.invokeAll(tasks, HEALTH_SWEEP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                for (int i = 0; i < futures.size(); i++) {
+                    JsonNode node = nodes.get(i);
+                    try {
+                        results.add(futures.get(i).get());
+                    } catch (Exception e) {
+                        // Cancelled by the sweep timeout, or the check itself blew up. Either way
+                        // the admin needs to see the connection listed, not silently dropped.
+                        results.add(unreachable(node, resolved.defaultConnectionId(),
+                                "The check didn't finish in time — the LMS may be slow or unreachable.",
+                                e.getClass().getSimpleName()));
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("LMS health sweep interrupted for institute {}", instituteId);
+            } finally {
+                pool.shutdownNow();
+            }
+        }
+
+        int healthy = (int) results.stream().filter(r -> "HEALTHY".equals(r.getStatus())).count();
+        int unhealthy = (int) results.stream().filter(r -> "UNHEALTHY".equals(r.getStatus())).count();
+        int notApplicable = results.size() - healthy - unhealthy;
+
+        return LmsConnectionHealthDTO.builder()
+                .checkedAt(Instant.now())
+                .configSource(resolved.configSource())
+                .total(results.size())
+                .healthy(healthy)
+                .unhealthy(unhealthy)
+                .notApplicable(notApplicable)
+                .connections(results)
+                .build();
+    }
+
+    /** One connection's live check. Never throws — a thrown check would drop the row entirely. */
+    private LmsConnectionHealthDTO.ConnectionHealth checkOneConnection(JsonNode conn, String defaultConnectionId) {
+        String type = conn.path("type").asText("").toUpperCase();
+        String id = conn.path("id").asText(null);
+        String name = firstNonBlank(conn.path("name").asText(""), type, "LMS connection");
+        boolean isDefault = id != null && id.equals(defaultConnectionId);
+
+        // Only LearnDash and Moodle have a real probe. Vacademy is built-in and a custom LMS has
+        // no known endpoint — reporting either as "unhealthy" would cry wolf every dashboard load.
+        boolean testable = "LEARNDASH".equals(type) || "MOODLE".equals(type);
+        String target = hostOf("MOODLE".equals(type)
+                ? conn.path("moodleBaseUrl").asText("")
+                : conn.path("apiUrl").asText(""));
+
+        if (!testable) {
+            LmsConnectionTestResultDTO r = testConnection(
+                    LmsConnectionTestRequest.builder().activeLms(type).fields(Map.of()).build());
+            return LmsConnectionHealthDTO.ConnectionHealth.builder()
+                    .id(id).name(name).type(type).isDefault(isDefault)
+                    .status("NOT_APPLICABLE")
+                    .message(r.getMessage())
+                    .target(target)
+                    .build();
+        }
+
+        Map<String, String> fields = new HashMap<>();
+        conn.fields().forEachRemaining(e -> {
+            if (e.getValue() != null && e.getValue().isTextual()) {
+                fields.put(e.getKey(), e.getValue().asText());
+            }
+        });
+
+        long startedAt = System.currentTimeMillis();
+        try {
+            LmsConnectionTestResultDTO r = testConnection(
+                    LmsConnectionTestRequest.builder().activeLms(type).fields(fields).build());
+            return LmsConnectionHealthDTO.ConnectionHealth.builder()
+                    .id(id).name(name).type(type).isDefault(isDefault)
+                    .status(r.isOk() ? "HEALTHY" : "UNHEALTHY")
+                    .message(r.getMessage())
+                    .detail(r.getDetail())
+                    .target(target)
+                    .latencyMs(System.currentTimeMillis() - startedAt)
+                    .build();
+        } catch (Exception e) {
+            log.warn("LMS health check threw for connection {} ({}): {}", id, type, e.getMessage());
+            return unreachable(conn, defaultConnectionId,
+                    "Couldn't complete the check for this connection.", e.getMessage());
+        }
+    }
+
+    private LmsConnectionHealthDTO.ConnectionHealth unreachable(JsonNode conn, String defaultConnectionId,
+                                                               String message, String detail) {
+        String type = conn.path("type").asText("").toUpperCase();
+        String id = conn.path("id").asText(null);
+        return LmsConnectionHealthDTO.ConnectionHealth.builder()
+                .id(id)
+                .name(firstNonBlank(conn.path("name").asText(""), type, "LMS connection"))
+                .type(type)
+                .isDefault(id != null && id.equals(defaultConnectionId))
+                .status("UNHEALTHY")
+                .message(message)
+                .detail(detail)
+                .target(hostOf("MOODLE".equals(type)
+                        ? conn.path("moodleBaseUrl").asText("")
+                        : conn.path("apiUrl").asText("")))
+                .build();
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank()) return v;
+        }
+        return "";
+    }
+
     public LmsConnectionTestResultDTO testConnection(LmsConnectionTestRequest request) {
         String provider = request != null && request.getActiveLms() != null
                 ? request.getActiveLms().toUpperCase() : LmsSourcesEnum.VACADEMY.name();

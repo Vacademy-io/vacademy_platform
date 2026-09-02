@@ -93,6 +93,7 @@ import {
 import RecentTransactionsWidget from './-components/RecentTransactionsWidget';
 import FreshInstituteEmptyState from './-components/FreshInstituteEmptyState';
 import TrackedWidget from './-components/TrackedWidget';
+import { LmsConnectionHealthWidget } from './-components/LmsConnectionHealthWidget';
 import { bundleForRoles } from './-config/dashboard-role-bundles';
 import RoleTypeComponent from './-components/RoleTypeComponent';
 import { LearnerTab } from './-components/LearnerTab';
@@ -1023,6 +1024,18 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                             </Card>
                         )}
                     </div>
+                    {/* LMS operations: is the external LMS integration actually up?
+                        Self-hides when the institute has no external LMS connected, so an
+                        institute on the built-in Vacademy LMS never sees an empty card. */}
+                    {isWidgetVisible('lmsConnectionHealth') && (
+                        <TrackedWidget widgetId="lmsConnectionHealth">
+                            <div className="flex flex-1 flex-col gap-4 md:flex-row">
+                                <LmsConnectionHealthWidget
+                                    instituteId={instituteDetails?.id || ''}
+                                />
+                            </div>
+                        </TrackedWidget>
+                    )}
                     <div className="flex flex-1 flex-col gap-4 md:flex-row">
                         {isWidgetVisible('liveClasses') && (
                             <LiveClassesWidget instituteId={instituteDetails?.id || ''} />

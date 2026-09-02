@@ -618,6 +618,9 @@ export const PACKAGE_SETTING_APPLY_INSTITUTE_LMS = `${PACKAGE_SETTING_BASE}/appl
 export const LMS_PROVIDERS = `${BASE_URL}/admin-core-service/lms/v1/providers`;
 // Live-tests an LMS connection from the settings form.
 export const LMS_TEST_CONNECTION = `${BASE_URL}/admin-core-service/lms/v1/test-connection`;
+// Live health of the institute's SAVED LMS connections, tested server-side (credentials never
+// reach the browser). Backs the dashboard's LMS connection health widget.
+export const LMS_CONNECTION_HEALTH = `${BASE_URL}/admin-core-service/lms/v1/connection-health`;
 // Apply an institute LMS connection (+courseId, +optional workflow) to a course; list institute
 // workflows for the "attach workflow" picker.
 export const LMS_APPLY_CONNECTION_TO_PACKAGE = `${BASE_URL}/admin-core-service/lms/v1/apply-connection-to-package`;

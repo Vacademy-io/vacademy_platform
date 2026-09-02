@@ -561,6 +561,62 @@ public class UserPlanService {
         }
     }
 
+    /**
+     * Transaction-scoped claim on the credential email, so ONE checkout sends ONE.
+     *
+     * A multi-course order activates a UserPlan per course inside a single webhook
+     * transaction, and each activation reached the credential mail — a learner who
+     * bought four subjects got four identical "Course Enrollment" emails seconds
+     * apart. Identical is the point: that mail is
+     * createLearnerEnrollmentNewUserEmailBody(institute, name, username, password,
+     * loginUrl, theme), which takes no course at all, so the copies carried nothing
+     * the first one did not. The learner has one set of credentials.
+     *
+     * Deliberately NOT done by folding the enrollment WORKFLOW: LEARNER_BATCH_ENROLLMENT
+     * triggers are matched per package session, and one institute has 16 of them
+     * driving Moodle and LearnDash provisioning. Coalescing there would enrol a
+     * four-course learner into one course downstream.
+     *
+     * Scoped to the transaction because that is exactly one checkout, and released
+     * on completion — this thread is pooled, and a resource left bound would
+     * swallow the NEXT learner's credentials. With no transaction active there is
+     * nothing to coalesce, so the mail goes out as before.
+     *
+     * @return true when this caller owns the send
+     */
+    // Visible for testing.
+    boolean claimCredentialEmail(String userId, String instituteId) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager
+                .isSynchronizationActive()) {
+            return true;
+        }
+        final String key = "credentialEmailSent:" + instituteId + '|' + userId;
+        if (org.springframework.transaction.support.TransactionSynchronizationManager
+                .hasResource(key)) {
+            logger.info("Credential email already claimed for userId={} in this checkout; "
+                    + "not sending a duplicate.", userId);
+            return false;
+        }
+        // Register BEFORE binding. registerSynchronization is the call that can
+        // throw here, and a resource bound with no synchronization to release it
+        // would leak onto this pooled thread — silently swallowing the credentials
+        // of every later learner it serves.
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (org.springframework.transaction.support.TransactionSynchronizationManager
+                                .hasResource(key)) {
+                            org.springframework.transaction.support.TransactionSynchronizationManager
+                                    .unbindResourceIfPossible(key);
+                        }
+                    }
+                });
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .bindResource(key, Boolean.TRUE);
+        return true;
+    }
+
     public void applyOperationsOnFirstPayment(UserPlan userPlan) {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
 
@@ -795,10 +851,10 @@ public class UserPlanService {
             // Send credential email asynchronously to avoid blocking the payment webhook thread.
             // Gated by showSendCredentials so the post-payment path can't ship credentials the
             // admin disabled at the institute level.
-            if (showSendCredentials) {
+            if (showSendCredentials && claimCredentialEmail(userDTO.getId(), instituteId)) {
                 String learnerPortalUrl = resolveLearnerPortalUrl(packageSessionIds, instituteId);
                 asyncEnrollmentEmailService.sendCredentialEmailForPaidEnrollment(userDTO, instituteId, learnerPortalUrl);
-            } else {
+            } else if (!showSendCredentials) {
                 logger.info("Skipping credential email after payment: COURSE_SETTING.showSendCredentials=false " +
                         "for institute {}", instituteId);
             }

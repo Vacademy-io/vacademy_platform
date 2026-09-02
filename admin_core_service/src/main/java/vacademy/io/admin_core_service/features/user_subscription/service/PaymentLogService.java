@@ -319,6 +319,59 @@ public class PaymentLogService {
         }
     }
 
+    /**
+     * The order's figures for the confirmation email, read off the invoice that
+     * was just generated for it.
+     *
+     * The invoice is the only record that spans the whole order: on a multi-course
+     * checkout it groups every child payment log, so its totals are what the
+     * learner was actually charged. gross is reconstructed as paid + discount
+     * rather than stored separately, which keeps the email's arithmetic identical
+     * to the attached PDF's by construction.
+     *
+     * Null when there is nothing worth breaking down, which leaves the email
+     * quoting the payment log exactly as it always did.
+     */
+    // Visible for testing.
+    PaymentNotificatonService.OrderAmountSummary orderAmountsFrom(
+            InvoiceService.InvoiceGenerationResult invoiceResult, PaymentLog paymentLog) {
+        if (invoiceResult == null || invoiceResult.getInvoice() == null) {
+            return null;
+        }
+        try {
+            var invoice = invoiceResult.getInvoice();
+            double paid = invoice.getTotalAmount() != null ? invoice.getTotalAmount().doubleValue() : 0d;
+            double discount = invoice.getDiscountAmount() != null
+                    ? invoice.getDiscountAmount().doubleValue()
+                    : 0d;
+            if (paid <= 0) {
+                return null;
+            }
+            // Only speak for the order when this log really is one SHARE of it.
+            //
+            // Two other shapes reach here and must keep quoting their own log, as
+            // they always have:
+            //   * a single-course invoice — one log, its amount IS the order;
+            //   * a legacy multi-package order, where every child log already
+            //     carries the whole order total (MultiPackageLearnerEnrollService
+            //     copies it onto each) and the invoice is priced from plan list
+            //     prices instead. Quoting the invoice there would report the
+            //     un-discounted sum as the amount paid.
+            // A parent/child order is the one case where the log holds strictly
+            // less than the order — which is exactly the test below.
+            double thisLog = paymentLog.getPaymentAmount() != null ? paymentLog.getPaymentAmount() : 0d;
+            if (invoiceResult.getPaymentLogCount() <= 1 || thisLog >= paid - 0.005) {
+                return null;
+            }
+            return new PaymentNotificatonService.OrderAmountSummary(
+                    paid + discount, discount, paid, invoiceResult.getPaymentLogCount());
+        } catch (Exception e) {
+            log.warn("Could not read order amounts from invoice for payment log {}: {}",
+                    paymentLog.getId(), e.getMessage());
+            return null;
+        }
+    }
+
     private void handlePostPaymentLogicForSyncPayment(PaymentLog paymentLog, String instituteId) {
         handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
 
@@ -694,6 +747,10 @@ public class PaymentLogService {
             // invoice generation itself is (the mapping unique key is composite invoice_id+
             // payment_log_id, so concurrency safety would need an atomic guard — out of scope here).
             boolean invoiceAlreadyExisted = false;
+            // The ORDER's money, for the one confirmation email that goes out. A
+            // multi-course checkout fans out into a child log per course, so this log
+            // knows only its own share; the invoice covers the whole order.
+            PaymentNotificatonService.OrderAmountSummary orderAmounts = null;
             if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
                 log.info("Generating invoice for payment log ID: {} (pdfPlacement={})",
                         paymentLog.getId(), pdfPlacement);
@@ -711,8 +768,13 @@ public class PaymentLogService {
                             : null;
                     if (attachInvoiceToConfirmation) {
                         invoicePdfBytes = invoiceResult.getPdfBytes();
-                        invoiceAlreadyExisted = invoiceResult.isAlreadyExisted();
                     }
+                    // Captured whatever the placement is: it is the signal that THIS log's
+                    // order has already been confirmed to the learner, which is exactly as
+                    // true when the PDF travels in its own email. Without it, a four-course
+                    // order sent four confirmations under the default placement.
+                    invoiceAlreadyExisted = invoiceResult.isAlreadyExisted();
+                    orderAmounts = orderAmountsFrom(invoiceResult, paymentLog);
                 }
                 log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
             }
@@ -882,19 +944,27 @@ public class PaymentLogService {
                 }
             }
 
-            // Consolidated-mode dedup: when the PDF rides on the confirmation email and the invoice
-            // was already present (duplicate/retried webhook), the single email was already sent on
-            // the first delivery — skip to avoid a second confirmation. Default-placement institutes
-            // (attachInvoiceToConfirmation == false) always send the confirmation, exactly as before.
-            if (attachInvoiceToConfirmation && invoiceAlreadyExisted) {
-                log.info("Skipping duplicate payment-confirmation email for payment log {} — invoice "
-                        + "already existed (retried/duplicate webhook); single email was already sent.",
+            // One confirmation per ORDER, whatever the PDF placement.
+            //
+            // The invoice's own idempotency is the signal: if this log's order was
+            // already invoiced, the email covering it has already gone out — either
+            // by a sibling course of the same multi-course order, or by an earlier
+            // delivery of a retried webhook. This used to be gated on the PDF riding
+            // along (attachInvoiceToConfirmation), so default-placement institutes
+            // still sent one confirmation per course — four for a four-subject order.
+            // A genuinely separate payment (a later installment) creates its own log
+            // and its own invoice, so it is unaffected.
+            if (invoiceAlreadyExisted) {
+                log.info("Skipping duplicate payment-confirmation email for payment log {} — its "
+                        + "order is already invoiced (sibling course, or retried webhook); the "
+                        + "single email covering the whole order was already sent.",
                         paymentLog.getId());
             } else {
                 UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
                 paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
                         paymentInitiationRequestDTO, userDTO, invoicePdfBytes, invoiceNumber,
-                        invoiceService.resolveCourseDescription(paymentLog.getId()), paymentLog);
+                        invoiceService.resolveCourseDescription(paymentLog.getId()), paymentLog,
+                        orderAmounts);
             }
         }
     }

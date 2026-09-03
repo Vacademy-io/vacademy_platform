@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     ArrowClockwise,
-    CaretRight,
     ClipboardText,
     MagnifyingGlass,
     Target,
@@ -125,7 +124,7 @@ export default function QuizResultsOverview({
             {
                 id: 'quiz',
                 header: 'Quiz',
-                size: 260,
+                size: 240,
                 accessorFn: (row) => row.title ?? '',
                 cell: ({ row }) => {
                     const quiz = row.original;
@@ -238,16 +237,6 @@ export default function QuizResultsOverview({
                     </span>
                 ),
             },
-            {
-                id: 'open',
-                header: '',
-                size: 48,
-                cell: () => (
-                    <div className="flex justify-end text-neutral-300">
-                        <CaretRight className="size-4" aria-hidden="true" />
-                    </div>
-                ),
-            },
         ],
         []
     );
@@ -286,20 +275,18 @@ export default function QuizResultsOverview({
                     accent="bg-primary-500"
                 />
                 <StatTile
-                    label="Learners active"
+                    label="Learners started"
                     value={`${formatNumber(summary?.learnersAttempted ?? 0)} / ${formatNumber(
                         summary?.enrolledLearners ?? 0
                     )}`}
-                    hint={`${formatPercent(
-                        summary?.participationPercent
-                    )} of all quizzes attempted`}
+                    hint="At least one quiz done"
                     icon={UsersThree}
                     accent="bg-info-500"
                 />
                 <StatTile
                     label="Average score"
                     value={formatPercent(summary?.avgScorePercent)}
-                    hint="Across every attempted quiz"
+                    hint="Across all attempts"
                     icon={Target}
                     accent="bg-success-500"
                 />

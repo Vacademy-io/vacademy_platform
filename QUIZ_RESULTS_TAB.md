@@ -154,6 +154,55 @@ Every meter renders its number next to the bar for the same reason.
 
 ---
 
+---
+
+## Two sub-tabs: Learner-wise and Quiz-wise
+
+The tab opens on a view switch, because the same graded data answers two different
+questions and a teacher tends to live in one of them (the choice is remembered in
+`localStorage`):
+
+- **Learner-wise** — the roster is the row: quizzes done, running average, marks so far.
+  Clicking a learner opens a right-hand side panel with their whole quiz history.
+  Answers *"who is falling behind"*.
+- **Quiz-wise** — the quiz is the row, opening into that quiz's learners and its
+  question-by-question breakdown. Answers *"which quiz is landing badly"*.
+
+### The learner side panel
+
+Three levels, each loaded only when opened, so a learner with a hundred quizzes does not
+pull every answer they have ever given just to show a summary:
+
+1. **Header + quiz list** (`/quiz-results/learner`) — their totals (quizzes done, average,
+   marks obtained out of the marks they were examined on, with the course total as
+   context, attempts, quizzes passed) and every quiz in the course including the ones
+   they have not touched.
+2. **Attempts** (`/quiz-results/learner/answers`) — every attempt, newest first, each with
+   its own score and date. The latest carries a **counted** badge, because that is the one
+   every other screen reports.
+3. **Answers** — per question: the verdict, the marks awarded out of the marks available,
+   every option with the correct one ticked and the learner's own pick marked (red when it
+   was wrong), plus the explanation. Free-text questions fall back to
+   "Answered: … / Expected: …".
+
+Attempts are numbered **oldest-first**, which is how a teacher refers to them. Showing all
+of them is the point: on production, one learner's three tries at the same quiz score
+55.6% → 44.4% → 22.2%, and reporting only the latest would hide that they are regressing.
+
+### Endpoints added
+
+| Endpoint | Returns |
+|---|---|
+| `GET /quiz-results/learners?batchId=` | a row per enrolled learner, totalled across every quiz |
+| `GET /quiz-results/learner?batchId=&userId=` | one learner's per-quiz standing, attempted or not |
+| `GET /quiz-results/learner/answers?batchId=&slideId=&userId=` | their answers on each attempt |
+
+The learner-wise overview needs **no new SQL**: it is the quiz-wise grading pass pivoted
+in Java. `getAttempts` and `getLatestAttemptResponses` gained an optional `userId` filter
+(null = whole batch) so the side panel costs a fraction of the batch-wide load.
+
+---
+
 ## Verified
 
 - Both services compile; `tsc --noEmit` clean; eslint clean on the new files;

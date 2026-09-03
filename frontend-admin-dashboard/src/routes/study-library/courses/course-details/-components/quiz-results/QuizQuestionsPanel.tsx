@@ -172,7 +172,7 @@ function QuestionCard({
                 {question.ungradedCount > 0 && (
                     <span className="inline-flex items-center gap-1 text-neutral-400">
                         <Info className="size-3.5" aria-hidden="true" />
-                        {question.ungradedCount} not auto-gradable
+                        {question.ungradedCount} need manual marking
                     </span>
                 )}
             </div>

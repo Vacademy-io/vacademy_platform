@@ -9,9 +9,7 @@ import asyncio
 import base64
 import json
 import logging
-import os
 import re
-import tempfile
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -24,6 +22,7 @@ from ..services.sarvam_service import SarvamService, SarvamSTTError
 from ..services.voice_session_service import VoiceSessionService
 from ..services.platform_settings_service import get_platform_setting
 from ..services.voice_tts import default_voice_for, synthesize_speech
+from ..services.audio_utils import transcode_to_wav
 from ..services.context_resolver_service import ContextResolverService
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.api_key_resolver import ApiKeyResolver
@@ -50,99 +49,10 @@ _SENTENCE_END = re.compile(r"(?<=[.!?…।])\s+|\n+")
 MIN_SPEECH_WAV_BYTES = 44 + 16000 * 2 * 0.4
 
 
-def _repair_wav_header(wav: bytes) -> bytes:
-    """
-    Make the RIFF and data chunk sizes match the payload.
-
-    A WAV written to a non-seekable output (a pipe) carries placeholder sizes
-    (0 or 0xFFFFFFFF) the encoder never got to backpatch. Decoders that trust
-    the header — Sarvam's does — reject it as malformed. Fixing the two fields
-    costs nothing and makes the file valid regardless of how it was produced.
-    """
-    if len(wav) < 44 or wav[:4] != b"RIFF" or wav[8:12] != b"WAVE":
-        return wav
-    buf = bytearray(wav)
-    total = len(buf)
-    buf[4:8] = (total - 8).to_bytes(4, "little")
-    # Locate the data chunk (fmt/LIST chunks may precede it).
-    pos = 12
-    while pos + 8 <= total:
-        cid = bytes(buf[pos:pos + 4])
-        size = int.from_bytes(buf[pos + 4:pos + 8], "little")
-        if cid == b"data":
-            buf[pos + 4:pos + 8] = (total - pos - 8).to_bytes(4, "little")
-            break
-        if size in (0, 0xFFFFFFFF) or pos + 8 + size > total:
-            break
-        pos += 8 + size + (size & 1)
-    return bytes(buf)
-
-
 async def _transcode_to_wav(audio: bytes, mime: str) -> tuple[bytes, str, str]:
-    """
-    Normalise browser audio (webm/opus, ogg, mp4) to 16 kHz mono WAV before STT.
-
-    Sarvam's documented input is WAV; what the browser records varies by
-    engine. ffmpeg ships in this image for the video pipeline, so converting
-    is ~50 ms for a few seconds of speech.
-
-    Input goes through a temp FILE, not stdin: MP4/M4A cannot be demuxed from a
-    non-seekable pipe (the index sits at the end), and a pipe-fed ffmpeg failed
-    silently in production for exactly that reason. Returns
-    (bytes, mime, note) — `note` says what happened so the turn can report it.
-    On any failure the original bytes go through unchanged rather than
-    dropping the turn.
-    """
-    base = (mime or "").split(";")[0].strip().lower()
-    if not audio:
-        return audio, mime, "empty"
-    if base in ("audio/wav", "audio/x-wav", "audio/wave"):
-        return audio, "audio/wav", "wav_passthrough"
-
-    suffix = {
-        "audio/webm": ".webm", "video/webm": ".webm", "audio/ogg": ".ogg",
-        "audio/mp4": ".m4a", "audio/x-m4a": ".m4a", "audio/aac": ".aac",
-        "audio/mpeg": ".mp3", "audio/flac": ".flac", "audio/x-caf": ".caf",
-    }.get(base, ".bin")
-    src_path = None
-    out_path = None
-    try:
-        with tempfile.NamedTemporaryFile(prefix="voice_in_", suffix=suffix, delete=False) as f:
-            f.write(audio)
-            src_path = f.name
-        # Output to a FILE as well: WAV streamed to stdout has placeholder
-        # RIFF/data sizes (the encoder cannot seek back), and Sarvam answered
-        # HTTP 400 to exactly that in production.
-        out_path = src_path + ".wav"
-        proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-            "-i", src_path, "-vn", "-ac", "1", "-ar", "16000", "-acodec", "pcm_s16le", "-f", "wav", out_path,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, err = await asyncio.wait_for(proc.communicate(), timeout=20)
-        out = b""
-        if proc.returncode == 0 and os.path.exists(out_path):
-            with open(out_path, "rb") as f:
-                out = f.read()
-        if proc.returncode == 0 and len(out) > 44:
-            return _repair_wav_header(out), "audio/wav", f"transcoded_file:{base}"
-        detail = (err or b"")[:300].decode("utf-8", "ignore").strip()
-        logger.warning("ffmpeg transcode failed (rc=%s, in=%s %dB): %s", proc.returncode, base, len(audio), detail)
-        return audio, mime, f"transcode_failed:rc{proc.returncode}"
-    except FileNotFoundError:
-        logger.error("ffmpeg binary not found; sending original audio to STT")
-        return audio, mime, "transcode_failed:no_ffmpeg"
-    except Exception as exc:
-        logger.exception("ffmpeg transcode error; sending original audio to STT")
-        return audio, mime, f"transcode_failed:{type(exc).__name__}"
-    finally:
-        for path in (src_path, out_path):
-            if path:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
+    """Shared implementation — see services/audio_utils.transcode_to_wav."""
+    out, out_mime, note = await transcode_to_wav(audio, mime)
+    return out, out_mime, note
 
 
 def _split_for_speech(text: str) -> list[str]:

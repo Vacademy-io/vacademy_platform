@@ -277,11 +277,28 @@ class SarvamService:
         if not audio_bytes:
             return ""
 
+        upload_type = (mime_type or "audio/wav").split(";")[0].strip() or "audio/wav"
+
+        # Sarvam rejects clips over 30 s with HTTP 400. A PCM WAV can be cut on
+        # frame boundaries, so transcribe it in <=29 s pieces and join them.
+        if upload_type in ("audio/wav", "audio/x-wav", "audio/wave"):
+            from .audio_utils import STT_CHUNK_SECONDS, split_wav, wav_duration_seconds
+
+            duration = wav_duration_seconds(audio_bytes)
+            if duration and duration > STT_CHUNK_SECONDS:
+                pieces = split_wav(audio_bytes, STT_CHUNK_SECONDS)
+                logger.info("STT: %.1fs clip split into %d pieces", duration, len(pieces))
+                texts = []
+                for piece in pieces:
+                    text = await self.speech_to_text(piece, language=language, mime_type="audio/wav")
+                    if text.strip():
+                        texts.append(text.strip())
+                return " ".join(texts)
+
         headers = {
             "api-subscription-key": self.api_key,
         }
 
-        upload_type = (mime_type or "audio/wav").split(";")[0].strip() or "audio/wav"
         upload_name = f"audio.{_AUDIO_EXTENSIONS.get(upload_type, 'wav')}"
 
         form_data: dict = {"model": "saaras:v3"}

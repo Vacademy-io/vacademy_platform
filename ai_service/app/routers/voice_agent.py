@@ -20,6 +20,8 @@ from ..db import get_sessionmaker
 from ..repositories.chat_session_repository import ChatSessionRepository
 from ..services.sarvam_service import SarvamService
 from ..services.voice_session_service import VoiceSessionService
+from ..services.platform_settings_service import get_platform_setting
+from ..services.voice_tts import default_voice_for, synthesize_speech
 from ..services.context_resolver_service import ContextResolverService
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.api_key_resolver import ApiKeyResolver
@@ -102,7 +104,13 @@ def _build_voice_session_service(db_session) -> VoiceSessionService:
     context_resolver = ContextResolverService(db_session)
     institute_settings = InstituteSettingsService(db_session)
     api_key_resolver = ApiKeyResolver(db_session)
-    llm_client = ChatLLMClient(api_key_resolver)
+    llm_client = ChatLLMClient(
+        api_key_resolver,
+        disable_reasoning=bool(
+            get_platform_setting("chatbot.llm.disable_reasoning", default=get_settings().llm_disable_reasoning)
+        ),
+        platform_model_key="chatbot.text.model",
+    )
 
     return VoiceSessionService(
         db_session=db_session,
@@ -175,6 +183,13 @@ async def voice_session(websocket: WebSocket, session_id: str):
         language: str = "en-IN"
         voice: str = "shubh"
 
+        # Platform switches (super-admin portal -> AI Settings). Resolved once
+        # per call so a mid-call flip can't change engines between sentences.
+        tts_provider: str = str(get_platform_setting("chatbot.voice.tts_provider", default="sarvam"))
+        platform_voice: str = str(get_platform_setting("chatbot.voice.tts_voice", default="") or "")
+        voice_model: Optional[str] = get_platform_setting("chatbot.voice.model") or None
+        opening_turn_enabled: bool = bool(get_platform_setting("chatbot.voice.opening_turn", default=True))
+
         # Audio buffer for accumulating chunks
         audio_buffer: bytearray = bytearray()
 
@@ -192,6 +207,10 @@ async def voice_session(websocket: WebSocket, session_id: str):
         # /chat-agent is unauthenticated today, and cutting them off before
         # every client sends a token would drop live calls.
         settings = get_settings()
+        require_auth = bool(
+            settings.voice_require_auth
+            or get_platform_setting("chatbot.voice.require_auth", default=False)
+        )
         is_authenticated = False
 
         async def _send(payload: dict) -> None:
@@ -207,11 +226,18 @@ async def voice_session(websocket: WebSocket, session_id: str):
 
             Cancellation (a barge-in) stops it between segments at the latest.
             """
+            # Sarvam speaks with the institute's configured voice; other engines
+            # use the platform voice (or a per-language default), since Sarvam
+            # speaker names mean nothing to them.
+            spoken_voice = voice if tts_provider == "sarvam" else (
+                platform_voice or default_voice_for(tts_provider, language)
+            )
             for segment in _split_for_speech(text):
-                segment_audio = await sarvam_service.text_to_speech(
+                segment_audio, _mime, provider_used = await synthesize_speech(
                     text=segment,
                     language=language,
-                    voice=voice,
+                    voice=spoken_voice,
+                    provider=tts_provider,
                 )
                 voice_service.record_voice_media_usage(
                     kind="tts",
@@ -220,7 +246,8 @@ async def voice_session(websocket: WebSocket, session_id: str):
                     session_id=session_id,
                     language=language,
                     characters=len(segment),
-                    detail=voice,
+                    detail=spoken_voice,
+                    provider=provider_used,
                 )
                 if not segment_audio:
                     continue
@@ -241,6 +268,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
                     session_id=session_id,
                     user_id=user_id,
                     institute_id=institute_id,
+                    model=voice_model,
                 )
                 # No opening line (a reconnect mid-call, or an empty completion)
                 # still has to end the turn, or the client waits on "connecting"
@@ -299,6 +327,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
                         transcript=transcript,
                         user_id=user_id,
                         institute_id=institute_id,
+                        model=voice_model,
                     )
                     ai_text = result.get("ai_text", "")
                     await _send({
@@ -372,7 +401,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
                 is_authenticated = True
                 continue
 
-            elif not is_authenticated and settings.voice_require_auth:
+            elif not is_authenticated and require_auth:
                 await _send({"type": "error", "message": "Authentication required"})
                 await websocket.close(code=4401)
                 return
@@ -386,7 +415,11 @@ async def voice_session(websocket: WebSocket, session_id: str):
                 # the session has history, so a reconnect mid-call stays silent.
                 if not opening_started:
                     opening_started = True
-                    current_turn = asyncio.create_task(_run_opening_turn())
+                    if opening_turn_enabled:
+                        current_turn = asyncio.create_task(_run_opening_turn())
+                    else:
+                        # No greeting: hand the floor to the student straight away.
+                        await _send({"type": "audio_end", "reason": "complete"})
 
             elif msg_type == "audio_chunk":
                 # Accumulate base64-decoded audio bytes

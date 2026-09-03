@@ -3,12 +3,15 @@ Service for resolving API keys from request, database, or defaults.
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional, Tuple
 from uuid import UUID
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..repositories.ai_api_keys_repository import AiApiKeysRepository
+
+logger = logging.getLogger(__name__)
 
 
 class ApiKeyResolver:
@@ -31,7 +34,8 @@ class ApiKeyResolver:
         self,
         institute_id: str,
         user_id: Optional[str] = None,
-        request_model: Optional[str] = None
+        request_model: Optional[str] = None,
+        platform_default_key: Optional[str] = None,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Resolve API keys and model with waterfall priority order.
@@ -58,10 +62,18 @@ class ApiKeyResolver:
         
         # Handle "auto" model - if "auto" is specified, always use environment default (xiaomi/mimo-v2-flash:free)
         use_auto_model = request_model and request_model.lower() == "auto"
-        if use_auto_model:
-            model = self._settings.llm_default_model
-        else:
-            model = self._settings.llm_default_model  # Start with env default, may be overridden by DB
+        model = self._settings.llm_default_model  # Start with env default, may be overridden by DB
+
+        # A platform setting (super-admin portal) replaces the ENV tier only:
+        # institutes/users with their own key + default model still win below.
+        if platform_default_key:
+            try:
+                from .platform_settings_service import get_platform_setting
+                platform_model = get_platform_setting(platform_default_key)
+                if platform_model:
+                    model = str(platform_model)
+            except Exception:
+                logger.warning("platform default model lookup failed; using env default", exc_info=True)
         
         # Try to get keys from database (waterfall: user → institute → env)
         try:
@@ -113,7 +125,6 @@ class ApiKeyResolver:
         except Exception as e:
             # Log error but continue with environment defaults
             import logging
-            logger = logging.getLogger(__name__)
             logger.warning(f"Failed to retrieve API keys from database: {str(e)}. Using environment defaults.")
         
         # Final model resolution: request_model overrides everything (unless it's "auto")

@@ -97,7 +97,10 @@ class AiChatAgentService:
     def _resolve_keys(db: Session, institute_id: str, user_id: str) -> tuple:
         """Pre-resolve API keys using the given DB session."""
         return ApiKeyResolver(db).resolve_keys(
-            institute_id=institute_id, user_id=user_id
+            institute_id=institute_id,
+            user_id=user_id,
+            # Super-admin portal -> AI Settings -> "Chatbot model"
+            platform_default_key="chatbot.text.model",
         )
 
     @staticmethod
@@ -113,9 +116,16 @@ class AiChatAgentService:
         same answer quality. It is a no-op on gemini-2.5-flash, which already
         emits none. Every OTHER consumer of ChatLLMClient keeps reasoning.
         """
+        from .platform_settings_service import get_platform_setting
+
         return ChatLLMClient(
             _CachedKeyResolver(keys),
-            disable_reasoning=get_settings().llm_disable_reasoning,
+            disable_reasoning=bool(
+                get_platform_setting(
+                    "chatbot.llm.disable_reasoning",
+                    default=get_settings().llm_disable_reasoning,
+                )
+            ),
         )
 
     def _record_token_usage(

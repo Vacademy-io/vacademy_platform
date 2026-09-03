@@ -2,7 +2,7 @@
 Super Admin schemas for platform-wide credit and AI usage views.
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
@@ -114,3 +114,53 @@ class CreditUsageLiveResponse(BaseModel):
     last_24h: CreditWindowTotals
     top_institutes: List[CreditWindowInstitute]
     by_request_type: List[CreditWindowTypeItem]
+
+
+# ---------------------------------------------------------------------------
+# Platform AI runtime settings (super-admin portal -> AI Settings)
+# ---------------------------------------------------------------------------
+
+class AiSettingEntry(BaseModel):
+    key: str
+    group: str
+    group_label: str
+    label: str
+    description: str
+    type: str
+    nullable: bool = False
+    options: List[str] = []
+    value: Optional[Any] = None
+    default: Optional[Any] = None
+    source: str  # "portal" | "default"
+    updated_by: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class LlmModelOption(BaseModel):
+    model_id: str
+    name: str
+    provider: str
+    tier: str
+    is_free: bool = False
+
+
+class TtsProviderOption(BaseModel):
+    id: str
+    label: str
+    note: str
+    available: bool
+    default_voice_example: str
+
+
+class AiSettingsCatalog(BaseModel):
+    llm_models: List[LlmModelOption]
+    tts_providers: List[TtsProviderOption]
+
+
+class AiSettingsResponse(BaseModel):
+    settings: List[AiSettingEntry]
+    catalog: AiSettingsCatalog
+
+
+class AiSettingUpdateRequest(BaseModel):
+    value: Optional[Any] = None

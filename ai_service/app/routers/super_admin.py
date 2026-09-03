@@ -16,6 +16,12 @@ from ..db import db_dependency
 from ..core.security import get_current_user
 from ..schemas.auth import CustomUserDetails
 from ..schemas.super_admin import (
+    AiSettingEntry,
+    AiSettingsCatalog,
+    AiSettingsResponse,
+    AiSettingUpdateRequest,
+    LlmModelOption,
+    TtsProviderOption,
     AllInstitutesCreditsResponse,
     CreditUsageLiveResponse,
     CreditWindowInstitute,
@@ -462,3 +468,104 @@ def get_credit_usage_live(
     except Exception as e:
         logger.error(f"Error getting live credit usage: {e}")
         return empty
+
+
+# ===========================================================================
+# Platform AI runtime settings
+# ===========================================================================
+#
+# Which model answers the learner chatbot, which engine speaks the voice call,
+# rollout flags. Stored in ai_platform_settings (V493), declared in
+# platform_settings_service.SETTING_SPECS, cached ~30s on every replica.
+
+def _find_setting(db: Session, key: str) -> AiSettingEntry:
+    from ..services.platform_settings_service import list_platform_settings
+
+    for entry in list_platform_settings(db):
+        if entry["key"] == key:
+            return AiSettingEntry(**entry)
+    raise HTTPException(status_code=404, detail=f"Unknown setting {key}")
+
+
+def _llm_model_catalog(db: Session) -> list:
+    """Active chat-capable models from the ai_models registry (V101)."""
+    rows = db.execute(text(
+        """
+        SELECT model_id, name, provider, tier, COALESCE(is_free, FALSE)
+        FROM ai_models
+        WHERE is_active = TRUE
+          AND category NOT IN ('embedding', 'image', 'tts')
+        ORDER BY display_order, provider, name
+        """
+    )).fetchall()
+    return [
+        LlmModelOption(model_id=r[0], name=r[1], provider=r[2], tier=r[3], is_free=bool(r[4]))
+        for r in rows
+    ]
+
+
+@router.get(
+    "/ai-settings",
+    response_model=AiSettingsResponse,
+    summary="Platform AI runtime settings with the option catalogue",
+)
+def get_ai_settings(
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.platform_settings_service import list_platform_settings
+    from ..services.voice_tts import list_tts_providers
+
+    return AiSettingsResponse(
+        settings=[AiSettingEntry(**e) for e in list_platform_settings(db)],
+        catalog=AiSettingsCatalog(
+            llm_models=_llm_model_catalog(db),
+            tts_providers=[TtsProviderOption(**p) for p in list_tts_providers()],
+        ),
+    )
+
+
+@router.put(
+    "/ai-settings/{key}",
+    response_model=AiSettingEntry,
+    summary="Set one platform AI setting (applies on every replica within ~30s)",
+)
+def put_ai_setting(
+    key: str,
+    body: AiSettingUpdateRequest,
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.platform_settings_service import set_platform_setting
+
+    try:
+        set_platform_setting(db, key, body.value, updated_by=current_user.user_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown setting {key}")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    logger.info("ai setting %s set by %s", key, current_user.user_id)
+    return _find_setting(db, key)
+
+
+@router.delete(
+    "/ai-settings/{key}",
+    response_model=AiSettingEntry,
+    summary="Reset one platform AI setting to its environment default",
+)
+def delete_ai_setting(
+    key: str,
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.platform_settings_service import reset_platform_setting
+
+    try:
+        reset_platform_setting(db, key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown setting {key}")
+    logger.info("ai setting %s reset by %s", key, current_user.user_id)
+    return _find_setting(db, key)

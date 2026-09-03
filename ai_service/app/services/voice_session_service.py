@@ -49,6 +49,7 @@ class VoiceSessionService:
         language: str,
         characters: int,
         detail: Optional[str] = None,
+        provider: str = "sarvam",
     ) -> None:
         """
         Attribute Sarvam STT/TTS spend to the institute that caused it.
@@ -67,9 +68,15 @@ class VoiceSessionService:
                 request_type=RequestType.TTS_PREMIUM if kind == "tts" else RequestType.TRANSCRIPTION,
                 institute_id=institute_id,
                 user_id=user_id,
-                model="sarvam:bulbul-v3" if kind == "tts" else "sarvam:saaras-v3",
+                model=(
+                    {"sarvam": "sarvam:bulbul-v3", "google": "google:chirp3-hd", "edge": "edge:neural"}.get(
+                        provider, provider
+                    )
+                    if kind == "tts"
+                    else "sarvam:saaras-v3"
+                ),
                 request_id=session_id,
-                tts_provider="sarvam",
+                tts_provider=provider if kind == "tts" else "sarvam",
                 character_count=max(characters, 0),
                 metadata={"surface": "voice_call", "language": language, "detail": detail},
             )
@@ -110,6 +117,7 @@ class VoiceSessionService:
         session_id: str,
         user_id: str,
         institute_id: str,
+        model: Optional[str] = None,
     ) -> Optional[dict]:
         """
         Produce the line the agent speaks the moment the student joins the call,
@@ -150,6 +158,7 @@ class VoiceSessionService:
             max_tokens=150,
             institute_id=institute_id,
             user_id=user_id,
+            model=model,
         )
 
         ai_text = (llm_response.get("content") or "").strip()
@@ -179,6 +188,7 @@ class VoiceSessionService:
         transcript: str,
         user_id: str,
         institute_id: str,
+        model: Optional[str] = None,
     ) -> dict:
         """
         Process a single voice conversation turn.
@@ -219,6 +229,7 @@ class VoiceSessionService:
             max_tokens=300,  # short responses for voice
             institute_id=institute_id,
             user_id=user_id,
+            model=model,  # platform "voice call model" when set; else the chatbot model
         )
 
         ai_text = llm_response.get("content", "")

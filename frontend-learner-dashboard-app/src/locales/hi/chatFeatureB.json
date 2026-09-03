@@ -14,7 +14,9 @@
         "creditsExhausted": "आपके OpenRouter क्रेडिट समाप्त हो गए हैं। AI सहायक का उपयोग जारी रखने के लिए कृपया अपने क्रेडिट रिचार्ज करें।",
         "attachmentAlt": "अटैचमेंट",
         "attachedImageAlt": "संलग्न",
-        "copy": "कॉपी करें"
+        "copy": "कॉपी करें",
+        "popupView": "पॉपअप में खोलें",
+        "dockView": "साइड में डॉक करें"
     },
     "voiceModeLabels": {
         "interview": "मॉक इंटरव्यू",

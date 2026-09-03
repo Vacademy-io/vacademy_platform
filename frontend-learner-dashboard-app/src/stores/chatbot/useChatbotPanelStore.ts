@@ -6,6 +6,10 @@ import { persist } from "zustand/middleware";
 // vertical spot where it was dropped (so it can sit at any height, not a corner).
 export type FabSide = "left" | "right";
 
+// How the desktop chat renders: docked as a right-hand column, or popped out
+// into a centered overlay that doesn't squeeze the page.
+export type ChatViewMode = "docked" | "popup";
+
 // Persisted position of the FAB. `null` means "use the default docked
 // bottom-right position". `yRatio` (0..1 of viewport height) is resize-proof.
 export interface FabPosition {
@@ -27,6 +31,12 @@ interface ChatbotPanelState {
   isDockedMode: boolean;
   setIsDockedMode: (isDockedMode: boolean) => void;
 
+  // Docked column vs popup overlay (desktop). Persisted: a learner who prefers
+  // the popup gets it back next visit.
+  viewMode: ChatViewMode;
+  setViewMode: (mode: ChatViewMode) => void;
+  toggleViewMode: () => void;
+
   // Floating button (FAB) position — where the user dragged the launcher to
   fabPosition: FabPosition | null;
   setFabPosition: (position: FabPosition | null) => void;
@@ -44,6 +54,7 @@ export const useChatbotPanelStore = create<ChatbotPanelState>()(
       isOpen: false,
       panelWidth: 350,
       isDockedMode: false,
+      viewMode: "docked",
       fabPosition: null,
 
       // Constants
@@ -59,6 +70,9 @@ export const useChatbotPanelStore = create<ChatbotPanelState>()(
           panelWidth: Math.max(state.minWidth, Math.min(state.maxWidth, width)),
         })),
       setIsDockedMode: (isDockedMode) => set({ isDockedMode }),
+      setViewMode: (viewMode) => set({ viewMode }),
+      toggleViewMode: () =>
+        set((state) => ({ viewMode: state.viewMode === "popup" ? "docked" : "popup" })),
       setFabPosition: (fabPosition) => set({ fabPosition }),
     }),
     {
@@ -78,6 +92,7 @@ export const useChatbotPanelStore = create<ChatbotPanelState>()(
         isOpen: state.isOpen,
         panelWidth: state.panelWidth,
         fabPosition: state.fabPosition,
+        viewMode: state.viewMode,
       }),
     }
   )

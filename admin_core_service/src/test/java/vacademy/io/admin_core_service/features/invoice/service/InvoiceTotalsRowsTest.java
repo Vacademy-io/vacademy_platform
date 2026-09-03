@@ -80,13 +80,19 @@ class InvoiceTotalsRowsTest {
     }
 
     @Test
-    @DisplayName("the shipped default invoice template has somewhere to put it")
-    void defaultTemplateUsesTheBlock() throws IOException {
+    @DisplayName("the shipped default invoice template keeps the block out")
+    void defaultTemplateDoesNotUseTheBlock() throws IOException {
         String template = Files.readString(
                 Path.of("src/main/resources/templates/invoice/default_invoice.html"));
-        assertTrue(template.contains("{{totals_rows}}"),
-                "default_invoice.html must render the totals block");
-        assertFalse(template.contains("Total Purchases</span>"),
-                "the bare single-figure total it replaced should be gone");
+        // The block is built with raw &nbsp;. default_invoice.html names its
+        // placeholder inside a CSS comment and an HTML comment as well as at the
+        // real insertion point, and jsoup emits <style> data and comments verbatim
+        // -- so substituting it put an undeclared XML entity into the document and
+        // every invoice PDF died on it. Until the block stops emitting named
+        // entities, the shipped template stays on the single-figure total.
+        assertFalse(template.contains("{{totals_rows}}"),
+                "default_invoice.html must not embed the totals block");
+        assertTrue(template.contains("Total Purchases</span>"),
+                "the single-figure total is what it renders instead");
     }
 }

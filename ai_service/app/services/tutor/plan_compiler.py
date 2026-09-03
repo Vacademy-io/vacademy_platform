@@ -34,7 +34,11 @@ logger = logging.getLogger(__name__)
 MAX_REPAIRS = 2
 MAX_CONCURRENT_SLIDES = 3
 COMPILE_MAX_TOKENS = 12_000
-DEFAULT_COMPILE_MODEL = "google/gemini-2.5-pro"
+# Flash, not Pro: on this platform's credit pricing a single failed Pro compile
+# (3 × ~7k output tokens) cost 35 credits on 2026-09-03; Flash is an order of
+# magnitude cheaper and the validator + repair loop carries the quality. Raise
+# it per platform setting tutor.compile.model when the economics allow.
+DEFAULT_COMPILE_MODEL = "google/gemini-2.5-flash"
 
 
 def resolve_compile_model(override: Optional[str] = None) -> Optional[str]:
@@ -53,6 +57,11 @@ def _pydantic_errors(exc: ValidationError) -> List[str]:
         loc = ".".join(str(p) for p in e.get("loc", []))
         out.append(f"{loc}: {e.get('msg')}")
     return out
+
+
+class _Skip(Exception):
+    """Raised by the draft stage when a slide should be reported as skipped
+    (not failed): nothing to teach, no model call made."""
 
 
 class _FixedKeys:
@@ -187,6 +196,9 @@ class PlanCompiler:
         self._model_used: Optional[str] = None
         try:
             draft, raw = await self._build_draft(source, description)
+        except _Skip as skip:
+            self._fail(plan_id, f"skipped: {skip}")
+            return {"type": "PLAN_SKIPPED", "slide_id": slide_id, "plan_id": plan_id, "reason": str(skip)}
         except asyncio.CancelledError:
             # Client went away or the server is shutting down: never leave the
             # row COMPILING. The write is synchronous, so it completes even
@@ -271,6 +283,8 @@ class PlanCompiler:
         self, source: SlideSource, description: Optional[str]
     ) -> Tuple[TeachingPlanDraft, Optional[Dict[str, Any]]]:
         if source.kind == "quiz":
+            if not source.questions:
+                raise _Skip("this quiz has no questions yet")
             draft = compile_quiz(source, self.language)
             errors = validate_plan(draft, self.language, limits=QUIZ_LIMITS)
             if errors:
@@ -299,7 +313,9 @@ class PlanCompiler:
             content = await self._chat(messages)
             data = prompts.extract_json(content)
             if data is None:
-                errors = ["the reply was not a single JSON object"]
+                shape = prompts.describe_reply(content)
+                logger.warning("Tutor compile: reply %d was not JSON for slide %s: %s", attempt + 1, source.slide_id, shape)
+                errors = [f"the reply was not a single JSON object ({shape})"]
                 last_json = (content or "")[:4000]
             else:
                 last_json = json.dumps(data, ensure_ascii=False)

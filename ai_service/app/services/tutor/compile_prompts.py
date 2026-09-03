@@ -21,8 +21,9 @@ OPS_REFERENCE = """BOARD OPERATIONS (the only ops you may use; every element op 
 - {"op":"text","id":"...","text":"..."}                            a short line, not a paragraph
 - {"op":"bullet","id":"...","items":["...","..."]}                 2-4 short items
 - {"op":"formula","id":"...","latex":"F = m a","caption":"..."}   LaTeX, no $ delimiters
-- {"op":"svg","id":"...","svg":"<svg viewBox=\\"0 0 400 240\\">...</svg>","description":"what it shows","parts":[{"id":"nucleus","label":"Nucleus"}]}
-      a simple, clean diagram; give the parts a teacher would point at their own id= inside the svg
+- {"op":"svg","id":"...","svg":"<svg viewBox='0 0 400 240'>...</svg>","description":"what it shows","parts":[{"id":"nucleus","label":"Nucleus"}]}
+      a simple, clean diagram; give the parts a teacher would point at their own id= inside the svg.
+      Inside the svg use SINGLE quotes for every attribute (viewBox='0 0 400 240', id='nucleus') so the JSON string needs no escaping.
 - {"op":"image","id":"...","generate":"prompt for an image generator","description":"what it shows","caption":"..."}
       ONLY when a photograph-like picture teaches better than a diagram (rare)
 - {"op":"table","id":"...","rows":[["Header","Header"],["a","b"]]}
@@ -36,7 +37,7 @@ Never use highlight/unhighlight/reveal/clear: those are live-session ops."""
 
 def plan_schema_text(lang: str) -> str:
     other = _other(lang)
-    return f"""OUTPUT: one JSON object, nothing else (no markdown fences, no prose before or after):
+    return f"""OUTPUT: one JSON object, nothing else (no markdown fences, no prose before or after; compact, no pretty-printing; no raw newlines inside strings):
 {{
   "language": "{lang}",
   "objectives": ["...", "..."],
@@ -155,23 +156,47 @@ def repair_prompt(errors: List[str], previous_json: str) -> str:
     )
 
 
-def extract_json(text: str) -> Optional[Dict[str, Any]]:
-    """Pull the first JSON object out of a model reply (fences, prose tolerated)."""
-    if not text:
-        return None
-    s = text.strip()
+def _strip_fences(s: str) -> str:
+    s = s.strip()
     if s.startswith("```"):
         s = s.split("\n", 1)[1] if "\n" in s else s[3:]
         if s.rstrip().endswith("```"):
             s = s.rstrip()[:-3]
+    return s
+
+
+def extract_json(text: str) -> Optional[Dict[str, Any]]:
+    """Pull the first JSON object out of a model reply.
+
+    Tolerates code fences and prose around the object, then falls back to a
+    repairing parser: plans carry SVG markup inside JSON strings and models
+    regularly slip on the escaping (an unescaped quote in a viewBox, a raw
+    newline), which strict json.loads rejects wholesale."""
+    if not text:
+        return None
+    s = _strip_fences(text)
+    for candidate in (s, s[s.find("{"): s.rfind("}") + 1] if "{" in s and "}" in s else ""):
+        if not candidate:
+            continue
+        try:
+            obj = json.loads(candidate)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:  # noqa: BLE001
+            pass
     try:
-        return json.loads(s)
+        import json_repair  # type: ignore
+        obj = json_repair.loads(s[s.find("{"):] if "{" in s else s)
+        if isinstance(obj, dict) and obj:
+            return obj
     except Exception:  # noqa: BLE001
         pass
-    start, end = s.find("{"), s.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            return json.loads(s[start:end + 1])
-        except Exception:  # noqa: BLE001
-            return None
     return None
+
+
+def describe_reply(text: str) -> str:
+    """One line for logs and the plan's error column: size, shape, head."""
+    t = (text or "")
+    head = t.strip()[:160].replace("\n", " ")
+    tail = t.strip()[-40:].replace("\n", " ")
+    return f"len={len(t)} starts={head!r} ends={tail!r}"

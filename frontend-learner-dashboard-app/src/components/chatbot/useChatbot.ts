@@ -415,6 +415,237 @@ export const useChatbot = () => {
     modulesWithChaptersData,
   ]);
 
+  // ── SSE stream lifecycle ──────────────────────────────────────────────
+  // Replies are produced by the server INSIDE the session's SSE loop, so a
+  // message sent while the stream is down is never answered. The browser does
+  // not retry a CLOSED EventSource, so we reconnect with backoff, and a
+  // watchdog below forces a reconnect when a turn looks stuck.
+  const MAX_STREAM_RECONNECTS = 6;
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attachStreamRef = useRef<(sid: string) => void>(() => {});
+
+  const closeStream = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+  }, []);
+
+  const scheduleStreamReconnect = useCallback((sid: string) => {
+    if (reconnectTimerRef.current) return;
+    const attempt = reconnectAttemptsRef.current;
+    if (attempt >= MAX_STREAM_RECONNECTS) {
+      console.error("[chatbot] stream could not be re-established; giving up");
+      setHasError(true);
+      setIsLoading(false);
+      setIsWaitingForResponse(false);
+      setAiStatus("idle");
+      return;
+    }
+    const delay = Math.min(30_000, 1000 * 2 ** attempt);
+    reconnectAttemptsRef.current = attempt + 1;
+    console.warn(`[chatbot] stream lost; reconnecting in ${delay}ms (attempt ${attempt + 1})`);
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      attachStreamRef.current(sid);
+    }, delay);
+  }, []);
+
+  /** Open (or re-open) the SSE stream for a session and wire its handlers. */
+  const attachStream = useCallback(
+    (sid: string) => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    // Setup SSE connection
+    const eventSource = chatbotAPI.createEventSource(sid);
+    eventSourceRef.current = eventSource;
+
+    eventSource.addEventListener("message", (event) => {
+      try {
+        const messageData: MessageEvent = JSON.parse(event.data);
+
+        // Check for credits exhausted error in message data
+        if (
+          (messageData as any).type === "ERROR" &&
+          (messageData as any).code === 402
+        ) {
+          setIsCreditsExhausted(true);
+          setIsWaitingForResponse(false);
+          setIsLoading(false);
+          setAiStatus("idle");
+
+          const creditsMessage: ChatMessage = {
+            id: Date.now(),
+            role: "assistant",
+            content:
+              t("common.creditsExhausted"),
+            timestamp: Date.now(),
+          };
+          setMessages((prev) => [...prev, creditsMessage]);
+          return;
+        }
+
+         // Handle tool_call: show indicator; tool_result: clear it
+        if (messageData.type === "tool_call") {
+          setActiveToolCall(messageData.metadata?.tool_name || null);
+          return;
+        }
+        if (messageData.type === "tool_result") {
+          setActiveToolCall(null);
+          return;
+        }
+
+        // Skip user messages from SSE since we already show them optimistically
+        if (messageData.type === "user") {
+          return;
+        }
+
+        // Clear waiting state and tool indicator when we get an actual assistant message
+        setIsWaitingForResponse(false);
+        setActiveToolCall(null);
+
+        // When we receive a full assistant message, clear streaming state
+        if (messageData.type === "assistant") {
+          setIsStreaming(false);
+          setStreamingContent("");
+        }
+
+        const newMessage: ChatMessage = {
+          id: messageData.id,
+          role: messageData.type as ChatMessage["role"],
+          content: messageData.content,
+          timestamp: new Date(messageData.created_at).getTime(),
+          metadata: messageData.metadata as ChatMessage["metadata"],
+        };
+
+        setMessages((prev) => {
+          // Check if message already exists
+          const exists = prev.some((msg) => msg.id === newMessage.id);
+          if (exists) return prev;
+          return [...prev, newMessage];
+        });
+      } catch (error) {
+        console.error("Error parsing message event:", error);
+      }
+    });
+
+    eventSource.addEventListener("token", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setIsStreaming(true);
+        setStreamingContent((prev) => prev + (data.content || ""));
+        scrollToBottom();
+      } catch (e) {
+        console.error("Error parsing token event:", e);
+      }
+    });
+
+    eventSource.addEventListener("status", (event) => {
+      try {
+        const statusData = JSON.parse(event.data);
+        setAiStatus(statusData.ai_status);
+
+        // Check if session is closed
+        if (statusData.session_status === "CLOSED") {
+          setIsSessionClosed(true);
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing status event:", error);
+      }
+    });
+
+    eventSource.addEventListener("error", (event) => {
+      // Check if this is a structured error event with data (e.g. credits exhausted)
+      try {
+        const errorEvent = event as MessageEvent;
+        if (errorEvent.data) {
+          const errorData = JSON.parse(errorEvent.data);
+          if (errorData.type === "ERROR" && errorData.code === 402) {
+            console.error("Credits exhausted (402):", errorData.message);
+            setIsCreditsExhausted(true);
+            setIsWaitingForResponse(false);
+            setIsLoading(false);
+            setAiStatus("idle");
+
+            const creditsMessage: ChatMessage = {
+              id: Date.now(),
+              role: "assistant",
+              content:
+                t("common.creditsExhausted"),
+              timestamp: Date.now(),
+            };
+            setMessages((prev) => [...prev, creditsMessage]);
+            return;
+          }
+        }
+      } catch {
+        // Not a JSON error event, handle as regular SSE error below
+      }
+
+      console.error("SSE Error event:", event);
+      console.error("EventSource readyState:", eventSource.readyState);
+      console.error("EventSource url:", eventSource.url);
+
+      // ReadyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
+      if (eventSource.readyState === EventSource.CLOSED) {
+        console.error("EventSource connection closed");
+        // The browser never retries a CLOSED EventSource (a 503 during a
+        // restart, a dropped connection). Reconnect ourselves: the server
+        // replays the session and processes any unanswered message.
+        eventSource.close();
+        if (eventSourceRef.current === eventSource) eventSourceRef.current = null;
+        scheduleStreamReconnect(sid);
+      }
+    });
+
+    eventSource.onerror = (error) => {
+      console.error("EventSource failed:", error);
+      console.error("EventSource readyState:", eventSource.readyState);
+
+      // Set error state to prevent re-initialization
+      if (eventSource.readyState === EventSource.CLOSED) {
+        // The browser never retries a CLOSED EventSource (a 503 during a
+        // restart, a dropped connection). Reconnect ourselves: the server
+        // replays the session and processes any unanswered message.
+        eventSource.close();
+        if (eventSourceRef.current === eventSource) eventSourceRef.current = null;
+        scheduleStreamReconnect(sid);
+      }
+    };
+
+      eventSource.addEventListener("open", () => {
+        reconnectAttemptsRef.current = 0;
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, scheduleStreamReconnect],
+  );
+  attachStreamRef.current = attachStream;
+
+  /** Re-establish the stream for the current session (Retry button, watchdog). */
+  const reconnectStream = useCallback(() => {
+    setHasError(false);
+    reconnectAttemptsRef.current = 0;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (sessionId) {
+      attachStream(sessionId);
+    }
+  }, [sessionId, attachStream]);
+
   const initializeSession = useCallback(async () => {
     if (isInitializing || sessionId) return;
 
@@ -459,160 +690,8 @@ export const useChatbot = () => {
 
       console.log("Setting up SSE connection...");
 
-      // Setup SSE connection
-      const eventSource = chatbotAPI.createEventSource(response.session_id);
-      eventSourceRef.current = eventSource;
+      attachStream(response.session_id);
 
-      eventSource.addEventListener("message", (event) => {
-        try {
-          const messageData: MessageEvent = JSON.parse(event.data);
-
-          // Check for credits exhausted error in message data
-          if (
-            (messageData as any).type === "ERROR" &&
-            (messageData as any).code === 402
-          ) {
-            setIsCreditsExhausted(true);
-            setIsWaitingForResponse(false);
-            setIsLoading(false);
-            setAiStatus("idle");
-
-            const creditsMessage: ChatMessage = {
-              id: Date.now(),
-              role: "assistant",
-              content:
-                t("common.creditsExhausted"),
-              timestamp: Date.now(),
-            };
-            setMessages((prev) => [...prev, creditsMessage]);
-            return;
-          }
-
-           // Handle tool_call: show indicator; tool_result: clear it
-          if (messageData.type === "tool_call") {
-            setActiveToolCall(messageData.metadata?.tool_name || null);
-            return;
-          }
-          if (messageData.type === "tool_result") {
-            setActiveToolCall(null);
-            return;
-          }
-
-          // Skip user messages from SSE since we already show them optimistically
-          if (messageData.type === "user") {
-            return;
-          }
-
-          // Clear waiting state and tool indicator when we get an actual assistant message
-          setIsWaitingForResponse(false);
-          setActiveToolCall(null);
-
-          // When we receive a full assistant message, clear streaming state
-          if (messageData.type === "assistant") {
-            setIsStreaming(false);
-            setStreamingContent("");
-          }
-
-          const newMessage: ChatMessage = {
-            id: messageData.id,
-            role: messageData.type as ChatMessage["role"],
-            content: messageData.content,
-            timestamp: new Date(messageData.created_at).getTime(),
-            metadata: messageData.metadata as ChatMessage["metadata"],
-          };
-
-          setMessages((prev) => {
-            // Check if message already exists
-            const exists = prev.some((msg) => msg.id === newMessage.id);
-            if (exists) return prev;
-            return [...prev, newMessage];
-          });
-        } catch (error) {
-          console.error("Error parsing message event:", error);
-        }
-      });
-
-      eventSource.addEventListener("token", (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setIsStreaming(true);
-          setStreamingContent((prev) => prev + (data.content || ""));
-          scrollToBottom();
-        } catch (e) {
-          console.error("Error parsing token event:", e);
-        }
-      });
-
-      eventSource.addEventListener("status", (event) => {
-        try {
-          const statusData = JSON.parse(event.data);
-          setAiStatus(statusData.ai_status);
-
-          // Check if session is closed
-          if (statusData.session_status === "CLOSED") {
-            setIsSessionClosed(true);
-            if (eventSourceRef.current) {
-              eventSourceRef.current.close();
-              eventSourceRef.current = null;
-            }
-          }
-        } catch (error) {
-          console.error("Error parsing status event:", error);
-        }
-      });
-
-      eventSource.addEventListener("error", (event) => {
-        // Check if this is a structured error event with data (e.g. credits exhausted)
-        try {
-          const errorEvent = event as MessageEvent;
-          if (errorEvent.data) {
-            const errorData = JSON.parse(errorEvent.data);
-            if (errorData.type === "ERROR" && errorData.code === 402) {
-              console.error("Credits exhausted (402):", errorData.message);
-              setIsCreditsExhausted(true);
-              setIsWaitingForResponse(false);
-              setIsLoading(false);
-              setAiStatus("idle");
-
-              const creditsMessage: ChatMessage = {
-                id: Date.now(),
-                role: "assistant",
-                content:
-                  t("common.creditsExhausted"),
-                timestamp: Date.now(),
-              };
-              setMessages((prev) => [...prev, creditsMessage]);
-              return;
-            }
-          }
-        } catch {
-          // Not a JSON error event, handle as regular SSE error below
-        }
-
-        console.error("SSE Error event:", event);
-        console.error("EventSource readyState:", eventSource.readyState);
-        console.error("EventSource url:", eventSource.url);
-
-        // ReadyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
-        if (eventSource.readyState === EventSource.CLOSED) {
-          console.error("EventSource connection closed");
-          setHasError(true);
-          eventSource.close();
-          eventSourceRef.current = null;
-        }
-      });
-
-      eventSource.onerror = (error) => {
-        console.error("EventSource failed:", error);
-        console.error("EventSource readyState:", eventSource.readyState);
-
-        // Set error state to prevent re-initialization
-        if (eventSource.readyState === EventSource.CLOSED) {
-          setHasError(true);
-          eventSource.close();
-          eventSourceRef.current = null;
-        }
-      };
     } catch (error) {
       console.error("Failed to initialize session:", error);
       setHasError(true);
@@ -658,7 +737,39 @@ export const useChatbot = () => {
     getContext,
     buildContextMeta,
     t,
+    attachStream,
   ]);
+
+
+  // Watchdog: if a turn stays "thinking" with nothing arriving, the stream is
+  // probably dead on the server side. First re-open it (the server resumes and
+  // processes the unanswered message); if it is still stuck, stop the dots and
+  // show the error card instead of spinning forever.
+  const aiStatusRef = useRef(aiStatus);
+  aiStatusRef.current = aiStatus;
+  useEffect(() => {
+    const busy = aiStatus === "thinking" || aiStatus === "generating_quiz";
+    if (!busy || !sessionId) return;
+    const firstStage = aiStatus === "generating_quiz" ? 90_000 : 45_000;
+    const t1 = setTimeout(() => {
+      if (aiStatusRef.current !== aiStatus) return;
+      console.warn("[chatbot] turn looks stuck; re-opening the stream");
+      reconnectAttemptsRef.current = 0;
+      attachStreamRef.current(sessionId);
+    }, firstStage);
+    const t2 = setTimeout(() => {
+      if (aiStatusRef.current !== aiStatus) return;
+      console.error("[chatbot] turn still stuck after reconnect; surfacing error");
+      setAiStatus("idle");
+      setIsLoading(false);
+      setIsWaitingForResponse(false);
+      setHasError(true);
+    }, firstStage + 45_000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [aiStatus, sessionId]);
 
   // Initialize session when chatbot opens
   useEffect(() => {
@@ -825,10 +936,7 @@ export const useChatbot = () => {
     }
 
     // Close EventSource connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
+    closeStream();
 
     // Reset state
     setSessionId(null);
@@ -898,10 +1006,7 @@ export const useChatbot = () => {
     if (sessionId) {
       try { await chatbotAPI.closeSession(sessionId); } catch {}
     }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
+    closeStream();
     // The call screen mounts on `voiceMode && sessionId`. Clear the id BEFORE
     // flipping the mode, or it mounts against the text session we just closed,
     // opens a socket to it, and is then torn down mid-handshake when the real
@@ -966,10 +1071,7 @@ export const useChatbot = () => {
     }
 
     // Close EventSource connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
+    closeStream();
 
     // Reset state
     setSessionId(null);
@@ -1016,6 +1118,7 @@ export const useChatbot = () => {
     isStreaming,
     isOffline,
     pendingMessages,
+    reconnectStream,
     voiceMode,
     voiceTopic,
     suggestedVoiceTopic,

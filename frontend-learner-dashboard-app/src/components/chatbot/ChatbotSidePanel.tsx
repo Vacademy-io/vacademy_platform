@@ -82,6 +82,7 @@ export const ChatbotSidePanel: React.FC = () => {
     activeToolCall,
     streamingContent,
     isStreaming,
+    reconnectStream,
     voiceMode,
     voiceTopic,
     suggestedVoiceTopic,
@@ -644,10 +645,7 @@ export const ChatbotSidePanel: React.FC = () => {
                 <p className="text-xs text-destructive">{t("sidePanel.errorTitle")}</p>
                 <div className="flex gap-2 justify-center">
                   <button
-                    onClick={() => {
-                      const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-                      if (lastUserMsg) sendMessage(lastUserMsg.content);
-                    }}
+                    onClick={reconnectStream}
                     className="text-xs text-primary underline"
                   >
                     {t("common.retry")}

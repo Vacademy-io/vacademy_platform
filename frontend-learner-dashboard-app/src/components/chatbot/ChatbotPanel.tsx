@@ -95,6 +95,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     streamingContent,
     isStreaming,
     isOffline,
+    reconnectStream,
     voiceMode,
     voiceTopic,
     suggestedVoiceTopic,
@@ -839,10 +840,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         <p className="text-sm text-destructive">{t("panel.errorTitle")}</p>
                         <div className="flex gap-3 justify-center">
                           <button
-                            onClick={() => {
-                              const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-                              if (lastUserMsg) sendMessage(lastUserMsg.content);
-                            }}
+                            onClick={reconnectStream}
                             className="text-xs text-primary underline hover:text-primary/80"
                           >
                             {t("common.retry")}

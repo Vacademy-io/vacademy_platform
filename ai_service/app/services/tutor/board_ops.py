@@ -82,7 +82,8 @@ def sanitize_svg(svg: str) -> str:
 
 
 def svg_ids(svg: str) -> set:
-    return set(re.findall(r'\sid="([^"]+)"', svg or ""))
+    """Element ids inside an SVG, whichever quote style the model used."""
+    return set(re.findall(r"""\sid=["']([^"']+)["']""", svg or ""))
 
 
 # ── URL rules ────────────────────────────────────────────────────────────────
@@ -152,10 +153,9 @@ def validate_ops(ops: Sequence[Dict[str, Any]], known_ids: Optional[set] = None,
         if kind == "svg":
             if not sanitize_svg(op.get("svg", "")):
                 errors.append(f"{loc}: svg is empty or unsafe after sanitizing")
-            present = svg_ids(op.get("svg", ""))
-            for part in op.get("parts", []) or []:
-                if part.get("id") not in present:
-                    errors.append(f"{loc}: svg part id '{part.get('id')}' does not exist inside the svg")
+            # Parts whose id is not in the svg are pruned by clean_ops, not
+            # reported: a diagram that loses a pointer is still a diagram, and
+            # bouncing the whole plan over it cost three model calls per slide.
         if kind in ("image", "video") and op.get("url") and not safe_url(op.get("url")):
             errors.append(f"{loc}: {kind} url must be https")
         if kind == "media_task" and require_media_urls and not (op.get("url") or op.get("file_id")):
@@ -243,6 +243,8 @@ def clean_ops(ops: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if not cleaned:
                 continue
             op["svg"] = cleaned
+            present = svg_ids(cleaned) | svg_ids(op.get("svg", ""))
+            op["parts"] = [p for p in (op.get("parts") or []) if p.get("id") in present]
         elif kind in ("image", "video"):
             url = safe_url(op.get("url"))
             if op.get("url") and not url:

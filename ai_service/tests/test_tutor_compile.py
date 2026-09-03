@@ -64,8 +64,16 @@ def test_validate_ops_rejects_live_ops_duplicates_and_dangling_targets():
     assert "duplicate element id 'a'" in joined
     assert "annotate target 'missing'" in joined
     assert "'reveal' is a live-session op" in joined
-    assert "svg part id 'nope'" in joined
+    assert "svg part id" not in joined            # unknown parts are pruned, not fatal
     assert ids == {"a", "n", "s"}
+
+
+def test_svg_ids_accepts_single_quotes_and_clean_ops_prunes_unknown_parts():
+    svg = "<svg viewBox='0 0 10 10'><circle id='nucleus' r='1'/><rect id=\"wall\" width='1' height='1'/></svg>"
+    assert board_ops.svg_ids(svg) == {"nucleus", "wall"}
+    out = board_ops.clean_ops([{"op": "svg", "id": "s", "svg": svg, "description": "cell",
+                                "parts": [{"id": "nucleus", "label": "N"}, {"id": "ghost", "label": "?"}]}])
+    assert [p["id"] for p in out[0]["parts"]] == ["nucleus"]
 
 
 # ── validator ────────────────────────────────────────────────────────────────

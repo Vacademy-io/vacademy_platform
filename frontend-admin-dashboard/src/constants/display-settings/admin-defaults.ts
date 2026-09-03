@@ -166,6 +166,17 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
             { id: 'LEARNER', order: 3, visible: true },
             { id: 'TEACHER', order: 4, visible: true },
             { id: 'ASSESSMENT', order: 5, visible: true },
+            // Quiz Results sits next to Assessment: both answer "how did they do",
+            // one for exams and one for the quiz slides inside the course.
+            // Ordered 5.5 so it slots between Assessment (5) and whatever a role has
+            // at 6, WITHOUT renumbering the tabs after it. Renumbering looked tidier
+            // but collides: 92 of the 94 institutes with a saved courseDetails config
+            // already store a tab at order 6 (32x LIVE_SESSION, 60x PLANNING), and
+            // saved values win the merge — so a shared order is what would actually
+            // ship. Two tabs on the same order make the Display Settings up/down
+            // arrows a dead click, because swapOrder swaps the two order VALUES and
+            // swapping equal numbers changes nothing.
+            { id: 'QUIZ_RESULTS', order: 5.5, visible: true },
             { id: 'LIVE_SESSION', order: 6, visible: false },
             { id: 'PLANNING', order: 7, visible: false },
             { id: 'ACTIVITY', order: 8, visible: false },

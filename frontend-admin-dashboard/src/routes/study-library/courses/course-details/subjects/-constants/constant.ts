@@ -7,6 +7,7 @@ export enum TabType {
     STUDENT = 'STUDENT',
     TEACHERS = 'TEACHERS',
     ASSESSMENT = 'ASSESSMENT',
+    QUIZ_RESULTS = 'QUIZ_RESULTS',
     LIVE_SESSION = 'LIVE_SESSION',
     PLANNING = 'PLANNING',
     ACTIVITY = 'ACTIVITY',
@@ -26,6 +27,7 @@ export const tabs = [
     { label: `${getTerminology(RoleTerms.Learner, SystemTerms.Learner)}`, value: 'STUDENT' },
     { label: `${getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}`, value: 'TEACHERS' },
     { label: 'Assessment', value: 'ASSESSMENT' },
+    { label: 'Quiz Results', value: 'QUIZ_RESULTS' },
     {
         label: `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}s`,
         value: 'LIVE_SESSION',

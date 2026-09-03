@@ -131,6 +131,7 @@ import { MyDialog } from '@/components/design-system/dialog';
 import Planning from '../subjects/-components/planning';
 import Activity from '../subjects/-components/activity';
 import PulseTab from './pulse/PulseTab';
+import QuizResultsTab from './quiz-results/QuizResultsTab';
 import { PackageSettingsPanel } from './package-settings/PackageSettingsPanel';
 import {
     CopyContentDialog,
@@ -3850,6 +3851,11 @@ export const CourseStructureDetails = ({
         [TabType.ASSESSMENT]: (
             <div className="rounded-md bg-white p-6 py-2 text-sm text-gray-600 shadow-sm">
                 <Assessments packageSessionId={batchPackageSessionId ?? ''} />
+            </div>
+        ),
+        [TabType.QUIZ_RESULTS]: (
+            <div className="rounded-md bg-white p-4 shadow-sm">
+                <QuizResultsTab packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
         [TabType.LIVE_SESSION]: batchPackageSessionId ? (

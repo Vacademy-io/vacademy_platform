@@ -12,8 +12,11 @@ interface VoiceWebSocketCallbacks {
   onAudioChunk?: (base64Data: string) => void;
   /** One playable audio segment has finished arriving — play it now. */
   onAudioSegmentEnd?: () => void;
-  /** Turn is over. `reason` is "complete", "no_speech", "no_audio" or "error". */
-  onAudioEnd?: (reason: string) => void;
+  /**
+   * Turn is over. `reason` is "complete", "no_speech", "no_audio" or "error";
+   * `detail` names the server leg that decided it (transcode / STT / length).
+   */
+  onAudioEnd?: (reason: string, detail?: string) => void;
   onSummary?: (data: unknown) => void;
   onError?: (message: string) => void;
   onReady?: () => void;
@@ -133,7 +136,10 @@ export function useVoiceWebSocket(
           cb.onAudioSegmentEnd?.();
           break;
         case 'audio_end':
-          cb.onAudioEnd?.(data.reason ?? 'complete');
+          if (data.reason && data.reason !== 'complete') {
+            console.info('[voice-call] turn ended:', data.reason, data.detail ?? '');
+          }
+          cb.onAudioEnd?.(data.reason ?? 'complete', data.detail);
           break;
         case 'summary':
           cb.onSummary?.(data);

@@ -150,6 +150,15 @@ class SarvamTTSStream:
 # Main service
 # ---------------------------------------------------------------------------
 
+class SarvamSTTError(RuntimeError):
+    """Sarvam speech-to-text failed (HTTP error or transport). Carries the status
+    so the caller can tell a rejected upload from genuinely empty speech."""
+
+    def __init__(self, message: str, status: Optional[int] = None):
+        super().__init__(message)
+        self.status = status
+
+
 class SarvamService:
     """Wraps Sarvam AI TTS and STT APIs (REST + WebSocket)."""
 
@@ -290,17 +299,22 @@ class SarvamService:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data.get("transcript", "")
+                return data.get("transcript", "") or ""
         except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:500]
             logger.error(
-                "Sarvam STT HTTP error %s: %s",
-                exc.response.status_code,
-                exc.response.text[:500],
+                "Sarvam STT HTTP error %s (upload %s, %d bytes): %s",
+                exc.response.status_code, upload_type, len(audio_bytes), body,
             )
-            return ""
-        except Exception:
+            # Surfaced, not swallowed: an empty string here used to read as
+            # "the student said nothing" and hid a broken upload for days.
+            raise SarvamSTTError(f"Sarvam STT HTTP {exc.response.status_code}: {body[:120]}",
+                                 status=exc.response.status_code) from exc
+        except SarvamSTTError:
+            raise
+        except Exception as exc:
             logger.exception("Sarvam STT request failed")
-            return ""
+            raise SarvamSTTError(f"Sarvam STT request failed: {exc}") from exc
 
     # ------------------------------------------------------------------
     # WebSocket: Streaming STT

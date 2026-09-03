@@ -150,6 +150,19 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             type="bool",
             default=lambda: get_settings().voice_require_auth,
         ),
+        SettingSpec(
+            key="tutor.compile.model",
+            group="tutor",
+            label="Tutor compile model",
+            description=(
+                "OpenRouter model that compiles a slide into a Live AI Tutor teaching plan "
+                "(topics, concepts, board, checks). Runs once per slide, so a strong model is "
+                "worth it; the compiler falls back to the institute default if this one is "
+                "rejected by the provider."
+            ),
+            type="model",
+            default=lambda: os.environ.get("TUTOR_COMPILE_MODEL") or "google/gemini-2.5-pro",
+        ),
     )
 }
 

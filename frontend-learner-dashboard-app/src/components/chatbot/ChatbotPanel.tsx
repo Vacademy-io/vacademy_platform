@@ -663,7 +663,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                 </p>
                               </div>
                             ) : (
-                              <div className="max-w-none group relative">
+                              <div className="group relative min-w-0 max-w-full break-words [&_ol]:ps-5 [&_ul]:ps-5 [&_li]:my-0.5 [&_pre]:overflow-x-auto">
                                 <button
                                   className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 z-10 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={() =>

@@ -420,10 +420,10 @@ export const ChatbotSidePanel: React.FC = () => {
                       </AvatarFallback>
                     </Avatar>
                   )}
-                  <div className="flex items-end gap-1">
+                  <div className="flex min-w-0 max-w-full items-end gap-1">
                     <div
                       className={cn(
-                        "rounded-xl px-2.5 py-1.5 text-caption break-words max-w-full leading-relaxed",
+                        "min-w-0 max-w-full overflow-hidden rounded-xl px-2.5 py-1.5 text-caption leading-relaxed [overflow-wrap:anywhere]",
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground rounded-ee-sm shadow-sm"
                           : "bg-card text-card-foreground rounded-es-sm shadow-sm ring-1 ring-border/30",
@@ -437,7 +437,7 @@ export const ChatbotSidePanel: React.FC = () => {
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       ) : (
-                        <div className="max-w-none group relative">
+                        <div className="group relative min-w-0 max-w-full break-words [&_ol]:ps-5 [&_ul]:ps-5 [&_li]:my-0.5 [&_pre]:overflow-x-auto">
                           <button
                             className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() =>

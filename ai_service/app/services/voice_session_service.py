@@ -110,7 +110,8 @@ class VoiceSessionService:
             user_id=user_id,
             institute_id=institute_id,
         )
-        return session_mode, system_prompt, self.institute_settings.get_temperature(ai_settings)
+        user_name = (context.get("user_details", {}) or {}).get("name") or ""
+        return session_mode, system_prompt, self.institute_settings.get_temperature(ai_settings), user_name
 
     async def generate_opening_turn(
         self,
@@ -129,23 +130,28 @@ class VoiceSessionService:
         if self.message_repo.get_conversation_history(session_id, limit=1):
             return None
 
-        session_mode, system_prompt, temperature = await self._prepare_turn(
+        session_mode, system_prompt, temperature, user_name = await self._prepare_turn(
             session_id, user_id, institute_id
         )
 
+        # Spoken aloud, so a guessed name or a literal "[Student's name]" is
+        # worse than no name. Only ask for one when we actually have it.
+        known_name = user_name.strip() and user_name.strip().lower() not in ("student", "learner", "user")
+        greet = "Greet them by name" if known_name else "Greet them warmly without using a name (you do not know it — never guess or use a placeholder)"
+
         if session_mode == "voice_interview":
             opening_instruction = (
-                "The student has just joined the interview call. Greet them by name in one short "
+                f"The student has just joined the interview call. {greet} in one short "
                 "sentence, say what the interview is about, then immediately ask your first question."
             )
         elif session_mode == "voice_oral_test":
             opening_instruction = (
-                "The student has just joined the oral test call. Greet them by name in one short "
+                f"The student has just joined the oral test call. {greet} in one short "
                 "sentence, say what the test covers, then immediately ask your first question."
             )
         else:
             opening_instruction = (
-                "The student has just joined the voice call. Greet them by name in one short "
+                f"The student has just joined the voice call. {greet} in one short "
                 "sentence and ask what they would like help with. Keep it to two sentences."
             )
 
@@ -211,7 +217,7 @@ class VoiceSessionService:
         )
 
         # 2-4. Session mode, resolved context and the mode-specific prompt
-        _session_mode, system_prompt, temperature = await self._prepare_turn(
+        _session_mode, system_prompt, temperature, _user_name = await self._prepare_turn(
             session_id, user_id, institute_id
         )
 

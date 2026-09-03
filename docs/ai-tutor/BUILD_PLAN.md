@@ -106,6 +106,16 @@ on the standby: `\d teaching_plan` and `SELECT tool_key FROM ai_tool_pricing WHE
 
 ### WP2 — The compiler (ai_service)
 
+**Status: shipped 2026-09-03** (commits a858c4e9e6, b8aac3cc9f, c4028a478d, 984237a650 and the
+Flash-default fix after them). Adversarially reviewed before the first deploy (57 agents, 22
+confirmed findings, all fixed: staff-only auth, media-task validation order, quiz limits, stuck
+compiles, sessions across model calls, idempotent billing, sanitized ops). Verified on production
+with the Spark Education course "Chapter_1: Physical and Functional Assessment": a document slide
+compiled to 4 boards / 10 concepts with SVG diagrams, English + Hindi narration and checks. Two
+findings from the probes changed the design: model replies need a repairing JSON parser (SVG
+inside JSON strings), and the default compile model is `google/gemini-2.5-flash`, because a
+single failed Pro compile billed 35 credits under the platform's token pricing.
+
 New files, all under `ai_service/app`:
 
 | File | Contents |
@@ -143,6 +153,12 @@ then deploy and run the probe on one copilot slide in the test institute; inspec
 the standby and the `credit_transactions` row with the `tutor_compile:` reference.
 
 ### WP3 — Admin creation flow
+
+**Status: shipped 2026-09-03** as 6715e2bd6b: Tutor Mode tab (settings form, plan status,
+Prepare for teaching, recompile, details editor, preview), the copilot "AI teacher" chip with
+background compile after persist, the teaching-description card on VIDEO and PDF slides, and the
+institute defaults card on Settings → Course settings. The extra card inside the package settings
+panel was dropped as redundant with the tab. Browser QA by the owner is pending.
 
 Files:
 - `frontend-admin-dashboard/src/routes/study-library/ai-copilot/index.lazy.tsx`: a

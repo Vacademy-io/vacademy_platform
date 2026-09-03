@@ -156,12 +156,13 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             label="Tutor compile model",
             description=(
                 "OpenRouter model that compiles a slide into a Live AI Tutor teaching plan "
-                "(topics, concepts, board, checks). Runs once per slide, so a strong model is "
-                "worth it; the compiler falls back to the institute default if this one is "
-                "rejected by the provider."
+                "(topics, concepts, board, checks). Flash by default: under this platform's "
+                "token pricing a single failed Pro compile cost 35 credits (2026-09-03). Raise "
+                "it here when the economics allow; the compiler falls back to the institute "
+                "default if the chosen model is rejected by the provider."
             ),
             type="model",
-            default=lambda: os.environ.get("TUTOR_COMPILE_MODEL") or "google/gemini-2.5-pro",
+            default=lambda: os.environ.get("TUTOR_COMPILE_MODEL") or "google/gemini-2.5-flash",
         ),
     )
 }

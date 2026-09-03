@@ -288,8 +288,10 @@ order; mastery is keyed by concept tag so it survives.
 
 ### 4.8 Model choice and billing
 
-- Compile: a strong model through OpenRouter (default `anthropic/claude-sonnet-5`, institute
-  keys and platform settings can override). It runs once per slide and quality compounds.
+- Compile: through OpenRouter, default `google/gemini-2.5-flash` (platform setting
+  `tutor.compile.model`; institute keys still win). Pro was the plan, but a single failed Pro
+  compile billed 35 credits under the platform's token pricing on 2026-09-03; the validator and
+  repair loop carry the quality until the economics change.
 - Live decision turns: a flash-class model (the chatbot's current default).
 - Billing keys, added the same way as the copilot's keys (Python `DEFAULT_TOOL_PRICING`, the
   `ai_tool_pricing` seed, and the FE `computeToolCredits`; all three must change together):

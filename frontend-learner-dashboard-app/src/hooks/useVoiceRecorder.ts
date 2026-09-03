@@ -2,6 +2,12 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface UseVoiceRecorderOptions {
   onAudioChunk?: (base64Data: string) => void;
+  /**
+   * Called when recording stops by itself because the speaker went quiet.
+   * Without it the caller cannot tell a finished turn from a live mic, and the
+   * UI sits on "listening" with a dead recorder.
+   */
+  onSilenceStop?: () => void;
   silenceTimeout?: number;
   sampleRate?: number;
 }
@@ -13,6 +19,8 @@ interface UseVoiceRecorderReturn {
   audioBlob: Blob | null;
   audioLevel: number;
   error: string | null;
+  /** Container actually being recorded, e.g. "audio/webm" — send it with the audio. */
+  mimeType: string;
 }
 
 export function useVoiceRecorder(
@@ -20,6 +28,7 @@ export function useVoiceRecorder(
 ): UseVoiceRecorderReturn {
   const {
     onAudioChunk,
+    onSilenceStop,
     silenceTimeout = 3000,
     sampleRate = 16000,
   } = options;
@@ -28,6 +37,12 @@ export function useVoiceRecorder(
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [mimeType, setMimeType] = useState('audio/webm');
+
+  // Read through a ref: monitorAudioLevel runs on animation frames and would
+  // otherwise hold the first render's callback forever.
+  const onSilenceStopRef = useRef(onSilenceStop);
+  onSilenceStopRef.current = onSilenceStop;
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -87,8 +102,10 @@ export function useVoiceRecorder(
       if (silenceStartRef.current === null) {
         silenceStartRef.current = Date.now();
       } else if (Date.now() - silenceStartRef.current >= silenceTimeout) {
-        // Auto-stop after silence threshold
+        // Auto-stop after silence threshold, and tell the caller: the turn is
+        // over as far as the microphone is concerned.
         stopRecording();
+        onSilenceStopRef.current?.();
         return;
       }
     } else {
@@ -176,6 +193,7 @@ export function useVoiceRecorder(
       if (mimeType) {
         recorderOptions.mimeType = mimeType;
       }
+      setMimeType((mimeType || 'audio/webm').split(';')[0]);
 
       const mediaRecorder = new MediaRecorder(stream, recorderOptions);
       mediaRecorderRef.current = mediaRecorder;
@@ -245,5 +263,6 @@ export function useVoiceRecorder(
     audioBlob,
     audioLevel,
     error,
+    mimeType,
   };
 }

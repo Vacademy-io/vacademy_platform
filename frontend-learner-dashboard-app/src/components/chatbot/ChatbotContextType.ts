@@ -34,9 +34,14 @@ export interface ChatbotContextType {
   isOffline: boolean;
   pendingMessages: QueuedMessage[];
   voiceMode: SessionMode | null;
+  /** Topic the current call is about, derived from the student's context. */
+  voiceTopic: string;
+  suggestedVoiceTopic: () => string;
+  /** Starts a call, skipping the picker when only one voice mode is enabled. */
+  startVoiceCall: () => void;
   showVoiceSelector: boolean;
   setShowVoiceSelector: (show: boolean) => void;
-  enterVoiceMode: (mode: SessionMode, language?: string) => Promise<void>;
+  enterVoiceMode: (mode: SessionMode, language?: string, topic?: string) => Promise<void>;
   exitVoiceMode: () => void;
   voiceLanguage: string;
 }

@@ -49,6 +49,9 @@ import { QuickActions } from "./QuickActions";
 import { MicButton } from "./MicButton";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
+
+/** The subset of session modes the call screen handles. */
+type VoiceCallMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
 import { UploadFileInS3 } from "@/services/upload_file";
 import { getPublicUrl } from "@/services/upload_file";
 import { getUserId } from "@/constants/getUserId";
@@ -93,6 +96,9 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     isStreaming,
     isOffline,
     voiceMode,
+    voiceTopic,
+    suggestedVoiceTopic,
+    startVoiceCall,
     showVoiceSelector,
     setShowVoiceSelector,
     enterVoiceMode,
@@ -879,7 +885,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     {/* Voice mode chip */}
                     {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
                       <button
-                        onClick={() => setShowVoiceSelector(true)}
+                        onClick={startVoiceCall}
                         disabled={isLoading || !sessionId}
                         title={t("common.startVoiceConversation")}
                         className="inline-flex items-center h-7 px-3 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
@@ -1063,17 +1069,20 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
             enterVoiceMode(mode, language, topic);
           }}
           enabledModes={chatbotSettings.enabled_modes}
+          defaultTopic={suggestedVoiceTopic()}
+          defaultLanguage={voiceLanguage}
         />
       )}
 
       {voiceMode && sessionId && (
         <VoiceModePanel
           sessionId={sessionId}
-          mode={voiceMode as any}
+          mode={voiceMode as VoiceCallMode}
           language={voiceLanguage}
-          voice="shubh"
+          voice={chatbotSettings.voice_settings?.default_voice || "shubh"}
           onClose={exitVoiceMode}
           chatbotSettings={chatbotSettings}
+          topic={voiceTopic}
         />
       )}
     </>

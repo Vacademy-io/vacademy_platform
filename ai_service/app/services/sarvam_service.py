@@ -34,6 +34,20 @@ STT_ENDPOINT = f"{SARVAM_BASE_URL}/speech-to-text"
 STT_WS_URL = "wss://api.sarvam.ai/speech-to-text/streaming"  # placeholder
 TTS_WS_URL = "wss://api.sarvam.ai/text-to-speech/streaming"  # placeholder
 
+# Filename extension per upload content type — Sarvam keys off both the part's
+# content type and its filename, so the two have to agree.
+_AUDIO_EXTENSIONS = {
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/wave": "wav",
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "audio/flac": "flac",
+}
+
 REST_TIMEOUT_SECONDS = 30
 TTS_MAX_CHUNK_CHARS = 500
 STT_MAX_AUDIO_SECONDS = 30
@@ -234,6 +248,7 @@ class SarvamService:
         self,
         audio_bytes: bytes,
         language: str = "auto",
+        mime_type: str = "audio/wav",
     ) -> str:
         """Transcribe audio bytes to text using Sarvam Saaras v3.
 
@@ -241,8 +256,11 @@ class SarvamService:
         longer audio, callers should split beforehand and concatenate.
 
         Args:
-            audio_bytes: Raw audio data (WAV format recommended).
+            audio_bytes: Raw audio data.
             language: BCP-47 language code, or ``"auto"`` for auto-detection.
+            mime_type: Container/codec the bytes actually are. Browsers record
+                webm/opus, not WAV — sending them under the wrong content type
+                leaves transcription at the mercy of server-side sniffing.
 
         Returns:
             Transcript string, or empty string on failure.
@@ -254,6 +272,9 @@ class SarvamService:
             "api-subscription-key": self.api_key,
         }
 
+        upload_type = (mime_type or "audio/wav").split(";")[0].strip() or "audio/wav"
+        upload_name = f"audio.{_AUDIO_EXTENSIONS.get(upload_type, 'wav')}"
+
         form_data: dict = {"model": "saaras:v3"}
         # Only send language_code if explicitly specified (not auto-detect)
         if language and language != "auto":
@@ -264,7 +285,7 @@ class SarvamService:
                 response = await client.post(
                     STT_ENDPOINT,
                     headers=headers,
-                    files={"file": ("audio.wav", audio_bytes, "audio/wav")},
+                    files={"file": (upload_name, audio_bytes, upload_type)},
                     data=form_data,
                 )
                 response.raise_for_status()

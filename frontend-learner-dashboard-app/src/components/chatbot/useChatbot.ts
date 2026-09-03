@@ -63,6 +63,7 @@ export const useChatbot = () => {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [pendingMessages, setPendingMessages] = useState<QueuedMessage[]>([]);
   const [voiceMode, setVoiceMode] = useState<SessionMode | null>(null);
+  const [voiceTopic, setVoiceTopic] = useState<string>("");
   const [showVoiceSelector, setShowVoiceSelector] = useState(false);
   const [voiceLanguage, setVoiceLanguage] = useState(
     chatbotSettings.voice_settings?.default_language || "en-IN"
@@ -167,6 +168,11 @@ export const useChatbot = () => {
               ? settings.institute_name
               : getCachedInstituteBranding()?.instituteName || "",
           );
+          // The institute's default call language, which only exists once the
+          // settings land — the initial state was seeded from the defaults.
+          if (settings.voice_settings?.default_language) {
+            setVoiceLanguage(settings.voice_settings.default_language);
+          }
           // Update chatbot page visibility from admin settings
           if (settings.chatbot_pages) {
             setChatbotPages(settings.chatbot_pages);
@@ -835,14 +841,61 @@ export const useChatbot = () => {
     await initializeSession();
   }, [sessionId, initializeSession]);
 
+  /**
+   * What a voice call should be about, taken from where the student already is:
+   * chapter, then module, then subject, then course. Nobody should have to type
+   * their topic when the app is already sitting inside it.
+   */
+  const suggestedVoiceTopic = useCallback((): string => {
+    const contextType = getContextType();
+    const context = getContext();
+
+    const courseName = (() => {
+      if (!context.courseId) return "";
+      const batch = (instituteDetails?.batches_for_sessions || []).find(
+        (b) => b.package_dto.id === context.courseId,
+      );
+      return (
+        getCourseDetails(context.courseId)?.package_name ||
+        batch?.package_dto?.package_name ||
+        ""
+      );
+    })();
+
+    if (contextType === "slide") {
+      const chapterName = context.chapterId
+        ? getChapterName(context.chapterId, modulesWithChaptersData) || ""
+        : "";
+      const moduleName = context.moduleId
+        ? getModuleName(context.moduleId, modulesWithChaptersData) || ""
+        : "";
+      const subjectName = context.subjectId
+        ? getSubjectName(context.subjectId, studyLibraryData) || ""
+        : "";
+      return chapterName || moduleName || subjectName || courseName;
+    }
+
+    return courseName;
+  }, [
+    getContext,
+    getContextType,
+    getCourseDetails,
+    instituteDetails,
+    modulesWithChaptersData,
+    studyLibraryData,
+  ]);
+
   const enterVoiceMode = useCallback(async (mode: SessionMode, language: string = chatbotSettings.voice_settings?.default_language || "en-IN", topic?: string) => {
     // Close current text session if exists
     if (sessionId) {
       try { await chatbotAPI.closeSession(sessionId); } catch {}
     }
 
+    const resolvedTopic = (topic || suggestedVoiceTopic()).trim();
+
     setVoiceMode(mode);
     setVoiceLanguage(language);
+    setVoiceTopic(resolvedTopic);
     setMessages([]);
     setIsInitializing(true);
 
@@ -850,8 +903,8 @@ export const useChatbot = () => {
       const contextType = getContextType();
       const contextMeta = await buildContextMeta();
       // Add voice topic to context so backend knows what to interview/test on
-      if (topic) {
-        contextMeta.voice_topic = topic;
+      if (resolvedTopic) {
+        contextMeta.voice_topic = resolvedTopic;
       }
       const response = await chatbotAPI.initSession(undefined, contextType, contextMeta, mode);
       setSessionId(response.session_id);
@@ -861,7 +914,23 @@ export const useChatbot = () => {
     } finally {
       setIsInitializing(false);
     }
-  }, [sessionId, getContextType, buildContextMeta]);
+  }, [sessionId, getContextType, buildContextMeta, suggestedVoiceTopic]);
+
+  /**
+   * Entry point for the "Voice Call" chip. With a single voice mode enabled —
+   * the common case — there is nothing to choose, so the call starts straight
+   * away instead of asking the student to fill in a dialog first.
+   */
+  const startVoiceCall = useCallback(() => {
+    const voiceModes = (chatbotSettings.enabled_modes || []).filter((m) =>
+      m.startsWith("voice_"),
+    );
+    if (voiceModes.length === 1 && voiceModes[0]) {
+      enterVoiceMode(voiceModes[0] as SessionMode, voiceLanguage);
+      return;
+    }
+    setShowVoiceSelector(true);
+  }, [chatbotSettings.enabled_modes, enterVoiceMode, voiceLanguage]);
 
   const exitVoiceMode = useCallback(() => {
     setVoiceMode(null);
@@ -931,6 +1000,9 @@ export const useChatbot = () => {
     isOffline,
     pendingMessages,
     voiceMode,
+    voiceTopic,
+    suggestedVoiceTopic,
+    startVoiceCall,
     showVoiceSelector,
     setShowVoiceSelector,
     enterVoiceMode,

@@ -49,6 +49,9 @@ import { MicButton } from "./MicButton";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
 
+/** The subset of session modes the call screen handles. */
+type VoiceCallMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
+
 export const ChatbotSidePanel: React.FC = () => {
   const avatarUrl = useChatbotAvatarUrl();
   const { t } = useTranslation("chatFeatureB");
@@ -78,6 +81,9 @@ export const ChatbotSidePanel: React.FC = () => {
     streamingContent,
     isStreaming,
     voiceMode,
+    voiceTopic,
+    suggestedVoiceTopic,
+    startVoiceCall,
     showVoiceSelector,
     setShowVoiceSelector,
     enterVoiceMode,
@@ -676,7 +682,7 @@ export const ChatbotSidePanel: React.FC = () => {
             {/* Voice mode chip */}
             {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
               <button
-                onClick={() => setShowVoiceSelector(true)}
+                onClick={startVoiceCall}
                 disabled={isLoading || !sessionId}
                 title={t("common.startVoiceConversation")}
                 className="inline-flex items-center h-6 px-2.5 text-caption font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
@@ -853,17 +859,20 @@ export const ChatbotSidePanel: React.FC = () => {
             enterVoiceMode(mode, language, topic);
           }}
           enabledModes={chatbotSettings.enabled_modes}
+          defaultTopic={suggestedVoiceTopic()}
+          defaultLanguage={voiceLanguage}
         />
       )}
 
       {voiceMode && sessionId && (
         <VoiceModePanel
           sessionId={sessionId}
-          mode={voiceMode as any}
+          mode={voiceMode as VoiceCallMode}
           language={voiceLanguage}
-          voice="shubh"
+          voice={chatbotSettings.voice_settings?.default_voice || "shubh"}
           onClose={exitVoiceMode}
           chatbotSettings={chatbotSettings}
+          topic={voiceTopic}
         />
       )}
     </div>

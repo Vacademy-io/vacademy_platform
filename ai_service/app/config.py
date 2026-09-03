@@ -217,6 +217,9 @@ class Settings(BaseSettings):
     # Default value works for dev/stage if matching common_service
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "357638792F423F4428472B4B6250655368566D597133743677397A2443264629")
     jwt_algorithm: str = "HS256"
+    # Voice sockets verify any token they are given. Flip this on once every
+    # client ships one, and unauthenticated calls are refused outright.
+    voice_require_auth: bool = os.getenv("VOICE_REQUIRE_AUTH", "false").lower() == "true"
     jwt_token_expiry_minutes: int = 43200  # 30 days in minutes (matching Java 2592000000ms)
 
     # Internal service-to-service auth.

@@ -8,7 +8,14 @@ interface UseVoiceRecorderOptions {
    * UI sits on "listening" with a dead recorder.
    */
   onSilenceStop?: () => void;
+  /**
+   * Called when the mic was open for `maxWaitForSpeechMs` and nobody spoke.
+   * Distinct from onSilenceStop: there is no turn to hand over, so the caller
+   * should go quiet rather than ship an empty clip to speech-to-text.
+   */
+  onNoSpeech?: () => void;
   silenceTimeout?: number;
+  maxWaitForSpeechMs?: number;
   sampleRate?: number;
 }
 
@@ -22,7 +29,15 @@ interface UseVoiceRecorderReturn {
   error: string | null;
   /** Container actually being recorded, e.g. "audio/webm" — send it with the audio. */
   mimeType: string;
+  /** True once the current (or last) recording actually heard the speaker. */
+  hadSpeech: () => boolean;
 }
+
+// Hysteresis: it takes a clear signal to count as speech starting, but a
+// lower one to keep counting it as ongoing, so room noise doesn't start a turn
+// and a soft trailing word doesn't end one early.
+const SPEECH_ONSET_LEVEL = 0.08;
+const SPEECH_SUSTAIN_LEVEL = 0.05;
 
 export function useVoiceRecorder(
   options: UseVoiceRecorderOptions = {},
@@ -30,7 +45,9 @@ export function useVoiceRecorder(
   const {
     onAudioChunk,
     onSilenceStop,
+    onNoSpeech,
     silenceTimeout = 3000,
+    maxWaitForSpeechMs = 12000,
     sampleRate = 16000,
   } = options;
 
@@ -44,6 +61,10 @@ export function useVoiceRecorder(
   // otherwise hold the first render's callback forever.
   const onSilenceStopRef = useRef(onSilenceStop);
   onSilenceStopRef.current = onSilenceStop;
+  const onNoSpeechRef = useRef(onNoSpeech);
+  onNoSpeechRef.current = onNoSpeech;
+  const hasSpeechRef = useRef(false);
+  const listenStartRef = useRef<number | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -98,23 +119,36 @@ export function useVoiceRecorder(
     const average = sum / dataArray.length / 255;
     setAudioLevel(average);
 
-    // Silence detection
-    if (average < 0.05) {
+    // End-of-turn detection. The silence clock only runs AFTER speech has been
+    // heard: counting from the moment the mic opens meant a student who took
+    // three seconds to start talking had an empty clip sent to STT — and the
+    // call then looped "I didn't catch that" every few seconds.
+    const now = Date.now();
+    const speaking = average >= (hasSpeechRef.current ? SPEECH_SUSTAIN_LEVEL : SPEECH_ONSET_LEVEL);
+    if (speaking) {
+      hasSpeechRef.current = true;
+      silenceStartRef.current = null;
+    } else if (hasSpeechRef.current) {
       if (silenceStartRef.current === null) {
-        silenceStartRef.current = Date.now();
-      } else if (Date.now() - silenceStartRef.current >= silenceTimeout) {
-        // Auto-stop after silence threshold, and tell the caller: the turn is
-        // over as far as the microphone is concerned.
+        silenceStartRef.current = now;
+      } else if (now - silenceStartRef.current >= silenceTimeout) {
+        // The speaker paused after saying something: the turn is over.
         stopRecording();
         onSilenceStopRef.current?.();
         return;
       }
-    } else {
-      silenceStartRef.current = null;
+    } else if (
+      listenStartRef.current !== null &&
+      now - listenStartRef.current >= maxWaitForSpeechMs
+    ) {
+      // Nobody spoke at all — release the mic without a turn.
+      stopRecording();
+      onNoSpeechRef.current?.();
+      return;
     }
 
     animFrameRef.current = requestAnimationFrame(monitorAudioLevel);
-  }, [silenceTimeout]);
+  }, [silenceTimeout, maxWaitForSpeechMs]);
 
   const stopRecording = useCallback(() => {
     isRecordingRef.current = false;
@@ -153,6 +187,8 @@ export function useVoiceRecorder(
     setAudioBlob(null);
     chunksRef.current = [];
     silenceStartRef.current = null;
+    hasSpeechRef.current = false;
+    listenStartRef.current = Date.now();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -267,5 +303,6 @@ export function useVoiceRecorder(
     audioLevel,
     error,
     mimeType,
+    hadSpeech: () => hasSpeechRef.current,
   };
 }

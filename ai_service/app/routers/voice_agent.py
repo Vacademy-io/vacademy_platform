@@ -41,6 +41,42 @@ SEGMENT_MAX_CHARS = 320
 _SENTENCE_END = re.compile(r"(?<=[.!?…।])\s+|\n+")
 
 
+# Anything shorter than this (16 kHz mono 16-bit) cannot hold a word. Skipping
+# STT for it saves a Sarvam call and a "didn't catch that" round trip.
+MIN_SPEECH_WAV_BYTES = 44 + 16000 * 2 * 0.4
+
+
+async def _transcode_to_wav(audio: bytes, mime: str) -> tuple[bytes, str]:
+    """
+    Normalise browser audio (webm/opus, ogg, mp4) to 16 kHz mono WAV before STT.
+
+    Sarvam's documented input is WAV; what the browser records varies by
+    engine. ffmpeg ships in this image for the video pipeline, so converting
+    is ~50 ms for a few seconds of speech. On any failure the original bytes
+    go through unchanged rather than dropping the turn.
+    """
+    base = (mime or "").split(";")[0].strip().lower()
+    if not audio or base in ("audio/wav", "audio/x-wav", "audio/wave"):
+        return audio, "audio/wav" if audio else mime
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-i", "pipe:0", "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", "pipe:1",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await asyncio.wait_for(proc.communicate(audio), timeout=20)
+        if proc.returncode == 0 and len(out) > 44:
+            return out, "audio/wav"
+        logger.warning(
+            "ffmpeg transcode failed (rc=%s): %s", proc.returncode, (err or b"")[:300].decode("utf-8", "ignore")
+        )
+    except Exception:
+        logger.exception("ffmpeg transcode error; sending original audio to STT")
+    return audio, mime
+
+
 def _split_for_speech(text: str) -> list[str]:
     """Break a reply into sentence-aligned segments for streaming synthesis."""
     sentences = [s.strip() for s in _SENTENCE_END.split(text.strip()) if s and s.strip()]
@@ -88,6 +124,8 @@ async def voice_session(websocket: WebSocket, session_id: str):
                                                                       the agent opens the call
       { "type": "audio_chunk", "data": "<base64 audio>" }          -- streaming mic audio
       { "type": "audio_end", "mime": "audio/webm" }                -- student finished speaking
+      { "type": "audio_discard" }                                   -- drop buffered mic audio
+                                                                      (a turn with no speech)
       { "type": "interrupt" }                                       -- student talked over the
                                                                       agent; abandon this turn
       { "type": "end_session" }                                     -- end voice session
@@ -232,6 +270,11 @@ async def voice_session(websocket: WebSocket, session_id: str):
             """
             reason = "complete"
             try:
+                audio, mime = await _transcode_to_wav(audio, mime)
+                if mime == "audio/wav" and len(audio) < MIN_SPEECH_WAV_BYTES:
+                    await _send({"type": "audio_end", "reason": "no_speech"})
+                    return
+
                 transcript = await sarvam_service.speech_to_text(
                     audio_bytes=audio,
                     language=language,
@@ -367,6 +410,11 @@ async def voice_session(websocket: WebSocket, session_id: str):
                 current_turn = asyncio.create_task(
                     _run_turn(audio, msg.get("mime") or "audio/wav")
                 )
+
+            elif msg_type == "audio_discard":
+                # The client heard no speech and dropped the turn; forget the
+                # chunks it already streamed or they'd prefix the next turn.
+                audio_buffer.clear()
 
             elif msg_type == "interrupt":
                 await _cancel_current_turn()

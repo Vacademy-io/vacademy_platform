@@ -106,17 +106,36 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
     if (isEndingRef.current) return;
     interruptedRef.current = false;
     recorder.stopRecording();
+    if (!recorder.hadSpeech()) {
+      // Nothing was said (a stray tap, a quiet room): don't send a silent
+      // clip to speech-to-text — tell the server to forget it and go quiet.
+      ws.sendAudioDiscard();
+      setVoiceState("idle");
+      return;
+    }
     ws.sendAudioEnd(recorderMimeRef.current);
     setVoiceState("processing");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const finishSpeakingRef = useRef(finishSpeaking);
 
+  /** The mic was open long enough and nobody spoke — hand control back quietly. */
+  const handleNoSpeech = useCallback(() => {
+    if (isEndingRef.current) return;
+    recorder.stopRecording();
+    ws.sendAudioDiscard();
+    setVoiceState("idle");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const handleNoSpeechRef = useRef(handleNoSpeech);
+
   // Voice recorder. The silence callback is what makes this a call rather than
   // a walkie-talkie: the student just stops talking and the agent replies.
   const recorder = useVoiceRecorder({
-    silenceTimeout: 2500,
+    silenceTimeout: 2000,
+    maxWaitForSpeechMs: 15000,
     onSilenceStop: () => finishSpeakingRef.current(),
+    onNoSpeech: () => handleNoSpeechRef.current(),
     onAudioChunk: (base64Data) => {
       ws.sendAudioChunk(base64Data);
     },
@@ -293,6 +312,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   });
   wsRef.current = ws;
   finishSpeakingRef.current = finishSpeaking;
+  handleNoSpeechRef.current = handleNoSpeech;
 
   // Connect on mount, full cleanup on unmount. Everything per-call is reset on
   // the way in: the cleanup below marks the call as ending, and if the session

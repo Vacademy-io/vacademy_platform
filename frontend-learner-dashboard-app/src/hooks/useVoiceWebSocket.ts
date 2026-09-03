@@ -25,6 +25,8 @@ interface UseVoiceWebSocketReturn {
   sendConfig: (language: string, voice: string) => void;
   sendAudioChunk: (base64Data: string) => void;
   sendAudioEnd: (mimeType?: string) => void;
+  /** Drop the mic audio streamed so far — the turn had no speech in it. */
+  sendAudioDiscard: () => void;
   sendInterrupt: () => void;
   sendEndSession: () => void;
   connectionState: ConnectionState;
@@ -266,6 +268,10 @@ export function useVoiceWebSocket(
     [sendJson],
   );
 
+  const sendAudioDiscard = useCallback(() => {
+    sendJson({ type: 'audio_discard' });
+  }, [sendJson]);
+
   /** Abandon the reply in flight — the student started talking over it. */
   const sendInterrupt = useCallback(() => {
     sendJson({ type: 'interrupt' });
@@ -289,6 +295,7 @@ export function useVoiceWebSocket(
     sendConfig,
     sendAudioChunk,
     sendAudioEnd,
+    sendAudioDiscard,
     sendInterrupt,
     sendEndSession,
     connectionState,

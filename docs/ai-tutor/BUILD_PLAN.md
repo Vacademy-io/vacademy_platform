@@ -62,6 +62,12 @@ a prod test institute; thin real slices, no throwaway spike; female default teac
 
 ### WP0 — Knowledge-base courses stop being bounded by counts
 
+**Status: shipped 2026-09-03** as 483725e541 and verified on production against the Spark
+Education knowledge base "chapter_31_new" (3 topics, 8 sections, 35 chunks): REPLICATE+FULL
+returned 3 chapters / 8 slides with node ids on every todo, and ADAPT+FULL returned 3 chapters /
+11 slides, both while the request carried `num_chapters=1, num_slides=2`. No section in that
+KB exceeds the split budget, so the part split is covered by unit tests only.
+
 Why first: owner's complaint, small, independent, and it improves the slides the compiler will
 read.
 

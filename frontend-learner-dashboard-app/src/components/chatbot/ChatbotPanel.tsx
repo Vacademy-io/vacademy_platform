@@ -534,7 +534,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
               {/* Messages Area */}
               <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-                <ScrollArea className="h-full p-4">
+                <ScrollArea className="h-full p-4 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
                   <div className="flex flex-col space-y-4">
                     {isOffline && (
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs rounded-md">
@@ -683,19 +683,19 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                   components={{
                                     h1: ({ ...props }) => (
                                       <h1
-                                        className="text-2xl font-bold mt-4 mb-3"
+                                        className="text-base font-bold mt-3 mb-1.5"
                                         {...props}
                                       />
                                     ),
                                     h2: ({ ...props }) => (
                                       <h2
-                                        className="text-xl font-bold mt-3 mb-2"
+                                        className="text-sm font-bold mt-2.5 mb-1"
                                         {...props}
                                       />
                                     ),
                                     h3: ({ ...props }) => (
                                       <h3
-                                        className="text-lg font-semibold mt-3 mb-2"
+                                        className="text-sm font-semibold mt-2 mb-1"
                                         {...props}
                                       />
                                     ),
@@ -735,7 +735,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                         >{children}</code>
                                       ) : (
                                         <code
-                                          className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
+                                          className="block max-w-full bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto whitespace-pre"
                                           {...rest}
                                         >{children}</code>
                                       );

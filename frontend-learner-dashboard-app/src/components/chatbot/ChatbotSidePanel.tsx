@@ -334,7 +334,7 @@ export const ChatbotSidePanel: React.FC = () => {
 
       {/* Messages Area */}
       <CardContent className="flex-1 min-h-0 p-0 overflow-hidden bg-gradient-to-b from-muted/20 to-background">
-        <ScrollArea className="h-full px-2 py-2">
+        <ScrollArea className="h-full px-2 py-2 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
           <div className="flex flex-col space-y-2.5">
             {isInitializing && messages.length === 0 && (
               <div className="w-full bg-muted/40 backdrop-blur-sm border border-border/50 rounded-lg px-3 py-2 text-center">
@@ -477,19 +477,19 @@ export const ChatbotSidePanel: React.FC = () => {
                             components={{
                               h1: ({ ...props }) => (
                                 <h1
-                                  className="text-2xl font-bold mt-4 mb-3"
+                                  className="text-base font-bold mt-3 mb-1.5"
                                   {...props}
                                 />
                               ),
                               h2: ({ ...props }) => (
                                 <h2
-                                  className="text-xl font-bold mt-3 mb-2"
+                                  className="text-sm font-bold mt-2.5 mb-1"
                                   {...props}
                                 />
                               ),
                               h3: ({ ...props }) => (
                                 <h3
-                                  className="text-lg font-semibold mt-3 mb-2"
+                                  className="text-sm font-semibold mt-2 mb-1"
                                   {...props}
                                 />
                               ),
@@ -529,7 +529,7 @@ export const ChatbotSidePanel: React.FC = () => {
                                   >{children}</code>
                                 ) : (
                                   <code
-                                    className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
+                                    className="block max-w-full bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto whitespace-pre"
                                     {...rest}
                                   >{children}</code>
                                 );

@@ -189,6 +189,9 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
             // institute OFFLINE_ACCESS_SETTING master switch.
             { id: 'DOWNLOADS', order: 12, visible: true },
             { id: 'SETTINGS', order: 13, visible: false },
+            // Live AI Tutor (2026-09): 13.5 slots it after Settings without renumbering
+            // tabs institutes have already saved orders for (same trick as QUIZ_RESULTS).
+            { id: 'TUTOR_MODE', order: 13.5, visible: true },
         ],
         defaultTab: 'OUTLINE',
     },

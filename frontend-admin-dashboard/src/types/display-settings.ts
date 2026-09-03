@@ -95,7 +95,8 @@ export type CourseDetailsTabId =
     | 'REPORTS'
     | 'CERTIFICATES'
     | 'DOWNLOADS'
-    | 'SETTINGS';
+    | 'SETTINGS'
+    | 'TUTOR_MODE';
 
 export interface CourseDetailsTabConfig {
     id: CourseDetailsTabId;

@@ -58,6 +58,7 @@ import Planning from './planning';
 import Activity from './activity';
 import PulseTab from '../../-components/pulse/PulseTab';
 import { PackageSettingsPanel } from '../../-components/package-settings/PackageSettingsPanel';
+import { TutorModeTab } from '../../-components/tutor-mode/TutorModeTab';
 import { getIcon } from '../modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides';
 import { MyButton } from '@/components/design-system/button';
 import { useContentStore } from '../modules/chapters/slides/-stores/chapter-sidebar-store';
@@ -914,6 +915,11 @@ export const SubjectMaterial = () => {
         [TabType.SETTINGS]: (
             <div className="rounded-md bg-white p-3 shadow-sm">
                 <PackageSettingsPanel packageId={courseId} />
+            </div>
+        ),
+        [TabType.TUTOR_MODE]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <TutorModeTab key={courseId} packageId={courseId} />
             </div>
         ),
         // The Discussion (batch chat) and Downloads (offline telemetry) tabs are

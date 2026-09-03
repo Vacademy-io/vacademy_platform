@@ -281,6 +281,9 @@ function RouteComponent() {
     // null = let the AI decide from the prompt (legacy keyword detection)
     const [includeChapterAssignment, setIncludeChapterAssignment] = useState<boolean | null>(null);
     const [includeChapterVideo, setIncludeChapterVideo] = useState(false);
+    // Live AI Tutor: compile every slide into a teaching plan right after the
+    // course is created, and enable tutor mode on the new course.
+    const [personalizedTeaching, setPersonalizedTeaching] = useState(true);
     const [figuresPolicy, setFiguresPolicy] = useState<'PREFER' | 'REQUIRE' | 'GENERATED_ONLY'>(
         'PREFER'
     );
@@ -835,6 +838,7 @@ function RouteComponent() {
                 includeChapterVideo,
                 figuresPolicy,
                 dedupeRepetition,
+                personalizedTeaching,
             },
             referenceDocumentFileIds,
             kbGrounding,
@@ -1469,6 +1473,19 @@ function RouteComponent() {
                                             )}
                                         >
                                             Chapter video
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPersonalizedTeaching((v) => !v)}
+                                            title="Prepare every slide for the one-to-one AI teacher after the course is created (about 2 credits per document or video slide)."
+                                            className={cn(
+                                                'rounded-full border px-3 py-1 text-caption transition-colors',
+                                                personalizedTeaching
+                                                    ? 'border-primary-500 bg-primary-500 text-white'
+                                                    : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-300'
+                                            )}
+                                        >
+                                            AI teacher
                                         </button>
                                         <button
                                             type="button"

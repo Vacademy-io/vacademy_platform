@@ -133,6 +133,7 @@ import Activity from '../subjects/-components/activity';
 import PulseTab from './pulse/PulseTab';
 import QuizResultsTab from './quiz-results/QuizResultsTab';
 import { PackageSettingsPanel } from './package-settings/PackageSettingsPanel';
+import { TutorModeTab } from './tutor-mode/TutorModeTab';
 import {
     CopyContentDialog,
     type CopyContentSelection,
@@ -5151,6 +5152,11 @@ export const CourseStructureDetails = ({
         [TabType.SETTINGS]: (
             <div className="rounded-md bg-white p-3 shadow-sm">
                 <PackageSettingsPanel packageId={courseId} />
+            </div>
+        ),
+        [TabType.TUTOR_MODE]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <TutorModeTab key={courseId} packageId={courseId} />
             </div>
         ),
         [TabType.DISCUSSION]: batchPackageSessionId ? (

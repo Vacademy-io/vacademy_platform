@@ -1214,6 +1214,7 @@ export default function AdminDisplaySettings() {
                             'CERTIFICATES',
                             'DOWNLOADS',
                             'SETTINGS',
+                            'TUTOR_MODE',
                         ];
                         const orderForId: Record<string, number> = {
                             OUTLINE: 1,
@@ -1232,6 +1233,7 @@ export default function AdminDisplaySettings() {
                             CERTIFICATES: 11,
                             DOWNLOADS: 12,
                             SETTINGS: 13,
+                            TUTOR_MODE: 13.5,
                         };
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;

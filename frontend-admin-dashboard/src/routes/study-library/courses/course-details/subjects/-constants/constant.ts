@@ -17,6 +17,8 @@ export enum TabType {
     DOWNLOADS = 'DOWNLOADS',
     SETTINGS = 'SETTINGS',
     DISCUSSION = 'DISCUSSION',
+    // Live AI Tutor: per-course teaching-mode settings, compile status, plan preview.
+    TUTOR_MODE = 'TUTOR_MODE',
     // ASSIGNMENT = 'ASSIGNMENT',
     // GRADING = 'GRADING',
     // ANNOUNCEMENT = 'ANNOUNCEMENT',
@@ -40,6 +42,7 @@ export const tabs = [
     { label: 'Downloads', value: 'DOWNLOADS' },
     { label: 'Settings', value: 'SETTINGS' },
     { label: 'Discussion', value: 'DISCUSSION' },
+    { label: 'Tutor Mode', value: 'TUTOR_MODE' },
     // { label: 'Assignment ', value: 'ASSIGNMENT' },
     // { label: 'Grading ', value: 'GRADING' },
     // { label: 'Announcements ', value: 'ANNOUNCEMENT' },

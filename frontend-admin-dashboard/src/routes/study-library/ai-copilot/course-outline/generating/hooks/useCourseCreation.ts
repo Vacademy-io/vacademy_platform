@@ -6,6 +6,52 @@ import { createCourseWithContent, setProgressCallback } from '../services/course
 import { getUserRoles, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { submitForReview } from '@/routes/study-library/courses/-services/approval-services';
+import { savePackageSettingKey } from '@/services/package-settings';
+import { TUTOR_MODE_SETTING_KEY, compileTutorPlans, newCompileRunId } from '@/services/tutor';
+
+/**
+ * Live AI Tutor: after the copilot persists a course, mark it tutor-enabled and
+ * compile every teachable slide. Reads the prompt page's choice from the
+ * courseConfig it stored in sessionStorage. Never throws.
+ */
+async function startTutorPreparation(courseId: string): Promise<void> {
+    try {
+        const raw = sessionStorage.getItem('courseConfig');
+        const cfg = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+        const structure = (cfg?.courseStructure ?? {}) as { personalizedTeaching?: boolean };
+        if (structure.personalizedTeaching === false) return;
+        const language = String(cfg?.language ?? 'English').toLowerCase().startsWith('hi') ? 'hi' : 'en';
+        const kb = cfg?.kbGrounding as { knowledge_base_id?: string; mode?: 'STRICT' | 'BLENDED' } | undefined;
+        await savePackageSettingKey(
+            courseId,
+            TUTOR_MODE_SETTING_KEY,
+            { enabled: true, defaultOn: true, languages: [language, language === 'en' ? 'hi' : 'en'] },
+            'Tutor Mode'
+        );
+        toast.info('Preparing the AI teacher for this course in the background…');
+        let ready = 0;
+        let failed = 0;
+        await compileTutorPlans(
+            courseId,
+            {
+                language,
+                compile_run_id: newCompileRunId(),
+                kb_grounding: kb?.knowledge_base_id
+                    ? { knowledge_base_id: kb.knowledge_base_id, mode: kb.mode ?? 'STRICT' }
+                    : null,
+            },
+            (ev) => {
+                if (ev.type === 'PLAN_READY' || ev.type === 'PLAN_UP_TO_DATE') ready += 1;
+                if (ev.type === 'PLAN_ERROR') failed += 1;
+            }
+        );
+        if (failed === 0) toast.success(`AI teacher ready: ${ready} slide(s) prepared.`);
+        else toast.warning(`AI teacher: ${ready} prepared, ${failed} failed — see the course’s Tutor Mode tab.`);
+    } catch (error) {
+        console.warn('[Course Creation] Tutor preparation skipped:', error);
+    }
+}
+
 
 /**
  * Custom hook for handling course creation
@@ -110,6 +156,11 @@ export const useCourseCreation = (courseMetadata: any, sessionsWithProgress: Ses
             toast.success('Course created successfully!');
             // Clear saved draft since course is now created
             localStorage.removeItem('aiCourseDraft');
+
+            // Live AI Tutor: enable tutor mode on the new course and compile its
+            // teaching plans in the background. Best-effort — the course exists
+            // either way, and the Tutor Mode tab can prepare it later.
+            void startTutorPreparation(result.courseId);
 
             // Navigate to the course details page
             console.log('[Course Creation] Navigating to course:', result.courseId);

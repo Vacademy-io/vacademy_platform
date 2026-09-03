@@ -41,6 +41,7 @@ import {
 import { StudyLibraryQuestionsPreview } from './questions-preview';
 import StudyLibraryAssignmentPreview from './assignment-preview';
 import VideoSlidePreview from './video-slide-preview';
+import { TeachingDescriptionCard } from './teaching-description-card';
 import { MyDialog } from '@/components/design-system/dialog';
 import { AddVimeoDialog } from './slides-sidebar/add-vimeo-dialog';
 import { AddVideoDialog } from './slides-sidebar/add-video-dialog';
@@ -2345,10 +2346,14 @@ export const SlideMaterial = ({
                 // Key on the URL too so editing the external link remounts the
                 // player (YouTube/Vimeo) and the new link renders immediately.
                 setContent(
-                    <VideoSlidePreview
-                        key={`${activeItem.id}-${activeItem.video_slide?.url ?? ''}`}
-                        activeItem={activeItem}
-                    />
+                    <div className="flex h-full flex-col">
+                        <VideoSlidePreview
+                            key={`${activeItem.id}-${activeItem.video_slide?.url ?? ''}`}
+                            activeItem={activeItem}
+                        />
+                        {/* Live AI Tutor: the only way a video slide can be taught. */}
+                        {!isLearnerView && <TeachingDescriptionCard slideId={activeItem.id} kind="video" />}
+                    </div>
                 );
             }
 
@@ -2505,11 +2510,15 @@ export const SlideMaterial = ({
 
                 const url = await getPublicUrl(data || '');
                 setContent(
-                    <Suspense
-                        fallback={<div className="h-full w-full animate-pulse bg-gray-100" />}
-                    >
-                        <PDFViewer pdfUrl={url} />
-                    </Suspense>
+                    <div className="flex h-full flex-col">
+                        <Suspense
+                            fallback={<div className="h-full w-full animate-pulse bg-gray-100" />}
+                        >
+                            <PDFViewer pdfUrl={url} />
+                        </Suspense>
+                        {/* Live AI Tutor: the only way a PDF slide can be taught. */}
+                        {!isLearnerView && <TeachingDescriptionCard slideId={activeItem.id} kind="pdf" />}
+                    </div>
                 );
                 return;
             }

@@ -83,7 +83,11 @@ def _build_voice_session_service(db_session) -> VoiceSessionService:
     llm_client = ChatLLMClient(
         api_key_resolver,
         disable_reasoning=bool(
-            get_platform_setting("chatbot.llm.disable_reasoning", default=get_settings().llm_disable_reasoning)
+            get_platform_setting(
+                "chatbot.llm.disable_reasoning",
+                default=get_settings().llm_disable_reasoning,
+                db=db_session,
+            )
         ),
         platform_model_key="chatbot.text.model",
     )
@@ -161,10 +165,10 @@ async def voice_session(websocket: WebSocket, session_id: str):
 
         # Platform switches (super-admin portal -> AI Settings). Resolved once
         # per call so a mid-call flip can't change engines between sentences.
-        tts_provider: str = str(get_platform_setting("chatbot.voice.tts_provider", default="sarvam"))
-        platform_voice: str = str(get_platform_setting("chatbot.voice.tts_voice", default="") or "")
-        voice_model: Optional[str] = get_platform_setting("chatbot.voice.model") or None
-        opening_turn_enabled: bool = bool(get_platform_setting("chatbot.voice.opening_turn", default=True))
+        tts_provider: str = str(get_platform_setting("chatbot.voice.tts_provider", default="sarvam", db=db))
+        platform_voice: str = str(get_platform_setting("chatbot.voice.tts_voice", default="", db=db) or "")
+        voice_model: Optional[str] = get_platform_setting("chatbot.voice.model", db=db) or None
+        opening_turn_enabled: bool = bool(get_platform_setting("chatbot.voice.opening_turn", default=True, db=db))
 
         # Audio buffer for accumulating chunks
         audio_buffer: bytearray = bytearray()
@@ -185,7 +189,7 @@ async def voice_session(websocket: WebSocket, session_id: str):
         settings = get_settings()
         require_auth = bool(
             settings.voice_require_auth
-            or get_platform_setting("chatbot.voice.require_auth", default=False)
+            or get_platform_setting("chatbot.voice.require_auth", default=False, db=db)
         )
         is_authenticated = False
 

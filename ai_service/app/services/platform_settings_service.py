@@ -167,8 +167,12 @@ GROUP_LABELS = {
 @dataclass
 class _Cache:
     values: Dict[str, Any] = field(default_factory=dict)
-    loaded_at: float = 0.0
+    # None = never loaded. (A 0.0 sentinel compared against time.monotonic()
+    # reads as "loaded just now" wherever the monotonic clock starts near zero.)
+    loaded_at: Optional[float] = None
+    loaded_wall: Optional[datetime] = None
     load_failed: bool = False
+    last_error: Optional[str] = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -184,43 +188,64 @@ def _load_overrides(db: Session) -> Dict[str, Any]:
     return out
 
 
-def _refresh_if_stale() -> None:
+def _is_fresh(now: float) -> bool:
+    return _cache.loaded_at is not None and (now - _cache.loaded_at) < CACHE_TTL_SECONDS
+
+
+def _refresh_if_stale(db: Optional[Session] = None) -> None:
+    """
+    Reload the overrides once per TTL.
+
+    Prefer the caller's session: the chatbot and the voice socket call this
+    while already holding a pooled connection, and opening a second one from
+    inside that request is how a busy pool turns a saved setting into a silent
+    env default. Only fall back to a fresh session when no caller session exists.
+    """
     now = time.monotonic()
-    if now - _cache.loaded_at < CACHE_TTL_SECONDS:
+    if _is_fresh(now):
         return
     with _cache.lock:
-        if now - _cache.loaded_at < CACHE_TTL_SECONDS:
+        if _is_fresh(now):
             return
         try:
-            with db_session() as db:
-                _cache.values = _load_overrides(db)
+            if db is not None:
+                values = _load_overrides(db)
+            else:
+                with db_session() as fresh:
+                    values = _load_overrides(fresh)
+            _cache.values = values
             if _cache.load_failed:
                 logger.info("ai_platform_settings loaded; overrides active again")
             _cache.load_failed = False
-        except Exception:
-            # Table not migrated yet, or DB blip: serve defaults and retry later.
-            if not _cache.load_failed:
-                logger.warning(
-                    "ai_platform_settings unavailable; using environment defaults", exc_info=True
-                )
+            _cache.last_error = None
+            _cache.loaded_wall = datetime.utcnow()
+        except Exception as exc:
+            # Table not migrated yet, pool busy, DB blip: serve defaults, retry
+            # after the TTL, and say so EVERY time — a one-off warning at pod
+            # start is not enough to notice a setting that never takes effect.
             _cache.values = {}
             _cache.load_failed = True
+            _cache.last_error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            logger.warning(
+                "ai_platform_settings unavailable; using environment defaults (%s)",
+                _cache.last_error,
+            )
         _cache.loaded_at = time.monotonic()
 
 
 def invalidate_platform_settings_cache() -> None:
-    _cache.loaded_at = 0.0
+    _cache.loaded_at = None
 
 
-def get_platform_setting(key: str, default: Any = None) -> Any:
+def get_platform_setting(key: str, default: Any = None, db: Optional[Session] = None) -> Any:
     """
     Current effective value: the portal override if set, else the spec default,
-    else `default`. Safe to call on every request.
+    else `default`. Pass the request's `db` session when you have one.
     """
     spec = SETTING_SPECS.get(key)
     if spec is None:
         raise KeyError(f"Unknown platform setting: {key}")
-    _refresh_if_stale()
+    _refresh_if_stale(db)
     if key in _cache.values:
         return _cache.values[key]
     try:
@@ -228,6 +253,20 @@ def get_platform_setting(key: str, default: Any = None) -> Any:
     except Exception:
         value = None
     return default if value is None else value
+
+
+def get_cache_status() -> Dict[str, Any]:
+    """What this process is serving from — for the portal's 'effective' view."""
+    age = None if _cache.loaded_at is None else round(time.monotonic() - _cache.loaded_at, 1)
+    return {
+        "loaded": _cache.loaded_at is not None and not _cache.load_failed,
+        "load_failed": _cache.load_failed,
+        "last_error": _cache.last_error,
+        "age_seconds": age,
+        "loaded_at": _cache.loaded_wall.isoformat() + "Z" if _cache.loaded_wall else None,
+        "ttl_seconds": CACHE_TTL_SECONDS,
+        "override_keys": sorted(_cache.values.keys()),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -290,9 +329,16 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
         else:
             value, updated_by, updated_at = default, None, None
             source = "default"
+        # What THIS process resolves right now (via its cache) — differs from
+        # `value` when the cache could not load or is still within its TTL.
+        try:
+            effective = get_platform_setting(spec.key, db=db)
+        except Exception:
+            effective = None
         out.append(
             {
                 "key": spec.key,
+                "effective": effective,
                 "group": spec.group,
                 "group_label": GROUP_LABELS.get(spec.group, spec.group),
                 "label": spec.label,
@@ -349,6 +395,7 @@ __all__ = [
     "SETTING_SPECS",
     "GROUP_LABELS",
     "get_platform_setting",
+    "get_cache_status",
     "invalidate_platform_settings_cache",
     "list_platform_settings",
     "set_platform_setting",

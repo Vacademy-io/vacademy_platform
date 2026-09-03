@@ -514,7 +514,7 @@ def get_ai_settings(
     current_user: CustomUserDetails = Depends(get_current_user),
 ):
     _require_super_admin(current_user)
-    from ..services.platform_settings_service import list_platform_settings
+    from ..services.platform_settings_service import get_cache_status, list_platform_settings
     from ..services.voice_tts import list_tts_providers
 
     return AiSettingsResponse(
@@ -523,6 +523,7 @@ def get_ai_settings(
             llm_models=_llm_model_catalog(db),
             tts_providers=[TtsProviderOption(**p) for p in list_tts_providers()],
         ),
+        cache=get_cache_status(),
     )
 
 

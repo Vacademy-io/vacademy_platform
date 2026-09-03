@@ -144,10 +144,11 @@ export default function QuizDetailView({
                 <p className="flex items-start gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-caption text-neutral-600">
                     <Info className="mt-0.5 size-4 shrink-0 text-neutral-400" aria-hidden="true" />
                     <span>
-                        {quiz.ungradedResponses} response
-                        {quiz.ungradedResponses === 1 ? '' : 's'} could not be graded automatically
-                        (free-text or manually-evaluated questions). They are left out of the scores
-                        above rather than counted as wrong.
+                        {quiz.ungradedResponses} answer
+                        {quiz.ungradedResponses === 1 ? '' : 's'} need marking by hand (free-text or
+                        manually-evaluated questions). They are left out of the scores above rather
+                        than counted as wrong, so the percentages here cover only what could be
+                        marked automatically.
                     </span>
                 </p>
             )}

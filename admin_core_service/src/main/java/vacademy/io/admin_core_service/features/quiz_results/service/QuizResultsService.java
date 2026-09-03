@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.learner_tracking.util.AutoEvaluationScorer;
 import vacademy.io.admin_core_service.features.learner_tracking.util.RichTextForAI;
+import vacademy.io.admin_core_service.features.quiz_results.dto.LearnerQuizAnswersResponse;
+import vacademy.io.admin_core_service.features.quiz_results.dto.LearnerQuizDetailResponse;
+import vacademy.io.admin_core_service.features.quiz_results.dto.LearnerQuizOverviewResponse;
 import vacademy.io.admin_core_service.features.quiz_results.dto.QuizAttemptProjection;
 import vacademy.io.admin_core_service.features.quiz_results.dto.QuizLearnerProjection;
 import vacademy.io.admin_core_service.features.quiz_results.dto.QuizLearnerResultsResponse;
@@ -91,9 +94,9 @@ public class QuizResultsService {
 
         QuestionIndex index = loadQuestionIndex(batchId, null, false);
         Map<String, Map<String, AttemptScore>> scores =
-                grade(quizResultsRepository.getLatestAttemptResponses(batchId, null), index);
+                grade(quizResultsRepository.getLatestAttemptResponses(batchId, null, null), index);
         Map<String, List<QuizAttemptProjection>> attemptsBySlide = new HashMap<>();
-        for (QuizAttemptProjection attempt : quizResultsRepository.getAttempts(batchId, null)) {
+        for (QuizAttemptProjection attempt : quizResultsRepository.getAttempts(batchId, null, null)) {
             attemptsBySlide.computeIfAbsent(attempt.getSlideId(), k -> new ArrayList<>()).add(attempt);
         }
 
@@ -219,10 +222,10 @@ public class QuizResultsService {
 
         QuestionIndex index = loadQuestionIndex(batchId, slideId, false);
         Map<String, AttemptScore> scores =
-                grade(quizResultsRepository.getLatestAttemptResponses(batchId, slideId), index)
+                grade(quizResultsRepository.getLatestAttemptResponses(batchId, slideId, null), index)
                         .getOrDefault(slideId, Map.of());
         Map<String, QuizAttemptProjection> attempts = new HashMap<>();
-        for (QuizAttemptProjection attempt : quizResultsRepository.getAttempts(batchId, slideId)) {
+        for (QuizAttemptProjection attempt : quizResultsRepository.getAttempts(batchId, slideId, null)) {
             attempts.put(attempt.getUserId(), attempt);
         }
 
@@ -370,6 +373,355 @@ public class QuizResultsService {
         return QuizLearnerResultsResponse.Distribution.builder().buckets(buckets).build();
     }
 
+
+    // ------------------------------------------------------------- learner-wise view
+
+    /**
+     * Learner-wise overview: the same graded data as {@link #getOverview}, pivoted so the
+     * learner is the row. One grading pass answers both questions — "which quiz is landing
+     * badly" and "who is falling behind".
+     */
+    public LearnerQuizOverviewResponse getLearnerOverview(String batchId, CustomUserDetails user) {
+        requireText(batchId, "batchId");
+
+        List<QuizSlideMetaProjection> metas = quizResultsRepository.getQuizSlides(batchId, null);
+        List<QuizLearnerProjection> roster = quizResultsRepository.getBatchRoster(batchId, learnerRowLimit + 1);
+        boolean truncated = roster.size() > learnerRowLimit;
+        if (truncated) {
+            roster = roster.subList(0, learnerRowLimit);
+        }
+
+        Map<String, Map<String, AttemptScore>> scores = metas.isEmpty()
+                ? Map.of()
+                : grade(quizResultsRepository.getLatestAttemptResponses(batchId, null, null),
+                        loadQuestionIndex(batchId, null, false));
+        Map<String, Map<String, QuizAttemptProjection>> attemptsBySlide = new HashMap<>();
+        for (QuizAttemptProjection attempt : quizResultsRepository.getAttempts(batchId, null, null)) {
+            attemptsBySlide.computeIfAbsent(attempt.getSlideId(), k -> new HashMap<>())
+                    .put(attempt.getUserId(), attempt);
+        }
+
+        double courseMaxMarks = metas.stream().mapToDouble(m -> nz(m.getTotalMarks())).sum();
+        List<LearnerQuizOverviewResponse.LearnerRow> rows = new ArrayList<>(roster.size());
+        List<Double> learnerAverages = new ArrayList<>();
+        long learnersAttempted = 0;
+
+        for (QuizLearnerProjection learner : roster) {
+            LearnerQuizOverviewResponse.LearnerRow row =
+                    buildLearnerRow(learner, metas, attemptsBySlide, scores, courseMaxMarks);
+            if (row.getQuizzesAttempted() > 0) {
+                learnersAttempted++;
+                if (row.getAvgScorePercent() != null) {
+                    learnerAverages.add(row.getAvgScorePercent());
+                }
+            }
+            rows.add(row);
+        }
+
+        return LearnerQuizOverviewResponse.builder()
+                .summary(LearnerQuizOverviewResponse.Summary.builder()
+                        .enrolledLearners(rows.size())
+                        .quizzesInCourse(metas.size())
+                        .learnersAttempted(learnersAttempted)
+                        .learnersNotStarted(rows.size() - learnersAttempted)
+                        .avgScorePercent(mean(learnerAverages))
+                        .build())
+                .learners(rows)
+                .returned(rows.size())
+                .truncated(truncated)
+                .build();
+    }
+
+    /** One learner's row: their totals across every quiz in the course. */
+    private LearnerQuizOverviewResponse.LearnerRow buildLearnerRow(
+            QuizLearnerProjection learner,
+            List<QuizSlideMetaProjection> metas,
+            Map<String, Map<String, QuizAttemptProjection>> attemptsBySlide,
+            Map<String, Map<String, AttemptScore>> scores,
+            double courseMaxMarks) {
+
+        double obtained = 0;
+        double attemptedMax = 0;
+        int attemptedQuizzes = 0;
+        long totalAttempts = 0;
+        long passed = 0;
+        long withPassMark = 0;
+        Timestamp lastAttemptAt = null;
+        AttemptScore totals = new AttemptScore();
+        List<Double> perQuizPercents = new ArrayList<>();
+
+        for (QuizSlideMetaProjection meta : metas) {
+            if (meta.getPassPercentage() != null) {
+                withPassMark++;
+            }
+            QuizAttemptProjection attempt = attemptsBySlide
+                    .getOrDefault(meta.getSlideId(), Map.of())
+                    .get(learner.getUserId());
+            if (attempt == null) {
+                continue;
+            }
+            attemptedQuizzes++;
+            totalAttempts += nz(attempt.getAttemptCount());
+            if (attempt.getLastAttemptAt() != null
+                    && (lastAttemptAt == null || attempt.getLastAttemptAt().after(lastAttemptAt))) {
+                lastAttemptAt = attempt.getLastAttemptAt();
+            }
+
+            AttemptScore score = scores.getOrDefault(meta.getSlideId(), Map.of())
+                    .getOrDefault(learner.getUserId(), new AttemptScore());
+            totals.add(score);
+            double quizTotal = nz(meta.getTotalMarks());
+            obtained += score.obtained;
+            attemptedMax += quizTotal;
+            if (quizTotal > 0) {
+                double percent = score.obtained * 100.0 / quizTotal;
+                perQuizPercents.add(round1(percent));
+                if (meta.getPassPercentage() != null && percent >= meta.getPassPercentage()) {
+                    passed++;
+                }
+            }
+        }
+
+        return LearnerQuizOverviewResponse.LearnerRow.builder()
+                .userId(learner.getUserId())
+                .fullName(learner.getFullName())
+                .email(learner.getEmail())
+                .mobileNumber(learner.getMobileNumber())
+                .enrollmentStatus(learner.getEnrollmentStatus())
+                .quizzesInCourse(metas.size())
+                .quizzesAttempted(attemptedQuizzes)
+                .totalAttempts(totalAttempts)
+                .marksObtained(attemptedQuizzes > 0 ? round2(obtained) : null)
+                .attemptedMaxMarks(attemptedQuizzes > 0 ? round2(attemptedMax) : null)
+                .courseMaxMarks(round2(courseMaxMarks))
+                // Averaged over the marks they were actually examined on, not the whole
+                // course — otherwise a learner who has done one quiz perfectly reads as
+                // failing simply because the rest of the course is still ahead of them.
+                .avgScorePercent(attemptedMax > 0 ? round1(obtained * 100.0 / attemptedMax) : null)
+                .bestScorePercent(perQuizPercents.isEmpty() ? null : Collections.max(perQuizPercents))
+                .lowestScorePercent(perQuizPercents.isEmpty() ? null : Collections.min(perQuizPercents))
+                .correctCount(totals.correct)
+                .wrongCount(totals.wrong)
+                .skippedCount(totals.skipped)
+                .ungradedCount(totals.ungraded)
+                .passedQuizzes(passed)
+                .quizzesWithPassMark(withPassMark)
+                .lastAttemptAtEpochMillis(epochMillis(lastAttemptAt))
+                .build();
+    }
+
+    /** One learner's side view: every quiz in the course, attempted or not. */
+    public LearnerQuizDetailResponse getLearnerDetail(String batchId, String userId, CustomUserDetails user) {
+        requireText(batchId, "batchId");
+        requireText(userId, "userId");
+
+        List<QuizSlideMetaProjection> metas = quizResultsRepository.getQuizSlides(batchId, null);
+        QuizLearnerProjection learner = quizResultsRepository.getBatchRoster(batchId, learnerRowLimit).stream()
+                .filter(l -> userId.equals(l.getUserId()))
+                .findFirst()
+                .orElseThrow(() -> new VacademyException("Learner " + userId + " is not enrolled in this batch"));
+
+        // Scoped to this learner, so the side view costs a fraction of the batch-wide load.
+        Map<String, Map<String, AttemptScore>> scores = metas.isEmpty()
+                ? Map.of()
+                : grade(quizResultsRepository.getLatestAttemptResponses(batchId, null, userId),
+                        loadQuestionIndex(batchId, null, false));
+        Map<String, Map<String, QuizAttemptProjection>> attemptsBySlide = new HashMap<>();
+        for (QuizAttemptProjection attempt : quizResultsRepository.getAttempts(batchId, null, userId)) {
+            attemptsBySlide.computeIfAbsent(attempt.getSlideId(), k -> new HashMap<>())
+                    .put(attempt.getUserId(), attempt);
+        }
+
+        double courseMaxMarks = metas.stream().mapToDouble(m -> nz(m.getTotalMarks())).sum();
+        List<LearnerQuizDetailResponse.QuizRow> quizzes = new ArrayList<>(metas.size());
+        for (QuizSlideMetaProjection meta : metas) {
+            QuizAttemptProjection attempt = attemptsBySlide
+                    .getOrDefault(meta.getSlideId(), Map.of()).get(userId);
+            boolean attempted = attempt != null;
+            AttemptScore score = attempted
+                    ? scores.getOrDefault(meta.getSlideId(), Map.of())
+                            .getOrDefault(userId, new AttemptScore())
+                    : new AttemptScore();
+
+            double quizTotal = nz(meta.getTotalMarks());
+            Double scorePercent = (attempted && quizTotal > 0)
+                    ? round1(score.obtained * 100.0 / quizTotal)
+                    : null;
+            long questionCount = nz(meta.getQuestionCount());
+            long unanswered = attempted ? Math.max(0, questionCount - score.responded()) : questionCount;
+
+            quizzes.add(LearnerQuizDetailResponse.QuizRow.builder()
+                    .slideId(meta.getSlideId())
+                    .title(meta.getSlideTitle())
+                    .subjectName(meta.getSubjectName())
+                    .moduleName(meta.getModuleName())
+                    .chapterName(meta.getChapterName())
+                    .questionCount(questionCount)
+                    .totalMarks(quizTotal)
+                    .passPercentage(meta.getPassPercentage())
+                    .status(resolveLearnerStatus(attempted, scorePercent, meta.getPassPercentage(), unanswered))
+                    .attemptCount(attempted ? nz(attempt.getAttemptCount()) : 0)
+                    .marksObtained(attempted ? round2(score.obtained) : null)
+                    .scorePercent(scorePercent)
+                    .correctCount(score.correct)
+                    .wrongCount(score.wrong)
+                    .skippedCount(score.skipped)
+                    .ungradedCount(score.ungraded)
+                    .unansweredCount(unanswered)
+                    .timeSpentSeconds(attempted && attempt.getEngagedMs() != null
+                            ? attempt.getEngagedMs() / 1000 : null)
+                    .lastAttemptAtEpochMillis(attempted ? epochMillis(attempt.getLastAttemptAt()) : null)
+                    .build());
+        }
+
+        return LearnerQuizDetailResponse.builder()
+                .learner(buildLearnerRow(learner, metas, attemptsBySlide, scores, courseMaxMarks))
+                .quizzes(quizzes)
+                .build();
+    }
+
+    /** What one learner answered on one quiz, attempt by attempt. */
+    public LearnerQuizAnswersResponse getLearnerAnswers(String batchId, String slideId, String userId,
+            CustomUserDetails user) {
+        requireText(batchId, "batchId");
+        requireText(slideId, "slideId");
+        requireText(userId, "userId");
+
+        QuizSlideMetaProjection meta = firstOrNull(quizResultsRepository.getQuizSlides(batchId, slideId));
+        if (meta == null) {
+            throw new VacademyException("No quiz found for slide " + slideId + " in this batch");
+        }
+        QuestionIndex index = loadQuestionIndex(batchId, slideId, true);
+        String fullName = quizResultsRepository.getBatchRoster(batchId, learnerRowLimit).stream()
+                .filter(l -> userId.equals(l.getUserId()))
+                .map(QuizLearnerProjection::getFullName)
+                .findFirst()
+                .orElse(null);
+
+        List<QuizResultsRepository.LearnerAttemptProjection> attemptRows =
+                quizResultsRepository.getLearnerAttempts(batchId, slideId, userId);
+        Map<String, List<QuizResultsRepository.LearnerResponseProjection>> byActivity = new HashMap<>();
+        for (QuizResultsRepository.LearnerResponseProjection response :
+                quizResultsRepository.getLearnerResponses(slideId, userId)) {
+            byActivity.computeIfAbsent(response.getActivityId(), k -> new ArrayList<>()).add(response);
+        }
+
+        double totalMarks = index.questions.values().stream().mapToDouble(q -> q.marks).sum();
+        List<LearnerQuizAnswersResponse.Attempt> attempts = new ArrayList<>(attemptRows.size());
+        for (int i = 0; i < attemptRows.size(); i++) {
+            QuizResultsRepository.LearnerAttemptProjection attemptRow = attemptRows.get(i);
+            Map<String, QuizResultsRepository.LearnerResponseProjection> answered = new HashMap<>();
+            for (QuizResultsRepository.LearnerResponseProjection r :
+                    byActivity.getOrDefault(attemptRow.getActivityId(), List.of())) {
+                answered.put(r.getQuestionId(), r);
+            }
+
+            AttemptScore score = new AttemptScore();
+            long notAnswered = 0;
+            List<LearnerQuizAnswersResponse.Answer> answers = new ArrayList<>(index.questions.size());
+            int order = 0;
+            for (QuestionInfo question : index.questions.values()) {
+                order++;
+                QuizResultsRepository.LearnerResponseProjection response = answered.get(question.questionId);
+                String verdict;
+                double awarded = 0;
+                Set<String> selected = Set.of();
+                if (response == null) {
+                    verdict = "NOT_ANSWERED";
+                    notAnswered++;
+                } else {
+                    selected = autoEvaluationScorer.selectedAnswerIds(response.getResponseJson());
+                    Outcome outcome = outcomeOf(response.getResponseStatus(), response.getResponseJson(), question);
+                    verdict = outcome.name();
+                    switch (outcome) {
+                        case CORRECT -> {
+                            score.correct++;
+                            score.obtained += question.marks;
+                            awarded = question.marks;
+                        }
+                        case WRONG -> score.wrong++;
+                        case SKIPPED -> score.skipped++;
+                        case UNGRADED -> score.ungraded++;
+                    }
+                }
+
+                List<LearnerQuizAnswersResponse.Option> options = new ArrayList<>(question.options.size());
+                for (OptionInfo option : question.options) {
+                    options.add(LearnerQuizAnswersResponse.Option.builder()
+                            .optionId(option.optionId)
+                            .text(RichTextForAI.toPlainText(option.text))
+                            .correct(question.correctOptionIds.contains(option.optionId))
+                            .selected(selected.contains(option.optionId))
+                            .build());
+                }
+
+                answers.add(LearnerQuizAnswersResponse.Answer.builder()
+                        .questionId(question.questionId)
+                        .order(question.order != null ? question.order : order)
+                        .questionText(RichTextForAI.toPlainText(question.text))
+                        .questionType(question.questionType)
+                        .explanation(RichTextForAI.toPlainText(question.explanation))
+                        .verdict(verdict)
+                        .learnerAnswer(renderAnswer(selected, question))
+                        .correctAnswer(renderAnswer(question.correctOptionIds, question))
+                        .marks(question.marks)
+                        .marksAwarded(round2(awarded))
+                        .options(options)
+                        .build());
+            }
+
+            attempts.add(LearnerQuizAnswersResponse.Attempt.builder()
+                    .attemptNumber(i + 1)
+                    .activityId(attemptRow.getActivityId())
+                    .attemptedAtEpochMillis(epochMillis(attemptRow.getAttemptedAt()))
+                    .timeSpentSeconds(attemptRow.getEngagedMs() == null ? null : attemptRow.getEngagedMs() / 1000)
+                    // The query is oldest-first, so the last row is the one every other
+                    // screen reports on.
+                    .latest(i == attemptRows.size() - 1)
+                    .marksObtained(round2(score.obtained))
+                    .scorePercent(totalMarks > 0 ? round1(score.obtained * 100.0 / totalMarks) : null)
+                    .correctCount(score.correct)
+                    .wrongCount(score.wrong)
+                    .skippedCount(score.skipped)
+                    .ungradedCount(score.ungraded)
+                    .unansweredCount(notAnswered)
+                    .answers(answers)
+                    .build());
+        }
+
+        return LearnerQuizAnswersResponse.builder()
+                .slideId(meta.getSlideId())
+                .quizTitle(meta.getSlideTitle())
+                .userId(userId)
+                .fullName(fullName)
+                .questionCount(index.questions.size())
+                .totalMarks(round2(totalMarks))
+                .passPercentage(meta.getPassPercentage())
+                .attempts(attempts)
+                .build();
+    }
+
+    /** Option ids as readable text; falls back to the raw value for free-text answers. */
+    private String renderAnswer(Set<String> optionIds, QuestionInfo question) {
+        if (optionIds == null || optionIds.isEmpty()) {
+            return "";
+        }
+        Map<String, String> textById = new LinkedHashMap<>();
+        for (OptionInfo option : question.options) {
+            textById.put(option.optionId, RichTextForAI.toPlainText(option.text));
+        }
+        List<String> labels = new ArrayList<>();
+        for (String id : optionIds) {
+            String label = textById.get(id);
+            if (label != null && !label.isBlank()) {
+                labels.add(label);
+            } else if (textById.isEmpty()) {
+                labels.add(id);
+            }
+        }
+        return String.join(", ", labels);
+    }
+
     // ------------------------------------------------------------- question analysis
 
     /** One quiz: per-question accuracy and the option-by-option answer distribution. */
@@ -386,10 +738,10 @@ public class QuizResultsService {
                     .build();
         }
 
-        long attemptedLearners = quizResultsRepository.getAttempts(batchId, slideId).size();
+        long attemptedLearners = quizResultsRepository.getAttempts(batchId, slideId, null).size();
 
         Map<String, List<QuizResponseProjection>> byQuestion = new HashMap<>();
-        for (QuizResponseProjection response : quizResultsRepository.getLatestAttemptResponses(batchId, slideId)) {
+        for (QuizResponseProjection response : quizResultsRepository.getLatestAttemptResponses(batchId, slideId, null)) {
             byQuestion.computeIfAbsent(response.getQuestionId(), k -> new ArrayList<>()).add(response);
         }
 

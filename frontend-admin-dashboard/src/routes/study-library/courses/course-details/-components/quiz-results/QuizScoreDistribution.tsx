@@ -117,7 +117,7 @@ export default function QuizScoreDistribution({
             </div>
             {/* Ticks label each band's START, so no trailing 100 — adding one would
                 shrink the flex columns and pull every tick off its bar. */}
-            <p className="text-caption text-neutral-400">Score band (%), 10 points wide</p>
+            <p className="text-caption text-neutral-400">Score (%) — each bar covers 10 points</p>
         </figure>
     );
 }

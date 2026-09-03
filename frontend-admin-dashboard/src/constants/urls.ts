@@ -85,6 +85,10 @@ export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/transl
 export const QUIZ_RESULTS_OVERVIEW = `${BASE_URL}/admin-core-service/quiz-results/overview`;
 export const QUIZ_RESULTS_QUIZ = `${BASE_URL}/admin-core-service/quiz-results/quiz`;
 export const QUIZ_RESULTS_QUESTIONS = `${BASE_URL}/admin-core-service/quiz-results/questions`;
+// Learner-wise pivot of the same data: the roster, one learner's quizzes, and their answers.
+export const QUIZ_RESULTS_LEARNERS = `${BASE_URL}/admin-core-service/quiz-results/learners`;
+export const QUIZ_RESULTS_LEARNER = `${BASE_URL}/admin-core-service/quiz-results/learner`;
+export const QUIZ_RESULTS_LEARNER_ANSWERS = `${BASE_URL}/admin-core-service/quiz-results/learner/answers`;
 
 export const COURSE_PULSE_SUMMARY = `${BASE_URL}/admin-core-service/course-pulse/summary`;
 export const COURSE_PULSE_CONTENT_MAP = `${BASE_URL}/admin-core-service/course-pulse/content-map`;

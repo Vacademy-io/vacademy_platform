@@ -1,11 +1,6 @@
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { AccessType, RecurringType, WaitingRoomType } from '../../-constants/enums';
-import {
-    FieldRole,
-    classifyFieldRole,
-    hasRequiredIdentityField,
-} from '@/components/common/custom-fields/field-roles';
 
 const weekDaysEnum = z.enum([
     'monday',
@@ -312,56 +307,6 @@ export const addParticipantsSchema = z.object({
                 message: 'Select a currency for the paid live class.',
                 path: ['paymentCurrency'],
             });
-        }
-    }
-    // Every registration field is the admin's to make optional, phone number included — but a
-    // registrant is looked up by their email or their mobile number, and the backend rejects a
-    // submission that carries neither. So one of the two has to stay required.
-    if (data.accessType === AccessType.PUBLIC && data.fields.length > 0) {
-        if (!hasRequiredIdentityField(data.fields)) {
-            ctx.addIssue({
-                code: 'custom',
-                message:
-                    'Keep either Email or Phone Number required — a registration needs one of them to identify the learner.',
-                path: ['fields'],
-            });
-        }
-
-        // Whether the form collects this channel at all, and collects it from everyone. Fields
-        // can be deleted as well as made optional, so "no phone field on the form" fails the
-        // same rules as "phone field, not required".
-        const collectedFrom = (role: FieldRole) => {
-            const match = data.fields.find(
-                (field) => field.required && classifyFieldRole(field) === role
-            );
-            if (match) return { ok: true as const, label: match.label };
-            const optional = data.fields.find((field) => classifyFieldRole(field) === role);
-            return { ok: false as const, label: optional?.label };
-        };
-
-        const demand = (role: FieldRole, why: string) => {
-            const { ok, label } = collectedFrom(role);
-            if (ok) return;
-            ctx.addIssue({
-                code: 'custom',
-                message: label
-                    ? `"${label}" has to stay required ${why}.`
-                    : `This form needs a required ${role === FieldRole.PHONE ? 'Phone Number' : 'Email'} field ${why}.`,
-                path: ['fields'],
-            });
-        };
-
-        // A channel the form verifies by OTP must be collected, or every learner is stopped at
-        // submit over a field the form never asked for.
-        if (data.requirePhoneVerification) {
-            demand(FieldRole.PHONE, 'while the WhatsApp OTP verification is on, or turn that verification off');
-        }
-        if (data.requireEmailVerification) {
-            demand(FieldRole.EMAIL, 'while the email OTP verification is on, or turn that verification off');
-        }
-        // A paid class bills and mails its invoice to the learner's email.
-        if (data.paymentEnabled) {
-            demand(FieldRole.EMAIL, 'on a paid class — the invoice is billed and mailed to it');
         }
     }
     if (

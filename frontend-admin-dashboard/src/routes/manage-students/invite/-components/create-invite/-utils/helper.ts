@@ -228,11 +228,6 @@ function transformCustomFields(customFields: CustomField[], instituteId: string)
             type: '',
             type_id: '',
             individual_order: index,
-            // Per-form required-ness. The nested `isMandatory` below is the SHARED master row
-            // that every other form using this field reads, and the backend deliberately does
-            // not write it from here — so without this key the Required switch saved nothing
-            // and flipped back on the next open.
-            is_mandatory: field.isRequired,
             custom_field: {
                 guestId: '',
                 id: field._id || '',
@@ -340,12 +335,7 @@ export function ReTransformCustomFields(inviteDetails: IndividualInviteLinkDetai
             type: field.custom_field.fieldType || 'text',
             name: field.custom_field.fieldName,
             oldKey: isSeeded,
-            // What THIS invite stored, not what the field is called and not the shared master:
-            // OR-ing `isSeeded` in here dragged Full Name / Email / Phone Number back to Required
-            // every time the invite was reopened, and reading the master instead of the mapping
-            // showed another form's answer. Seeded fields still START required — that is decided
-            // when they are seeded, not here.
-            isRequired: field.is_mandatory ?? field.custom_field.isMandatory ?? isSeeded,
+            isRequired: field.custom_field.isMandatory || isSeeded,
             key: field.custom_field.fieldName
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, '_')

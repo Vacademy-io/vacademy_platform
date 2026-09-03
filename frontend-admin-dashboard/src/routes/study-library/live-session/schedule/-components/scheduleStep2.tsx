@@ -36,11 +36,6 @@ import {
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
 import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
-import { FieldRole, classifyFieldRole } from '@/components/common/custom-fields/field-roles';
-import {
-    isBuiltInRegistrationField,
-    withBuiltInRegistrationFields,
-} from '@/components/common/custom-fields/builtin-registration-fields';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import { FieldErrors } from 'react-hook-form';
 import { transformFormToDTOStep2 } from '../../-constants/helper';
@@ -684,44 +679,6 @@ export default function ScheduleStep2() {
         );
     };
 
-    /**
-     * Required is the admin's call on every registration field, built-ins included — but a
-     * channel the form verifies with an OTP has to be collected, so that one field stays
-     * required for as long as its verification is on. Same for the email on a paid class:
-     * the invoice is billed and mailed to it.
-     */
-    const requiredLockReasonFor = (field: { label?: string; type?: string }): string | undefined => {
-        const role = classifyFieldRole({ type: field.type, label: field.label });
-        if (role === FieldRole.EMAIL) {
-            if (watch('requireEmailVerification')) {
-                return 'Email is verified with an OTP on this form, so it has to stay required.';
-            }
-            if (watch('paymentEnabled')) {
-                return 'A paid class is invoiced by email, so the email field has to stay required.';
-            }
-        }
-        if (role === FieldRole.PHONE && watch('requirePhoneVerification')) {
-            return 'The mobile number is verified with a WhatsApp OTP on this form, so it has to stay required.';
-        }
-        return undefined;
-    };
-
-    /**
-     * Turning a verification on for a channel the form no longer requires would block every
-     * learner at submit, so flip that field back to required as the toggle goes on rather than
-     * failing them later.
-     */
-    const requireIdentityField = (role: FieldRole) => {
-        (getValues('fields') ?? []).forEach((field, index) => {
-            if (
-                !field.required &&
-                classifyFieldRole({ type: field.type, label: field.label }) === role
-            ) {
-                setValue(`fields.${index}.required`, true, { shouldDirty: true });
-            }
-        });
-    };
-
     const rawPortalUrl = instituteDetails?.learner_portal_base_url;
     const learnerBaseUrl = rawPortalUrl
         ? rawPortalUrl.startsWith('http')
@@ -780,49 +737,31 @@ export default function ScheduleStep2() {
                 const instId = getInstId();
                 if (!instId) return;
                 const defaults = await fetchInstituteDefaultFields(instId);
-                const allFields = (defaults ?? []).map((entry) => {
-                    const cf = entry.custom_field;
-                    const nameLC = cf.fieldName.toLowerCase();
-                    // Multi-input revamp: forward the real field type so the
-                    // form schema / learner registration renders date pickers,
-                    // file upload, checkboxes, etc. Options are parsed for
-                    // both dropdown and radio.
-                    const rawType = (cf.fieldType || 'text').toLowerCase();
-                    const resolvedType = (rawType === 'textfield' ? 'text' : rawType) as InputType;
-                    const hasOptions = hasOptionsType(resolvedType);
-                    // Built-in by ROLE, not by label: an institute that calls it "Name" or
-                    // "E-mail" gets the same default-on Required as one that spells it out.
-                    const builtIn = isBuiltInRegistrationField({
-                        key: cf.fieldKey,
-                        label: cf.fieldName,
-                        type: resolvedType,
+                if (defaults && defaults.length > 0) {
+                    const allFields = defaults.map((entry) => {
+                        const cf = entry.custom_field;
+                        const nameLC = cf.fieldName.toLowerCase();
+                        // Multi-input revamp: forward the real field type so the
+                        // form schema / learner registration renders date pickers,
+                        // file upload, checkboxes, etc. Options are parsed for
+                        // both dropdown and radio.
+                        const rawType = (cf.fieldType || 'text').toLowerCase();
+                        const resolvedType = (
+                            rawType === 'textfield' ? 'text' : rawType
+                        ) as InputType;
+                        const hasOptions = hasOptionsType(resolvedType);
+                        return {
+                            label: cf.fieldName,
+                            required: cf.isMandatory || SEEDED.includes(nameLC),
+                            isDefault: SEEDED.includes(nameLC),
+                            type: resolvedType,
+                            ...(hasOptions && parseFieldOptions(cf.config).length > 0
+                                ? { options: parseFieldOptions(cf.config) }
+                                : {}),
+                        };
                     });
-                    return {
-                        label: cf.fieldName,
-                        required: builtIn || !!cf.isMandatory,
-                        isDefault: builtIn || SEEDED.includes(nameLC),
-                        type: resolvedType,
-                        ...(hasOptions && parseFieldOptions(cf.config).length > 0
-                            ? { options: parseFieldOptions(cf.config) }
-                            : {}),
-                    };
-                });
-                // Every institute gets Full Name / Email / Phone Number, required to start with —
-                // an institute with no DEFAULT set (or one missing a field) would otherwise open a
-                // registration form that collects nothing.
-                form.setValue(
-                    'fields',
-                    withBuiltInRegistrationFields(
-                        allFields,
-                        (field) => ({ label: field.label, type: field.type }),
-                        (builtIn) => ({
-                            label: builtIn.label,
-                            required: true,
-                            isDefault: true,
-                            type: builtIn.type as InputType,
-                        })
-                    )
-                );
+                    form.setValue('fields', allFields);
+                }
             };
             loadFields();
         } else {
@@ -1667,10 +1606,7 @@ export default function ScheduleStep2() {
                                             <label className="flex w-fit cursor-pointer items-center gap-3">
                                                 <Switch
                                                     checked={!!field.value}
-                                                    onCheckedChange={(checked) => {
-                                                        field.onChange(checked);
-                                                        if (checked) requireIdentityField(FieldRole.EMAIL);
-                                                    }}
+                                                    onCheckedChange={field.onChange}
                                                 />
                                                 <span className="text-sm">
                                                     Verify email with an OTP before registering
@@ -1685,10 +1621,7 @@ export default function ScheduleStep2() {
                                             <label className="flex w-fit cursor-pointer items-center gap-3">
                                                 <Switch
                                                     checked={!!field.value}
-                                                    onCheckedChange={(checked) => {
-                                                        field.onChange(checked);
-                                                        if (checked) requireIdentityField(FieldRole.PHONE);
-                                                    }}
+                                                    onCheckedChange={field.onChange}
                                                 />
                                                 <span className="text-sm">
                                                     Verify mobile number with a WhatsApp OTP before
@@ -1791,10 +1724,7 @@ export default function ScheduleStep2() {
                                                     isRequired={
                                                         watch(`fields.${index}.required`) ?? false
                                                     }
-                                                    requiredLockReason={requiredLockReasonFor({
-                                                        label: watch(`fields.${index}.label`),
-                                                        type: watch(`fields.${index}.type`),
-                                                    })}
+                                                    locked={field.isDefault}
                                                     isEditing={editingFieldIndex === index}
                                                     onToggleRequired={() =>
                                                         setValue(
@@ -1815,16 +1745,6 @@ export default function ScheduleStep2() {
                                         </SortableItem>
                                     ))}
                                 </Sortable>
-
-                                {/* Required-ness rules that span fields (an identity field must
-                                    stay required, an OTP-verified channel must be collected) are
-                                    raised on the `fields` array itself, so they have no row of
-                                    their own to render in. */}
-                                {form.formState.errors.fields?.message && (
-                                    <p className="px-3 text-caption text-danger-600">
-                                        {form.formState.errors.fields.message}
-                                    </p>
-                                )}
 
                                 {/* adding customs fields and new registration form options */}
                                 <div className="flex flex-col gap-4 p-3 sm:flex-row">

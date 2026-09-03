@@ -1,4 +1,3 @@
-import { isBuiltInRegistrationField } from '@/components/common/custom-fields/builtin-registration-fields';
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId } from '@/constants/helper';
@@ -153,13 +152,7 @@ export const getCampaignCustomFieldsAsync = async (): Promise<CampaignFormCustom
                 id: String(index),
                 type: fieldType,
                 name: cf.fieldName,
-                // Default ON for the registrant's own name / email / phone, whatever the
-                // institute called them — the same rule every other form builder uses. The
-                // admin can switch any of them off, and that choice is stored per form.
-                isRequired:
-                    isBuiltInRegistrationField({ key, label: cf.fieldName, type: fieldType }) ||
-                    cf.isMandatory ||
-                    false,
+                isRequired: cf.isMandatory || false,
                 key,
                 order: entry.individual_order ?? cf.formOrder ?? index,
                 _id: cf.id,

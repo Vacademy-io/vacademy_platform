@@ -163,13 +163,7 @@ export function AddResponsePage() {
                         customField.field_type ||
                         field.field_type ||
                         'TEXT',
-                    // Per-form answer first — the same precedence the respondent's form and the
-                    // campaign builder use. The master flag is shared with every other form.
-                    isMandatory:
-                        field.is_mandatory ??
-                        customField.isMandatory ??
-                        field.isMandatory ??
-                        true,
+                    isMandatory: customField.isMandatory ?? field.isMandatory ?? true,
                     defaultValue:
                         customField.defaultValue || field.defaultValue || defaultFromConfig || '',
                     // The per-form mapping order is what the admin arranged and what the

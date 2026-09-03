@@ -127,14 +127,10 @@ export const convertExistingCustomFields = (fields?: any[] | string | null) => {
                 type: uiType,
                 name: fieldName,
                 oldKey: isSeeded,
-                // Per-form answer first (that is what this campaign's Required switch writes
-                // and what the public form now reads), master row second.
                 isRequired:
-                    typeof field.is_mandatory === 'boolean'
-                        ? field.is_mandatory
-                        : typeof meta.isMandatory === 'boolean'
-                          ? meta.isMandatory
-                          : field.isRequired ?? true,
+                    typeof meta.isMandatory === 'boolean'
+                        ? meta.isMandatory
+                        : field.isRequired ?? true,
                 key: fieldKey,
                 // Order by the per-form mapping order (individual_order) so the editor
                 // matches what the public form renders. Fall back to the master formOrder

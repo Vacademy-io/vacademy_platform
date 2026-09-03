@@ -704,6 +704,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                     name={fields.name}
                                                     type={fields.type}
                                                     isRequired={fields.isRequired}
+                                                    locked={fields.oldKey}
                                                     isEditing={isEditingField}
                                                     onToggleRequired={() =>
                                                         toggleIsRequired(fields.id)

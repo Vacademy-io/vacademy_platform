@@ -1,7 +1,3 @@
-import {
-    isBuiltInRegistrationField,
-    withBuiltInRegistrationFields,
-} from '@/components/common/custom-fields/builtin-registration-fields';
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId } from '@/constants/helper';
 import type { TFunction } from 'i18next';
@@ -171,11 +167,7 @@ export const getInviteListCustomFieldsAsync = async (
             if (seenKeys.has(key)) return;
             markSeen(key);
 
-            // Built-in by ROLE, not by a label/key list: institutes that call it "Name" or
-            // "E-mail" must get the same default-on Required.
-            const seeded =
-                isSeededField({ name: cf.fieldName, id: cf.id }) ||
-                isBuiltInRegistrationField({ key, label: cf.fieldName, type: fieldType });
+            const seeded = isSeededField({ name: cf.fieldName, id: cf.id });
             const transformed: InviteFormCustomField = {
                 id: String(index),
                 type: fieldType,
@@ -212,24 +204,7 @@ export const getInviteListCustomFieldsAsync = async (
             result.push(transformed);
         });
 
-        // An institute whose DEFAULT set is missing one of the three (or dropped it from
-        // Settings) still gets it here, required to start with — same top-up the campaign
-        // builder already does.
-        const sorted = result.sort((a, b) => a.order - b.order);
-        return withBuiltInRegistrationFields(
-            sorted,
-            (field) => ({ key: field.key, label: field.name, type: field.type }),
-            (builtIn, index) => ({
-                id: String(index),
-                type: 'text',
-                name: builtIn.label,
-                oldKey: true,
-                isRequired: true,
-                key: builtIn.key,
-                order: index,
-                status: 'ACTIVE' as const,
-            })
-        );
+        return result.sort((a, b) => a.order - b.order);
     } catch (err) {
         console.error('[getInviteListCustomFieldsAsync] API call failed, using fallback defaults:', err);
         return getDefaultInviteFields(t);

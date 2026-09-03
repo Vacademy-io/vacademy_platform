@@ -34,10 +34,6 @@ import {
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
 import { MyDialog } from '@/components/design-system/dialog';
 import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
-import {
-    isBuiltInRegistrationField,
-    withBuiltInRegistrationFields,
-} from '@/components/common/custom-fields/builtin-registration-fields';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId as getInstId } from '@/constants/helper';
@@ -564,24 +560,18 @@ export function BulkScheduleGrid() {
             const instId = getInstId();
             if (!instId) return;
             const defaults = await fetchInstituteDefaultFields(instId);
-            if (cancelled) return;
-            const allFields = (defaults ?? []).map((entry) => {
+            if (cancelled || !defaults || defaults.length === 0) return;
+            const allFields = defaults.map((entry) => {
                 const cf = entry.custom_field;
                 const nameLC = cf.fieldName.toLowerCase();
                 const rawType = (cf.fieldType || 'text').toLowerCase();
                 const resolvedType = (rawType === 'textfield' ? 'text' : rawType) as InputType;
                 const hasOptions =
                     resolvedType === InputType.DROPDOWN || resolvedType === InputType.RADIO;
-                // Built-in by ROLE, not by label — see scheduleStep2.
-                const builtIn = isBuiltInRegistrationField({
-                    key: cf.fieldKey,
-                    label: cf.fieldName,
-                    type: resolvedType,
-                });
                 return {
                     label: cf.fieldName,
-                    required: builtIn || !!cf.isMandatory,
-                    isDefault: builtIn || SEEDED.includes(nameLC),
+                    required: cf.isMandatory || SEEDED.includes(nameLC),
+                    isDefault: SEEDED.includes(nameLC),
                     type: resolvedType,
                     ...(hasOptions && cf.config
                         ? (() => {
@@ -618,22 +608,7 @@ export function BulkScheduleGrid() {
                         : {}),
                 };
             });
-            // Every institute gets Full Name / Email / Phone Number, required to start with — an
-            // institute with no DEFAULT set (or one missing a field) would otherwise open a
-            // registration form that collects nothing.
-            form.setValue(
-                'fields',
-                withBuiltInRegistrationFields(
-                    allFields,
-                    (field) => ({ label: field.label, type: field.type }),
-                    (builtIn) => ({
-                        label: builtIn.label,
-                        required: true,
-                        isDefault: true,
-                        type: builtIn.type as InputType,
-                    })
-                )
-            );
+            form.setValue('fields', allFields);
         };
         loadFields();
         return () => {
@@ -2218,6 +2193,7 @@ export function BulkScheduleGrid() {
                                             isRequired={
                                                 form.watch(`fields.${index}.required`) ?? false
                                             }
+                                            locked={regField.isDefault}
                                             isEditing={editingRegFieldIndex === index}
                                             onToggleRequired={() =>
                                                 form.setValue(
@@ -2238,14 +2214,6 @@ export function BulkScheduleGrid() {
                                 </SortableItem>
                             ))}
                         </Sortable>
-
-                        {/* "Keep one identity field required" spans the whole array, so it has
-                            no row of its own to render in. */}
-                        {form.formState.errors.fields?.message && (
-                            <p className="px-3 text-caption text-danger-600">
-                                {form.formState.errors.fields.message}
-                            </p>
-                        )}
 
                         <div className="flex flex-col gap-4 p-3 sm:flex-row">
                             <SharedAddCustomFieldDialog

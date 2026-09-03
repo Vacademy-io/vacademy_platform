@@ -66,10 +66,6 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import {
-    isBuiltInRegistrationField,
-    withBuiltInRegistrationFields,
-} from '@/components/common/custom-fields/builtin-registration-fields';
-import {
     parseFieldConfig,
     serializeFieldConfig,
 } from '@/components/common/custom-fields/field-config';
@@ -219,14 +215,12 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
         const loadFields = async () => {
             if (!instituteId || assessmentId !== 'defaultId') return;
             const defaults = await fetchInstituteDefaultFields(instituteId);
+            if (!defaults || defaults.length === 0) return;
             const SEEDED_KEYS = ['full_name', 'email', 'phone_number'];
-            const loaded = (defaults ?? []).map((entry, i) => {
+            const fields = defaults.map((entry, i) => {
                 const cf = entry.custom_field;
                 const key = cf.fieldName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-                // Built-in by ROLE, not by a key list — "Name" / "E-mail" count too.
-                const isSeeded =
-                    SEEDED_KEYS.includes(key) ||
-                    isBuiltInRegistrationField({ key, label: cf.fieldName, type: cf.fieldType });
+                const isSeeded = SEEDED_KEYS.includes(key);
                 const result: any = {
                     id: String(i),
                     type: cf.fieldType === 'dropdown' ? 'dropdown' : 'textfield',
@@ -248,21 +242,6 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                 }
                 return result;
             });
-            // An institute with no DEFAULT set (or one missing a field) still gets Full Name /
-            // Email / Phone Number, required to start with.
-            const fields = withBuiltInRegistrationFields(
-                loaded,
-                (field) => ({ key: field.key, label: field.name, type: field.type }),
-                (builtIn, index) => ({
-                    id: String(index),
-                    type: 'textfield',
-                    name: builtIn.label,
-                    oldKey: true,
-                    isRequired: true,
-                    key: builtIn.key,
-                    order: index,
-                })
-            );
             const currentValues = form.getValues();
             form.reset({
                 ...currentValues,
@@ -949,6 +928,7 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                                     name={field.name}
                                                                     type={field.type}
                                                                     isRequired={field.isRequired}
+                                                                    locked={field.oldKey}
                                                                     isEditing={isEditingField}
                                                                     onToggleRequired={() =>
                                                                         toggleIsRequired(field.id)

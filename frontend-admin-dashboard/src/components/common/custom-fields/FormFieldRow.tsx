@@ -12,6 +12,7 @@ import {
     File as FileIcon,
     Hash,
     Link as LinkIcon,
+    LockSimple,
     Phone,
     PencilSimple,
     RadioButton,
@@ -65,16 +66,8 @@ interface FormFieldRowProps {
     name: string;
     type: string;
     isRequired: boolean;
-    /**
-     * Reason the Required switch cannot be turned OFF right now (e.g. the form verifies this
-     * contact channel with an OTP). Set only for a genuine dependency — being a built-in field is
-     * NOT one: an institute that does not collect phone numbers has to be able to make Phone
-     * Number optional.
-     *
-     * It only ever locks a field that is already required. Locking an optional one would be a
-     * dead end: the admin could not switch it on, and could not save either.
-     */
-    requiredLockReason?: string;
+    /** Built-in field: no rename, duplicate, or delete — only Required stays live. */
+    locked?: boolean;
     isEditing?: boolean;
     onToggleRequired: () => void;
     onEdit: () => void;
@@ -90,7 +83,7 @@ export const FormFieldRow = ({
     name,
     type,
     isRequired,
-    requiredLockReason,
+    locked = false,
     isEditing = false,
     onToggleRequired,
     onEdit,
@@ -100,8 +93,6 @@ export const FormFieldRow = ({
     children,
 }: FormFieldRowProps) => {
     const { label, Icon, tint } = resolveTypeMeta(type, name);
-    // A stated dependency keeps a required field required; it never blocks turning one ON.
-    const lockedOn = !!requiredLockReason && isRequired;
 
     return (
         <div className="flex flex-col gap-2">
@@ -133,45 +124,53 @@ export const FormFieldRow = ({
                     <span className="truncate text-caption text-neutral-500">{label}</span>
                 </span>
 
-                {/* Required stays the admin's call on EVERY field, built-ins
-                    included: a form that does not collect phone numbers has to
-                    be able to make Phone Number optional. Only a real
-                    dependency (an OTP verified on that channel) locks it, and
-                    then the reason is spelled out on hover. */}
-                <span
-                    className="flex w-24 shrink-0 justify-center"
-                    title={requiredLockReason || undefined}
-                >
+                {/* Built-in fields are structurally mandatory — their Required
+                    state is not the admin's to change. */}
+                <span className="flex w-24 shrink-0 justify-center">
                     <Switch
-                        checked={isRequired}
-                        disabled={lockedOn}
-                        onCheckedChange={lockedOn ? undefined : onToggleRequired}
-                        aria-label={`${name || 'Field'} is required`}
+                        checked={locked ? true : isRequired}
+                        disabled={locked}
+                        onCheckedChange={locked ? undefined : onToggleRequired}
                     />
                 </span>
 
-                {/* Nothing is locked here any more. Full Name / Email / Phone Number used to
-                    be un-renamable and un-removable built-ins; institutes that word them
-                    differently, or do not collect one of them, need them to be ordinary fields. */}
-                <span className="flex w-32 shrink-0 items-center justify-center gap-2">
+                {/* Built-in fields keep the buttons for column alignment but are
+                    disabled — they must not be renamed, duplicated, or removed. */}
+                <span
+                    className="flex w-32 shrink-0 items-center justify-center gap-2"
+                    title={locked ? 'Built-in field — cannot be edited or removed' : undefined}
+                >
                     <MyButton
                         type="button"
                         scale="medium"
                         buttonType="secondary"
                         layoutVariant="icon"
-                        aria-label={isEditing ? 'Close editor' : 'Edit field'}
-                        onClick={onEdit}
+                        disable={locked}
+                        aria-label={
+                            locked
+                                ? 'Built-in field cannot be edited'
+                                : isEditing
+                                  ? 'Close editor'
+                                  : 'Edit field'
+                        }
+                        onClick={locked ? undefined : onEdit}
                     >
-                        <PencilSimple className="!size-4" />
+                        {locked ? (
+                            <LockSimple className="!size-4" />
+                        ) : (
+                            <PencilSimple className="!size-4" />
+                        )}
                     </MyButton>
                     <MyButton
                         type="button"
                         scale="medium"
                         buttonType="secondary"
                         layoutVariant="icon"
-                        disable={!onDuplicate}
-                        aria-label="Duplicate field"
-                        onClick={onDuplicate}
+                        disable={locked || !onDuplicate}
+                        aria-label={
+                            locked ? 'Built-in field cannot be duplicated' : 'Duplicate field'
+                        }
+                        onClick={locked ? undefined : onDuplicate}
                     >
                         <CopySimple className="!size-4" />
                     </MyButton>
@@ -180,14 +179,17 @@ export const FormFieldRow = ({
                         scale="medium"
                         buttonType="secondary"
                         layoutVariant="icon"
-                        aria-label="Delete field"
-                        onClick={onDelete}
+                        disable={locked}
+                        aria-label={locked ? 'Built-in field cannot be deleted' : 'Delete field'}
+                        onClick={locked ? undefined : onDelete}
                     >
-                        <TrashSimple className="!size-4 text-danger-500" />
+                        <TrashSimple
+                            className={cn('!size-4', locked ? '' : 'text-danger-500')}
+                        />
                     </MyButton>
                 </span>
             </div>
-            {isEditing && children}
+            {isEditing && !locked && children}
         </div>
     );
 };

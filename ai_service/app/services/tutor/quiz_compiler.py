@@ -1,8 +1,10 @@
 """Deterministic plan for a QUIZ slide: no model call.
 
-One topic "Quick check", an opening concept, then one concept per question
-whose check IS the question. The board shows the stem (and options for MCQ)
-so the learner sees what they are answering; the say text reads it aloud.
+An opening topic, then ONE TOPIC PER QUESTION — a question is its own board,
+cleared before the next — whose single concept's check IS the question. The
+board shows the stem (and the options for MCQ) so the learner sees what they
+are answering; the say text reads it aloud. Validated with QUIZ_LIMITS, since
+a six-option question is the question, not a wall of text.
 """
 from __future__ import annotations
 
@@ -34,10 +36,13 @@ def _shorten(text: str, n: int = 140) -> str:
 
 def compile_quiz(source: SlideSource, lang: str = "en") -> TeachingPlanDraft:
     other = "hi" if lang == "en" else "en"
-    concepts: List[ConceptDraft] = [
-        ConceptDraft(
+    topics: List[TopicDraft] = [TopicDraft(
+        id="t1",
+        title=f"Quick check: {source.title or 'this chapter'}",
+        estimated_seconds=20,
+        concepts=[ConceptDraft(
             id="t1c1",
-            title=f"Quick check: {source.title or 'this chapter'}",
+            title="Quick check",
             concept_tags=["quiz.intro"],
             board_ops=[
                 HeadingOp(op="heading", id="t1-h", text=_shorten(source.title or "Quick check", 60)),
@@ -47,10 +52,12 @@ def compile_quiz(source: SlideSource, lang: str = "en") -> TeachingPlanDraft:
             say_i18n={other: _t(_INTRO, other, student_name="{student_name}")},
             teach_notes="Warm-up. Do not teach here; the questions are the lesson.",
             check=Check(type="none"),
-        )
-    ]
+        )],
+        summary_ops=[],
+    )]
     for i, q in enumerate(source.questions, start=1):
-        is_mcq = q.question_type in ("MCQS", "MCQM", "MCQ", "TRUE_FALSE") and q.options
+        t = f"t{i + 1}"
+        is_mcq = q.question_type in ("MCQS", "MCQM", "MCQ", "TRUE_FALSE") and bool(q.options)
         opts = [o["text"] for o in q.options if o["text"]]
         answer = "; ".join(q.correct_texts) if q.correct_texts else (q.explanation or "")
         say = _t(_ASK, lang, n=str(i), stem=_shorten(q.stem, 220))
@@ -58,38 +65,37 @@ def compile_quiz(source: SlideSource, lang: str = "en") -> TeachingPlanDraft:
         if is_mcq and opts:
             say += _t(_ASK_OPTIONS, lang, opts="; ".join(_shorten(o, 60) for o in opts[:6]))
             say_o += _t(_ASK_OPTIONS, other, opts="; ".join(_shorten(o, 60) for o in opts[:6]))
-        board = [TextOp(op="text", id=f"t1c{i + 1}-q", text=_shorten(f"Q{i}. {q.stem}", 200))]
+        board = [TextOp(op="text", id=f"{t}c1-q", text=_shorten(f"Q{i}. {q.stem}", 220))]
         if is_mcq and opts:
-            board.append(BulletOp(op="bullet", id=f"t1c{i + 1}-o", items=[_shorten(o, 70) for o in opts[:6]]))
+            board.append(BulletOp(op="bullet", id=f"{t}c1-o", items=[_shorten(o, 80) for o in opts[:6]]))
         rubric = _t(_RUBRIC_MCQ if is_mcq else _RUBRIC_OPEN, lang, answer=_shorten(answer, 200) or "(see explanation)")
-        concepts.append(ConceptDraft(
-            id=f"t1c{i + 1}",
+        topics.append(TopicDraft(
+            id=t,
             title=_shorten(f"Question {i}", 40),
-            concept_tags=[f"quiz.q{i}"],
-            board_ops=board,
-            say=say,
-            say_i18n={other: say_o},
-            teach_notes=(q.explanation or "Ask, wait, then confirm the correct answer briefly.")[:600],
-            check=Check(
-                type="mcq" if is_mcq else "open",
-                prompt=_shorten(q.stem, 400),
-                options=opts[:6] if is_mcq else [],
-                expected=_shorten(answer, 400) or None,
-                rubric=rubric,
-                misconceptions=[],
-                pass_threshold=1.0 if is_mcq else 0.7,
-            ),
+            estimated_seconds=45,
+            concepts=[ConceptDraft(
+                id=f"{t}c1",
+                title=_shorten(f"Question {i}", 40),
+                concept_tags=[f"quiz.q{i}"],
+                board_ops=board,
+                say=say,
+                say_i18n={other: say_o},
+                teach_notes=(q.explanation or "Ask, wait, then confirm the correct answer briefly.")[:600],
+                check=Check(
+                    type="mcq" if is_mcq else "open",
+                    prompt=_shorten(q.stem, 400),
+                    options=opts[:6] if is_mcq else [],
+                    expected=_shorten(answer, 400) or None,
+                    rubric=rubric,
+                    misconceptions=[],
+                    pass_threshold=1.0 if is_mcq else 0.7,
+                ),
+            )],
+            summary_ops=[],
         ))
-    topic = TopicDraft(
-        id="t1",
-        title=f"Quick check: {source.title or 'chapter'}",
-        estimated_seconds=45 * max(1, len(source.questions)),
-        concepts=concepts,
-        summary_ops=[],
-    )
     return TeachingPlanDraft(
         language=lang,
         objectives=[f"Recall the key points checked by {len(source.questions)} question(s)"],
         key_terms=[KeyTerm(term="quiz", meaning="a quick check of understanding")],
-        topics=[topic],
+        topics=topics,
     )

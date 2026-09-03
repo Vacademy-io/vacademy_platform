@@ -6,7 +6,7 @@ cannot express (board size, id uniqueness, cross-references).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -147,9 +147,14 @@ class ClearOp(_OpBase):
     op: Literal["clear"]
 
 
-BoardOp = Union[
-    HeadingOp, TextOp, BulletOp, FormulaOp, SvgOp, ImageOp, VideoOp, MediaTaskOp,
-    TableOp, CalloutOp, AnnotateOp, ArrowOp, HighlightOp, UnhighlightOp, RevealOp, ClearOp,
+# Discriminated on "op": a malformed op produces one targeted error instead of
+# one error per union member, which keeps the repair prompt readable.
+BoardOp = Annotated[
+    Union[
+        HeadingOp, TextOp, BulletOp, FormulaOp, SvgOp, ImageOp, VideoOp, MediaTaskOp,
+        TableOp, CalloutOp, AnnotateOp, ArrowOp, HighlightOp, UnhighlightOp, RevealOp, ClearOp,
+    ],
+    Field(discriminator="op"),
 ]
 
 # Ops that put a new element on the board (and therefore carry an id).
@@ -219,18 +224,29 @@ class CompileKbGrounding(BaseModel):
     mode: Literal["STRICT", "BLENDED"] = "STRICT"
 
 
-class CompileRequest(BaseModel):
-    package_id: str
-    slide_ids: List[str] = Field(default_factory=list)
-    language: str = Field(default="en", description="Course language: 'en' or 'hi'")
-    teacher_name: str = "Asha"
-    # Recompile even when a READY plan matches the current content hash.
-    force: bool = False
+_RUN_ID = r"^[A-Za-z0-9_.:-]{1,64}$"
+
+
+class CompileOptions(BaseModel):
+    """Options shared by compile and recompile."""
+    language: str = Field(default="en", pattern=r"^(en|hi)$", description="Course language")
+    teacher_name: str = Field(default="Asha", min_length=1, max_length=60)
     # Let the compiler request AI-generated images (billed per image).
     generate_images: bool = False
     kb_grounding: Optional[CompileKbGrounding] = None
     # Stable across transport retries; keys idempotent charges.
-    compile_run_id: Optional[str] = None
+    compile_run_id: Optional[str] = Field(default=None, pattern=_RUN_ID)
+
+
+class CompileRequest(CompileOptions):
+    package_id: str = Field(..., min_length=1, max_length=255)
+    slide_ids: List[str] = Field(default_factory=list, max_length=400)
+    # Recompile even when a READY plan matches the current content hash.
+    force: bool = False
+
+
+class RecompileOptions(CompileOptions):
+    """Body of POST /slides/{id}/recompile — everything optional."""
 
 
 class SourceDescriptionRequest(BaseModel):
@@ -247,6 +263,8 @@ class PlanStatusItem(BaseModel):
     version: Optional[int] = None
     status: str
     error: Optional[str] = None
+    # The READY plan learners would be taught from (may differ from the newest row).
+    serving_plan_id: Optional[str] = None
     topics: int = 0
     concepts: int = 0
     updated_at: Optional[str] = None

@@ -7,20 +7,25 @@ recompile, older versions → DELETED) lives in one place.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import Any, Dict, Iterable, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...models.teaching_plan import TeachingConcept, TeachingMedia, TeachingPlan, TeachingTopic
 from ...schemas.tutor import TeachingPlanDraft
-from .board_ops import materialize, ops_to_dicts
+from .board_ops import clean_ops, materialize, ops_to_dicts
 
 logger = logging.getLogger(__name__)
 
 TERMINAL_OK = "READY"
+# A compile that has not finished in this long is dead (the worker was
+# cancelled, crashed or redeployed); its row is retired so the slide can be
+# compiled again and the course page stops showing "compiling" forever.
+STUCK_COMPILING_MINUTES = 30
 
 
 def latest_plan(db: Session, slide_id: str) -> Optional[TeachingPlan]:
@@ -36,6 +41,30 @@ def latest_ready_plan(db: Session, slide_id: str) -> Optional[TeachingPlan]:
     return (
         db.query(TeachingPlan)
         .filter(TeachingPlan.slide_id == slide_id, TeachingPlan.status == "READY")
+        .order_by(TeachingPlan.version.desc())
+        .first()
+    )
+
+
+def retire_stuck_compiling(db: Session, slide_id: Optional[str] = None) -> int:
+    """COMPILING rows older than STUCK_COMPILING_MINUTES become FAILED."""
+    cutoff = datetime.utcnow() - timedelta(minutes=STUCK_COMPILING_MINUTES)
+    q = db.query(TeachingPlan).filter(TeachingPlan.status == "COMPILING", TeachingPlan.updated_at < cutoff)
+    if slide_id:
+        q = q.filter(TeachingPlan.slide_id == slide_id)
+    n = q.update({"status": "FAILED", "error": "compile timed out or was interrupted",
+                  "updated_at": datetime.utcnow()}, synchronize_session=False)
+    if n:
+        db.flush()
+    return int(n or 0)
+
+
+def active_compiling(db: Session, slide_id: str) -> Optional[TeachingPlan]:
+    cutoff = datetime.utcnow() - timedelta(minutes=STUCK_COMPILING_MINUTES)
+    return (
+        db.query(TeachingPlan)
+        .filter(TeachingPlan.slide_id == slide_id, TeachingPlan.status == "COMPILING",
+                TeachingPlan.updated_at >= cutoff)
         .order_by(TeachingPlan.version.desc())
         .first()
     )
@@ -60,6 +89,7 @@ def start_plan(
     source_description: Optional[str],
     status: str = "COMPILING",
 ) -> TeachingPlan:
+    retire_stuck_compiling(db, slide_id)
     plan = TeachingPlan(
         id=str(uuid4()),
         slide_id=slide_id,
@@ -71,8 +101,16 @@ def start_plan(
         source_description=source_description,
         created_by_user_id=user_id,
     )
-    db.add(plan)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(plan)
+            db.flush()
+    except IntegrityError:
+        # Two compiles of the same slide raced on UNIQUE(slide_id, version):
+        # take the next number and try once more.
+        plan.version = next_version(db, slide_id)
+        db.add(plan)
+        db.flush()
     return plan
 
 
@@ -91,11 +129,16 @@ def store_draft(
     model: Optional[str],
     raw: Optional[Dict[str, Any]],
     compile_inputs: Optional[Dict[str, Any]] = None,
+    compiled_with_description: Optional[str] = None,
 ) -> TeachingPlan:
     """Write topics/concepts/media from a validated draft and mark READY.
 
     board_html per concept is the cumulative render of the topic's ops so far,
-    so the teaching-off view can show any concept's board on its own.
+    so the teaching-off view can show any concept's board on its own. Ops are
+    stored SANITIZED (clean_ops), so the learner app never receives a raw
+    model SVG. If the admin changed the source description while this compile
+    ran, the plan lands STALE rather than READY: its checks were built from the
+    old text.
     """
     # Replace whatever a previous attempt on this same plan row wrote.
     db.query(TeachingConcept).filter(TeachingConcept.plan_id == plan.id).delete(synchronize_session=False)
@@ -110,13 +153,13 @@ def store_draft(
             topic_order=ti,
             title=topic.title,
             estimated_seconds=topic.estimated_seconds,
-            summary_ops_json=ops_to_dicts(topic.summary_ops) or None,
+            summary_ops_json=clean_ops(ops_to_dicts(topic.summary_ops)) or None,
         )
         db.add(t_row)
         db.flush()
         cumulative: List[Dict[str, Any]] = []
         for ci, concept in enumerate(topic.concepts, start=1):
-            ops = ops_to_dicts(concept.board_ops)
+            ops = clean_ops(ops_to_dicts(concept.board_ops))
             cumulative.extend(ops)
             c_row = TeachingConcept(
                 id=str(uuid4()),
@@ -150,14 +193,19 @@ def store_draft(
                         parts_json=op.get("parts") or None,
                     ))
         if topic.summary_ops:
-            t_row.summary_html = materialize(cumulative + ops_to_dicts(topic.summary_ops))
+            t_row.summary_html = materialize(cumulative + clean_ops(ops_to_dicts(topic.summary_ops)))
 
     plan.objectives_json = list(draft.objectives)
     plan.key_terms_json = [kt.model_dump() for kt in draft.key_terms]
     plan.raw_plan_json = {"draft": raw, "compile_inputs": compile_inputs or {}}
     plan.model = model
     plan.language = draft.language or plan.language
-    plan.status = TERMINAL_OK
+    db.refresh(plan, attribute_names=["source_description"])
+    changed_meanwhile = (
+        compiled_with_description is not None
+        and (plan.source_description or "").strip() != (compiled_with_description or "").strip()
+    )
+    plan.status = "STALE" if changed_meanwhile else TERMINAL_OK
     plan.error = None
     plan.updated_at = datetime.utcnow()
     db.flush()
@@ -241,6 +289,32 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
             for m in media
         ],
     }
+
+
+def latest_plans_for_slides(db: Session, slide_ids: Iterable[str], *, ready_only: bool = False) -> Dict[str, TeachingPlan]:
+    """Newest non-deleted (or newest READY) plan per slide, one query."""
+    ids = [s for s in dict.fromkeys(slide_ids) if s]
+    if not ids:
+        return {}
+    q = db.query(TeachingPlan).filter(TeachingPlan.slide_id.in_(ids))
+    q = q.filter(TeachingPlan.status == "READY") if ready_only else q.filter(TeachingPlan.status != "DELETED")
+    out: Dict[str, TeachingPlan] = {}
+    for plan in q.order_by(TeachingPlan.slide_id, TeachingPlan.version.desc()).all():
+        out.setdefault(plan.slide_id, plan)
+    return out
+
+
+def counts_for_plans(db: Session, plan_ids: Iterable[str]) -> Dict[str, Dict[str, int]]:
+    ids = [p for p in dict.fromkeys(plan_ids) if p]
+    if not ids:
+        return {}
+    rows = db.execute(text("""
+        SELECT p.id,
+               (SELECT COUNT(*) FROM teaching_topic t WHERE t.plan_id = p.id) AS topics,
+               (SELECT COUNT(*) FROM teaching_concept c WHERE c.plan_id = p.id) AS concepts
+        FROM teaching_plan p WHERE p.id = ANY(:ids)
+    """), {"ids": ids}).fetchall()
+    return {r[0]: {"topics": int(r[1] or 0), "concepts": int(r[2] or 0)} for r in rows}
 
 
 def plan_counts(db: Session, plan_id: str) -> Dict[str, int]:

@@ -13,7 +13,7 @@ import pytest
 
 from app.schemas.tutor import TeachingPlanDraft
 from app.services.tutor import board_ops, compile_prompts
-from app.services.tutor.plan_validator import validate_plan
+from app.services.tutor.plan_validator import QUIZ_LIMITS, validate_plan
 from app.services.tutor.quiz_compiler import compile_quiz
 from app.services.tutor.slide_source import QuizQuestion, SlideSource, _correct_option_ids, html_to_text
 
@@ -133,15 +133,15 @@ def _quiz_source():
 
 def test_quiz_compiles_deterministically_and_validates():
     draft = compile_quiz(_quiz_source(), "en")
-    assert validate_plan(draft, "en") == []
-    t = draft.topics[0]
-    assert len(t.concepts) == 3
-    assert t.concepts[0].check.type == "none"
-    assert t.concepts[1].check.type == "mcq" and t.concepts[1].check.options == ["3", "4"]
-    assert t.concepts[1].check.expected == "4" and t.concepts[1].check.pass_threshold == 1.0
-    assert t.concepts[2].check.type == "open" and "Mass attracts" in (t.concepts[2].check.expected or "")
-    assert "{student_name}" in t.concepts[0].say
-    assert t.concepts[1].say_i18n["hi"]
+    assert validate_plan(draft, "en", limits=QUIZ_LIMITS) == []
+    assert len(draft.topics) == 3                       # intro + one board per question
+    intro, q1, q2 = (t.concepts[0] for t in draft.topics)
+    assert intro.check.type == "none"
+    assert q1.check.type == "mcq" and q1.check.options == ["3", "4"]
+    assert q1.check.expected == "4" and q1.check.pass_threshold == 1.0
+    assert q2.check.type == "open" and "Mass attracts" in (q2.check.expected or "")
+    assert "{student_name}" in intro.say
+    assert q1.say_i18n["hi"]
 
 
 @pytest.mark.parametrize("auto_json,expected", [
@@ -182,3 +182,98 @@ def test_prompts_mention_both_languages_and_ops():
     media = compile_prompts.media_task_user_prompt(slide_title="Cell video", chapter_title=None, course_title=None,
                                                    kind="video", description="It shows the parts of a cell.", lang="hi")
     assert '"media_task"' in media and '"say_i18n": {"en"' in media
+
+
+# ── review fixes (2026-09-03 adversarial pass) ──────────────────────────────
+
+from pydantic import ValidationError
+
+from app.schemas.tutor import CompileRequest, RecompileOptions
+from app.services.tutor.plan_validator import QUIZ_LIMITS
+
+
+def test_media_task_without_url_is_allowed_before_media_stage_and_required_after():
+    data = _plan().model_dump(by_alias=True)
+    data["topics"][0]["concepts"][0]["board_ops"] = [
+        {"op": "media_task", "id": "t1c1-m", "kind": "video", "description": "Watch the cell video"}
+    ]
+    p = TeachingPlanDraft.model_validate(data)
+    assert validate_plan(p, "en", require_media_urls=False) == []
+    errors = " | ".join(validate_plan(p, "en", require_media_urls=True))
+    assert "media_task needs a url or file_id" in errors
+
+
+def test_quiz_with_many_long_mcqs_validates_under_quiz_limits():
+    stem = "Which of the following statements about the assessment of the olfactory nerve is correct in a patient " \
+           "presenting with a head injury and reduced sense of smell after a road traffic accident?"
+    opts = [{"id": f"o{i}", "text": f"Option {i}: a fairly long distractor sentence that a clinician might write here"} for i in range(6)]
+    qs = [QuizQuestion(id=f"q{i}", order=i, question_type="MCQS", stem=stem, options=opts,
+                       correct_option_ids=["o2"], correct_texts=[opts[2]["text"]]) for i in range(1, 9)]
+    src = SlideSource(slide_id="s", title="Cranial nerves check", source_type="QUIZ", source_id="q", kind="quiz", questions=qs)
+    draft = compile_quiz(src, "en")
+    assert len(draft.topics) == 9                      # intro + one board per question
+    assert validate_plan(draft, "en", limits=QUIZ_LIMITS) == []
+    assert all(len(t.concepts) == 1 for t in draft.topics[1:])
+
+
+def test_bad_op_yields_one_targeted_error_not_one_per_union_member():
+    data = _plan().model_dump(by_alias=True)
+    data["topics"][0]["concepts"][0]["board_ops"] = [{"op": "bullet", "id": "x"}]   # missing items
+    with pytest.raises(ValidationError) as ei:
+        TeachingPlanDraft.model_validate(data)
+    assert len(ei.value.errors()) <= 2
+    data["topics"][0]["concepts"][0]["board_ops"] = [{"op": "explode", "id": "x"}]
+    with pytest.raises(ValidationError) as ei:
+        TeachingPlanDraft.model_validate(data)
+    assert len(ei.value.errors()) == 1 and "explode" in str(ei.value)
+
+
+def test_clean_ops_sanitizes_svg_and_drops_unsafe_media():
+    ops = [
+        {"op": "svg", "id": "s", "svg": '<svg><circle id="c" r="1" style="fill:url(javascript:x)"/><script>1</script></svg>', "description": "d"},
+        {"op": "svg", "id": "empty", "svg": "<script>only</script>", "description": "d"},
+        {"op": "image", "id": "i", "url": "http://insecure/x.png", "description": "d"},
+        {"op": "image", "id": "ok", "url": "https://x.test/a.png", "description": "d"},
+        {"op": "media_task", "id": "m", "kind": "pdf", "description": "read"},
+    ]
+    out = board_ops.clean_ops(ops)
+    ids = [o["id"] for o in out]
+    assert ids == ["s", "ok"]
+    assert "<script" not in out[0]["svg"] and 'style=' not in out[0]["svg"] and 'id="c"' in out[0]["svg"]
+
+
+def test_svg_style_attribute_is_stripped():
+    out = board_ops.sanitize_svg('<svg><rect id="r" style="fill:red" fill="red"/></svg>')
+    assert "style=" not in out and 'fill="red"' in out
+
+
+def test_compile_request_bounds():
+    with pytest.raises(ValidationError):
+        CompileRequest(package_id="p", compile_run_id="x" * 65)
+    with pytest.raises(ValidationError):
+        CompileRequest(package_id="p", language="fr")
+    with pytest.raises(ValidationError):
+        CompileRequest(package_id="p", slide_ids=[str(i) for i in range(401)])
+    ok = CompileRequest(package_id="p", slide_ids=["a"], compile_run_id="run-1:abc", teacher_name="Asha")
+    assert ok.language == "en" and ok.force is False
+    assert RecompileOptions().teacher_name == "Asha"
+
+
+@pytest.mark.asyncio
+async def test_router_caller_rejects_non_staff(monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from app.routers import tutor as tutor_router
+
+    async def fake_principal(request, authorization, settings):
+        return SimpleNamespace(institute_id="inst", user_id="u", roles=["STUDENT"], is_root_user=False)
+    monkeypatch.setattr(tutor_router, "get_pinned_principal", fake_principal)
+    with pytest.raises(HTTPException) as ei:
+        await tutor_router._caller(request=None, authorization="Bearer x", settings=None)
+    assert ei.value.status_code == 403
+
+    async def staff_principal(request, authorization, settings):
+        return SimpleNamespace(institute_id="inst", user_id="u", roles=["STUDENT", "ADMIN"], is_root_user=False)
+    monkeypatch.setattr(tutor_router, "get_pinned_principal", staff_principal)
+    caller = await tutor_router._caller(request=None, authorization="Bearer x", settings=None)
+    assert caller.institute_id == "inst" and "ADMIN" in caller.roles

@@ -29,6 +29,7 @@ OPS_REFERENCE = """BOARD OPERATIONS (the only ops you may use; every element op 
 - {"op":"callout","id":"...","text":"...","kind":"tip|warning|definition|example"}
 - {"op":"annotate","id":"...","target":"<existing element id>","text":"...","position":"right|below|above|left"}
 - {"op":"arrow","id":"...","from":"<element id>","to":"<element id>","text":"..."}
+- {"op":"media_task","id":"...","kind":"video|pdf","description":"..."}   ONLY in a media-task lesson (the system fills the url)
 Optional on any op: "anim":"write|fade|pop", "say_index": <0-based sentence of `say` this op appears with>.
 Never use highlight/unhighlight/reveal/clear: those are live-session ops."""
 

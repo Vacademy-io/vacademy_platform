@@ -29,7 +29,9 @@ _SVG_COMMON_ATTRS = {
     "id", "class", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin",
     "stroke-dasharray", "opacity", "fill-opacity", "stroke-opacity", "transform",
     "font-size", "font-family", "font-weight", "text-anchor", "dominant-baseline",
-    "marker-end", "marker-start", "clip-path", "style",
+    "marker-end", "marker-start", "clip-path",
+    # no "style": presentation attributes cover every legitimate need and an
+    # inline style is the one attribute whose value nh3 cannot vet.
 }
 _SVG_ATTRS: Dict[str, set] = {
     "*": _SVG_COMMON_ATTRS,
@@ -120,8 +122,11 @@ def op_words(op: Dict[str, Any]) -> int:
 # ── Structural validation (ids, targets) ─────────────────────────────────────
 
 def validate_ops(ops: Sequence[Dict[str, Any]], known_ids: Optional[set] = None,
-                 where: str = "") -> Tuple[List[str], set]:
-    """Check ids are present/unique and targets exist. Returns (errors, ids)."""
+                 where: str = "", require_media_urls: bool = True) -> Tuple[List[str], set]:
+    """Check ids are present/unique and targets exist. Returns (errors, ids).
+
+    `require_media_urls=False` is for the compile loop, where a media_task's
+    url is filled in by the system AFTER the model's draft is validated."""
     errors: List[str] = []
     ids = set(known_ids or set())
     for i, op in enumerate(ops):
@@ -153,7 +158,7 @@ def validate_ops(ops: Sequence[Dict[str, Any]], known_ids: Optional[set] = None,
                     errors.append(f"{loc}: svg part id '{part.get('id')}' does not exist inside the svg")
         if kind in ("image", "video") and op.get("url") and not safe_url(op.get("url")):
             errors.append(f"{loc}: {kind} url must be https")
-        if kind == "media_task" and not (op.get("url") or op.get("file_id")):
+        if kind == "media_task" and require_media_urls and not (op.get("url") or op.get("file_id")):
             errors.append(f"{loc}: media_task needs a url or file_id")
     return errors, ids
 
@@ -223,6 +228,32 @@ def materialize(ops: Iterable[Dict[str, Any]]) -> str:
     """Cumulative HTML for a list of ops (a topic's ops up to some concept)."""
     parts = [_render_op(op) for op in ops]
     return '<div class="tutor-board">' + "".join(p for p in parts if p) + "</div>"
+
+
+def clean_ops(ops: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sanitized copies fit for storage and for the learner app: SVG bodies
+    replaced by their sanitized form (ops whose SVG has nothing safe left are
+    dropped), image/video/media_task urls kept only when https."""
+    out: List[Dict[str, Any]] = []
+    for op in ops:
+        op = dict(op)
+        kind = op.get("op")
+        if kind == "svg":
+            cleaned = sanitize_svg(op.get("svg", ""))
+            if not cleaned:
+                continue
+            op["svg"] = cleaned
+        elif kind in ("image", "video"):
+            url = safe_url(op.get("url"))
+            if op.get("url") and not url:
+                continue
+            op["url"] = url
+        elif kind == "media_task":
+            op["url"] = safe_url(op.get("url"))
+            if not (op["url"] or op.get("file_id")):
+                continue
+        out.append(op)
+    return out
 
 
 def ops_to_dicts(ops: Sequence[Any]) -> List[Dict[str, Any]]:

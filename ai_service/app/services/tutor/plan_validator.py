@@ -8,16 +8,33 @@ stop wall-of-text boards, not to count words for their own sake.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Dict, List, Set
 
 from ...schemas.tutor import TeachingPlanDraft, VISUAL_OPS
 from .board_ops import op_words, ops_to_dicts, validate_ops
 
-MAX_WORDS_PER_CONCEPT = 60
-MAX_HEADINGS_PER_CONCEPT = 1
-MAX_VISUALS_PER_CONCEPT = 1
-MAX_BOARD_WORDS_PER_TOPIC = 220
-MIN_SAY_SENTENCES, MAX_SAY_SENTENCES = 1, 6
+
+@dataclass(frozen=True)
+class Limits:
+    words_per_concept: int = 60
+    headings_per_concept: int = 1
+    visuals_per_concept: int = 1
+    board_words_per_topic: int = 220
+    min_say_sentences: int = 1
+    max_say_sentences: int = 6
+
+
+DEFAULT_LIMITS = Limits()
+# Quiz boards show the question and its options verbatim; a six-option MCQ is
+# not a wall of text, it is the question. One topic per question keeps each
+# board to one question anyway.
+QUIZ_LIMITS = Limits(words_per_concept=160, board_words_per_topic=400)
+
+MAX_WORDS_PER_CONCEPT = DEFAULT_LIMITS.words_per_concept
+MAX_HEADINGS_PER_CONCEPT = DEFAULT_LIMITS.headings_per_concept
+MAX_VISUALS_PER_CONCEPT = DEFAULT_LIMITS.visuals_per_concept
+MAX_BOARD_WORDS_PER_TOPIC = DEFAULT_LIMITS.board_words_per_topic
 MIN_DESCRIPTION_CHARS = 10
 SUPPORTED_LANGS = ("en", "hi")
 
@@ -31,7 +48,13 @@ def sentence_count(text: str) -> int:
     return max(1, len(_SENT.findall(text)))
 
 
-def validate_plan(plan: TeachingPlanDraft, course_lang: str = "en") -> List[str]:
+def validate_plan(
+    plan: TeachingPlanDraft,
+    course_lang: str = "en",
+    *,
+    limits: Limits = DEFAULT_LIMITS,
+    require_media_urls: bool = True,
+) -> List[str]:
     errors: List[str] = []
     seen_ids: Set[str] = set()
     other_lang = "hi" if course_lang == "en" else "en"
@@ -58,7 +81,8 @@ def validate_plan(plan: TeachingPlanDraft, course_lang: str = "en") -> List[str]
             seen_ids.add(concept.id)
 
             ops = ops_to_dicts(concept.board_ops)
-            op_errors, board_ids = validate_ops(ops, board_ids, where=f"{cloc}.board_")
+            op_errors, board_ids = validate_ops(ops, board_ids, where=f"{cloc}.board_",
+                                                require_media_urls=require_media_urls)
             errors.extend(op_errors)
             # Element ids must be unique across the whole plan too, so a live
             # highlight can never be ambiguous.
@@ -71,14 +95,14 @@ def validate_plan(plan: TeachingPlanDraft, course_lang: str = "en") -> List[str]
 
             words = sum(op_words(op) for op in ops)
             topic_words += words
-            if words > MAX_WORDS_PER_CONCEPT:
-                errors.append(f"{cloc}: board adds {words} words; keep a concept under {MAX_WORDS_PER_CONCEPT}")
+            if words > limits.words_per_concept:
+                errors.append(f"{cloc}: board adds {words} words; keep a concept under {limits.words_per_concept}")
             headings = sum(1 for op in ops if op.get("op") == "heading")
-            if headings > MAX_HEADINGS_PER_CONCEPT:
-                errors.append(f"{cloc}: {headings} headings; at most {MAX_HEADINGS_PER_CONCEPT} per concept")
+            if headings > limits.headings_per_concept:
+                errors.append(f"{cloc}: {headings} headings; at most {limits.headings_per_concept} per concept")
             visuals = sum(1 for op in ops if op.get("op") in VISUAL_OPS)
-            if visuals > MAX_VISUALS_PER_CONCEPT:
-                errors.append(f"{cloc}: {visuals} visuals; at most {MAX_VISUALS_PER_CONCEPT} per concept")
+            if visuals > limits.visuals_per_concept:
+                errors.append(f"{cloc}: {visuals} visuals; at most {limits.visuals_per_concept} per concept")
             if any(op.get("op") == "clear" for op in ops):
                 errors.append(f"{cloc}: 'clear' belongs to topic boundaries, not concepts")
             for op in ops:
@@ -86,8 +110,8 @@ def validate_plan(plan: TeachingPlanDraft, course_lang: str = "en") -> List[str]
                     errors.append(f"{cloc}: {op.get('op')} '{op.get('id')}' needs a real description")
 
             n = sentence_count(concept.say)
-            if n < MIN_SAY_SENTENCES or n > MAX_SAY_SENTENCES:
-                errors.append(f"{cloc}: say has {n} sentences; use {MIN_SAY_SENTENCES}-{MAX_SAY_SENTENCES}")
+            if n < limits.min_say_sentences or n > limits.max_say_sentences:
+                errors.append(f"{cloc}: say has {n} sentences; use {limits.min_say_sentences}-{limits.max_say_sentences}")
             if not (concept.say_i18n or {}).get(other_lang, "").strip():
                 errors.append(f"{cloc}: say_i18n['{other_lang}'] is missing (narration must be compiled in both languages)")
 
@@ -104,9 +128,10 @@ def validate_plan(plan: TeachingPlanDraft, course_lang: str = "en") -> List[str]
                 if not (0.3 <= chk.pass_threshold <= 1.0):
                     errors.append(f"{cloc}: pass_threshold must be between 0.3 and 1.0")
 
-        if topic_words > MAX_BOARD_WORDS_PER_TOPIC:
-            errors.append(f"{tloc}: the topic's whole board is {topic_words} words; a board must fit one screen (<= {MAX_BOARD_WORDS_PER_TOPIC})")
-        s_errors, _ = validate_ops(ops_to_dicts(topic.summary_ops), set(board_ids), where=f"{tloc}.summary_")
+        if topic_words > limits.board_words_per_topic:
+            errors.append(f"{tloc}: the topic's whole board is {topic_words} words; a board must fit one screen (<= {limits.board_words_per_topic})")
+        s_errors, _ = validate_ops(ops_to_dicts(topic.summary_ops), set(board_ids), where=f"{tloc}.summary_",
+                                   require_media_urls=require_media_urls)
         errors.extend(s_errors)
 
     return errors

@@ -11,14 +11,17 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
 from ..core.security import get_pinned_principal
 from ..db import db_dependency
-from ..schemas.tutor import CompileRequest, PackagePlansResponse, PlanStatusItem, SourceDescriptionRequest
+from ..schemas.tutor import (
+    CompileRequest, PackagePlansResponse, PlanStatusItem, RecompileOptions, SourceDescriptionRequest,
+)
 from ..services.ai_billing import preflight_tool_credits
 from ..services.tutor import plan_store
 from ..services.tutor.plan_compiler import PlanCompiler
@@ -31,12 +34,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tutor/v1", tags=["tutor"])
 
 _HEARTBEAT_SECONDS = 15
+# Slide types the compiler handles in phase 1; quizzes compile deterministically
+# and are not billed, so they are supported but not "billable".
+SUPPORTED_SOURCE_TYPES = {"DOCUMENT", "QUIZ", "VIDEO", "HTML_VIDEO"}
+BILLABLE_SOURCE_TYPES = {"DOCUMENT", "VIDEO", "HTML_VIDEO"}
+# Roles allowed to compile, read plans and answer keys, and spend credits.
+STAFF_ROLES = {"ADMIN", "TEACHER", "SUPER_ADMIN", "COURSE_CREATOR"}
 
 
 class Caller:
-    def __init__(self, institute_id: str, user_id: Optional[str]):
+    def __init__(self, institute_id: str, user_id: Optional[str], roles: List[str], is_root: bool):
         self.institute_id = institute_id
         self.user_id = user_id
+        self.roles = roles
+        self.is_root = is_root
 
 
 async def _caller(
@@ -44,11 +55,27 @@ async def _caller(
     authorization: Optional[str] = Header(default=None),
     settings: Settings = Depends(get_settings),
 ) -> Caller:
+    """JWT + clientId, pinned to one institute, and STAFF ONLY: a learner's
+    token is a member of the institute too, and these routes expose quiz
+    answer keys and spend the institute's credits."""
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Missing Authorization: Bearer <jwt> (with a clientId header)")
     principal = await get_pinned_principal(request, authorization, settings)
-    return Caller(principal.institute_id, principal.user_id)
+    roles = [str(r).upper() for r in (principal.roles or [])]
+    if not principal.is_root_user and not (set(roles) & STAFF_ROLES):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Teaching plans are managed by institute staff (admin or teacher roles)")
+    return Caller(principal.institute_id, principal.user_id, roles, bool(principal.is_root_user))
+
+
+def _billable_count(db: Session, slide_ids: List[str]) -> int:
+    if not slide_ids:
+        return 0
+    rows = db.execute(
+        text("SELECT source_type FROM slide WHERE id = ANY(:ids)"), {"ids": list(slide_ids)}
+    ).fetchall()
+    return sum(1 for r in rows if (r[0] or "").upper() in BILLABLE_SOURCE_TYPES)
 
 
 def _sse(compiler: PlanCompiler, slide_ids: List[str]) -> StreamingResponse:
@@ -117,10 +144,12 @@ async def compile_plans(
         raise HTTPException(status_code=404, detail="Course not found in this institute")
     slide_ids = list(dict.fromkeys(payload.slide_ids))
     if not slide_ids:
-        slide_ids = [s["slide_id"] for s in list_package_slides(db, payload.package_id)]
+        slide_ids = [s["slide_id"] for s in list_package_slides(db, payload.package_id)
+                     if (s["source_type"] or "").upper() in SUPPORTED_SOURCE_TYPES]
     if not slide_ids:
         raise HTTPException(status_code=400, detail="No slides to compile")
-    _preflight(db, caller.institute_id, len(slide_ids))
+    # Only document and video slides cost credits; quizzes compile for free.
+    _preflight(db, caller.institute_id, _billable_count(db, slide_ids))
     compiler = PlanCompiler(
         institute_id=caller.institute_id, user_id=caller.user_id, language=payload.language,
         teacher_name=payload.teacher_name, force=payload.force, generate_images=payload.generate_images,
@@ -132,14 +161,14 @@ async def compile_plans(
 @router.post("/slides/{slide_id}/recompile", summary="Recompile one slide (SSE)")
 async def recompile_slide(
     slide_id: str,
-    payload: Optional[CompileRequest] = None,
+    payload: Optional[RecompileOptions] = None,
     caller: Caller = Depends(_caller),
     db: Session = Depends(db_dependency),
 ) -> StreamingResponse:
     if not slide_belongs_to_institute(db, slide_id, caller.institute_id):
         raise HTTPException(status_code=404, detail="Slide not found in this institute")
-    _preflight(db, caller.institute_id, 1)
-    p = payload or CompileRequest(package_id="", slide_ids=[slide_id])
+    _preflight(db, caller.institute_id, _billable_count(db, [slide_id]))
+    p = payload or RecompileOptions()
     compiler = PlanCompiler(
         institute_id=caller.institute_id, user_id=caller.user_id, language=p.language,
         teacher_name=p.teacher_name, force=True, generate_images=p.generate_images,
@@ -150,29 +179,39 @@ async def recompile_slide(
 
 @router.get("/packages/{package_id}/plans", response_model=PackagePlansResponse,
             summary="Teaching-plan status for every slide of a course")
-async def package_plans(
+def package_plans(
     package_id: str,
     caller: Caller = Depends(_caller),
     db: Session = Depends(db_dependency),
 ) -> PackagePlansResponse:
+    """Sync handler (runs in the threadpool): three queries for the whole
+    course instead of two per slide on the event loop."""
     if not package_belongs_to_institute(db, package_id, caller.institute_id):
         raise HTTPException(status_code=404, detail="Course not found in this institute")
+    plan_store.retire_stuck_compiling(db)
+    db.commit()
     slides = list_package_slides(db, package_id)
+    ids = [s["slide_id"] for s in slides]
+    newest = plan_store.latest_plans_for_slides(db, ids)
+    serving = plan_store.latest_plans_for_slides(db, ids, ready_only=True)
+    counts_by_plan = plan_store.counts_for_plans(db, [p.id for p in serving.values()])
     items: List[PlanStatusItem] = []
     counts: Dict[str, int] = {}
     for s in slides:
-        plan = plan_store.latest_plan(db, s["slide_id"])
         st = (s["source_type"] or "").upper()
+        plan = newest.get(s["slide_id"])
+        serve = serving.get(s["slide_id"])
         if plan is None:
-            status_ = "NOT_COMPILED" if st in ("DOCUMENT", "QUIZ", "VIDEO", "HTML_VIDEO") else "UNSUPPORTED"
+            status_ = "NOT_COMPILED" if st in SUPPORTED_SOURCE_TYPES else "UNSUPPORTED"
             item = PlanStatusItem(slide_id=s["slide_id"], slide_title=s["title"], source_type=st,
                                   chapter_id=s["chapter_id"], chapter_name=s["chapter_name"], status=status_)
         else:
-            c = plan_store.plan_counts(db, plan.id) if plan.status == "READY" else {"topics": 0, "concepts": 0}
+            c = counts_by_plan.get(serve.id, {"topics": 0, "concepts": 0}) if serve else {"topics": 0, "concepts": 0}
             item = PlanStatusItem(
                 slide_id=s["slide_id"], slide_title=s["title"], source_type=st,
                 chapter_id=s["chapter_id"], chapter_name=s["chapter_name"],
                 plan_id=plan.id, version=plan.version, status=plan.status, error=plan.error,
+                serving_plan_id=serve.id if serve else None,
                 topics=c["topics"], concepts=c["concepts"],
                 updated_at=plan.updated_at.isoformat() if plan.updated_at else None,
             )
@@ -181,15 +220,18 @@ async def package_plans(
     return PackagePlansResponse(package_id=package_id, counts=counts, slides=items)
 
 
-@router.get("/slides/{slide_id}/plan", summary="Latest teaching plan of a slide (preview)")
-async def slide_plan(
+@router.get("/slides/{slide_id}/plan", summary="Teaching plan of a slide (preview)")
+def slide_plan(
     slide_id: str,
+    latest: bool = Query(default=False, description="Newest row even if not READY (default: the READY plan learners get)"),
     caller: Caller = Depends(_caller),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
     if not slide_belongs_to_institute(db, slide_id, caller.institute_id):
         raise HTTPException(status_code=404, detail="Slide not found in this institute")
-    plan = plan_store.latest_plan(db, slide_id)
+    plan = plan_store.latest_plan(db, slide_id) if latest else (
+        plan_store.latest_ready_plan(db, slide_id) or plan_store.latest_plan(db, slide_id)
+    )
     if plan is None:
         raise HTTPException(status_code=404, detail="No teaching plan for this slide yet")
     return plan_store.plan_view(db, plan)

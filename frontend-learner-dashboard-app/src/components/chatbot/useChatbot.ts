@@ -890,6 +890,15 @@ export const useChatbot = () => {
     if (sessionId) {
       try { await chatbotAPI.closeSession(sessionId); } catch {}
     }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    // The call screen mounts on `voiceMode && sessionId`. Clear the id BEFORE
+    // flipping the mode, or it mounts against the text session we just closed,
+    // opens a socket to it, and is then torn down mid-handshake when the real
+    // voice session id lands — which left the mic permanently dead in prod.
+    setSessionId(null);
 
     const resolvedTopic = (topic || suggestedVoiceTopic()).trim();
 

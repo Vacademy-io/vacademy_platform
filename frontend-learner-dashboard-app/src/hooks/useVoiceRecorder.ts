@@ -13,7 +13,8 @@ interface UseVoiceRecorderOptions {
 }
 
 interface UseVoiceRecorderReturn {
-  startRecording: () => Promise<void>;
+  /** Resolves true once the mic is live; false if permission/device failed (see `error`). */
+  startRecording: () => Promise<boolean>;
   stopRecording: () => void;
   isRecording: boolean;
   audioBlob: Blob | null;
@@ -147,7 +148,7 @@ export function useVoiceRecorder(
   const monitorRef = useRef(monitorAudioLevel);
   monitorRef.current = monitorAudioLevel;
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (): Promise<boolean> => {
     setError(null);
     setAudioBlob(null);
     chunksRef.current = [];
@@ -244,6 +245,7 @@ export function useVoiceRecorder(
 
       // Start audio level monitoring
       monitorRef.current();
+      return true;
     } catch (err) {
       const message =
         err instanceof DOMException && err.name === 'NotAllowedError'
@@ -253,6 +255,7 @@ export function useVoiceRecorder(
             : `Failed to start recording: ${err instanceof Error ? err.message : String(err)}`;
       setError(message);
       cleanup();
+      return false;
     }
   }, [sampleRate, onAudioChunk, stopRecording, cleanup]);
 

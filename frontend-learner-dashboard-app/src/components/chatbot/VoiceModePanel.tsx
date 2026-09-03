@@ -140,10 +140,18 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
     if (voiceStateRef.current === "listening" || isArmingRef.current) return;
     isArmingRef.current = true;
     try {
-      await recorder.startRecording();
+      // startRecording swallows getUserMedia failures and reports them via
+      // its return value, so a denied or missing microphone is not an exception.
+      const started = await recorder.startRecording();
+      if (!started) {
+        setNotice(t("voiceModePanel.noticeMic"));
+        setVoiceState("idle");
+        return;
+      }
       voiceStateRef.current = "listening";
       setVoiceState("listening");
     } catch {
+      setNotice(t("voiceModePanel.noticeMic"));
       setVoiceState("idle");
     } finally {
       isArmingRef.current = false;
@@ -286,8 +294,18 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   wsRef.current = ws;
   finishSpeakingRef.current = finishSpeaking;
 
-  // Connect on mount, full cleanup on unmount
+  // Connect on mount, full cleanup on unmount. Everything per-call is reset on
+  // the way in: the cleanup below marks the call as ending, and if the session
+  // id ever changes that flag must not leak into the next connection.
   useEffect(() => {
+    isEndingRef.current = false;
+    interruptedRef.current = false;
+    turnEndedRef.current = false;
+    segmentQueueRef.current = [];
+    ttsChunksRef.current = [];
+    setVoiceState("connecting");
+    setTranscript([]);
+    setNotice(null);
     ws.connect(sessionId);
     return () => {
       isEndingRef.current = true;

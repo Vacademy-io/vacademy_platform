@@ -1194,6 +1194,7 @@ export default function CustomRoleDisplaySettings({
                             'LEARNER',
                             'TEACHER',
                             'ASSESSMENT',
+                            'QUIZ_RESULTS',
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
@@ -1260,6 +1261,11 @@ export default function CustomRoleDisplaySettings({
                                                         LEARNER: 3,
                                                         TEACHER: 4,
                                                         ASSESSMENT: 5,
+                                                        // 5.5 slots it after Assessment without
+                                                        // renumbering tabs that institutes have
+                                                        // already saved orders for — see
+                                                        // admin-defaults.ts for why a tie is worse.
+                                                        QUIZ_RESULTS: 5.5,
                                                         LIVE_SESSION: 6,
                                                         PLANNING: 7,
                                                         ACTIVITY: 8,

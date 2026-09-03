@@ -50,6 +50,7 @@ import {
 } from '@phosphor-icons/react';
 import Students from './student-list';
 import Assessments from './assessment-list';
+import QuizResultsTab from '../../-components/quiz-results/QuizResultsTab';
 import LiveSessions from './live-sessions-list';
 import BatchReports from '@/routes/study-library/reports/-components/batch/batchReports';
 import { CertificatesTab } from '../../-components/certificates/CertificatesTab';
@@ -852,6 +853,11 @@ export const SubjectMaterial = () => {
         [TabType.ASSESSMENT]: (
             <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
                 <Assessments packageSessionId={packageSessionIds ?? ''} />
+            </div>
+        ),
+        [TabType.QUIZ_RESULTS]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <QuizResultsTab packageSessionId={packageSessionIds ?? ''} />
             </div>
         ),
         [TabType.LIVE_SESSION]: packageSessionIds ? (

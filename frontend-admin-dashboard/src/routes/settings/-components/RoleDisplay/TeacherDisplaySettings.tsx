@@ -1194,6 +1194,7 @@ export default function TeacherDisplaySettings() {
                             'LEARNER',
                             'TEACHER',
                             'ASSESSMENT',
+                            'QUIZ_RESULTS',
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
@@ -1262,6 +1263,9 @@ export default function TeacherDisplaySettings() {
                                                         LEARNER: 3,
                                                         TEACHER: 4,
                                                         ASSESSMENT: 5,
+                                                        // See admin-defaults.ts: 5.5 avoids
+                                                        // colliding with saved orders.
+                                                        QUIZ_RESULTS: 5.5,
                                                         LIVE_SESSION: 6,
                                                         PLANNING: 7,
                                                         ACTIVITY: 8,

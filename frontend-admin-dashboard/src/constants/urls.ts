@@ -79,6 +79,13 @@ export const TRANSLATION_STATUS_URL = `${BASE_URL}/admin-core-service/translatio
 export const TRANSLATION_ITEMS_URL = `${BASE_URL}/admin-core-service/translations/v1/items`;
 export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/translations/v1/item/state`;
 
+// Quiz Results — the teacher/admin view of how a batch performed on the QUIZ slides in a
+// course. Batch-scoped: a quiz slide is shared across batches, so slideId alone would mix
+// other classes into the numbers.
+export const QUIZ_RESULTS_OVERVIEW = `${BASE_URL}/admin-core-service/quiz-results/overview`;
+export const QUIZ_RESULTS_QUIZ = `${BASE_URL}/admin-core-service/quiz-results/quiz`;
+export const QUIZ_RESULTS_QUESTIONS = `${BASE_URL}/admin-core-service/quiz-results/questions`;
+
 export const COURSE_PULSE_SUMMARY = `${BASE_URL}/admin-core-service/course-pulse/summary`;
 export const COURSE_PULSE_CONTENT_MAP = `${BASE_URL}/admin-core-service/course-pulse/content-map`;
 export const COURSE_PULSE_FEED = `${BASE_URL}/admin-core-service/course-pulse/feed`;

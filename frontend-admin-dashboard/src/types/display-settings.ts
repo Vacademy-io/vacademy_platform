@@ -87,6 +87,7 @@ export type CourseDetailsTabId =
     | 'LEARNER'
     | 'TEACHER'
     | 'ASSESSMENT'
+    | 'QUIZ_RESULTS'
     | 'LIVE_SESSION'
     | 'PLANNING'
     | 'ACTIVITY'

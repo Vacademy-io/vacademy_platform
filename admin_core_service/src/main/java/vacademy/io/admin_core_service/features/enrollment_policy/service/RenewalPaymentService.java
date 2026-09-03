@@ -77,6 +77,16 @@ public class RenewalPaymentService {
             handleSuccessfulRenewal(userPlan, instituteId);
             scheduleRenewalInvoicing(orderId, instituteId);
         } else if (paymentStatus == PaymentStatusEnum.FAILED) {
+            // Record the failure on the log itself, mirroring the PAID branch above.
+            // Without this the row keeps the PAYMENT_PENDING it was created with, so a
+            // declined renewal is indistinguishable from one still awaiting its webhook:
+            // it stays "pending" forever, inflates the pending figures in reporting, and
+            // gives nobody a signal that the member's autopay is failing. Every gateway
+            // funnels through here (Razorpay + Stripe webhooks, the eWay poller), so this
+            // was silently true of every failed renewal on every gateway.
+            paymentLog.setPaymentStatus(PaymentStatusEnum.FAILED.name());
+            paymentLog.setStatus(PaymentLogStatusEnum.FAILED.name());
+            paymentLogRepository.save(paymentLog);
             handleFailedRenewal(userPlan, instituteId);
         } else {
             log.info("Payment status is PENDING for orderId: {}, waiting for final status", orderId);

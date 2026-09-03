@@ -1,7 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
 import org.springframework.transaction.annotation.Propagation;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -392,13 +391,13 @@ public class PaymentLogService {
 
         recordLedgerCreditForPlanPayment(paymentLog, instituteId);
 
-        // The invoice is raised only once this payment's transaction has committed, on a
-        // worker thread. It used to run inline, and that cost us real money: on 2026-09-03
-        // a template defect made every PDF render throw, generateInvoiceWithResult is
-        // @Transactional, and the throw marked the ENROLLING transaction rollback-only. The
-        // learner was charged at the gateway and then un-enrolled — user_plan, payment_log
-        // and the batch entry all rolled back, leaving only the REQUIRES_NEW ledger rows to
-        // show the money had moved. Catching it here never helped: by then the rollback-only
+        // The invoice is raised only once this payment's transaction has committed — same
+        // thread, same request, just no longer inside the transaction. Inline, it cost us
+        // real money: on 2026-09-03 a template defect made every PDF render throw,
+        // generateInvoiceWithResult is @Transactional, and the throw marked the
+        // ENROLLING transaction rollback-only. The learner was charged at the gateway and
+        // then un-enrolled — user_plan, payment_log and the batch entry all rolled back,
+        // leaving only the REQUIRES_NEW ledger rows to show the money had moved. Catching it here never helped: by then the rollback-only
         // flag was already set, so the commit failed anyway with "Transaction silently rolled
         // back". The only real fix is to put the invoice strictly downstream of the money.
         // Worst case now is a recorded payment with no invoice, which is regenerable.
@@ -410,7 +409,12 @@ public class PaymentLogService {
 
     /**
      * Raise the invoice — and the confirmation email that carries it — only once this
-     * payment's own transaction has committed, and then on a worker thread.
+     * payment's own transaction has committed.
+     *
+     * <p>Still on the caller's thread, and still in sequence: the invoice email is a
+     * consequence of a confirmed payment and should follow it within the same request,
+     * so the learner's mail does not depend on a queue draining. What changes is only
+     * that it now runs after the commit rather than inside it.
      *
      * <p>Both used to run inline, inside the transaction that was still writing the
      * payment. That is the wrong order and it cost real money. On 2026-09-03 a defect in
@@ -458,7 +462,7 @@ public class PaymentLogService {
         if (!StringUtils.hasText(paymentLogId)) {
             return;
         }
-        Runnable dispatch = () -> self.generateInvoiceAndConfirmAsync(
+        Runnable dispatch = () -> runInvoiceAndConfirm(
                 paymentLogId, instituteId, mode, responseDTO, requestDTO);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -473,13 +477,15 @@ public class PaymentLogService {
     }
 
     /**
-     * Hands the invoice to the bounded {@code taskExecutor} pool and swallows whatever
-     * comes back. The payment is committed and durable by the time this runs, so nothing
-     * here may be allowed to present as a payment failure — it is logged and reported to
-     * Sentry, and the money stands either way.
+     * The containment boundary. The payment is committed and durable by the time this
+     * runs, so nothing beyond it may be allowed to present as a payment failure: whatever
+     * the invoice throws is logged, reported to Sentry, and goes no further.
+     *
+     * <p>The REQUIRES_NEW hop below is what makes that containment real rather than
+     * decorative. A catch alone cannot save a caller whose transaction has already been
+     * marked rollback-only — that is precisely the trap this method exists to escape.
      */
-    @Async
-    public void generateInvoiceAndConfirmAsync(String paymentLogId, String instituteId,
+    private void runInvoiceAndConfirm(String paymentLogId, String instituteId,
             ConfirmationMode mode, PaymentResponseDTO responseDTO,
             PaymentInitiationRequestDTO requestDTO) {
         try {
@@ -487,10 +493,10 @@ public class PaymentLogService {
         } catch (Exception e) {
             log.error("Invoice/confirmation failed for payment log {} — the payment itself is "
                     + "committed and unaffected: {}", paymentLogId, e.getMessage(), e);
-            SentryLogger.logError(e, "Deferred invoice generation failed", Map.of(
+            SentryLogger.logError(e, "Post-commit invoice generation failed", Map.of(
                     "payment.log.id", paymentLogId,
                     "institute.id", instituteId != null ? instituteId : "unknown",
-                    "operation", "generateInvoiceAndConfirmAsync"));
+                    "operation", "runInvoiceAndConfirm"));
         }
     }
 

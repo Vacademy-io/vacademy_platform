@@ -675,6 +675,12 @@ export const useChatbot = () => {
       try {
         const contextType = getContextType();
         const contextMeta = await buildContextMeta();
+        // During a call the topic is part of the context; a resync that omits
+        // it would replace the session's context_meta and the agent would
+        // lose what the interview/test is about.
+        if (voiceMode && voiceTopic) {
+          contextMeta.voice_topic = voiceTopic;
+        }
 
         console.log("Updating context:", { contextType, contextMeta });
 
@@ -695,6 +701,8 @@ export const useChatbot = () => {
     buildContextMeta,
     location.pathname,
     activeSlide,
+    voiceMode,
+    voiceTopic,
   ]);
 
   const sendMessage = async (content: string, intent?: MessageIntent, attachments?: Array<{type: string; url: string; mime_type?: string; name?: string}>) => {

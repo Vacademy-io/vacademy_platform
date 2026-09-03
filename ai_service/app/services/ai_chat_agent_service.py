@@ -308,6 +308,15 @@ class AiChatAgentService:
             if session.status != "ACTIVE":
                 raise ValueError(f"Session {session_id} is not active")
 
+            # A voice call's topic lives in context_meta (voice_topic), but the
+            # learner app re-syncs context on route/slide changes with a payload
+            # that never carries it. A resync must not silently drop what the
+            # interview/test is about — it turned "parenting" into the French
+            # Revolution in production.
+            existing_meta = getattr(session, "context_meta", None) or {}
+            if existing_meta.get("voice_topic") and not (context_meta or {}).get("voice_topic"):
+                context_meta = {**(context_meta or {}), "voice_topic": existing_meta["voice_topic"]}
+
             success = session_repo.update_context(
                 session_id=session_id,
                 context_type=context_type,

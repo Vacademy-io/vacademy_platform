@@ -53,6 +53,7 @@ public class SlideService {
     private final QuestionSlideRepository questionSlideRepository;
     private final AssignmentSlideRepository assignmentSlideRepository;
     private final QuizSlideRepository quizSlideRepository;
+    private final TeachingPlanStaleMarker teachingPlanStaleMarker;
     private final VideoSlideQuestionRepository videoSlideQuestionRepository;
     private final HtmlVideoSlideRepository htmlVideoSlideRepository;
     private final ScormSlideRepository scormSlideRepository;
@@ -94,6 +95,7 @@ public class SlideService {
         }
         learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.DOCUMENT.name(),
                 chapterId, moduleId, subjectId, packageSessionId);
+        teachingPlanStaleMarker.markStaleIfPublished(slideId, addDocumentSlideDTO.getStatus());
         bumpOfflineManifest(chapterId, addDocumentSlideDTO.getStatus(), "SLIDE_UPDATED_DOCUMENT");
         return slideId;
     }
@@ -125,6 +127,7 @@ public class SlideService {
         }
         learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.VIDEO.name(),
                 chapterId, moduleId, subjectId, packageSessionId);
+        teachingPlanStaleMarker.markStaleIfPublished(slideId, addVideoSlideDTO.getStatus());
         bumpOfflineManifest(chapterId, addVideoSlideDTO.getStatus(), "SLIDE_UPDATED_VIDEO");
         return slideId;
     }

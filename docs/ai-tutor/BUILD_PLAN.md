@@ -86,15 +86,20 @@ topic tree and a large subtopic yields parts. Deploy FE and ai_service in one ba
 Files: `admin_core_service/src/main/resources/db/migration/V494__Teaching_plan_tables.sql`
 (re-verify the number is still free on origin/main at push time).
 
-Contents:
+Contents (as built, 2026-09-03):
 - `teaching_plan`, `teaching_topic`, `teaching_concept`, `teaching_media` exactly as in the
   design §5.1, including `source_description` and `say_i18n_json`.
-- `ai_tool_pricing` rows: `tutor_compile_slide` (flat 2, request_type `tutor_compile`) and
-  `tutor_media_image` (per unit 1, unit `images`, request_type `tutor_compile`).
-- **The `ai_token_usage.request_type` CHECK must be dropped and re-added with the full list plus
-  `tutor_compile` and `tutor`.** Adding a Python enum value without this silently drops every
-  charge (the V325 and V365 incidents). Copy the current full list from the latest migration
-  that touched the constraint.
+- The learner tables from §5.2 (`tutor_learner_state`, `tutor_session`,
+  `tutor_concept_attempt`) pulled forward from WP5 so the runtime needs no second admin_core
+  deploy; they sit dormant until WP6.
+- `ai_tool_pricing` rows: `tutor_compile_slide` (flat 2, request_type `content`) and
+  `tutor_media_image` (flat 1, request_type `image`, charged once per generated image).
+- **No change to the `ai_token_usage.request_type` CHECK**: both rows reuse existing request
+  types (`content`, `image`) precisely to avoid the V325 and V365 trap, where a new request
+  type without a rewritten CHECK silently dropped every charge. The `ai_tool_pricing.unit_field`
+  CHECK is likewise untouched by charging images per row instead of per unit.
+- Verified by executing the file twice on a throwaway local PostgreSQL 15 (second run is a
+  no-op thanks to IF NOT EXISTS and ON CONFLICT).
 
 Verify: `mvn clean compile` (migrations are SQL, but the build must still pass); after deploy,
 on the standby: `\d teaching_plan` and `SELECT tool_key FROM ai_tool_pricing WHERE tool_key LIKE 'tutor_%'`.
@@ -197,8 +202,7 @@ Verify: `mvn clean compile` with the compiling line present.
 
 ### WP5 — Learner tables
 
-Next free Flyway number at the time: `tutor_learner_state`, `tutor_session`,
-`tutor_concept_attempt` per design §5.2. No changes to existing tables.
+Folded into V494 (see WP1); nothing left to do here.
 
 ### WP6 — Tutor socket and state machine (ai_service)
 

@@ -293,8 +293,10 @@ order; mastery is keyed by concept tag so it survives.
 - Live decision turns: a flash-class model (the chatbot's current default).
 - Billing keys, added the same way as the copilot's keys (Python `DEFAULT_TOOL_PRICING`, the
   `ai_tool_pricing` seed, and the FE `computeToolCredits`; all three must change together):
-  `tutor_compile_slide` (flat, `max(flat, actual)`), `tutor_media_image` (actual), and a
-  per-minute live meter `tutor_live_minute` modelled on `ai_call_out`. Rates and caps are
+  `tutor_compile_slide` (flat 2, `max(flat, actual)`, request type `content`),
+  `tutor_media_image` (flat 1 per generated image, request type `image`), and a per-minute
+  live meter `tutor_live_minute` modelled on `ai_call_out`. Existing request types are reused
+  on purpose so the `ai_token_usage` CHECK never needs rewriting for this feature. Rates and caps are
   deferred by owner decision, but the meter itself is built from day one so the cost is visible.
 - Idempotency: `tutor_compile:{plan_id}` and `tutor_live:{tutor_session_id}:{minute}` through
   `credit_transactions.external_reference_id`, as today.

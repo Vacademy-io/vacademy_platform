@@ -117,6 +117,36 @@
       "stepsOrderHint": "Asked in this fixed order — skipping any step left unchecked, or any step this page's courses have no options for.",
       "requireCompletion": "Require completion (no skip)"
     },
+    "coursePages": {
+      "heading": "Course Pages",
+      "hint": "Choose what each course opens when a visitor clicks View course. Courses you leave out keep the standard details page.",
+      "enable": "Set what courses open",
+      "add": "Add course",
+      "remove": "Remove this course",
+      "empty": "No courses set yet — every course opens the standard details page.",
+      "courseLabel": "Course",
+      "courseSearch": "Search courses…",
+      "modeLabel": "Opens",
+      "pageLabel": "Page to open",
+      "pagePlaceholder": "Choose a page…",
+      "pageSearch": "Search pages…",
+      "unsetRowHint": "Pick a page, or this course falls back to the standard details page.",
+      "noPages": "This catalogue has no other published page yet. Add one under Pages, then come back.",
+      "noCourses": "No courses found for this institute.",
+      "allMapped": "Every course is set.",
+      "mode": {
+        "DETAILS": "Standard details page",
+        "PAGE": "A page you built",
+        "OUTLINE": "Outline & course structure",
+        "TILES": "Course content — tiles"
+      },
+      "modeHint": {
+        "DETAILS": "The usual course page: highlights, syllabus, price and enrol.",
+        "PAGE": "Opens a page from this site instead. Build it under Pages first.",
+        "OUTLINE": "Same page with the syllabus first and the highlights section dropped. Price and enrol stay.",
+        "TILES": "Same as outline, but the subjects show as picture cards using each subject's image, like the admin dashboard."
+      }
+    },
     "enquiry": {
       "heading": "Enquiry",
       "enable": "Enable Enquiry"

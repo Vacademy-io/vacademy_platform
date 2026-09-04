@@ -11,6 +11,7 @@ import axios from "axios";
 import { JsonRenderer } from "../../-components/JsonRenderer";
 import { CourseCatalogueService } from "../../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
+import { resolveCourseView } from "../../-utils/course-page-routing";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -421,6 +422,35 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   useEffect(() => {
     console.log("[CourseDetailsPage] Catalogue data loaded:", !!catalogueData);
   }, [catalogueData]);
+
+  // A catalogue can give a course its own authored page instead of this shared
+  // details layout (globalSettings.coursePages). The catalogue's own cards
+  // already navigate straight there, so this only catches the ways a visitor
+  // can still land on the raw /<tag>/<courseId> URL — a bookmark, a link
+  // shared before the page existed, a back-navigation. `replace` keeps that
+  // dead URL out of history so Back does not bounce them right back here.
+  const courseView = resolveCourseView(catalogueData?.globalSettings, {
+    courseId,
+    packageSessionId,
+  });
+  const customCoursePageRoute =
+    courseView.mode === "PAGE" ? courseView.route : null;
+  // Syllabus-first: the marketing accordion (why learn / about / who should
+  // learn / instructors) is dropped and the course structure leads, for
+  // courses where the syllabus IS the pitch. Same URL, so pricing, enrolment
+  // and the site chrome are untouched. TILES is the same page with the
+  // subjects drawn as artwork cards rather than folder rows.
+  const isOutlineView =
+    courseView.mode === "OUTLINE" || courseView.mode === "TILES";
+  const structureVariant = courseView.mode === "TILES" ? "tiles" : "outline";
+  useEffect(() => {
+    if (!customCoursePageRoute) return;
+    navigate({
+      to: `/${tagName}/${customCoursePageRoute}`,
+      search: { enrollInviteId, packageSessionId, bannerImage, level },
+      replace: true,
+    });
+  }, [customCoursePageRoute, tagName, navigate, enrollInviteId, packageSessionId, bannerImage, level]);
 
   useEffect(() => {
     if (!instituteId) return;
@@ -1110,6 +1140,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // content below stayed white.
   const isDarkMode = (catalogueData?.globalSettings as any)?.mode === "dark";
 
+  // The syllabus tree. Rendered once, but at a different point in the column
+  // depending on the view (see isOutlineView), so it is bound here rather than
+  // written out twice — courseData is guaranteed non-null past the guard above.
+  const courseStructure = (
+    <CourseStructureDetails
+      courseDepth={courseData.courseDepth}
+      courseId={courseData.courseId || courseId}
+      instituteId={instituteId}
+      packageSessionId={courseData.packageSessionId}
+      levelId={courseData.levelId}
+      variant={structureVariant}
+    />
+  );
+
   return (
     <div
       ref={themeRootRef}
@@ -1213,14 +1257,23 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 {/* Course highlights accordion — collapsed by default,
                     wraps the what-you'll-learn / about / who-should-learn /
                     instructors sections that used to stack as separate cards
-                    below the structure. */}
-                <CourseHighlightsAccordion
-                  whyLearn={courseData.whyLearn}
-                  aboutCourse={courseData.aboutCourse}
-                  whoShouldLearn={courseData.whoShouldLearn}
-                  instructors={courseData.instructors || []}
-                  showInstructors={showInstructors}
-                />
+                    below the structure. Outline view drops it: the syllabus
+                    is the pitch there, and the marketing copy pushes it below
+                    the fold. */}
+                {!isOutlineView && (
+                  <CourseHighlightsAccordion
+                    whyLearn={courseData.whyLearn}
+                    aboutCourse={courseData.aboutCourse}
+                    whoShouldLearn={courseData.whoShouldLearn}
+                    instructors={courseData.instructors || []}
+                    showInstructors={showInstructors}
+                  />
+                )}
+
+                {/* Outline view leads with the syllabus, above the mobile
+                    price card; every other view keeps it below (see the same
+                    block further down). */}
+                {isOutlineView && courseStructure}
 
                 {/* Course Overview Card - Mobile First */}
                 <div className="lg:hidden">
@@ -1355,13 +1408,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 </div>
 
                 {/* Course Structure */}
-                <CourseStructureDetails
-                  courseDepth={courseData.courseDepth}
-                  courseId={courseData.courseId || courseId}
-                  instituteId={instituteId}
-                  packageSessionId={courseData.packageSessionId}
-                  levelId={courseData.levelId}
-                />
+                {!isOutlineView && courseStructure}
 
                 {/* Content sections (what-you'll-learn / about /
                     who-should-learn / instructors / tags) moved into the

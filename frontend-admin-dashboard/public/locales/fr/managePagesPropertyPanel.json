@@ -117,6 +117,36 @@
       "stepsOrderHint": "Demandé dans cet ordre fixe — toute étape non cochée est ignorée, tout comme toute étape pour laquelle les cours de cette page n'ont pas d'options.",
       "requireCompletion": "Exiger la fin du parcours (pas d'étape ignorée)"
     },
+    "coursePages": {
+      "heading": "Pages de cours",
+      "hint": "Choisissez ce que chaque cours ouvre lorsqu'un visiteur clique sur Voir le cours. Les cours non renseignés conservent la page de détails standard.",
+      "enable": "Définir ce qu'ouvrent les cours",
+      "add": "Ajouter un cours",
+      "remove": "Retirer ce cours",
+      "empty": "Aucun cours défini — chaque cours ouvre la page de détails standard.",
+      "courseLabel": "Cours",
+      "courseSearch": "Rechercher des cours…",
+      "modeLabel": "Ouvre",
+      "pageLabel": "Page à ouvrir",
+      "pagePlaceholder": "Choisir une page…",
+      "pageSearch": "Rechercher des pages…",
+      "unsetRowHint": "Choisissez une page, sinon ce cours revient à la page de détails standard.",
+      "noPages": "Ce catalogue n'a pas encore d'autre page publiée. Ajoutez-en une dans Pages, puis revenez.",
+      "noCourses": "Aucun cours trouvé pour cet établissement.",
+      "allMapped": "Tous les cours sont définis.",
+      "mode": {
+        "DETAILS": "Page de détails standard",
+        "PAGE": "Une page que vous avez créée",
+        "OUTLINE": "Plan et structure du cours",
+        "TILES": "Contenu du cours — vignettes"
+      },
+      "modeHint": {
+        "DETAILS": "La page de cours habituelle : points forts, programme, prix et inscription.",
+        "PAGE": "Ouvre plutôt une page de ce site. Créez-la d'abord dans Pages.",
+        "OUTLINE": "La même page, programme en premier et section points forts retirée. Prix et inscription conservés.",
+        "TILES": "Comme le plan, mais les matières s'affichent en cartes illustrées avec l'image de chaque matière, comme dans le tableau de bord admin."
+      }
+    },
     "enquiry": {
       "heading": "Demande de renseignements",
       "enable": "Activer les demandes de renseignements"

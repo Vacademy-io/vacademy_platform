@@ -70,6 +70,22 @@ export interface GlobalSettings {
         requirePayment: boolean;
     };
     /**
+     * Per-course authored landing pages: course id (or package session id) →
+     * one of this catalogue's page routes. A mapped course opens that page
+     * from every "View course" CTA and from a direct hit on its course URL,
+     * instead of the shared course details layout; an unmapped course is
+     * untouched. Edited under Global settings → Course Pages.
+     */
+    coursePages?: {
+        enabled: boolean;
+        courses?: Record<
+        string,
+        { mode?: 'DETAILS' | 'PAGE' | 'OUTLINE' | 'TILES'; route?: string }
+    >;
+        /** Pre-modes shape: course id → page route, always meaning PAGE. */
+        map?: Record<string, string>;
+    };
+    /**
      * Step-by-step "find your course" wizard, shown once over the catalogue.
      * The OPTIONS are read live from whichever course block the page renders —
      * only the wording and the grouping are authored, under Global Settings →

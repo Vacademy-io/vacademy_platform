@@ -44,6 +44,7 @@ import {
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 import { resolveInviteAvailability } from "@/lib/invite-availability";
+import { resolveCoursePageRoute } from "../../-utils/course-page-routing";
 
 // The catalogue JSON is authored by hand and by the AI page builder, so treat
 // defaultSort as untrusted: anything outside the known sort modes would leave
@@ -1128,6 +1129,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const handleCourseClick = (course: Course) => {
     // All courses navigate to details page with enroll_invite_id
     // Pass enroll_invite_id, banner image, and level as search params so details page can use them
+    // ...unless this catalogue gives the course its own authored page, in which
+    // case that page replaces the details page entirely. The course params ride
+    // along so a checkout CTA placed on that page still knows what to sell.
+    const customPageRoute = resolveCoursePageRoute(globalSettings, {
+      courseId: course.id,
+      packageSessionId: course.packageSessionId,
+    });
+
     const searchParams = new URLSearchParams();
     if (course.enrollInviteId) {
       searchParams.set("enrollInviteId", course.enrollInviteId);
@@ -1143,7 +1152,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     }
 
     navigate({
-      to: `/${tagName}/${course.id}`,
+      to: `/${tagName}/${customPageRoute ?? course.id}`,
       search: searchParams.toString()
         ? {
             enrollInviteId: course.enrollInviteId,

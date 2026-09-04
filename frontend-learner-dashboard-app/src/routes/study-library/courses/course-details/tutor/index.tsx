@@ -46,6 +46,9 @@ type Disconnect = { reason: "lost" | "idle" | "limit" | "credits" | "ended" };
 // The teacher "writes" a concept's elements one at a time while speaking,
 // instead of dropping the whole board at once.
 const REVEAL_MS = 900;
+// Voice mode: a concept with no question does not stall on a button — the
+// teacher pauses for a beat and carries on, unless the learner taps first.
+const AUTO_CONTINUE_MS = 1500;
 
 const DISCONNECT_TEXT: Record<Disconnect["reason"], string> = {
   lost: "The connection to your teacher dropped.",
@@ -442,6 +445,19 @@ function TutorPage() {
       showNotice("The microphone could not be started. Check the browser's microphone permission.");
     }
   };
+
+  // Voice mode: after the audio of a no-question concept (or a topic summary)
+  // has finished, continue by itself. Any tap — the mic, Doubt, typing — changes
+  // `awaiting`/`micOn`/`phase` and cancels the timer.
+  useEffect(() => {
+    if (!voiceMode || awaiting !== "continue" || phase !== "idle" || micOn || !!disconnected) return;
+    const t = window.setTimeout(() => {
+      setAwaiting(null);
+      socket.sendContinue();
+    }, AUTO_CONTINUE_MS);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceMode, awaiting, phase, micOn, disconnected]);
 
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
   const bootSession = useCallback(async () => {

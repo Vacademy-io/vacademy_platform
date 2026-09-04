@@ -121,7 +121,13 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
       <div className={`space-y-2 border-t border-neutral-200 pt-3 ${disabled ? "pointer-events-none opacity-50" : ""}`}>
         <div className="flex flex-wrap gap-1">
           {awaiting === "continue" && (
-            <button type="button" onClick={onContinue} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">Continue</button>
+            <button
+              type="button"
+              onClick={onContinue}
+              className={`rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white ${voiceMode ? "" : "animate-pulse ring-2 ring-primary-200"}`}
+            >
+              {voiceMode ? "Continue now" : "Continue"}
+            </button>
           )}
           {awaiting === "done" && (
             <button type="button" onClick={() => onControl("done")} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">I'm done</button>

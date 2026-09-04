@@ -408,7 +408,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     # Explain, then ask — in one breath, like a teacher would.
                     await _apply_step(sm.after_teach(lesson, pointer))
                 else:
-                    # nothing to ask: the client sends `continue` when the audio ends
+                    # Nothing to ask. A voice client continues by itself once
+                    # the audio has played; a text client shows Continue.
                     await _send({"type": "await", "what": "continue"})
             elif step.kind == "ask":
                 await _emit_state(step.pointer.phase)

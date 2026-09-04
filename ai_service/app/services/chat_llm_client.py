@@ -276,7 +276,18 @@ class ChatLLMClient:
                 f"Model: {model}. Details: {error_body}"
             )
 
-        response.raise_for_status()
+        if response.status_code >= 400:
+            # raise_for_status() would drop the body — and the body is the only
+            # place the provider says WHY (data policy, unsupported parameter,
+            # model not available to this account). Keep it: it is what the
+            # logs, model_health and the portal show.
+            body = response.text[:300]
+            try:
+                body = response.json().get("error", {}).get("message") or body
+            except Exception:
+                pass
+            logger.error(f"OpenRouter {response.status_code} for {model}: {body}")
+            raise Exception(f"OpenRouter {response.status_code} for {model}: {body}")
 
         data = response.json()
         choice = data["choices"][0]
@@ -409,7 +420,10 @@ class ChatLLMClient:
             if 400 <= response.status_code < 500 and "reasoning" in payload:
                 body = (await response.aread())[:200].decode("utf-8", "ignore")
                 raise _ReasoningRejected(response.status_code, body)
-            response.raise_for_status()
+            if response.status_code >= 400:
+                body = (await response.aread())[:300].decode("utf-8", "ignore")
+                logger.error(f"OpenRouter {response.status_code} for {model} (streaming): {body}")
+                raise Exception(f"OpenRouter {response.status_code} for {model}: {body}")
 
             async for line in response.aiter_lines():
                 if not line.startswith("data: "):

@@ -78,6 +78,10 @@ def _description_unchanged(plan: TeachingPlan) -> bool:
     return (inputs.get("source_description") or "").strip() == (plan.source_description or "").strip()
 
 
+def _count_image_ops(draft: TeachingPlanDraft) -> int:
+    return sum(1 for t in draft.topics for c in t.concepts for op in c.board_ops if getattr(op, "op", None) == "image")
+
+
 class _Skip(Exception):
     """Raised by the draft stage when a slide should be reported as skipped
     (not failed): nothing to teach, no model call made."""
@@ -359,7 +363,7 @@ class PlanCompiler:
             return draft, None
 
         kb_block = await self._kb_block(source)
-        system = prompts.system_prompt(self.teacher_name, self.language)
+        system = prompts.system_prompt(self.teacher_name, self.language, images_enabled=self.generate_images)
         if source.kind in ("video", "pdf"):
             user = prompts.media_task_user_prompt(
                 slide_title=source.title, chapter_title=source.chapter_name, course_title=source.course_name,
@@ -376,6 +380,7 @@ class PlanCompiler:
         last_json = ""
         draft: Optional[TeachingPlanDraft] = None
         errors: List[str] = []
+        asked_for_images = False
         for attempt in range(MAX_REPAIRS + 1):
             content, finish_reason = await self._chat(messages, run)
             data = None if finish_reason == "length" else prompts.extract_json(content)
@@ -402,6 +407,16 @@ class PlanCompiler:
                                            require_media_urls=False)
                     if not errors:
                         draft = candidate
+                        # Images are on but the model drew none: one extra
+                        # round asking for pictures where they belong. Not a
+                        # failure if it still declines (abstract material).
+                        if (self.generate_images and source.kind == "document" and not asked_for_images
+                                and attempt < MAX_REPAIRS and _count_image_ops(candidate) == 0):
+                            asked_for_images = True
+                            logger.info("Tutor compile: no image ops with images on for slide %s; asking once", source.slide_id)
+                            messages.append({"role": "assistant", "content": last_json[:60000]})
+                            messages.append({"role": "user", "content": prompts.image_repair_prompt(last_json)})
+                            continue
                         break
                 except ValidationError as ve:
                     errors = _pydantic_errors(ve)

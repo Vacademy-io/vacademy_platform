@@ -425,3 +425,45 @@ def test_settings_voice_pace_and_avatar():
     assert s.voice_pace == 1.3          # unparsable: unchanged
     _apply(s, {"teacherAvatarFileId": ""})
     assert s.teacher_avatar_file_id == "file-1"
+
+
+def test_compile_prompt_states_the_image_rule_by_mode():
+    from app.services.tutor import compile_prompts as P
+    on = P.system_prompt("Asha", "en", images_enabled=True)
+    off = P.system_prompt("Asha", "en", images_enabled=False)
+    assert "IMAGES ARE ON" in on and "at least one image op" in on and "AI IMAGES ARE OFF" not in on
+    assert "AI IMAGES ARE OFF" in off and "IMAGES ARE ON" not in off
+    assert "PREVIOUS JSON" in P.image_repair_prompt("{}")
+
+
+def test_no_image_plan_gets_one_image_repair_round_then_is_accepted(monkeypatch):
+    """Images on + valid plan without pictures → exactly one extra round; if
+    the model still returns none, the plan is delivered, not failed."""
+    from tests.test_tutor_compile import _plan
+    from app.services.tutor import plan_compiler as pc
+    from app.services.tutor.slide_source import SlideSource
+    data = _plan().model_dump(by_alias=True)
+    for t in data["topics"]:
+        for c in t["concepts"]:
+            c["board_ops"] = [op for op in c["board_ops"] if op["op"] != "image"]
+    body = json.dumps(data)
+    compiler = pc.PlanCompiler(institute_id="i", user_id="u", generate_images=True)
+    calls = []
+
+    async def fake_chat(messages, run):
+        calls.append(messages[-1]["content"][:40])
+        run.model_used = "m"
+        return body, "stop"
+
+    async def no_kb(source):
+        return None
+
+    async def no_media(draft, source, run):
+        return None
+
+    monkeypatch.setattr(compiler, "_chat", fake_chat)
+    monkeypatch.setattr(compiler, "_kb_block", no_kb)
+    monkeypatch.setattr(compiler, "_resolve_media", no_media)
+    src = SlideSource(slide_id="s", title="T", source_type="DOCUMENT", source_id="d", kind="document", text="body")
+    draft, _raw = asyncio.run(compiler._build_draft(src, None, pc._Run()))
+    assert draft is not None and len(calls) == 2 and calls[1].startswith("Your plan is valid but has NO image")

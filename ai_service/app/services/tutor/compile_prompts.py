@@ -74,7 +74,7 @@ def plan_schema_text(lang: str) -> str:
 }}"""
 
 
-def rules_text() -> str:
+def rules_text(images_enabled: bool = True) -> str:
     return f"""RULES (a validator enforces these; violations come back to you for repair):
 1. A TOPIC is one whiteboard. A CONCEPT is one phase of that board: it ADDS a little to the board
    (at most {MAX_HEADINGS_PER_CONCEPT} heading, at most {MAX_VISUALS_PER_CONCEPT} visual, under {MAX_WORDS_PER_CONCEPT} words of new text) while the teacher
@@ -95,9 +95,8 @@ def rules_text() -> str:
      another label; never rely on font width to line things up.
    - Give the parts a teacher would point at their own id= (listed in "parts"), and use "step" so a
      process, a flow or a build-up appears piece by piece as the narration reaches it.
-   Add an image op (one per topic, more where the material is visual) wherever a realistic picture teaches
-   better than a drawing: anatomy, equipment, a patient doing an exercise, a real-world scene. Tables for
-   comparisons, callouts for definitions and warnings.
+   Tables for comparisons, callouts for definitions and warnings.
+   {IMAGES_ON_RULE if images_enabled else IMAGES_OFF_RULE}
 5. `say` is what the teacher SAYS out loud: warm, second person, 2-4 sentences, refers to the board
    ("look at the arrow on the left"). Use {{student_name}} where the teacher would say the learner's name.
    Provide the same narration in the other language under say_i18n.
@@ -106,15 +105,36 @@ def rules_text() -> str:
 8. Write teach_notes for a human/AI teacher: the analogy to use, the order to reveal things, common traps."""
 
 
-def system_prompt(teacher_name: str, lang: str) -> str:
+def system_prompt(teacher_name: str, lang: str, images_enabled: bool = True) -> str:
     return (
         f"You are {teacher_name}, an expert one-to-one teacher, turning one course slide into a live "
         "whiteboard lesson: a sequence of small board phases, each spoken over in a few sentences and "
         "followed by a quick check of understanding. You write for a learner who is alone with you; "
         "you never lecture in walls of text.\n\n"
         f"Course language: {LANG_NAMES.get(lang, lang)}.\n\n"
-        + OPS_REFERENCE + "\n\n" + rules_text()
+        + OPS_REFERENCE + "\n\n" + rules_text(images_enabled)
     )
+
+
+# Tested 2026-09-04 on a physiotherapy slide: with only "use an image where a
+# picture teaches better", both Luna and Flash returned ZERO image ops across
+# four boards. Spelling out which visual kind fits what, and requiring one
+# scene-setting image, gave two well-placed images plus the diagrams.
+IMAGES_ON_RULE = """IMAGES ARE ON FOR THIS COURSE. A whiteboard mixes two kinds of visual and you must use both kinds where each fits:
+   - "svg" diagrams for STRUCTURE: parts of a thing, a flow or pathway, a comparison, a timeline, a formula.
+   - "image" ops for anything that exists in the physical world: a person doing something, a body part,
+     equipment, a setting (clinic, lab, home, workplace), a real object, a procedure or technique being
+     performed, a real-life scene the learner should picture. A learner remembers a realistic picture of a
+     physiotherapist assessing a patient far better than a box labelled "assessment".
+   Image rules (checked): (a) the plan contains at least one image op, placed where the slide first meets
+   the real world (usually the opening topic sets the scene); (b) every topic that involves people,
+   patients, environments, tools, practical techniques or worked examples gets an image op in one of its
+   concepts, alongside (not instead of) any diagram that topic needs; (c) a purely abstract topic
+   (definitions, categories, a formula) keeps its diagram and needs no image; (d) an image `generate`
+   prompt is a concrete photographic brief of 25-45 words: subject, action, setting, lighting, camera
+   angle, then "realistic, educational, no text, no logos"."""
+
+IMAGES_OFF_RULE = """AI IMAGES ARE OFF for this course: do not use image ops; draw every visual as an svg diagram."""
 
 
 def user_prompt(
@@ -134,7 +154,7 @@ def user_prompt(
     if institute_prompt:
         parts.append("INSTITUTE TEACHING STYLE:\n" + institute_prompt.strip()[:2000])
     if not images_enabled:
-        parts.append("AI IMAGES ARE OFF for this course: do not use image ops; draw every visual as an svg diagram.")
+        parts.append(IMAGES_OFF_RULE)
     parts.append("SLIDE MATERIAL (teach all of it, in this order):\n" + source_text.strip())
     if kb_block:
         parts.append(kb_block.strip())
@@ -163,6 +183,19 @@ def media_task_user_prompt(
         "(board: a short heading or bullet restating the point after the learner answers), with rubric and misconceptions "
         "drawn from the description. Nothing else.\n\n"
         + plan_schema_text(lang)
+    )
+
+
+def image_repair_prompt(previous_json: str) -> str:
+    """The plan validated but carries no image op although images are on:
+    one extra round that asks for pictures where they belong."""
+    return (
+        "Your plan is valid but has NO image op, and AI images are ON for this course. Re-read the image "
+        "rules: add an image op (with a 25-45 word photographic `generate` brief) in the topic that sets the "
+        "scene and in every topic that involves people, patients, settings, tools, techniques or worked "
+        "examples — keep every diagram you drew. If the slide is genuinely abstract everywhere, return the "
+        "plan unchanged. Return the complete corrected JSON object, nothing else.\n\nPREVIOUS JSON:\n"
+        f"{previous_json[:60000]}"
     )
 
 

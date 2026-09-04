@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { CoursePagesEditor } from './CoursePagesEditor';
+import type { CoursePageSetting, CourseViewMode } from './CoursePagesEditor';
 
 /**
  * The rows are plain objects keyed by course id, and the ways to corrupt one
@@ -32,7 +33,9 @@ const PAGES = [
     { id: 'p-draft', route: 'draft', title: 'Draft', published: false },
 ];
 
-type Row = { mode?: string; route?: string };
+// Reuse the component's own type rather than a looser local shape — that is
+// what let an invalid mode into this file unnoticed.
+type Row = CoursePageSetting;
 
 // MyDropdown portals its menu into #portal-root, which only the real app
 // shell renders — without it Radix gets container={null} and the menu never
@@ -106,7 +109,7 @@ describe('CoursePagesEditor', () => {
         expect(screen.getAllByRole('combobox')).toHaveLength(2);
         unmount();
 
-        for (const mode of ['DETAILS', 'OUTLINE', 'TILES']) {
+        for (const mode of ['DETAILS', 'OUTLINE', 'TILES'] as CourseViewMode[]) {
             const r = render(
                 <CoursePagesEditor
                     courses={{ [COURSE_A]: { mode } }}

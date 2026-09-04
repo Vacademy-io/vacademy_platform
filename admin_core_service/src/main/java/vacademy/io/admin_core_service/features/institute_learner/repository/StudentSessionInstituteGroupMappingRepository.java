@@ -145,6 +145,50 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("daysAhead") int daysAhead,
       @Param("graceDays") int graceDays);
 
+  /**
+   * Learners who started an enrolment but never completed the mandate, one row per learner.
+   *
+   * <p>Each retry creates a fresh user_plan, so a naive per-plan query messages the same person
+   * repeatedly -- DISTINCT ON (up.user_id) with the ORDER BY below keeps only their most recent
+   * attempt, which also carries the invite they last chose rather than the one they first tried.
+   *
+   * <p>The NOT EXISTS is the important guard: a learner may abandon several times and then
+   * convert, and telling a paying member their registration is incomplete is worse than staying
+   * silent. Observed live -- one learner left two pending plans at 07:10 and 07:14 and paid at
+   * 07:15.
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (up.user_id)
+          up.id            AS user_plan_id,
+          up.user_id       AS user_id,
+          s.full_name      AS full_name,
+          s.mobile_number  AS mobile_number,
+          s.username       AS username,
+          up.status        AS plan_status,
+          ei.invite_code   AS invite_code,
+          up.created_at    AS created_at
+      FROM user_plan up
+      JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      JOIN student s        ON s.user_id = up.user_id
+      WHERE ei.institute_id = :instituteId
+        AND up.status IN ('PENDING_FOR_PAYMENT', 'PAYMENT_FAILED')
+        AND CAST(up.created_at AS date) BETWEEN CURRENT_DATE - CAST(:maxAgeDays AS int)
+                                            AND CURRENT_DATE - CAST(:minAgeDays AS int)
+        AND s.mobile_number IS NOT NULL
+        AND s.mobile_number <> ''
+        AND NOT EXISTS (
+              SELECT 1 FROM user_plan act
+              WHERE act.user_id = up.user_id
+                AND act.status = 'ACTIVE'
+            )
+      ORDER BY up.user_id, up.created_at DESC
+      """, nativeQuery = true)
+  List<Object[]> findAbandonedMandatePlans(
+      @Param("instituteId") String instituteId,
+      @Param("minAgeDays") int minAgeDays,
+      @Param("maxAgeDays") int maxAgeDays);
+
+
   @Query(value = """
       SELECT
           ssigm.id AS mapping_id,

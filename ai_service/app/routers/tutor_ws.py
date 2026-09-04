@@ -344,53 +344,10 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                          "concept_title": c.title if c else None, "phase": phase, "progress": pointer.progress(lesson),
                          "language": lang, "remediations": pointer.remediations})
 
-        def _quiz_results() -> List[Dict[str, Any]]:
-            """For quiz slides: one row per question with what the tutor
-            recorded, in the shape the learner app writes to the quiz
-            activity log (option ids resolved from the answer text)."""
-            out: List[Dict[str, Any]] = []
-            for t in lesson.topics:
-                for c in t.concepts:
-                    chk = c.check or {}
-                    qid = chk.get("question_id")
-                    if not qid:
-                        continue
-                    att = attempt_log.get(c.id) or {}
-                    options = list(chk.get("options") or [])
-                    option_ids = list(chk.get("option_ids") or [])
-                    correct_ids = [oid for oid, txt in zip(option_ids, options)
-                                   if txt and (chk.get("expected") or "") and txt.strip().lower() in (chk.get("expected") or "").lower()]
-                    answer = str(att.get("answer") or "")
-                    correct = bool(att.get("correct"))
-                    selected: List[str] = []
-                    if option_ids:
-                        if correct:
-                            selected = correct_ids or option_ids[:0]
-                        else:
-                            low = answer.lower()
-                            m = next((oid for oid, txt in zip(option_ids, options) if txt and txt.strip().lower() in low), None)
-                            if m is None:
-                                import re as _re
-                                num = _re.search(r"\b(?:option\s*)?([1-6]|[a-f])\b", low)
-                                if num:
-                                    tok = num.group(1)
-                                    idx = int(tok) - 1 if tok.isdigit() else ord(tok) - ord("a")
-                                    if 0 <= idx < len(option_ids):
-                                        m = option_ids[idx]
-                            selected = [m] if m else (["tutor:unmatched"] if answer else [])
-                    out.append({
-                        "question_id": qid, "question_name": chk.get("prompt") or c.title,
-                        "answered": bool(att), "correct": correct, "answer": answer[:1000],
-                        "selected_option_ids": selected, "correct_option_ids": correct_ids,
-                        "options": [{"id": oid, "name": txt} for oid, txt in zip(option_ids, options)],
-                        "score": att.get("score"), "skipped": att.get("action") == "skipped",
-                    })
-            return out
-
         async def _send_slide_done() -> None:
             frame: Dict[str, Any] = {"type": "slide_done", "slide_id": lesson.slide_id, "weak_concepts": list(pointer.weak),
                                      "skipped_concepts": list(pointer.skipped), "done": pointer.done, "total": lesson.total_concepts}
-            qr = _quiz_results()
+            qr = svc.quiz_results(lesson, attempt_log)
             if qr:
                 frame["quiz_results"] = qr
             await _send(frame)

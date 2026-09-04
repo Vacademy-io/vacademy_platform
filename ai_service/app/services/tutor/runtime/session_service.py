@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -99,6 +100,56 @@ def chapter_slides(db: Session, *, package_session_id: str, chapter_id: str) -> 
          "chapter_id": chapter_id, **lineage}
         for r in rows
     ]
+
+
+# ── quiz slides: what to write back to the activity log ─────────────────────
+
+_OPTION_REF = re.compile(r"\b(?:option\s*)?([1-6]|[a-f])\b")
+
+
+def quiz_results(lesson: LessonPlan, attempt_log: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """One row per quiz question with what the tutor recorded, in the shape
+    the learner app writes to the quiz activity log. The tracking service
+    re-grades from option ids, so a correct answer carries the correct ids,
+    a wrong MCQ answer the option the learner named (or a sentinel that can
+    never match), and an open answer whatever the model decided."""
+    out: List[Dict[str, Any]] = []
+    for t in lesson.topics:
+        for c in t.concepts:
+            chk = c.check or {}
+            qid = chk.get("question_id")
+            if not qid:
+                continue
+            att = attempt_log.get(c.id) or {}
+            options = list(chk.get("options") or [])
+            option_ids = list(chk.get("option_ids") or [])
+            expected = (chk.get("expected") or "").lower()
+            correct_ids = [oid for oid, txt in zip(option_ids, options) if txt and txt.strip().lower() in expected]
+            answer = str(att.get("answer") or "")
+            correct = bool(att.get("correct"))
+            selected: List[str] = []
+            if option_ids:
+                if correct:
+                    selected = list(correct_ids)
+                elif answer:
+                    low = answer.lower()
+                    match = next((oid for oid, txt in zip(option_ids, options) if txt and txt.strip().lower() in low), None)
+                    if match is None:
+                        ref = _OPTION_REF.search(low)
+                        if ref:
+                            tok = ref.group(1)
+                            idx = int(tok) - 1 if tok.isdigit() else ord(tok) - ord("a")
+                            if 0 <= idx < len(option_ids):
+                                match = option_ids[idx]
+                    selected = [match] if match else ["tutor:unmatched"]
+            out.append({
+                "question_id": qid, "question_name": chk.get("prompt") or c.title,
+                "answered": bool(att), "correct": correct, "answer": answer[:1000],
+                "selected_option_ids": selected, "correct_option_ids": correct_ids,
+                "options": [{"id": oid, "name": txt} for oid, txt in zip(option_ids, options)],
+                "score": att.get("score"), "skipped": att.get("action") == "skipped",
+            })
+    return out
 
 
 # ── live-minute meter (voice lessons) ────────────────────────────────────────

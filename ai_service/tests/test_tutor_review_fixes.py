@@ -312,3 +312,32 @@ def test_smallest_engine_is_registered_and_falls_back_without_key(monkeypatch):
     monkeypatch.delenv("SMALLEST_API_KEY", raising=False)
     assert "smallest" in voice_tts._ENGINES and not voice_tts.smallest_available()
     assert voice_tts.default_voice_for("smallest", "hi-IN") == voice_tts.SMALLEST_DEFAULT_VOICE
+
+
+def test_quiz_results_resolve_option_ids_for_the_activity_log():
+    from app.services.tutor.runtime.session_service import quiz_results
+    view = {"plan_id": "p", "slide_id": "s", "version": 1, "language": "en", "objectives": [], "topics": [
+        {"id": "t2", "title": "Q1", "order": 1, "summary_ops": [], "concepts": [
+            {"id": "c1", "title": "Q1", "order": 1, "concept_tags": [], "board_ops": [], "say": "", "say_i18n": {}, "teach_notes": None,
+             "check": {"type": "mcq", "prompt": "2+2?", "options": ["3", "4", "5"], "expected": "4",
+                       "question_id": "q1", "option_ids": ["o1", "o2", "o3"]}}]},
+        {"id": "t3", "title": "Q2", "order": 2, "summary_ops": [], "concepts": [
+            {"id": "c2", "title": "Q2", "order": 1, "concept_tags": [], "board_ops": [], "say": "", "say_i18n": {}, "teach_notes": None,
+             "check": {"type": "open", "prompt": "Define force", "options": [], "expected": "a push or pull", "question_id": "q2"}}]},
+        {"id": "t4", "title": "Q3", "order": 3, "summary_ops": [], "concepts": [
+            {"id": "c3", "title": "Q3", "order": 1, "concept_tags": [], "board_ops": [], "say": "", "say_i18n": {}, "teach_notes": None,
+             "check": {"type": "mcq", "prompt": "colour?", "options": ["red", "blue"], "expected": "blue",
+                       "question_id": "q3", "option_ids": ["r", "b"]}}]},
+    ]}
+    L = sm.from_plan_view(view)
+    rows = quiz_results(L, {
+        "c1": {"answer": "I think it is 4", "score": 1.0, "correct": True, "action": "advance"},
+        "c2": {"answer": "pushing", "score": 0.3, "correct": False, "action": "advance_weak"},
+        "c3": {"answer": "option 1", "score": 0.0, "correct": False, "action": "advance_weak"},
+    })
+    by = {r["question_id"]: r for r in rows}
+    assert by["q1"]["correct"] and by["q1"]["selected_option_ids"] == ["o2"] and by["q1"]["correct_option_ids"] == ["o2"]
+    assert by["q2"]["selected_option_ids"] == [] and not by["q2"]["correct"]        # open: server keeps our status
+    assert by["q3"]["selected_option_ids"] == ["r"]                                  # "option 1" → first option
+    assert len(rows) == 3 and all(r["answered"] for r in rows)
+    assert quiz_results(L, {})[0]["answered"] is False

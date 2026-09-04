@@ -53,7 +53,7 @@ class _StaticKeyResolver:
     def __init__(self, keys: tuple):
         self._keys = keys
 
-    def resolve_keys(self, institute_id=None, user_id=None, request_model=None):
+    def resolve_keys(self, institute_id=None, user_id=None, request_model=None, **_ignored):
         return self._keys
 
 

@@ -38,7 +38,7 @@ export const SupportCard = ({
             {t("unsubscribe.support.emailSuffix")}
           </p>
         </div>
-        <div className="mt-8 flex flex-col gap-3">
+        <div className="mt-8 flex flex-col gap-stack">
           {isError ? (
             <Button onClick={onRetry} disabled={isPending}>
               {isPending ? t("unsubscribe.support.retrying") : t("unsubscribe.support.tryAgain")}

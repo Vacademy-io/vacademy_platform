@@ -163,8 +163,8 @@ export const PaymentBillingSection = ({
           </Suspense>
         )}
 
-        <div className="border-t border-gray-100 pt-4">
-          <p className="mb-3 text-sm font-medium text-gray-700">
+        <div className="border-t border-gray-100 pt-4 space-y-stack">
+          <p className="text-sm font-medium text-gray-700">
             {t("paymentBillingSection.billingDetailsLabel")}
           </p>
           <BillingDetailsForm

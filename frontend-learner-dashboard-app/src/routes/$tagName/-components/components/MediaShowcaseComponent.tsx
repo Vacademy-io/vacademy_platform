@@ -117,7 +117,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   const renderYouTubePlayer = () => {
     const embedUrl = convertToYouTubeEmbedUrl(resolvedUrl);
     return (
-      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}>
         <iframe
           src={embedUrl}
           title={item.caption || t("mediaShowcase.defaultVideoTitle")}
@@ -135,7 +135,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   const renderVimeoPlayer = () => {
     const embedUrl = convertToVimeoEmbedUrl(resolvedUrl);
     return (
-      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}>
         <iframe
           src={embedUrl}
           title={item.caption || t("mediaShowcase.defaultVideoTitle")}
@@ -152,7 +152,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   // Render native video player for uploaded videos
   const renderNativeVideoPlayer = () => {
     return (
-      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}>
         <video
           src={resolvedUrl}
           controls
@@ -176,9 +176,9 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   // Render video fallback (placeholder with play icon)
   const renderVideoFallback = () => {
     return (
-      <div className={`relative w-full aspect-video bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
-        <div className="flex flex-col items-center justify-center text-white/70">
-          <Play className="w-16 h-16 mb-2 opacity-50" />
+      <div className={`relative w-full aspect-video bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}>
+        <div className="flex flex-col items-center justify-center text-white/70 gap-2">
+          <Play className="w-16 h-16 opacity-50" />
           <p className="text-sm">{t("mediaShowcase.videoUnavailable")}</p>
         </div>
       </div>
@@ -192,7 +192,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
       <img
         src={imageSrc}
         alt={item.caption}
-        className={`w-full aspect-video object-cover shadow-lg ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}
+        className={`w-full aspect-video object-cover shadow-lg ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}
         onError={(e) => {
           if (!hasTriedLoading) {
             e.currentTarget.src = "/api/placeholder/400/300";
@@ -208,7 +208,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   // Loading state
   if (isLoading) {
     return (
-      <div className={`relative w-full aspect-video max-w-4xl mx-auto bg-gray-200 animate-pulse flex items-center justify-center ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video max-w-4xl mx-auto bg-gray-200 animate-pulse flex items-center justify-center ${roundedEdges ? 'rounded-catalogue-md' : 'rounded-none'}`}>
         <div className="text-gray-400 text-sm">{t("mediaShowcase.loading")}</div>
       </div>
     );
@@ -232,7 +232,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
       ) : (
         renderImage()
       )}
-      <div className={`absolute bottom-0 start-0 end-0 bg-black bg-opacity-50 text-white p-4 ${roundedEdges ? 'rounded-b-lg' : 'rounded-b-none'
+      <div className={`absolute bottom-0 start-0 end-0 bg-black bg-opacity-50 text-white p-4 ${roundedEdges ? 'rounded-b-catalogue-md' : 'rounded-b-none'
         }`}>
         <p className="text-sm font-medium">{item.caption}</p>
       </div>
@@ -597,7 +597,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                           e.stopPropagation();
                           handleButtonClick(slide.button);
                         }}
-                        className="px-4 py-2 sm:px-8 sm:py-4 text-sm sm:text-lg font-semibold text-white rounded-md hover:opacity-90 transition-opacity shadow-lg cursor-pointer"
+                        className="px-4 py-2 sm:px-8 sm:py-4 text-sm sm:text-lg font-semibold text-white rounded-catalogue-sm hover:opacity-90 transition-opacity shadow-lg cursor-pointer"
                         style={{
                           backgroundColor: slide.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"), // design-lint-ignore: page-builder default color
                           zIndex: 20,
@@ -688,7 +688,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
   
   return (
     <section
-      className={`w-full py-6 sm:py-8 ${roundedEdges ? "rounded-lg" : ""} bg-catalogue-bg-subtle`}
+      className={`w-full py-6 sm:py-8 ${roundedEdges ? "rounded-catalogue-md" : ""} bg-catalogue-bg-subtle`}
     >
       <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* Header */}

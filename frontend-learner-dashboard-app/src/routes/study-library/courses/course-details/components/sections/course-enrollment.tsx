@@ -156,7 +156,7 @@ export const CourseEnrollment = ({
                             </div>
                         )}
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack lg:gap-4">
                             {/* Session Selector */}
                             {sessionOptions &&
                                 sessionOptions.length > 0 &&
@@ -286,10 +286,10 @@ export const CourseEnrollment = ({
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.05s" }}
                 >
-                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                     <div className="relative flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-md shadow-sm">
+                            <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-md shadow-sm">
                                 <GraduationCap
                                     size={18}
                                     className="text-emerald-600"

@@ -82,7 +82,7 @@ export const ModernDesignShowcase: React.FC = () => {
           </ModernCardTitle>
         </ModernCardHeader>
         <ModernCardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-section">
             {/* Primary Buttons */}
             <div className="space-y-4">
               <h3 className="text-h3-semibold">
@@ -160,7 +160,7 @@ export const ModernDesignShowcase: React.FC = () => {
       </ModernCard>
 
       {/* Card Showcase */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-section">
         {/* Elevated Card */}
         <ModernCard 
           variant="elevated" 
@@ -256,7 +256,7 @@ export const ModernDesignShowcase: React.FC = () => {
           </ModernCardTitle>
         </ModernCardHeader>
         <ModernCardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-section">
             {/* Standard Inputs */}
             <div className="space-y-4">
               <h3 className="text-h3-semibold">
@@ -350,7 +350,7 @@ export const ModernDesignShowcase: React.FC = () => {
           </ModernCardTitle>
         </ModernCardHeader>
         <ModernCardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-section">
             <div className="text-center space-y-4">
               <div className="w-20 h-20 bg-primary-100 rounded-xl flex items-center justify-center mx-auto hover-lift-gentle">
                 <div className="w-8 h-8 bg-primary-500 rounded-full animate-pulse-soft"></div>

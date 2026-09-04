@@ -40,7 +40,7 @@ export function VerifyingCard() {
   const { t } = useTranslation("miscRoutesA");
   return (
     <Shell tone="neutral">
-      <div className="flex flex-col items-center gap-3 py-6">
+      <div className="flex flex-col items-center gap-stack py-6">
         <div
           className="size-8 animate-spin rounded-full border-2 border-neutral-200 border-t-primary-500 motion-reduce:animate-none"
           role="status"

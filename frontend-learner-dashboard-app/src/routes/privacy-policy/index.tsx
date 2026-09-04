@@ -207,9 +207,9 @@ function PrivacyPolicy() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 mb-8"
+          className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 mb-8 space-y-4"
         >
-          <h2 className="text-xl font-bold text-gray-900 mb-4">{t("privacyPolicy.introduction.title")}</h2>
+          <h2 className="text-xl font-bold text-gray-900">{t("privacyPolicy.introduction.title")}</h2>
           <p className="text-gray-700 leading-relaxed">
             {t("privacyPolicy.introduction.text")}
           </p>
@@ -223,9 +223,9 @@ function PrivacyPolicy() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 + index * 0.1 }}
-              className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8"
+              className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 space-y-section"
             >
-              <div className="flex items-center space-x-3 mb-6">
+              <div className="flex items-center gap-x-3">
                 <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
                   <section.icon className="w-5 h-5 text-white" />
                 </div>
@@ -234,8 +234,8 @@ function PrivacyPolicy() {
               
               <div className="space-y-4">
                 {section.content.map((item, itemIndex) => (
-                  <div key={itemIndex}>
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">{item.subtitle}</h3>
+                  <div className="space-y-2" key={itemIndex}>
+                    <h3 className="text-lg font-semibold text-gray-800">{item.subtitle}</h3>
                     <p className="text-gray-700 leading-relaxed">{item.text}</p>
                   </div>
                 ))}
@@ -263,12 +263,12 @@ function PrivacyPolicy() {
           </p>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <h3 className="font-semibold text-gray-800 mb-2">{t("privacyPolicy.contact.emailLabel")}</h3>
+            <div className="space-y-2">
+              <h3 className="font-semibold text-gray-800">{t("privacyPolicy.contact.emailLabel")}</h3>
               <p className="text-gray-600">{t("privacyPolicy.contact.email")}</p>
             </div>
-            <div>
-              <h3 className="font-semibold text-gray-800 mb-2">{t("privacyPolicy.contact.addressLabel")}</h3>
+            <div className="space-y-2">
+              <h3 className="font-semibold text-gray-800">{t("privacyPolicy.contact.addressLabel")}</h3>
               <p className="text-gray-600">
                 {t("privacyPolicy.contact.addressLine1")}<br />
                 {t("privacyPolicy.contact.addressLine2")}<br />

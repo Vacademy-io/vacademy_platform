@@ -26,7 +26,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-3 sm:gap-4 md:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-white border border-gray-200 shadow-sm">
+    <div className="flex flex-col gap-stack sm:gap-4 md:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-white border border-gray-200 shadow-sm">
       {/* Search Section */}
       <div className="relative w-full md:w-2/3 lg:w-1/2">
         <input

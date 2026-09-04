@@ -311,7 +311,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
       {selectedPin && showFullContent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-2xl max-h-screen-80 overflow-hidden">
-            <CardContent className="p-6">
+            <CardContent className="p-card-lg">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   {selectedPin.title && (

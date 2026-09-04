@@ -21,8 +21,8 @@ export const Policy: React.FC<PolicyProps> = ({ policies }) => {
 
     if (!policy) {
         return (
-            <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-                <h1 className="text-2xl font-bold text-gray-900 mb-4">{t("policy.notFoundTitle")}</h1>
+            <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-4">
+                <h1 className="text-2xl font-bold text-gray-900">{t("policy.notFoundTitle")}</h1>
                 <p className="text-gray-600">{t("policy.notFoundDescription")}</p>
             </div>
         );
@@ -30,8 +30,8 @@ export const Policy: React.FC<PolicyProps> = ({ policies }) => {
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-12 md:py-10">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 md:p-12">
-                <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 mb-8 border-b pb-6">
+            <div className="bg-white rounded-catalogue-lg shadow-sm border border-gray-100 px-4 md:p-12 space-y-8">
+                <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 border-b pb-6">
                     {policy.title}
                 </h1>
                 <div

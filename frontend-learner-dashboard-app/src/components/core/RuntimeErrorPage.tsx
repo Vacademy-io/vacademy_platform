@@ -66,15 +66,15 @@ export function RuntimeErrorPage({ error }: Props) {
                 </div>
 
                 {!!error && process.env.NODE_ENV === 'development' && (
-                    <div className="mt-6 mx-auto max-w-xl text-start bg-white rounded-lg border border-gray-200 p-4 shadow-sm overflow-auto max-h-48">
-                        <p className="text-xs font-semibold text-gray-500 mb-2">{t('common.errorDetailsDevOnly')}</p>
+                    <div className="mt-6 mx-auto max-w-xl text-start bg-white rounded-lg border border-gray-200 p-4 shadow-sm overflow-auto max-h-48 space-y-2">
+                        <p className="text-xs font-semibold text-gray-500">{t('common.errorDetailsDevOnly')}</p>
                         <pre className="text-xs text-gray-700 font-mono whitespace-pre-wrap break-all">
                             {String(error)}
                         </pre>
                     </div>
                 )}
 
-                <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+                <div className="mt-8 flex flex-col sm:flex-row gap-stack justify-center">
                     <MyButton
                         className="w-full sm:w-auto"
                         onClick={() => window.location.reload()}

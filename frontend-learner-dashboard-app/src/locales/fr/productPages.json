@@ -40,6 +40,15 @@
     "catalogStep": {
         "selectPrompt": "Sélectionnez les {{courses}} auxquels vous souhaitez vous inscrire"
     },
+    "courseFinder": {
+        "dialogHeading": "Sélectionnez votre classe",
+        "showCourses": "Afficher mes {{courses}}",
+        "defaultSubheading": "Choisissez le vôtre pour voir les {{courses}} disponibles pour vous",
+        "courseCount": "{{count}} {{courses}}",
+        "view": "Voir",
+        "skip": "Afficher tous les {{courses}}",
+        "change": "Modifier la sélection"
+    },
     "cartStep": {
         "basket": {
             "spendForTier": "Dépensez {{amount}} de plus pour obtenir {{offer}} sur tout le panier.",
@@ -205,9 +214,14 @@
             "defaultTitle": "Vidéo"
         }
     },
+    "stepRail": {
+        "secureTitle": "Sûr et sécurisé",
+        "secureNote": "Vos données sont protégées"
+    },
     "stepProgress": {
         "ariaLabel": "Progression de l'inscription",
         "steps": {
+            "catalog": "Choisir les {{courses}}",
             "cart": "Panier",
             "details": "Détails",
             "payment": "Paiement",
@@ -217,6 +231,8 @@
     "success": {
         "title": "Vous êtes inscrit(e) !",
         "defaultMessage": "Inscription réussie à {{count}} {{course}}. Commencez à apprendre dès maintenant.",
+        "totalPaid": "Total payé",
+        "youSaved": "Vous avez économisé {{amount}}",
         "access": {
             "oneYear": "Accès 1 an",
             "months_one": "Accès {{count}} mois",

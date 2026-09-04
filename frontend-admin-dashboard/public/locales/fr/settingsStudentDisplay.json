@@ -36,7 +36,9 @@
         "cardDescription": "Sélectionnez le thème visuel du portail apprenant",
         "themeSkin": "Thème visuel",
         "selectUiType": "Sélectionner le type d'interface",
-        "cleanerPlay": "Play épuré"
+        "cleanerPlay": "Play épuré",
+        "movedToAppearance": "Le thème visuel se trouve désormais dans Paramètres → Apparence, avec le style des coins, la densité et le style de surface.",
+        "openAppearance": "Ouvrir les paramètres d'apparence"
     },
     "widgets": {
         "cardTitle": "Widgets du tableau de bord",

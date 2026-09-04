@@ -13,6 +13,18 @@
         "coreInstruction": "Core Instruction",
         "coreInstructionPlaceholder": "Define the core behavior of your AI tutor..."
     },
+    "avatar": {
+        "label": "Assistant Icon",
+        "helpText": "Shown on the chat button and beside every assistant message. PNG, JPG or WEBP, up to 2 MB. Square images work best.",
+        "upload": "Upload icon",
+        "uploading": "Uploading...",
+        "reset": "Use default",
+        "previewAlt": "Assistant icon preview",
+        "uploaded": "Icon uploaded. Save settings to apply it.",
+        "uploadFailed": "Failed to upload the icon",
+        "invalidType": "Please choose a PNG, JPG or WEBP image",
+        "tooLarge": "Image is too large. Please choose a file under 2 MB"
+    },
     "hardRules": {
         "label": "Hard Rules",
         "addPlaceholder": "Add a new hard rule...",

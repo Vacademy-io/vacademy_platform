@@ -25,7 +25,13 @@ const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'vid
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024; // 500MB
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-const MAX_SELECTED_SOURCES = 10;
+// Mirrors the server caps (MAX_INPUT_ASSETS / MAX_INPUT_VIDEOS) and the
+// composer's. Videos are the expensive kind — a large download plus an index
+// job each — while an image costs one metadata JSON, so a screenshot-led
+// walkthrough gets the wider ceiling. A flat 10 here capped an image run at
+// half the assets the server would happily accept.
+const MAX_SELECTED_ASSETS = 20;
+const MAX_SELECTED_VIDEOS = 5;
 
 export function SourceVideoPopover({
     apiKey,
@@ -48,7 +54,14 @@ export function SourceVideoPopover({
 
     const availableVideos = indexedVideos.filter((v) => !selectedIds.includes(v.id));
     const totalActive = selectedIds.length + processingVideos.length;
-    const atSelectionLimit = selectedIds.length >= MAX_SELECTED_SOURCES;
+    const atSelectionLimit = selectedIds.length >= MAX_SELECTED_ASSETS;
+    const selectedVideoCount = selectedIds.filter(
+        (id) => indexedVideos.find((v) => v.id === id)?.kind !== 'image'
+    ).length;
+    const atVideoLimit = selectedVideoCount >= MAX_SELECTED_VIDEOS;
+    // An image never trips the video cap, so a run of screenshots keeps going
+    // after five videos would have stopped.
+    const isBlocked = (kind?: string) => atSelectionLimit || (kind !== 'image' && atVideoLimit);
 
     const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -198,7 +211,7 @@ export function SourceVideoPopover({
                                     <button
                                         key={v.id}
                                         type="button"
-                                        disabled={atSelectionLimit}
+                                        disabled={isBlocked(v.kind)}
                                         onClick={() => onAddVideo(v.id)}
                                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                                     >
@@ -228,9 +241,11 @@ export function SourceVideoPopover({
                                 {t('available.allSelected')}
                             </p>
                         )}
-                    {atSelectionLimit && (
+                    {(atSelectionLimit || atVideoLimit) && (
                         <p className="text-xs text-muted-foreground">
-                            {t('limit.message', { count: MAX_SELECTED_SOURCES })}
+                            {t('limit.message', {
+                                count: atSelectionLimit ? MAX_SELECTED_ASSETS : MAX_SELECTED_VIDEOS,
+                            })}
                         </p>
                     )}
 

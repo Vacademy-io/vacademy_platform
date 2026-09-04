@@ -25,8 +25,7 @@ import {
   celebrateSavingOnce,
 } from "@/routes/product-pages/$productPageCode/-utils/celebrate-saving";
 import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-services/product-page-service";
-import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import {
   parseBasketPricing,
   nextTier,
@@ -34,6 +33,9 @@ import {
 } from "@/routes/product-pages/$productPageCode/-utils/basket-pricing";
 import {
   clearCourseFinderOptions,
+  clearCourseFinderSelection,
+  courseFinderScope,
+  loadCourseFinderSelection,
   publishCourseFinderOptions,
   subscribeCourseFinderApplied,
   type CourseFinderSelectionPayload,
@@ -344,8 +346,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   isPreviewMode = false,
 }) => {
   const { t } = useTranslation("coursePlayerB");
-  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
-  const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+  const terms = useCourseTerms();
+  const courseTerm = terms.course;
+  const coursesTerm = terms.courses;
   const { data, isLoading, isError } = useQuery({
     ...handleGetProductPage(productPageCode || "", instituteId || ""),
   });
@@ -380,8 +383,27 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // this block publishes them (see course-finder-bus) and applies whatever the
   // visitor picks. Sourcing the options from the courses actually on sale here
   // means a pick can never select a level with zero matching courses.
+  //
+  // Seeded from storage, because the wizard only ever opens ONCE per visitor:
+  // holding the answer in state alone meant a reload — or the trip into a
+  // course details page and back — showed every class's subjects again, with
+  // no way to be re-asked. See course-finder-bus.
+  const finderScope = courseFinderScope(instituteId, tagName);
   const [finderSelection, setFinderSelection] =
-    useState<CourseFinderSelectionPayload | null>(null);
+    useState<CourseFinderSelectionPayload | null>(() =>
+      isPreviewMode ? null : loadCourseFinderSelection(finderScope),
+    );
+  // True only for an answer that came from the wizard just now, as opposed to
+  // the one restored above. The basket reset below keys off it — see there.
+  const finderIsFreshAnswer = useRef(false);
+
+  // "Show all courses" has to forget the answer for good, not just for this
+  // render: the wizard opens once per visitor and will not reopen to ask again,
+  // so a selection left in storage comes straight back on the next reload.
+  const clearFinderSelection = useCallback(() => {
+    clearCourseFinderSelection(finderScope);
+    setFinderSelection(null);
+  }, [finderScope]);
 
   const finderOptions = useMemo(() => {
     const uniq = (vals: (string | undefined)[]) =>
@@ -405,7 +427,14 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // one never opens the wizard on a previous page's levels.
   useEffect(() => clearCourseFinderOptions, []);
 
-  useEffect(() => subscribeCourseFinderApplied(setFinderSelection), []);
+  useEffect(
+    () =>
+      subscribeCourseFinderApplied((selection) => {
+        finderIsFreshAnswer.current = true;
+        setFinderSelection(selection);
+      }),
+    [],
+  );
 
   // ─── Multi-subject cart ────────────────────────────────────────────────────
   // Collected here rather than in the catalogue's cart-store: that store is
@@ -449,8 +478,20 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   // A fresh Course Finder answer means a fresh basket — keeping Class 2 picks
   // after the visitor switches to Class 5 would check them out for a class
   // they are no longer shopping for, with the evidence scrolled out of view.
+  //
+  // The exception is keepBasket: the picker reopened from the checkout's "Back
+  // to courses", where the visitor already has courses selected and came back
+  // to ADD another. Resetting there deletes their whole basket the moment they
+  // answer, which reads as the site throwing their order away.
+  //
+  // The RESTORED selection is the same exception by another route. It is not a
+  // fresh answer — it is the answer this visitor already gave, replayed after a
+  // reload — and the basket beside it was restored from the same visit. Letting
+  // this effect fire on the first render would empty the cart every time the
+  // page loaded, which is the one thing worse than losing the filter.
   useEffect(() => {
-    if (finderSelection) setCart([]);
+    if (!finderIsFreshAnswer.current) return;
+    if (finderSelection && !finderSelection.keepBasket) setCart([]);
   }, [finderSelection]);
 
   // Resolve the basket against what this page still sells. A restored id whose
@@ -665,6 +706,11 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   const seeAllSearch = {
     ...(instituteId ? { instituteId } : {}),
     ...(tagName ? { tagName } : {}),
+    // Say which step this link means. Without it the shell falls back to the
+    // page's own defaultStep, and a page configured to open on CART turned
+    // "see everything" into an empty cart — no courses are passed either, so
+    // the visitor landed on "Nothing in your cart yet".
+    defaultTab: "CATALOG" as const,
     ...(finderSelection && finderSelection.levels.length > 0
       ? { levels: finderSelection.levels.join(",") }
       : {}),
@@ -752,7 +798,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         ))}
         <button
           type="button"
-          onClick={() => setFinderSelection(null)}
+          onClick={clearFinderSelection}
           className="inline-flex items-center gap-1 text-xs font-semibold text-catalogue-text-muted underline-offset-2 hover:underline"
         >
           <X className="size-3" weight="bold" aria-hidden="true" />
@@ -794,8 +840,8 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         {Array.from({ length: cols }, (_, i) => (
           <div key={i} className="catalogue-card-elevated p-5">
             {showImage && <div className="catalogue-skeleton-shimmer mb-4 aspect-[16/9] w-full rounded-catalogue-lg" />}
-            <div className="catalogue-skeleton-shimmer mb-2 h-5 w-3/4 rounded" />
-            <div className="catalogue-skeleton-shimmer mb-4 h-4 w-full rounded" />
+            <div className="catalogue-skeleton-shimmer mb-2 h-5 w-3/4 rounded-catalogue-xs" />
+            <div className="catalogue-skeleton-shimmer mb-4 h-4 w-full rounded-catalogue-xs" />
             <div className="catalogue-skeleton-shimmer h-9 w-full rounded-catalogue-md" />
           </div>
         ))}
@@ -1296,7 +1342,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 {finderSelection && (
                   <button
                     type="button"
-                    onClick={() => setFinderSelection(null)}
+                    onClick={clearFinderSelection}
                     className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm"
                   >
                     {t("productPageOffer.showAllCourses", { courses: coursesTerm })}

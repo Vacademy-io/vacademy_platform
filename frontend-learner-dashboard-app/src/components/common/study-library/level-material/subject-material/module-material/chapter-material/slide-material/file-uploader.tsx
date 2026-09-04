@@ -221,8 +221,8 @@ export const FileUploader = ({
 
       {/* Uploaded Files List */}
       {uploadedFiles.length > 0 && (
-        <div className="mt-4">
-          <h4 className="text-sm font-medium mb-2">{t("fileUploader.uploadedFiles")}</h4>
+        <div className="mt-4 space-y-2">
+          <h4 className="text-sm font-medium">{t("fileUploader.uploadedFiles")}</h4>
           <div className="space-y-2">
             {uploadedFiles.map((file, index) => (
               <div

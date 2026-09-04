@@ -842,9 +842,9 @@ export function QuestionModeView({ question, slideId }: Props) {
                     {sampleCases.map((tc, i) => (
                       <div
                         key={tc.id}
-                        className="rounded border p-2 text-xs"
+                        className="rounded border p-2 text-xs space-y-1"
                       >
-                        <div className="mb-1 font-medium">
+                        <div className="font-medium">
                           {tc.label || t("codingQuestion.questionMode.sampleLabel", { number: i + 1 })}
                         </div>
                         <div className="grid grid-cols-2 gap-2">

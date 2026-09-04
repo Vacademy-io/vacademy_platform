@@ -169,9 +169,9 @@ const ReferralDetailsDialog = ({ referral }: { referral: ReferralBenefit }) => {
                 {referral.benefit_logs.map((log, index) => (
                   <div
                     key={index}
-                    className="bg-white rounded-lg p-4 border border-gray-200"
+                    className="bg-white rounded-lg p-4 border border-gray-200 space-y-2"
                   >
-                    <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">
                           {getStatusIcon(log.status)}

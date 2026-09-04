@@ -40,6 +40,15 @@
     "catalogStep": {
         "selectPrompt": "जिन {{courses}} में आप नामांकन लेना चाहते हैं उन्हें चुनें"
     },
+    "courseFinder": {
+        "dialogHeading": "अपनी कक्षा चुनें",
+        "showCourses": "मेरे {{courses}} दिखाएं",
+        "defaultSubheading": "अपना चुनें और अपने लिए उपलब्ध {{courses}} देखें",
+        "courseCount": "{{count}} {{courses}}",
+        "view": "देखें",
+        "skip": "सभी {{courses}} दिखाएं",
+        "change": "चयन बदलें"
+    },
     "cartStep": {
         "basket": {
             "spendForTier": "पूरी बास्केट पर {{offer}} पाने के लिए {{amount}} और खर्च करें।",
@@ -204,9 +213,14 @@
             "defaultTitle": "वीडियो"
         }
     },
+    "stepRail": {
+        "secureTitle": "सुरक्षित",
+        "secureNote": "आपका डेटा सुरक्षित है"
+    },
     "stepProgress": {
         "ariaLabel": "नामांकन प्रगति",
         "steps": {
+            "catalog": "{{courses}} चुनें",
             "cart": "कार्ट",
             "details": "विवरण",
             "payment": "भुगतान",
@@ -216,6 +230,8 @@
     "success": {
         "title": "आपका नामांकन हो गया है!",
         "defaultMessage": "{{count}} {{course}} में सफलतापूर्वक नामांकन हो गया है। अभी सीखना शुरू करें।",
+        "totalPaid": "कुल भुगतान",
+        "youSaved": "आपने {{amount}} बचाए",
         "access": {
             "oneYear": "1 वर्ष की एक्सेस",
             "months_one": "{{count}} महीने की एक्सेस",

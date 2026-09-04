@@ -109,7 +109,10 @@ export type ToolKey =
     | 'kb_paper_questions'
     | 'kb_paper_regenerate'
     // One-time permanent unlock of a curated library (V445)
-    | 'kb_library_unlock';
+    | 'kb_library_unlock'
+    // Live AI tutor: per-slide teaching-plan compile and per-image media (V494)
+    | 'tutor_compile_slide'
+    | 'tutor_media_image';
 export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat' | 'pages';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 

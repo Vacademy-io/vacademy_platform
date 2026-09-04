@@ -33,7 +33,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import type { AudienceCampaignResponse } from "../-services/enquiry-campaign-services";
 import {
   submitEnquiryWithLead,
@@ -273,12 +273,14 @@ const AudienceResponseForm = ({
     void syncBranding();
   }, [instituteId, instituteData]);
 
-  // Get phone country code dynamically, falling back to the institute's
-  // configured preferred country (commaSeparatedPreferredCountry) instead of
-  // a hardcoded default so the phone input honors institute settings.
+  // A country field in this form, when there is one, is the strongest signal
+  // — the visitor just told us where they are. Everything else defers to the
+  // portal's own resolution chain (institute preference / detected region).
   const getPhoneCountryCode = () => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+    // Whatever the portal decided a phone field should start on: the
+    // institute's configured preferred country, or — when that is unset, or
+    // the portal is on GEO_FIRST — the country this form is being opened in.
+    const { defaultCountry: fallback } = getPreferredPhoneCountries();
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {
@@ -365,7 +367,7 @@ const AudienceResponseForm = ({
   // Show success message after submission
   if (isSubmitted) {
     return (
-      <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+      <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-info-50 min-h-screen">
         {/* Navbar Header */}
         <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-6">
@@ -454,7 +456,7 @@ const AudienceResponseForm = ({
   }
 
   return (
-    <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div className="w-full h-auto bg-gradient-to-br from-slate-50 to-info-50 min-h-screen">
       {/* Navbar Header */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-6">
@@ -508,8 +510,8 @@ const AudienceResponseForm = ({
               />
             )}
             {campaignData.campaign_objective && (
-              <div className="mt-4">
-                <p className="text-sm font-semibold text-neutral-700 mb-2">
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold text-neutral-700">
                   {t("enquiryResponse.form.objectiveLabel")}
                 </p>
                 <p className="text-neutral-600">
@@ -524,13 +526,13 @@ const AudienceResponseForm = ({
             variant="glass"
             padding="lg"
             rounded="lg"
-            className="border border-white/40 bg-white/90 backdrop-blur-md shadow-lg"
+            className="border border-white/40 bg-white/90 backdrop-blur-md shadow-lg space-y-section"
             id="response-form-card"
           >
-            <ModernCardHeader className="p-0 mb-6">
+            <ModernCardHeader className="p-0 space-y-2">
               <ModernCardTitle
                 size="md"
-                className="text-neutral-800 text-xl sm:text-2xl mb-2"
+                className="text-neutral-800 text-xl sm:text-2xl"
               >
                 {t("enquiryResponse.form.heading")}
               </ModernCardTitle>
@@ -542,7 +544,7 @@ const AudienceResponseForm = ({
             <FormProvider {...form}>
               <form
                 onSubmit={form.handleSubmit(onSubmit)}
-                className="w-full flex flex-col gap-6"
+                className="w-full flex flex-col gap-section"
               >
                 {/* Student Details Section */}
                 <div className="space-y-4">

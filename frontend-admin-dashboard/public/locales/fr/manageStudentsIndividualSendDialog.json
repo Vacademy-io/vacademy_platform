@@ -38,7 +38,12 @@
         "emailSent": "E-mail envoyé",
         "selectWaTemplateFirst": "Veuillez d'abord sélectionner un modèle WhatsApp",
         "whatsappSent": "Message WhatsApp envoyé",
-        "sendFailed": "Échec de l'envoi"
+        "sendFailed": "Échec de l'envoi",
+        "whatsappQueued": "WhatsApp a accepté le message — la livraison est confirmée séparément",
+        "whatsappRejected": "WhatsApp a refusé ce message — il n'a pas été envoyé",
+        "whatsappRejectedWithReason": "WhatsApp a refusé ce message : {{reason}}",
+        "emailRejected": "L'e-mail n'a pas été accepté pour la livraison",
+        "emailRejectedWithReason": "L'e-mail n'a pas été accepté : {{reason}}"
     },
     "emailTemplateStep": {
         "templateLabel": "Modèle",
@@ -107,7 +112,19 @@
         "variablesLabel": "Variables",
         "empty": "(vide)",
         "sending": "Envoi en cours...",
-        "sendTo": "Envoyer à {{name}}"
+        "sendTo": "Envoyer à {{name}}",
+        "delivered": "Remis",
+        "notDelivered": "Non remis",
+        "confirmingDelivery": "Confirmation de la remise…",
+        "deliveryLabel": "Remise",
+        "sendFailed": "Message non envoyé",
+        "noReason": "Aucun motif communiqué par le fournisseur.",
+        "deliveryStatus": {
+            "SENT": "Envoyé",
+            "DELIVERED": "Remis",
+            "READ": "Lu",
+            "FAILED": "Échec"
+        }
     },
     "footer": {
         "back": "Retour",

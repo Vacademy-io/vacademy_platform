@@ -452,7 +452,7 @@ export const DownloadsPage = () => {
           {/* Storage: what downloads take, and what the device has left — the
               second half is what tells a learner whether another download will
               even fit. */}
-          <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+          <div className="flex flex-col gap-stack rounded-lg border border-neutral-200 p-4">
             <div className="flex items-center gap-2">
               <HardDrives size={18} className="text-neutral-500" />
               <span className="text-body font-medium text-neutral-700">{t("offline.downloadsPage.storage.title")}</span>
@@ -565,7 +565,7 @@ export const DownloadsPage = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="content" className="flex flex-col gap-3">
+        <TabsContent value="content" className="flex flex-col gap-stack">
         {visibleManifests.length === 0 && (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 px-4 py-10 text-center">
             <CloudSlash size={28} className="text-neutral-300" />

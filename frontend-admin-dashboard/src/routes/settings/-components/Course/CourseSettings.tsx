@@ -7,6 +7,7 @@ import { saveCourseSettings } from '@/services/course-settings';
 import { CourseSettingsData } from '@/types/course-settings';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
 import UserIdentifierSettings from '../UserIdentifierSettings';
+import { TutorModeDefaultsCard } from './TutorModeDefaultsCard';
 
 const CourseSettings = () => {
     const { t } = useTranslation('settingsCourseSettings');
@@ -89,6 +90,8 @@ const CourseSettings = () => {
                 </Alert>
             )}
 
+            {/* Live AI Tutor: institute-wide defaults every course inherits. */}
+            <TutorModeDefaultsCard />
             <UserIdentifierSettings />
         </div>
     );

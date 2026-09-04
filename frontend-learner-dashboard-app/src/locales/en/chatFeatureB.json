@@ -9,12 +9,14 @@
         "retry": "Retry",
         "newChat": "New chat",
         "dropImageHere": "Drop image here",
-        "voiceChatLabel": "Voice Chat",
-        "startVoiceConversation": "Start a voice conversation",
+        "voiceChatLabel": "Voice Call",
+        "startVoiceConversation": "Start a voice call",
         "creditsExhausted": "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
         "attachmentAlt": "attachment",
         "attachedImageAlt": "attached",
-        "copy": "Copy"
+        "copy": "Copy",
+        "popupView": "Open as popup",
+        "dockView": "Dock to the side"
     },
     "voiceModeLabels": {
         "interview": "Mock Interview",
@@ -164,15 +166,23 @@
     "voiceModePanel": {
         "unmute": "Unmute microphone",
         "mute": "Mute microphone",
-        "end": "End",
-        "hintIdle": "Tap the mic button below to start speaking",
-        "hintListening": "I'm listening... tap mic when done",
-        "hintProcessing": "Processing your response...",
-        "hintSpeaking": "Tap mic to interrupt and speak"
+        "end": "End call",
+        "hintIdle": "Tap the mic when you're ready to talk",
+        "hintListening": "Listening… just pause when you're done",
+        "hintProcessing": "Thinking…",
+        "hintSpeaking": "Tap the mic to jump in",
+        "muted": "Microphone off — unmute to keep talking",
+        "talk": "Talk",
+        "connecting": "Connecting…",
+        "reconnecting": "Reconnecting…",
+        "noticeNoSpeech": "I didn't catch that — try again",
+        "noticeError": "Something went wrong. Tap the mic to try again.",
+        "noticeMic": "I can't reach your microphone. Check permissions and tap the mic.",
+        "topicPrefix": "On {{topic}}"
     },
     "voiceModeSelector": {
-        "title": "Voice Mode",
-        "subtitle": "Choose how you want to interact",
+        "title": "Voice Call",
+        "subtitle": "Pick how you'd like to talk",
         "modeInterviewLabel": "Take my Interview",
         "modeInterviewDescription": "Practice with a mock interview on your current topic",
         "modeDoubtLabel": "Discuss your Doubt",
@@ -200,7 +210,8 @@
         "languagePa": "Punjabi",
         "languageOr": "Odia",
         "cancel": "Cancel",
-        "start": "Start"
+        "start": "Start call",
+        "topicHelperEditable": "From what you're studying — edit if you'd rather talk about something else"
     },
     "latexToolbar": {
         "groupArithmetic": "Arithmetic",

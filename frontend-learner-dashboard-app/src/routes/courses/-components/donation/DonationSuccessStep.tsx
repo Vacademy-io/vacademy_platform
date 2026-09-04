@@ -69,7 +69,7 @@ export const DonationSuccessStep = ({
               {t("donation.successStep.paymentFailedPrefix")} <span className="font-semibold text-red-600">{formatCurrency(amount, currency)}</span>{t("donation.successStep.paymentFailedSuffix")}
             </p>
             {error && (
-              <div className="bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-xl p-6 shadow-sm">
+              <div className="bg-gradient-to-r from-danger-50 to-pink-50 border border-red-200 rounded-xl p-6 shadow-sm">
                 <div className="flex items-start space-x-3">
                   <div className="flex-shrink-0">
                     <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
@@ -78,8 +78,8 @@ export const DonationSuccessStep = ({
                       </svg>
                     </div>
                   </div>
-                  <div className="flex-1 text-start">
-                    <h4 className="text-sm font-semibold text-red-800 mb-2">
+                  <div className="flex-1 text-start space-y-2">
+                    <h4 className="text-sm font-semibold text-red-800">
                       {t("donation.successStep.paymentIssueTitle")}
                     </h4>
                     <p className="text-sm text-red-700 leading-relaxed">
@@ -93,7 +93,7 @@ export const DonationSuccessStep = ({
         )}
       </div>
       
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-stack">
         {isFailure && (
           <MyButton
             onClick={onRetry}

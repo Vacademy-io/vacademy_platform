@@ -1298,7 +1298,7 @@ const AssignmentSlide = ({
                   </div>
 
                   <Card className="mx-auto hidden max-w-md sm:block">
-                    <CardContent className="p-4">
+                    <CardContent className="p-card">
                       <div className="grid grid-cols-3 gap-2">
                         {[7, 8, 9, 4, 5, 6, 1, 2, 3].map((num) => (
                           <Button
@@ -1412,7 +1412,7 @@ const AssignmentSlide = ({
       {isGraded && (
         <Card className="mb-4 sm:mb-6 overflow-hidden border-2 border-emerald-200 bg-white shadow-md">
           {/* Hero strip */}
-          <div className="bg-gradient-to-r from-emerald-50 to-white px-4 sm:px-6 py-4 border-b border-emerald-100">
+          <div className="bg-gradient-to-r from-success-50 to-white px-4 sm:px-6 py-4 border-b border-emerald-100">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1470,8 +1470,8 @@ const AssignmentSlide = ({
 
             {/* Feedback */}
             {gradedFeedback && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <div className="mb-2 flex items-center gap-2">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-2">
+                <div className="flex items-center gap-2">
                   {/* design-lint-ignore: inline SVG illustration with fixed stroke color */}
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -1488,8 +1488,8 @@ const AssignmentSlide = ({
 
             {/* Checked Answer Copy */}
             {checkedFileId && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {t("assignmentSlide.checkedAnswerCopyLabel")}
                 </p>
                 <AttachmentPreview
@@ -1517,7 +1517,7 @@ const AssignmentSlide = ({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-stack">
               {idAttachments.map((fileId, idx) => (
                 <AttachmentPreview
                   key={`id-${fileId}`}
@@ -1585,7 +1585,7 @@ const AssignmentSlide = ({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-stack">
               {previousFileIds.map((fileId: string, idx: number) => (
                 <AttachmentPreview
                   key={fileId}

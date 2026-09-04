@@ -773,8 +773,8 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                   </div>
                 </div>
                 {showCorrectAnswers && correctAnswers.length > 0 && (
-                  <div className="flex-1">
-                    <div className="mb-1 text-xs font-semibold text-green-800 flex items-center"><CheckIcon />{t("quizReview.correctAnswerLabel")}</div>
+                  <div className="flex-1 space-y-1">
+                    <div className="text-xs font-semibold text-green-800 flex items-center"><CheckIcon />{t("quizReview.correctAnswerLabel")}</div>
                     <div className="w-full rounded-lg bg-green-50 border border-green-200 p-3 flex flex-col gap-2">
                       {isMCQ && correctAnswerWithIndex
                         ? correctAnswerWithIndex.map(({ id, idx }) => (
@@ -793,8 +793,8 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                 )}
               </div>
               {showCorrectAnswers && !isRichTextEmpty(explanation) && (
-                <div className="mt-2 p-4 bg-gray-100 border border-gray-300 rounded-lg">
-                  <div className="mb-1 text-xs font-semibold text-gray-700">{t("quizReview.explanationLabel")}</div>
+                <div className="mt-2 p-4 bg-gray-100 border border-gray-300 rounded-lg space-y-1">
+                  <div className="text-xs font-semibold text-gray-700">{t("quizReview.explanationLabel")}</div>
                   <div className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: explanation }} />
                 </div>
               )}

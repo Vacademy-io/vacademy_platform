@@ -823,6 +823,34 @@ except ImportError:
     # numeric default in lockstep with `ai_video_constants.py`.
     AI_VIDEO_PER_VIDEO_COST_CAP_USD = 24.00
 
+def _img_label_for(index: int) -> str:
+    """Spreadsheet-style label for an input image: A..Z, then AA, AB, ...
+
+    The old inline lookup indexed a 10-character string and fell back to the
+    bare integer past position 9, so an image-led run mixed letters and digits
+    in the same list ("Image I", "Image 10"). The Director cites these labels
+    back when it plans IMAGE_CLIP shots, so they need to stay one namespace.
+    """
+    if index < 0:
+        index = 0
+    label = ""
+    n = index
+    while True:
+        label = chr(ord("A") + n % 26) + label
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return label
+
+
+# How much of a per-shot failure to keep on the emitted event. 200 characters
+# cut the model's raw output mid-JSON, so a well-formed-but-rejected response
+# and a genuinely truncated one looked identical — that ambiguity cost a wrong
+# diagnosis on a real incident. Raising the aggregator's own cap did not help:
+# this emit is the binding one, and it clips before the aggregator ever sees it.
+_SHOT_ERROR_KEEP = 4000
+
+
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
         "script_temperature": 0.5,
@@ -1699,7 +1727,15 @@ class OpenRouterClient:
                 # doubled budget — which is exactly what the code's own hint
                 # ("raise max_tokens for this model") recommends.
                 _effective_max_tokens = max_tokens
-                for _length_bump in range(2):
+                # Measured on qwen3.8-max planning a 20-shot video: reasoning
+                # consumed the ENTIRE 16k completion budget (reasoning_tokens
+                # 16000/16000, finish_reason "length") and emitted zero content.
+                # One doubling to 32k is not obviously enough for that, so allow
+                # two — 16k → 32k → 64k. Note `reasoning: {exclude: true}` does
+                # NOT help: it hides the reasoning from the response, it does
+                # not stop the model spending the budget on it. Only headroom
+                # does.
+                for _length_bump in range(3):
                     payload: Dict[str, Any] = {
                         "model": model_to_use,
                         "messages": cached_messages,
@@ -1715,7 +1751,17 @@ class OpenRouterClient:
                         method="POST",
                     )
                     _t_start = time.perf_counter()
-                    with urllib.request.urlopen(request, timeout=180) as response:
+                    # A flat 180s was sized for a fast non-reasoning model. A
+                    # thinking model planning a 20-shot video spends minutes in
+                    # its reasoning channel before the first content token, so
+                    # 180s cut it off, the call failed over to the next model in
+                    # the chain, and the model the user actually picked was
+                    # never the one that answered — silently, since a fallback
+                    # is not an error. Scale with the token budget instead: a
+                    # small utility prompt keeps a tight timeout, a big
+                    # generation gets room to finish.
+                    _req_timeout = max(180, min(900, 120 + int(_effective_max_tokens * 0.05)))
+                    with urllib.request.urlopen(request, timeout=_req_timeout) as response:
                         raw = response.read().decode("utf-8")
                         # Parse JSON response and return content
                         data = json.loads(raw)
@@ -1734,18 +1780,25 @@ class OpenRouterClient:
                             if _reasoning and str(_reasoning).strip():
                                 content = str(_reasoning)
 
+                        # finish_reason "length" means the answer was CUT OFF,
+                        # whether or not any content came back. The budget bump
+                        # used to sit inside the empty-content branch, so a
+                        # partial answer was returned as-is and failed downstream —
+                        # measured on gpt-5.6-luna at reasoning effort "high":
+                        # well-formed JSON that simply stopped at char 40,689,
+                        # which the shot-plan parser can only report as garbage.
+                        # Retry on the cut-off itself; emptiness is a separate
+                        # question handled below.
+                        if _finish == "length" and _length_bump < 2:
+                            _effective_max_tokens = min(_effective_max_tokens * 2, 64000)
+                            print(
+                                f"   ↻ {model_to_use} hit max_tokens at stage "
+                                f"'{_llm_stage.get()}' (content={len(content or '')} chars) — "
+                                f"retrying same model with max_tokens={_effective_max_tokens}"
+                            )
+                            continue
+
                         if not content or not content.strip():
-                            # Empty because the model exhausted its budget before
-                            # emitting content → retry the same model once with a
-                            # bigger budget before failing over to the next one.
-                            if _finish == "length" and _length_bump == 0:
-                                _effective_max_tokens = min(_effective_max_tokens * 2, 64000)
-                                print(
-                                    f"   ↻ {model_to_use} hit max_tokens with empty content at "
-                                    f"stage '{_llm_stage.get()}' — retrying same model with "
-                                    f"max_tokens={_effective_max_tokens}"
-                                )
-                                continue
                             _hint = (
                                 " (finish_reason=length — model hit max_tokens before emitting"
                                 " content even after a budget bump)"
@@ -14566,6 +14619,7 @@ class VideoGenerationPipeline:
                 and (self._assist_state or {}).get("enabled")
             ),
             article_screenshots=self._v3_article_screenshots(),
+            input_images=self._input_image_contexts or None,
             cultural_context=getattr(self, "_cultural_context", None),
             template_catalog_md=_tmpl_catalog_md or None,
             valid_template_ids=_tmpl_valid_ids,
@@ -15329,10 +15383,15 @@ class VideoGenerationPipeline:
         # URL itself is in source_public_url — Director embeds it as <img src>
         # in the IMAGE_CLIP HTML (no render-worker compositing).
         if self._input_image_contexts:
-            _img_labels = "ABCDEFGHIJ"
+            _num_images = len(self._input_image_contexts)
+            # OCR blocks are the bulk of an image section. A screenshot-led run
+            # can now carry 15-20 stills, so scale the per-image allowance down
+            # as the count rises rather than emitting 15 blocks x 20 images.
+            # Mirrors the transcript budget in the SOURCE VIDEO block above.
+            _ocr_per_image = max(4, 90 // max(1, _num_images))
             _image_sections = []
             for _iidx, _ictx in enumerate(self._input_image_contexts):
-                _label = _img_labels[_iidx] if _iidx < len(_img_labels) else str(_iidx)
+                _label = _img_label_for(_iidx)
                 _img_meta_blob = _ictx.get("context", {})  # parsed image_metadata.json
                 _img_meta = _img_meta_blob.get("meta", {})
                 _img_caption = _img_meta_blob.get("caption") or {}
@@ -15353,7 +15412,7 @@ class VideoGenerationPipeline:
                 )
                 _ocr_lines = [
                     f"  \"{b.get('text', '')}\" @ bbox_norm={b.get('bbox_norm', [])}"
-                    for b in _img_ocr_blocks[:15]
+                    for b in _img_ocr_blocks[:_ocr_per_image]
                 ]
                 _tags_line = ", ".join(_img_caption.get("tags", [])[:10])
                 _ui_elements = _img_caption.get("ui_elements") or []
@@ -20728,7 +20787,7 @@ class VideoGenerationPipeline:
                             "shot_index": shot_idx,
                             "total_shots": total_shots,
                             "shot_type": shot_type,
-                            "error": str(e)[:200],
+                            "error": str(e)[:_SHOT_ERROR_KEEP],
                             "retrying": False,
                             "attempt": max_attempts,
                             "max_attempts": max_attempts,
@@ -20862,7 +20921,7 @@ class VideoGenerationPipeline:
                         "shot_index": shot_idx,
                         "total_shots": total_shots,
                         "shot_type": shot_type,
-                        "error": str(e)[:200],
+                        "error": str(e)[:_SHOT_ERROR_KEEP],
                         "retrying": True,
                         "attempt": attempt + 1,
                         "max_attempts": max_attempts,
@@ -23469,6 +23528,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               white-space: nowrap;
               word-break: normal;
               overflow-wrap: normal;
+            }}
+            /* Headings must never split mid-word. `word-break: break-word` above is
+               a safety valve for prose in a narrow column, but applied to display
+               type it produces "CONFIRM SUBMISSI / ON". A heading that does not
+               fit should be SHRUNK — the fit sweep in dispatcher_install_js
+               already does that — not hacked in half. keep-all breaks at spaces
+               only; the sweep handles the genuinely-too-wide single word. */
+            h1, h2, h3, h4, h5, h6,
+            [class*="title" i],
+            [class*="headline" i],
+            [class*="heading" i],
+            [class*="display" i] {{
+              word-break: keep-all;
+              overflow-wrap: normal;
+              hyphens: none;
             }}
             /* Word-level wrappers: prevent internal breaks, allow breaks between words */
             [class*="-word"],
@@ -29258,6 +29332,36 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             if shot_clips:
                 meta_dict["shots"] = shot_clips
                 print(f"   🎬 Added {len(shot_clips)} shot clips to timeline.meta.shots (v3 editor unit)")
+
+        # Last gate before the timeline is written: motion the frame-stepped
+        # renderer cannot seek is silently dropped from the video — the frame
+        # looks right in a browser and renders frozen, with no error anywhere.
+        # The load-handler case is repairable in place (re-dispatch the events so
+        # the handler runs at inject time); the rest can only be reported, since
+        # a CSS keyframe animation has no mechanical rewrite into GSAP.
+        try:
+            from seekable_motion import apply_ready_kick, unseekable_techniques
+            _repaired = 0
+            _still_broken = {}
+            for _e in timeline_entries:
+                _h = _e.get("html") or ""
+                if not _h:
+                    continue
+                _fixed = apply_ready_kick(_h)
+                if _fixed is not _h and _fixed != _h:
+                    _e["html"] = _fixed
+                    _repaired += 1
+                _bad = unseekable_techniques(_e["html"])
+                if _bad:
+                    _still_broken[_e.get("id") or "?"] = _bad
+            if _repaired:
+                print(f"   🔧 Motion repair: {_repaired} shot(s) had tweens in a load "
+                      f"handler that would never have fired — re-dispatch injected.")
+            if _still_broken:
+                print(f"   ⚠️ Unseekable motion will be DROPPED from the render in "
+                      f"{len(_still_broken)} shot(s): {_still_broken}")
+        except Exception as _sm_err:
+            print(f"   ⚠️ Seekable-motion check skipped: {_sm_err}")
 
         timeline_output = {
             "meta": meta_dict,

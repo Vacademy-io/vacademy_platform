@@ -16,6 +16,7 @@ import { PropertyPanel } from './PropertyPanel';
 import { PageTabs } from './PageTabs';
 import { CanvasRenderer } from './CanvasRenderer';
 import { AiCopilotPanel } from './AiCopilotPanel';
+import { SiteAnalyticsPanel } from './SiteAnalyticsPanel';
 import { AiChromePanel } from './AiChromePanel';
 import { RevisionHistoryDialog } from './RevisionHistoryDialog';
 import { PublishCheckDialog } from './PublishCheckDialog';
@@ -24,8 +25,7 @@ import { Button } from '@/components/ui/button';
 import {
     CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
     ArrowUUpLeft as Undo2, ArrowUUpRight as Redo2, Stack as Layers,
-    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle,
-} from '@phosphor-icons/react';
+    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle, ChartLine } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';
@@ -103,7 +103,7 @@ export const CatalogueEditorPage = () => {
     const [jsonText, setJsonText] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
     const [sidebarTab, setSidebarTab] = useState<'components' | 'layers' | 'templates'>('components');
-    const [rightTab, setRightTab] = useState<'properties' | 'ai'>('properties');
+    const [rightTab, setRightTab] = useState<'properties' | 'ai' | 'analytics'>('properties');
     const [savedConfigJSON, setSavedConfigJSON] = useState('');
     // Autosave bookkeeping — a layman doesn't press Save.
     const [autosaving, setAutosaving] = useState(false);
@@ -552,8 +552,23 @@ export const CatalogueEditorPage = () => {
                                     <Sparkle className="size-3.5" weight="duotone" />
                                     AI
                                 </button>
+                                <button
+                                    onClick={() => setRightTab('analytics')}
+                                    className={`flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
+                                        rightTab === 'analytics'
+                                            ? 'border-b-2 border-primary-500 text-primary-500'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    <ChartLine className="size-3.5" weight="duotone" />
+                                    Traffic
+                                </button>
                             </div>
-                            {rightTab === 'properties' ? (
+                            {rightTab === 'analytics' ? (
+                                <div className="flex-1 overflow-auto">
+                                    <SiteAnalyticsPanel />
+                                </div>
+                            ) : rightTab === 'properties' ? (
                                 <div className="flex-1 overflow-auto">
                                     <PropertyPanel />
                                 </div>

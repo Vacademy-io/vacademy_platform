@@ -38,7 +38,12 @@
         "emailSent": "ईमेल भेज दिया गया",
         "selectWaTemplateFirst": "पहले एक व्हाट्सएप टेम्पलेट चुनें",
         "whatsappSent": "व्हाट्सएप संदेश भेज दिया गया",
-        "sendFailed": "भेजने में विफल"
+        "sendFailed": "भेजने में विफल",
+        "whatsappQueued": "व्हाट्सएप ने संदेश स्वीकार कर लिया — डिलीवरी की पुष्टि अलग से होगी",
+        "whatsappRejected": "व्हाट्सएप ने यह संदेश अस्वीकार कर दिया — यह भेजा नहीं गया",
+        "whatsappRejectedWithReason": "व्हाट्सएप ने यह संदेश अस्वीकार कर दिया: {{reason}}",
+        "emailRejected": "ईमेल डिलीवरी के लिए स्वीकार नहीं किया गया",
+        "emailRejectedWithReason": "ईमेल स्वीकार नहीं किया गया: {{reason}}"
     },
     "emailTemplateStep": {
         "templateLabel": "टेम्पलेट",
@@ -107,7 +112,19 @@
         "variablesLabel": "वेरिएबल",
         "empty": "(खाली)",
         "sending": "भेजा जा रहा है...",
-        "sendTo": "{{name}} को भेजें"
+        "sendTo": "{{name}} को भेजें",
+        "delivered": "डिलीवर हो गया",
+        "notDelivered": "डिलीवर नहीं हुआ",
+        "confirmingDelivery": "डिलीवरी की पुष्टि हो रही है…",
+        "deliveryLabel": "डिलीवरी",
+        "sendFailed": "संदेश नहीं भेजा गया",
+        "noReason": "प्रदाता ने कोई कारण नहीं बताया।",
+        "deliveryStatus": {
+            "SENT": "भेजा गया",
+            "DELIVERED": "डिलीवर हो गया",
+            "READ": "पढ़ा गया",
+            "FAILED": "विफल"
+        }
     },
     "footer": {
         "back": "पीछे",

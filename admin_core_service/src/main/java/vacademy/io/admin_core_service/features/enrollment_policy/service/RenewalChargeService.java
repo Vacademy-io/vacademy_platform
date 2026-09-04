@@ -242,6 +242,18 @@ public class RenewalChargeService {
         request.setEmail(user.getEmail());
         request.setInstituteId(instituteId);
         request.setPaymentType(PaymentType.RENEWAL);
+        // Razorpay's recurring-payment API requires a contact, and it must be a real
+        // phone number (digits and + only). It used to be filled from vendorId -- the
+        // invite's gateway id, literally "RAZORPAY" -- so every auto-charge was rejected
+        // with "Contact number contains invalid characters" before it ever reached the
+        // mandate, and the failure took its own payment_log down with it (PaymentService
+        // is @Transactional), leaving only a rising renewal_attempt_count as evidence.
+        vacademy.io.common.payment.dto.RazorpayRequestDTO razorpayRequest =
+                new vacademy.io.common.payment.dto.RazorpayRequestDTO();
+        if (StringUtils.hasText(user.getMobileNumber())) {
+            razorpayRequest.setContact(user.getMobileNumber().replaceAll("[^0-9+]", ""));
+        }
+        request.setRazorpayRequest(razorpayRequest);
 
         try {
             PaymentResponseDTO response = paymentService.handleRecurringCharge(

@@ -1999,6 +1999,12 @@ export const TARGET_DURATIONS = [
     '1 minute',
     '2-3 minutes',
     '5 minutes',
+    // The jump from 5 to 10 minutes was the whole mid-length range. A script
+    // that runs ~7 minutes of voiceover had to be forced into a 5-minute plan
+    // (which drops beats) or a 10-minute one (which pads them). The backend
+    // averages the numbers in the string, so '5-7 minutes' targets 360s.
+    '5-7 minutes',
+    '7-8 minutes',
     '10 minutes',
 ];
 
@@ -2009,6 +2015,9 @@ const TARGET_DURATION_KEYS: Record<string, string> = {
     '2-3 minutes': 'minutes2to3',
     '5 minutes': 'minutes5',
     '10 minutes': 'minutes10',
+    // '5-7 minutes' / '7-8 minutes' are intentionally absent: getTargetDurationLabel
+    // falls back to the raw English string, which is the correct display until
+    // the locale files carry a translation.
 };
 
 /** Translated display label for a TARGET_DURATIONS value; falls back to the

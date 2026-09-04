@@ -212,7 +212,7 @@ function RouteComponent() {
           </div>
         ) : generating ? (
           <div className="flex items-center justify-center min-h-screen w-full">
-            <div className="text-center flex flex-col items-center gap-3">
+            <div className="text-center flex flex-col items-center gap-stack">
               <DashboardLoader />
               <h2 className="text-xl font-semibold text-gray-900">
                 {t("aiReport.generating.title")}
@@ -224,8 +224,8 @@ function RouteComponent() {
           </div>
         ) : !parsedProcessedJSON ? (
           <div className="flex items-center justify-center min-h-screen w-full">
-            <div className="text-center">
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            <div className="text-center space-y-2">
+              <h2 className="text-xl font-semibold text-gray-900">
                 {t("aiReport.unavailable.title")}
               </h2>
               <p className="text-gray-600 flex items-center flex-col gap-2">

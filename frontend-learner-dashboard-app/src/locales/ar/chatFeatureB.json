@@ -9,12 +9,14 @@
         "retry": "إعادة المحاولة",
         "newChat": "محادثة جديدة",
         "dropImageHere": "أفلت الصورة هنا",
-        "voiceChatLabel": "محادثة صوتية",
-        "startVoiceConversation": "بدء محادثة صوتية",
+        "voiceChatLabel": "مكالمة صوتية",
+        "startVoiceConversation": "بدء مكالمة صوتية",
         "creditsExhausted": "لقد نفدت أرصدة OpenRouter الخاصة بك. يرجى إعادة شحن رصيدك لمتابعة استخدام مساعد الذكاء الاصطناعي.",
         "attachmentAlt": "مرفق",
         "attachedImageAlt": "مرفق",
-        "copy": "نسخ"
+        "copy": "نسخ",
+        "popupView": "فتح كنافذة منبثقة",
+        "dockView": "تثبيت في الجانب"
     },
     "voiceModeLabels": {
         "interview": "مقابلة تجريبية",
@@ -164,15 +166,23 @@
     "voiceModePanel": {
         "unmute": "إلغاء كتم الميكروفون",
         "mute": "كتم الميكروفون",
-        "end": "إنهاء",
-        "hintIdle": "اضغط على زر الميكروفون أدناه لبدء التحدث",
-        "hintListening": "أنا أستمع... اضغط على الميكروفون عند الانتهاء",
-        "hintProcessing": "جارٍ معالجة ردّك...",
-        "hintSpeaking": "اضغط على الميكروفون للمقاطعة والتحدث"
+        "end": "إنهاء المكالمة",
+        "hintIdle": "اضغط على الميكروفون عندما تكون مستعدًا للحديث",
+        "hintListening": "أنا أستمع… توقّف فقط عندما تنتهي",
+        "hintProcessing": "أفكّر…",
+        "hintSpeaking": "اضغط على الميكروفون للمقاطعة",
+        "muted": "الميكروفون مغلق — ألغِ الكتم لمتابعة الحديث",
+        "talk": "تحدّث",
+        "connecting": "جارٍ الاتصال…",
+        "reconnecting": "جارٍ إعادة الاتصال…",
+        "noticeNoSpeech": "لم أسمع ذلك — حاول مرة أخرى",
+        "noticeError": "حدث خطأ ما. اضغط على الميكروفون للمحاولة مجددًا.",
+        "noticeMic": "لا أستطيع الوصول إلى الميكروفون. تحقّق من الأذونات ثم اضغط على الميكروفون.",
+        "topicPrefix": "حول {{topic}}"
     },
     "voiceModeSelector": {
-        "title": "الوضع الصوتي",
-        "subtitle": "اختر طريقة التفاعل",
+        "title": "مكالمة صوتية",
+        "subtitle": "اختر طريقة الحديث",
         "modeInterviewLabel": "أجرِ مقابلتي",
         "modeInterviewDescription": "تدرّب من خلال مقابلة تجريبية حول موضوعك الحالي",
         "modeDoubtLabel": "ناقش استفسارك",
@@ -200,7 +210,8 @@
         "languagePa": "البنجابية",
         "languageOr": "الأوديا",
         "cancel": "إلغاء",
-        "start": "ابدأ"
+        "start": "بدء المكالمة",
+        "topicHelperEditable": "مأخوذ ممّا تدرسه الآن — عدّله إن أردت موضوعًا آخر"
     },
     "latexToolbar": {
         "groupArithmetic": "الحساب",

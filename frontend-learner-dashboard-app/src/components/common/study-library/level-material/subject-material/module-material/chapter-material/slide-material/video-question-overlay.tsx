@@ -489,7 +489,7 @@ const VideoQuestionOverlay = ({
 
     //   return (
     //     <div className="w-full mb-4 px-1">
-    //       <div className="relative w-full h-1.5 bg-gradient-to-r from-red-400 via-orange-400 to-purple-400 rounded-full overflow-hidden">
+    //       <div className="relative w-full h-1.5 bg-gradient-to-r from-danger-400 via-primary-400 to-purple-400 rounded-full overflow-hidden">
     //         {/* Progress indicator */}
     //         <div
     //           className="absolute h-full bg-white/30 rounded-full transition-all duration-300"
@@ -926,7 +926,7 @@ const VideoQuestionOverlay = ({
 
                 {/* Footer - Action buttons */}
                 <div className="flex-shrink-0 bg-white border-t border-gray-100 p-4 sm:p-6 rounded-b-xl">
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <div className="flex flex-col sm:flex-row gap-stack justify-center">
                         {response ? (
                             <MyButton
                                 buttonType="primary"

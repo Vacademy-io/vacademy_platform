@@ -319,6 +319,25 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # ── Live AI tutor (V494) ──────────────────────────────────────────────
+    # One strong-model compile call per slide, charged as max(flat, actual).
+    # Reuses request_type 'content' so no ai_token_usage CHECK change is needed.
+    "tutor_compile_slide": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Charged once per generated image (one charge per media row), so it stays
+    # a flat rate rather than needing an 'images' unit.
+    "tutor_media_image": {
+        "request_type": "image",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

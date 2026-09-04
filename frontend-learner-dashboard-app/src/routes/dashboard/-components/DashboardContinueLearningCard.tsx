@@ -160,7 +160,7 @@ export const ContinueLearningCard = ({
 
         return (
             <Card className="continue-learning-card-empty h-full border-dashed bg-muted/40 shadow-none hover:shadow-none transition-none">
-                <CardContent className="p-6 text-center flex flex-col items-center justify-center h-full space-y-4 relative overflow-hidden">
+                <CardContent className="p-card-lg text-center flex flex-col items-center justify-center h-full space-y-4 relative overflow-hidden">
                     <div className="p-3 bg-primary/10 rounded-full text-primary ring-1 ring-primary/20">
                         {isFirstRun ? (
                             <BookOpen weight="duotone" size={24} />

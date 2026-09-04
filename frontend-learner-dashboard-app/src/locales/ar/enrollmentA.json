@@ -117,6 +117,7 @@
     "close": "إغلاق",
     "goToDashboard": "الذهاب إلى لوحة التحكم",
     "readyToContinue": "هل أنت جاهز للمتابعة؟",
+    "reenrollmentBlockedFallback": "إعادة التسجيل غير متاحة بعد. يرجى المحاولة مرة أخرى لاحقًا.",
     "upgradeToContinueLearning": "قم بالترقية لمواصلة التعلم",
     "clickBelowToJoin": "انقر أدناه للانضمام إلى العضوية.",
     "activeMembershipTitle": "لديك عضوية نشطة",

@@ -75,6 +75,10 @@
         "switchSections": {
             "label": "Allow {{role}}s to switch between sections",
             "description": "Participants can jump back and forth between sections."
+        },
+        "aiEvaluation": {
+            "label": "Evaluate submissions with AI",
+            "description": "Grade each submission automatically when it is submitted. Uses institute credits per question graded; a teacher still reviews and releases the result."
         }
     },
     "unusedFields": {

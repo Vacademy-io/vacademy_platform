@@ -8,6 +8,8 @@
         "configureWorkflow": "वर्कफ़्लो कॉन्फ़िगर करें",
         "viewLinkedWorkflows": "लिंक किए गए वर्कफ़्लो देखें",
         "bookingSettings": "बुकिंग सेटिंग्स",
+        "shareQrCode": "QR कोड साझा करें",
+        "copyShortLink": "छोटा लिंक कॉपी करें",
         "apiIntegration": "एपीआई एकीकरण",
         "getEmbedCode": "एम्बेड कोड प्राप्त करें",
         "delete": "हटाएं"
@@ -23,7 +25,10 @@
         "deleteSuccess": "अभियान सफलतापूर्वक हटाया गया",
         "deleteError": "अभियान हटाने में विफल",
         "editComingSoon": "अभियान संपादित करने की सुविधा जल्द आ रही है",
-        "campaignIdMissing": "अभियान आईडी गुम है"
+        "campaignIdMissing": "अभियान आईडी गुम है",
+        "shortLinkCopied": "छोटा लिंक कॉपी हो गया",
+        "shortLinkCopyFailed": "छोटा लिंक बन गया, पर कॉपी नहीं हो सका",
+        "shortLinkFailed": "छोटा लिंक नहीं बन सका"
     },
     "defaults": {
         "campaignName": "अभियान",

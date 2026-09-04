@@ -16,7 +16,23 @@
         "loadMore": "Charger plus",
         "announcementsErrorTitle": "Impossible de charger les annonces",
         "announcementsEmptyTitle": "Aucune annonce pour le moment",
-        "announcementsEmptyDescription": "Les annonces de votre établissement s'afficheront ici."
+        "announcementsEmptyDescription": "Les annonces de votre établissement s'afficheront ici.",
+        "receivedTimes": "Reçue {{count}} fois",
+        "noContent": "Cette notification ne contient aucun détail supplémentaire.",
+        "close": "Fermer",
+        "openLink": "Ouvrir le lien",
+        "unreadSummary_one": "Vous avez {{count}} notification non lue",
+        "unreadSummary_many": "Vous avez {{count}} notifications non lues",
+        "unreadSummary_other": "Vous avez {{count}} notifications non lues",
+        "clear": "Effacer",
+        "clearOne": "Effacer la notification : {{title}}",
+        "clearAll": "Tout effacer",
+        "clearing": "Effacement...",
+        "clearAllTitle": "Effacer toutes les notifications ?",
+        "cancel": "Annuler",
+        "clearAllDescription_one": "{{count}} notification sera retirée de votre boîte de réception. Cette action est irréversible.",
+        "clearAllDescription_many": "Les {{count}} notifications seront retirées de votre boîte de réception. Cette action est irréversible.",
+        "clearAllDescription_other": "Les {{count}} notifications seront retirées de votre boîte de réception. Cette action est irréversible."
     },
     "hero": {
         "greeting": {
@@ -272,6 +288,17 @@
         "slidesInProgress": "{{count}} {{slide}} en cours",
         "continueFromWhereLeftOff": "Reprenez là où vous en étiez",
         "resumeLearningButton": "Reprendre l'apprentissage"
+    },
+    "enrolledCourses": {
+        "viewAll": "Voir tous les {{courses}}",
+        "emptyTitle": "Vous n'êtes inscrit à aucun {{courses}} pour le moment",
+        "browse": "Parcourir {{courses}}",
+        "cta": {
+            "continue": "Continuer",
+            "start": "Commencer",
+            "review": "Revoir"
+        },
+        "cardAria": "{{course}}, {{percent}} % terminé. {{action}}"
     },
     "dashboardHero": {
         "loadingAria": "Chargement",

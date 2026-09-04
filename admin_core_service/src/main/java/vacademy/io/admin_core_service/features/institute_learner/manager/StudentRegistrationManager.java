@@ -42,6 +42,7 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerS
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.exceptions.EnrollmentConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -466,7 +467,8 @@ public class StudentRegistrationManager {
                     log.info("Blocking enrollment for user {} - already active in package session {}",
                             student.getUserId(), packageSessionId);
 
-                    throw new VacademyException(message);
+                    throw new EnrollmentConflictException(
+                            EnrollmentConflictException.ConflictType.PAID_MEMBER_BLOCKED, message);
                 }
             } catch (VacademyException e) {
                 throw e; // Re-throw blocking exception
@@ -543,7 +545,8 @@ public class StudentRegistrationManager {
                                     allowedDateStr, gapDays);
                         }
 
-                        throw new VacademyException(message);
+                        throw new EnrollmentConflictException(
+                                EnrollmentConflictException.ConflictType.REENROLLMENT_BLOCKED, message);
                     }
                 }
             }

@@ -94,10 +94,10 @@ function TermsAndConditions() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 mb-8"
+          className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 mb-8 space-y-4"
         >
-          <h2 className="text-xl font-bold text-gray-900 mb-4">{t("termsAndConditions.welcome.title")}</h2>
-          <p className="text-gray-700 leading-relaxed mb-4">
+          <h2 className="text-xl font-bold text-gray-900">{t("termsAndConditions.welcome.title")}</h2>
+          <p className="text-gray-700 leading-relaxed">
             {t("termsAndConditions.welcome.intro1")}
           </p>
           <p className="text-gray-700 leading-relaxed">
@@ -112,9 +112,9 @@ function TermsAndConditions() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8"
+            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 space-y-section"
           >
-            <div className="flex items-center space-x-3 mb-6">
+            <div className="flex items-center gap-x-3">
               <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
                 <FileText className="w-5 h-5 text-white" />
               </div>
@@ -122,14 +122,14 @@ function TermsAndConditions() {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.acceptance.agreement.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.acceptance.agreement.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.acceptance.agreement.text")}
                 </p>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.acceptance.modifications.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.acceptance.modifications.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.acceptance.modifications.text")}
                 </p>
@@ -142,9 +142,9 @@ function TermsAndConditions() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8"
+            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 space-y-section"
           >
-            <div className="flex items-center space-x-3 mb-6">
+            <div className="flex items-center gap-x-3">
               <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
                 <Users className="w-5 h-5 text-white" />
               </div>
@@ -152,14 +152,14 @@ function TermsAndConditions() {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.userAccounts.creation.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.userAccounts.creation.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.userAccounts.creation.text")}
                 </p>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.userAccounts.security.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.userAccounts.security.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.userAccounts.security.text")}
                 </p>
@@ -172,9 +172,9 @@ function TermsAndConditions() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8"
+            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 space-y-section"
           >
-            <div className="flex items-center space-x-3 mb-6">
+            <div className="flex items-center gap-x-3">
               <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
@@ -182,14 +182,14 @@ function TermsAndConditions() {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.educationalServices.courseAccess.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.educationalServices.courseAccess.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.educationalServices.courseAccess.text")}
                 </p>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.educationalServices.learningMaterials.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.educationalServices.learningMaterials.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.educationalServices.learningMaterials.text")}
                 </p>
@@ -202,9 +202,9 @@ function TermsAndConditions() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
-            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8"
+            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 space-y-section"
           >
-            <div className="flex items-center space-x-3 mb-6">
+            <div className="flex items-center gap-x-3">
               <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
                 <CreditCard className="w-5 h-5 text-white" />
               </div>
@@ -212,14 +212,14 @@ function TermsAndConditions() {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.paymentTerms.processing.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.paymentTerms.processing.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.paymentTerms.processing.text")}
                 </p>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.paymentTerms.refunds.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.paymentTerms.refunds.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.paymentTerms.refunds.text")}
                 </p>
@@ -232,9 +232,9 @@ function TermsAndConditions() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.7 }}
-            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8"
+            className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 space-y-section"
           >
-            <div className="flex items-center space-x-3 mb-6">
+            <div className="flex items-center gap-x-3">
               <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
                 <WarningCircle className="w-5 h-5 text-white" />
               </div>
@@ -242,14 +242,14 @@ function TermsAndConditions() {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.userConduct.acceptableUse.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.userConduct.acceptableUse.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.userConduct.acceptableUse.text")}
                 </p>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">{t("termsAndConditions.sections.userConduct.prohibited.subtitle")}</h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">{t("termsAndConditions.sections.userConduct.prohibited.subtitle")}</h3>
                 <p className="text-gray-700 leading-relaxed">
                   {t("termsAndConditions.sections.userConduct.prohibited.text")}
                 </p>
@@ -263,20 +263,20 @@ function TermsAndConditions() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
-          className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 mt-8"
+          className="bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-gray-200/50 p-6 lg:p-8 mt-8 space-y-4"
         >
-          <h2 className="text-xl font-bold text-gray-900 mb-4">{t("termsAndConditions.contact.title")}</h2>
-          <p className="text-gray-700 leading-relaxed mb-4">
+          <h2 className="text-xl font-bold text-gray-900">{t("termsAndConditions.contact.title")}</h2>
+          <p className="text-gray-700 leading-relaxed">
             {t("termsAndConditions.contact.intro")}
           </p>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <h3 className="font-semibold text-gray-800 mb-2">{t("termsAndConditions.contact.legalLabel")}</h3>
+            <div className="space-y-2">
+              <h3 className="font-semibold text-gray-800">{t("termsAndConditions.contact.legalLabel")}</h3>
               <p className="text-gray-600">{t("termsAndConditions.contact.legalEmail")}</p>
             </div>
-            <div>
-              <h3 className="font-semibold text-gray-800 mb-2">{t("termsAndConditions.contact.supportLabel")}</h3>
+            <div className="space-y-2">
+              <h3 className="font-semibold text-gray-800">{t("termsAndConditions.contact.supportLabel")}</h3>
               <p className="text-gray-600">{t("termsAndConditions.contact.supportEmail")}</p>
             </div>
           </div>
@@ -287,9 +287,9 @@ function TermsAndConditions() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.0 }}
-          className="text-center mt-12 mb-8"
+          className="text-center mt-12 mb-8 space-y-2"
         >
-          <p className="text-sm text-gray-500 mb-2">
+          <p className="text-sm text-gray-500">
             {t("termsAndConditions.footer.effective")}
           </p>
           <p className="text-xs text-gray-400">

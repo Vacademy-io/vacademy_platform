@@ -23,8 +23,8 @@ export function DocumentsDemo({ child, docData }: Props) {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="shadow-sm overflow-hidden">
           <div className="h-1" style={{ background: `linear-gradient(to right, rgb(16 185 129) ${pct}%, rgb(229 231 235) ${pct}%)` }} />
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2"><ShieldCheck size={18} className="text-primary" /><p className="text-sm font-semibold">{t("admissionPortal.demo.percentComplete", { percent: pct })}</p></div><p className="text-xs text-muted-foreground">{t("admissionPortal.documents.verifiedOfTotal", { approved: docData.total_approved, total: docData.total_required })}</p></div>
+          <CardContent className="p-card space-y-stack">
+            <div className="flex items-center justify-between"><div className="flex items-center gap-2"><ShieldCheck size={18} className="text-primary" /><p className="text-sm font-semibold">{t("admissionPortal.demo.percentComplete", { percent: pct })}</p></div><p className="text-xs text-muted-foreground">{t("admissionPortal.documents.verifiedOfTotal", { approved: docData.total_approved, total: docData.total_required })}</p></div>
             <div className="flex items-center gap-4 text-xs">
               <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500" /><span className="text-muted-foreground">{t("admissionPortal.documents.verifiedCount", { count: docData.total_approved })}</span></div>
               <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-500" /><span className="text-muted-foreground">{t("admissionPortal.documents.underReviewCount", { count: docData.total_uploaded - docData.total_approved - docData.total_rejected })}</span></div>
@@ -53,7 +53,7 @@ function DocCard({ doc }: { doc: DocumentRequirement }) {
 
   return (
     <Card className={`shadow-sm overflow-hidden ${rejected ? "border-destructive/30" : approved ? "border-emerald-200 dark:border-emerald-900" : ""}`}>
-      <CardContent className="p-4">
+      <CardContent className="p-card">
         <div className="flex items-start gap-3">
           <div className={`p-2 rounded-lg shrink-0 ${cfg.iconBg}`}>{cfg.icon}</div>
           <div className="flex-1 min-w-0">

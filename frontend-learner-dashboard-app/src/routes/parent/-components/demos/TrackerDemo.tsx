@@ -18,9 +18,9 @@ export function TrackerDemo({ child, timeline }: Props) {
       <div><h2 className="text-lg sm:text-xl font-bold text-foreground">{t("admissionPortal.tracker.heading")}</h2><p className="text-sm text-muted-foreground mt-0.5">{t("admissionPortal.demo.fullJourneyFor", { name: child.full_name })}</p></div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="shadow-sm overflow-hidden"><CardContent className="p-4">
+        <Card className="shadow-sm overflow-hidden"><CardContent className="p-card">
           <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Flag size={16} className="text-primary" /><p className="text-sm font-semibold">{t("admissionPortal.tracker.overallProgress")}</p></div><Badge variant="outline" className="text-xs">{t("admissionPortal.tracker.stepsCount", { completed: done, total: timeline.length })}</Badge></div>
-          <div className="relative h-2 rounded-full bg-muted overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8 }} className="absolute inset-y-0 start-0 bg-gradient-to-r from-primary to-emerald-500 rounded-full" /></div>
+          <div className="relative h-2 rounded-full bg-muted overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8 }} className="absolute inset-y-0 start-0 bg-gradient-to-r from-primary to-success-500 rounded-full" /></div>
           <p className="text-xs text-muted-foreground mt-1.5 text-end">{t("admissionPortal.tracker.percentComplete", { percent: pct })}</p>
         </CardContent></Card>
       </motion.div>

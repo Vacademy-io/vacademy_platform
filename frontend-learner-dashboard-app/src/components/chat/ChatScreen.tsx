@@ -764,7 +764,7 @@ export function ChatScreen({
         )}
       >
         {!selectedConv ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <div className="flex flex-1 flex-col items-center justify-center gap-stack p-6 text-center">
             <Megaphone size={40} weight="duotone" className="text-muted-foreground" />
             <p className="text-body font-medium text-foreground">
               {t("screen.emptySelection.title")}

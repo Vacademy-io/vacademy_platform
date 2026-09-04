@@ -20,7 +20,7 @@ import { Lock } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { isBlankPhone, validatePhoneField } from "@/lib/phone-validation";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import {
   GET_PAYMENT_GATEWAY_DETAILS_URL,
   ENROLLMENT_INVITE_URL,
@@ -159,13 +159,12 @@ export const EnrollmentPaymentDialog: React.FC<
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
 
-  // Institute-configured preferred countries (sourced from domain routing).
-  // First entry is the default selected country; the full list orders the dropdown.
-  const preferredCountries = React.useMemo(() => {
-    const cached = getCachedPreferredCountries();
-    return cached.length > 0 ? cached : ["in", "us", "gb", "au", "ae"];
-  }, []);
-  const defaultPhoneCountry = preferredCountries[0] ?? "in";
+  // What this phone field starts on: the institute's configured preferred
+  // countries, or — when it configured none, or the portal is on GEO_FIRST —
+  // the country the visitor is opening this page from. Resolved once per
+  // mount; the browser's timezone cannot change under an open dialog.
+  const { defaultCountry: defaultPhoneCountry, preferredCountries } =
+    React.useMemo(() => getPreferredPhoneCountries(), []);
 
   // Validation functions
   const validateEmail = (email: string): boolean => {
@@ -514,7 +513,7 @@ export const EnrollmentPaymentDialog: React.FC<
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />
-        <DialogPrimitive.Content className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none">
+        <DialogPrimitive.Content className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-catalogue-md bg-white p-6 shadow-xl focus:outline-none">
           <button
             className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
@@ -549,8 +548,8 @@ export const EnrollmentPaymentDialog: React.FC<
                   />
                 </svg>
               </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              <div className="space-y-2">
+                <h2 className="text-xl font-semibold text-gray-900">
                   {t("enrollmentPaymentDialog.enrollmentSuccessful")}
                 </h2>
                 <p className="text-gray-600">
@@ -569,8 +568,8 @@ export const EnrollmentPaymentDialog: React.FC<
             </div>
           ) : (
             <>
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              <div className="mb-6 space-y-2">
+                <h2 className="text-xl font-semibold text-gray-900">
                   {t("enrollmentPaymentDialog.enrollInCourse", { course })}
                 </h2>
                 <p className="text-sm text-gray-600">
@@ -588,7 +587,7 @@ export const EnrollmentPaymentDialog: React.FC<
                       type="text"
                       value={fullName}
                       onChange={(e) => handleFullNameChange(e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${validationError
+                      className={`w-full px-3 py-2 border rounded-catalogue-sm focus:outline-none focus:ring-2 ${validationError
                         ? "border-red-500 focus:ring-red-500"
                         : "border-gray-300 focus:ring-blue-500"
                         }`}
@@ -609,7 +608,7 @@ export const EnrollmentPaymentDialog: React.FC<
                       type="email"
                       value={email}
                       onChange={(e) => handleEmailChange(e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${emailError
+                      className={`w-full px-3 py-2 border rounded-catalogue-sm focus:outline-none focus:ring-2 ${emailError
                         ? "border-red-500 focus:ring-red-500"
                         : "border-gray-300 focus:ring-blue-500"
                         }`}
@@ -630,8 +629,8 @@ export const EnrollmentPaymentDialog: React.FC<
                       value={phone}
                       onChange={(value) => handlePhoneChange(value)}
                       onBlur={() => setPhoneError(validatePhoneField(phone) ?? "")}
-                      inputClass="!w-full h-10 !rounded-md !border-input"
-                      buttonClass="!rounded-s-md !border-input"
+                      inputClass="!w-full h-10 !rounded-catalogue-sm !border-input"
+                      buttonClass="!rounded-s-catalogue-sm !border-input"
                       containerClass="!w-full"
                       placeholder={t("enrollmentPaymentDialog.phoneNumberPlaceholder")}
                       countryCodeEditable={false}
@@ -655,8 +654,8 @@ export const EnrollmentPaymentDialog: React.FC<
 
                   {/* OTP Verification Section */}
                   <div className="border-t pt-4 mt-4">
-                    <div className="text-center mb-4">
-                      <h4 className="text-md font-semibold text-gray-900 mb-2">
+                    <div className="text-center mb-4 space-y-2">
+                      <h4 className="text-md font-semibold text-gray-900">
                         {t("enrollmentPaymentDialog.emailVerificationHeading")}
                       </h4>
                       <p className="text-sm text-gray-600">
@@ -695,8 +694,8 @@ export const EnrollmentPaymentDialog: React.FC<
 
                     {otpSent && !isEmailVerified && (
                       <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <div className="space-y-1">
+                          <label className="block text-sm font-medium text-gray-700">
                             {t("enrollmentPaymentDialog.enterSixDigitOtp")}
                           </label>
                           <input
@@ -708,7 +707,7 @@ export const EnrollmentPaymentDialog: React.FC<
                               )
                             }
                             placeholder={t("enrollmentPaymentDialog.enterOtpPlaceholder")}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg tracking-widest"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-catalogue-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg tracking-widest"
                             maxLength={6}
                           />
                         </div>
@@ -761,7 +760,7 @@ export const EnrollmentPaymentDialog: React.FC<
 
                     {isEmailVerified && (
                       <div className="text-center">
-                        <div className="inline-flex items-center px-3 py-2 bg-green-50 border border-green-200 rounded-md">
+                        <div className="inline-flex items-center px-3 py-2 bg-green-50 border border-green-200 rounded-catalogue-sm">
                           <svg
                             className="w-4 h-4 text-green-600 me-2"
                             fill="none"
@@ -789,7 +788,7 @@ export const EnrollmentPaymentDialog: React.FC<
                 <div className="space-y-4">
                   {selectedPaymentPlan ? (
                     <>
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <div className="bg-gray-50 border border-gray-200 rounded-catalogue-md p-4">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-semibold text-gray-700">
                             {t("enrollmentPaymentDialog.courseSummary", { course })}
@@ -808,7 +807,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           </span>
                         </div>
                         <button
-                          className="text-xs font-medium ms-auto block rounded border border-gray-300 bg-white text-gray-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-blue-50/50 hover:border-blue-300"
+                          className="text-xs font-medium ms-auto block rounded-catalogue-xs border border-gray-300 bg-white text-gray-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-blue-50/50 hover:border-blue-300"
                           onClick={handleBack}
                         >
                           {t("common.edit")}
@@ -825,7 +824,7 @@ export const EnrollmentPaymentDialog: React.FC<
                             {availablePaymentPlans.map((plan) => (
                               <div
                                 key={plan.id}
-                                className={`border rounded-lg p-3 cursor-pointer transition-colors ${selectedPaymentPlan.id === plan.id
+                                className={`border rounded-catalogue-md p-3 cursor-pointer transition-colors ${selectedPaymentPlan.id === plan.id
                                   ? "border-blue-500 bg-blue-50"
                                   : "border-gray-200 hover:border-gray-300"
                                   }`}
@@ -882,7 +881,7 @@ export const EnrollmentPaymentDialog: React.FC<
 
                       {/* Single Plan Display */}
                       {availablePaymentPlans.length === 1 && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="bg-blue-50 border border-blue-200 rounded-catalogue-md p-3">
                           <div className="flex items-center justify-between">
                             <div>
                               <div className="font-medium text-gray-900">
@@ -1939,7 +1938,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
     <div className="space-y-4">
       {/* Card Element Container - Only show for paid courses */}
       {amount > 0 && vendor === "STRIPE" && (
-        <div className="min-h-12 border border-gray-300 rounded-md p-3 bg-white">
+        <div className="min-h-12 border border-gray-300 rounded-catalogue-sm p-3 bg-white">
           <CardElement
             options={{
               style: {
@@ -1990,7 +1989,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
       {/* Free course message */}
       {amount === 0 && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+        <div className="p-4 bg-green-50 border border-green-200 rounded-catalogue-sm">
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <svg

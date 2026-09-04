@@ -536,8 +536,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   if (!questions || questions.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
             <div className="w-8 h-8 text-gray-400 text-2xl font-bold">?</div>
           </div>
           <p className="text-gray-500">{t("quizViewer.noQuestionsAvailable")}</p>
@@ -1171,7 +1171,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       case "CMCQM":
       case "MCQM":
         return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack sm:gap-4 mt-4">
             {currentQuestion.options.map((option, index) => {
               const selected = Array.isArray(currentAnswer) && currentAnswer.includes(option.id);
               return (
@@ -1210,7 +1210,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       case "TRUE_FALSE":
       default:
         return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-stack sm:gap-4 mt-4">
             {currentQuestion.options.map((option, index) => {
               const selected = currentAnswer === option.id;
               return (
@@ -1277,8 +1277,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       {showWarning && <QuizTimeWarning onDismiss={() => setShowWarning(false)} />}
 
       {/* Question X of Y and Progress bar */}
-      <div className="mb-8">
-        <div className="mb-2 flex items-center justify-between">
+      <div className="mb-8 space-y-2">
+        <div className="flex items-center justify-between">
           <span className="text-sm text-gray-700 font-medium">{t("quizViewer.questionOf", { current: current + 1, total })}</span>
           <div className="ms-auto flex items-center gap-3">
             {timeLimitMinutes && timeLimitMinutes > 0 && (
@@ -1322,8 +1322,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
               </button>
             )}
             {/* Question text inside the same box */}
-            <div className="mt-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">{t("quizViewer.questionLabel")}</h3>
+            <div className="mt-4 space-y-2">
+              <h3 className="text-sm font-semibold text-gray-700">{t("quizViewer.questionLabel")}</h3>
               <div
                 className="text-sm font-medium text-gray-900 leading-relaxed rich-text-content"
                 dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || t("quizViewer.questionTextUnavailable")) }}
@@ -1332,8 +1332,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           </div>
         ) : (
           // No passage, just show question text as before
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">{t("quizViewer.questionLabel")}</h3>
+          <div className="mb-6 space-y-2">
+            <h3 className="text-sm font-semibold text-gray-700">{t("quizViewer.questionLabel")}</h3>
             <div
               className="text-sm font-medium text-gray-900 leading-relaxed rich-text-content"
               dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || t("quizViewer.questionTextUnavailable")) }}

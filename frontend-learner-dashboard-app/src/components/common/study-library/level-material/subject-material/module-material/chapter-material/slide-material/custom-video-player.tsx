@@ -1632,7 +1632,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                                         />
                                     </div>
 
-                                    <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
+                                    <div className="p-5 flex flex-col sm:flex-row items-center gap-section">
                                         <div className="flex-1 text-center sm:text-start space-y-2">
                                             <div className="flex items-center justify-center sm:justify-start gap-2.5">
                                                 <span className="relative flex h-3 w-3">
@@ -1685,7 +1685,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                                         />
                                     </div>
 
-                                    <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
+                                    <div className="p-5 flex flex-col sm:flex-row items-center gap-section">
                                         <div className="flex-1 text-center sm:text-start space-y-2">
                                             <div className="flex items-center justify-center sm:justify-start gap-2.5">
                                                 <span className="relative flex h-3 w-3">
@@ -1972,8 +1972,8 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                     {/* Error message */}
                     {error && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                            <div className="bg-white p-4 rounded-lg shadow-lg max-w-md">
-                                <p className="text-red-500 mb-2">{error}</p>
+                            <div className="bg-white p-4 rounded-lg shadow-lg max-w-md space-y-2">
+                                <p className="text-red-500">{error}</p>
                                 <button
                                     onClick={() => {
                                         setError(null);

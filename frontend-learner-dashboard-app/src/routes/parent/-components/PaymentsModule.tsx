@@ -193,10 +193,10 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
   if (allDuesError) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
-        <div className="text-center py-12">
+        <div className="text-center py-12 space-y-2">
           <Warning
             size={32}
-            className="mx-auto text-destructive/60 mb-2"
+            className="mx-auto text-destructive/60"
           />
           <p className="text-sm text-muted-foreground">
             {t("admissionPortal.fees.toast.loadFailed")}
@@ -222,11 +222,11 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+        className="grid grid-cols-1 sm:grid-cols-3 gap-stack"
       >
         <Card className="shadow-sm bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-          <CardContent className="p-4 text-center">
-            <p className="text-caption font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
+          <CardContent className="p-card text-center space-y-1">
+            <p className="text-caption font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider">
               {t("admissionPortal.fees.totalDues")}
             </p>
             <p className="text-lg sm:text-xl font-bold text-blue-700 dark:text-blue-300">
@@ -236,8 +236,8 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
         </Card>
 
         <Card className="shadow-sm bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
-          <CardContent className="p-4 text-center">
-            <p className="text-caption font-medium text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">
+          <CardContent className="p-card text-center space-y-1">
+            <p className="text-caption font-medium text-red-600 dark:text-red-400 uppercase tracking-wider">
               {t("admissionPortal.fees.overdueAmount")}
             </p>
             <p className="text-lg sm:text-xl font-bold text-red-700 dark:text-red-300">
@@ -247,8 +247,8 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
         </Card>
 
         <Card className="shadow-sm bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800">
-          <CardContent className="p-4 text-center">
-            <p className="text-caption font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">
+          <CardContent className="p-card text-center space-y-1">
+            <p className="text-caption font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
               {t("admissionPortal.fees.totalPaid")}
             </p>
             <p className="text-lg sm:text-xl font-bold text-emerald-700 dark:text-emerald-300">
@@ -289,9 +289,9 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
           >
             <Card className="shadow-sm">
               <CardContent className="p-3">
-                <div className="flex flex-col sm:flex-row items-end gap-3">
-                  <div className="w-full sm:w-40">
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                <div className="flex flex-col sm:flex-row items-end gap-stack">
+                  <div className="w-full sm:w-40 space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground block">
                       {t("admissionPortal.fees.filters.status")}
                     </label>
                     <Select
@@ -317,8 +317,8 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
                     </Select>
                   </div>
 
-                  <div className="w-full sm:w-40">
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  <div className="w-full sm:w-40 space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground block">
                       {t("admissionPortal.fees.filters.startDate")}
                     </label>
                     <Input
@@ -329,8 +329,8 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
                     />
                   </div>
 
-                  <div className="w-full sm:w-40">
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  <div className="w-full sm:w-40 space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground block">
                       {t("admissionPortal.fees.filters.endDate")}
                     </label>
                     <Input
@@ -426,7 +426,7 @@ function DuesTable({
   if (isLoading) {
     return (
       <Card className="shadow-sm">
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-card space-y-3">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
           ))}
@@ -438,10 +438,10 @@ function DuesTable({
   if (items.length === 0) {
     return (
       <Card className="shadow-sm">
-        <CardContent className="py-12 text-center">
+        <CardContent className="py-12 text-center space-y-2">
           <Receipt
             size={24}
-            className="mx-auto text-muted-foreground/40 mb-2"
+            className="mx-auto text-muted-foreground/40"
           />
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         </CardContent>
@@ -690,7 +690,7 @@ function ReceiptsTable({
   if (isLoading) {
     return (
       <Card className="shadow-sm">
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-card space-y-3">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
           ))}
@@ -702,10 +702,10 @@ function ReceiptsTable({
   if (items.length === 0) {
     return (
       <Card className="shadow-sm">
-        <CardContent className="py-12 text-center">
+        <CardContent className="py-12 text-center space-y-2">
           <Receipt
             size={24}
-            className="mx-auto text-muted-foreground/40 mb-2"
+            className="mx-auto text-muted-foreground/40"
           />
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         </CardContent>
@@ -839,8 +839,8 @@ function ReceiptsTable({
                         </div>
 
                         {invoice.line_items.length > 0 && (
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">
                               {t("admissionPortal.fees.table.installmentsCovered")}
                             </p>
                             <div className="border rounded-md overflow-hidden">

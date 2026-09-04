@@ -40,6 +40,15 @@
     "catalogStep": {
         "selectPrompt": "اختر {{courses}} التي ترغب في التسجيل بها"
     },
+    "courseFinder": {
+        "dialogHeading": "اختر صفك",
+        "showCourses": "عرض {{courses}} الخاصة بي",
+        "defaultSubheading": "اختر ما يناسبك لعرض {{courses}} المتاحة لك",
+        "courseCount": "{{count}} {{courses}}",
+        "view": "عرض",
+        "skip": "عرض كل {{courses}}",
+        "change": "تغيير الاختيار"
+    },
     "cartStep": {
         "basket": {
             "spendForTier": "أنفق {{amount}} إضافية للحصول على {{offer}} على السلة كاملة.",
@@ -208,9 +217,14 @@
             "defaultTitle": "فيديو"
         }
     },
+    "stepRail": {
+        "secureTitle": "آمن ومحمي",
+        "secureNote": "بياناتك محمية"
+    },
     "stepProgress": {
         "ariaLabel": "تقدّم التسجيل",
         "steps": {
+            "catalog": "اختر {{courses}}",
             "cart": "السلة",
             "details": "التفاصيل",
             "payment": "الدفع",
@@ -220,6 +234,8 @@
     "success": {
         "title": "تم تسجيلك بنجاح!",
         "defaultMessage": "تم تسجيلك بنجاح في {{count}} {{course}}. ابدأ التعلم الآن.",
+        "totalPaid": "إجمالي المدفوع",
+        "youSaved": "لقد وفّرت {{amount}}",
         "access": {
             "oneYear": "الوصول لمدة سنة واحدة",
             "months_zero": "الوصول لمدة {{count}} شهر",

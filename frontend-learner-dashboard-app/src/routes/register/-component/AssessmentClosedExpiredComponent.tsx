@@ -79,11 +79,11 @@ const AssessmentClosedExpiredComponent = ({
       >
         <Card className="border-0 shadow-xl shadow-slate-200/60 overflow-hidden">
           {/* Header strip */}
-          <div className="h-1.5 bg-gradient-to-r from-orange-400 via-red-400 to-pink-400" />
+          <div className="h-1.5 bg-gradient-to-r from-primary-400 via-danger-400 to-pink-400" />
 
           <CardContent className="p-8 sm:p-10">
             {/* Branding */}
-            <div className="flex flex-col items-center gap-3 mb-6">
+            <div className="flex flex-col items-center gap-stack mb-6">
               <InstituteBrandingComponent
                 branding={branding}
                 size="medium"
@@ -134,8 +134,8 @@ const AssessmentClosedExpiredComponent = ({
             </div>
 
             {/* Assessment name */}
-            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
-              <p className="text-caption font-medium text-slate-500 uppercase tracking-wider mb-1">
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-1">
+              <p className="text-caption font-medium text-slate-500 uppercase tracking-wider">
                 {t("closedExpired.assessmentLabel")}
               </p>
               <p className="text-sm font-medium text-slate-900 truncate">

@@ -580,7 +580,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                   </>
                 )}
 
-                <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+                <div className="flex flex-col sm:flex-row justify-end gap-stack pt-4">
                   <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="w-full sm:w-auto" disabled={isAdding}>
                     {t('common.cancel')}
                   </Button>

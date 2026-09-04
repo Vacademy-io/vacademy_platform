@@ -649,7 +649,7 @@ function RouteComponent() {
         </div>
 
         {/* Mobile Layout: Button at the bottom */}
-        <div className="flex flex-col gap-3 sm:hidden">
+        <div className="flex flex-col gap-stack sm:hidden">
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <h3 className="font-semibold text-lg text-neutral-800 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors">
@@ -861,8 +861,8 @@ function RouteComponent() {
 
           <div className="space-y-6 mt-4">
             {liveSessions.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-3 flex items-center gap-2">
+              <div className="space-y-stack">
+                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-danger-600 animate-pulse"></div>
                   {liveSessionsTerm}
                 </h3>
@@ -872,11 +872,11 @@ function RouteComponent() {
                     .map((session) => (
                       <div
                         key={session.schedule_id}
-                        className="p-4 border rounded-lg bg-gradient-to-r from-red-50/50 to-red-100/30 border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-900"
+                        className="p-4 border rounded-lg bg-gradient-to-r from-danger-50/50 to-danger-100/30 border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-900"
                       >
                         <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">
+                          <div className="flex-1 space-y-1">
+                            <h4 className="font-semibold text-neutral-800 dark:text-neutral-100">
                               {session.title}
                             </h4>
                             <div className="flex items-center gap-4 text-sm text-neutral-600 dark:text-neutral-300">
@@ -942,8 +942,8 @@ function RouteComponent() {
             )}
 
             {upcomingSessions.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-3 flex items-center gap-2">
+              <div className="space-y-stack">
+                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-info-600"></div>
                   {t("liveClass.dayModal.upcomingSessions", { sessions: sessionsTerm })}
                 </h3>
@@ -956,8 +956,8 @@ function RouteComponent() {
                         className="p-4 border rounded-lg bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900"
                       >
                         <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-neutral-800 dark:text-neutral-100 mb-1">
+                          <div className="flex-1 space-y-1">
+                            <h4 className="font-semibold text-neutral-800 dark:text-neutral-100">
                               {session.title}
                             </h4>
                             <div className="flex items-center gap-4 text-sm text-neutral-600 dark:text-neutral-300">
@@ -1005,8 +1005,8 @@ function RouteComponent() {
             )}
 
             {pastSessionsForDay.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-3 flex items-center gap-2">
+              <div className="space-y-stack">
+                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-neutral-400"></div>
                   {t("liveClass.dayModal.pastSessions", { sessions: sessionsTerm })}
                 </h3>
@@ -1019,8 +1019,8 @@ function RouteComponent() {
             )}
 
             {selectedDayData.sessions.length === 0 && pastSessionsForDay.length === 0 && (
-              <div className="text-center py-8">
-                <Clock size={48} className="mx-auto text-neutral-400 mb-3" />
+              <div className="text-center py-8 space-y-stack">
+                <Clock size={48} className="mx-auto text-neutral-400" />
                 <p className="text-neutral-600 dark:text-neutral-300">
                   {t("liveClass.dayModal.noneScheduled", { liveSessions: liveSessionsTerm.toLowerCase() })}
                 </p>
@@ -1233,7 +1233,7 @@ function RouteComponent() {
         {/* Legend */}
         <div className="flex items-center gap-4 mt-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-200 dark:from-red-900/40 dark:to-red-800/40 dark:border-red-900"></div>
+            <div className="w-3 h-3 rounded bg-gradient-to-r from-danger-500/20 to-danger-600/20 border border-red-200 dark:from-red-900/40 dark:to-red-800/40 dark:border-red-900"></div>
             <span className="text-neutral-600 dark:text-neutral-300">
               {liveSessionsTerm}
             </span>
@@ -1308,7 +1308,7 @@ function RouteComponent() {
     return (
       <LayoutContainer>
         <div className="flex items-center justify-center min-h-52">
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-stack">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             <div className="text-neutral-600 dark:text-neutral-300">
               {t("liveClass.state.loadingSessions")}
@@ -1351,14 +1351,14 @@ function RouteComponent() {
           <TabsList className="h-auto border-b border-neutral-200/80 dark:border-neutral-800 bg-transparent p-0">
             <TabsTrigger
               value="list"
-              className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 dark:hover:from-primary-900/20 dark:hover:to-transparent focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 dark:data-[state=active]:from-neutral-900 dark:data-[state=active]:to-primary-900/20 data-[state=inactive]:text-neutral-500 dark:data-[state=inactive]:text-neutral-400 data-[state=inactive]:hover:rounded-t-lg"
+              className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-info-50/40 dark:hover:from-primary-900/20 dark:hover:to-transparent focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 dark:data-[state=active]:from-neutral-900 dark:data-[state=active]:to-primary-900/20 data-[state=inactive]:text-neutral-500 dark:data-[state=inactive]:text-neutral-400 data-[state=inactive]:hover:rounded-t-lg"
             >
               <List size={18} className="me-2" />
               {t("liveClass.tabs.list")}
             </TabsTrigger>
             <TabsTrigger
               value="calendar"
-              className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 dark:hover:from-primary-900/20 dark:hover:to-transparent focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 dark:data-[state=active]:from-neutral-900 dark:data-[state=active]:to-primary-900/20 data-[state=inactive]:text-neutral-500 dark:data-[state=inactive]:text-neutral-400 data-[state=inactive]:hover:rounded-t-lg"
+              className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-info-50/40 dark:hover:from-primary-900/20 dark:hover:to-transparent focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 dark:data-[state=active]:from-neutral-900 dark:data-[state=active]:to-primary-900/20 data-[state=inactive]:text-neutral-500 dark:data-[state=inactive]:text-neutral-400 data-[state=inactive]:hover:rounded-t-lg"
             >
               <Calendar size={18} className="me-2" />
               {t("liveClass.tabs.calendar")}

@@ -9,6 +9,7 @@ import {
   type StudentDashboardWidgetId,
 } from "@/types/student-display-settings";
 import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from "@/constants/display-settings/student-defaults";
+import { resolveUiSkin } from "@/utils/institute-theme-roles";
 
 const LS_KEY = `${STUDENT_DISPLAY_SETTINGS_KEY}_CACHE_V1`;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -405,16 +406,24 @@ export function applyUiSkinFromSettings(
       override === "default" ||
       override === "vibrant" ||
       override === "play" ||
-      override === "cleanerPlay"
+      override === "cleanerPlay" ||
+      override === "corporate"
     ) {
       return; // QA override wins; __root's debug helpers manage it
     }
-    const t = settings?.ui?.type || "default";
+    // THEME_SETTING.roles.skin wins; ui.type is the pre-migration fallback.
+    const t = resolveUiSkin(settings?.ui?.type ?? null);
     const root = document.documentElement;
-    root.classList.remove("ui-vibrant", "ui-play", "ui-cleaner-play");
+    root.classList.remove(
+      "ui-vibrant",
+      "ui-play",
+      "ui-cleaner-play",
+      "ui-corporate"
+    );
     if (t === "vibrant") root.classList.add("ui-vibrant");
     else if (t === "play") root.classList.add("ui-play");
     else if (t === "cleanerPlay") root.classList.add("ui-cleaner-play");
+    else if (t === "corporate") root.classList.add("ui-corporate");
   } catch {
     // noop — never let skin application break a login flow
   }

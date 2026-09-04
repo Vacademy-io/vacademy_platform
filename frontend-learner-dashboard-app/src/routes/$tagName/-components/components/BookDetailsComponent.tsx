@@ -144,10 +144,10 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                 {/* Book Image Section - Larger on Mobile */}
                 <div className="w-full md:w-2/5 lg:w-1/3 mb-4 md:mb-0">
                     <div className="md:sticky md:top-24">
-                        <div className="relative aspect-[9/16] w-full max-w-reg-280 mx-auto md:max-w-none rounded-xl overflow-hidden shadow-2xl bg-gray-100 transition-transform duration-300 hover:shadow-3xl">
+                        <div className="relative aspect-[9/16] w-full max-w-reg-280 mx-auto md:max-w-none rounded-catalogue-lg overflow-hidden shadow-2xl bg-gray-100 transition-transform duration-300 hover:shadow-3xl">
                             {/* Stock Indicator Overlay */}
                             {courseData.available_slots !== undefined && (
-                                <div className="absolute top-2 start-2 z-20 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-2 border border-white/20">
+                                <div className="absolute top-2 start-2 z-20 px-3 py-1.5 rounded-catalogue-md text-xs font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-2 border border-white/20">
                                     {courseData.available_slots > 5 ? (
                                         <>
                                             <div className="w-2 h-2 rounded-full bg-green-500 shadow-glow-live-green" />
@@ -201,7 +201,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                             <h1 className="text-xl sm:text-2xl md:text-2xl font-semibold text-gray-900 leading-snug">
                                 {courseData.title}
                             </h1>
-                            <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap mt-1 ${
+                            <span className={`px-2 py-1 rounded-catalogue-xs text-xs font-semibold whitespace-nowrap mt-1 ${
                               cartMode === 'rent'
                                 ? 'text-blue-600 bg-blue-50'
                                 : 'text-green-600 bg-green-50'
@@ -238,8 +238,8 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                     <div className="p-4 sm:p-5">
                         {/* Show Price for Buy mode */}
                         {cartMode === 'buy' && (
-                            <div className="mb-4 pb-3 border-b border-gray-200">
-                                <p className="text-sm text-gray-500 mb-1">{t("bookDetails.price")}</p>
+                            <div className="mb-4 pb-3 border-b border-gray-200 space-y-1">
+                                <p className="text-sm text-gray-500">{t("bookDetails.price")}</p>
                                 <PriceWithMrp
                                     actual={courseData.price}
                                     elevated={courseData.elevatedPrice}
@@ -258,11 +258,11 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                             if (isBuyMode && existingItem) {
                                 return (
                                     <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-1 border border-gray-200 rounded-lg bg-gray-50 shadow-sm hover:bg-gray-100 transition-colors">
+                                        <div className="flex items-center gap-1 border border-gray-200 rounded-catalogue-md bg-gray-50 shadow-sm hover:bg-gray-100 transition-colors">
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-9 w-9 hover:bg-white active:bg-gray-200 rounded-s-lg transition-all duration-150"
+                                                className="h-9 w-9 hover:bg-white active:bg-gray-200 rounded-s-catalogue-md transition-all duration-150"
                                                 onClick={async () => {
                                                     if (courseData.enrollInviteId) {
                                                         await updateQuantity(courseData.enrollInviteId, existingItem.quantity - 1);
@@ -277,7 +277,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-9 w-9 hover:bg-white active:bg-gray-200 rounded-e-lg transition-all duration-150"
+                                                className="h-9 w-9 hover:bg-white active:bg-gray-200 rounded-e-catalogue-md transition-all duration-150"
                                                 onClick={async () => {
                                                     if (courseData.enrollInviteId) {
                                                         await updateQuantity(courseData.enrollInviteId, existingItem.quantity + 1);
@@ -291,7 +291,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                         </div>
                                         {/* Go to Cart button */}
                                         <Button
-                                            className="bg-primary-400 hover:bg-primary-500 text-white font-semibold text-sm py-2 px-4 rounded-lg shadow-md flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                                            className="bg-primary-400 hover:bg-primary-500 text-white font-semibold text-sm py-2 px-4 rounded-catalogue-md shadow-md flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                                             onClick={() => {
                                                 const pathTag = window.location.pathname.split('/').filter(Boolean)[0] || 'collections';
                                                 navigate({ to: `/${pathTag}/cart` });
@@ -310,14 +310,14 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                     <div className="flex items-center gap-3">
                                         <Button
                                             disabled
-                                            className="flex-1 bg-green-100 text-green-700 font-semibold text-sm py-2.5 px-6 rounded-lg border border-green-200 flex items-center justify-center gap-2 shadow-sm"
+                                            className="flex-1 bg-green-100 text-green-700 font-semibold text-sm py-2.5 px-6 rounded-catalogue-md border border-green-200 flex items-center justify-center gap-2 shadow-sm"
                                         >
                                             <CheckCircle className="h-4 w-4" />
                                             {t("bookDetails.added")}
                                         </Button>
                                         {/* Go to Cart button */}
                                         <Button
-                                            className="bg-primary-400 hover:bg-primary-500 text-white font-semibold text-sm py-2.5 px-4 rounded-lg shadow-md flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                                            className="bg-primary-400 hover:bg-primary-500 text-white font-semibold text-sm py-2.5 px-4 rounded-catalogue-md shadow-md flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                                             onClick={() => {
                                                 const pathTag = window.location.pathname.split('/').filter(Boolean)[0] || 'collections';
                                                 navigate({ to: `/${pathTag}/cart` });
@@ -333,7 +333,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                             // Show Add to Cart button
                             return (
                                 <Button
-                                    className="w-min-[40px] sm:w-auto bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 px-6 rounded-lg shadow-md transform transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                                    className="w-min-[40px] sm:w-auto bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 px-6 rounded-catalogue-md shadow-md transform transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
                                     onClick={async () => {
                                         if (courseData.enrollInviteId) {
                                             await addItem({
@@ -368,8 +368,8 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                     </div>
 
                     {/* About Book Section */}
-                    <div className="pt-2">
-                        <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 pb-2 border-b border-gray-200">
+                    <div className="pt-2 space-y-stack">
+                        <h3 className="text-base sm:text-lg font-semibold text-gray-900 pb-2 border-b border-gray-200">
                             {t("bookDetails.aboutThisBook")}
                         </h3>
                         <div

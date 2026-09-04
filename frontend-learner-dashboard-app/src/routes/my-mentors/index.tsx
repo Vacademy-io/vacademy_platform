@@ -113,7 +113,7 @@ function MyMentorsPage() {
     ];
 
     return (
-        <div className="flex flex-col gap-6 p-4 sm:p-6">
+        <div className="flex flex-col gap-section p-4 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col">
                     <h1 className="text-h3 font-semibold text-neutral-700">{t("myMentors.page.title")}</h1>
@@ -411,7 +411,7 @@ function MyRequestsTab({
     }
 
     return (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-stack">
             {requests.map((r) => (
                 <div
                     key={r.id}

@@ -16,9 +16,11 @@ import {
     Plus,
     Trash as Trash2,
     ArrowSquareOut as ExternalLink,
+    MagicWand,
 } from '@phosphor-icons/react';
 import type { MappingRow, ProductPageSettings } from '../-types/product-page-types';
 import { BasketPricingEditor } from './BasketPricingEditor';
+import { CourseFinderEditor } from './CourseFinderEditor';
 import { OffersEditor } from './OffersEditor';
 
 interface ProductPageSettingsCardProps {
@@ -311,6 +313,35 @@ export const ProductPageSettingsCard = ({
                                               },
                                           ],
                                     enabled: !(settings.offers?.enabled ?? false),
+                                },
+                            }),
+                    },
+                    {
+                        icon: MagicWand,
+                        color: 'text-sky-500 bg-sky-50',
+                        label: 'Course Finder',
+                        description: 'Ask “which class?” first, then show only those courses',
+                        checked: settings.courseFinder?.enabled ?? false,
+                        panel: settings.courseFinder ? (
+                            <CourseFinderEditor
+                                value={settings.courseFinder}
+                                courses={courses ?? []}
+                                onChange={(courseFinder) => update({ courseFinder })}
+                            />
+                        ) : null,
+                        onChange: () =>
+                            update({
+                                courseFinder: {
+                                    // Buttons are kept across an off/on cycle —
+                                    // turning the screen off to preview the page
+                                    // must not throw away the grouping work.
+                                    heading: settings.courseFinder?.heading ?? '',
+                                    subheading: settings.courseFinder?.subheading ?? '',
+                                    changeLabel: settings.courseFinder?.changeLabel ?? '',
+                                    allowSkip: settings.courseFinder?.allowSkip ?? false,
+                                    skipLabel: settings.courseFinder?.skipLabel ?? '',
+                                    groups: settings.courseFinder?.groups ?? [],
+                                    enabled: !(settings.courseFinder?.enabled ?? false),
                                 },
                             }),
                     },

@@ -292,7 +292,7 @@ const ScormSlideComponent = ({
     if (isLoading) {
         return (
             <div className="flex h-full w-full items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
+                <div className="flex flex-col items-center gap-stack">
                     <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-200 border-t-primary-500"></div>
                     <p className="text-sm text-neutral-500">
                         {t('scormSlide.loading')}
@@ -305,8 +305,8 @@ const ScormSlideComponent = ({
     if (error) {
         return (
             <div className="flex h-full w-full items-center justify-center">
-                <div className="text-center">
-                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
+                <div className="text-center space-y-4">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
                         <svg
                             className="h-7 w-7 text-red-500"
                             fill="none"

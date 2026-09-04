@@ -39,7 +39,7 @@ export const UnsubscribeSummaryCard = ({
 
   return (
     <Card className="w-full border border-slate-200/70 bg-white/90 shadow-lg ring-1 ring-white/40 backdrop-blur">
-      <CardContent className="space-y-6 p-6 sm:p-7">
+      <CardContent className="space-y-6 p-card-lg sm:p-7">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -124,7 +124,7 @@ const SummaryIllustration = ({
         initial={{ scale: 0.75, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-        className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-100 via-emerald-200 to-emerald-100 shadow-inner"
+        className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-success-100 via-success-200 to-success-100 shadow-inner"
       >
         <motion.span
           initial={{ scale: 0.8, opacity: 0 }}

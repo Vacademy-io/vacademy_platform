@@ -99,7 +99,7 @@ export const CertificateCompletionBanner = ({
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                         {/* Certificate Icon */}
                         <div className={cn(
-                            "flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-lg",
+                            "flex-shrink-0 w-10 h-10 bg-gradient-to-br from-success-500 to-success-600 rounded-full flex items-center justify-center shadow-lg",
                             // Vibrant — flat semantic success disc (status)
                             "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-success-600 [.ui-vibrant_&]:shadow-md",
                             // Play Styles — white icon disc with soft shadow
@@ -109,14 +109,14 @@ export const CertificateCompletionBanner = ({
                         </div>
 
                         {/* Content */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
+                        <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2">
                                 <h3 className="text-base font-semibold text-black dark:text-white">
                                     🎉 {t("certificate.completedTitle", { course })}
                                 </h3>
                                 {/* <div className={`px-2 py-1 text-xs font-medium rounded-full ${
                                     percentageCompleted === 100 
-                                        ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white dark:text-white' 
+                                        ? 'bg-gradient-to-br from-success-500 to-success-600 text-white dark:text-white' 
                                         : 'bg-green-100 dark:bg-green-800/50 text-green-700 dark:text-green-300'
                                 }`}>
                                     {percentageCompleted}% Complete

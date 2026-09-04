@@ -1,10 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  getTerminology,
-  getTerminologyPlural,
-} from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCourseTerms } from "@/routes/$tagName/-utils/catalogue-naming";
 import {
   Gift,
   Lock,
@@ -65,11 +61,9 @@ export const OrderSummaryPanel = ({
   const { t } = useTranslation("productPages");
   // The institute's own word, so nothing here says "subject" on a page that
   // calls them Programmes.
-  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course).toLocaleLowerCase();
-  const coursesTerm = getTerminologyPlural(
-    ContentTerms.Course,
-    SystemTerms.Course,
-  ).toLocaleLowerCase();
+  const terms = useCourseTerms();
+  const courseTerm = terms.course.toLocaleLowerCase();
+  const coursesTerm = terms.courses.toLocaleLowerCase();
 
   const {
     selectedPsOptionIds,

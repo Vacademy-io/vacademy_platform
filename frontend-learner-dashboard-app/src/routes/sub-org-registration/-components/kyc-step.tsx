@@ -307,7 +307,7 @@ const KycStep = ({
 
           {instructionsCallout}
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+          <div className="flex flex-col-reverse gap-stack sm:flex-row sm:justify-between">
             {backButton}
             <MyButton
               type="button"
@@ -327,7 +327,7 @@ const KycStep = ({
       {/* Waiting — user is completing consent in the DigiLocker tab */}
       {uiState === "WAITING" && (
         <div className="space-y-5">
-          <div className="flex flex-col items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-8 text-center">
+          <div className="flex flex-col items-center gap-stack rounded-lg border border-primary-200 bg-primary-50 px-4 py-8 text-center">
             <SpinnerGap className="size-8 animate-spin text-primary-500" />
             <div>
               <p className="text-sm font-medium text-neutral-700">
@@ -343,8 +343,8 @@ const KycStep = ({
             <div className="rounded-lg border border-warning-200 bg-warning-50 p-4">
               <div className="flex gap-3">
                 <WarningCircle className="mt-0.5 size-5 flex-shrink-0 text-warning-600" />
-                <div className="text-sm text-warning-700">
-                  <p className="mb-1 font-medium">
+                <div className="text-sm text-warning-700 space-y-1">
+                  <p className="font-medium">
                     {t("subOrgRegistration.kyc.tabBlocked")}
                   </p>
                   <a
@@ -380,7 +380,7 @@ const KycStep = ({
       {/* Verified — show extracted details + gated Continue */}
       {uiState === "VERIFIED" && (
         <div className="space-y-5">
-          <div className="flex flex-col items-center gap-3 rounded-lg border border-success-200 bg-success-50 px-4 py-6 text-center">
+          <div className="flex flex-col items-center gap-stack rounded-lg border border-success-200 bg-success-50 px-4 py-6 text-center">
             <CheckCircle weight="fill" className="size-10 text-success-600" />
             <p className="text-base font-semibold text-neutral-700">
               {t("subOrgRegistration.kyc.verifiedSuccess")}
@@ -424,7 +424,7 @@ const KycStep = ({
             </dl>
           )}
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+          <div className="flex flex-col-reverse gap-stack sm:flex-row sm:justify-between">
             {backButton}
             <MyButton
               type="button"
@@ -456,8 +456,8 @@ const KycStep = ({
           <div className="rounded-lg border border-warning-200 bg-warning-50 p-4">
             <div className="flex gap-3">
               <WarningCircle className="mt-0.5 size-5 flex-shrink-0 text-warning-600" />
-              <div className="text-sm text-warning-700">
-                <p className="mb-1 font-medium">
+              <div className="text-sm text-warning-700 space-y-1">
+                <p className="font-medium">
                   {t("subOrgRegistration.kyc.verificationNotCompleted")}
                 </p>
                 <p>
@@ -470,7 +470,7 @@ const KycStep = ({
 
           {instructionsCallout}
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+          <div className="flex flex-col-reverse gap-stack sm:flex-row sm:justify-between">
             {backButton}
             <MyButton
               type="button"

@@ -154,7 +154,7 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-catalogue-lg bg-primary-50">
             <MagicWand className="h-5 w-5 text-primary-500" weight="fill" aria-hidden="true" />
           </div>
           <h2 className="text-lg font-semibold text-catalogue-text-primary">
@@ -186,11 +186,11 @@ export const CourseFinderWizard: React.FC<CourseFinderWizardProps> = ({
             {currentOptions.map((option) => (
               <label
                 key={option.id}
-                className="flex cursor-pointer items-center rounded-md px-2 py-2 text-catalogue-text-secondary transition-colors hover:bg-catalogue-bg-subtle hover:text-catalogue-text-primary"
+                className="flex cursor-pointer items-center rounded-catalogue-sm px-2 py-2 text-catalogue-text-secondary transition-colors hover:bg-catalogue-bg-subtle hover:text-catalogue-text-primary"
               >
                 <input
                   type="checkbox"
-                  className="form-checkbox h-4 w-4 rounded border-catalogue-border text-primary-500 focus:ring-primary-400 me-2.5"
+                  className="form-checkbox h-4 w-4 rounded-catalogue-xs border-catalogue-border text-primary-500 focus:ring-primary-400 me-2.5"
                   checked={currentSelected.includes(option.id)}
                   onChange={() => toggleOption(option.id)}
                 />

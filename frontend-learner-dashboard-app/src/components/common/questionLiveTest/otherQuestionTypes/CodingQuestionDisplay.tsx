@@ -300,7 +300,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
     );
 
     return (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-stack md:grid-cols-2">
             {/* Problem panel */}
             <div className="rounded border bg-background p-3">
                 <div

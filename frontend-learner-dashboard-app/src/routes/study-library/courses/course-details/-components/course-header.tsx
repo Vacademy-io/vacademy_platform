@@ -73,7 +73,7 @@ export const CourseHeader = ({
               <div className="h-10 w-3/4 max-w-lg animate-pulse rounded bg-muted" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-section lg:gap-10 items-center">
               <div className="space-y-3 animate-fade-in-up">
                 <div className="h-5 w-24 animate-pulse rounded bg-muted" />
                 <div className="h-10 w-4/5 animate-pulse rounded bg-muted" />

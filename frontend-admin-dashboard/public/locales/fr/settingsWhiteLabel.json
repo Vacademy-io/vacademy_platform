@@ -55,7 +55,24 @@
         "phone": {
             "heading": "Préférences de saisie du téléphone",
             "preferredCountriesLabel": "Pays préférés",
-            "preferredCountriesHint": "Le premier pays sélectionné est présélectionné dans les champs téléphone des portails apprenant et administrateur. La liste complète détermine l'ordre du sélecteur de pays. Utilisez les flèches ↑ / ↓ sur chaque puce pour réorganiser."
+            "preferredCountriesHint": "Le premier pays sélectionné est présélectionné dans les champs téléphone des portails apprenant et administrateur. La liste complète détermine l'ordre du sélecteur de pays. Utilisez les flèches ↑ / ↓ sur chaque puce pour réorganiser.",
+            "geoModeLabel": "Quand un formulaire est ouvert à l'étranger",
+            "geoModePreview": "Vous êtes en {{detected}}. Avec ces réglages, un champ téléphone sur ce portail démarrerait sur {{resolved}}. Ajoutez ?phoneCountry=ru à l'URL d'un formulaire pour prévisualiser un autre pays.",
+            "geoModePreviewUnknown": "Votre région n'a pas pu être détectée depuis ce navigateur ; la valeur de repli s'applique : un champ téléphone démarrerait sur {{resolved}}.",
+            "geoModes": {
+                "INSTITUTE_FIRST": {
+                    "label": "Les pays préférés priment",
+                    "hint": "La liste ci-dessus décide. Le pays depuis lequel le formulaire est ouvert n'est utilisé que si vous n'avez sélectionné aucun pays préféré — un formulaire ouvert en Russie démarre alors sur +7 au lieu de l'Inde."
+                },
+                "GEO_FIRST": {
+                    "label": "Suivre le pays du visiteur",
+                    "hint": "Le pays depuis lequel le formulaire est ouvert est pré-sélectionné ; vos pays préférés ordonnent le reste du sélecteur. Idéal si vous recrutez dans plusieurs pays."
+                },
+                "INSTITUTE_ONLY": {
+                    "label": "Pays préférés uniquement",
+                    "hint": "Ne jamais tenir compte du lieu d'ouverture du formulaire. À choisir si tous les numéros collectés appartiennent à un seul pays."
+                }
+            }
         },
         "routes": {
             "heading": "Routes",
@@ -116,8 +133,8 @@
         "domainPlaceholder": "learn.myschool.com",
         "primary": "Principal",
         "setPrimary": "Définir comme principal",
-        "primaryTooltip": "Domaine principal pour ce rôle",
-        "setPrimaryTooltip": "Définir comme principal",
+        "primaryTooltip": "URL du portail pour ce rôle — utilisée dans les e-mails une fois le domaine actif",
+        "setPrimaryTooltip": "Utiliser ce domaine comme URL du portail pour ce rôle",
         "settingsToggle": "Paramètres",
         "toggleSettingsTooltip": "Afficher/masquer les paramètres",
         "removeTooltip": "Supprimer",
@@ -131,7 +148,8 @@
         "noInstituteSelected": "Aucun établissement sélectionné",
         "addAtLeastOneDomain": "Ajoutez au moins une entrée de domaine",
         "setupCompleted": "Configuration en marque blanche terminée ! 🎉",
-        "setupFailed": "Échec de la configuration."
+        "setupFailed": "Échec de la configuration.",
+        "portalUrlAdopted": "L'URL du portail {{roles}} est maintenant active et enregistrée."
     },
     "setupResult": {
         "title": "Configuration terminée",
@@ -179,6 +197,17 @@
             "logoWidth": "Largeur du logo (px)",
             "logoHeight": "Hauteur du logo (px)",
             "stackNameBelowLogo": "Nom empilé sous le logo"
-        }
+        },
+        "portalUrl": "URL du portail",
+        "portalUrlTooltip": "Les e-mails et les liens partagés utilisent actuellement ce domaine",
+        "primaryPending": "Principal · en attente",
+        "primaryPendingTooltip": "Choisi comme URL du portail — enregistré dès que ce domaine est actif",
+        "willBeAdoptedOnceActive": "Choisi comme URL du portail. Il sera enregistré automatiquement dès que ce domaine sera actif — d'ici là, les e-mails et les liens continueront d'utiliser l'URL du portail actuelle."
+    },
+    "subOrg": {
+        "label": "Sous-organisation",
+        "none": "Établissement parent",
+        "untitled": "Sous-organisation sans nom",
+        "badgeTooltip": "Ce portail est aux couleurs de cette sous-organisation et lui est réservé"
     }
 }

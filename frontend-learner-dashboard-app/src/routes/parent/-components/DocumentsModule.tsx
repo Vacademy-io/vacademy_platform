@@ -126,8 +126,8 @@ export function DocumentsModule({ child }: DocumentsModuleProps) {
                 background: `linear-gradient(to right, rgb(16 185 129) ${progress.percent}%, rgb(229 231 235) ${progress.percent}%)`,
               }}
             />
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
+            <CardContent className="p-card space-y-stack">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShieldCheck size={18} className="text-primary" />
                   <p className="text-sm font-semibold text-foreground">
@@ -269,7 +269,7 @@ function DocumentCard({
             : ""
       }`}
     >
-      <CardContent className="p-4">
+      <CardContent className="p-card">
         <div className="flex items-start gap-3">
           {/* Icon */}
           <div className={`p-2 rounded-lg shrink-0 ${statusConfig.iconBg}`}>

@@ -57,7 +57,7 @@ export function VerifiedByCertificate({
         // design-lint-ignore: dynamic institute branding
         style={accent ? { backgroundColor: accent } : undefined}
       />
-      <header className="flex flex-col items-center gap-3 px-6 pb-5 pt-6 text-center">
+      <header className="flex flex-col items-center gap-stack px-6 pb-5 pt-6 text-center">
         {logoUrl ? (
           <img
             src={logoUrl}
@@ -92,7 +92,7 @@ export function VerifiedByCertificate({
           page confirms that *a* certificate exists rather than the one in the
           reader's hand. What else is listed is the institute's to decide, and
           `undefined` means they never decided — so it shows. */}
-      <dl className="flex flex-col gap-3 px-6 py-6">
+      <dl className="flex flex-col gap-stack px-6 py-6">
         <Row label={t("verify.certificate.issuedTo")} value={data.learner_name || "—"} />
         {data.show_course !== false && <Row label={course} value={data.course_name || "—"} />}
         <Row label={t("verify.certificate.certificateNumber")} value={data.certificate_id} mono />

@@ -735,8 +735,8 @@ export function ComprehensiveReportCard({ data, processId }: ComprehensiveReport
 
         {/* ── 3. PARENT SUMMARY ── */}
         {data.parent_summary && (
-          <div className="rounded-xl border border-primary-200 border-s-4 border-s-primary-500 bg-primary-50 p-5 mb-5">
-            <p className="font-semibold text-neutral-800 mb-2 flex items-center gap-2">
+          <div className="rounded-xl border border-primary-200 border-s-4 border-s-primary-500 bg-primary-50 p-5 mb-5 space-y-2">
+            <p className="font-semibold text-neutral-800 flex items-center gap-2">
               <Info size={16} className="text-primary-500 shrink-0" />
               {t("comprehensiveReportCard.parentSummary.title")}
             </p>

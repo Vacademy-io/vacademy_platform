@@ -286,7 +286,7 @@ function FeedbackPage() {
   if (loading) {
     return (
       <FeedbackShell>
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        <div className="flex flex-col items-center gap-stack text-muted-foreground">
           <CircleNotch className="h-8 w-8 animate-spin text-primary-500" />
           <p className="text-body">{t("liveClass.feedback.loadingForm")}</p>
         </div>

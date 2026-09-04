@@ -279,7 +279,7 @@ export function QuestionDisplay() {
           case QUESTION_TYPES.TRUE_FALSE:
             return (
               <div
-                className="flex flex-col gap-3"
+                className="flex flex-col gap-stack"
                 role={isMultiSelect ? "group" : "radiogroup"}
                 aria-label={t("questionDisplay.answerOptionsAriaLabel")}
               >

@@ -7,7 +7,7 @@ import { SpinnerGap, User, Envelope, Phone, CaretRight, CheckCircle } from "@pho
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { isValidPhoneValue } from "@/lib/phone-validation";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { getAccessToken, isTokenExpired } from "@/lib/auth/sessionUtility";
 import { Preferences } from "@capacitor/preferences";
 import {
@@ -81,13 +81,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const [emailError, setEmailError] = useState("");
     const [phoneError, setPhoneError] = useState("");
 
-    // Institute-configured preferred countries (sourced from domain routing).
-    // First entry is the default selected country; the full list orders the dropdown.
-    const preferredCountries = React.useMemo(() => {
-        const cached = getCachedPreferredCountries();
-        return cached.length > 0 ? cached : ["in", "us", "gb", "au", "ae"];
-    }, []);
-    const defaultPhoneCountry = preferredCountries[0] ?? "in";
+    // What this phone field starts on: the institute's configured preferred
+    // countries, or — when it configured none, or the portal is on GEO_FIRST —
+    // the country the visitor is opening this page from. Resolved once per
+    // mount; the browser's timezone cannot change under an open dialog.
+    const { defaultCountry: defaultPhoneCountry, preferredCountries } =
+        React.useMemo(() => getPreferredPhoneCountries(), []);
     const [nameError, setNameError] = useState("");
 
     const [paymentPlanData, setPaymentPlanData] = useState<any>(null);
@@ -649,7 +648,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
             <DialogPrimitive.Portal>
                 <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
-                <DialogPrimitive.Content className="fixed start-1/2 top-1/2 z-50 w-pct-95 max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-0 shadow-2xl focus:outline-none overflow-hidden flex flex-col max-h-screen-90">
+                <DialogPrimitive.Content className="fixed start-1/2 top-1/2 z-50 w-pct-95 max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-catalogue-lg bg-white p-0 shadow-2xl focus:outline-none overflow-hidden flex flex-col max-h-screen-90">
 
                     {/* Compact Header */}
                     <div className="bg-primary-600 px-5 py-2 text-white flex justify-between items-center shrink-0">
@@ -674,7 +673,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                         ) : (
                             <>
                                 {!showFullForm && (
-                                    <div className="bg-primary-50 p-3 rounded-xl border border-primary-100 flex items-start gap-3 mb-2">
+                                    <div className="bg-primary-50 p-3 rounded-catalogue-lg border border-primary-100 flex items-start gap-3 mb-2">
                                         <div className="bg-primary-100 p-2 rounded-full mt-0.5 shrink-0">
                                             <User className="h-4 w-4 text-primary-600" />
                                         </div>
@@ -697,7 +696,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                         type="text"
                                         value={fullName}
                                         onChange={(e) => setFullName(e.target.value)}
-                                        className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium ${nameError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
+                                        className={`w-full px-3 py-2 bg-gray-50 border rounded-catalogue-md transition-all focus:bg-white focus:ring-2 text-sm font-medium ${nameError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
                                         placeholder={t("checkoutForm.placeholders.name")}
                                     />
                                     {nameError && <p className="text-red-500 text-caption font-semibold">{nameError}</p>}
@@ -712,7 +711,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                         type="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium ${emailError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
+                                        className={`w-full px-3 py-2 bg-gray-50 border rounded-catalogue-md transition-all focus:bg-white focus:ring-2 text-sm font-medium ${emailError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
                                         placeholder={t("checkoutForm.placeholders.email")}
                                     />
                                     {emailError && <p className="text-red-500 text-caption font-semibold">{emailError}</p>}
@@ -735,10 +734,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                     setPhone(value);
                                                     if (phoneOtpSent) setPhoneOtpSent(false);
                                                 }}
-                                                inputClass={`!w-full !px-3 !py-2 !ps-12 !h-10 !bg-gray-50 !border ${phoneError ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-2 focus:!ring-primary-50 ${isPhoneVerified ? "!text-green-700 !bg-green-50/50 !border-green-200" : ""}`}
+                                                inputClass={`!w-full !px-3 !py-2 !ps-12 !h-10 !bg-gray-50 !border ${phoneError ? "!border-red-300" : "!border-gray-200"} !rounded-catalogue-md !text-sm !font-medium focus:!bg-white focus:!ring-2 focus:!ring-primary-50 ${isPhoneVerified ? "!text-green-700 !bg-green-50/50 !border-green-200" : ""}`}
                                                 containerClass="!w-full"
-                                                buttonClass={`!rounded-s-lg !border-gray-200 !bg-gray-50 !w-10 ${isPhoneVerified ? "!bg-green-50/50 !border-green-200" : ""}`}
-                                                dropdownClass="!rounded-lg !shadow-xl"
+                                                buttonClass={`!rounded-s-catalogue-md !border-gray-200 !bg-gray-50 !w-10 ${isPhoneVerified ? "!bg-green-50/50 !border-green-200" : ""}`}
+                                                dropdownClass="!rounded-catalogue-md !shadow-xl"
                                             />
                                             {isPhoneVerified && <CheckCircle className="absolute end-2.5 top-2.5 h-4 w-4 text-green-500 z-10" />}
                                         </div>
@@ -765,7 +764,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                 type="text"
                                                 value={otp}
                                                 onChange={(e) => setOtp(e.target.value)}
-                                                className="flex-1 px-3 py-1.5 bg-white border border-primary-300 rounded-lg text-sm font-bold tracking-wider-2 text-center focus:ring-2 focus:ring-primary-50"
+                                                className="flex-1 px-3 py-1.5 bg-white border border-primary-300 rounded-catalogue-md text-sm font-bold tracking-wider-2 text-center focus:ring-2 focus:ring-primary-50"
                                                 placeholder={t("checkoutForm.placeholders.otp")}
                                                 maxLength={6}
                                                 autoFocus
@@ -794,7 +793,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
                                 {/* Compact Summary */}
                                 {additionalCharges.length > 0 ? (
-                                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1">
+                                    <div className="bg-gray-50 rounded-catalogue-lg p-3 border border-gray-100 space-y-1">
                                         <div className="flex justify-between text-xs text-gray-700">
                                             <span>{t("checkoutForm.summary.subtotalCount", { count: items.length })}</span>
                                             <span className="font-medium">₹{(totalAmount - sumChargeAmounts(additionalCharges)).toFixed(2)}</span>
@@ -811,7 +810,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center justify-between">
+                                    <div className="bg-gray-50 rounded-catalogue-lg p-3 border border-gray-100 flex items-center justify-between">
                                         <div className="flex flex-col">
                                             <span className="text-caption text-gray-500 font-bold uppercase tracking-tight">{t("checkoutForm.summary.orderTotal")}</span>
                                             <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(0)}</span>
@@ -834,7 +833,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                             buttonType="primary"
                             scale="large"
                             layoutVariant="default"
-                            className="w-full h-11 text-base font-bold shadow-lg shadow-primary-100 active:scale-[0.98] transition-all rounded-lg flex items-center justify-center gap-2"
+                            className="w-full h-11 text-base font-bold shadow-lg shadow-primary-100 active:scale-[0.98] transition-all rounded-catalogue-md flex items-center justify-center gap-2"
                             onClick={handleCheckout}
                             disabled={loading || isInitializing || !isPhoneVerified}
                         >

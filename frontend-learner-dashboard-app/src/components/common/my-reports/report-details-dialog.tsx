@@ -24,8 +24,8 @@ export default function ReportDetailsDialog({
   if (!report) return null;
 
   const renderSection = (title: string, content: string) => (
-    <Card className="mb-6 p-2">
-      <CardTitle className="text-lg font-semibold text-neutral-800 mb-3">
+    <Card className="mb-6 p-2 space-y-stack">
+      <CardTitle className="text-lg font-semibold text-neutral-800">
         {title}
       </CardTitle>
       <CardContent className="prose prose-sm max-w-none">
@@ -52,8 +52,8 @@ export default function ReportDetailsDialog({
     }
 
     return (
-      <Card className="mb-6 w-full p-2">
-        <CardTitle className="text-lg font-semibold text-neutral-800 mb-3">
+      <Card className="mb-6 w-full p-2 space-y-stack">
+        <CardTitle className="text-lg font-semibold text-neutral-800">
           {title}
         </CardTitle>
         <CardContent className="grid gap-4">

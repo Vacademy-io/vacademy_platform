@@ -75,7 +75,7 @@ function OnboardingPage() {
   const isLoadingAny = isResolvingInstitute || (Boolean(instituteId) && isLoading);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-1 py-4">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-section px-1 py-4">
       <div>
         <h1 className="text-h3 font-semibold text-neutral-700">{t("onboarding.title")}</h1>
         <p className="mt-1 text-sm text-neutral-500">
@@ -93,7 +93,7 @@ function OnboardingPage() {
           variant="outlined"
           padding="lg"
           rounded="lg"
-          className="flex flex-col items-center gap-3 text-center"
+          className="flex flex-col items-center gap-stack text-center"
         >
           <Warning className="size-8 text-danger-500" />
           <p className="text-sm text-neutral-600">
@@ -112,7 +112,7 @@ function OnboardingPage() {
           variant="subtle"
           padding="lg"
           rounded="lg"
-          className="flex flex-col items-center gap-3 py-10 text-center"
+          className="flex flex-col items-center gap-stack py-10 text-center"
         >
           <ClipboardText className="size-8 text-neutral-400" />
           <p className="text-sm text-neutral-600">
@@ -200,8 +200,8 @@ function OnboardingInstanceCard({ instance }: OnboardingInstanceCardProps) {
         </ModernCard>
       )}
 
-      <ModernCard variant="outlined" padding="md" rounded="lg">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+      <ModernCard className="space-y-2" variant="outlined" padding="md" rounded="lg">
+        <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
           {t("onboarding.progress")}
         </p>
         <OnboardingProgressList stepInstances={instance.step_instances} />

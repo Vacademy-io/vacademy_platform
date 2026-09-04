@@ -9,7 +9,7 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { isValidPhoneValue } from "@/lib/phone-validation";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 
 interface FieldOption {
   label: string;
@@ -140,12 +140,12 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   }, [isOpen]);
 
   // Validation functions
-  // Preferred / default phone country — same source the enroll-invite flow uses.
-  const preferredCountries = React.useMemo(() => {
-    const cached = getCachedPreferredCountries();
-    return cached && cached.length > 0 ? cached : ["in"];
-  }, []);
-  const defaultPhoneCountry = preferredCountries[0] ?? "in";
+  // What this phone field starts on: the institute's configured preferred
+  // countries, or — when it configured none, or the portal is on GEO_FIRST —
+  // the country the visitor is opening this page from. Resolved once per
+  // mount; the browser's timezone cannot change under an open dialog.
+  const { defaultCountry: defaultPhoneCountry, preferredCountries } =
+    React.useMemo(() => getPreferredPhoneCountries(), []);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -544,8 +544,8 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
               enableSearch={true}
               value={fieldValue}
               onChange={(value) => handleInputChange(field.name, value)}
-              inputClass="!w-full !h-11 !rounded-md !border-gray-300"
-              buttonClass="!rounded-s-md !border-gray-300"
+              inputClass="!w-full !h-11 !rounded-catalogue-sm !border-gray-300"
+              buttonClass="!rounded-s-catalogue-sm !border-gray-300"
               containerClass="!w-full"
               placeholder={t("leadCollectionModal.phonePlaceholder")}
               countryCodeEditable={false}
@@ -558,7 +558,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
               id={field.name}
               value={fieldValue}
               onChange={(e) => handleInputChange(field.name, e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+              className={`w-full px-3 py-2 border rounded-catalogue-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
                 field.type === 'email' && fieldValue && !validateEmail(fieldValue)
                   ? 'border-red-300'
                   : 'border-gray-300'
@@ -581,7 +581,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                  </button>
                ) : (
                  <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
-                   <span className="inline-flex items-center px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm" role="status" aria-live="polite">
+                   <span className="inline-flex items-center px-3 py-2 bg-green-100 text-green-800 rounded-catalogue-sm text-sm" role="status" aria-live="polite">
                      {t("leadCollectionModal.otpSentToEmail")}
                    </span>
                    <button
@@ -598,7 +598,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
            )}
 
           {field.type === 'email' && emailVerified && (
-            <div className="flex items-center justify-center sm:justify-start px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm" role="status" aria-live="polite">
+            <div className="flex items-center justify-center sm:justify-start px-3 py-2 bg-green-100 text-green-800 rounded-catalogue-sm text-sm" role="status" aria-live="polite">
               {t("leadCollectionModal.emailVerifiedConfirm")}
             </div>
           )}
@@ -620,7 +620,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                  onChange={(e) => setEmailOtp(e.target.value)}
                  placeholder={t("leadCollectionModal.otpPlaceholder")}
                  maxLength={6}
-                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-400 focus:border-transparent"
+                 className="w-full px-3 py-2 border border-gray-300 rounded-catalogue-sm focus:ring-2 focus:ring-primary-400 focus:border-transparent"
                />
                <div className="flex justify-end">
                  <button
@@ -670,7 +670,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
           aria-modal="true"
           aria-labelledby="lead-modal-title"
           tabIndex={-1}
-          className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-auto outline-none"
+          className="relative bg-white rounded-catalogue-md shadow-xl max-w-md w-full mx-auto outline-none"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
@@ -729,7 +729,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                   <button
                     type="button"
                     onClick={handlePreviousStep}
-                    className="flex items-center px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                    className="flex items-center px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-catalogue-sm transition-colors"
                   >
                     <CaretLeft className="w-4 h-4 me-1" />
                     {t("common.previous")}
@@ -791,7 +791,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
       {/* Success Popup */}
       {showSuccessPopup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+          <div className="bg-white rounded-catalogue-md shadow-xl max-w-md w-full mx-4 p-6">
             <div className="text-center">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
                 <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">

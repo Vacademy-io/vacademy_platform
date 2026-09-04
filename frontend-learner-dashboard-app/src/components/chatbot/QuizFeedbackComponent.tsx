@@ -38,9 +38,9 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
   };
 
   const getScoreBg = () => {
-    if (feedback.percentage >= 80) return "from-green-500/20 to-green-600/10";
-    if (feedback.percentage >= 60) return "from-yellow-500/20 to-yellow-600/10";
-    return "from-red-500/20 to-red-600/10";
+    if (feedback.percentage >= 80) return "from-success-500/20 to-success-600/10";
+    if (feedback.percentage >= 60) return "from-warning-500/20 to-warning-600/10";
+    return "from-danger-500/20 to-danger-600/10";
   };
 
   return (
@@ -100,8 +100,8 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
 
         {/* Recommendations */}
         {feedback.recommendations && feedback.recommendations.length > 0 && (
-          <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/10">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/10 space-y-2">
+            <div className="flex items-center gap-2">
               <Lightbulb className="h-4 w-4 text-primary" />
               <span className="text-xs font-semibold text-primary">
                 {t("quizFeedback.recommendations")}

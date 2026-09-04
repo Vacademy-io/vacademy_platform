@@ -52,7 +52,7 @@ function CertificateScanVerificationPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-10 dark:bg-neutral-900">
-      <div className="flex w-full max-w-xl flex-col gap-6">
+      <div className="flex w-full max-w-xl flex-col gap-section">
         <form
           onSubmit={onSubmit}
           className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:bg-neutral-800"
@@ -67,7 +67,7 @@ function CertificateScanVerificationPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-stack">
             <MyInput
               inputType="text"
               label={t("verify.scan.inputLabel")}

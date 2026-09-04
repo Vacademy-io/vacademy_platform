@@ -177,8 +177,8 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     return section(
       <div className="catalogue-card-elevated space-y-4 p-6" aria-busy="true">
         {Array.from({ length: 3 }, (_, i) => (
-          <div key={i}>
-            <div className="catalogue-skeleton-shimmer mb-2 h-4 w-1/3 rounded" />
+          <div className="space-y-2" key={i}>
+            <div className="catalogue-skeleton-shimmer h-4 w-1/3 rounded-catalogue-xs" />
             <div className="catalogue-skeleton-shimmer h-10 w-full rounded-catalogue-md" />
           </div>
         ))}
@@ -261,7 +261,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
     if (untouched) {
       return section(
         <div
-          className="catalogue-card-elevated flex flex-col items-center gap-3 p-8 text-center"
+          className="catalogue-card-elevated flex flex-col items-center gap-stack p-8 text-center"
           role="status"
         >
           <CheckCircle
@@ -308,7 +308,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
 
     return section(
       <div
-        className="catalogue-card-elevated flex flex-col items-center gap-3 p-8 text-center"
+        className="catalogue-card-elevated flex flex-col items-center gap-stack p-8 text-center"
         role="status"
       >
         <CheckCircle
@@ -335,7 +335,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
           </p>
         )}
         {(actionButtons.length > 0 || postSubmitConfig.allowAnotherResponse) && (
-          <div className="mt-2 flex flex-col flex-wrap justify-center gap-3 sm:flex-row">
+          <div className="mt-2 flex flex-col flex-wrap justify-center gap-stack sm:flex-row">
             {actionButtons.map((button) => (
               <a
                 key={button.id}

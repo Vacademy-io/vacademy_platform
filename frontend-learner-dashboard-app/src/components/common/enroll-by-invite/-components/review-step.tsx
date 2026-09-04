@@ -59,8 +59,8 @@ const ReviewStep = ({
     <div className="space-y-6">
       {/* Order Summary Card */}
       <Card className="shadow-lg">
-        <CardContent className="p-5 sm:p-6">
-          <div className="flex items-start gap-2 sm:gap-3 mb-4">
+        <CardContent className="p-5 sm:p-card-lg space-y-4">
+          <div className="flex items-start gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg flex-shrink-0">
               <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
@@ -381,8 +381,8 @@ const PaidPlanReview = ({
   return (
     <div className="py-4 space-y-4">
       {/* Plan Details Section */}
-      <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="text-subtitle font-semibold text-gray-900 mb-3">
+      <div className="bg-gray-50 rounded-lg p-4 space-y-stack">
+        <h3 className="text-subtitle font-semibold text-gray-900">
           {t("reviewStep.planDetails")}
         </h3>
 
@@ -536,8 +536,8 @@ const PaidPlanReview = ({
       {couponVerified &&
         refereeDiscount &&
         !isPricingBenefit(refereeDiscount) && (
-          <div className="bg-green-50 rounded-lg p-4">
-            <h3 className="text-subtitle font-semibold text-gray-900 mb-3">
+          <div className="bg-green-50 rounded-lg p-4 space-y-stack">
+            <h3 className="text-subtitle font-semibold text-gray-900">
               {t("reviewStep.referralBenefits")}
             </h3>
 
@@ -625,8 +625,8 @@ const FreePlanReview = ({
   return (
     <div className="py-4 space-y-4">
       {/* Plan Details Section */}
-      <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="font-semibold text-gray-900 mb-3 text-lg">
+      <div className="bg-gray-50 rounded-lg p-4 space-y-stack">
+        <h3 className="font-semibold text-gray-900 text-lg">
           {t("reviewStep.planDetails")}
         </h3>
 
@@ -689,8 +689,8 @@ const FreePlanReview = ({
       {couponVerified &&
         refereeDiscount &&
         !isPricingBenefit(refereeDiscount) && (
-          <div className="bg-green-50 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 mb-3 text-lg">
+          <div className="bg-green-50 rounded-lg p-4 space-y-stack">
+            <h3 className="font-semibold text-gray-900 text-lg">
               {t("reviewStep.referralBenefits")}
             </h3>
 

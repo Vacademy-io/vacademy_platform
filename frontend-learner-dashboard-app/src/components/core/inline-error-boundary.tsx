@@ -50,7 +50,7 @@ export class InlineErrorBoundary extends Component<
     } = this.props;
 
     return (
-      <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-danger-200 bg-danger-50 p-6 text-center">
+      <div className="mt-4 flex flex-col items-center gap-stack rounded-lg border border-danger-200 bg-danger-50 p-6 text-center">
         <WarningCircle size={32} weight="duotone" className="text-danger-500" />
         <p className="text-body font-semibold text-neutral-800">{title}</p>
         <p className="text-caption text-neutral-600">{description}</p>

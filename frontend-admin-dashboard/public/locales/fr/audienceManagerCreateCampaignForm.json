@@ -68,5 +68,9 @@
         "saving": "Enregistrement...",
         "create": "Créer {{term}}",
         "creating": "Création en cours..."
+    },
+    "formAppearance": {
+        "title": "Apparence du formulaire",
+        "description": "L'aspect du formulaire public pendant sa saisie — mise en page, couleurs et libellés autour des champs. S'applique uniquement à cette campagne."
     }
 }

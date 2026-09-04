@@ -25,6 +25,7 @@ class ChatLLMClient:
         self,
         api_key_resolver: ApiKeyResolver,
         disable_reasoning: bool = False,
+        platform_model_key: Optional[str] = None,
     ):
         """
         disable_reasoning: send `reasoning: {"enabled": false}` so the provider
@@ -43,7 +44,28 @@ class ChatLLMClient:
         """
         self.api_key_resolver = api_key_resolver
         self.disable_reasoning = disable_reasoning
+        # Name of the platform setting (super-admin portal) whose value is the
+        # default model for this client, e.g. "chatbot.text.model". None keeps
+        # the env default — right for every consumer that isn't the chatbot.
+        self.platform_model_key = platform_model_key
         self.http_client = httpx.AsyncClient(timeout=120.0)
+
+    def _resolve(self, institute_id: Optional[str], user_id: Optional[str]):
+        """
+        resolve_keys with the platform-default hint, tolerating resolvers that
+        don't know it. The chatbot and the assistant hand this client duck-typed
+        resolvers that return pre-fetched keys; passing them an unexpected
+        keyword took the learner chatbot down for every institute (2026-09-03).
+        """
+        base = {"institute_id": institute_id or "default", "user_id": user_id}
+        if not self.platform_model_key:
+            return self.api_key_resolver.resolve_keys(**base)
+        try:
+            return self.api_key_resolver.resolve_keys(
+                **base, platform_default_key=self.platform_model_key
+            )
+        except TypeError:
+            return self.api_key_resolver.resolve_keys(**base)
     
     async def chat_completion(
         self,
@@ -73,10 +95,7 @@ class ChatLLMClient:
             Response dict with content, tool_calls, finish_reason, etc.
         """
         # Resolve keys. gemini_key is ignored — the Gemini fallback was retired.
-        openrouter_key, _gemini_key, resolved_model = self.api_key_resolver.resolve_keys(
-            institute_id=institute_id or "default",
-            user_id=user_id
-        )
+        openrouter_key, _gemini_key, resolved_model = self._resolve(institute_id, user_id)
         # Caller override wins over the resolver's pick.
         model = model or resolved_model
 
@@ -207,10 +226,7 @@ class ChatLLMClient:
         Yields dicts: {"type": "token", "content": "..."} or {"type": "tool_calls", "tool_calls": [...]} or {"type": "done", "usage": {...}}
         Falls back to non-streaming if streaming fails.
         """
-        openrouter_key, _gemini_key, model = self.api_key_resolver.resolve_keys(
-            institute_id=institute_id or "default",
-            user_id=user_id
-        )
+        openrouter_key, _gemini_key, model = self._resolve(institute_id, user_id)
 
         if openrouter_key:
             try:

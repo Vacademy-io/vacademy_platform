@@ -335,6 +335,7 @@ export const syncStep1DataWithStore = (form: UseFormReturn<BasicSectionFormType>
         durationDistribution: getValues('durationDistribution'),
         evaluationType: getValues('evaluationType'),
         resultType: getValues('resultType'),
+        aiEvaluationEnabled: getValues('aiEvaluationEnabled'),
         switchSections: getValues('switchSections'),
         raiseReattemptRequest: getValues('raiseReattemptRequest'),
         raiseTimeIncreaseRequest: getValues('raiseTimeIncreaseRequest'),

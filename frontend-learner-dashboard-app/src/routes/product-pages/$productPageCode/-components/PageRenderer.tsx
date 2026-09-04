@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ShoppingCart, CheckCircle, SlidersHorizontal, X, Star, CaretDown, BookOpen, Users, Lightbulb, MagnifyingGlass, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { BASE_URL } from "@/constants/urls";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { pushCourseSelectionChanged } from "@/components/common/enroll-by-invite/-utils/gtm";
@@ -26,6 +26,30 @@ import type {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * A logo value is either an http(s) URL — what the page builder's image upload
+ * writes — or a file id, which is what the catalogue's own header stores. The
+ * two have always been the same field name with different meanings, so a config
+ * copied from one to the other rendered a broken image. Accept both.
+ */
+const looksLikeFileId = (value: string) =>
+  !!value && !/^(https?:)?\/\//.test(value) && !value.startsWith("data:");
+
+const useImageSrc = (value: string) => {
+  const resolved = useFileUrl(looksLikeFileId(value) ? value : "");
+  return looksLikeFileId(value) ? resolved : value;
+};
+
+/**
+ * Resolves a media file id to a URL.
+ *
+ * The PUBLIC endpoint, not the authenticated one: a product page is a buying
+ * surface for people who are not logged in, and getPublicUrl goes through
+ * authenticatedAxiosInstance — so every logo and hero image configured by file
+ * id failed for exactly the visitors the page exists to serve, and the catch
+ * below turned that into a silently missing image. The catalogue's own header
+ * has always used the public endpoint; this matches it.
+ */
 const useFileUrl = (fileId: string) => {
   const [url, setUrl] = useState("");
   useEffect(() => {
@@ -33,9 +57,17 @@ const useFileUrl = (fileId: string) => {
       setUrl("");
       return;
     }
-    getPublicUrl(fileId)
-      .then(setUrl)
-      .catch(() => setUrl(""));
+    let cancelled = false;
+    getPublicUrlWithoutLogin(fileId)
+      .then((resolved) => {
+        if (!cancelled) setUrl(resolved);
+      })
+      .catch(() => {
+        if (!cancelled) setUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [fileId]);
   return url;
 };
@@ -140,10 +172,15 @@ export const HeaderBlock = ({
   pageName: string;
 }) => {
   const { t } = useTranslation("productPages");
-  const title = (props.title as string) || pageName || "";
   const logoFileId = (props.logoFileId as string) || "";
   const showLogo = props.showLogo !== false;
   const logoUrl = useFileUrl(logoFileId);
+  // The logo IS the identity. Printing the page name beside it repeats the
+  // brand twice in the same bar. Keyed off whether a logo is CONFIGURED, not
+  // whether it has resolved yet, so the name does not flash in and out while
+  // the file URL loads. An explicitly authored title always wins.
+  const hasLogo = showLogo && !!logoFileId;
+  const title = (props.title as string) || (hasLogo ? "" : pageName) || "";
 
   return (
     <header
@@ -882,6 +919,7 @@ export const CourseGridBlock = ({
   tagName,
   productPageCode,
   lockedLevels,
+  lockedPackageSessionIds,
 }: {
   props: Record<string, unknown>;
   pageData: ProductPageData;
@@ -899,11 +937,17 @@ export const CourseGridBlock = ({
    * level here, and cannot widen back out via the level facet.
    */
   lockedLevels?: string;
+  /**
+   * package_session_ids this grid is hard-restricted to, from the page's
+   * Course Finder pick. Narrower than lockedLevels and applied after it: a
+   * page whose classes all share one level cannot be split any other way.
+   */
+  lockedPackageSessionIds?: string[];
 }) => {
   const { t } = useTranslation("productPages");
   const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
-  const columns = (props.columns as number) || 3;
+  const authoredColumns = (props.columns as number) || 3;
   const sectionTitle = props.title as string | undefined;
   const sectionSubtitle = props.subtitle as string | undefined;
   // Admin-set page size wins; the constant is only the fallback.
@@ -912,22 +956,41 @@ export const CourseGridBlock = ({
 
   const activeMappings = useMemo(() => {
     const active = pageData.mappings.filter((m) => m.status === "ACTIVE");
+
+    // The Course Finder's pick, applied first because it is exact: ids, not
+    // names. An empty result means the chosen class lost its courses since the
+    // pick was saved — falling back to everything is the same "a restriction
+    // that matches nothing is a broken link" rule the level filter uses.
+    const byId = lockedPackageSessionIds?.length
+      ? active.filter((m) => lockedPackageSessionIds.includes(m.package_session_id))
+      : active;
+    const scoped = byId.length > 0 ? byId : active;
+
     const allowed = (lockedLevels || "")
       .split(",")
       .map((l) => l.trim().toLowerCase())
       .filter(Boolean);
-    if (allowed.length === 0) return active;
+    if (allowed.length === 0) return scoped;
     // Case-insensitive: levelGroups in catalogue JSON are hand-authored and
     // drift from the real level names ("Cyber Ai-" vs "Cyber AI-").
     const allowedSet = new Set(allowed);
-    const narrowed = active.filter((m) =>
+    const narrowed = scoped.filter((m) =>
       allowedSet.has((m.level_name || "").trim().toLowerCase()),
     );
     // A restriction that matches nothing is a broken link, not an empty
     // catalogue — fall back to the full list rather than a dead page.
-    return narrowed.length > 0 ? narrowed : active;
-  }, [pageData.mappings, lockedLevels]);
+    return narrowed.length > 0 ? narrowed : scoped;
+  }, [pageData.mappings, lockedLevels, lockedPackageSessionIds]);
   const currency = pageData.currency || activeMappings[0]?.payment_plan?.currency || "";
+
+  // A Course Finder pick usually leaves one course. Rendering it into a 3-up
+  // grid puts a third-width card alone on the left, which reads as a row that
+  // failed to load rather than as the one offer for the class just chosen.
+  // Only narrowed grids are adjusted — an ordinary page keeps its authored
+  // column count whatever its course count.
+  const columns = lockedPackageSessionIds?.length
+    ? Math.min(authoredColumns, activeMappings.length || 1)
+    : authoredColumns;
 
   // ── Filter / search state ──
   const [search, setSearch] = useState("");
@@ -1007,6 +1070,12 @@ export const CourseGridBlock = ({
   // the pager parked on a page that no longer exists (blank grid).
   const safePage = Math.min(page, Math.max(totalPages - 1, 0));
   const paginated = filtered.slice(safePage * perPage, (safePage + 1) * perPage);
+
+  // A narrowed grid holding exactly one course is the answer to "which class?",
+  // not a catalogue. Left-aligned in a 3-up grid it reads as a row that failed
+  // to load; stretched full-width its banner is cropped to a strip of foreheads.
+  // Centred at a readable width, it reads as the one offer it is.
+  const soleOffer = !!lockedPackageSessionIds?.length && activeMappings.length === 1;
 
   const colClass =
     columns >= 4 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
@@ -1118,8 +1187,8 @@ export const CourseGridBlock = ({
 
       {/* Session */}
       {showSessionFilter && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
             {getTerminology(ContentTerms.Batch, SystemTerms.Batch)} /{" "}
             {getTerminology(ContentTerms.Session, SystemTerms.Session)}
           </p>
@@ -1142,11 +1211,11 @@ export const CourseGridBlock = ({
 
       {/* Price range */}
       {showPriceFilter && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{t("pageRenderer.courseGrid.priceRangeTitle")}</p>
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t("pageRenderer.courseGrid.priceRangeTitle")}</p>
           <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <p className="mb-1 text-caption text-gray-400">{t("pageRenderer.courseGrid.min")}</p>
+            <div className="flex-1 space-y-1">
+              <p className="text-caption text-gray-400">{t("pageRenderer.courseGrid.min")}</p>
               <input
                 type="number" min={0} value={priceMin} placeholder="0"
                 onChange={(e) => { setPriceMin(e.target.value); setPage(0); }}
@@ -1154,8 +1223,8 @@ export const CourseGridBlock = ({
               />
             </div>
             <span className="mt-4 text-xs text-gray-400">–</span>
-            <div className="flex-1">
-              <p className="mb-1 text-caption text-gray-400">{t("pageRenderer.courseGrid.max")}</p>
+            <div className="flex-1 space-y-1">
+              <p className="text-caption text-gray-400">{t("pageRenderer.courseGrid.max")}</p>
               <input
                 type="number" min={0} value={priceMax} placeholder={maxPriceAll.toString()}
                 onChange={(e) => { setPriceMax(e.target.value); setPage(0); }}
@@ -1286,7 +1355,7 @@ export const CourseGridBlock = ({
               <button type="button" onClick={clearAll} className="mt-2 text-xs text-gray-400 hover:underline">{t("pageRenderer.courseGrid.clearFilters")}</button>
             </div>
           ) : (
-            <div className={`grid gap-4 ${colClass}`}>
+            <div className={cn("grid gap-4", colClass, soleOffer && "mx-auto w-full max-w-xl")}>
               {paginated.map((mapping) => {
                 const selected = selectedPsOptionIds.includes(mapping.ps_invite_payment_option_id);
                 return (
@@ -1531,8 +1600,10 @@ export const NewHeaderBlock = ({
   pageName: string;
 }) => {
   const { t } = useTranslation("productPages");
-  const title = (props.title as string) || pageName || "";
-  const logoUrl = (props.logo as string) || "";
+  const logoRaw = (props.logo as string) || "";
+  const logoUrl = useImageSrc(logoRaw);
+  // See HeaderBlock: a logo already says who this is.
+  const title = (props.title as string) || (logoRaw ? "" : pageName) || "";
   const navigation = (props.navigation as Array<{ label: string; url?: string; route?: string }>) || [];
   const ctaButton = (props.ctaButton as { enabled?: boolean; text?: string; url?: string; bgColor?: string; textColor?: string }) || {};
   const bg = (props.backgroundColor as string) || primaryColor;
@@ -1889,8 +1960,8 @@ const VideoEmbedBlock = ({ props }: { props: Record<string, unknown> }) => {
             />
           ) : (
             <div className="flex size-full items-center justify-center bg-gray-800 text-center text-white/50">
-              <div>
-                <div className="mb-2 text-5xl">▶</div>
+              <div className="space-y-2">
+                <div className="text-5xl">▶</div>
                 <p className="text-sm">{t("pageRenderer.videoEmbed.addUrlPlaceholder")}</p>
               </div>
             </div>
@@ -2007,6 +2078,8 @@ interface PageRendererProps {
   productPageCode?: string;
   /** Course Finder level restriction, forwarded to every course grid. */
   lockedLevels?: string;
+  /** Course Finder class pick (package_session_ids), same forwarding. */
+  lockedPackageSessionIds?: string[];
   onNext: () => void;
 }
 
@@ -2026,6 +2099,7 @@ export const PageRenderer = ({
   tagName,
   productPageCode,
   lockedLevels,
+  lockedPackageSessionIds,
   onNext,
 }: PageRendererProps) => {
   const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
@@ -2038,7 +2112,14 @@ export const PageRenderer = ({
   const onFilterChange = (key: string, value: string) =>
     setActiveFilters((prev) => ({ ...prev, [key]: value }));
 
-  const activeMappings = pageData.mappings.filter((m) => m.status === "ACTIVE");
+  // Narrowed by the Course Finder pick as well, so a FilterBar above the grid
+  // offers the classes' own levels and sessions rather than every one on the
+  // page — chips that would filter courses the visitor cannot see.
+  const allActive = pageData.mappings.filter((m) => m.status === "ACTIVE");
+  const scopedActive = lockedPackageSessionIds?.length
+    ? allActive.filter((m) => lockedPackageSessionIds.includes(m.package_session_id))
+    : allActive;
+  const activeMappings = scopedActive.length > 0 ? scopedActive : allActive;
 
   const wrapWithStyle = (node: React.ReactNode, component: PageComponent) => {
     const baseStyle = buildComponentStyle(component.style);
@@ -2066,7 +2147,7 @@ export const PageRenderer = ({
         );
       case "CourseGrid":
         return (
-          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} lockedLevels={lockedLevels} />
+          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} lockedLevels={lockedLevels} lockedPackageSessionIds={lockedPackageSessionIds} />
         );
       case "TextBlock":
         return <TextBlockComp key={component.id} props={component.props} />;
@@ -2088,7 +2169,7 @@ export const PageRenderer = ({
         );
       case "productCourseGrid":
         return (
-          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} lockedLevels={lockedLevels} />
+          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} lockedLevels={lockedLevels} lockedPackageSessionIds={lockedPackageSessionIds} />
         );
       case "footer":
         return <NewFooterBlock key={component.id} props={component.props} />;

@@ -97,8 +97,8 @@ function RouteComponent() {
     return (
       <Frame>
         <div className="flex min-h-reg-400 items-center justify-center px-6">
-          <div className="text-center">
-            <h2 className="mb-2 text-xl font-semibold text-neutral-700">
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-semibold text-neutral-700">
               {t("myReports.activity.insightsUnavailable")}
             </h2>
             <p className="text-neutral-500">

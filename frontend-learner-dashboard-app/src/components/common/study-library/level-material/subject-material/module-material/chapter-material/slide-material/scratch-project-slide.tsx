@@ -489,7 +489,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-stack">
           <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
           <div className="text-neutral-500">{t("scratchSlide.loadingProject")}</div>
         </div>
@@ -500,7 +500,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
   if (error || !projectData) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-stack">
           <div className="bg-red-50 rounded-full p-4">
             <GameController size={32} className="text-red-500" />
           </div>
@@ -566,11 +566,11 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
       {/* Pause overlay */}
       {isPaused && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-lg bg-white p-6 text-center">
-            <h3 className="mb-4 text-lg font-semibold">
+          <div className="rounded-lg bg-white p-6 text-center space-y-4">
+            <h3 className="text-lg font-semibold">
               {t("scratchSlide.paused.title")}
             </h3>
-            <p className="mb-4 text-sm text-gray-600">
+            <p className="text-sm text-gray-600">
               {t("scratchSlide.paused.body", { count: tabSwitchCount })}
             </p>
             <button
@@ -648,7 +648,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
           {/* Loading overlay */}
           {isLoading && (
             <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-b-lg">
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-stack">
                 <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
                 <div className="text-neutral-500">
                   {t("scratchSlide.loadingInterface")}

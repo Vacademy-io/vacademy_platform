@@ -23,6 +23,12 @@ import {
     Notebook,
     PhoneCall,
     ChatCircleDots,
+    IdentificationBadge,
+    AirplaneTakeoff,
+    Money,
+    ChartLineUp,
+    SealCheck,
+    UserCircle,
 } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
@@ -660,6 +666,198 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Task Inbox',
                 subItemLink: '/engagement-engines/inbox',
                 subItemId: 'engagement-task-inbox',
+                adminOnly: true,
+            },
+        ],
+    },
+    // My HR is the EMPLOYEE's own workspace, so its sub-items are deliberately
+    // not adminOnly. mySidebar strips the whole section for anyone without an
+    // employee profile (see useMyEmployeeProfile) — same shape as
+    // mentorship-my-mentorship.
+    {
+        icon: UserCircle,
+        title: 'My HR',
+        id: 'erp-my-hr',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Overview',
+                subItemLink: '/erp/my-hr',
+                subItemId: 'erp-my-hr-overview',
+            },
+            {
+                subItem: 'My Leave',
+                subItemLink: '/erp/my-hr/leave',
+                subItemId: 'erp-my-hr-leave',
+            },
+            {
+                subItem: 'My Payslips',
+                subItemLink: '/erp/my-hr/payslips',
+                subItemId: 'erp-my-hr-payslips',
+            },
+            {
+                subItem: 'My Tax',
+                subItemLink: '/erp/my-hr/tax',
+                subItemId: 'erp-my-hr-tax',
+            },
+            {
+                subItem: 'My Claims',
+                subItemLink: '/erp/my-hr/claims',
+                subItemId: 'erp-my-hr-claims',
+            },
+        ],
+    },
+    // ─────────────────────────── ERP ───────────────────────────
+    // The operations world: HR & Payroll today, accounting/inventory later.
+    // Every module here is opt-in per institute (OPT_IN_TAB_IDS) and the ERP
+    // rail category itself ships hidden, so nothing appears until an institute
+    // turns it on in Settings → Display Settings.
+    {
+        icon: IdentificationBadge,
+        title: 'People',
+        id: 'erp-people',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Employees',
+                subItemLink: '/erp/people',
+                subItemId: 'erp-people-employees',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Departments & Designations',
+                subItemLink: '/erp/people/org',
+                subItemId: 'erp-people-org',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Staff Coverage',
+                subItemLink: '/erp/people/staff-bridge',
+                subItemId: 'erp-people-staff-bridge',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
+        icon: AirplaneTakeoff,
+        title: 'Leave',
+        id: 'erp-leave',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Requests',
+                subItemLink: '/erp/leave',
+                subItemId: 'erp-leave-requests',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Balances',
+                subItemLink: '/erp/leave/balances',
+                subItemId: 'erp-leave-balances',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Types & Policies',
+                subItemLink: '/erp/leave/setup',
+                subItemId: 'erp-leave-setup',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
+        icon: CalendarCheck,
+        title: 'Attendance',
+        id: 'erp-attendance',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Daily Board',
+                subItemLink: '/erp/attendance',
+                subItemId: 'erp-attendance-daily',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Regularizations',
+                subItemLink: '/erp/attendance/regularizations',
+                subItemId: 'erp-attendance-regularizations',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Shifts & Holidays',
+                subItemLink: '/erp/attendance/setup',
+                subItemId: 'erp-attendance-setup',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
+        icon: Money,
+        title: 'Payroll',
+        id: 'erp-payroll',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Runs',
+                subItemLink: '/erp/payroll',
+                subItemId: 'erp-payroll-runs',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Variable Pay',
+                subItemLink: '/erp/payroll/adjustments',
+                subItemId: 'erp-payroll-adjustments',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Salary Setup',
+                subItemLink: '/erp/payroll/salary-setup',
+                subItemId: 'erp-payroll-salary-setup',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
+        icon: SealCheck,
+        title: 'Compliance',
+        id: 'erp-compliance',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Filings',
+                subItemLink: '/erp/compliance',
+                subItemId: 'erp-compliance-filings',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Challans',
+                subItemLink: '/erp/compliance/challans',
+                subItemId: 'erp-compliance-challans',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Provisions',
+                subItemLink: '/erp/compliance/provisions',
+                subItemId: 'erp-compliance-provisions',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
+        icon: ChartLineUp,
+        title: 'Finance',
+        id: 'erp-finance',
+        category: 'ERP',
+        subItems: [
+            {
+                subItem: 'Journal',
+                subItemLink: '/erp/finance/journal',
+                subItemId: 'erp-finance-journal',
+                adminOnly: true,
+            },
+            {
+                subItem: 'P&L Snapshot',
+                subItemLink: '/erp/finance/pnl',
+                subItemId: 'erp-finance-pnl',
                 adminOnly: true,
             },
         ],

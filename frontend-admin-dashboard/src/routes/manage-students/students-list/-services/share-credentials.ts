@@ -85,6 +85,52 @@ const sendWithTemplate = async (
 };
 
 /**
+ * Shape returned by auth_service's send-passwords endpoint once it reports per-user counts.
+ * Older deployments answer with a bare sentence instead, which is why summariseDefaultSend
+ * below still understands both.
+ */
+interface DefaultSendResponse {
+    sent?: number;
+    failed?: number;
+    message?: string;
+}
+
+/**
+ * The one reply from the legacy string contract that means anything actually went out.
+ * Every other sentence it can return ("No valid users found", "No valid users to notify",
+ * "Invalid input: ...") is a 200 that sent nothing.
+ */
+const LEGACY_SUCCESS_REPLY = 'Notification sent successfully';
+
+/**
+ * Reads what auth_service actually did, instead of assuming the whole batch went out.
+ *
+ * <p>The endpoint answers 200 even when it mails nobody — a learner with no email, username or
+ * password on file is skipped, and a batch of only those returns "No valid users to notify".
+ * Treating the 200 as proof of delivery is what put a green "Credentials shared successfully"
+ * in front of admins whose learners never received anything.
+ */
+const summariseDefaultSend = (data: unknown, requested: number): ShareCredentialsSummary => {
+    if (data && typeof data === 'object') {
+        const body = data as DefaultSendResponse;
+        if (typeof body.sent === 'number' || typeof body.failed === 'number') {
+            const sent = body.sent ?? 0;
+            return {
+                sent,
+                failed: body.failed ?? Math.max(0, requested - sent),
+                message: body.message,
+            };
+        }
+    }
+
+    const reply = typeof data === 'string' ? data.trim() : '';
+    if (reply.startsWith(LEGACY_SUCCESS_REPLY)) {
+        return { sent: requested, failed: 0 };
+    }
+    return { sent: 0, failed: requested, message: reply || undefined };
+};
+
+/**
  * Takes the translation function rather than importing the i18next singleton — the only
  * caller is useShareCredentials below, which sources it from its own useTranslation() so
  * the 'manageStudentsShareCredentialsService' namespace is guaranteed to be loaded whenever
@@ -101,8 +147,8 @@ export const buildShareCredentials =
             return sendWithTemplate(t, userIds, templateId);
         }
         // The built-in mail takes the whole batch in one call — keep it that way.
-        await authenticatedAxiosInstance.post(SHARE_CREDENTIALS, userIds);
-        return { sent: userIds.length, failed: 0 };
+        const response = await authenticatedAxiosInstance.post(SHARE_CREDENTIALS, userIds);
+        return summariseDefaultSend(response.data, userIds.length);
     };
 
 export const useShareCredentials = () => {

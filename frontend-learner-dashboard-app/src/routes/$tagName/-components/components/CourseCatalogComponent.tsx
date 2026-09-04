@@ -8,6 +8,13 @@ import {
   DEFAULT_COURSE_CATALOG_SORT,
 } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import {
+  clearCourseFinderOptions,
+  clearCourseFinderSelection,
+  courseFinderScope,
+  loadCourseFinderSelection,
+  publishCourseFinderOptions,
+} from "../../-utils/course-finder-bus";
 import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -179,7 +186,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
   if (loadingImage && !courseImageUrl) {
     return (
       <div className="aspect-video">
-        <div className="w-full h-full bg-catalogue-bg-muted animate-pulse rounded-md flex items-center justify-center">
+        <div className="w-full h-full bg-catalogue-bg-muted animate-pulse rounded-catalogue-sm flex items-center justify-center">
           <div className="text-catalogue-text-muted text-xs">
             {t("courseCatalog.loadingImage")}
           </div>
@@ -283,7 +290,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           >
             <input
               type="checkbox"
-              className="form-checkbox h-3.5 w-3.5 text-primary-500 border-catalogue-border rounded focus:ring-primary-400 me-2"
+              className="form-checkbox h-3.5 w-3.5 text-primary-500 border-catalogue-border rounded-catalogue-xs focus:ring-primary-400 me-2"
               checked={selectedItems.includes(item.id)}
               onChange={() => handleChange(item.id)}
               disabled={disabled}
@@ -362,7 +369,7 @@ const CartControls: React.FC<{
 
   if (cartItem && showQuantitySelector) {
     return (
-      <div className="flex items-center gap-1 border border-catalogue-border rounded-md px-1 py-0.5 bg-catalogue-bg-elevated">
+      <div className="flex items-center gap-1 border border-catalogue-border rounded-catalogue-sm px-1 py-0.5 bg-catalogue-bg-elevated">
         <Button
           variant="ghost"
           size="sm"
@@ -425,7 +432,7 @@ const CartControls: React.FC<{
           });
           toast.success(t("courseCatalog.addedToCart", { title: course.title }));
         }}
-        className="bg-primary-500 hover:bg-primary-400 text-white text-xs font-medium rounded-md px-2.5 py-1 flex items-center justify-center gap-1.5"
+        className="bg-primary-500 hover:bg-primary-400 text-white text-xs font-medium rounded-catalogue-sm px-2.5 py-1 flex items-center justify-center gap-1.5"
         size="sm"
       >
         <ShoppingCart className="h-3.5 w-3.5" />
@@ -442,11 +449,11 @@ const CartControls: React.FC<{
 const CATEGORY_PALETTE = [
   { band: "from-violet-100 to-violet-50", text: "text-violet-600", icon: "text-violet-400" },
   { band: "from-teal-100 to-teal-50",    text: "text-teal-600",   icon: "text-teal-400"   },
-  { band: "from-amber-100 to-amber-50",  text: "text-amber-600",  icon: "text-amber-400"  },
+  { band: "from-warning-100 to-warning-50",  text: "text-amber-600",  icon: "text-amber-400"  },
   { band: "from-pink-100 to-pink-50",    text: "text-pink-600",   icon: "text-pink-400"   },
-  { band: "from-blue-100 to-blue-50",    text: "text-blue-600",   icon: "text-blue-400"   },
-  { band: "from-emerald-100 to-emerald-50", text: "text-emerald-600", icon: "text-emerald-400" },
-  { band: "from-orange-100 to-orange-50", text: "text-orange-600", icon: "text-orange-400" },
+  { band: "from-info-100 to-info-50",    text: "text-blue-600",   icon: "text-blue-400"   },
+  { band: "from-success-100 to-success-50", text: "text-emerald-600", icon: "text-emerald-400" },
+  { band: "from-primary-100 to-primary-50", text: "text-orange-600", icon: "text-orange-400" },
   { band: "from-indigo-100 to-indigo-50", text: "text-indigo-600", icon: "text-indigo-400" },
 ] as const;
 
@@ -502,9 +509,23 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   }, [defaultSort]);
 
   // Filter states
-  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
-  const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  // Seeded from the Course Finder's stored answer. The wizard only opens once
+  // per visitor, so holding its picks in state alone meant a reload — or the
+  // trip into a course details page and back — silently widened the grid to
+  // every level again with no way to be re-asked. See course-finder-bus.
+  const finderRestored = useMemo(
+    () => loadCourseFinderSelection(courseFinderScope(instituteId, tagName)),
+    [instituteId, tagName],
+  );
+  const [selectedLevels, setSelectedLevels] = useState<string[]>(
+    () => finderRestored?.levels ?? [],
+  );
+  const [selectedSessions, setSelectedSessions] = useState<string[]>(
+    () => finderRestored?.sessions ?? [],
+  );
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    () => finderRestored?.tags ?? [],
+  );
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
 
   // Mobile filter state
@@ -572,12 +593,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   // conventions (levels match by name, tags are raw case-sensitive strings).
   useEffect(() => {
     if (courses.length === 0) return;
-    window.dispatchEvent(
-      new CustomEvent("courseFinderOptionsReady", {
-        detail: { levels, sessions, tags },
-      }),
-    );
+    publishCourseFinderOptions({ levels, sessions, tags });
   }, [courses.length, levels, sessions, tags]);
+
+  // Drop the retained payload when this grid goes away, so a different
+  // catalogue page never opens its wizard on this one's levels.
+  useEffect(() => clearCourseFinderOptions, []);
 
   useEffect(() => {
     const handleApplied = (e: Event) => {
@@ -1087,6 +1108,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   };
 
   const clearAllFilters = () => {
+    // Forget the Course Finder's answer too, or the levels it chose come
+    // straight back on the next reload — the wizard opens once per visitor and
+    // will not reopen to ask again, so "clear" has to mean cleared for good.
+    clearCourseFinderSelection(courseFinderScope(instituteId, tagName));
     setSelectedLevels([]);
     setSelectedSessions([]);
     setSelectedTags([]);
@@ -1141,8 +1166,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   if (isLoading) {
     return (
       <div className="py-8 sm:py-10 w-full bg-catalogue-bg-subtle">
-        <div className="w-full px-4 sm:px-6 lg:px-8">
-          <div className="catalogue-skeleton-shimmer h-8 w-48 mb-6"></div>
+        <div className="w-full px-4 sm:px-6 lg:px-8 space-y-section">
+          <div className="catalogue-skeleton-shimmer h-8 w-48"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[...Array(6)].map((_, i) => (
               <div
@@ -1187,14 +1212,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           {shouldRenderFiltersPanel && (
             <div className="w-full lg:w-64 lg:flex-shrink-0 order-1">
               <div className="lg:sticky lg:top-20">
-                <div className="catalogue-surface p-4 sm:p-5 rounded-xl border border-catalogue-border-subtle shadow-sm">
+                <div className="catalogue-surface p-4 sm:p-5 rounded-catalogue-lg border border-catalogue-border-subtle shadow-sm">
                   {/* Mobile Header */}
                   <div className="lg:hidden mb-3">
                     <button
                       onClick={() =>
                         setIsMobileFilterExpanded(!isMobileFilterExpanded)
                       }
-                      className="w-full flex items-center justify-between p-2 bg-catalogue-bg-subtle rounded-md hover:bg-catalogue-interactive-hover transition-colors"
+                      className="w-full flex items-center justify-between p-2 bg-catalogue-bg-subtle rounded-catalogue-sm hover:bg-catalogue-interactive-hover transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         <Funnel
@@ -1334,13 +1359,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     )}
 
                     {shouldShowPriceFilter && (
-                      <div className="mb-5">
-                        <h3 className="text-sm font-semibold text-catalogue-text-primary mb-2.5">
+                      <div className="mb-5 space-y-2.5">
+                        <h3 className="text-sm font-semibold text-catalogue-text-primary">
                           {priceFilterConfig?.label ?? t("courseCatalog.priceRange")}
                         </h3>
-                        <div className="flex items-end gap-2 rounded-lg bg-catalogue-bg-subtle p-3">
-                          <div className="flex-1">
-                            <label className="block text-xs text-catalogue-text-secondary mb-1">
+                        <div className="flex items-end gap-2 rounded-catalogue-md bg-catalogue-bg-subtle p-3">
+                          <div className="flex-1 space-y-1">
+                            <label className="block text-xs text-catalogue-text-secondary">
                               {t("courseCatalog.min")}
                             </label>
                             <input
@@ -1350,12 +1375,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                               onChange={(e) =>
                                 handlePriceInputChange("min", e.target.value)
                               }
-                              className="w-full border border-catalogue-border rounded-md bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+                              className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
                             />
                           </div>
                           <span className="pb-2 text-catalogue-text-muted">–</span>
-                          <div className="flex-1">
-                            <label className="block text-xs text-catalogue-text-secondary mb-1">
+                          <div className="flex-1 space-y-1">
+                            <label className="block text-xs text-catalogue-text-secondary">
                               {t("courseCatalog.max")}
                             </label>
                             <input
@@ -1365,7 +1390,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                               onChange={(e) =>
                                 handlePriceInputChange("max", e.target.value)
                               }
-                              className="w-full border border-catalogue-border rounded-md bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+                              className="w-full border border-catalogue-border rounded-catalogue-sm bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
                             />
                           </div>
                         </div>
@@ -1385,7 +1410,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           >
             {/* Search and Sort Bar */}
             <div className="catalogue-toolbar p-3 sm:p-4 mb-6">
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col sm:flex-row gap-stack">
                 {/* Search */}
                 <div className="flex-1">
                   <div className="relative">
@@ -1403,7 +1428,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       aria-label={t("courseCatalog.searchAriaLabel", {
                         courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase(),
                       })}
-                      className="w-full ps-10 pe-9 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
+                      className="w-full ps-10 pe-9 py-2.5 border border-catalogue-border rounded-catalogue-md bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
                     />
                     {searchTerm && (
                       <button
@@ -1432,7 +1457,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           e.target.value as CourseCatalogSortOption,
                         )
                       }
-                      className="w-full ps-10 pe-4 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent appearance-none"
+                      className="w-full ps-10 pe-4 py-2.5 border border-catalogue-border rounded-catalogue-md bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent appearance-none"
                     >
                       {COURSE_CATALOG_SORT_OPTIONS.map((option) => (
                         <option key={option} value={option}>
@@ -1482,7 +1507,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       "bg-catalogue-bg-elevated flex flex-col cursor-pointer border border-catalogue-border-subtle",
                       "transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
                       render?.styles?.roundedEdges !== false
-                        ? "rounded-xl overflow-hidden"
+                        ? "rounded-catalogue-lg overflow-hidden"
                         : "rounded-none overflow-hidden",
                     )}
                     onClick={() => handleCourseClick(course)}
@@ -1666,7 +1691,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
             {/* No Results */}
             {filteredCourses.length === 0 && (
-              <div className="catalogue-card flex flex-col items-center gap-3 py-12 px-6 text-center">
+              <div className="catalogue-card flex flex-col items-center gap-stack py-12 px-6 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 text-primary-500">
                   <MagnifyingGlass size={26} />
                 </div>
@@ -1704,7 +1729,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     }
                     disabled={currentPage === 1}
                     aria-label={t("common.previousPage")}
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-3 text-sm font-medium text-catalogue-text-secondary transition-colors hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-9 items-center gap-1 rounded-catalogue-md border border-catalogue-border bg-catalogue-bg-elevated px-3 text-sm font-medium text-catalogue-text-secondary transition-colors hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <CaretLeft size={15} weight="bold" />
                     <span className="hidden sm:inline">{t("courseCatalog.previous")}</span>
@@ -1725,7 +1750,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         onClick={() => setCurrentPage(p as number)}
                         aria-current={currentPage === p ? "page" : undefined}
                         className={cn(
-                          "inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-2.5 text-sm font-medium transition-colors",
+                          "inline-flex h-9 min-w-9 items-center justify-center rounded-catalogue-md border px-2.5 text-sm font-medium transition-colors",
                           currentPage === p
                             ? "border-primary-500 bg-primary-500 text-white shadow-sm"
                             : "border-catalogue-border bg-catalogue-bg-elevated text-catalogue-text-primary hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle",
@@ -1743,7 +1768,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     }
                     disabled={currentPage === totalPages}
                     aria-label={t("common.nextPage")}
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-3 text-sm font-medium text-catalogue-text-secondary transition-colors hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-9 items-center gap-1 rounded-catalogue-md border border-catalogue-border bg-catalogue-bg-elevated px-3 text-sm font-medium text-catalogue-text-secondary transition-colors hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <span className="hidden sm:inline">{t("courseCatalog.next")}</span>
                     <CaretRight size={15} weight="bold" />

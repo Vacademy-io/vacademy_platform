@@ -9,6 +9,7 @@ import { useRouter } from '@tanstack/react-router';
 import { useEnrollRequestsDialogStore } from '@/routes/manage-students/enroll-requests/-components/bulk-actions/bulk-actions-store';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { toast } from 'sonner';
 
 // Internal action-type constants used for dispatch logic. These must never be
 // swapped for translated display text — handleMenuOptionsChange switches on
@@ -25,6 +26,27 @@ const MENU_ACTION = {
     SEND_EMAIL: 'SEND_EMAIL',
     CREATE_CERTIFICATE: 'CREATE_CERTIFICATE',
 } as const;
+
+/**
+ * Actions that act on an ENROLMENT, and so cannot run without the batch the learner is
+ * enrolled in.
+ *
+ * <p>Everything else in this menu acts on the PERSON — credentials, a WhatsApp message, an
+ * email, a certificate — and needs nothing but a user id. Requiring a package_session_id for
+ * those too silently excluded audience-only contacts (people who filled an audience form but
+ * are not enrolled in anything: the learner list returns them with a null package_session_id).
+ * A selection of them plus enrolled learners quietly sent to a subset; a selection made up
+ * entirely of them made "Share Credentials" do nothing at all — no dialog, no request, no
+ * message.
+ */
+const BATCH_SCOPED_ACTIONS: ReadonlySet<string> = new Set([
+    MENU_ACTION.ACCEPT_REQUEST,
+    MENU_ACTION.CHANGE_BATCH,
+    MENU_ACTION.EXTEND_COURSE_ACCESS,
+    MENU_ACTION.RE_REGISTER,
+    MENU_ACTION.TERMINATE_REGISTRATION,
+    MENU_ACTION.DELETE,
+]);
 
 // Was a module-scope `BulkActionDropdownList` string array (imported from
 // -constants/bulk-actions-menu-options). Converted to a factory so the labels
@@ -82,13 +104,29 @@ export const BulkActionsMenu = ({
         : buildBulkActionDropdownList(t);
 
     const handleMenuOptionsChange = (value: string) => {
-        const validStudents = selectedStudents.filter(
-            (student) => student && student.user_id && student.package_session_id
-        );
+        const needsBatch = BATCH_SCOPED_ACTIONS.has(value);
+        const withUser = selectedStudents.filter((student) => student && student.user_id);
+        const validStudents = needsBatch
+            ? withUser.filter((student) => student.package_session_id)
+            : withUser;
 
         if (validStudents.length === 0) {
-            // No valid students selected - error handled by toast
+            // Never return silently: a dropdown item that does nothing at all reads as a broken
+            // page, and the reason (the selection is not enrolled in a batch) is not something
+            // the admin can see from the table.
+            toast.error(needsBatch ? t('errors.noneEnrolled') : t('errors.noneActionable'));
             return;
+        }
+
+        // A partial run is still a surprise — say which learners were left out rather than
+        // quietly acting on a smaller selection than the one on screen.
+        const excluded = selectedStudents.length - validStudents.length;
+        if (excluded > 0) {
+            toast.warning(
+                t(needsBatch ? 'errors.someNotEnrolled' : 'errors.someNoAccount', {
+                    count: excluded,
+                })
+            );
         }
 
         const bulkActionInfo: BulkActionInfo = {

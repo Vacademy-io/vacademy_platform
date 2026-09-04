@@ -18,7 +18,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { getDynamicSchema } from "@/routes/register/-utils/helper";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { capitalise } from "@/utils/custom-field";
@@ -139,12 +139,14 @@ const CustomFieldsStep = ({
 
   const watchedFormValues = useWatch({ control: form.control });
 
-  // Phone country code derives from a country field if one exists in the form,
-  // falling back to the institute's configured preferred country
-  // (commaSeparatedPreferredCountry) instead of a hardcoded default.
+  // A country field in this form, when there is one, is the strongest signal
+  // — the visitor just told us where they are. Everything else defers to the
+  // portal's own resolution chain (institute preference / detected region).
   const getPhoneCountryCode = () => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+    // Whatever the portal decided a phone field should start on: the
+    // institute's configured preferred country, or — when that is unset, or
+    // the portal is on GEO_FIRST — the country this form is being opened in.
+    const { defaultCountry: fallback } = getPreferredPhoneCountries();
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {
@@ -201,11 +203,11 @@ const CustomFieldsStep = ({
       <Separator className="mb-5" />
 
       {formFields.length === 0 ? (
-        <div className="py-8 text-center text-neutral-500">
-          <p className="mb-4">
+        <div className="py-8 text-center text-neutral-500 space-y-4">
+          <p>
             {t("subOrgRegistration.customFields.noFieldsMessage")}
           </p>
-          <div className="flex flex-col-reverse items-center justify-center gap-3 sm:flex-row">
+          <div className="flex flex-col-reverse items-center justify-center gap-stack sm:flex-row">
             {onBack && (
               <MyButton
                 type="button"
@@ -307,7 +309,7 @@ const CustomFieldsStep = ({
               );
             })}
 
-            <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+            <div className="mt-2 flex flex-col-reverse gap-stack sm:flex-row sm:justify-between">
               {onBack ? (
                 <MyButton
                   type="button"

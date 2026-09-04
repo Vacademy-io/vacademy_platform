@@ -518,7 +518,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
               >
                 <FileText
                   size={16}
@@ -567,7 +567,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     if (!description) return null;
 
     return (
-      <div className="p-2 bg-catalogue-bg-subtle rounded text-sm text-catalogue-text-secondary mb-2 break-words">
+      <div className="p-2 bg-catalogue-bg-subtle rounded-catalogue-xs text-sm text-catalogue-text-secondary mb-2 break-words">
         {description}
       </div>
     );
@@ -598,7 +598,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           return (
             <div
               key={`${slide.id}-${index}`}
-              className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
+              className="flex items-center gap-2 p-2 border border-catalogue-border rounded-catalogue-md hover:bg-catalogue-bg-subtle overflow-hidden"
             >
               <Icon size={16} className={`flex-shrink-0 ${color}`} />
               <div className="flex-1 min-w-0 overflow-hidden">
@@ -651,7 +651,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
               >
                 <Folder
                   size={16}
@@ -672,7 +672,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleContent className="ms-4 mt-2">
               {moduleWithChapters.module?.description &&
                 moduleWithChapters.module.description.trim() !== "" && (
-                  <div className="p-2 bg-catalogue-bg-subtle rounded text-sm text-catalogue-text-secondary mb-2">
+                  <div className="p-2 bg-catalogue-bg-subtle rounded-catalogue-xs text-sm text-catalogue-text-secondary mb-2">
                     {moduleWithChapters.module.description}
                   </div>
                 )}
@@ -704,7 +704,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
                   >
                     <FileText
                       size={16}
@@ -742,7 +742,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               result.push(
                 <div
                   key={`${slide.id}-${slideIndex}`}
-                  className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
+                  className="flex items-center gap-2 p-2 border border-catalogue-border rounded-catalogue-md hover:bg-catalogue-bg-subtle overflow-hidden"
                 >
                   <Icon size={16} className={`flex-shrink-0 ${color}`} />
                   <div className="flex-1 min-w-0 overflow-hidden">
@@ -796,7 +796,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
                   >
                     <FileText
                       size={16}
@@ -828,7 +828,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               result.push(
                 <div
                   key={`${slide.id}-${slideIndex}`}
-                  className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
+                  className="flex items-center gap-2 p-2 border border-catalogue-border rounded-catalogue-md hover:bg-catalogue-bg-subtle overflow-hidden"
                 >
                   <Icon size={16} className={`flex-shrink-0 ${color}`} />
                   <div className="flex-1 min-w-0 overflow-hidden">
@@ -881,7 +881,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               <CollapsibleTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                  className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
                 >
                   <Folder
                     size={16}
@@ -902,7 +902,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               <CollapsibleContent className="ms-4 mt-2">
                 {moduleWithChapters.module?.description &&
                   moduleWithChapters.module.description.trim() !== "" && (
-                    <div className="p-2 bg-catalogue-bg-subtle rounded text-sm text-catalogue-text-secondary mb-2">
+                    <div className="p-2 bg-catalogue-bg-subtle rounded-catalogue-xs text-sm text-catalogue-text-secondary mb-2">
                       {moduleWithChapters.module.description}
                     </div>
                   )}
@@ -929,7 +929,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                           <CollapsibleTrigger asChild>
                             <Button
                               variant="ghost"
-                              className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                              className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
                             >
                               <FileText
                                 size={16}
@@ -975,7 +975,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                      className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
                     >
                       <FileText
                         size={16}
@@ -1007,7 +1007,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 result.push(
                   <div
                     key={`${slide.id}-${slideIndex}`}
-                    className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
+                    className="flex items-center gap-2 p-2 border border-catalogue-border rounded-catalogue-md hover:bg-catalogue-bg-subtle overflow-hidden"
                   >
                     <Icon size={16} className={`flex-shrink-0 ${color}`} />
                     <div className="flex-1 min-w-0 overflow-hidden">
@@ -1059,7 +1059,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-3 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                className="w-full justify-start p-3 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
               >
                 <FolderOpen
                   size={18}
@@ -1107,7 +1107,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
                   >
                     <Folder
                       size={16}
@@ -1129,7 +1129,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 <CollapsibleContent className="ms-4 mt-2">
                   {moduleWithChapters.module?.description &&
                     moduleWithChapters.module.description.trim() !== "" && (
-                      <div className="p-2 bg-catalogue-bg-subtle rounded text-sm text-catalogue-text-secondary mb-2">
+                      <div className="p-2 bg-catalogue-bg-subtle rounded-catalogue-xs text-sm text-catalogue-text-secondary mb-2">
                         {moduleWithChapters.module.description}
                       </div>
                     )}
@@ -1154,7 +1154,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                     <CollapsibleTrigger asChild>
                       <Button
                         variant="ghost"
-                        className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
+                        className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-catalogue-md overflow-hidden"
                       >
                         <FileText
                           size={16}
@@ -1186,7 +1186,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   result.push(
                     <div
                       key={`${slide.id}-${slideIndex}`}
-                      className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
+                      className="flex items-center gap-2 p-2 border border-catalogue-border rounded-catalogue-md hover:bg-catalogue-bg-subtle overflow-hidden"
                     >
                       <Icon size={16} className={`flex-shrink-0 ${color}`} />
                       <div className="flex-1 min-w-0 overflow-hidden">
@@ -1222,13 +1222,13 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   if (isLoading) {
     return (
-      <div className="bg-catalogue-bg-elevated rounded-lg shadow-sm border border-catalogue-border p-6">
-        <div className="animate-pulse">
-          <div className="h-4 bg-catalogue-bg-muted rounded w-1/4 mb-4"></div>
+      <div className="bg-catalogue-bg-elevated rounded-catalogue-md shadow-sm border border-catalogue-border p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 bg-catalogue-bg-muted rounded-catalogue-xs w-1/4"></div>
           <div className="space-y-2">
-            <div className="h-3 bg-catalogue-bg-muted rounded"></div>
-            <div className="h-3 bg-catalogue-bg-muted rounded w-5/6"></div>
-            <div className="h-3 bg-catalogue-bg-muted rounded w-4/6"></div>
+            <div className="h-3 bg-catalogue-bg-muted rounded-catalogue-xs"></div>
+            <div className="h-3 bg-catalogue-bg-muted rounded-catalogue-xs w-5/6"></div>
+            <div className="h-3 bg-catalogue-bg-muted rounded-catalogue-xs w-4/6"></div>
           </div>
         </div>
       </div>
@@ -1237,7 +1237,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   if (studyLibraryData.length === 0) {
     return (
-      <div className="bg-catalogue-bg-elevated rounded-lg shadow-sm border border-catalogue-border p-6">
+      <div className="bg-catalogue-bg-elevated rounded-catalogue-md shadow-sm border border-catalogue-border p-6">
         <div className="text-center">
           <h3 className="text-lg font-medium text-catalogue-text-primary mb-2">
             {t("courseStructureDetails.courseStructure", { course: courseTerm })}
@@ -1251,7 +1251,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   }
 
   return (
-    <div className="bg-catalogue-bg-elevated rounded-lg shadow-sm border border-catalogue-border p-6">
+    <div className="bg-catalogue-bg-elevated rounded-catalogue-md shadow-sm border border-catalogue-border p-6">
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-catalogue-border pb-3">

@@ -40,7 +40,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@/styles/katex-dark.css";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
@@ -49,6 +49,9 @@ import { QuickActions } from "./QuickActions";
 import { MicButton } from "./MicButton";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
+
+/** The subset of session modes the call screen handles. */
+type VoiceCallMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
 import { UploadFileInS3 } from "@/services/upload_file";
 import { getPublicUrl } from "@/services/upload_file";
 import { getUserId } from "@/constants/getUserId";
@@ -64,6 +67,7 @@ const DEFAULT_WIDTH = 380;
 const DEFAULT_HEIGHT = 520;
 
 export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
+  const avatarUrl = useChatbotAvatarUrl();
   const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
@@ -91,7 +95,11 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     streamingContent,
     isStreaming,
     isOffline,
+    reconnectStream,
     voiceMode,
+    voiceTopic,
+    suggestedVoiceTopic,
+    startVoiceCall,
     showVoiceSelector,
     setShowVoiceSelector,
     enterVoiceMode,
@@ -526,7 +534,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
               {/* Messages Area */}
               <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-                <ScrollArea className="h-full p-4">
+                <ScrollArea className="h-full p-4 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
                   <div className="flex flex-col space-y-4">
                     {isOffline && (
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs rounded-md">
@@ -656,7 +664,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                 </p>
                               </div>
                             ) : (
-                              <div className="max-w-none group relative">
+                              <div className="group relative min-w-0 max-w-full break-words [&_ol]:ps-5 [&_ul]:ps-5 [&_li]:my-0.5 [&_pre]:overflow-x-auto">
                                 <button
                                   className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 z-10 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={() =>
@@ -675,19 +683,19 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                   components={{
                                     h1: ({ ...props }) => (
                                       <h1
-                                        className="text-2xl font-bold mt-4 mb-3"
+                                        className="text-base font-bold mt-3 mb-1.5"
                                         {...props}
                                       />
                                     ),
                                     h2: ({ ...props }) => (
                                       <h2
-                                        className="text-xl font-bold mt-3 mb-2"
+                                        className="text-sm font-bold mt-2.5 mb-1"
                                         {...props}
                                       />
                                     ),
                                     h3: ({ ...props }) => (
                                       <h3
-                                        className="text-lg font-semibold mt-3 mb-2"
+                                        className="text-sm font-semibold mt-2 mb-1"
                                         {...props}
                                       />
                                     ),
@@ -727,7 +735,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                         >{children}</code>
                                       ) : (
                                         <code
-                                          className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
+                                          className="block max-w-full bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto whitespace-pre"
                                           {...rest}
                                         >{children}</code>
                                       );
@@ -832,10 +840,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         <p className="text-sm text-destructive">{t("panel.errorTitle")}</p>
                         <div className="flex gap-3 justify-center">
                           <button
-                            onClick={() => {
-                              const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-                              if (lastUserMsg) sendMessage(lastUserMsg.content);
-                            }}
+                            onClick={reconnectStream}
                             className="text-xs text-primary underline hover:text-primary/80"
                           >
                             {t("common.retry")}
@@ -878,7 +883,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     {/* Voice mode chip */}
                     {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
                       <button
-                        onClick={() => setShowVoiceSelector(true)}
+                        onClick={startVoiceCall}
                         disabled={isLoading || !sessionId}
                         title={t("common.startVoiceConversation")}
                         className="inline-flex items-center h-7 px-3 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
@@ -970,8 +975,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                 {/* LaTeX preview — show rendered formula when user types $ */}
                 {inputValue.includes('$') && (
-                  <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
-                    <span className="text-muted-foreground text-caption block mb-0.5">{t("common.preview")}</span>
+                  <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto space-y-0.5">
+                    <span className="text-muted-foreground text-caption block">{t("common.preview")}</span>
                     <ReactMarkdown
                       remarkPlugins={[remarkMath]}
                       rehypePlugins={[rehypeKatex]}
@@ -1062,17 +1067,20 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
             enterVoiceMode(mode, language, topic);
           }}
           enabledModes={chatbotSettings.enabled_modes}
+          defaultTopic={suggestedVoiceTopic()}
+          defaultLanguage={voiceLanguage}
         />
       )}
 
       {voiceMode && sessionId && (
         <VoiceModePanel
           sessionId={sessionId}
-          mode={voiceMode as any}
+          mode={voiceMode as VoiceCallMode}
           language={voiceLanguage}
-          voice="shubh"
+          voice={chatbotSettings.voice_settings?.default_voice || "shubh"}
           onClose={exitVoiceMode}
           chatbotSettings={chatbotSettings}
+          topic={voiceTopic}
         />
       )}
     </>

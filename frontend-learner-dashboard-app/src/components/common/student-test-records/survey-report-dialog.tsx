@@ -136,7 +136,7 @@ export const SurveyReportDialog = ({
       {sections.map((section: SurveySection) => (
         <div key={section.section_id} className="space-y-6">
           {/* Questions Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-section">
             {section.questions.map((question: SurveyQuestion, index: number) => (
               <Card key={question.question_id} className="p-6 border border-gray-200 shadow-sm">
                 <div className="space-y-4">

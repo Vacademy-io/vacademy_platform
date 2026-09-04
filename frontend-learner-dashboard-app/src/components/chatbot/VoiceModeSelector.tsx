@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Briefcase, ChatCircle, FileDashed } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -12,6 +12,9 @@ interface VoiceModeSelectorProps {
   onClose: () => void;
   onSelect: (mode: VoiceMode, language: string, topic?: string) => void;
   enabledModes?: string[];
+  /** Topic taken from the student's current chapter/course; editable here. */
+  defaultTopic?: string;
+  defaultLanguage?: string;
 }
 
 export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
@@ -19,11 +22,13 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
   onClose,
   onSelect,
   enabledModes,
+  defaultTopic = "",
+  defaultLanguage = "en-IN",
 }) => {
   const { t } = useTranslation("chatFeatureB");
   const [selectedMode, setSelectedMode] = useState<VoiceMode | null>(null);
-  const [selectedLanguage, setSelectedLanguage] = useState("en-IN");
-  const [topic, setTopic] = useState("");
+  const [selectedLanguage, setSelectedLanguage] = useState(defaultLanguage);
+  const [topic, setTopic] = useState(defaultTopic);
 
   const MODES: {
     key: VoiceMode;
@@ -58,8 +63,8 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
     { code: "ta-IN", label: t("voiceModeSelector.languageTa") },
     { code: "te-IN", label: t("voiceModeSelector.languageTe") },
     { code: "kn-IN", label: t("voiceModeSelector.languageKn") },
-    { code: "ms-IN", label: t("voiceModeSelector.languageMl") },
-    { code: "me-IN", label: t("voiceModeSelector.languageMr") },
+    { code: "ml-IN", label: t("voiceModeSelector.languageMl") },
+    { code: "mr-IN", label: t("voiceModeSelector.languageMr") },
     { code: "gu-IN", label: t("voiceModeSelector.languageGu") },
     { code: "pa-IN", label: t("voiceModeSelector.languagePa") },
     { code: "od-IN", label: t("voiceModeSelector.languageOr") },
@@ -68,6 +73,16 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
   const visibleModes = enabledModes
     ? MODES.filter((m) => enabledModes.includes(m.key))
     : MODES;
+
+  // Re-seed each time the dialog opens: the student may have moved to another
+  // chapter since it was last shown.
+  useEffect(() => {
+    if (!open) return;
+    setTopic(defaultTopic);
+    setSelectedLanguage(defaultLanguage);
+    setSelectedMode(visibleModes.length === 1 ? visibleModes[0]!.key : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultTopic, defaultLanguage]);
 
   const handleStart = () => {
     if (selectedMode) {
@@ -144,11 +159,15 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
               })}
             </div>
 
-            {/* Topic input — shown for interview and oral test */}
+            {/* Topic — prefilled from the student's current chapter/course */}
             {selectedMode && (
               <div className="mb-4">
                 <label className="text-xs text-white/50 font-medium mb-1.5 block">
-                  {selectedMode === "voice_interview" ? t("voiceModeSelector.topicLabelInterview") : selectedMode === "voice_oral_test" ? t("voiceModeSelector.topicLabelOralTest") : t("voiceModeSelector.topicLabelDoubt")}
+                  {selectedMode === "voice_interview"
+                    ? t("voiceModeSelector.topicLabelInterview")
+                    : selectedMode === "voice_oral_test"
+                      ? t("voiceModeSelector.topicLabelOralTest")
+                      : t("voiceModeSelector.topicLabelDoubt")}
                 </label>
                 <input
                   type="text"
@@ -157,17 +176,17 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
                   placeholder={topicPlaceholder}
                   className="w-full rounded-lg bg-white/5 border border-white/10 text-white text-sm px-3 py-2 outline-none focus:border-primary/50 placeholder:text-white/25"
                 />
-                {!topic.trim() && (
-                  <p className="text-caption text-white/30 mt-1">
-                    {selectedMode === "voice_doubt" ? t("voiceModeSelector.topicHelperOptional") : t("voiceModeSelector.topicHelperRecommended")}
-                  </p>
-                )}
+                <p className="text-caption text-white/30 mt-1">
+                  {topic.trim()
+                    ? t("voiceModeSelector.topicHelperEditable")
+                    : t("voiceModeSelector.topicHelperOptional")}
+                </p>
               </div>
             )}
 
             {/* Language picker */}
-            <div className="mb-5">
-              <label className="text-xs text-white/50 font-medium mb-1.5 block">
+            <div className="mb-5 space-y-1.5">
+              <label className="text-xs text-white/50 font-medium block">
                 {t("voiceModeSelector.languageLabel")}
               </label>
               <select
@@ -190,8 +209,8 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
             {/* Buttons */}
             <div className="flex gap-3">
               <Button
-                variant="outline"
-                className="flex-1 border-white/10 text-white/70 hover:bg-white/10 hover:text-white"
+                variant="ghost"
+                className="flex-1 border border-white/20 bg-white/5 text-white/80 hover:bg-white/15 hover:text-white"
                 onClick={onClose}
               >
                 {t("voiceModeSelector.cancel")}

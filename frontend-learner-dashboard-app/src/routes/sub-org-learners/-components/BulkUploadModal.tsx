@@ -504,8 +504,8 @@ export function BulkUploadModal({
 
         <div className="flex-1 overflow-y-auto space-y-4 pt-2">
           {/* Instructions */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <h4 className="font-medium text-blue-900 mb-1 text-sm">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1">
+            <h4 className="font-medium text-blue-900 text-sm">
               {t('subOrgLearners.bulkUpload.instructionsTitle')}
             </h4>
             <ol className="text-xs text-blue-800 list-decimal list-inside space-y-0.5">
@@ -517,7 +517,7 @@ export function BulkUploadModal({
           </div>
 
           {/* Download Template Button */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-stack">
             <Button variant="outline" size="sm" onClick={downloadSampleSheet} className="w-full sm:w-auto">
               <DownloadSimple className="w-4 h-4 me-2" />
               {t('subOrgLearners.bulkUpload.downloadButton')}
@@ -560,8 +560,8 @@ export function BulkUploadModal({
                 <Progress value={uploadProgress} className="w-full" />
               </div>
             ) : isDragging ? (
-              <div className="py-4">
-                <UploadSimple className="w-10 h-10 text-primary-500 mx-auto mb-2" />
+              <div className="py-4 space-y-2">
+                <UploadSimple className="w-10 h-10 text-primary-500 mx-auto" />
                 <p className="text-primary-600 font-medium">
                   {t('subOrgLearners.bulkUpload.dropHere')}
                 </p>

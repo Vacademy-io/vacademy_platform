@@ -59,7 +59,7 @@ const SuccessStep = ({
         <div className="space-y-6">
             {/* Success Card */}
             <Card className="shadow-lg border bg-white">
-                <CardContent className="p-5 sm:p-6 text-center">
+                <CardContent className="p-5 sm:p-card-lg text-center">
                     <div className="flex items-center justify-center mb-6">
                         <div className="p-3 bg-green-100 rounded-full">
                             <CheckCircle className="w-12 h-12 text-green-600" />
@@ -84,8 +84,8 @@ const SuccessStep = ({
                                 <div className="p-1.5 bg-amber-100 rounded-lg flex-shrink-0">
                                     <Warning className="w-5 h-5 text-amber-600" />
                                 </div>
-                                <div className="text-start">
-                                    <h3 className="text-base font-semibold text-gray-900 mb-1">
+                                <div className="text-start space-y-1">
+                                    <h3 className="text-base font-semibold text-gray-900">
                                         {t("successStep.approvalRequired.title")}
                                     </h3>
                                     <p className="text-gray-600 text-sm leading-relaxed">
@@ -99,7 +99,7 @@ const SuccessStep = ({
                     {/* Check Email Status Button */}
                     <div className="mt-6">
                         {isAutoLoggingIn ? (
-                            <div className="flex flex-col items-center gap-3">
+                            <div className="flex flex-col items-center gap-stack">
                                 <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                                 <p className="text-primary-600 font-medium italic">{t("successStep.redirectingToDashboard")}</p>
                             </div>

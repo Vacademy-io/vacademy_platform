@@ -9,12 +9,14 @@
         "retry": "Réessayer",
         "newChat": "Nouvelle discussion",
         "dropImageHere": "Déposez l'image ici",
-        "voiceChatLabel": "Chat vocal",
-        "startVoiceConversation": "Démarrer une conversation vocale",
+        "voiceChatLabel": "Appel vocal",
+        "startVoiceConversation": "Démarrer un appel vocal",
         "creditsExhausted": "Vos crédits OpenRouter sont épuisés. Veuillez recharger vos crédits pour continuer à utiliser l'assistant IA.",
         "attachmentAlt": "pièce jointe",
         "attachedImageAlt": "pièce jointe",
-        "copy": "Copier"
+        "copy": "Copier",
+        "popupView": "Ouvrir en fenêtre",
+        "dockView": "Ancrer sur le côté"
     },
     "voiceModeLabels": {
         "interview": "Entretien simulé",
@@ -164,15 +166,23 @@
     "voiceModePanel": {
         "unmute": "Réactiver le microphone",
         "mute": "Couper le microphone",
-        "end": "Terminer",
-        "hintIdle": "Appuyez sur le bouton micro ci-dessous pour parler",
-        "hintListening": "Je vous écoute... appuyez sur le micro une fois terminé",
-        "hintProcessing": "Traitement de votre réponse...",
-        "hintSpeaking": "Appuyez sur le micro pour interrompre et parler"
+        "end": "Terminer l'appel",
+        "hintIdle": "Appuyez sur le micro quand vous êtes prêt à parler",
+        "hintListening": "Je vous écoute… faites simplement une pause quand vous avez fini",
+        "hintProcessing": "Je réfléchis…",
+        "hintSpeaking": "Appuyez sur le micro pour intervenir",
+        "muted": "Micro coupé — réactivez-le pour continuer",
+        "talk": "Parler",
+        "connecting": "Connexion…",
+        "reconnecting": "Reconnexion…",
+        "noticeNoSpeech": "Je n'ai pas entendu — réessayez",
+        "noticeError": "Un problème est survenu. Appuyez sur le micro pour réessayer.",
+        "noticeMic": "Je n'ai pas accès à votre microphone. Vérifiez les autorisations puis appuyez sur le micro.",
+        "topicPrefix": "Sujet : {{topic}}"
     },
     "voiceModeSelector": {
-        "title": "Mode vocal",
-        "subtitle": "Choisissez comment interagir",
+        "title": "Appel vocal",
+        "subtitle": "Choisissez comment vous voulez parler",
         "modeInterviewLabel": "Passer mon entretien",
         "modeInterviewDescription": "Entraînez-vous avec un entretien simulé sur votre sujet actuel",
         "modeDoubtLabel": "Discuter de votre doute",
@@ -200,7 +210,8 @@
         "languagePa": "Pendjabi",
         "languageOr": "Odia",
         "cancel": "Annuler",
-        "start": "Démarrer"
+        "start": "Démarrer l'appel",
+        "topicHelperEditable": "Tiré de ce que vous étudiez — modifiez-le si vous préférez un autre sujet"
     },
     "latexToolbar": {
         "groupArithmetic": "Arithmétique",

@@ -13,6 +13,17 @@ import vacademy.io.common.auth.entity.UserRole;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * WARNING — this repository is only usable from <b>auth_service</b>. It lives in
+ * common_service, so any service can inject it and every query here compiles and
+ * passes review anywhere. But {@code users}, {@code user_role} and {@code roles}
+ * exist only in auth_service's database: called from admin_core (or any other
+ * service) these methods fail at RUNTIME with
+ * {@code relation "user_role" does not exist}.
+ *
+ * <p>From another service, resolve users and their roles over HTTP instead —
+ * see {@code AuthService.requireUsersByInstituteAndRoles} in admin_core.
+ */
 @Repository
 public interface UserRoleRepository extends CrudRepository<UserRole, String> {
 

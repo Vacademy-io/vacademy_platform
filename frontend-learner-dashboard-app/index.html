@@ -364,8 +364,18 @@
             };
             img.src = b.instituteLogoUrl;
           }
-          if (b && b.instituteThemeCode) {
-            document.getElementById("boot-splash-bar").style.background = b.instituteThemeCode;
+          // instituteThemeHex is the theme code already resolved to a real
+          // colour by services/domain-routing.ts (which can read theme.json;
+          // this inline script cannot). Only ever assign something that actually
+          // looks like a colour: the old code assigned instituteThemeCode
+          // directly, so codes like "navy"/"teal"/"purple" painted an unrelated
+          // CSS named colour and "primary"/"holistic" silently no-opped.
+          var splashColor = (b && b.instituteThemeHex) || null;
+          if (!splashColor && b && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(b.instituteThemeCode || "")) {
+            splashColor = b.instituteThemeCode; // custom-hex brand, cached before instituteThemeHex existed
+          }
+          if (splashColor) {
+            document.getElementById("boot-splash-bar").style.background = splashColor;
           }
         } catch (e) {}
       })();

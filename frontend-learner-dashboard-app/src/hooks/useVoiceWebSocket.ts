@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { AI_SERVICE_URL } from '@/constants/urls';
+import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -8,7 +10,13 @@ interface VoiceWebSocketCallbacks {
   onTranscriptFinal?: (text: string) => void;
   onAiText?: (text: string, messageId: number) => void;
   onAudioChunk?: (base64Data: string) => void;
-  onAudioEnd?: () => void;
+  /** One playable audio segment has finished arriving — play it now. */
+  onAudioSegmentEnd?: () => void;
+  /**
+   * Turn is over. `reason` is "complete", "no_speech", "no_audio" or "error";
+   * `detail` names the server leg that decided it (transcode / STT / length).
+   */
+  onAudioEnd?: (reason: string, detail?: string) => void;
   onSummary?: (data: unknown) => void;
   onError?: (message: string) => void;
   onReady?: () => void;
@@ -19,7 +27,10 @@ interface UseVoiceWebSocketReturn {
   disconnect: () => void;
   sendConfig: (language: string, voice: string) => void;
   sendAudioChunk: (base64Data: string) => void;
-  sendAudioEnd: () => void;
+  sendAudioEnd: (mimeType?: string) => void;
+  /** Drop the mic audio streamed so far — the turn had no speech in it. */
+  sendAudioDiscard: () => void;
+  sendInterrupt: () => void;
   sendEndSession: () => void;
   connectionState: ConnectionState;
 }
@@ -34,6 +45,22 @@ function buildWsUrl(sessionId: string): string {
     wsBase = 'ws://' + wsBase.slice('http://'.length);
   }
   return `${wsBase}/chat-agent/session/${sessionId}/voice`;
+}
+
+/**
+ * Read the access token without awaiting Capacitor storage — the socket opens
+ * inside an event handler and the token has to go out as the first message.
+ */
+function readAccessToken(): string {
+  try {
+    return (
+      getTokenFromCookie(TokenKey.accessToken) ||
+      localStorage.getItem(TokenKey.accessToken) ||
+      ''
+    );
+  } catch {
+    return '';
+  }
 }
 
 export function useVoiceWebSocket(
@@ -105,8 +132,14 @@ export function useVoiceWebSocket(
         case 'audio_chunk':
           cb.onAudioChunk?.(data.data ?? '');
           break;
+        case 'audio_segment_end':
+          cb.onAudioSegmentEnd?.();
+          break;
         case 'audio_end':
-          cb.onAudioEnd?.();
+          if (data.reason && data.reason !== 'complete') {
+            console.info('[voice-call] turn ended:', data.reason, data.detail ?? '');
+          }
+          cb.onAudioEnd?.(data.reason ?? 'complete', data.detail);
           break;
         case 'summary':
           cb.onSummary?.(data);
@@ -147,6 +180,13 @@ export function useVoiceWebSocket(
       ws.onopen = () => {
         reconnectAttemptRef.current = 0;
         setConnectionState('connected');
+
+        // Identify the caller first: the server bills this session's institute
+        // for every turn, so it refuses a token belonging to someone else.
+        const token = readAccessToken();
+        if (token) {
+          ws.send(JSON.stringify({ type: 'auth', token }));
+        }
 
         // Start heartbeat ping every 25 seconds to keep connection alive
         if (pingIntervalRef.current !== null) {
@@ -227,8 +267,20 @@ export function useVoiceWebSocket(
     [sendJson],
   );
 
-  const sendAudioEnd = useCallback(() => {
-    sendJson({ type: 'audio_end' });
+  const sendAudioEnd = useCallback(
+    (mimeType?: string) => {
+      sendJson({ type: 'audio_end', mime: mimeType });
+    },
+    [sendJson],
+  );
+
+  const sendAudioDiscard = useCallback(() => {
+    sendJson({ type: 'audio_discard' });
+  }, [sendJson]);
+
+  /** Abandon the reply in flight — the student started talking over it. */
+  const sendInterrupt = useCallback(() => {
+    sendJson({ type: 'interrupt' });
   }, [sendJson]);
 
   const sendEndSession = useCallback(() => {
@@ -249,6 +301,8 @@ export function useVoiceWebSocket(
     sendConfig,
     sendAudioChunk,
     sendAudioEnd,
+    sendAudioDiscard,
+    sendInterrupt,
     sendEndSession,
     connectionState,
   };

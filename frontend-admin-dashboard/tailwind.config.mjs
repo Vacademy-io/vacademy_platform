@@ -35,6 +35,11 @@ module.exports = {
                 // AI intake chat surface inside the create-page dialog — a
                 // named token because the design system bans arbitrary values.
                 'dialog-chat': 'min(65vh, 42rem)',
+                // Sandboxed live previews of the public audience form. Named for
+                // the same reason: the inline one sits beside the controls, the
+                // dialog one is the "show me properly" view.
+                'preview-inline': '22rem',
+                'preview-dialog': 'min(72vh, 44rem)',
             },
             maxHeight: {
                 // Tall dialogs that scroll their own body (section-variant
@@ -51,6 +56,20 @@ module.exports = {
                 'dialog-md': 'min(92vw, 42rem)',
                 'dialog-lg': 'min(92vw, 48rem)',
                 'dialog-xl': 'min(94vw, 64rem)',
+                // The internal sidebar shell: the desktop panel and the drawer
+                // it becomes on mobile. Named because several places (the
+                // slides footer bar among them) have to match the panel exactly
+                // — guessing the width is what made that footer misalign.
+                'internal-sidebar': '307px',
+                'internal-sidebar-drawer': '280px',
+            },
+            minWidth: {
+                // Floors for the slide-type dialogs in the slides sidebar. These
+                // are minimums, unlike the width.dialog-* tokens above which are
+                // viewport-capped fixed widths — hence the separate names.
+                'slide-dialog-sm': '25rem',
+                'slide-dialog-md': '31.25rem',
+                'slide-dialog-lg': '32.5rem',
             },
             fontFamily: {
                 sans: ['Open Sans', 'sans-serif'],

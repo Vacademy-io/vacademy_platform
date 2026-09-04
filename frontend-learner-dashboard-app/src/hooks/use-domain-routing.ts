@@ -7,6 +7,7 @@ import {
   DomainRoutingResponse,
   setCachedInstituteBranding,
   setCachedPreferredCountries,
+  setCachedPhoneCountryGeoMode,
 } from "@/services/domain-routing";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -231,6 +232,8 @@ export const useDomainRouting = () => {
 
       // Cache preferred countries for synchronous access by phone inputs
       setCachedPreferredCountries(data.commaSeparatedPreferredCountry ?? null);
+      // ...and the portal's rule for when the visitor's own country may win.
+      setCachedPhoneCountryGeoMode(data.phoneCountryGeoMode ?? null);
 
       // Update global state
       setInstituteId(data.instituteId);

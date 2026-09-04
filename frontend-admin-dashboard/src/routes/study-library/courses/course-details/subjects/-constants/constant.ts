@@ -7,6 +7,7 @@ export enum TabType {
     STUDENT = 'STUDENT',
     TEACHERS = 'TEACHERS',
     ASSESSMENT = 'ASSESSMENT',
+    QUIZ_RESULTS = 'QUIZ_RESULTS',
     LIVE_SESSION = 'LIVE_SESSION',
     PLANNING = 'PLANNING',
     ACTIVITY = 'ACTIVITY',
@@ -16,6 +17,8 @@ export enum TabType {
     DOWNLOADS = 'DOWNLOADS',
     SETTINGS = 'SETTINGS',
     DISCUSSION = 'DISCUSSION',
+    // Live AI Tutor: per-course teaching-mode settings, compile status, plan preview.
+    TUTOR_MODE = 'TUTOR_MODE',
     // ASSIGNMENT = 'ASSIGNMENT',
     // GRADING = 'GRADING',
     // ANNOUNCEMENT = 'ANNOUNCEMENT',
@@ -26,6 +29,7 @@ export const tabs = [
     { label: `${getTerminology(RoleTerms.Learner, SystemTerms.Learner)}`, value: 'STUDENT' },
     { label: `${getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}`, value: 'TEACHERS' },
     { label: 'Assessment', value: 'ASSESSMENT' },
+    { label: 'Quiz Results', value: 'QUIZ_RESULTS' },
     {
         label: `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}s`,
         value: 'LIVE_SESSION',
@@ -38,6 +42,7 @@ export const tabs = [
     { label: 'Downloads', value: 'DOWNLOADS' },
     { label: 'Settings', value: 'SETTINGS' },
     { label: 'Discussion', value: 'DISCUSSION' },
+    { label: 'Tutor Mode', value: 'TUTOR_MODE' },
     // { label: 'Assignment ', value: 'ASSIGNMENT' },
     // { label: 'Grading ', value: 'GRADING' },
     // { label: 'Announcements ', value: 'ANNOUNCEMENT' },

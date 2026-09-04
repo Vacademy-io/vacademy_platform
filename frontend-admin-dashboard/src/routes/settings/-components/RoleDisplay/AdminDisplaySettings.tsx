@@ -60,6 +60,7 @@ import {
     type SettingsSectionGroup,
 } from '@/components/settings/shell';
 
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 const COURSE_CREATION_DEFAULTS: CourseCreationSettings = {
     // Admins can create courses by default → the toggle reads ON unless turned off.
     showCreateCourse: true,
@@ -257,7 +258,7 @@ export default function AdminDisplaySettings() {
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
-    const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
+    const [activeCategory, setActiveCategory] = useState<SidebarCategory>('CRM');
 
     // Master switch behind the Downloads course-details tab: off locks that row
     // to hidden here, matching what the course page renders.
@@ -1204,6 +1205,7 @@ export default function AdminDisplaySettings() {
                             'LEARNER',
                             'TEACHER',
                             'ASSESSMENT',
+                            'QUIZ_RESULTS',
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
@@ -1212,6 +1214,7 @@ export default function AdminDisplaySettings() {
                             'CERTIFICATES',
                             'DOWNLOADS',
                             'SETTINGS',
+                            'TUTOR_MODE',
                         ];
                         const orderForId: Record<string, number> = {
                             OUTLINE: 1,
@@ -1219,6 +1222,9 @@ export default function AdminDisplaySettings() {
                             LEARNER: 3,
                             TEACHER: 4,
                             ASSESSMENT: 5,
+                            // 5.5 slots it after Assessment without renumbering tabs that
+                            // institutes have already saved orders for — see admin-defaults.ts.
+                            QUIZ_RESULTS: 5.5,
                             LIVE_SESSION: 6,
                             PLANNING: 7,
                             ACTIVITY: 8,
@@ -1227,6 +1233,7 @@ export default function AdminDisplaySettings() {
                             CERTIFICATES: 11,
                             DOWNLOADS: 12,
                             SETTINGS: 13,
+                            TUTOR_MODE: 13.5,
                         };
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;
@@ -1630,13 +1637,14 @@ export default function AdminDisplaySettings() {
                 <CardContent className="space-y-3">
                     <Tabs
                         value={activeCategory}
-                        onValueChange={(v) => setActiveCategory(v as 'CRM' | 'LMS' | 'AI')}
+                        onValueChange={(v) => setActiveCategory(v as SidebarCategory)}
                         className="w-full"
                     >
-                        <TabsList className="mb-4 grid w-full grid-cols-3">
+                        <TabsList className="mb-4 grid w-full grid-cols-4">
                             <TabsTrigger value="LMS">{t('sidebarCategories.lms')}</TabsTrigger>
                             <TabsTrigger value="CRM">{t('sidebarCategories.crm')}</TabsTrigger>
                             <TabsTrigger value="AI">{t('sidebarCategories.aiTools')}</TabsTrigger>
+                            <TabsTrigger value="ERP">ERP</TabsTrigger>
                         </TabsList>
 
                         {(() => {

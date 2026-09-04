@@ -785,7 +785,7 @@ const PaymentStep = ({
           selectedPayment={selectedPayment}
           onPaymentSelect={handlePaymentSelect}
         />
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+        <div className="flex flex-col-reverse gap-stack sm:flex-row sm:justify-between">
           {canGoBack ? (
             <MyButton
               type="button"
@@ -828,7 +828,7 @@ const PaymentStep = ({
         rounded="lg"
         className="border border-white/40 bg-white/90 shadow-lg backdrop-blur-md"
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-stack sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-2 sm:gap-3">
             <div className="flex-shrink-0 rounded-lg bg-primary-50 p-1.5 sm:p-2">
               <CreditCard className="size-5 text-primary-500 sm:size-6" />

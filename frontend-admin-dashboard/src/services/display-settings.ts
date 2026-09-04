@@ -13,6 +13,7 @@ import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/adm
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
 
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 const CACHE_EXPIRY_HOURS = 24;
 const LEGACY_ADMIN_KEY = StorageKey.ADMIN_DISPLAY_SETTINGS;
 const LEGACY_TEACHER_KEY = StorageKey.TEACHER_DISPLAY_SETTINGS;
@@ -977,6 +978,9 @@ function mergeDisplayWithDefaults(
         { id: 'CRM', visible: true, default: true, order: 0 },
         { id: 'LMS', visible: true, default: false, order: 1 },
         { id: 'AI', visible: true, default: false, order: 2 },
+        // ERP ships hidden: its modules are opt-in per institute (see
+        // OPT_IN_TAB_IDS), so the rail category would otherwise show up empty.
+        { id: 'ERP', visible: false, default: false, order: 3 },
     ];
 
     const mergedSidebarCategories = mergeArrayById(
@@ -985,7 +989,7 @@ function mergeDisplayWithDefaults(
     );
 
     merged.sidebarCategories = mergedSidebarCategories.map((c) => ({
-        id: c.id as 'CRM' | 'LMS' | 'AI',
+        id: c.id as SidebarCategory,
         visible: c.visible ?? true,
         locked: c.locked ?? false,
         default: c.default ?? c.id === 'CRM',
@@ -1295,7 +1299,7 @@ export async function getAllRoleDisplaySettings(): Promise<Record<string, Partia
     }
 }
 
-type CategoryId = 'CRM' | 'LMS' | 'AI';
+type CategoryId = SidebarCategory;
 
 /**
  * Resolve the effective post-login redirect URL for a role.

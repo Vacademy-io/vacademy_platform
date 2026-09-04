@@ -9,12 +9,14 @@
         "retry": "पुनः प्रयास करें",
         "newChat": "नई चैट",
         "dropImageHere": "छवि यहाँ छोड़ें",
-        "voiceChatLabel": "वॉइस चैट",
-        "startVoiceConversation": "वॉइस बातचीत शुरू करें",
+        "voiceChatLabel": "वॉइस कॉल",
+        "startVoiceConversation": "वॉइस कॉल शुरू करें",
         "creditsExhausted": "आपके OpenRouter क्रेडिट समाप्त हो गए हैं। AI सहायक का उपयोग जारी रखने के लिए कृपया अपने क्रेडिट रिचार्ज करें।",
         "attachmentAlt": "अटैचमेंट",
         "attachedImageAlt": "संलग्न",
-        "copy": "कॉपी करें"
+        "copy": "कॉपी करें",
+        "popupView": "पॉपअप में खोलें",
+        "dockView": "साइड में डॉक करें"
     },
     "voiceModeLabels": {
         "interview": "मॉक इंटरव्यू",
@@ -164,15 +166,23 @@
     "voiceModePanel": {
         "unmute": "माइक्रोफ़ोन अनम्यूट करें",
         "mute": "माइक्रोफ़ोन म्यूट करें",
-        "end": "समाप्त करें",
-        "hintIdle": "बोलना शुरू करने के लिए नीचे माइक बटन दबाएँ",
-        "hintListening": "मैं सुन रहा हूँ... पूरा होने पर माइक दबाएँ",
-        "hintProcessing": "आपके जवाब को प्रोसेस किया जा रहा है...",
-        "hintSpeaking": "बीच में बोलने के लिए माइक दबाएँ"
+        "end": "कॉल समाप्त करें",
+        "hintIdle": "बोलने के लिए तैयार हों तो माइक दबाएँ",
+        "hintListening": "मैं सुन रहा हूँ… बात पूरी हो जाए तो बस रुक जाएँ",
+        "hintProcessing": "सोच रहा हूँ…",
+        "hintSpeaking": "बीच में बोलने के लिए माइक दबाएँ",
+        "muted": "माइक बंद है — बात जारी रखने के लिए अनम्यूट करें",
+        "talk": "बोलें",
+        "connecting": "कनेक्ट हो रहा है…",
+        "reconnecting": "फिर से कनेक्ट हो रहा है…",
+        "noticeNoSpeech": "मैं सुन नहीं पाया — फिर से कोशिश करें",
+        "noticeError": "कुछ गड़बड़ हो गई। फिर से कोशिश करने के लिए माइक दबाएँ।",
+        "noticeMic": "आपका माइक्रोफ़ोन नहीं मिल रहा। अनुमति जाँचें और माइक दबाएँ।",
+        "topicPrefix": "विषय: {{topic}}"
     },
     "voiceModeSelector": {
-        "title": "वॉइस मोड",
-        "subtitle": "आप कैसे बातचीत करना चाहते हैं, चुनें",
+        "title": "वॉइस कॉल",
+        "subtitle": "चुनें कि आप कैसे बात करना चाहते हैं",
         "modeInterviewLabel": "मेरा इंटरव्यू लें",
         "modeInterviewDescription": "अपने मौजूदा विषय पर मॉक इंटरव्यू का अभ्यास करें",
         "modeDoubtLabel": "अपना डाउट चर्चा करें",
@@ -200,7 +210,8 @@
         "languagePa": "पंजाबी",
         "languageOr": "ओड़िया",
         "cancel": "रद्द करें",
-        "start": "शुरू करें"
+        "start": "कॉल शुरू करें",
+        "topicHelperEditable": "आप जो पढ़ रहे हैं उसी से लिया गया — कुछ और चाहिए तो बदल लें"
     },
     "latexToolbar": {
         "groupArithmetic": "अंकगणित",

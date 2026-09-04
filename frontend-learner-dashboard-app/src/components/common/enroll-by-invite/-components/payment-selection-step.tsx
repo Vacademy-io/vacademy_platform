@@ -262,7 +262,7 @@ const PaymentSelectionStep = ({
         {/* Selected Donation Summary */}
         {selectedPayment && (
           <Card className="bg-blue-50 border-blue-200">
-            <CardContent className="p-4">
+            <CardContent className="p-card">
               <div className="flex items-center justify-between">
                 <span className="text-gray-700 font-medium">
                   {t("paymentSelection.donation.yourDonation")}
@@ -326,7 +326,7 @@ const PaymentSelectionStep = ({
 
   return (
     <Card className="shadow-lg w-full">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5 sm:p-card-lg">
         {renderDonationSection()}
         {renderRegularPaymentOptions()}
       </CardContent>

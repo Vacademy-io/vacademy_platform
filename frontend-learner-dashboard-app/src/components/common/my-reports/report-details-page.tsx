@@ -138,8 +138,8 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
     }
 
     return (
-      <Card id={sectionId} className="w-full p-4">
-        <CardTitle className="text-lg font-semibold text-neutral-800 mb-3">
+      <Card id={sectionId} className="w-full p-4 space-y-stack">
+        <CardTitle className="text-lg font-semibold text-neutral-800">
           {title}
         </CardTitle>
         <CardContent className="grid gap-2">
@@ -284,7 +284,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
               {renderSection(report.report.student_efforts, "efforts")}
               {renderSection(report.report.learning_frequency, "pattern")}
 
-              <div className="flex flex-col md:flex-row gap-6 w-full">
+              <div className="flex flex-col md:flex-row gap-section w-full">
                 {Object.keys(report.report?.strengths ?? {}).length > 0 &&
                   renderStrengthsWeaknesses(
                     "Strengths",

@@ -40,6 +40,15 @@
     "catalogStep": {
         "selectPrompt": "Select the {{courses}} you'd like to enroll in"
     },
+    "courseFinder": {
+        "dialogHeading": "Select your class",
+        "showCourses": "Show my {{courses}}",
+        "defaultSubheading": "Pick yours to see the {{courses}} available for you",
+        "courseCount": "{{count}} {{courses}}",
+        "view": "View",
+        "skip": "Show all {{courses}}",
+        "change": "Change selection"
+    },
     "cartStep": {
         "basket": {
             "spendForTier": "Spend {{amount}} more to get {{offer}} the whole basket.",
@@ -204,9 +213,14 @@
             "defaultTitle": "Video"
         }
     },
+    "stepRail": {
+        "secureTitle": "Secure & Safe",
+        "secureNote": "Your data is protected"
+    },
     "stepProgress": {
         "ariaLabel": "Enrollment progress",
         "steps": {
+            "catalog": "Select {{courses}}",
             "cart": "Cart",
             "details": "Details",
             "payment": "Payment",
@@ -216,6 +230,8 @@
     "success": {
         "title": "You're enrolled!",
         "defaultMessage": "Successfully enrolled in {{count}} {{course}}. Start learning right away.",
+        "totalPaid": "Total paid",
+        "youSaved": "You saved {{amount}}",
         "access": {
             "oneYear": "1 year access",
             "months_one": "{{count}} month access",

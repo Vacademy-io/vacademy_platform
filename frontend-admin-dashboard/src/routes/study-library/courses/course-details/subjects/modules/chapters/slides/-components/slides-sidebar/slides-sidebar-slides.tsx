@@ -237,10 +237,11 @@ const SlideItem = ({
 
     return (
         <SortableItem value={slide.id} asChild className="group cursor-pointer">
+            {/* No hover scale here: a transform widens the row's scrollable
+                overflow inside the sidebar and blurs the text mid-transition.
+                The border/shadow change below carries the hover state. */}
             <div
-                className={`w-full transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-left-2 ${
-                    slide.status !== 'DELETED' ? 'hover:scale-[1.01]' : ''
-                }`}
+                className="w-full transition-all duration-300 ease-in-out animate-in fade-in ltr:slide-in-from-left-2 rtl:slide-in-from-right-2"
                 onClick={slide.status === 'DELETED' ? undefined : onClick}
             >
                 <div
@@ -332,8 +333,8 @@ const SlideItem = ({
                                 <div className="space-y-1">
                                     <p className="font-medium">{getSlideTitle()}</p>
                                     <p className="text-xs capitalize text-neutral-500">
-                                        {(slide.source_type ?? '').toLowerCase().replace('_', ' ')} •{' '}
-                                        {(slide.status ?? '').toLowerCase()}
+                                        {(slide.source_type ?? '').toLowerCase().replace('_', ' ')}{' '}
+                                        • {(slide.status ?? '').toLowerCase()}
                                     </p>
                                 </div>
                             </TooltipContent>

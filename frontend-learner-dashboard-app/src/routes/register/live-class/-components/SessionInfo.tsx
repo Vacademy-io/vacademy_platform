@@ -149,7 +149,7 @@ export default function SessionInfo({
       {sessionDetails?.descriptionHtml &&
       sessionDetails.descriptionHtml.trim() !== "" ? (
         <Card className="w-full border-primary-100/60 shadow-sm">
-          <CardContent className="p-4 sm:p-5">
+          <CardContent className="p-card sm:p-5">
             <div
               className="max-h-screen-28 sm:max-h-screen-35 overflow-auto prose prose-sm max-w-none text-gray-600 leading-relaxed"
               dangerouslySetInnerHTML={{
@@ -170,7 +170,7 @@ export default function SessionInfo({
 
       {/* Session Details Bar */}
       <Card className="w-full border-primary-100/60 shadow-sm">
-        <CardContent className="p-4">
+        <CardContent className="p-card">
           <div className="flex items-center justify-center gap-3 sm:gap-5 text-sm flex-wrap">
             <div className="flex items-center gap-2">
               <svg

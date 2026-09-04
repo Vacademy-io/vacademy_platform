@@ -4,7 +4,6 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { MyButton } from '@/components/design-system/button';
 import { Lightning } from '@phosphor-icons/react';
 import { MyDropdown } from '@/components/design-system/dropdown';
-import { useSidebar } from '@/components/ui/sidebar';
 import {
     Plus,
     FilePdf,
@@ -80,7 +79,6 @@ export const ChapterSidebarAddButton = () => {
             .then(setRoleDisplay)
             .catch(() => setRoleDisplay(null));
     }, []);
-    const { open } = useSidebar();
     const route = useRouter();
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { courseId, levelId, chapterId, moduleId, subjectId, sessionId } =
@@ -558,9 +556,7 @@ export const ChapterSidebarAddButton = () => {
                     }
                 } catch (err) {
                     console.error('❌ Error creating assignment:', err);
-                    toast.error(
-                        (err as Error)?.message || t('toasts.assignmentCreateFailedRetry')
-                    );
+                    toast.error((err as Error)?.message || t('toasts.assignmentCreateFailedRetry'));
                 }
                 break;
             }
@@ -585,7 +581,7 @@ export const ChapterSidebarAddButton = () => {
                             elements: [],
                             files: {},
                             appState: {
-                                viewBackgroundColor: '#ffffff',
+                                viewBackgroundColor: '#ffffff', // design-lint-ignore: Excalidraw appState takes a CSS colour string, not a token
                                 gridSize: null,
                             },
                             lastModified: Date.now(),
@@ -783,9 +779,7 @@ export const ChapterSidebarAddButton = () => {
                     }
                 } catch (err) {
                     console.error('❌ Error creating quiz:', err);
-                    toast.error(
-                        (err as Error)?.message || t('toasts.quizCreateFailedRetry')
-                    );
+                    toast.error((err as Error)?.message || t('toasts.quizCreateFailedRetry'));
                 }
                 break;
             }
@@ -830,13 +824,12 @@ export const ChapterSidebarAddButton = () => {
                             className={`
                                 group relative h-9 w-full min-w-0
                                 overflow-hidden border-0 bg-gradient-to-r from-primary-400
-                                to-primary-400 shadow-md
-                                shadow-primary-500/20 transition-all
-                                duration-300 ease-in-out hover:scale-[1.01]
-                                hover:from-primary-400 hover:to-primary-400
-                                hover:shadow-lg hover:shadow-primary-500/25
-                                active:scale-[0.99] sm:min-w-0
-                                ${open ? 'px-3' : 'px-2.5'}
+                                to-primary-400 px-3
+                                shadow-md shadow-primary-500/20
+                                transition-all duration-300 ease-in-out
+                                hover:scale-[1.01] hover:from-primary-400
+                                hover:to-primary-400 hover:shadow-lg
+                                hover:shadow-primary-500/25 active:scale-[0.99] sm:min-w-0
                             `}
                             id="add-slides"
                             title={t('addSlideButtonTitle')}
@@ -844,18 +837,10 @@ export const ChapterSidebarAddButton = () => {
                             <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-white/0 via-white/20 to-white/0 transition-transform duration-700 ease-out group-hover:translate-x-full" />
 
                             <div className="relative z-10 flex items-center justify-center gap-1.5">
-                                <Plus
-                                    className={`
-                                    transition-all duration-300 ease-in-out
-                                    group-hover:rotate-90 group-hover:scale-110
-                                    ${open ? 'size-4' : 'size-3.5'}
-                                `}
-                                />
-                                {open && (
-                                    <span className="text-sm font-medium tracking-wide duration-300 animate-in slide-in-from-left-2">
-                                        {t('addSlide')}
-                                    </span>
-                                )}
+                                <Plus className="size-4 transition-all duration-300 ease-in-out group-hover:rotate-90 group-hover:scale-110" />
+                                <span className="truncate text-sm font-medium tracking-wide">
+                                    {t('addSlide')}
+                                </span>
                             </div>
                         </MyButton>
                     </MyDropdown>
@@ -864,7 +849,7 @@ export const ChapterSidebarAddButton = () => {
                     <MyButton
                         buttonType="primary"
                         scale="medium"
-                        className={`flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap sm:min-w-0 ${open ? 'px-3' : 'px-2.5'}`}
+                        className="flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap px-3 sm:min-w-0"
                         title={t('quickAddButtonTitle')}
                         onClick={() => {
                             const s = route.state.location.search as Record<string, unknown>;
@@ -892,7 +877,7 @@ export const ChapterSidebarAddButton = () => {
                         id="quick-add-fast"
                     >
                         <Lightning className="size-4 shrink-0" />
-                        {open && <span className="text-sm font-medium">{t('quickAdd')}</span>}
+                        <span className="text-sm font-medium">{t('quickAdd')}</span>
                     </MyButton>
                 </div>
             </div>
@@ -901,7 +886,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.uploadPdf')}
-                dialogWidth="min-w-[400px] w-auto"
+                dialogWidth="min-w-slide-dialog-sm w-auto"
                 open={isPdfDialogOpen}
                 onOpenChange={closePdfDialog}
             >
@@ -913,7 +898,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.uploadDoc')}
-                dialogWidth="min-w-[400px] w-auto"
+                dialogWidth="min-w-slide-dialog-sm w-auto"
                 open={isDocUploadDialogOpen}
                 onOpenChange={closeDocUploadDialog}
             >
@@ -925,7 +910,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.addYoutubeVideo')}
-                dialogWidth="min-w-[400px]"
+                dialogWidth="min-w-slide-dialog-sm"
                 open={isVideoDialogOpen}
                 onOpenChange={closeVideoDialog}
             >
@@ -937,7 +922,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.uploadVideoFile')}
-                dialogWidth="min-w-[400px]"
+                dialogWidth="min-w-slide-dialog-sm"
                 open={isVideoFileDialogOpen}
                 onOpenChange={closeVideoFileDialog}
             >
@@ -949,7 +934,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.createQuestion')}
-                dialogWidth="min-w-[500px]"
+                dialogWidth="min-w-slide-dialog-md"
                 open={isQuestionDialogOpen}
                 onOpenChange={closeQuestionDialog}
             >
@@ -961,7 +946,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.addAudioSlide')}
-                dialogWidth="min-w-[500px]"
+                dialogWidth="min-w-slide-dialog-md"
                 open={isAudioDialogOpen}
                 onOpenChange={closeAudioDialog}
             >
@@ -973,7 +958,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.uploadPpt')}
-                dialogWidth="min-w-[400px] w-auto"
+                dialogWidth="min-w-slide-dialog-sm w-auto"
                 open={isPptDialogOpen}
                 onOpenChange={closePptDialog}
             >
@@ -985,7 +970,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.importScorm')}
-                dialogWidth="min-w-[400px] w-auto"
+                dialogWidth="min-w-slide-dialog-sm w-auto"
                 open={isScormDialogOpen}
                 onOpenChange={closeScormDialog}
             >
@@ -997,7 +982,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.linkAssessment')}
-                dialogWidth="min-w-[520px] w-auto"
+                dialogWidth="min-w-slide-dialog-lg w-auto"
                 open={isAssessmentDialogOpen}
                 onOpenChange={closeAssessmentDialog}
             >
@@ -1011,7 +996,7 @@ export const ChapterSidebarAddButton = () => {
             <MyDialog
                 trigger={<></>}
                 heading={t('dialogs.addVimeoVideo')}
-                dialogWidth="min-w-[400px]"
+                dialogWidth="min-w-slide-dialog-sm"
                 open={isVimeoDialogOpen}
                 onOpenChange={closeVimeoDialog}
             >

@@ -99,7 +99,6 @@ const CustomInviteFormCard = ({
                                                     name={field.name}
                                                     type={field.type}
                                                     isRequired={field.isRequired}
-                                                    locked={field.oldKey}
                                                     isEditing={isEditing}
                                                     onToggleRequired={() =>
                                                         toggleIsRequired(index)

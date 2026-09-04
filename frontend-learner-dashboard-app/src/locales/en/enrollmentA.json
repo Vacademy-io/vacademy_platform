@@ -113,6 +113,7 @@
     "close": "Close",
     "goToDashboard": "Go to Dashboard",
     "readyToContinue": "Ready to continue ?",
+    "reenrollmentBlockedFallback": "Re-enrollment is not available just yet. Please try again later.",
     "upgradeToContinueLearning": "Upgrade to Continue Learning",
     "clickBelowToJoin": "Click below to join membership.",
     "activeMembershipTitle": "You have an active membership",

@@ -9,7 +9,14 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
-import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
+import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
+import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
+import {
+  clearCourseFinderSelection,
+  courseFinderScope,
+  saveCourseFinderSelection,
+} from "../-utils/course-finder-bus";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -57,7 +64,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
   // first-touch UTM capture for lead attribution.
   useCatalogueTracking((catalogueData?.globalSettings as any)?.tracking);
+
+
   useEffect(() => { captureUtmOnce(); }, []);
+  // First-party page view. Fires per route, so SPA navigation between pages is
+  // counted — the GA4/Pixel hooks above only serve the institute's own tools,
+  // and most institutes never connect one.
+  useCataloguePageView(
+    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
+  );
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
   // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
   const [leadArmed, setLeadArmed] = useState(false);
@@ -74,6 +89,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   });
   const [hasCourseFinderOptions, setHasCourseFinderOptions] = useState(false);
   const [showCourseFinder, setShowCourseFinder] = useState(false);
+  // How the picker was opened. "Back to courses" is an ADD to an existing
+  // basket; a first-visit open is a fresh start. Only the latter may reset it.
+  const reopenedFromCheckout = useRef(false);
 
   // Preview mode: bidirectional communication with admin editor iframe
   const isPreviewMode = typeof window !== 'undefined' &&
@@ -225,7 +243,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const themeSettings = (catalogueData?.globalSettings as any)?.theme;
   const themePreset = themeSettings?.preset || 'default';
-  const themeRadius = themeSettings?.borderRadius || 'rounded';
+  const themeRadius = themeSettings?.borderRadius || 'rounded-catalogue-xs';
   const isDarkMode = (catalogueData?.globalSettings as any)?.mode === 'dark';
 
   useEffect(() => {
@@ -412,6 +430,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     if (!catalogueData?.globalSettings?.courseFinder?.enabled) return;
     if (!hasCourseFinderOptions) return;
     if (showIntroPage && !introCompleted) return;
+    // "Back to courses" asks for the picker explicitly - that visitor is
+    // going back to CHOOSE, which is the one time the once-ever seen flag
+    // gets in the way. The request clears itself, so a later reload of the
+    // same page behaves normally.
+    if (consumeCourseFinderRequest(tagName)) {
+      reopenedFromCheckout.current = true;
+      setShowCourseFinder(true);
+      return;
+    }
     const seenKey = `courseFinderSeen_${instituteId}_${tagName}`;
     if (localStorage.getItem(seenKey) === 'true') return;
     setShowCourseFinder(true);
@@ -435,12 +462,34 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const handleCourseFinderComplete = (selection: CourseFinderSelection) => {
     setShowCourseFinder(false);
     markCourseFinderSeen();
-    window.dispatchEvent(new CustomEvent('courseFinderApplied', { detail: selection }));
+    // Store the ANSWER alongside the seen flag. Without this the flag outlives
+    // the filter: a reload (or "View course" and back) re-mounts the grid with
+    // no selection and no second chance to be asked, so the visitor lands on
+    // every class's subjects at once. See course-finder-bus.
+    saveCourseFinderSelection(courseFinderScope(instituteId, tagName), {
+      levels: selection.levels,
+      sessions: selection.sessions,
+      tags: selection.tags,
+      labels: selection.labels,
+    });
+    // Answering the picker normally starts a fresh basket. Answering it after
+    // "Back to courses" must not: that visitor already has courses selected and
+    // came back to add more, so wiping them loses work they cannot recover.
+    const keepBasket = reopenedFromCheckout.current;
+    reopenedFromCheckout.current = false;
+    window.dispatchEvent(
+      new CustomEvent('courseFinderApplied', { detail: { ...selection, keepBasket } }),
+    );
   };
 
   const handleCourseFinderSkip = () => {
     setShowCourseFinder(false);
     markCourseFinderSeen();
+    // Skipping IS an answer — "show me everything" — so it has to erase any
+    // stored one, or a visitor who skips on a second visit gets silently
+    // re-filtered by a class they picked weeks ago.
+    clearCourseFinderSelection(courseFinderScope(instituteId, tagName));
+    reopenedFromCheckout.current = false;
   };
 
   if (isLoading) {
@@ -450,7 +499,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   if (error || !catalogueData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-catalogue-bg px-4">
-        <div className="catalogue-card flex max-w-md flex-col items-center gap-3 p-8 text-center">
+        <div className="catalogue-card flex max-w-md flex-col items-center gap-stack p-8 text-center">
           <h2 className="text-xl font-semibold text-catalogue-text-primary">
             {error || t("courseSubPage.catalogueNotFound", { course })}
           </h2>
@@ -500,6 +549,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   )?.hideSiteChrome;
 
   return (
+    <CatalogueNamingProvider naming={catalogueData?.globalSettings?.naming}>
     <div
       ref={wrapperRef}
       className={`min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 md:pt-0${isDarkMode ? ' dark' : ''}`}
@@ -667,6 +717,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <BackToTopButton />
       )}
     </div>
+    </CatalogueNamingProvider>
   );
 };
 

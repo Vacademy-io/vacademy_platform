@@ -3,6 +3,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CalendarPlus, ChatCircle, UserPlus, UsersThree, VideoCamera } from "@phosphor-icons/react";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
+import iconMentors from "@/assets/cleaner-play/icon-mentors.webp";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,6 +43,8 @@ function fmtWhen(v?: string | number | null): string {
  * mentors, so the widget still self-hides where mentorship isn't in use.
  */
 export function MyMentorsWidget() {
+    const isPlay = usePlayTheme();
+    const isCleanerPlay = useCleanerPlayTheme();
     const { t } = useTranslation("dashboard");
     const navigate = useNavigate();
     const [instituteId, setInstituteId] = useState<string | undefined>();
@@ -88,7 +93,7 @@ export function MyMentorsWidget() {
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">{t("mentors.title")}</CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-3">
+                <CardContent className="flex flex-col gap-stack">
                     {Array.from({ length: 2 }, (_, i) => (
                         <div key={i} className="flex items-center gap-3">
                             <Skeleton className="h-9 w-9 rounded-full" />
@@ -106,11 +111,20 @@ export function MyMentorsWidget() {
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base">
-                        <UsersThree size={18} weight="duotone" className="text-primary-500" />
+                        {isPlay || isCleanerPlay ? (
+                            <img
+                                src={iconMentors}
+                                alt=""
+                                aria-hidden="true"
+                                className="h-8 w-8 object-contain"
+                            />
+                        ) : (
+                            <UsersThree size={18} weight="duotone" className="text-primary-500" />
+                        )}
                         {t("mentors.emptyStateTitle")}
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-col items-start gap-3">
+                <CardContent className="flex flex-col items-start gap-stack">
                     <p className="text-caption text-neutral-500">
                         {t("mentors.emptyStateBody")}
                     </p>
@@ -162,7 +176,16 @@ export function MyMentorsWidget() {
         <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
-                    <UsersThree size={18} weight="duotone" className="text-primary-500" />
+                    {isPlay || isCleanerPlay ? (
+                        <img
+                            src={iconMentors}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-8 w-8 object-contain"
+                        />
+                    ) : (
+                        <UsersThree size={18} weight="duotone" className="text-primary-500" />
+                    )}
                     {t("mentors.title")}
                 </CardTitle>
                 <button
@@ -173,7 +196,7 @@ export function MyMentorsWidget() {
                     {t("mentors.viewAll")}
                 </button>
             </CardHeader>
-            <CardContent className="flex flex-col gap-3">
+            <CardContent className="flex flex-col gap-stack">
                 {nextSession && (
                     <div className="flex flex-col gap-1 rounded-lg border border-primary-200 bg-primary-50 p-3">
                         <span className="text-xs font-medium uppercase tracking-wide text-primary-600">

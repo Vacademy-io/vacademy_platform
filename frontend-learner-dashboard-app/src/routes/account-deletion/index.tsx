@@ -146,12 +146,12 @@ function AccountDeletion() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
+          className="text-center mb-8 space-y-4"
         >
-          <div className="w-16 h-16 bg-gray-900 rounded-xl mx-auto flex items-center justify-center mb-4">
+          <div className="w-16 h-16 bg-gray-900 rounded-xl mx-auto flex items-center justify-center">
             <Trash className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
+          <h1 className="text-3xl lg:text-4xl font-bold text-gray-900">
             {appName
               ? t("accountDeletion.pageTitleWithApp", { appName })
               : t("accountDeletion.pageTitle")}
@@ -171,9 +171,9 @@ function AccountDeletion() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + index * 0.1 }}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:p-8"
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:p-8 space-y-section"
             >
-              <div className="flex items-center space-x-3 mb-6">
+              <div className="flex items-center gap-x-3">
                 <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
                   <section.icon className="w-5 h-5 text-white" />
                 </div>
@@ -184,8 +184,8 @@ function AccountDeletion() {
 
               <div className="space-y-4">
                 {section.content.map((item) => (
-                  <div key={item.subtitle}>
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                  <div className="space-y-2" key={item.subtitle}>
+                    <h3 className="text-lg font-semibold text-gray-800">
                       {item.subtitle}
                     </h3>
                     <p className="text-gray-700 leading-relaxed">{item.text}</p>
@@ -201,9 +201,9 @@ function AccountDeletion() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:p-8 mt-6"
+          className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:p-8 mt-6 space-y-4"
         >
-          <div className="flex items-center space-x-3 mb-4">
+          <div className="flex items-center gap-x-3">
             <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
               <Envelope className="w-5 h-5 text-white" />
             </div>

@@ -34,7 +34,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "../-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 // Replace heavy country-state-city with lightweight country-region-data
 // import { State, City } from "country-state-city";
@@ -249,12 +249,14 @@ const RegistrationStep = ({
     control: form.control,
   });
 
-  // Determine the phone country code based on country field value.
-  // Falls back to the institute's first configured preferred country (from
-  // domain routing) so the phone input defaults match the institute settings.
+  // A country field in this form, when there is one, is the strongest signal
+  // — the visitor just told us where they are. Everything else defers to the
+  // portal's own resolution chain (institute preference / detected region).
   const getPhoneCountryCode = (): string => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+    // Whatever the portal decided a phone field should start on: the
+    // institute's configured preferred country, or — when that is unset, or
+    // the portal is on GEO_FIRST — the country this form is being opened in.
+    const { defaultCountry: fallback } = getPreferredPhoneCountries();
     if (countryFieldKey && formValues) {
       const countryField = formValues[countryFieldKey];
       if (countryField && typeof countryField.value === "string") {
@@ -493,7 +495,7 @@ const RegistrationStep = ({
   if (subStep === 1) {
     return (
       <Card id="registration-card" className="overflow-hidden border border-gray-200 w-full">
-        <CardContent className="p-6 sm:p-8">
+        <CardContent className="p-card-lg sm:p-8">
           {/* Header */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -518,8 +520,8 @@ const RegistrationStep = ({
               <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <div className="text-sm text-amber-800">
-                <p className="font-medium mb-1">{t("registrationStep.otp.cantFindEmail")}</p>
+              <div className="text-sm text-amber-800 space-y-1">
+                <p className="font-medium">{t("registrationStep.otp.cantFindEmail")}</p>
                 <ul className="list-disc list-inside space-y-1 text-amber-700">
                   <li>
                     {t("registrationStep.otp.checkSpamPrefix")}{" "}
@@ -537,8 +539,8 @@ const RegistrationStep = ({
 
           {/* OTP Input */}
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
                 {t("registrationStep.otp.enterCodeLabel")}
               </label>
               <input
@@ -616,8 +618,8 @@ const RegistrationStep = ({
   return (
     <>
       <Card id="registration-card" className="overflow-hidden border border-gray-200 w-full">
-        <CardContent className="p-4 sm:p-5 md:p-6">
-          <div className="flex items-start gap-2 sm:gap-3 mb-5">
+        <CardContent className="p-card sm:p-5 md:p-card-lg space-y-5">
+          <div className="flex items-start gap-2 sm:gap-3">
             <div className="p-1.5 sm:p-2 bg-gray-100 rounded-lg flex-shrink-0">
               <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
             </div>
@@ -631,7 +633,7 @@ const RegistrationStep = ({
             </div>
           </div>
 
-          <Separator className="mb-5" />
+          <Separator />
 
           <FormProvider {...form}>
             <form className="w-full flex flex-col gap-4">
@@ -904,7 +906,7 @@ const RegistrationStep = ({
       
       {courseData?.customHtml && (
         <Card className="overflow-hidden border border-gray-200 w-full mt-4">
-          <CardContent className="p-4 sm:p-5 md:p-6">
+          <CardContent className="p-card sm:p-5 md:p-card-lg">
             <div
               className="w-full h-full"
               dangerouslySetInnerHTML={{
@@ -920,7 +922,7 @@ const RegistrationStep = ({
         selectedPlan?.type === "ONE_TIME") &&
         courseData.includePaymentPlans && (
           <Card className="mt-4 flex flex-col gap-0 border border-gray-200">
-            <div className="flex flex-col items-start gap-3 p-3 sm:p-4">
+            <div className="flex flex-col items-start gap-stack p-3 sm:p-4">
               <div className="flex items-center gap-3">
                 {getPaymentPlanIcon(selectedPlan?.type || "")}
                 <div className="flex flex-1 flex-col font-semibold">

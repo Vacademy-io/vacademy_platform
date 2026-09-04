@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-reg-400 flex-col items-center justify-center rounded-xl border border-red-200 bg-gradient-to-br from-red-50 to-orange-50 px-6 py-12 text-center">
+        <div className="flex min-h-reg-400 flex-col items-center justify-center rounded-xl border border-red-200 bg-gradient-to-br from-danger-50 to-primary-50 px-6 py-12 text-center">
           <div className="mb-6 rounded-full bg-red-100 p-4">
             <Warning className="size-12 text-red-600" />
           </div>
@@ -54,7 +54,7 @@ export class ErrorBoundary extends Component<
             {i18n.t("courseComponentsExtra:dashboardLoader.errorBoundaryDescription")}
           </p>
 
-          <div className="flex flex-col items-center gap-3 sm:flex-row">
+          <div className="flex flex-col items-center gap-stack sm:flex-row">
             <MyButton
               onClick={this.handleReset}
               buttonType="primary"
@@ -75,8 +75,8 @@ export class ErrorBoundary extends Component<
           </div>
 
           {process.env.NODE_ENV === "development" && this.state.error && (
-            <details className="mt-6 max-w-full overflow-auto rounded-lg bg-red-100 p-4 text-start">
-              <summary className="mb-2 cursor-pointer text-sm font-medium text-red-800">
+            <details className="mt-6 max-w-full overflow-auto rounded-lg bg-red-100 p-4 text-start space-y-2">
+              <summary className="cursor-pointer text-sm font-medium text-red-800">
                 {i18n.t("courseComponentsExtra:dashboardLoader.errorDetailsDev")}
               </summary>
               <pre className="whitespace-pre-wrap break-words text-xs text-red-700">

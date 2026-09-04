@@ -632,8 +632,8 @@ function EmbedComponent() {
         />
       </Helmet>
 
-      <div className="flex flex-col h-nav-offset">
-        <div className="mb-6 flex items-center justify-between gap-2">
+      <div className="flex flex-col h-nav-offset gap-section">
+        <div className="flex items-center justify-between gap-2">
           {/* Scales with the viewport: a session title like
               "Suchbliss.com - 07:30 (Day 2)" wrapped onto two lines on a phone
               at a fixed 2xl. min-w-0 lets it shrink beside the LIVE badge

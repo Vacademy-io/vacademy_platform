@@ -65,8 +65,8 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
       />
 
       {/* Panel — bottom sheet on mobile, centered card on desktop */}
-      <div className="relative max-h-screen-90 w-full overflow-y-auto overscroll-contain rounded-t-catalogue-lg bg-catalogue-bg p-5 shadow-2xl sm:max-w-lg sm:rounded-catalogue-lg sm:p-6">
-        <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="relative max-h-screen-90 w-full overflow-y-auto overscroll-contain rounded-t-catalogue-lg bg-catalogue-bg p-5 shadow-2xl sm:max-w-lg sm:rounded-catalogue-lg sm:p-6 space-y-4">
+        <div className="flex items-start justify-between gap-4">
           {title ? (
             <h2 className="catalogue-h3 text-catalogue-text-primary">{title}</h2>
           ) : (

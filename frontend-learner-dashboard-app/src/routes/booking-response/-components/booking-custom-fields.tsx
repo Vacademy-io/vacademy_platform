@@ -7,7 +7,7 @@ import {
 } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { capitalise } from "@/utils/custom-field";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { useTranslation } from "react-i18next";
 
@@ -29,7 +29,9 @@ const BookingCustomFields = ({
   control,
 }: BookingCustomFieldsProps) => {
   const { t } = useTranslation("liveClassGuest");
-  const phoneCountry = getCachedPreferredCountries()[0] ?? "in";
+  // Institute preference first; falls back to the country this booking page
+  // is being opened from when the institute has configured none.
+  const { defaultCountry: phoneCountry } = getPreferredPhoneCountries();
 
   return (
     <>

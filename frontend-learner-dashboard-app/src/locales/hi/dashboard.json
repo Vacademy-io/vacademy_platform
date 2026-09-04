@@ -16,7 +16,21 @@
         "loadMore": "और लोड करें",
         "announcementsErrorTitle": "घोषणाएं लोड नहीं हो सकीं",
         "announcementsEmptyTitle": "अभी तक कोई घोषणा नहीं",
-        "announcementsEmptyDescription": "आपके संस्थान की घोषणाएं यहां दिखाई देंगी।"
+        "announcementsEmptyDescription": "आपके संस्थान की घोषणाएं यहां दिखाई देंगी।",
+        "receivedTimes": "{{count}} बार प्राप्त हुई",
+        "noContent": "इस सूचना में कोई अतिरिक्त विवरण नहीं है।",
+        "close": "बंद करें",
+        "openLink": "लिंक खोलें",
+        "unreadSummary_one": "आपके पास {{count}} अपठित सूचना है",
+        "unreadSummary_other": "आपके पास {{count}} अपठित सूचनाएं हैं",
+        "clear": "हटाएं",
+        "clearOne": "सूचना हटाएं: {{title}}",
+        "clearAll": "सभी हटाएं",
+        "clearing": "हटाया जा रहा है...",
+        "clearAllTitle": "सभी सूचनाएं हटाएं?",
+        "cancel": "रद्द करें",
+        "clearAllDescription_one": "इससे आपके इनबॉक्स से {{count}} सूचना हट जाएगी। इसे पूर्ववत नहीं किया जा सकता।",
+        "clearAllDescription_other": "इससे आपके इनबॉक्स से सभी {{count}} सूचनाएं हट जाएंगी। इसे पूर्ववत नहीं किया जा सकता।"
     },
     "hero": {
         "greeting": {
@@ -264,6 +278,17 @@
         "slidesInProgress": "{{count}} {{slide}} प्रगति पर",
         "continueFromWhereLeftOff": "जहां छोड़ा था वहीं से जारी रखें",
         "resumeLearningButton": "सीखना फिर से शुरू करें"
+    },
+    "enrolledCourses": {
+        "viewAll": "सभी {{courses}} देखें",
+        "emptyTitle": "आपने अभी तक किसी {{courses}} में नामांकन नहीं किया है",
+        "browse": "{{courses}} देखें",
+        "cta": {
+            "continue": "जारी रखें",
+            "start": "शुरू करें",
+            "review": "दोहराएँ"
+        },
+        "cardAria": "{{course}}, {{percent}}% पूर्ण। {{action}}"
     },
     "dashboardHero": {
         "loadingAria": "लोड हो रहा है",

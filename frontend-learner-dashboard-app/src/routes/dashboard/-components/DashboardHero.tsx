@@ -153,6 +153,9 @@ const firstRunBand = cn(
   "relative w-full overflow-hidden rounded-2xl border border-primary/15 p-5 sm:p-8",
   "bg-gradient-to-br from-primary/5 via-background to-background",
   "[.ui-vibrant_&]:from-primary-50 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
+  // Corporate: flat surface, hairline border. A brand-tinted band is exactly
+  // the "brand as fill" treatment this skin exists to avoid.
+  "[.ui-corporate_&]:bg-none [.ui-corporate_&]:border-border",
 );
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -195,7 +198,7 @@ export function DashboardHero({
   if (!studyLibraryLoaded) {
     return (
       <section aria-busy="true" aria-label={t("dashboardHero.loadingAria")} className={bandClassName}>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-stack">
           <Skeleton className="h-3 w-32" />
           <Skeleton className="h-9 w-full max-w-md" />
           <Skeleton className="h-4 w-56" />
@@ -294,10 +297,10 @@ export function DashboardHero({
         />
         <div className="relative">
           {liveBanner}
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-section lg:flex-row lg:items-center lg:justify-between">
             {/* Left: greeting + checklist */}
-            <div className="min-w-0 flex-1">
-              <div className="mb-5 flex items-start gap-3">
+            <div className="min-w-0 flex-1 space-y-5">
+              <div className="flex items-start gap-3">
                 <span className="hidden size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex">
                   <Sparkle size={22} weight="fill" />
                 </span>
@@ -358,9 +361,13 @@ export function DashboardHero({
 
             {/* Right: signature illustration fills the whitespace (currentColor
                 follows the tenant primary). Desktop only. */}
+            {/* Decorative only, so Corporate drops it rather than swapping in a
+                different illustration — a restrained enterprise surface is
+                typographic, and the honest corporate treatment of a spot
+                illustration is none. */}
             <playIllustrations.OnlineLearning
               aria-hidden="true"
-              className="hidden h-44 w-auto max-w-xs shrink-0 object-contain text-primary/70 lg:block"
+              className="hidden h-44 w-auto max-w-xs shrink-0 object-contain text-primary/70 lg:block [.ui-corporate_&]:lg:hidden"
             />
           </div>
         </div>

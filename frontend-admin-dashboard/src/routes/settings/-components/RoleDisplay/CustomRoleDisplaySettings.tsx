@@ -60,6 +60,7 @@ import type {
     LearnerManagementSettings,
 } from '@/types/display-settings';
 
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 // Built inside the component (not module scope) so labels stay reactive to
 // the active locale via t().
 const buildCustomDisplaySections = (t: TFunction): SettingsSectionGroup[] => [
@@ -270,7 +271,7 @@ export default function CustomRoleDisplaySettings({
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
-    const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
+    const [activeCategory, setActiveCategory] = useState<SidebarCategory>('CRM');
 
     // Recomputed every render (cheap arrays) so labels stay in sync with the
     // active locale instead of being frozen at module-load time.
@@ -1193,6 +1194,7 @@ export default function CustomRoleDisplaySettings({
                             'LEARNER',
                             'TEACHER',
                             'ASSESSMENT',
+                            'QUIZ_RESULTS',
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
@@ -1201,6 +1203,7 @@ export default function CustomRoleDisplaySettings({
                             'CERTIFICATES',
                             'DOWNLOADS',
                             'SETTINGS',
+                            'TUTOR_MODE',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = DEFAULT_HIDDEN_COURSE_DETAILS_TABS;
@@ -1259,6 +1262,11 @@ export default function CustomRoleDisplaySettings({
                                                         LEARNER: 3,
                                                         TEACHER: 4,
                                                         ASSESSMENT: 5,
+                                                        // 5.5 slots it after Assessment without
+                                                        // renumbering tabs that institutes have
+                                                        // already saved orders for — see
+                                                        // admin-defaults.ts for why a tie is worse.
+                                                        QUIZ_RESULTS: 5.5,
                                                         LIVE_SESSION: 6,
                                                         PLANNING: 7,
                                                         ACTIVITY: 8,
@@ -1267,6 +1275,7 @@ export default function CustomRoleDisplaySettings({
                                                         CERTIFICATES: 11,
                                                         DOWNLOADS: 12,
                                                         SETTINGS: 13,
+                                                        TUTOR_MODE: 13.5,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>
@@ -1622,13 +1631,14 @@ export default function CustomRoleDisplaySettings({
                 <CardContent className="space-y-3">
                     <Tabs
                         value={activeCategory}
-                        onValueChange={(v) => setActiveCategory(v as 'CRM' | 'LMS' | 'AI')}
+                        onValueChange={(v) => setActiveCategory(v as SidebarCategory)}
                         className="w-full"
                     >
-                        <TabsList className="mb-4 grid w-full grid-cols-3">
+                        <TabsList className="mb-4 grid w-full grid-cols-4">
                             <TabsTrigger value="LMS">{t('sidebarTabs.tabLms')}</TabsTrigger>
                             <TabsTrigger value="CRM">{t('sidebarTabs.tabCrm')}</TabsTrigger>
                             <TabsTrigger value="AI">{t('sidebarTabs.tabAiTools')}</TabsTrigger>
+                            <TabsTrigger value="ERP">ERP</TabsTrigger>
                         </TabsList>
 
                         {(() => {

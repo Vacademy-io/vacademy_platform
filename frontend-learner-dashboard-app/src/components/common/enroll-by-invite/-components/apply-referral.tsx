@@ -196,8 +196,8 @@ const ReferralCodeComponent = ({
     };
 
   return (
-    <div className="bg-blue-50 rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-3">
+    <div className="bg-blue-50 rounded-lg p-4 space-y-stack">
+      <div className="flex items-center gap-2">
         <Tag className="w-5 h-5 text-blue-600" />
         <h3 className="font-semibold text-gray-900 text-lg">{t("applyReferral.title")}</h3>
       </div>

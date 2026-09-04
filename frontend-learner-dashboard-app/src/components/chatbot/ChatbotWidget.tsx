@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -82,6 +82,7 @@ const markdownComponents = {
 };
 
 export const ChatbotWidget = () => {
+  const avatarUrl = useChatbotAvatarUrl();
   const { t } = useTranslation("chatFeatureB");
   const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
   const slide = getTerminology(ContentTerms.Slides, SystemTerms.Slides);
@@ -148,7 +149,7 @@ export const ChatbotWidget = () => {
                 isExpanded ? "h-full w-full" : "h-blob-lg"
               )}
             >
-              <CardHeader className="bg-primary text-primary-foreground p-4 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="bg-primary text-primary-foreground p-card flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center space-x-2">
                   <Avatar className="h-8 w-8 bg-background">
                     {avatarUrl ? (
@@ -280,9 +281,9 @@ export const ChatbotWidget = () => {
                               </PopoverTrigger>
                               <PopoverContent
                                 side="right"
-                                className="max-w-64 text-xs p-2 z-50"
+                                className="max-w-64 text-xs p-2 z-50 space-y-1"
                               >
-                                <p className="font-bold mb-1">{t("widget.context.title")}</p>
+                                <p className="font-bold">{t("widget.context.title")}</p>
                                 <div className="space-y-1">
                                   <p>
                                     <span className="font-semibold">

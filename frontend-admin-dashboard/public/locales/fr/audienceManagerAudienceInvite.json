@@ -42,6 +42,8 @@
     "actions": {
         "addResponse": "Ajouter une réponse",
         "addResponseTooltip": "Ajouter une réponse au nom d'un répondant",
+        "qr": "QR",
+        "qrTooltip": "Afficher un code QR à scanner pour ouvrir ce formulaire",
         "api": "API",
         "apiTooltip": "Obtenir les détails d'intégration API pour l'automatisation",
         "embed": "Intégrer",

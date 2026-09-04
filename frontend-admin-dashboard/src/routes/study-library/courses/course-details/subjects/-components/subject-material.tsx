@@ -50,6 +50,7 @@ import {
 } from '@phosphor-icons/react';
 import Students from './student-list';
 import Assessments from './assessment-list';
+import QuizResultsTab from '../../-components/quiz-results/QuizResultsTab';
 import LiveSessions from './live-sessions-list';
 import BatchReports from '@/routes/study-library/reports/-components/batch/batchReports';
 import { CertificatesTab } from '../../-components/certificates/CertificatesTab';
@@ -57,6 +58,7 @@ import Planning from './planning';
 import Activity from './activity';
 import PulseTab from '../../-components/pulse/PulseTab';
 import { PackageSettingsPanel } from '../../-components/package-settings/PackageSettingsPanel';
+import { TutorModeTab } from '../../-components/tutor-mode/TutorModeTab';
 import { getIcon } from '../modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides';
 import { MyButton } from '@/components/design-system/button';
 import { useContentStore } from '../modules/chapters/slides/-stores/chapter-sidebar-store';
@@ -854,6 +856,11 @@ export const SubjectMaterial = () => {
                 <Assessments packageSessionId={packageSessionIds ?? ''} />
             </div>
         ),
+        [TabType.QUIZ_RESULTS]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <QuizResultsTab packageSessionId={packageSessionIds ?? ''} />
+            </div>
+        ),
         [TabType.LIVE_SESSION]: packageSessionIds ? (
             <div className="rounded-md bg-white text-sm text-gray-600 shadow-sm">
                 <LiveSessions packageSessionId={packageSessionIds} />
@@ -908,6 +915,11 @@ export const SubjectMaterial = () => {
         [TabType.SETTINGS]: (
             <div className="rounded-md bg-white p-3 shadow-sm">
                 <PackageSettingsPanel packageId={courseId} />
+            </div>
+        ),
+        [TabType.TUTOR_MODE]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <TutorModeTab key={courseId} packageId={courseId} />
             </div>
         ),
         // The Discussion (batch chat) and Downloads (offline telemetry) tabs are

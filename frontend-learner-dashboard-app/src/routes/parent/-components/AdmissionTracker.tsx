@@ -86,7 +86,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
         animate={{ opacity: 1, y: 0 }}
       >
         <Card className="shadow-sm overflow-hidden">
-          <CardContent className="p-4">
+          <CardContent className="p-card">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Flag size={16} className="text-primary" />
@@ -108,7 +108,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
                 initial={{ width: 0 }}
                 animate={{ width: `${progressPercent}%` }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
-                className="absolute inset-y-0 start-0 bg-gradient-to-r from-primary to-emerald-500 rounded-full"
+                className="absolute inset-y-0 start-0 bg-gradient-to-r from-primary to-success-500 rounded-full"
               />
             </div>
             <p className="text-xs text-muted-foreground mt-1.5 text-end">
@@ -214,8 +214,8 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.3 }}
         >
-          <Card className="shadow-sm bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20 border-emerald-200 dark:border-emerald-800">
-            <CardContent className="p-6 text-center">
+          <Card className="shadow-sm bg-gradient-to-br from-success-50 to-success-50 dark:from-emerald-950/20 dark:to-green-950/20 border-emerald-200 dark:border-emerald-800">
+            <CardContent className="p-card-lg text-center">
               <Confetti
                 size={36}
                 className="mx-auto text-emerald-600 mb-3"

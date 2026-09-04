@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { JsonRenderer } from "./JsonRenderer";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { applyCataloguePrimaryColor } from "../-utils/catalogue-theme";
+import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
 import { withArabicFallback } from "@/utils/branding";
 
 /**
@@ -67,8 +68,15 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
     document.documentElement.style.setProperty("--app-font-family", family);
   }, [globalSettings?.fonts?.enabled, globalSettings?.fonts?.family]);
 
-  // Nothing to dress the page with — render it exactly as before.
-  if (!tagName || !catalogueData) return <>{children}</>;
+  // Nothing to dress the page with — render it exactly as before, but still
+  // supply the catalogue's words if we have them.
+  if (!tagName || !catalogueData) {
+    return (
+      <CatalogueNamingProvider naming={globalSettings?.naming}>
+        {children}
+      </CatalogueNamingProvider>
+    );
+  }
 
   const header = globalSettings?.layout?.header;
   const footer = globalSettings?.layout?.footer;
@@ -86,6 +94,7 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
   );
 
   return (
+    <CatalogueNamingProvider naming={globalSettings?.naming}>
     <div
       ref={themeRootRef}
       data-catalogue-theme={globalSettings?.theme?.preset || "default"}
@@ -107,6 +116,7 @@ export const CatalogueChrome: React.FC<CatalogueChromeProps> = ({
 
       {showFooter && footer && footer.enabled !== false && renderBlock("footer", footer)}
     </div>
+    </CatalogueNamingProvider>
   );
 };
 

@@ -136,7 +136,7 @@ const PaymentPendingStep = ({
 
       {/* Order Details Card */}
       <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-        <CardContent className="p-6 sm:p-8">
+        <CardContent className="p-card-lg sm:p-8">
           <div className="space-y-4">
             {/* Amount */}
             <div className="flex items-center justify-between py-2">

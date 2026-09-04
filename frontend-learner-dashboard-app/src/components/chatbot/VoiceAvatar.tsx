@@ -104,7 +104,7 @@ export const VoiceAvatar: React.FC<VoiceAvatarProps> = ({
     .slice(0, 2);
 
   return (
-    <div className="flex flex-col items-center gap-6">
+    <div className="flex flex-col items-center gap-section">
       {/* Avatar with rings */}
       <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
         {/* Concentric rings */}

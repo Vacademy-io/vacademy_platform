@@ -195,7 +195,7 @@ const PostRegistrationOTPVerify = ({
           <InstituteBrandingComponent branding={branding} size="large" showName={false} />
 
           {/* Success + registration badge */}
-          <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex flex-col items-center gap-stack text-center">
             <span className="inline-flex items-center gap-1 rounded-full bg-success-50 border border-success-200 px-3 py-0.5 text-caption font-semibold uppercase tracking-wide text-success-700">
               <Sparkle size={12} weight="fill" />
               {t("common.registrationCompletedBadge")}

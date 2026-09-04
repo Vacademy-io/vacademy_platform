@@ -20,9 +20,9 @@ const Footer: React.FC = () => {
   return (
     <footer className="bg-blue-900 text-white">
       <div className="bg-blue-900 p-10 grid grid-cols-1 md:grid-cols-4 gap-8">
-        <div>
-          <img src="/images/logo2.jpg" alt={t("footer.logoAlt")} className="mb-4" />
-          <p className="mb-4">{t("footer.tagline")}</p>
+        <div className="space-y-4">
+          <img src="/images/logo2.jpg" alt={t("footer.logoAlt")} />
+          <p>{t("footer.tagline")}</p>
           <div className="flex gap-4 text-xl">
             <FaTwitter className="hover:text-blue-500 cursor-pointer" />
             <FaFacebookF className="hover:text-blue-600 cursor-pointer" />
@@ -31,8 +31,8 @@ const Footer: React.FC = () => {
           </div>
         </div>
 
-        <div>
-          <h2 className="font-bold text-lg mb-3">{t("footer.quickLinks")}</h2>
+        <div className="space-y-stack">
+          <h2 className="font-bold text-lg">{t("footer.quickLinks")}</h2>
           <ul className="space-y-1">
             <li>
               <a href="https://codecircle.org/" className="hover:text-blue-400 transition">
@@ -85,16 +85,16 @@ const Footer: React.FC = () => {
           </p>
         </div>
 
-        <div>
-          <h2 className="font-bold text-lg mb-3">
+        <div className="space-y-stack">
+          <h2 className="font-bold text-lg">
             {t("footer.newsletterTitle")}
           </h2>
-          <form onSubmit={handleSubscribe}>
+          <form className="space-y-2" onSubmit={handleSubscribe}>
             <input
               type="text"
               placeholder={t("footer.namePlaceholder")}
               aria-label={t("footer.namePlaceholder")}
-              className="w-full mb-2 p-2 border rounded text-gray-800"
+              className="w-full p-2 border rounded text-gray-800"
               value={name}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 setName(e.target.value)
@@ -104,7 +104,7 @@ const Footer: React.FC = () => {
               type="email"
               placeholder={t("footer.emailPlaceholder")}
               aria-label={t("footer.emailPlaceholder")}
-              className="w-full mb-2 p-2 border rounded text-gray-800"
+              className="w-full p-2 border rounded text-gray-800"
               value={email}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 setEmail(e.target.value)

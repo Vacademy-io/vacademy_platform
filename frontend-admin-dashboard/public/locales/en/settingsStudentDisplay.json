@@ -36,7 +36,9 @@
         "cardDescription": "Select the visual theme for learner portal",
         "themeSkin": "Theme Skin",
         "selectUiType": "Select UI type",
-        "cleanerPlay": "Cleaner Play"
+        "cleanerPlay": "Cleaner Play",
+        "movedToAppearance": "The theme skin now lives in Settings → Appearance, together with corner style, density and surface style.",
+        "openAppearance": "Open Appearance settings"
     },
     "widgets": {
         "cardTitle": "Dashboard Widgets",

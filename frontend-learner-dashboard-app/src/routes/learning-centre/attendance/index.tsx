@@ -256,7 +256,7 @@ function RouteComponent() {
 
         {/* Filters card */}
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-stack md:grid-cols-2">
             {/* Date Range */}
             <RangeDateFilter range={dateRange} onChange={setDateRange} />
 
@@ -297,12 +297,12 @@ function RouteComponent() {
               {paginatedData?.map((cls, idx) => (
                 <div
                   key={idx}
-                  className="rounded-lg border border-neutral-200 bg-white p-3"
+                  className="rounded-lg border border-neutral-200 bg-white p-3 space-y-2"
                 >
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">
+                  <div className="text-sm font-semibold text-neutral-800">
                     {cls.sessionTitle}
                   </div>
-                  <div className="mb-2 text-xs text-neutral-600">
+                  <div className="text-xs text-neutral-600">
                     {formatDate(cls.meetingDate)}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -522,7 +522,7 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-dialog-lg p-3 sm:w-auto" align="start">
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-stack sm:flex-row">
             <Calendar
               mode="range"
               selected={range}

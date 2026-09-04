@@ -1,12 +1,18 @@
 /**
- * PackageSessionRenewalSettings — opt-in toggle for the daily package-session
- * renewal/expiry scheduler.
+ * Institute-level payment behaviour — the PAYMENT_SETTING.data toggles.
  *
- * Stored in institute settings under PAYMENT_SETTING.data
- * (packageSessionRenewalSchedulerEnabled). The backend job
- * (PackageSessionScheduler.processPackageSessionRenewals, daily 04:00) only
- * processes institutes where this flag is true — absent/false means the
- * institute's user plans are never touched by the scan.
+ * Both flags live in the SAME settings blob, which is why they share one card and
+ * one Save button: two cards each PUTting the whole blob would silently revert
+ * each other's flag.
+ *
+ *  - packageSessionRenewalSchedulerEnabled — opts the institute into the daily
+ *    package-session renewal/expiry scan (PackageSessionScheduler, 04:00).
+ *  - planChangeEnabled — master switch for learner-facing plan switching. Off means
+ *    learners never see a "change plan" affordance, whatever the per-option and
+ *    per-plan flags say; those decide WHICH plans are switchable, this decides
+ *    whether the feature is exposed at all.
+ *
+ * Everything here is opt-IN: an absent flag means off.
  */
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +29,7 @@ import { useTranslation } from 'react-i18next';
 
 const SETTING_KEY = 'PAYMENT_SETTING';
 const RENEWAL_FLAG = 'packageSessionRenewalSchedulerEnabled';
+const PLAN_CHANGE_FLAG = 'planChangeEnabled';
 const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
 
 type PaymentSettingData = Record<string, unknown>;
@@ -82,9 +89,15 @@ export default function PackageSessionRenewalSettings() {
     });
 
     const enabled = settingData[RENEWAL_FLAG] === true;
+    const planChangeEnabled = settingData[PLAN_CHANGE_FLAG] === true;
 
     const handleToggle = (value: boolean) => {
         setSettingData((prev) => ({ ...prev, [RENEWAL_FLAG]: value }));
+        setHasChanges(true);
+    };
+
+    const handlePlanChangeToggle = (value: boolean) => {
+        setSettingData((prev) => ({ ...prev, [PLAN_CHANGE_FLAG]: value }));
         setHasChanges(true);
     };
 
@@ -101,28 +114,59 @@ export default function PackageSessionRenewalSettings() {
                 {isLoading ? (
                     <div className="text-body text-neutral-500">{t('loading')}</div>
                 ) : (
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                    <div className="space-y-4">
+                        <div className="flex items-start gap-3">
                             <Switch
                                 id="package-session-renewal-enabled"
                                 checked={enabled}
                                 onCheckedChange={handleToggle}
                             />
-                            <Label
-                                htmlFor="package-session-renewal-enabled"
-                                className="cursor-pointer"
-                            >
-                                {enabled ? t('toggle.enabled') : t('toggle.disabled')}
-                            </Label>
+                            <div>
+                                <Label
+                                    htmlFor="package-session-renewal-enabled"
+                                    className="cursor-pointer"
+                                >
+                                    {enabled ? t('toggle.enabled') : t('toggle.disabled')}
+                                </Label>
+                                <p className="mt-0.5 text-xs text-neutral-500">
+                                    {t('renewal.hint')}
+                                </p>
+                            </div>
                         </div>
-                        <MyButton
-                            buttonType="primary"
-                            scale="medium"
-                            onClick={() => save(settingData)}
-                            disable={saving || !hasChanges}
-                        >
-                            {saving ? t('button.saving') : t('button.save')}
-                        </MyButton>
+
+                        {/* Master switch for learner-facing plan switching. Off means the
+                            "change plan" affordance never renders, whatever individual
+                            options and plans are flagged as switchable. */}
+                        <div className="flex items-start gap-3 border-t border-neutral-200 pt-4">
+                            <Switch
+                                id="plan-change-enabled"
+                                checked={planChangeEnabled}
+                                onCheckedChange={handlePlanChangeToggle}
+                            />
+                            <div>
+                                <Label htmlFor="plan-change-enabled" className="cursor-pointer">
+                                    {planChangeEnabled
+                                        ? t('planChange.enabled')
+                                        : t('planChange.disabled')}
+                                </Label>
+                                <p className="mt-0.5 text-xs text-neutral-500">
+                                    {planChangeEnabled
+                                        ? t('planChange.hintOn')
+                                        : t('planChange.hintOff')}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end border-t border-neutral-200 pt-4">
+                            <MyButton
+                                buttonType="primary"
+                                scale="medium"
+                                onClick={() => save(settingData)}
+                                disable={saving || !hasChanges}
+                            >
+                                {saving ? t('button.saving') : t('button.save')}
+                            </MyButton>
+                        </div>
                     </div>
                 )}
             </CardContent>

@@ -48,14 +48,28 @@ A plan change is not atomic:
 
 ---
 
-## 1. The two flags — admin opens the door
+## 1. The three gates — admin opens the door
 
 ```
-payment_option.plan_change_allowed   ← master switch  (toggle on the option)
-payment_plan.plan_change_allowed     ← per interval   (checkbox on each plan)
+PAYMENT_SETTING.planChangeEnabled    ← institute master switch (Payment Settings page)
+payment_option.plan_change_allowed   ← per option   (toggle in the plan editor)
+payment_plan.plan_change_allowed     ← per interval (checkbox on each plan)
 ```
 
-**Both must be true** for a plan to be offered as a target. This lets an admin open "Gold" to
+The institute switch decides whether the feature is **exposed at all**; the other two
+decide **which** plans are switchable. All three default to off.
+
+With the institute switch off, every learner-facing path behaves exactly as it did before
+this feature existed — `can_change_plan` is false, the options listing returns empty with
+`blocked_reason = PLAN_CHANGE_DISABLED_FOR_INSTITUTE`, and a change request is refused —
+regardless of what the per-option and per-plan flags say. It lives in the existing
+`PAYMENT_SETTING` institute-settings blob alongside
+`packageSessionRenewalSchedulerEnabled`, so it needs no migration.
+
+The **admin override is deliberately not gated** by the institute switch: it is a
+back-office correction tool and is already constrained by the per-option and per-plan flags.
+
+**Both option and plan flags must be true** for a plan to be offered as a target. This lets an admin open "Gold" to
 switching while still deciding that only *Annual* — not *Monthly* — is a landing spot.
 
 Both ride the existing `POST` / `PUT /admin-core-service/v1/payment-option`; there is no new

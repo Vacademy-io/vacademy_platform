@@ -94,6 +94,7 @@ public class PlanChangeService {
     private final UserAccountLedgerService userAccountLedgerService;
     private final InvoiceService invoiceService;
     private final WorkflowTriggerService workflowTriggerService;
+    private final vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService paymentSettingService;
 
     /** Statuses from which a learner may initiate a change. */
     private static final List<String> CHANGEABLE_STATUSES = List.of(
@@ -117,6 +118,14 @@ public class PlanChangeService {
                 .currentValidityInDays(current != null ? current.getValidityInDays() : null)
                 .currentEndDate(userPlan.getEndDate())
                 .scheduledChange(toScheduledDto(openRequest(userPlan.getId())));
+
+        // The institute-level master switch. Checked before anything else so an institute
+        // that has not opted in behaves exactly as it did before this feature existed —
+        // whatever the per-option and per-plan flags happen to say.
+        if (!isEnabledForInstitute(instituteId)) {
+            return builder.targets(List.of()).canChangePlan(false)
+                    .blockedReason("PLAN_CHANGE_DISABLED_FOR_INSTITUTE").build();
+        }
 
         String blocked = blockedReason(userPlan);
         if (blocked != null) {
@@ -149,6 +158,18 @@ public class PlanChangeService {
         return null;
     }
 
+    /**
+     * The institute-level master switch (PAYMENT_SETTING.planChangeEnabled).
+     *
+     * <p>Gates every LEARNER-facing path: the membership card's entry point, the options
+     * listing and the change request itself. The admin override is deliberately NOT gated —
+     * it is a back-office correction tool, already constrained by the per-option and
+     * per-plan flags.
+     */
+    private boolean isEnabledForInstitute(String instituteId) {
+        return paymentSettingService.isPlanChangeEnabled(instituteId);
+    }
+
     private UserPlanChangeRequest openRequest(String userPlanId) {
         return changeRequestRepository
                 .findFirstByUserPlanIdAndStatusInOrderByCreatedAtDesc(userPlanId, PlanChangeStatus.openStatuses())
@@ -175,6 +196,9 @@ public class PlanChangeService {
      */
     public PlanChangeSummary summarise(UserPlan userPlan, String instituteId,
             List<String> packageSessionIds) {
+        if (!isEnabledForInstitute(instituteId)) {
+            return PlanChangeSummary.NONE;
+        }
         UserPlanChangeRequest open = openRequest(userPlan.getId());
         if (open != null) {
             return new PlanChangeSummary(false, toScheduledDto(open));
@@ -208,6 +232,9 @@ public class PlanChangeService {
     public PlanChangeResponseDTO requestChange(UserPlan userPlan, String instituteId,
             PlanChangeRequestDTO request, CustomUserDetails userDetails) {
 
+        if (!isEnabledForInstitute(instituteId)) {
+            throw new VacademyException("Plan switching is not enabled for this institute");
+        }
         String blocked = blockedReason(userPlan);
         if (blocked != null) {
             throw new VacademyException("Plan cannot be changed right now: " + blocked);

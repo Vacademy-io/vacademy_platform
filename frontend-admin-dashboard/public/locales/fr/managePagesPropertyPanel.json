@@ -354,7 +354,10 @@
     "labelWithExamplePlaceholder": "Libellé (ex. Connexion)",
     "onClick": "Au clic",
     "formToOpen": "Formulaire à ouvrir (campagne)",
-    "popupTitlePlaceholder": "Titre de la fenêtre (par défaut, le libellé)"
+    "popupTitlePlaceholder": "Titre de la fenêtre (par défaut, le libellé)",
+    "hideLink": "Masquer ce lien",
+    "showLink": "Afficher ce lien",
+    "hiddenBadge": "Masqué"
   },
   "footer": {
     "column2": "Colonne 2",

@@ -353,7 +353,10 @@
     "labelWithExamplePlaceholder": "Label (e.g. Login)",
     "onClick": "On click",
     "formToOpen": "Form to open (campaign)",
-    "popupTitlePlaceholder": "Popup title (defaults to the label)"
+    "popupTitlePlaceholder": "Popup title (defaults to the label)",
+    "hideLink": "Hide this link",
+    "showLink": "Show this link",
+    "hiddenBadge": "Hidden"
   },
   "footer": {
     "column2": "Column 2",

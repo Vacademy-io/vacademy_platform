@@ -23,6 +23,8 @@ import {
     ClipboardText as ClipboardPaste,
     Anchor,
     Sparkle,
+    Eye,
+    EyeSlash,
 } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
@@ -2345,6 +2347,14 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('navigation', (props.navigation || []).filter((_: any, i: number) => i !== index));
     };
 
+    /** Hide a link from the live site without losing its label and route.
+     *  Absent means visible, so every site authored before this existed keeps
+     *  showing every link. */
+    const toggleNavItem = (index: number) => {
+        const current = (props.navigation || [])[index];
+        updateNavItem(index, 'enabled', current?.enabled === false);
+    };
+
     const addAuthLink = () => {
         updateProp('authLinks', [...(props.authLinks || []), { label: t('header.defaults.login'), route: 'login' }]);
     };
@@ -2444,10 +2454,12 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
                 {(props.navigation || []).map((item: any, index: number) => (
                     <div key={index} className="rounded border bg-gray-50 p-2">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-1">
                             <button
                                 onClick={() => setExpandedNav(expandedNav === index ? null : index)}
-                                className="flex-1 text-left text-sm font-medium"
+                                className={`flex-1 truncate text-left text-sm font-medium ${
+                                    item.enabled === false ? 'text-gray-400 line-through' : ''
+                                }`}
                             >
                                 {expandedNav === index ? (
                                     <ChevronUp className="mr-1 inline size-3" />
@@ -2456,11 +2468,41 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                 )}
                                 {item.label}
                             </button>
+                            {item.enabled === false && (
+                                <span className="shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-caption text-gray-600">
+                                    {t('header.hiddenBadge')}
+                                </span>
+                            )}
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => toggleNavItem(index)}
+                                className="size-6 shrink-0 p-0 text-gray-500 hover:text-gray-800"
+                                title={
+                                    item.enabled === false
+                                        ? t('header.showLink')
+                                        : t('header.hideLink')
+                                }
+                                aria-label={
+                                    item.enabled === false
+                                        ? t('header.showLink')
+                                        : t('header.hideLink')
+                                }
+                                aria-pressed={item.enabled === false}
+                            >
+                                {item.enabled === false ? (
+                                    <EyeSlash className="size-3" />
+                                ) : (
+                                    <Eye className="size-3" />
+                                )}
+                            </Button>
                             <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => deleteNavItem(index)}
-                                className="size-6 p-0 text-red-600"
+                                className="size-6 shrink-0 p-0 text-red-600"
+                                title={t('actions.delete')}
+                                aria-label={t('actions.delete')}
                             >
                                 <Trash2 className="size-3" />
                             </Button>

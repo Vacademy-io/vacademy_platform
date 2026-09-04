@@ -418,9 +418,14 @@ const HeaderPreview: React.FC<P> = ({ props }) => {
                 <span className="font-semibold" style={{ color: fg }}>{props.title || ''}</span>
             </div>
             <nav className="flex items-center gap-5">
-                {(props.navigation || []).slice(0, 5).map((nav: any, i: number) => (
-                    <span key={i} className="text-sm" style={{ color: fg, opacity: 0.8 }}>{nav.label}</span>
-                ))}
+                {/* Hidden links are dropped here too — the canvas is a preview of
+                    the live page, not of the editor's list. */}
+                {(props.navigation || [])
+                    .filter((nav: any) => nav?.enabled !== false)
+                    .slice(0, 5)
+                    .map((nav: any, i: number) => (
+                        <span key={i} className="text-sm" style={{ color: fg, opacity: 0.8 }}>{nav.label}</span>
+                    ))}
             </nav>
             <div className="flex items-center gap-2">
                 {props.ctaButton?.enabled && (

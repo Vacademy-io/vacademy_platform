@@ -119,6 +119,18 @@ def _mode_note(mode: str) -> str:
     )
 
 
+def ensure_user_turn(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The agent speaks first (greeting, voice opening turn), so some calls carry
+    only a system message. Gemini via OpenRouter tolerates that; GLM/Z.AI-style
+    providers reject a conversation with no user turn (400, 'Provider returned
+    error'). Append a minimal user turn in that case — never otherwise."""
+    if not messages:
+        return messages
+    if any(m.get("role") in ("user", "tool") for m in messages):
+        return messages
+    return list(messages) + [{"role": "user", "content": "Begin."}]
+
+
 class _AttemptRejected(Exception):
     """OpenRouter answered 4xx to one payload variant (status + provider text)."""
 
@@ -355,7 +367,7 @@ class ChatLLMClient:
 
         payload = {
             "model": model,
-            "messages": messages,
+            "messages": ensure_user_turn(messages),
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
@@ -482,7 +494,7 @@ class ChatLLMClient:
 
         payload = {
             "model": model,
-            "messages": messages,
+            "messages": ensure_user_turn(messages),
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": True,

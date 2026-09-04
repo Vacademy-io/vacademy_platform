@@ -54,6 +54,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { CoursePagesEditor } from './CoursePagesEditor';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
 
@@ -1415,6 +1416,26 @@ const GlobalSettingsEditor = ({
                             />
                         )}
                     </>
+                )}
+            </div>
+
+            {/* Course pages */}
+            <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
+                <h4 className="font-medium text-gray-700">{t('global.coursePages.heading')}</h4>
+                <p className="text-caption text-gray-500">{t('global.coursePages.hint')}</p>
+                <div className="flex items-center justify-between">
+                    <Label>{t('global.coursePages.enable')}</Label>
+                    <Switch
+                        checked={gs.coursePages?.enabled || false}
+                        onCheckedChange={(c) => updateField('coursePages.enabled', c)}
+                    />
+                </div>
+                {gs.coursePages?.enabled && (
+                    <CoursePagesEditor
+                        courses={gs.coursePages?.courses || {}}
+                        pages={config.pages || []}
+                        onChange={(next) => updateField('coursePages.courses', next)}
+                    />
                 )}
             </div>
 

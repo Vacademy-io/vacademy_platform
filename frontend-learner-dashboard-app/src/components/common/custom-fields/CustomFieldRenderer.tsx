@@ -93,6 +93,14 @@ export const CustomFieldRenderer = ({
   const allowedFileTypes = parsedConfig?.allowedFileTypes;
   const maxSizeMB = parsedConfig?.maxSizeMB;
 
+  // Placeholder precedence: an explicit prop from the caller, then a per-field
+  // override authored in the field's config JSON, then the auto-generated
+  // "Enter <field name>". The config hook is what lets a single institute
+  // reword one field's prompt without renaming the field or forking this file.
+  const configPlaceholder = parsedConfig?.placeholder;
+  const enterPlaceholder =
+    placeholder || configPlaceholder || t("customFields.enterField", { name });
+
   const handleChange = (newValue: string) => {
     onChange?.(newValue);
   };
@@ -181,7 +189,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="text"
-            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
+            inputPlaceholder={enterPlaceholder}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"
@@ -195,7 +203,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="number"
-            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
+            inputPlaceholder={enterPlaceholder}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"
@@ -209,7 +217,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="email"
-            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
+            inputPlaceholder={enterPlaceholder}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"
@@ -223,7 +231,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="url"
-            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
+            inputPlaceholder={enterPlaceholder}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"
@@ -246,7 +254,7 @@ export const CustomFieldRenderer = ({
             }}
             enableSearch={true}
             disabled={disabled}
-            placeholder={placeholder || t("customFields.enterField", { name })}
+            placeholder={enterPlaceholder}
             // !h-10 matches the `size="large"` inputs this renderer uses for
             // every other field type; without it the library's padding-derived
             // height makes the phone field visibly taller than its neighbours.
@@ -268,7 +276,7 @@ export const CustomFieldRenderer = ({
             onChange={(e) => handleChange(e.target.value)}
             disabled={disabled}
             required={required}
-            placeholder={placeholder || t("customFields.pickDate")}
+            placeholder={placeholder || configPlaceholder || t("customFields.pickDate")}
             className="flex w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           />
         );
@@ -276,7 +284,7 @@ export const CustomFieldRenderer = ({
       case FieldRenderType.TEXTAREA:
         return (
           <Textarea
-            placeholder={placeholder || t("customFields.enterField", { name })}
+            placeholder={enterPlaceholder}
             value={value || ""}
             onChange={(e) => handleChange(e.target.value)}
             disabled={disabled}
@@ -327,7 +335,7 @@ export const CustomFieldRenderer = ({
             disabled={disabled}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder={placeholder || t("customFields.selectField", { name })} />
+              <SelectValue placeholder={placeholder || configPlaceholder || t("customFields.selectField", { name })} />
             </SelectTrigger>
             <SelectContent>
               {(resolvedOptions || []).map((opt, idx) => (
@@ -440,7 +448,7 @@ export const CustomFieldRenderer = ({
         return (
           <MyInput
             inputType="text"
-            inputPlaceholder={placeholder || t("customFields.enterField", { name })}
+            inputPlaceholder={enterPlaceholder}
             input={value || ""}
             onChangeFunction={(e) => handleChange(e.target.value)}
             size="large"

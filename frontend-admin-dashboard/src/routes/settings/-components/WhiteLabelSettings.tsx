@@ -40,6 +40,12 @@ import {
     stringifyPreferredCountries,
     countryCodeToFlag,
 } from '../-utils/countries';
+import PhoneCountryGeoModeField from './PhoneCountryGeoModeField';
+import {
+    DEFAULT_PHONE_COUNTRY_GEO_MODE,
+    PHONE_COUNTRY_GEO_MODES,
+    type PhoneCountryGeoMode,
+} from '@/services/domain-routing';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { WHITE_LABEL_SETUP, WHITE_LABEL_STATUS } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
@@ -115,6 +121,12 @@ interface RoutingConfig {
      * of the country picker dropdown.
      */
     comma_separated_preferred_country?: string;
+    /**
+     * Decides whether the list above is the last word, or whether the country a
+     * form is actually being opened from may override it. One of
+     * PHONE_COUNTRY_GEO_MODES; undefined behaves as INSTITUTE_FIRST.
+     */
+    phone_country_geo_mode?: string;
     /**
      * When true, the institute name is hidden wherever the logo is rendered
      * (login page, sidebar header). Useful when the logo already contains the
@@ -720,6 +732,11 @@ const ConfigFormSection = ({
                     {t('configForm.phone.preferredCountriesHint')}
                 </p>
             </div>
+            <PhoneCountryGeoModeField
+                value={config.phone_country_geo_mode}
+                preferredCountriesValue={config.comma_separated_preferred_country}
+                onChange={(mode) => onUpdate('phone_country_geo_mode', mode)}
+            />
         </div>
 
         <Separator />
@@ -887,6 +904,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     mac_app_link: r.mac_app_link ?? undefined,
                     comma_separated_preferred_country:
                         r.comma_separated_preferred_country ?? undefined,
+                    phone_country_geo_mode: r.phone_country_geo_mode ?? undefined,
                     hide_institute_name: r.hide_institute_name ?? undefined,
                     logo_width_px: r.logo_width_px ?? undefined,
                     logo_height_px: r.logo_height_px ?? undefined,
@@ -1384,10 +1402,21 @@ function RoutingEntryCard({ entry, subOrgs }: { entry: RoutingEntry; subOrgs: Su
         entry.allow_github_auth != null || entry.allow_email_otp_auth != null ||
         entry.allow_phone_auth != null || entry.allow_username_password_auth != null ||
         entry.comma_separated_preferred_country ||
+        entry.phone_country_geo_mode ||
         entry.hide_institute_name != null ||
         entry.logo_width_px != null || entry.logo_height_px != null ||
         entry.stack_name_below_logo != null
     );
+
+    // Under GEO_FIRST the first configured country is NOT what a phone field
+    // starts on — the visitor's own country is — so the star and its "default
+    // selected country" tooltip below have to know the mode before claiming it.
+    const savedGeoMode: PhoneCountryGeoMode = PHONE_COUNTRY_GEO_MODES.includes(
+        (entry.phone_country_geo_mode ?? '') as PhoneCountryGeoMode
+    )
+        ? (entry.phone_country_geo_mode as PhoneCountryGeoMode)
+        : DEFAULT_PHONE_COUNTRY_GEO_MODE;
+    const firstCountryIsDefault = savedGeoMode !== 'GEO_FIRST';
 
     const preferredCountryCodes = parsePreferredCountriesString(
         entry.comma_separated_preferred_country
@@ -1539,6 +1568,10 @@ function RoutingEntryCard({ entry, subOrgs }: { entry: RoutingEntry; subOrgs: Su
                         <ConfigValue label={t('routingEntryCard.fields.logoWidth')} value={entry.logo_width_px} />
                         <ConfigValue label={t('routingEntryCard.fields.logoHeight')} value={entry.logo_height_px} />
                         <ConfigValue label={t('routingEntryCard.fields.stackNameBelowLogo')} value={entry.stack_name_below_logo} />
+                        <ConfigValue
+                            label={t('configForm.phone.geoModeLabel')}
+                            value={t(`configForm.phone.geoModes.${savedGeoMode}.label`)}
+                        />
                     </div>
                     {preferredCountryCodes.length > 0 && (
                         <div className="mt-3 border-t border-slate-200 pt-3">
@@ -1549,17 +1582,17 @@ function RoutingEntryCard({ entry, subOrgs }: { entry: RoutingEntry; subOrgs: Su
                                         <span
                                             key={code}
                                             className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-mono ${
-                                                idx === 0
+                                                idx === 0 && firstCountryIsDefault
                                                     ? 'border-amber-200 bg-amber-50 text-amber-800'
                                                     : 'border-slate-200 bg-slate-50 text-slate-600'
                                             }`}
                                             title={
-                                                idx === 0
+                                                idx === 0 && firstCountryIsDefault
                                                     ? t('routingEntryCard.defaultCountryTooltip')
                                                     : undefined
                                             }
                                         >
-                                            {idx === 0 && (
+                                            {idx === 0 && firstCountryIsDefault && (
                                                 <Star className="size-2.5 fill-amber-500 text-amber-500" />
                                             )}
                                             <span className="text-sm leading-none">

@@ -170,6 +170,9 @@ public class WhiteLabelStatusResponse {
         @JsonProperty("comma_separated_preferred_country")
         private String commaSeparatedPreferredCountry;
 
+        @JsonProperty("phone_country_geo_mode")
+        private String phoneCountryGeoMode;
+
         // ── Logo / institute-name display ─────────────────────────────────
         @JsonProperty("hide_institute_name")
         private Boolean hideInstituteName;

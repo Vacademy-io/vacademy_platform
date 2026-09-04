@@ -98,6 +98,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return getUpcomingAutopayCharges(params);
             case "getManualRenewalDuePlans":
                 return getManualRenewalDuePlans(params);
+            case "getAbandonedCartPlans":
+                return getAbandonedCartPlans(params);
             case "updateSSIGMRemaingDaysByOne":
                 return updateSSIGMRemainingDaysByOne(params);
             case "createSessionSchedule":
@@ -300,6 +302,47 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     "manualRenewalCount", manualRenewalList.size());
         } catch (Exception e) {
             log.error("Error executing getManualRenewalDuePlans", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    /**
+     * Learners who started an enrolment but never completed checkout -- the audience for the
+     * abandoned-cart follow-up. Keyed on plan payment status, not on any particular payment
+     * instrument, so it applies to card, UPI and mandate flows alike. One row per learner, carrying the invite code they last chose
+     * so the message can link them back to the plan they actually wanted.
+     *
+     * <p>Params: instituteId (required), minAgeDays (default 1), maxAgeDays (default 3). The age
+     * window exists so we do not chase someone who is still mid-checkout.
+     */
+    private Map<String, Object> getAbandonedCartPlans(Map<String, Object> params) {
+        try {
+            String instituteId = params.get("instituteId") != null
+                    ? String.valueOf(params.get("instituteId")) : null;
+            if (instituteId == null || instituteId.isBlank()) {
+                return Map.of("error", "Missing required parameter instituteId");
+            }
+            int minAgeDays = readIntParam(params.get("minAgeDays"), 1);
+            int maxAgeDays = readIntParam(params.get("maxAgeDays"), 3);
+
+            List<Object[]> rows = ssigmRepo.findAbandonedCartPlans(instituteId, minAgeDays, maxAgeDays);
+            List<Map<String, Object>> abandonedList = new ArrayList<>();
+            for (Object[] row : rows) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("userPlanId", String.valueOf(row[0]));
+                item.put("userId", String.valueOf(row[1]));
+                item.put("name", row[2] != null ? String.valueOf(row[2]) : "");
+                item.put("mobileNumber", row[3] != null ? String.valueOf(row[3]) : "");
+                item.put("username", row[4] != null ? String.valueOf(row[4]) : "");
+                item.put("planStatus", row[5] != null ? String.valueOf(row[5]) : "");
+                item.put("inviteCode", row[6] != null ? String.valueOf(row[6]) : "");
+                item.put("createdAt", row[7]);
+                abandonedList.add(item);
+            }
+            return Map.of("abandonedCartList", abandonedList,
+                    "abandonedCartCount", abandonedList.size());
+        } catch (Exception e) {
+            log.error("Error executing getAbandonedCartPlans", e);
             return Map.of("error", e.getMessage());
         }
     }

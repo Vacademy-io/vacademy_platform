@@ -248,6 +248,8 @@ class CompileOptions(BaseModel):
     # Uploaded videos without a transcript: run speech-to-text (per-minute
     # credits) so they compile like documents; off = park them for a description.
     transcribe_videos: bool = True
+    # Scanned PDFs (no text layer): MathPix OCR, charged per page; off = park.
+    ocr_pdfs: bool = True
     # Stable across transport retries; keys idempotent charges.
     compile_run_id: Optional[str] = Field(default=None, pattern=_RUN_ID)
 

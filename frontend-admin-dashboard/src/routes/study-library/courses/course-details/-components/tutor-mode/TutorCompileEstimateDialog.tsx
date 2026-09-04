@@ -40,6 +40,8 @@ interface Props {
     options: TutorCompileOptions | null;
     transcribeVideos: boolean;
     onTranscribeVideosChange: (v: boolean) => void;
+    ocrPdfs: boolean;
+    onOcrPdfsChange: (v: boolean) => void;
     onClose: () => void;
     onConfirm: () => void;
 }
@@ -56,6 +58,8 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
     options,
     transcribeVideos,
     onTranscribeVideosChange,
+    ocrPdfs,
+    onOcrPdfsChange,
     onClose,
     onConfirm,
 }) => {
@@ -72,6 +76,7 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
         estimateTutorCompile(packageId, {
             ...options,
             transcribe_videos: transcribeVideos,
+            ocr_pdfs: ocrPdfs,
             slide_ids: slideIds ?? [],
             force: single,
         })
@@ -90,7 +95,7 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
         };
         // options is rebuilt on every render; the inputs that matter are listed.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, packageId, slideIds?.join(','), transcribeVideos, single]);
+    }, [open, packageId, slideIds?.join(','), transcribeVideos, ocrPdfs, single]);
 
     const t = estimate?.totals;
     const rows = (estimate?.slides ?? []).filter((r) => r.action !== 'up_to_date' || single);
@@ -114,7 +119,8 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                 <p className="text-sm text-neutral-600">
                     Documents, PDFs, YouTube videos and AI videos are prepared from their own text
                     for free apart from the compile. Uploaded videos are transcribed first
-                    (speech-to-text, charged per minute). Nothing is charged until you confirm.
+                    (speech-to-text, charged per minute) and scanned PDFs are read with OCR (charged
+                    per page). Nothing is charged until you confirm.
                 </p>
 
                 {estimate?.transcription_available && (
@@ -129,6 +135,19 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                             {fmt(estimate.prices.transcription_per_minute)} credits per minute,
                             minimum {fmt(estimate.prices.transcription_minimum)}
                             ). Off: they need a written description instead.
+                        </Label>
+                    </div>
+                )}
+                {estimate?.ocr_available && (
+                    <div className="flex items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
+                        <Switch
+                            id="tutor-ocr"
+                            checked={ocrPdfs}
+                            onCheckedChange={onOcrPdfsChange}
+                        />
+                        <Label htmlFor="tutor-ocr" className="text-sm">
+                            Read scanned PDFs with OCR ({fmt(estimate.prices.ocr_per_page)} credits
+                            per page). Off: they need a written description instead.
                         </Label>
                     </div>
                 )}
@@ -176,6 +195,9 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                                                 <span className="block text-xs text-neutral-500">
                                                     {r.note}
                                                     {r.minutes > 0 ? ` · ${r.minutes} min` : ''}
+                                                    {r.ocr > 0
+                                                        ? ` · ${fmt(r.ocr)} credits OCR`
+                                                        : ''}
                                                 </span>
                                             )}
                                         </td>
@@ -220,6 +242,9 @@ export const TutorCompileEstimateDialog: React.FC<Props> = ({
                             {fmt(t.compile_credits)} to compile
                             {t.transcription_minutes > 0
                                 ? ` + ${fmt(t.transcription_credits)} for ${t.transcription_minutes} min of transcription`
+                                : ''}
+                            {t.ocr_pages > 0
+                                ? ` + ${fmt(t.ocr_credits)} for OCR of ${t.ocr_pages} page(s)`
                                 : ''}
                             {t.images_max > 0
                                 ? ` + up to ${fmt(t.images_max_credits)} for AI images (charged per image made)`

@@ -128,7 +128,8 @@ def _preflight(db: Session, institute_id: str, slide_ids: List[str], p: CompileO
     charged as delivered). An unknown balance never blocks."""
     try:
         est = estimate_compile(db, institute_id=institute_id, slide_ids=slide_ids, language=p.language,
-                               generate_images=bool(p.generate_images), transcribe_videos=bool(p.transcribe_videos), force=force)
+                               generate_images=bool(p.generate_images), transcribe_videos=bool(p.transcribe_videos),
+                               ocr_pdfs=bool(p.ocr_pdfs), force=force)
     except Exception:  # noqa: BLE001 — never block on a malformed estimate
         return
     if est.get("sufficient") is False:
@@ -136,7 +137,8 @@ def _preflight(db: Session, institute_id: str, slide_ids: List[str], p: CompileO
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED,
                             detail=(f"Insufficient credits: preparing {t['to_compile']} slide(s) needs ≈{t['required']:g} credits "
                                     f"({t['compile_credits']:g} to compile + {t['transcription_credits']:g} for "
-                                    f"{t['transcription_minutes']} min of transcription), balance is {est['balance']:g}."))
+                                    f"{t['transcription_minutes']} min of transcription + {t['ocr_credits']:g} for "
+                                    f"{t['ocr_pages']} OCR page(s)), balance is {est['balance']:g}."))
 
 
 def _compiler(db: Session, caller: Caller, package_id: str, p: CompileOptions, *, force: bool) -> PlanCompiler:
@@ -154,7 +156,7 @@ def _compiler(db: Session, caller: Caller, package_id: str, p: CompileOptions, *
         institute_id=caller.institute_id, user_id=caller.user_id, language=language,
         teacher_name=teacher, force=force, generate_images=images, kb_grounding=kb,
         compile_run_id=p.compile_run_id or str(uuid.uuid4()), model_override=s.compile_model,
-        transcribe_videos=p.transcribe_videos,
+        transcribe_videos=p.transcribe_videos, ocr_pdfs=p.ocr_pdfs,
     )
 
 
@@ -197,7 +199,8 @@ def compile_estimate(
     images = payload.generate_images if "generate_images" in fields else bool(s.generate_images)
     language = payload.language if "language" in fields else s.course_language
     out = estimate_compile(db, institute_id=caller.institute_id, slide_ids=slide_ids, language=language,
-                           generate_images=images, transcribe_videos=payload.transcribe_videos, force=payload.force)
+                           generate_images=images, transcribe_videos=payload.transcribe_videos,
+                           ocr_pdfs=payload.ocr_pdfs, force=payload.force)
     out["package_id"] = payload.package_id
     return out
 

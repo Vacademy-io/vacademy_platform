@@ -62,6 +62,8 @@ class _Est:
             return {"estimated_credits": 1}
         if key == "transcription":
             return {"estimated_credits": max(2.0, 0.5 * float(params.get("audio_minutes") or 0))}
+        if key == "html_document_pdf":
+            return {"estimated_credits": 0.5 * float(params.get("num_pages") or 0)}
         raise ValueError(key)
 
     def estimate_with_balance(self, key, params, institute_id):
@@ -103,3 +105,44 @@ def test_estimate_compile_per_kind(monkeypatch):
                                              generate_images=False, transcribe_videos=False, force=False)
     by2 = {r["slide_id"]: r for r in out2["slides"]}
     assert by2["up"]["action"] == "needs_details" and by2["up_desc_only"]["action"] == "compile" and by2["up_desc_only"]["transcription"] == 0
+
+
+def test_estimate_prices_ocr_for_scanned_pdfs(monkeypatch):
+    sources = {
+        "scan": _src(slide_id="scan", kind="pdf", source_type="DOCUMENT", media_file_id="pf1", content_hash="hp"),
+        "digital": _src(slide_id="digital", kind="pdf", source_type="DOCUMENT", media_file_id="pf2", content_hash="hp2"),
+        "unknown": _src(slide_id="unknown", kind="pdf", source_type="DOCUMENT", media_file_id="pf3", content_hash="hp3"),
+    }
+    probes = {"pf1": {"pages": 7, "text_chars": 0, "scanned_pages": 7}, "pf2": {"pages": 3, "text_chars": 900, "scanned_pages": 0}}
+    monkeypatch.setattr(compile_estimate, "load_slide_source", lambda db, sid: sources.get(sid))
+    monkeypatch.setattr(compile_estimate.plan_store, "latest_plans_for_slides", lambda db, ids: {})
+    monkeypatch.setattr(compile_estimate, "ToolCostEstimator", _Est)
+    monkeypatch.setattr(compile_estimate.source_text, "transcription_available", lambda: True)
+    monkeypatch.setattr(compile_estimate.source_text, "ocr_available", lambda: True)
+    monkeypatch.setattr(compile_estimate.source_text, "pdf_probe", lambda db, fid: probes.get(fid))
+    out = compile_estimate.estimate_compile(None, institute_id="i", slide_ids=list(sources), language="en",
+                                            generate_images=False, transcribe_videos=True, ocr_pdfs=True, force=False)
+    by = {r["slide_id"]: r for r in out["slides"]}
+    assert by["scan"]["pages"] == 7 and by["scan"]["ocr"] == 3.5 and by["scan"]["total"] == 5.5
+    assert by["digital"]["ocr"] == 0 and by["digital"]["total"] == 2 and "free" in by["digital"]["note"]
+    assert by["unknown"]["ocr"] == 0 and "OCR" in by["unknown"]["note"]
+    assert out["totals"]["ocr_pages"] == 7 and out["totals"]["ocr_credits"] == 3.5 and out["prices"]["ocr_per_page"] == 0.5
+    off = compile_estimate.estimate_compile(None, institute_id="i", slide_ids=["scan"], language="en",
+                                            generate_images=False, transcribe_videos=True, ocr_pdfs=False, force=False)
+    assert off["slides"][0]["action"] == "needs_details"
+
+
+def test_ai_video_url_is_not_a_media_url():
+    from app.services.tutor.slide_source import _video
+
+    class _DB:
+        def execute(self, *_a, **_k):
+            class R:
+                def first(self):
+                    return ("video-C1-CH2-SL2-16837f89", "video-C1-CH2-SL2-16837f89", 0)
+            return R()
+
+    src = _src(source_type="HTML_VIDEO", kind="other")
+    _video(_DB(), src, "x", html_video=True)
+    assert src.media_url is None and src.media_file_id is None and src.ai_gen_video_id == "video-C1-CH2-SL2-16837f89"
+    assert source_kind_label(src) == "ai_video"

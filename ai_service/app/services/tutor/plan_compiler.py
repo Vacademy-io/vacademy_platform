@@ -107,8 +107,9 @@ class _Run:
     model_used: Optional[str] = None
     # Generated images: (url, usage). Billed only once the plan is stored.
     images: List[Tuple[str, Dict[str, Any]]] = field(default_factory=list)
-    # Uploaded video transcribed for this compile (billed inside source_text).
+    # Uploaded video transcribed / scanned PDF OCR'd for this compile (billed inside source_text).
     transcription_minutes: int = 0
+    ocr_pages: int = 0
 
 
 class PlanCompiler:
@@ -125,11 +126,14 @@ class PlanCompiler:
         compile_run_id: Optional[str] = None,
         model_override: Optional[str] = None,
         transcribe_videos: bool = True,
+        ocr_pdfs: bool = True,
     ) -> None:
         self.institute_id = institute_id
         # Uploaded videos with no transcript yet: run Whisper (per-minute
-        # credits) or park the slide for a description.
+        # credits) or park the slide for a description. Scanned PDFs: MathPix
+        # OCR (per page) or park.
         self.transcribe_videos = bool(transcribe_videos) and source_text.transcription_available()
+        self.ocr_pdfs = bool(ocr_pdfs) and source_text.ocr_available()
         self.user_id = user_id
         self.language = language if language in ("en", "hi") else "en"
         self.teacher_name = (teacher_name or "Asha")[:60]
@@ -202,6 +206,8 @@ class PlanCompiler:
                 # Whisper runs later in _build_draft; the plan must hash as
                 # a transcript plan so an up-to-date one is not re-paid.
                 source.content_hash = source_text.hash_for(source, "transcript")
+            if source.kind == "pdf" and not source.text and source.media_file_id and self.ocr_pdfs:
+                source.content_hash = source_text.hash_for(source, "pdf")
 
         with db_session() as db:
             plan_store.retire_stuck_compiling(db, slide_id)
@@ -224,7 +230,9 @@ class PlanCompiler:
                 description = source.video_description
             will_transcribe = (source.kind == "video" and not source.text and bool(source.media_file_id)
                                and self.transcribe_videos)
-            if source.kind in ("video", "pdf") and not source.text and not will_transcribe and not (description or "").strip():
+            will_ocr = source.kind == "pdf" and not source.text and bool(source.media_file_id) and self.ocr_pdfs
+            if (source.kind in ("video", "pdf") and not source.text and not will_transcribe and not will_ocr
+                    and not (description or "").strip()):
                 # Nothing to teach from: park the slide in NEEDS_DETAILS (once)
                 # so the course page can list it; a description flips it to STALE.
                 if existing is None or existing.status != "NEEDS_DETAILS":
@@ -298,7 +306,7 @@ class PlanCompiler:
                         "compile_run_id": self.compile_run_id,
                         "source_description": description,
                         "text_kind": source.text_kind, "text_chars": len(source.text or ""),
-                        "transcription_minutes": run.transcription_minutes,
+                        "transcription_minutes": run.transcription_minutes, "ocr_pages": run.ocr_pages,
                     },
                     compiled_with_description=description,
                 )
@@ -398,9 +406,25 @@ class PlanCompiler:
                 if not (description or "").strip():
                     raise RuntimeError(f"Transcription failed ({str(exc)[:160]}); add what this video teaches instead") from exc
                 logger.warning("Transcription failed for slide %s; compiling from the description: %s", source.slide_id, exc)
+        if source.kind == "pdf" and not source.text and source.media_file_id and self.ocr_pdfs:
+            try:
+                run.ocr_pages = await source_text.ocr_pdf(
+                    source, institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id)
+            except Exception as exc:  # noqa: BLE001
+                if not (description or "").strip():
+                    raise RuntimeError(f"OCR failed ({str(exc)[:160]}); add what this PDF teaches instead") from exc
+                logger.warning("OCR failed for slide %s; compiling from the description: %s", source.slide_id, exc)
         kb_block = await self._kb_block(source)
         system = prompts.system_prompt(self.teacher_name, self.language, images_enabled=self.generate_images)
-        if source.kind in ("video", "pdf"):
+        if source.kind in ("video", "pdf") and source.text and not (source.media_url or source.media_file_id):
+            # An AI video (HTML animation, no file to embed): teach its
+            # narration on the board like a document.
+            user = prompts.user_prompt(
+                slide_title=source.title, chapter_title=source.chapter_name, course_title=source.course_name,
+                slide_kind="AI video — teach its narration script on the board (there is no video file to embed)",
+                source_text=source.text, lang=self.language, kb_block=kb_block, images_enabled=self.generate_images,
+            )
+        elif source.kind in ("video", "pdf"):
             user = prompts.media_task_user_prompt(
                 slide_title=source.title, chapter_title=source.chapter_name, course_title=source.course_name,
                 kind=source.kind, description=description or "", lang=self.language,

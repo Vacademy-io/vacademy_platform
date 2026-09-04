@@ -96,6 +96,8 @@ export interface TutorCompileOptions {
     kb_grounding?: { knowledge_base_id: string; mode?: 'STRICT' | 'BLENDED' } | null;
     /** Uploaded videos without a transcript: run speech-to-text (per-minute credits). */
     transcribe_videos?: boolean;
+    /** Scanned PDFs: read with OCR (per-page credits). */
+    ocr_pdfs?: boolean;
     compile_run_id?: string;
 }
 
@@ -118,6 +120,8 @@ export interface TutorCompileEstimate {
         compile: number;
         transcription: number;
         minutes: number;
+        ocr: number;
+        pages: number;
         images_max: number;
         total: number;
         note: string | null;
@@ -131,6 +135,8 @@ export interface TutorCompileEstimate {
         compile_credits: number;
         transcription_credits: number;
         transcription_minutes: number;
+        ocr_credits: number;
+        ocr_pages: number;
         images_max: number;
         images_max_credits: number;
         required: number;
@@ -141,10 +147,12 @@ export interface TutorCompileEstimate {
         image: number;
         transcription_per_minute: number;
         transcription_minimum: number;
+        ocr_per_page: number;
     };
     balance: number | null;
     sufficient: boolean | null;
     transcription_available: boolean;
+    ocr_available: boolean;
 }
 
 export const estimateTutorCompile = async (

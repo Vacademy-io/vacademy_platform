@@ -967,8 +967,13 @@ Still open (tracked, not silent):
   editor (`video.description`) now counts as details. `POST /tutor/v1/compile/estimate`
   prices a compile before it runs (compile + transcription minutes + image cap, from the
   estimator so portal overrides apply) and the admin confirms in a dialog; the 402 gate uses
-  the same numbers. Still open: OCR for scanned PDFs, Whisper for caption-less YouTube (needs
-  yt-dlp or an egress proxy), and AI-video slides whose script was never generated.
+  the same numbers. Scanned PDFs are read with MathPix OCR (`html_document_pdf`, per page,
+  once per file) when the OCR switch is on. AI videos have no video file (an HTML animation),
+  so they are taught from the script on the board like a document, without a media task.
+  Verified 2026-09-04: YouTube refuses caption requests from the Hetzner nodes
+  (`RequestBlocked`), so YouTube slides park with that reason until an egress proxy (the
+  library supports Webshare/generic proxies) or a yt-dlp → Whisper path exists. Still open:
+  that proxy, and AI-video slides whose script was never generated.
 - **Weak-concept revisits** (§6.6) are per slide, not per chapter: a topic summary re-asks the
   weak concepts of that topic (fresh model-written question, one attempt, at most three), slide
   end re-asks up to three weakest weak-or-skipped concepts not yet revisited this session. A

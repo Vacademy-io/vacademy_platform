@@ -281,6 +281,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
     // Show what the compile will cost (per slide) before spending credits.
     const [estimateFor, setEstimateFor] = useState<{ slideIds?: string[] } | null>(null);
     const [transcribeVideos, setTranscribeVideos] = useState(true);
+    const [ocrPdfs, setOcrPdfs] = useState(true);
 
     const compileOptions = (): TutorCompileOptions => {
         // Only explicit course overrides travel with the request; the
@@ -290,6 +291,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
             language: effectiveLanguage,
             compile_run_id: newCompileRunId(),
             transcribe_videos: transcribeVideos,
+            ocr_pdfs: ocrPdfs,
         };
         if (setting.teacherName?.trim()) opts.teacher_name = setting.teacherName.trim();
         if (typeof setting.generateImages === 'boolean')
@@ -718,8 +720,9 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                         )}
                         <span className="text-xs text-neutral-500">
                             Documents, PDFs, YouTube and AI videos prepare from their own text;
-                            uploaded videos are transcribed first. You see the credits before
-                            anything is spent; quizzes are free and prepared slides are skipped.
+                            uploaded videos are transcribed and scanned PDFs read with OCR first.
+                            You see the credits before anything is spent; quizzes are free and
+                            prepared slides are skipped.
                         </span>
                     </div>
 
@@ -924,6 +927,8 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                 options={estimateFor ? compileOptions() : null}
                 transcribeVideos={transcribeVideos}
                 onTranscribeVideosChange={setTranscribeVideos}
+                ocrPdfs={ocrPdfs}
+                onOcrPdfsChange={setOcrPdfs}
                 onClose={() => setEstimateFor(null)}
                 onConfirm={() => {
                     const ids = estimateFor?.slideIds;

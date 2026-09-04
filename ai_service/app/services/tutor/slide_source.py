@@ -251,11 +251,14 @@ def _video(db: Session, src: SlideSource, source_id: str, html_video: bool) -> N
     src.kind = "video"
     # Uploaded videos store the media file id in `url` (source_type FILE_ID);
     # only real https links are media urls. The learner app resolves file ids
-    # to signed public urls itself.
+    # to signed public urls itself. An AI video's `url` is its video id (an
+    # HTML animation, not a file): no media task — it teaches from its script.
     if url and _UUID_RE.match(url.strip()):
         src.media_file_id = url.strip()
+    elif url and url.strip().lower().startswith(("http://", "https://")):
+        src.media_url = url.strip()
     else:
-        src.media_url = url
+        src.media_url = None
     src.content_hash = _hash("video", src.title, url)
 
 

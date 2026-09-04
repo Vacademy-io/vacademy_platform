@@ -36,6 +36,10 @@ VENDOR_TRANSCRIPT = "tutor_video_transcript"
 VENDOR_CAPTIONS = "tutor_youtube_captions"
 VENDOR_SCRIPT = "tutor_ai_video_script"
 VENDOR_PDF = "tutor_pdf_text"
+# {"pages": n, "text_chars": c}: what the free pass found, so the estimate
+# can price OCR for a scanned PDF without downloading it again.
+VENDOR_PDF_PROBE = "tutor_pdf_probe"
+OCR_TOOL = "html_document_pdf"          # MathPix per-page surcharge (0.5/page)
 TRANSCRIPTION_TOOL = "transcription"
 TRANSCRIPTION_MODEL = "whisper-small"
 MAX_PDF_BYTES = 40 * 1024 * 1024
@@ -159,23 +163,80 @@ async def _youtube_captions(url: str) -> Optional[str]:
     return body or None
 
 
+def pdf_probe(db: Session, file_id: str) -> Optional[dict]:
+    """{"pages", "text_chars"} from the last free pass over this PDF, if any."""
+    raw = cached_text(db, VENDOR_PDF_PROBE, file_id)
+    if not raw:
+        return None
+    try:
+        import json
+        return json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _pdf_bytes(file_id: str) -> Optional[bytes]:
+    url = await _file_url(file_id)
+    if not url:
+        raise RuntimeError("The PDF file could not be resolved")
+    data = await _download(url, max_bytes=MAX_PDF_BYTES)
+    if not data:
+        raise RuntimeError("The PDF is larger than 40 MB")
+    return data
+
+
 async def _pdf_text(file_id: str) -> Optional[str]:
     cached = _cached(VENDOR_PDF, file_id)
     if cached:
         return cached
     from ..kb import parsing
-    url = await _file_url(file_id)
-    if not url:
-        return None
-    data = await _download(url, max_bytes=MAX_PDF_BYTES)
-    if not data:
-        return None
+    data = await _pdf_bytes(file_id)
     # extract_figures=False and OCR payloads ignored: zero paid OCR.
     extracted = await asyncio.to_thread(parsing._extract_sync, data, False)
     body = "\n\n".join((p.text or "").strip() for p in extracted.pages if (p.text or "").strip())
+    import json
+    _store(VENDOR_PDF_PROBE, file_id, json.dumps({"pages": len(extracted.pages), "text_chars": len(body),
+                                                  "scanned_pages": len(getattr(extracted, "ocr_payloads", []) or [])}),
+           file_id=file_id, file_type="probe")
     if body:
         _store(VENDOR_PDF, file_id, body, file_id=file_id, file_type="pdf")
     return body or None
+
+
+async def ocr_pdf(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str]) -> int:
+    """Read a scanned PDF with MathPix OCR (the knowledge base's paid path),
+    once per file, charged per page with the `html_document_pdf` tool.
+    Returns the pages charged (0 on a cache hit)."""
+    from ..kb import parsing
+    file_id = src.media_file_id or ""
+    cached = _cached(VENDOR_PDF, file_id)
+    if cached:
+        _set_text(src, cached, "pdf")
+        return 0
+    data = await _pdf_bytes(file_id)
+    doc = await parsing.parse_pdf(data, extract_figures=False)
+    body = "\n\n".join((p.text or "").strip() for p in doc.pages if (p.text or "").strip())
+    if not body:
+        raise RuntimeError("OCR found no readable text in this PDF")
+    _store(VENDOR_PDF, file_id, body, file_id=file_id, file_type="pdf_ocr")
+    pages = int(doc.ocr_pages or 0)
+    if pages > 0:
+        record_tool_billing(
+            tool_key=OCR_TOOL, tool_params={"num_pages": pages}, request_type=RequestType.PDF_QUESTIONS,
+            model="mathpix", institute_id=institute_id, user_id=user_id, user_role="ADMIN",
+            request_id=request_id, idempotency_key=f"tutor_ocr:{file_id}",
+        )
+    _set_text(src, body, "pdf")
+    return pages
+
+
+def ocr_available() -> bool:
+    from ...config import get_settings
+    try:
+        s = get_settings()
+        return bool(getattr(s, "mathpix_app_id", None) and getattr(s, "mathpix_app_key", None))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 async def resolve_free_text(src: SlideSource) -> None:
@@ -194,7 +255,10 @@ async def resolve_free_text(src: SlideSource) -> None:
                 captions = await _youtube_captions(src.media_url)
             except ValueError as exc:
                 captions = None
-                src.text_note = str(exc)[:200]
+                msg = str(exc)
+                src.text_note = ("YouTube blocks caption requests from our servers: add what the video teaches, "
+                                 "or upload the video file so it can be transcribed"
+                                 if "block" in msg.lower() else msg[:200])
             if captions:
                 _set_text(src, captions, "captions"); return
             src.text_note = src.text_note or "This video has no captions"
@@ -206,7 +270,7 @@ async def resolve_free_text(src: SlideSource) -> None:
             body = await _pdf_text(src.media_file_id)
             if body:
                 _set_text(src, body, "pdf"); return
-            src.text_note = "This PDF has no text layer (scanned pages)"
+            src.text_note = "This PDF has no text layer (scanned pages): turn on OCR or add what it teaches"
     except Exception as exc:  # noqa: BLE001
         logger.warning("source_text: free text failed for slide %s (%s): %s", src.slide_id, kind, exc, exc_info=True)
         src.text_note = f"Could not read the {kind.replace('_', ' ')}: {str(exc)[:120]}"

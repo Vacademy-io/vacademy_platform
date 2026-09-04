@@ -334,6 +334,10 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   t("courseStructureDetails.unnamedSubject", { subject: subjectTerm, index: index + 1 }),
                 subject_order: subject.subject_order || index,
                 description: subject.description || "",
+                // The API has always sent this; the transform used to drop it,
+                // which left every tile on the artwork fallback even though
+                // each subject has a real image.
+                thumbnail_id: subject.thumbnail_id ?? null,
               };
               subjects.push(transformedSubject);
             }

@@ -41,6 +41,7 @@
         "selectPrompt": "जिन {{courses}} में आप नामांकन लेना चाहते हैं उन्हें चुनें"
     },
     "courseFinder": {
+        "continueToRegister": "पंजीकरण के लिए आगे बढ़ें",
         "dialogHeading": "अपनी कक्षा चुनें",
         "showCourses": "मेरे {{courses}} दिखाएं",
         "defaultSubheading": "अपना चुनें और अपने लिए उपलब्ध {{courses}} देखें",

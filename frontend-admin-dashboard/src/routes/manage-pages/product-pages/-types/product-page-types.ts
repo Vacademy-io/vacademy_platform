@@ -213,6 +213,8 @@ export interface CourseFinderSettings {
      * resolves to exactly one course.
      */
     onPick?: 'SHOW_COURSES' | 'GO_TO_FORM';
+    /** Confirm-button wording. `{{class}}` becomes the label the learner picked. */
+    ctaLabel?: string;
     groups: CourseFinderGroup[];
 }
 

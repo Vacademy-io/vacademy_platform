@@ -41,6 +41,7 @@
         "selectPrompt": "Select the {{courses}} you'd like to enroll in"
     },
     "courseFinder": {
+        "continueToRegister": "Continue to register",
         "dialogHeading": "Select your class",
         "showCourses": "Show my {{courses}}",
         "defaultSubheading": "Pick yours to see the {{courses}} available for you",

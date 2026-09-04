@@ -118,6 +118,15 @@ export interface ProductPageCourseFinder {
      * choosing among them is the visitor's decision, not the page's.
      */
     onPick?: 'SHOW_COURSES' | 'GO_TO_FORM';
+    /**
+     * Wording for the dialog's confirm button.
+     *
+     * `{{class}}` is replaced with the label the visitor picked, so a page can
+     * say "Register for Class 9" rather than a fixed phrase. Left empty the
+     * default follows `onPick`: a button that opens a registration form must
+     * not promise to show courses.
+     */
+    ctaLabel?: string;
     groups: ProductPageFinderGroup[];
 }
 

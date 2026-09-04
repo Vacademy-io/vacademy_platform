@@ -41,6 +41,7 @@
         "selectPrompt": "اختر {{courses}} التي ترغب في التسجيل بها"
     },
     "courseFinder": {
+        "continueToRegister": "متابعة التسجيل",
         "dialogHeading": "اختر صفك",
         "showCourses": "عرض {{courses}} الخاصة بي",
         "defaultSubheading": "اختر ما يناسبك لعرض {{courses}} المتاحة لك",

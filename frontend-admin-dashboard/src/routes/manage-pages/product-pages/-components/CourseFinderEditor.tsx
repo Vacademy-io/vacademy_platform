@@ -219,6 +219,25 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                         </button>
                     ))}
                 </div>
+                <div className="mt-2">
+                    <Label className="text-xs">Button wording</Label>
+                    <Input
+                        value={value.ctaLabel ?? ''}
+                        onChange={(e) => set({ ctaLabel: e.target.value })}
+                        placeholder={
+                            (value.onPick ?? 'SHOW_COURSES') === 'GO_TO_FORM'
+                                ? 'Continue to register'
+                                : 'Show my courses'
+                        }
+                        className="h-8"
+                    />
+                    <p className="mt-1 text-2xs text-neutral-400">
+                        Type <code>{'{{class}}'}</code> to drop in what they picked — &ldquo;Register
+                        for {'{{class}}'}&rdquo; becomes &ldquo;Register for Class 9&rdquo;. Left
+                        empty it follows the setting above, so a button that opens a registration
+                        form never promises to show courses.
+                    </p>
+                </div>
                 <p className="mt-1 text-2xs text-neutral-400">
                     Skipping goes straight to the details step, cart and all. It only applies to a
                     button holding exactly one course — anything wider still shows the courses, so

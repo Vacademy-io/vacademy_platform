@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     FINDER_SKIPPED,
+    finderCtaLabel,
     groupPackageSessionIds,
     isFinderUsable,
     mappingInGroup,
@@ -184,5 +185,42 @@ describe('FINDER_SKIPPED', () => {
         // Even if an id somehow equalled it, the group still resolves normally —
         // the sentinel only means "skipped" when nothing matches it.
         expect(usableGroups(finder, SN).map((g) => g.id)).toEqual([FINDER_SKIPPED]);
+    });
+});
+
+describe('finderCtaLabel', () => {
+    const FALLBACK = 'Continue to register';
+
+    it('uses the fallback when nothing is authored', () => {
+        expect(finderCtaLabel(undefined, null, FALLBACK)).toBe(FALLBACK);
+        expect(finderCtaLabel('   ', 'Class 9', FALLBACK)).toBe(FALLBACK);
+    });
+
+    it('names the pick', () => {
+        expect(finderCtaLabel('Register for {{class}}', 'Class 9', FALLBACK)).toBe(
+            'Register for Class 9'
+        );
+        expect(finderCtaLabel('Register for {{ CLASS }}', 'Class 12 NEET', FALLBACK)).toBe(
+            'Register for Class 12 NEET'
+        );
+    });
+
+    it('falls back before a pick rather than leaving "Register for "', () => {
+        expect(finderCtaLabel('Register for {{class}}', null, FALLBACK)).toBe(FALLBACK);
+        // A placeholder-only label has nothing left at all.
+        expect(finderCtaLabel('{{class}}', null, FALLBACK)).toBe(FALLBACK);
+    });
+
+    it('leaves a static custom label alone, picked or not', () => {
+        expect(finderCtaLabel('Go', null, FALLBACK)).toBe('Go');
+        expect(finderCtaLabel('Go', 'Class 9', FALLBACK)).toBe('Go');
+    });
+
+    it('is not affected by the regex global flag across calls', () => {
+        // A module-level /g regex carries lastIndex between .test() calls, which
+        // makes every second check return false.
+        expect(finderCtaLabel('Register for {{class}}', null, FALLBACK)).toBe(FALLBACK);
+        expect(finderCtaLabel('Register for {{class}}', null, FALLBACK)).toBe(FALLBACK);
+        expect(finderCtaLabel('Register for {{class}}', null, FALLBACK)).toBe(FALLBACK);
     });
 });

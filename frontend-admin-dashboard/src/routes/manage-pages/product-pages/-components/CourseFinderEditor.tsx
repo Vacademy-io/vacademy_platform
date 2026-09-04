@@ -195,6 +195,38 @@ export const CourseFinderEditor = ({ value, courses, onChange }: Props) => {
                 </div>
             </div>
 
+            {/* ── What a pick does ───────────────────────────────────────────── */}
+            <div className="border-t border-neutral-200 pt-3">
+                <Label className="text-xs">After a learner picks</Label>
+                <div className="mt-1 flex gap-2">
+                    {(
+                        [
+                            ['SHOW_COURSES', 'Show their courses'],
+                            ['GO_TO_FORM', 'Skip to registration'],
+                        ] as const
+                    ).map(([mode, label]) => (
+                        <button
+                            key={mode}
+                            type="button"
+                            onClick={() => set({ onPick: mode })}
+                            className={`rounded border px-3 py-1.5 text-2xs font-medium transition-all ${
+                                (value.onPick ?? 'SHOW_COURSES') === mode
+                                    ? 'border-primary-300 bg-primary-50 text-primary-700'
+                                    : 'border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                <p className="mt-1 text-2xs text-neutral-400">
+                    Skipping goes straight to the details step, cart and all. It only applies to a
+                    button holding exactly one course — anything wider still shows the courses, so
+                    the learner picks which. The order summary appears on the details step either
+                    way, so nothing about the purchase is hidden.
+                </p>
+            </div>
+
             {/* ── Buttons ────────────────────────────────────────────────────── */}
             <div className="space-y-2 border-t border-neutral-200 pt-3">
                 <div className="flex items-center justify-between">

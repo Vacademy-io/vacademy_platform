@@ -227,6 +227,22 @@ export const ProductPageSettingsCard = ({
                         })}
                     </div>
 
+                    {/* A finder lives on the catalogue step. Landing anywhere
+                        else skips the question and drops the visitor on an
+                        empty basket, so the learner app now forces the
+                        catalogue — say so rather than letting the picker
+                        silently disagree with what is selected here. */}
+                    {settings.courseFinder?.enabled && settings.defaultStep !== 'CATALOG' && (
+                        <div className="mt-3 rounded-lg border border-warning-300 bg-warning-50 px-3 py-2">
+                            <p className="text-xs text-warning-700">
+                                Course Finder is on, so learners still land on{' '}
+                                <strong>Catalog</strong> — the class question has to be asked before
+                                there is anything in the cart. Turn the Course Finder off to use
+                                this landing step.
+                            </p>
+                        </div>
+                    )}
+
                     {/* Flow label */}
                     <div className="mt-3 flex items-center gap-1 rounded-lg bg-neutral-50 px-3 py-2">
                         <span className="text-[10px] text-neutral-400">Learner flow:</span>

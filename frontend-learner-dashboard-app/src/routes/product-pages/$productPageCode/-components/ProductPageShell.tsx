@@ -7,6 +7,7 @@ import {
   pushProductPageView,
 } from "@/components/common/enroll-by-invite/-utils/gtm";
 import { CatalogStep } from "./CatalogStep";
+import { isFinderUsable, parseCourseFinder } from "../-utils/course-finder";
 import { CartStep } from "./CartStep";
 import { MultiEnrollForm } from "./MultiEnrollForm";
 import { CombinedPaymentStep } from "./CombinedPaymentStep";
@@ -93,6 +94,14 @@ export const ProductPageShell = ({
    * which sent every Back to this page's own catalogue instead of theirs.
    */
   const sawOwnCatalog = useRef(false);
+
+  /**
+   * Set when the Course Finder sent the visitor straight from a class pick to
+   * the details step. Back from that form must then return to the catalogue —
+   * dropping them on the cart would be a step they have never seen, showing a
+   * basket that filled itself.
+   */
+  const cartSkipped = useRef(false);
   const prevStep = useRef<ProductPageStep | null>(null);
   useEffect(() => {
     const previous = prevStep.current;
@@ -137,21 +146,39 @@ export const ProductPageShell = ({
       DEFAULT_SETTINGS,
     );
 
+    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
+    const initialSelection = resolveInitialSelection(pageData.mappings, courseIds);
+
     const resolvedStep = defaultTab ?? settings.defaultStep;
-    const startStep =
+    const configuredStep =
       resolvedStep === "CART"
         ? "CART"
         : resolvedStep === "PAYMENT"
           ? "FORM"
           : "CATALOG";
 
+    /**
+     * A Course Finder is a gate: it decides WHICH courses the visitor may see,
+     * and it lives on the catalogue step. A page configured to land on Cart or
+     * Payment therefore skips the question and drops the visitor on an empty
+     * basket — "Nothing in your cart yet", with no way to choose anything.
+     *
+     * So when a usable finder exists and nothing has been selected for them,
+     * the catalogue wins over the configured landing step. A link that DOES
+     * carry a basket (?courseIds=) has answered the question and is honoured
+     * as configured.
+     */
+    const finderGates =
+      isFinderUsable(parseCourseFinder(pageData.settings_json), pageData.mappings) &&
+      initialSelection.length === 0;
+    const startStep = finderGates ? "CATALOG" : configuredStep;
+
     // Starting ON this page's catalogue means it IS where Back belongs. Recorded
     // here, in the layout effect, because it runs before any passive effect can
     // misread the store's transient initial step.
     sawOwnCatalog.current = startStep === "CATALOG";
 
-    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
-    setSelection(resolveInitialSelection(pageData.mappings, courseIds));
+    setSelection(initialSelection);
 
     const utmFiltered = Object.fromEntries(
       Object.entries(utmParams).filter(([, v]) => v !== undefined),
@@ -208,6 +235,23 @@ export const ProductPageShell = ({
     setStep(isCpoSelection ? "CPO_INSTALLMENTS" : "PAYMENT");
   };
 
+  const jumpToForm = () => {
+    cartSkipped.current = true;
+    setStep("FORM");
+  };
+
+  const backFromForm = () => {
+    if (cartSkipped.current) {
+      // Returning to the catalogue means returning to the finder's answer, not
+      // the finder itself — the pick is still stored, so they land on their
+      // class with the way to change it in reach.
+      cartSkipped.current = false;
+      setStep("CATALOG");
+      return;
+    }
+    setStep("CART");
+  };
+
   return (
     <div className="min-h-screen w-full bg-white">
       {/* Only the browse step wears the catalogue chrome. The checkout steps
@@ -229,6 +273,7 @@ export const ProductPageShell = ({
             levels={levels}
             courseIds={courseIds}
             onNext={() => setStep("CART")}
+            onJumpToForm={jumpToForm}
           />
         </CatalogueChrome>
       )}
@@ -266,7 +311,7 @@ export const ProductPageShell = ({
               settings={settings}
               primaryColor={primaryColor}
               courseIds={courseIds}
-              onBack={() => setStep("CART")}
+              onBack={backFromForm}
               onNext={handleFormNext}
             />
           )}

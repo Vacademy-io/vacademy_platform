@@ -207,6 +207,12 @@ export interface CourseFinderSettings {
     skipLabel?: string;
     /** Wording for the undo affordance above the catalogue. */
     changeLabel?: string;
+    /**
+     * SHOW_COURSES (default) reveals the restricted catalogue. GO_TO_FORM
+     * selects the class's course and skips the cart, but only where the class
+     * resolves to exactly one course.
+     */
+    onPick?: 'SHOW_COURSES' | 'GO_TO_FORM';
     groups: CourseFinderGroup[];
 }
 

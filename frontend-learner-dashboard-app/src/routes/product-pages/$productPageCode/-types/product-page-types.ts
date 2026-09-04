@@ -103,6 +103,21 @@ export interface ProductPageCourseFinder {
     skipLabel?: string;
     /** Wording for the undo affordance above the catalogue ("Change class"). */
     changeLabel?: string;
+    /**
+     * What picking a class does.
+     *
+     * SHOW_COURSES (default) reveals the restricted catalogue, leaving the
+     * visitor to add the course themselves. GO_TO_FORM selects it and jumps
+     * straight to the details step — for pages where a class resolves to
+     * exactly ONE course and the cart would only ask the visitor to confirm
+     * the single thing they just asked for. Safe because the details step
+     * shows the order summary too (it leads, on mobile), so nothing about
+     * what they are enrolling in is hidden by skipping the cart.
+     *
+     * A group covering several courses always falls back to SHOW_COURSES:
+     * choosing among them is the visitor's decision, not the page's.
+     */
+    onPick?: 'SHOW_COURSES' | 'GO_TO_FORM';
     groups: ProductPageFinderGroup[];
 }
 

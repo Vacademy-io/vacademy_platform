@@ -72,7 +72,7 @@ def test_remediation_is_capped_and_flags_weak():
 def test_resume_finds_pointer_by_concept_id_and_narration_language():
     L = _lesson()
     p = L.find("t1c2")
-    assert p and (p.topic, p.concept) == (0, 1)
+    assert p and (p.topic, p.concept) == (0, 1) and p.done == 1
     assert L.find("nope") is None
     c = L.concept_at(sm.Pointer())
     assert c.narration("hi").startswith("बल") and c.narration("en").startswith("A force")

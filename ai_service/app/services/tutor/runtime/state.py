@@ -77,10 +77,14 @@ class LessonPlan:
         return self.topics[p.topic] if 0 <= p.topic < len(self.topics) else None
 
     def find(self, concept_id: Optional[str]) -> Optional["Pointer"]:
+        """Pointer at a concept, with `done` = the concepts before it so a
+        resumed session shows real progress rather than 0%."""
+        seen = 0
         for ti, t in enumerate(self.topics):
             for ci, c in enumerate(t.concepts):
                 if c.id == concept_id:
-                    return Pointer(topic=ti, concept=ci, phase=TEACH)
+                    return Pointer(topic=ti, concept=ci, phase=TEACH, done=seen)
+                seen += 1
         return None
 
     @property

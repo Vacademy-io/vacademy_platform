@@ -340,7 +340,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         async def _open() -> None:
             slide_title = lesson.topics[0].title if lesson.topics else ""
             if resumed:
-                greet = prompts.tpl("resume", lang, name=display_name, slide=slide_title, summary=(state.get("rolling_summary") or "").split(". ")[0][:160])
+                # The rolling summary is bookkeeping, not conversation: only the
+                # part a learner would want to hear survives into the greeting.
+                weak_n = len(state.get("weak_concepts_json") or [])
+                summary = prompts.tpl("weak_note", lang, n=weak_n) if weak_n else ""
+                greet = prompts.tpl("resume", lang, name=display_name, slide=slide_title, summary=summary)
             else:
                 greet = prompts.tpl("greet", lang, name=display_name, teacher=teacher, slide=slide_title)
             await _apply_step(sm.enter(lesson, pointer), greeting=greet)

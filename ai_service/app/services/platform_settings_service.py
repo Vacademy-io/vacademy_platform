@@ -52,6 +52,11 @@ class SettingSpec:
     options: tuple = ()
     # A "model" setting may be blank, meaning "same as the text chatbot".
     nullable: bool = False
+    # For "model" settings: which slice of ai_models the portal offers and the
+    # server accepts — "llm" (chat-capable) or "image" (category = image).
+    catalog: str = "llm"
+    # What a blank value means, shown by the portal for nullable settings.
+    blank_label: str = "Same as chatbot model"
 
 
 def _env_bool(name: str, fallback: bool) -> bool:
@@ -165,12 +170,41 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             default=lambda: os.environ.get("TUTOR_COMPILE_MODEL") or "google/gemini-2.5-flash",
         ),
         SettingSpec(
+            key="tutor.live.model",
+            group="tutor",
+            label="Tutor live model",
+            description=(
+                "Model for the live teaching turns: grading the learner's answer, hints, doubts "
+                "(~1.3k tokens per turn). Blank = the chatbot model. A course or institute "
+                "'Live model' setting still wins over this."
+            ),
+            type="model",
+            default=lambda: os.environ.get("TUTOR_LIVE_MODEL") or None,
+            nullable=True,
+        ),
+        SettingSpec(
+            key="tutor.image.model",
+            group="tutor",
+            label="Tutor board image model",
+            description=(
+                "Image model for AI pictures on whiteboards (up to 4 per slide, billed per image). "
+                "Blank = the platform image model below. Dedicated image models (Qwen, Seedream, "
+                "FLUX) take 30-70 s per image; Gemini image models a few seconds."
+            ),
+            type="model",
+            default=lambda: os.environ.get("TUTOR_IMAGE_MODEL") or None,
+            nullable=True,
+            catalog="image",
+            blank_label="Platform image model",
+        ),
+        SettingSpec(
             key="tutor.voice.provider",
             group="tutor",
             label="Tutor voice provider",
-            description="TTS engine for the Live AI Tutor's browser sessions (smallest | sarvam | google | edge). Smallest.ai when its key is present, else Sarvam. Institutes and courses can override; a failing engine falls back to Sarvam per line.",
-            type="string",
+            description="TTS engine for the Live AI Tutor's browser sessions. Smallest.ai when its key is present, else Sarvam. Institutes and courses can override; a failing engine falls back to Sarvam per line.",
+            type="enum",
             default=lambda: os.environ.get("TUTOR_TTS_PROVIDER") or ("smallest" if os.environ.get("SMALLEST_API_KEY") else "sarvam"),
+            options=("smallest", "sarvam", "google", "edge"),
         ),
         SettingSpec(
             key="tutor.voice.voice",
@@ -181,12 +215,28 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             default=lambda: os.environ.get("TUTOR_TTS_VOICE") or "",
             nullable=True,
         ),
+        SettingSpec(
+            key="image.model",
+            group="images",
+            label="Image generation model",
+            description=(
+                "Model behind every generated picture: course banners and previews, copilot slide "
+                "images, question figures, tutor boards (unless overridden above). Dedicated image "
+                "models (qwen/qwen-image-3, Seedream, FLUX) go through OpenRouter's images API; "
+                "Gemini/GPT image models through chat completions — routing is automatic."
+            ),
+            type="model",
+            default=lambda: os.environ.get("IMAGE_MODEL") or "qwen/qwen-image-3",
+            catalog="image",
+        ),
     )
 }
 
 GROUP_LABELS = {
     "chatbot": "Student chatbot",
     "voice": "Voice call",
+    "tutor": "Live AI Tutor",
+    "images": "Image generation",
     "rollout": "Rollout & safety",
 }
 
@@ -333,11 +383,13 @@ def _coerce(spec: SettingSpec, value: Any) -> Any:
     raise ValueError(f"Unsupported setting type {spec.type}")
 
 
-def _model_exists(db: Session, model_id: str) -> bool:
-    row = db.execute(
-        text("SELECT 1 FROM ai_models WHERE model_id = :m AND is_active = TRUE LIMIT 1"),
-        {"m": model_id},
-    ).fetchone()
+def _model_exists(db: Session, model_id: str, catalog: str = "llm") -> bool:
+    if catalog == "image":
+        sql = "SELECT 1 FROM ai_models WHERE model_id = :m AND is_active = TRUE AND category = 'image' LIMIT 1"
+    else:
+        sql = ("SELECT 1 FROM ai_models WHERE model_id = :m AND is_active = TRUE "
+               "AND category NOT IN ('embedding', 'image', 'tts', 'video') LIMIT 1")
+    row = db.execute(text(sql), {"m": model_id}).fetchone()
     return row is not None
 
 
@@ -376,6 +428,8 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
                 "description": spec.description,
                 "type": spec.type,
                 "nullable": spec.nullable,
+                "catalog": spec.catalog,
+                "blank_label": spec.blank_label,
                 "options": list(spec.options),
                 "value": value,
                 "default": default,
@@ -393,8 +447,9 @@ def set_platform_setting(db: Session, key: str, value: Any, updated_by: Optional
     if spec is None:
         raise KeyError(f"Unknown platform setting: {key}")
     coerced = _coerce(spec, value)
-    if spec.type == "model" and coerced and not _model_exists(db, coerced):
-        raise ValueError(f"{coerced} is not an active model in the ai_models registry")
+    if spec.type == "model" and coerced and not _model_exists(db, coerced, spec.catalog):
+        what = "an active image model" if spec.catalog == "image" else "an active chat model"
+        raise ValueError(f"{coerced} is not {what} in the ai_models registry")
 
     db.execute(
         text(

@@ -127,6 +127,12 @@ class PlanCompiler:
         self.kb_grounding = kb_grounding
         self.compile_run_id = (compile_run_id or "")[:64] or None
         self.model = resolve_compile_model(model_override)
+        # Board images: the tutor's own image model setting, else the platform
+        # image model (resolved inside the image service).
+        try:
+            self.image_model: Optional[str] = get_platform_setting("tutor.image.model", default=None) or None
+        except Exception:  # noqa: BLE001
+            self.image_model = None
 
     # ── public ───────────────────────────────────────────────────────────
 
@@ -529,7 +535,7 @@ class PlanCompiler:
             from ...dependencies import get_image_service
             svc = get_image_service()
             url, usage = await svc._generate_and_upload_media(  # noqa: SLF001 — existing internal helper
-                course_name=course_name or "tutor", prompt=prompt,
+                course_name=course_name or "tutor", prompt=prompt, model=self.image_model,
             )
             if url:
                 run.images.append((url, dict(usage or {})))

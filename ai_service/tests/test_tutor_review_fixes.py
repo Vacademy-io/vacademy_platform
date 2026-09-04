@@ -379,3 +379,37 @@ def test_strip_leading_greeting_keeps_the_lesson():
     assert strip_leading_greeting("नमस्ते राहुल! आज हम बल के बारे में सीखेंगे। बल धक्का है।") == "आज हम बल के बारे में सीखेंगे। बल धक्का है।"
     assert strip_leading_greeting("A force is a push or a pull.") == "A force is a push or a pull."
     assert strip_leading_greeting("Hello there!") == "Hello there!"     # nothing else to say: keep it
+
+
+def test_image_model_routing_and_platform_default(monkeypatch):
+    import asyncio
+    from app.services import image_service as im
+    # Registry list unavailable → the id's family decides.
+    im._chat_model_ids = set()
+    im._chat_model_ids_loaded_at = 0.0
+
+    class _Client:
+        async def get(self, *a, **k):
+            raise RuntimeError("offline")
+
+    assert asyncio.run(im._uses_chat_completions(_Client(), "google/gemini-3.1-flash-image")) is True
+    assert asyncio.run(im._uses_chat_completions(_Client(), "qwen/qwen-image-3")) is False
+    assert asyncio.run(im._uses_chat_completions(_Client(), "bytedance-seed/seedream-4.5")) is False
+    # With the list loaded, membership decides.
+    im._chat_model_ids = {"google/gemini-3.1-flash-image"}
+    im._chat_model_ids_loaded_at = 10**12
+    assert asyncio.run(im._uses_chat_completions(_Client(), "qwen/qwen-image-3")) is False
+    im._chat_model_ids = set()
+    assert im.resolve_image_model("x/y") == "x/y"
+    monkeypatch.setattr(im, "get_platform_setting", lambda *a, **k: "qwen/qwen-image-3", raising=False)
+    assert im.resolve_image_model(None)
+
+
+def test_platform_setting_specs_carry_catalogs():
+    from app.services.platform_settings_service import SETTING_SPECS, GROUP_LABELS
+    assert SETTING_SPECS["image.model"].catalog == "image"
+    assert SETTING_SPECS["tutor.image.model"].catalog == "image" and SETTING_SPECS["tutor.image.model"].nullable
+    assert SETTING_SPECS["tutor.live.model"].catalog == "llm" and SETTING_SPECS["tutor.live.model"].nullable
+    assert SETTING_SPECS["tutor.compile.model"].catalog == "llm"
+    assert SETTING_SPECS["tutor.voice.provider"].type == "enum" and "smallest" in SETTING_SPECS["tutor.voice.provider"].options
+    assert "tutor" in GROUP_LABELS and "images" in GROUP_LABELS

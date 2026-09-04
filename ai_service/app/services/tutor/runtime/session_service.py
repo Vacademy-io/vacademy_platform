@@ -391,6 +391,12 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
             tts_voice = settings.tts_voice or str(get_platform_setting("tutor.voice.voice", default="", db=db) or "")
         except Exception:  # noqa: BLE001
             tts_provider, tts_voice = settings.tts_provider or "sarvam", settings.tts_voice or ""
+        # Live decision turns: course/institute "Live model" → platform
+        # tutor.live.model → (None =) the chatbot model inside run_turn.
+        try:
+            live_model = settings.llm_model or get_platform_setting("tutor.live.model", default=None, db=db) or None
+        except Exception:  # noqa: BLE001
+            live_model = settings.llm_model or None
         return {
             "user_id": ts.user_id, "institute_id": ts.institute_id, "package_session_id": ts.package_session_id,
             "package_id": package_id, "chat_session_id": ts.chat_session_id, "mode": ts.mode,
@@ -398,7 +404,7 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
             "settings": settings, "lesson": lesson, "state": state, "pointer": pointer,
             "previous_slide": previous,
             "learner_name": learner_name(db, ts.user_id),
-            "tts_provider": tts_provider, "tts_voice": tts_voice,
+            "tts_provider": tts_provider, "tts_voice": tts_voice, "live_model": live_model,
         }
 
 

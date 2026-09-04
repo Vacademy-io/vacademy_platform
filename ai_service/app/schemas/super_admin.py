@@ -154,8 +154,21 @@ class TtsProviderOption(BaseModel):
     default_voice_example: str
 
 
+class ModelOption(BaseModel):
+    model_id: str
+    name: str
+    provider: str
+    category: str
+    tier: Optional[str] = None
+    is_free: bool = False
+
+
 class AiSettingsCatalog(BaseModel):
     llm_models: List[LlmModelOption]
+    # Image-generation models (ai_models.category = 'image').
+    image_models: List[LlmModelOption] = []
+    # Every active model with its category, for the use-case defaults editor.
+    all_models: List[ModelOption] = []
     tts_providers: List[TtsProviderOption]
 
 

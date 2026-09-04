@@ -21,6 +21,7 @@ from ..schemas.super_admin import (
     AiSettingsResponse,
     AiSettingUpdateRequest,
     LlmModelOption,
+    ModelOption,
     TtsProviderOption,
     AllInstitutesCreditsResponse,
     CreditUsageLiveResponse,
@@ -494,12 +495,43 @@ def _llm_model_catalog(db: Session) -> list:
         SELECT model_id, name, provider, tier, COALESCE(is_free, FALSE)
         FROM ai_models
         WHERE is_active = TRUE
-          AND category NOT IN ('embedding', 'image', 'tts')
+          AND category NOT IN ('embedding', 'image', 'tts', 'video')
         ORDER BY display_order, provider, name
         """
     )).fetchall()
     return [
         LlmModelOption(model_id=r[0], name=r[1], provider=r[2], tier=r[3], is_free=bool(r[4]))
+        for r in rows
+    ]
+
+
+def _image_model_catalog(db: Session) -> list:
+    """Active image-generation models (category = 'image')."""
+    rows = db.execute(text(
+        """
+        SELECT model_id, name, provider, tier, COALESCE(is_free, FALSE)
+        FROM ai_models
+        WHERE is_active = TRUE AND category = 'image'
+        ORDER BY display_order, provider, name
+        """
+    )).fetchall()
+    return [
+        LlmModelOption(model_id=r[0], name=r[1], provider=r[2], tier=r[3] or "", is_free=bool(r[4]))
+        for r in rows
+    ]
+
+
+def _all_model_catalog(db: Session) -> list:
+    rows = db.execute(text(
+        """
+        SELECT model_id, name, provider, category, tier, COALESCE(is_free, FALSE)
+        FROM ai_models
+        WHERE is_active = TRUE
+        ORDER BY category, display_order, provider, name
+        """
+    )).fetchall()
+    return [
+        ModelOption(model_id=r[0], name=r[1], provider=r[2], category=r[3] or "general", tier=r[4], is_free=bool(r[5]))
         for r in rows
     ]
 
@@ -521,6 +553,8 @@ def get_ai_settings(
         settings=[AiSettingEntry(**e) for e in list_platform_settings(db)],
         catalog=AiSettingsCatalog(
             llm_models=_llm_model_catalog(db),
+            image_models=_image_model_catalog(db),
+            all_models=_all_model_catalog(db),
             tts_providers=[TtsProviderOption(**p) for p in list_tts_providers()],
         ),
         cache=get_cache_status(),

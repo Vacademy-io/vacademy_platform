@@ -937,6 +937,15 @@ Follow-ups shipped 2026-09-04 (owner QA round 1 and the next-batch request):
   learner starting a new slide hears "Last time we worked on …". A compiled narration's own
   "Hi {name}, …" opener is dropped when the teacher greets, never the greeting.
 
+- **Model choices in the super-admin portal (health.vacademy.io/ai-settings).** Platform settings
+  `tutor.compile.model` (Gemini 2.5 Flash), `tutor.live.model` (blank = chatbot model),
+  `tutor.image.model` (blank = platform image model), `tutor.voice.provider` (enum), and the new
+  platform-wide `image.model` (default `qwen/qwen-image-3`) — each a dropdown over the
+  `ai_models` registry filtered by category, validated server-side. The image service routes by
+  model family: dedicated image models (Qwen, Seedream, FLUX) call OpenRouter's `/api/v1/images`
+  (`data[0].b64_json`, PNG, 30-70 s), chat image models (Gemini, GPT) call chat completions with
+  `modalities`. The page also edits `ai_model_defaults` (default / fallback per pipeline use case).
+
 Still open (tracked, not silent):
 
 - **AI-video slides.** Copilot `HTML_VIDEO` slides are parked in NEEDS_DETAILS like uploaded

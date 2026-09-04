@@ -268,6 +268,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         if tts_provider not in SERVER_TTS_PROVIDERS or (tts_provider == "smallest" and not smallest_available()):
             tts_provider = "sarvam"
         tts_voice = ctx["tts_voice"]
+        live_model: Optional[str] = ctx.get("live_model")
         # What the learner answered per concept this session; quiz slides
         # write it back as a quiz activity log when the slide is done.
         attempt_log: Dict[str, Dict[str, Any]] = {}
@@ -485,7 +486,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
 
         async def _answer_doubt(text_: str, concept: sm.Concept, *, spoken: bool, what_next: str) -> None:
             decision, usage = await run_turn(
-                institute_id=institute_id, user_id=user_id, model=settings.llm_model, teacher=teacher, lang=lang,
+                institute_id=institute_id, user_id=user_id, model=live_model, teacher=teacher, lang=lang,
                 strictness=settings.strictness, learner_name=display_name or None, state=state, lesson=lesson,
                 pointer=pointer, board_ops=board, transcript=transcript, learner_message=text_, kind="doubt",
                 mode="voice" if spoken else "text", tutor_session_id=tutor_session_id, concept=concept,
@@ -572,7 +573,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             kind = "answer" if phase in (sm.AWAIT_ANSWER, sm.REMEDIATE) and intent != "doubt" and not force_doubt else "doubt"
             final_attempt = kind == "answer" and pointer.remediations + 1 >= sm.MAX_REMEDIATIONS
             decision, usage = await run_turn(
-                institute_id=institute_id, user_id=user_id, model=settings.llm_model, teacher=teacher, lang=lang,
+                institute_id=institute_id, user_id=user_id, model=live_model, teacher=teacher, lang=lang,
                 strictness=settings.strictness, learner_name=display_name or None, state=state, lesson=lesson,
                 pointer=pointer, board_ops=board, transcript=transcript, learner_message=text_, kind=kind,
                 mode="voice" if spoken else "text", tutor_session_id=tutor_session_id, final_attempt=final_attempt,

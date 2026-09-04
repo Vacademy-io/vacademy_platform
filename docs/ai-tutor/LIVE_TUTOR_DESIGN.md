@@ -959,11 +959,20 @@ Still open (tracked, not silent):
 
 - **AI-video slides.** Copilot `HTML_VIDEO` slides are parked in NEEDS_DETAILS like uploaded
   videos; compiling from the video's script (§4.2 table) is not implemented.
-- **Weak-concept revisits** at topic / chapter end (§6.6) and the model-written rolling summary
-  are not implemented; the summary is deterministic.
+- **Weak-concept revisits** (§6.6) are per slide, not per chapter: a topic summary re-asks the
+  weak concepts of that topic (fresh model-written question, one attempt, at most three), slide
+  end re-asks up to three weakest weak-or-skipped concepts not yet revisited this session. A
+  correct revisit clears the concept (`revisit_ok`); a wrong one keeps it weak (`revisit_weak`)
+  and the teacher gives the answer and moves on. The revisit is never persisted: a session that
+  ends mid-revisit resumes on the summary and revisits again. The rolling summary is rewritten
+  by the model after every session (`runtime/summary.py`, background task on socket close):
+  paragraph 1 is spoken in the next greeting, paragraph 2 feeds the decision prompt and the
+  insights "note" column. Chapter-level revisits (across slides) remain open.
 - **Stock images** (§4.5) do not exist; the compile prompt only offers generated images.
 - **Fallback to the ordinary slide viewer** for non-teachable slides (§4.2) is not implemented:
   the sidebar skips them.
 - The TTS cache is in-process (empties on deploy); moving it under the media path is open.
 - `teaching_media.cost_credits` / `file_id` are not populated for generated images.
-- Teacher insights are per course; an institute-wide view and a CSV export are not built.
+- Teacher insights: `GET /tutor/v1/insights` (institute-wide, optional course / batch filter) and
+  `GET /tutor/v1/insights/export.csv?sheet=learners|concepts|courses` (row caps 5000 / 2000 / 500);
+  the admin card lives on Settings → Course settings (institute) and the course's Tutor Mode tab.

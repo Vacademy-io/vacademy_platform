@@ -125,30 +125,25 @@ async def run_turn(
     source_block: Optional[str] = None,
     final_attempt: bool = False,
     concept: Optional[Concept] = None,
+    revisit: bool = False,
 ) -> Tuple[Decision, Dict[str, int]]:
     """`concept` overrides the pointer's concept (a doubt raised during a
-    topic summary or right after a verdict is about the concept just taught)."""
+    topic summary or right after a verdict is about the concept just taught;
+    a revisit carries the concept with its fresh check)."""
     concept = concept or lesson.concept_at(pointer)
     assert concept is not None
     check = concept.check or {}
-    lb = prompts.learner_block(state, concept.tags)
-    if kind == "doubt":
-        user = prompts.doubt_prompt(
-            learner_name=learner_name, learner_block=lb, slide_title=lesson.topics[pointer.topic].title if lesson.topics else "",
-            board_ops=board_ops, concept_title=concept.title, concept_say=concept.narration(lang),
-            teach_notes=concept.teach_notes, transcript=transcript, question=learner_message, source_block=source_block,
-        )
-    else:
-        user = prompts.turn_prompt(
-            learner_name=learner_name, learner_block=lb, slide_title=lesson.topics[pointer.topic].title if lesson.topics else "",
-            objectives=lesson.objectives, board_ops=board_ops, concept_title=concept.title,
-            concept_say=concept.narration(lang), teach_notes=concept.teach_notes, check=check,
-            transcript=transcript, learner_message=learner_message, remediation_no=pointer.remediations, mode=mode,
-            final_attempt=final_attempt, source_block=source_block,
-        )
+    usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    try:
+        user = _turn_user_prompt(lesson=lesson, pointer=pointer, concept=concept, check=check, lang=lang, state=state,
+                                 learner_name=learner_name, board_ops=board_ops, transcript=transcript,
+                                 learner_message=learner_message, kind=kind, mode=mode, final_attempt=final_attempt,
+                                 source_block=source_block, revisit=revisit)
+    except Exception:  # noqa: BLE001
+        logger.warning("Tutor turn prompt failed for session %s", tutor_session_id, exc_info=True)
+        return fallback_decision(kind=kind, lang=lang, concept=concept, remediation_no=pointer.remediations), usage
     messages = [{"role": "system", "content": prompts.system_prompt(teacher, lang, strictness)},
                 {"role": "user", "content": user}]
-    usage = {"prompt_tokens": 0, "completion_tokens": 0}
     try:
         with db_session() as db:
             keys = ApiKeyResolver(db).resolve_keys(institute_id, user_id, request_model=model)
@@ -171,3 +166,28 @@ async def run_turn(
     except Exception:  # noqa: BLE001
         logger.warning("Tutor decision turn failed for session %s", tutor_session_id, exc_info=True)
     return fallback_decision(kind=kind, lang=lang, concept=concept, remediation_no=pointer.remediations), usage
+
+
+def _turn_user_prompt(*, lesson: LessonPlan, pointer: Pointer, concept: Concept, check: Dict[str, Any], lang: str,
+                      state: Dict[str, Any], learner_name: Optional[str], board_ops: List[Dict[str, Any]],
+                      transcript: List[Dict[str, str]], learner_message: str, kind: str, mode: str, final_attempt: bool,
+                      source_block: Optional[str], revisit: bool) -> str:
+    lb = prompts.learner_block(state, concept.tags)
+    # A revisit at slide end carries a pointer past the last topic.
+    topic_title = (lesson.topics[pointer.topic].title if 0 <= pointer.topic < len(lesson.topics)
+                   else (lesson.slide_title or (lesson.topics[-1].title if lesson.topics else "")))
+    if kind == "doubt":
+        user = prompts.doubt_prompt(
+            learner_name=learner_name, learner_block=lb, slide_title=topic_title,
+            board_ops=board_ops, concept_title=concept.title, concept_say=concept.narration(lang),
+            teach_notes=concept.teach_notes, transcript=transcript, question=learner_message, source_block=source_block,
+        )
+    else:
+        user = prompts.turn_prompt(
+            learner_name=learner_name, learner_block=lb, slide_title=topic_title,
+            objectives=lesson.objectives, board_ops=board_ops, concept_title=concept.title,
+            concept_say=concept.narration(lang), teach_notes=concept.teach_notes, check=check,
+            transcript=transcript, learner_message=learner_message, remediation_no=pointer.remediations, mode=mode,
+            final_attempt=final_attempt, source_block=source_block, revisit=revisit,
+        )
+    return user

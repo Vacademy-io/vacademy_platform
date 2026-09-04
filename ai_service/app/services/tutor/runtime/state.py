@@ -19,6 +19,13 @@ REMEDIATE = "remediate"         # hint given, waiting for a second try
 MEDIA_TASK = "media_task"       # learner is watching / reading
 TOPIC_SUMMARY = "topic_summary"
 SLIDE_DONE = "slide_done"
+# A weak concept is being re-asked at a topic summary or slide end (design
+# §6.6). Never persisted: a session that ends mid-revisit resumes on the
+# summary, and the revisit runs again because the concept is still weak.
+REVISIT = "revisit"
+# At most this many revisit questions per summary, so a bad day never turns
+# into an exam.
+REVISIT_MAX = 3
 
 
 @dataclass
@@ -243,3 +250,33 @@ def repeat(plan: LessonPlan, p: Pointer) -> Step:
 
 def skip(plan: LessonPlan, p: Pointer) -> Step:
     return advance(plan, p, mark_done=True, skipped=True)
+
+
+# ── weak-concept revisits (design §6.6) ──────────────────────────────────────
+
+def clear_weak(p: Pointer, concept_id: str) -> Pointer:
+    """The learner answered a revisit correctly: the concept is no longer
+    weak (or skipped)."""
+    return replace(p, weak=[c for c in p.weak if c != concept_id], skipped=[c for c in p.skipped if c != concept_id])
+
+
+def revisit_candidates(
+    plan: LessonPlan, p: Pointer, *, stage: str, weak_ids, skipped_ids=(), revisited=(), scores=None,
+    limit: int = REVISIT_MAX,
+) -> List[Concept]:
+    """Which concepts to re-ask now. Stage "topic": the concepts of the topic
+    just finished that are flagged weak (this session or an earlier one).
+    Stage "slide": the weakest concepts across the slide, weak or skipped,
+    not already revisited this session. Lowest score first; a concept with
+    no score (skipped, or weak from an earlier session) counts as 0. Media
+    tasks are never re-asked."""
+    scores = scores or {}
+    weak, skipped, seen = set(weak_ids or ()), set(skipped_ids or ()), set(revisited or ())
+    if stage == "topic":
+        topic = plan.topic_at(p)
+        pool = [c for c in (topic.concepts if topic else []) if c.id in weak]
+    else:
+        pool = [c for t in plan.topics for c in t.concepts if c.id in weak or c.id in skipped]
+    pool = [c for c in pool if c.id not in seen and not c.is_media_task]
+    pool.sort(key=lambda c: (float(scores.get(c.id) or 0.0), c.order))
+    return pool[:max(0, int(limit))]

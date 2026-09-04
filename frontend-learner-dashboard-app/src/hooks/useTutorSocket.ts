@@ -23,6 +23,8 @@ export interface TutorCheckEvent {
   prompt: string | null;
   options: string[];
   remediation: number;
+  /** A fresh question on a concept the learner found hard earlier (one attempt). */
+  revisit?: boolean;
 }
 
 export interface TutorLessonEvent {

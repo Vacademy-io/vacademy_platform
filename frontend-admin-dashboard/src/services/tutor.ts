@@ -349,17 +349,29 @@ export const getTutorOptions = async (): Promise<TutorOptions> => {
 // ── teacher insights ─────────────────────────────────────────────────────────
 
 export interface TutorInsights {
-    package_id: string;
+    package_id: string | null;
     package_session_id: string | null;
     days: number;
-    batches: Array<{ package_session_id: string; name: string; sessions: number }>;
+    batches: Array<{ package_session_id: string; name: string; course: string; sessions: number }>;
     totals: {
         sessions: number;
         learners: number;
         minutes: number;
         voice_sessions: number;
         abandoned: number;
+        courses: number;
     };
+    courses: Array<{
+        package_id: string;
+        name: string;
+        sessions: number;
+        learners: number;
+        minutes: number;
+        attempts: number;
+        avg_score: number | null;
+        weak_attempts: number;
+        last_active: string | null;
+    }>;
     learners: Array<{
         user_id: string;
         name: string | null;
@@ -369,6 +381,9 @@ export interface TutorInsights {
         avg_score: number | null;
         weak_attempts: number;
         last_active: string | null;
+        courses: number;
+        /** The teacher's latest note about this learner (model-written rolling summary). */
+        note: string | null;
     }>;
     concepts: Array<{
         concept_id: string;
@@ -376,27 +391,56 @@ export interface TutorInsights {
         topic: string;
         slide: string;
         slide_id: string;
+        course: string;
         attempts: number;
         learners: number;
         avg_score: number | null;
         weak_attempts: number;
         weak_learners: number;
+        cleared_learners: number;
         misconceptions: string[];
     }>;
 }
 
+export interface TutorInsightsParams {
+    /** One course; omit for the whole institute. */
+    packageId?: string;
+    packageSessionId?: string;
+    days?: number;
+}
+
+const insightsQuery = (params: TutorInsightsParams) => ({
+    package_id: params.packageId || undefined,
+    package_session_id: params.packageSessionId || undefined,
+    days: params.days ?? 90,
+});
+
 export const getTutorInsights = async (
-    packageId: string,
-    params: { packageSessionId?: string; days?: number } = {}
+    params: TutorInsightsParams = {}
 ): Promise<TutorInsights> => {
-    const res = await authenticatedAxiosInstance.get<TutorInsights>(
-        `${BASE}/packages/${packageId}/insights`,
-        {
-            params: {
-                package_session_id: params.packageSessionId || undefined,
-                days: params.days ?? 90,
-            },
-        }
-    );
+    const res = await authenticatedAxiosInstance.get<TutorInsights>(`${BASE}/insights`, {
+        params: insightsQuery(params),
+    });
     return res.data;
+};
+
+export type TutorInsightsSheet = 'learners' | 'concepts' | 'courses';
+
+/** Downloads one insights sheet as CSV (row caps 5000 / 2000 / 500). */
+export const downloadTutorInsightsCsv = async (
+    sheet: TutorInsightsSheet,
+    params: TutorInsightsParams = {}
+): Promise<void> => {
+    const res = await authenticatedAxiosInstance.get<Blob>(`${BASE}/insights/export.csv`, {
+        params: { ...insightsQuery(params), sheet },
+        responseType: 'blob',
+    });
+    const url = URL.createObjectURL(res.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `tutor-insights-${sheet}-${params.days ?? 90}d.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 };

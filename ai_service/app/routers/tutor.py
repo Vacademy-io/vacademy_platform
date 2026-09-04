@@ -11,7 +11,7 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -27,6 +27,7 @@ from ..services.ai_billing import preflight_tool_credits
 from ..services.tutor import plan_store
 from ..services.tutor.plan_compiler import PlanCompiler
 from ..services.tutor.roles import is_staff, normalize_roles
+from ..services.tutor.insights_export import insights_csv_text
 from ..services.voice_tts import (
     _EDGE_DEFAULT_VOICES, clone_voice_smallest, default_voice_for, list_cloned_voices_smallest, list_smallest_voices,
     sarvam_voice_catalogue, smallest_available,
@@ -281,6 +282,179 @@ async def put_source_description(
 
 # ── teacher insights (design WP9) ────────────────────────────────────────────
 
+# Attempts that leave a concept weak: capped remediation, a skip, or a revisit
+# that was still wrong. A correct revisit (`revisit_ok`) clears it.
+_WEAK_ACTIONS = "('advance_weak', 'skipped', 'revisit_weak')"
+
+
+def _num(v: Any) -> Optional[float]:
+    return round(float(v), 3) if v is not None else None
+
+
+def _insights(
+    db: Session, *, institute_id: str, package_id: Optional[str], package_session_id: Optional[str], days: int,
+    learners_limit: int = 200, concepts_limit: int = 40, courses_limit: int = 200,
+) -> Dict[str, Any]:
+    """Sessions, minutes and scores per course and per learner, the concepts
+    learners get wrong most (with the misconceptions the teacher recorded),
+    and the batches that have used the tutor — for one course or the whole
+    institute. Read-only; six queries."""
+    params: Dict[str, Any] = {"inst": institute_id, "days": days, "learners_limit": learners_limit,
+                              "concepts_limit": concepts_limit, "courses_limit": courses_limit}
+    pkg_filter = batch_filter = ""
+    if package_id:
+        pkg_filter = "AND ps.package_id = :pkg"
+        params["pkg"] = package_id
+    if package_session_id:
+        batch_filter = "AND ts.package_session_id = :ps"
+        params["ps"] = package_session_id
+    scope = f"ts.institute_id = :inst AND ts.started_at > now() - make_interval(days => :days) {pkg_filter} {batch_filter}"
+    # Institute-wide: only batches that used the tutor (a course lists all its batches).
+    batches_having = "" if package_id else "HAVING COUNT(ts.id) > 0"
+
+    batches = db.execute(text(f"""
+        SELECT ps.id, COALESCE(l.level_name, '') AS level_name, COALESCE(s.session_name, '') AS session_name,
+               COALESCE(p.package_name, '') AS course, COUNT(ts.id) AS sessions
+        FROM package_session ps
+        JOIN package p ON p.id = ps.package_id
+        JOIN package_institute pi ON pi.package_id = p.id AND pi.institute_id = :inst
+        LEFT JOIN level l ON l.id = ps.level_id
+        LEFT JOIN session s ON s.id = ps.session_id
+        LEFT JOIN tutor_session ts ON ts.package_session_id = ps.id AND ts.institute_id = :inst
+             AND ts.started_at > now() - make_interval(days => :days)
+        WHERE ps.status <> 'DELETED' {pkg_filter}
+        GROUP BY ps.id, l.level_name, s.session_name, p.package_name
+        {batches_having}
+        ORDER BY sessions DESC, course, level_name
+        LIMIT 100
+    """), params).fetchall()
+
+    totals = db.execute(text(f"""
+        SELECT COUNT(*) AS sessions, COUNT(DISTINCT ts.user_id) AS learners,
+               COALESCE(SUM(ts.minutes_billed), 0) AS minutes,
+               COUNT(*) FILTER (WHERE ts.mode = 'VOICE') AS voice_sessions,
+               COUNT(*) FILTER (WHERE ts.status = 'ABANDONED') AS abandoned,
+               COUNT(DISTINCT ps.package_id) AS courses
+        FROM tutor_session ts
+        JOIN package_session ps ON ps.id = ts.package_session_id
+        WHERE {scope}
+    """), params).first()
+
+    courses = db.execute(text(f"""
+        WITH s AS (
+            SELECT ts.id, ts.user_id, ts.minutes_billed, ts.started_at, ps.package_id
+            FROM tutor_session ts
+            JOIN package_session ps ON ps.id = ts.package_session_id
+            WHERE {scope}
+        ), att AS (
+            SELECT s.package_id, COUNT(*) AS attempts, AVG(a.score) AS avg_score,
+                   COUNT(*) FILTER (WHERE a.action_taken IN {_WEAK_ACTIONS}) AS weak_attempts
+            FROM tutor_concept_attempt a
+            JOIN s ON s.id = a.tutor_session_id
+            GROUP BY s.package_id
+        )
+        SELECT s.package_id, MAX(p.package_name) AS name, COUNT(s.id) AS sessions, COUNT(DISTINCT s.user_id) AS learners,
+               COALESCE(SUM(s.minutes_billed), 0) AS minutes, COALESCE(MAX(att.attempts), 0) AS attempts,
+               MAX(att.avg_score) AS avg_score, COALESCE(MAX(att.weak_attempts), 0) AS weak_attempts,
+               MAX(s.started_at) AS last_active
+        FROM s
+        JOIN package p ON p.id = s.package_id
+        LEFT JOIN att ON att.package_id = s.package_id
+        GROUP BY s.package_id
+        ORDER BY sessions DESC, name
+        LIMIT :courses_limit
+    """), params).fetchall()
+
+    learners = db.execute(text(f"""
+        WITH s AS (
+            SELECT ts.id, ts.user_id, ts.minutes_billed, ts.started_at, ps.package_id
+            FROM tutor_session ts
+            JOIN package_session ps ON ps.id = ts.package_session_id
+            WHERE {scope}
+        ), att AS (
+            SELECT a.user_id, COUNT(*) AS attempts, AVG(a.score) AS avg_score,
+                   COUNT(*) FILTER (WHERE a.action_taken IN {_WEAK_ACTIONS}) AS weak_attempts
+            FROM tutor_concept_attempt a
+            JOIN s ON s.id = a.tutor_session_id
+            GROUP BY a.user_id
+        )
+        SELECT s.user_id, MAX(st.full_name) AS name, COUNT(s.id) AS sessions,
+               COALESCE(SUM(s.minutes_billed), 0) AS minutes,
+               COALESCE(MAX(att.attempts), 0) AS attempts, MAX(att.avg_score) AS avg_score,
+               COALESCE(MAX(att.weak_attempts), 0) AS weak_attempts, MAX(s.started_at) AS last_active,
+               COUNT(DISTINCT s.package_id) AS courses
+        FROM s
+        LEFT JOIN att ON att.user_id = s.user_id
+        LEFT JOIN student st ON st.user_id = s.user_id
+        GROUP BY s.user_id
+        ORDER BY last_active DESC
+        LIMIT :learners_limit
+    """), params).fetchall()
+
+    # The teacher's latest note about each learner (rolling summary, model-written
+    # after each session), scoped like the sessions above.
+    notes: Dict[str, Optional[str]] = {}
+    ids = [r[0] for r in learners]
+    if ids:
+        note_scope = ""
+        if package_session_id:
+            note_scope = "AND st.package_session_id = :ps"
+        elif package_id:
+            note_scope = "AND st.package_session_id IN (SELECT id FROM package_session WHERE package_id = :pkg)"
+        for uid, summary in db.execute(text(f"""
+            SELECT DISTINCT ON (st.user_id) st.user_id, st.rolling_summary
+            FROM tutor_learner_state st
+            WHERE st.institute_id = :inst AND st.user_id = ANY(:ids) {note_scope}
+            ORDER BY st.user_id, st.updated_at DESC
+        """), {**params, "ids": ids}).fetchall():
+            notes[uid] = (summary or "").strip() or None
+
+    concepts = db.execute(text(f"""
+        SELECT c.id, c.title AS concept, t.title AS topic, sl.title AS slide, sl.id AS slide_id,
+               MAX(p.package_name) AS course,
+               COUNT(a.id) AS attempts, COUNT(DISTINCT a.user_id) AS learners,
+               AVG(a.score) AS avg_score,
+               COUNT(a.id) FILTER (WHERE a.action_taken IN {_WEAK_ACTIONS}) AS weak_attempts,
+               COUNT(DISTINCT a.user_id) FILTER (WHERE a.action_taken IN {_WEAK_ACTIONS}) AS weak_learners,
+               COUNT(DISTINCT a.user_id) FILTER (WHERE a.action_taken = 'revisit_ok') AS cleared_learners,
+               (ARRAY_AGG(a.misconception ORDER BY a.created_at DESC) FILTER (WHERE a.misconception IS NOT NULL AND a.misconception <> ''))[1:3] AS misconceptions
+        FROM tutor_concept_attempt a
+        JOIN tutor_session ts ON ts.id = a.tutor_session_id
+        JOIN package_session ps ON ps.id = ts.package_session_id
+        JOIN package p ON p.id = ps.package_id
+        JOIN teaching_concept c ON c.id = a.concept_id
+        JOIN teaching_topic t ON t.id = c.topic_id
+        JOIN slide sl ON sl.id = t.slide_id
+        WHERE {scope}
+        GROUP BY c.id, c.title, t.title, sl.title, sl.id
+        HAVING COUNT(a.id) > 0
+        ORDER BY weak_learners DESC, avg_score ASC NULLS LAST, attempts DESC
+        LIMIT :concepts_limit
+    """), params).fetchall()
+
+    return {
+        "package_id": package_id, "package_session_id": package_session_id, "days": days,
+        "batches": [{"package_session_id": b[0], "name": (" · ".join(x for x in (b[1], b[2]) if x) or "Batch"),
+                     "course": b[3], "sessions": int(b[4] or 0)} for b in batches],
+        "totals": {"sessions": int(totals[0] or 0), "learners": int(totals[1] or 0), "minutes": int(totals[2] or 0),
+                   "voice_sessions": int(totals[3] or 0), "abandoned": int(totals[4] or 0),
+                   "courses": int(totals[5] or 0)} if totals else {},
+        "courses": [{"package_id": r[0], "name": r[1], "sessions": int(r[2] or 0), "learners": int(r[3] or 0),
+                     "minutes": int(r[4] or 0), "attempts": int(r[5] or 0), "avg_score": _num(r[6]),
+                     "weak_attempts": int(r[7] or 0), "last_active": r[8].isoformat() if r[8] else None}
+                    for r in courses],
+        "learners": [{"user_id": r[0], "name": (r[1] or "").strip() or None, "sessions": int(r[2] or 0),
+                      "minutes": int(r[3] or 0), "attempts": int(r[4] or 0), "avg_score": _num(r[5]),
+                      "weak_attempts": int(r[6] or 0), "last_active": r[7].isoformat() if r[7] else None,
+                      "courses": int(r[8] or 0), "note": notes.get(r[0])}
+                     for r in learners],
+        "concepts": [{"concept_id": r[0], "concept": r[1], "topic": r[2], "slide": r[3], "slide_id": r[4], "course": r[5],
+                      "attempts": int(r[6] or 0), "learners": int(r[7] or 0), "avg_score": _num(r[8]),
+                      "weak_attempts": int(r[9] or 0), "weak_learners": int(r[10] or 0), "cleared_learners": int(r[11] or 0),
+                      "misconceptions": list(r[12] or [])} for r in concepts],
+    }
+
+
 @router.get("/packages/{package_id}/insights", summary="What the tutor learned about this course's learners")
 def package_insights(
     package_id: str,
@@ -289,106 +463,41 @@ def package_insights(
     caller: Caller = Depends(_caller),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
-    """Sessions, minutes and scores per learner, the concepts learners get
-    wrong most (with the misconceptions the teacher recorded), and the
-    batches that have used the tutor. Read-only; three queries."""
     if not package_belongs_to_institute(db, package_id, caller.institute_id):
         raise HTTPException(status_code=404, detail="Course not found in this institute")
-    params: Dict[str, Any] = {"pkg": package_id, "inst": caller.institute_id, "days": days}
-    batch_filter = ""
-    if package_session_id:
-        batch_filter = "AND ts.package_session_id = :ps"
-        params["ps"] = package_session_id
+    return _insights(db, institute_id=caller.institute_id, package_id=package_id, package_session_id=package_session_id, days=days)
 
-    batches = db.execute(text("""
-        SELECT ps.id, COALESCE(l.level_name, '') AS level_name, COALESCE(s.session_name, '') AS session_name,
-               COUNT(ts.id) AS sessions
-        FROM package_session ps
-        LEFT JOIN level l ON l.id = ps.level_id
-        LEFT JOIN session s ON s.id = ps.session_id
-        LEFT JOIN tutor_session ts ON ts.package_session_id = ps.id AND ts.institute_id = :inst
-             AND ts.started_at > now() - make_interval(days => :days)
-        WHERE ps.package_id = :pkg AND ps.status <> 'DELETED'
-        GROUP BY ps.id, l.level_name, s.session_name
-        ORDER BY sessions DESC, level_name
-    """), params).fetchall()
 
-    totals = db.execute(text(f"""
-        SELECT COUNT(*) AS sessions, COUNT(DISTINCT ts.user_id) AS learners,
-               COALESCE(SUM(ts.minutes_billed), 0) AS minutes,
-               COUNT(*) FILTER (WHERE ts.mode = 'VOICE') AS voice_sessions,
-               COUNT(*) FILTER (WHERE ts.status = 'ABANDONED') AS abandoned
-        FROM tutor_session ts
-        JOIN package_session ps ON ps.id = ts.package_session_id
-        WHERE ps.package_id = :pkg AND ts.institute_id = :inst
-          AND ts.started_at > now() - make_interval(days => :days) {batch_filter}
-    """), params).first()
+@router.get("/insights", summary="What the tutor learned across the institute (optionally one course / batch)")
+def institute_insights(
+    package_id: Optional[str] = Query(default=None),
+    package_session_id: Optional[str] = Query(default=None),
+    days: int = Query(default=90, ge=1, le=365),
+    caller: Caller = Depends(_caller),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    if package_id and not package_belongs_to_institute(db, package_id, caller.institute_id):
+        raise HTTPException(status_code=404, detail="Course not found in this institute")
+    return _insights(db, institute_id=caller.institute_id, package_id=package_id, package_session_id=package_session_id, days=days)
 
-    learners = db.execute(text(f"""
-        WITH s AS (
-            SELECT ts.id, ts.user_id, ts.minutes_billed, ts.started_at
-            FROM tutor_session ts
-            JOIN package_session ps ON ps.id = ts.package_session_id
-            WHERE ps.package_id = :pkg AND ts.institute_id = :inst
-              AND ts.started_at > now() - make_interval(days => :days) {batch_filter}
-        ), att AS (
-            SELECT a.user_id, COUNT(*) AS attempts, AVG(a.score) AS avg_score,
-                   COUNT(*) FILTER (WHERE a.action_taken IN ('advance_weak', 'skipped')) AS weak_attempts
-            FROM tutor_concept_attempt a
-            JOIN s ON s.id = a.tutor_session_id
-            GROUP BY a.user_id
-        )
-        SELECT s.user_id, MAX(st.full_name) AS name, COUNT(s.id) AS sessions,
-               COALESCE(SUM(s.minutes_billed), 0) AS minutes,
-               COALESCE(MAX(att.attempts), 0) AS attempts, MAX(att.avg_score) AS avg_score,
-               COALESCE(MAX(att.weak_attempts), 0) AS weak_attempts, MAX(s.started_at) AS last_active
-        FROM s
-        LEFT JOIN att ON att.user_id = s.user_id
-        LEFT JOIN student st ON st.user_id = s.user_id
-        GROUP BY s.user_id
-        ORDER BY last_active DESC
-        LIMIT 200
-    """), params).fetchall()
 
-    concepts = db.execute(text(f"""
-        SELECT c.id, c.title AS concept, t.title AS topic, sl.title AS slide, sl.id AS slide_id,
-               COUNT(a.id) AS attempts, COUNT(DISTINCT a.user_id) AS learners,
-               AVG(a.score) AS avg_score,
-               COUNT(a.id) FILTER (WHERE a.action_taken IN ('advance_weak', 'skipped')) AS weak_attempts,
-               COUNT(DISTINCT a.user_id) FILTER (WHERE a.action_taken IN ('advance_weak', 'skipped')) AS weak_learners,
-               (ARRAY_AGG(a.misconception ORDER BY a.created_at DESC) FILTER (WHERE a.misconception IS NOT NULL AND a.misconception <> ''))[1:3] AS misconceptions
-        FROM tutor_concept_attempt a
-        JOIN tutor_session ts ON ts.id = a.tutor_session_id
-        JOIN package_session ps ON ps.id = ts.package_session_id
-        JOIN teaching_concept c ON c.id = a.concept_id
-        JOIN teaching_topic t ON t.id = c.topic_id
-        JOIN slide sl ON sl.id = t.slide_id
-        WHERE ps.package_id = :pkg AND ts.institute_id = :inst
-          AND ts.started_at > now() - make_interval(days => :days) {batch_filter}
-        GROUP BY c.id, c.title, t.title, sl.title, sl.id
-        HAVING COUNT(a.id) > 0
-        ORDER BY weak_learners DESC, avg_score ASC NULLS LAST, attempts DESC
-        LIMIT 40
-    """), params).fetchall()
-
-    def _f(v: Any) -> Optional[float]:
-        return round(float(v), 3) if v is not None else None
-
-    return {
-        "package_id": package_id, "package_session_id": package_session_id, "days": days,
-        "batches": [{"package_session_id": b[0], "name": (" · ".join(x for x in (b[1], b[2]) if x) or "Batch"),
-                     "sessions": int(b[3] or 0)} for b in batches],
-        "totals": {"sessions": int(totals[0] or 0), "learners": int(totals[1] or 0), "minutes": int(totals[2] or 0),
-                   "voice_sessions": int(totals[3] or 0), "abandoned": int(totals[4] or 0)} if totals else {},
-        "learners": [{"user_id": r[0], "name": (r[1] or "").strip() or None, "sessions": int(r[2] or 0),
-                      "minutes": int(r[3] or 0), "attempts": int(r[4] or 0), "avg_score": _f(r[5]),
-                      "weak_attempts": int(r[6] or 0), "last_active": r[7].isoformat() if r[7] else None}
-                     for r in learners],
-        "concepts": [{"concept_id": r[0], "concept": r[1], "topic": r[2], "slide": r[3], "slide_id": r[4],
-                      "attempts": int(r[5] or 0), "learners": int(r[6] or 0), "avg_score": _f(r[7]),
-                      "weak_attempts": int(r[8] or 0), "weak_learners": int(r[9] or 0),
-                      "misconceptions": list(r[10] or [])} for r in concepts],
-    }
+@router.get("/insights/export.csv", summary="Insights as a CSV file: learners, concepts or courses")
+def insights_csv(
+    sheet: str = Query(default="learners", pattern=r"^(learners|concepts|courses)$"),
+    package_id: Optional[str] = Query(default=None),
+    package_session_id: Optional[str] = Query(default=None),
+    days: int = Query(default=90, ge=1, le=365),
+    caller: Caller = Depends(_caller),
+    db: Session = Depends(db_dependency),
+) -> Response:
+    if package_id and not package_belongs_to_institute(db, package_id, caller.institute_id):
+        raise HTTPException(status_code=404, detail="Course not found in this institute")
+    data = _insights(db, institute_id=caller.institute_id, package_id=package_id, package_session_id=package_session_id,
+                     days=days, learners_limit=5000, concepts_limit=2000, courses_limit=500)
+    body = insights_csv_text(data, sheet)
+    filename = f"tutor-insights-{sheet}-{days}d.csv"
+    return Response(content=body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 # ── option catalogues for the Tutor Mode settings cards ──────────────────────

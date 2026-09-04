@@ -8,6 +8,7 @@ import { CourseSettingsData } from '@/types/course-settings';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
 import UserIdentifierSettings from '../UserIdentifierSettings';
 import { TutorModeDefaultsCard } from './TutorModeDefaultsCard';
+import { TutorInsightsCard } from '@/components/common/tutor/TutorInsightsCard';
 
 const CourseSettings = () => {
     const { t } = useTranslation('settingsCourseSettings');
@@ -64,9 +65,7 @@ const CourseSettings = () => {
                         <Gear className="size-6" />
                         {t('header.title')}
                     </h1>
-                    <p className="text-sm text-muted-foreground">
-                        {t('header.subtitle')}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{t('header.subtitle')}</p>
                 </div>
             </div>
 
@@ -84,14 +83,14 @@ const CourseSettings = () => {
             ) : (
                 <Alert variant="destructive">
                     <Warning className="size-4" />
-                    <AlertDescription>
-                        {t('errors.loadFailed')}
-                    </AlertDescription>
+                    <AlertDescription>{t('errors.loadFailed')}</AlertDescription>
                 </Alert>
             )}
 
             {/* Live AI Tutor: institute-wide defaults every course inherits. */}
             <TutorModeDefaultsCard />
+            {/* Live AI Tutor: what the teacher learned across every course (WP9). */}
+            <TutorInsightsCard />
             <UserIdentifierSettings />
         </div>
     );

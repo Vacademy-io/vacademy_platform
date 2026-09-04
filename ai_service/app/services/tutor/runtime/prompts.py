@@ -63,7 +63,48 @@ T = {
     "fallback_correct": {"en": "That's right. Let's continue.", "hi": "बिल्कुल सही। चलिए आगे बढ़ते हैं।"},
     "fallback_hint": {"en": "Not quite. Look at the board again: {hint}. Try once more.", "hi": "पूरी तरह नहीं। बोर्ड को फिर देखिए: {hint}। एक बार फिर कोशिश कीजिए।"},
     "fallback_move_on": {"en": "Let's note that for later and keep going. {expected}", "hi": "इसे बाद के लिए नोट कर लेते हैं और आगे बढ़ते हैं। {expected}"},
+    # Weak-concept revisits (design §6.6)
+    "revisit_intro_topic": {
+        "en": "Before we move on, let's quickly go back to {n} point(s) that gave you trouble.",
+        "hi": "आगे बढ़ने से पहले, चलिए जल्दी से {n} बिंदु(ओं) पर लौटते हैं जिनमें दिक्कत हुई थी।",
+    },
+    "revisit_intro_slide": {
+        "en": "Before we finish, let's revisit {n} point(s) that need a little more practice.",
+        "hi": "समाप्त करने से पहले, चलिए {n} बिंदु(ओं) को फिर से देखते हैं जिन पर थोड़ा और अभ्यास चाहिए।",
+    },
+    "revisit_ask": {"en": "About {concept}. {prompt}", "hi": "{concept} के बारे में। {prompt}"},
+    "revisit_done_topic": {"en": "Good, that's the revisit done. Let's move to the next part.",
+                           "hi": "बहुत अच्छे, दोहराव पूरा हुआ। चलिए अगले हिस्से पर चलते हैं।"},
+    "revisit_done_slide": {"en": "That's the revisit done. Well done for sticking with it.",
+                           "hi": "दोहराव पूरा हुआ। लगे रहने के लिए शाबाश।"},
+    "revisit_skipped": {"en": "Okay, we'll leave that one for another day.", "hi": "ठीक है, इसे किसी और दिन के लिए छोड़ते हैं।"},
 }
+
+
+# ── rolling summary shape ────────────────────────────────────────────────────
+# A model-written summary is two paragraphs: what the teacher says to the
+# learner on return, then her private notes. The deterministic fallback
+# written at session end starts with "Session on" and is never spoken.
+
+LEGACY_SUMMARY_PREFIX = "Session on "
+
+
+def resume_line(summary: Optional[str]) -> Optional[str]:
+    """The sentence(s) to say to a returning learner, or None for a legacy
+    (deterministic) summary."""
+    s = (summary or "").strip()
+    if not s or s.startswith(LEGACY_SUMMARY_PREFIX) or "\n\n" not in s:
+        return None
+    first = s.split("\n\n", 1)[0].strip()
+    return first[:400] or None
+
+
+def summary_notes(summary: Optional[str]) -> str:
+    """The teacher's notes part (everything but the spoken line)."""
+    s = (summary or "").strip()
+    if "\n\n" in s and not s.startswith(LEGACY_SUMMARY_PREFIX):
+        return s.split("\n\n", 1)[1].strip()
+    return s
 
 
 _LEADING_GREETING = re.compile(
@@ -154,6 +195,7 @@ def turn_prompt(
     mode: str,
     final_attempt: bool = False,
     source_block: Optional[str] = None,
+    revisit: bool = False,
 ) -> str:
     parts = [
         f"LEARNER: {learner_name or 'the learner'}\n{learner_block}".strip(),
@@ -169,7 +211,9 @@ def turn_prompt(
         ("SOURCE MATERIAL (the course's own material for this concept; ground your hint in it):\n" + source_block[:6000])
         if source_block else "",
         "RECENT TRANSCRIPT:\n" + "\n".join(f"{m['role']}: {m['text']}" for m in transcript[-6:]),
-        f"THIS IS REMEDIATION #{remediation_no} FOR THIS CONCEPT." if remediation_no else "FIRST ANSWER FOR THIS CONCEPT.",
+        ("THIS IS A REVISIT: the learner found this concept hard earlier in the lesson; the check above is a fresh "
+         "question on the same idea and this is their ONE attempt at it."
+         if revisit else (f"THIS IS REMEDIATION #{remediation_no} FOR THIS CONCEPT." if remediation_no else "FIRST ANSWER FOR THIS CONCEPT.")),
         ("THIS IS THE LEARNER'S FINAL ATTEMPT ON THIS CHECK. Do NOT re-ask. If the answer is still wrong, use action "
          "\"remediate\" and in `say` give the correct answer in one clear sentence, then say you will move on."
          if final_attempt else ""),
@@ -214,7 +258,7 @@ def learner_block(state: Dict[str, Any], tags: List[str]) -> str:
     relevant = {t: mastery[t] for t in tags if t in mastery}
     lines = []
     if state.get("rolling_summary"):
-        lines.append("Previous sessions: " + str(state["rolling_summary"])[:600])
+        lines.append("Previous sessions: " + summary_notes(str(state["rolling_summary"]))[:600])
     if relevant:
         lines.append("Mastery on this concept's tags: " + ", ".join(f"{t}={round(float(v.get('score', 0)), 2)}" for t, v in relevant.items()))
     mis = state.get("misconceptions_json") or []
@@ -223,3 +267,57 @@ def learner_block(state: Dict[str, Any], tags: List[str]) -> str:
     if state.get("pace"):
         lines.append(f"Pace preference: {state['pace']}")
     return "\n".join(lines)
+
+
+# ── revisit question (design §6.6) ───────────────────────────────────────────
+
+REVISIT_QUESTION_SCHEMA = """Return ONE JSON object and nothing else:
+{"prompt": "<the new question, 1-2 spoken sentences>", "expected": "<the answer you expect, one line>", "rubric": "<what earns credit, one line>"}"""
+
+
+def revisit_question_prompt(
+    *, lang: str, concept_title: str, concept_say: str, teach_notes: Optional[str], check: Dict[str, Any],
+    previous_answer: Optional[str], misconception: Optional[str],
+) -> str:
+    parts = [
+        f"CONCEPT: {concept_title}\nWHAT WAS TAUGHT: {concept_say}" + (f"\nTEACHING NOTES: {teach_notes}" if teach_notes else ""),
+        "ORIGINAL CHECK (do not reuse its wording):\n" + json.dumps({
+            "prompt": check.get("prompt"), "expected": check.get("expected"), "rubric": check.get("rubric"),
+            "misconceptions": check.get("misconceptions") or []}, ensure_ascii=False),
+        (f"THE LEARNER'S EARLIER ANSWER: {previous_answer[:300]}" if previous_answer else "")
+        + (f"\nMISCONCEPTION HEARD: {misconception}" if misconception else ""),
+        f"Write ONE fresh question on the same idea, approached from a different angle (an example, a why, a what-if), "
+        f"answerable in one or two spoken sentences, in {LANG_NAMES.get(lang, lang)}. No options, no markdown.",
+        REVISIT_QUESTION_SCHEMA,
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+# ── rolling summary rewrite (design §6.6, §6.9) ─────────────────────────────
+
+SUMMARY_SCHEMA = """Return ONE JSON object and nothing else:
+{"say_next_time": "<1-2 sentences you will say to the learner when they return: what went well and what to revisit; warm, specific, no lists>",
+ "notes": "<60-120 words of private notes: what they know, which concepts are weak (name them), misconceptions heard, how they answer, pace>"}"""
+
+
+def summary_prompt(*, teacher: str, learner_name: Optional[str], lang: str, digest: Dict[str, Any]) -> str:
+    attempts = digest.get("attempts") or []
+    lines = [
+        f"You are {teacher}, a one-to-one teacher. Rewrite your notes about {learner_name or 'the learner'} after today's lesson.",
+        f"TODAY ({digest.get('date')}, {digest.get('duration_minutes', 0)} min): "
+        + "; ".join(f"{s.get('title')} — {s.get('done_today', s.get('done', 0))} concept(s) today, "
+                    f"{s.get('done', 0)}/{s.get('total', 0)} overall" for s in (digest.get("slides") or [])),
+        "ANSWERS TODAY:\n" + ("\n".join(
+            f"- {a.get('concept')}: score {a.get('score') if a.get('score') is not None else 'n/a'}, {a.get('action')}"
+            + (f", misconception: {a.get('misconception')}" if a.get("misconception") else "")
+            + (f", said: \"{a.get('answer')}\"" if a.get("answer") else "")
+            for a in attempts[:40]) or "(no checks answered)"),
+        ("STILL WEAK: " + ", ".join(digest.get("weak_titles") or [])) if digest.get("weak_titles") else "",
+        ("PREVIOUS NOTES:\n" + str(digest.get("previous_summary"))[:900]) if digest.get("previous_summary") else "",
+        f"Pace preference: {digest.get('pace')}" if digest.get("pace") else "",
+        f"`say_next_time` must be in {LANG_NAMES.get(lang, lang)} and address the learner directly, but it must NOT greet "
+        "or say the learner's name (the teacher has already said \"welcome back\" before it); `notes` in English. "
+        "Merge with the previous notes and drop what is no longer true.",
+        SUMMARY_SCHEMA,
+    ]
+    return "\n\n".join(p for p in lines if p)

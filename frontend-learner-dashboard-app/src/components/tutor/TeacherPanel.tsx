@@ -14,7 +14,7 @@ interface TeacherPanelProps {
   teacherAvatarFileId?: string | null;
   phase: TutorPhase;
   transcript: TranscriptLine[];
-  check: { prompt: string | null; options: string[]; check_type: string | null } | null;
+  check: { prompt: string | null; options: string[]; check_type: string | null; revisit?: boolean } | null;
   awaiting: "continue" | "answer" | "done" | null;
   voiceMode: boolean;
   micOn: boolean;
@@ -105,7 +105,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         ))}
         {check && awaiting === "answer" && (
           <div className="rounded-xl border border-primary-200 bg-primary-50 p-3">
-            <p className="text-xs font-semibold uppercase text-primary-500">Question</p>
+            <p className="text-xs font-semibold uppercase text-primary-500">{check.revisit ? "Quick revisit · one try" : "Question"}</p>
             <p className="mt-1 text-sm text-neutral-900">{check.prompt}</p>
             {check.options.length > 0 && (
               <div className="mt-2 flex flex-col gap-1">

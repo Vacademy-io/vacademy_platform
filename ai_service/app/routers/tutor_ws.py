@@ -22,9 +22,12 @@ import json
 import logging
 import time
 from collections import OrderedDict, deque
+from dataclasses import replace as dc_replace
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -39,6 +42,8 @@ from ..services.tutor.runtime import state as sm
 from ..services.tutor.runtime.decision import run_turn
 from ..services.tutor.runtime.intents import detect_intent
 from ..services.tutor.runtime import prompts
+from ..services.tutor.runtime.revisit import fresh_check
+from ..services.tutor.runtime.summary import rewrite_rolling_summary
 from ..services.tutor.runtime.settings import TutorSettings
 from ..services.tutor.slide_source import package_belongs_to_institute
 from ..services.voice_tts import (
@@ -65,6 +70,20 @@ SERVER_TTS_PROVIDERS = ("smallest", "sarvam", "google", "edge")
 # Voice lessons are metered per started minute (design §4.8, tool
 # tutor_live_minute); the first minute is charged at open, the next every 60 s.
 LIVE_METER_SECONDS = 60
+
+# Session-end summary rewrites outlive the socket that started them.
+_BACKGROUND: set = set()
+
+
+def _fire_and_forget(coro) -> None:
+    try:
+        task = asyncio.get_running_loop().create_task(coro)
+    except RuntimeError:
+        coro.close()
+        return
+    _BACKGROUND.add(task)
+    task.add_done_callback(_BACKGROUND.discard)
+
 
 # ── in-process TTS cache (compiled narration repeats across learners) ────────
 _TTS_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
@@ -190,14 +209,21 @@ def start_session(
 
 
 @router.post("/v1/sessions/{tutor_session_id}/end", summary="End a tutor session (fallback for closed sockets)")
-def end_session_rest(tutor_session_id: str, caller: Caller = Depends(_caller), db: Session = Depends(db_dependency)) -> Dict[str, Any]:
+def end_session_rest(
+    tutor_session_id: str, background: BackgroundTasks, caller: Caller = Depends(_caller), db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
     ts = db.get(TutorSession, tutor_session_id)
     if ts is None or ts.user_id != caller.user_id:
         raise HTTPException(status_code=404, detail="Session not found")
     if ts.status != "ACTIVE":
         return {"tutor_session_id": tutor_session_id, "status": ts.status}
-    return svc.end_session(tutor_session_id=tutor_session_id, user_id=ts.user_id, package_session_id=ts.package_session_id,
-                           lesson=None, pointer=None, status="ENDED")
+    res = svc.end_session(tutor_session_id=tutor_session_id, user_id=ts.user_id, package_session_id=ts.package_session_id,
+                          lesson=None, pointer=None, status="ENDED")
+    if res.get("transitioned"):
+        ctx = svc.summary_context(tutor_session_id)
+        if ctx:
+            background.add_task(rewrite_rolling_summary, **ctx)
+    return res
 
 
 # ── WebSocket ────────────────────────────────────────────────────────────────
@@ -214,6 +240,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
     turn_times: Deque[float] = deque()
     turns = 0
     meter_task: Optional[asyncio.Task] = None
+    _summary_args = None       # set once the lesson is booted (see below)
 
     async def _send(payload: dict) -> None:
         async with send_lock:
@@ -264,6 +291,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         pointer = ctx.get("pointer")
         resumed = pointer is not None
         pointer = pointer or sm.Pointer()
+        svc.note_start_progress(tutor_session_id, lesson.slide_id, pointer.done)
         sarvam = SarvamService()
         tts_provider = ctx["tts_provider"]
         if tts_provider not in SERVER_TTS_PROVIDERS or (tts_provider == "smallest" and not smallest_available()):
@@ -290,6 +318,15 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         previous_slide: Optional[Dict[str, Any]] = ctx.get("previous_slide")
         # First open of this socket: later slides get a short lead-in instead.
         opened_once = False
+        # Weak-concept revisit in progress (design §6.6): stage, the concepts
+        # still to ask, and the one being asked with its fresh check.
+        revisit: Optional[Dict[str, Any]] = None
+        revisited: set = set()
+
+        def _summary_args() -> Dict[str, Any]:
+            return {"tutor_session_id": tutor_session_id, "user_id": user_id, "institute_id": institute_id,
+                    "package_session_id": package_session_id, "model": live_model, "teacher": teacher, "lang": lang,
+                    "learner_name": display_name or None}
 
         def _lang_stt() -> str:
             return LANG_TO_STT.get(lang, "en-IN")
@@ -350,8 +387,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             await _speak(text_)
             await _send({"type": "audio_end", "reason": reason})
 
-        async def _emit_state(phase: str) -> None:
-            c = lesson.concept_at(pointer)
+        async def _emit_state(phase: str, concept: Optional[sm.Concept] = None) -> None:
+            c = concept or lesson.concept_at(pointer)
             t = lesson.topic_at(pointer)
             await _send({"type": "state", "slide_id": lesson.slide_id, "topic_id": t.id if t else None,
                          "topic_title": t.title if t else None, "concept_id": c.id if c else None,
@@ -365,6 +402,107 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             if qr:
                 frame["quiz_results"] = qr
             await _send(frame)
+
+        # ── weak-concept revisits (design §6.6) ──
+        def _scores() -> Dict[str, float]:
+            return {cid: float(a["score"]) for cid, a in attempt_log.items() if a.get("score") is not None}
+
+        def _revisit_candidates(stage: str) -> List[sm.Concept]:
+            weak_ids = set(pointer.weak) | set(state.get("weak_concepts_json") or [])
+            return sm.revisit_candidates(lesson, pointer, stage=stage, weak_ids=weak_ids, skipped_ids=pointer.skipped,
+                                         revisited=revisited, scores=_scores())
+
+        async def _begin_revisit(stage: str, cands: List[sm.Concept]) -> None:
+            nonlocal revisit
+            revisit = {"stage": stage, "queue": list(cands), "current": None, "check": None}
+            await _say(prompts.tpl("revisit_intro_topic" if stage == "topic" else "revisit_intro_slide", lang, n=len(cands)),
+                       meta={"kind": "revisit_intro"})
+            await _ask_next_revisit()
+
+        async def _ask_next_revisit() -> None:
+            nonlocal revisit
+            if revisit is None:
+                return
+            if not revisit["queue"]:
+                stage = revisit["stage"]
+                revisit = None
+                await _say(prompts.tpl("revisit_done_topic" if stage == "topic" else "revisit_done_slide", lang),
+                           meta={"kind": "revisit_done"})
+                if stage == "slide":
+                    await _send_slide_done()
+                else:
+                    await _send({"type": "await", "what": "continue"})
+                return
+            concept = revisit["queue"][0]
+            att = attempt_log.get(concept.id) or {}
+            check, usage = await fresh_check(
+                institute_id=institute_id, user_id=user_id, model=live_model, lang=lang, concept=concept,
+                previous_answer=att.get("answer") or None, misconception=att.get("misconception"),
+                tutor_session_id=tutor_session_id,
+            )
+            svc.bump_telemetry(tutor_session_id, llm_prompt_tokens=usage.get("prompt_tokens", 0),
+                               llm_completion_tokens=usage.get("completion_tokens", 0))
+            # Popped only now: a barge-in during the model call leaves the queue intact.
+            revisit["queue"].pop(0)
+            revisited.add(concept.id)
+            revisit["current"], revisit["check"] = concept, check
+            await _emit_state(sm.REVISIT, concept)
+            await _send({"type": "check", "concept_id": concept.id, "check_type": check.get("type"), "prompt": check.get("prompt"),
+                         "options": check.get("options") or [], "remediation": 0, "revisit": True})
+            await _say(prompts.tpl("revisit_ask", lang, concept=concept.title, prompt=check.get("prompt") or ""),
+                       meta={"concept_id": concept.id, "kind": "revisit_ask"})
+            await _send({"type": "await", "what": "answer"})
+
+        async def _handle_revisit_answer(text_: str, *, spoken: bool, kind: str) -> None:
+            """One attempt at the fresh question: right clears the concept,
+            wrong keeps it weak and the teacher gives the answer and moves on."""
+            nonlocal revisit, pointer, state
+            assert revisit is not None and revisit.get("current") is not None
+            concept: sm.Concept = revisit["current"]
+            check: Dict[str, Any] = revisit["check"] or {}
+            source_block = await svc.kb_source_block(lesson, institute_id, concept.title, text_) if kind == "doubt" else None
+            decision, usage = await run_turn(
+                institute_id=institute_id, user_id=user_id, model=live_model, teacher=teacher, lang=lang,
+                strictness=settings.strictness, learner_name=display_name or None, state=state, lesson=lesson,
+                pointer=dc_replace(pointer, remediations=0), board_ops=board, transcript=transcript, learner_message=text_, kind=kind,
+                mode="voice" if spoken else "text", tutor_session_id=tutor_session_id,
+                concept=dc_replace(concept, check=check), final_attempt=True, revisit=True, source_block=source_block,
+            )
+            # (`pointer` above is the summary pointer; its concept/remediations are not this concept's.)
+            svc.bump_telemetry(tutor_session_id, turns=1, llm_prompt_tokens=usage.get("prompt_tokens", 0),
+                               llm_completion_tokens=usage.get("completion_tokens", 0), fallbacks=1 if decision.get("fallback") else 0)
+            if decision["board_ops"]:
+                await _send({"type": "board", "clear": False, "ops": decision["board_ops"], "live": True})
+            if kind == "doubt" or decision["action"] in ("answer_doubt", "wait"):
+                # A question or small talk instead of an answer: reply and keep the question open.
+                await _say(decision["say"], meta={"kind": decision["action"] if kind != "doubt" else "answer_doubt"})
+                await _send({"type": "await", "what": "answer"})
+                return
+            assessment = decision.get("assessment") or {}
+            score = assessment.get("score")
+            # A model failure is never a pass: the fallback keeps the concept weak.
+            ok = decision["action"] == "advance" and not decision.get("fallback")
+            action = "revisit_ok" if ok else "revisit_weak"
+            svc.record_attempt(tutor_session_id=tutor_session_id, user_id=user_id, package_session_id=package_session_id,
+                               concept_id=concept.id, tags=concept.tags, attempt_no=sm.MAX_REMEDIATIONS + 1, answer=text_,
+                               score=score, misconception=assessment.get("misconception"), action=action,
+                               session_ops=decision["board_ops"], note=(decision.get("learner_state_delta") or {}).get("note"))
+            state = svc.reload_state(user_id, package_session_id) or state
+            # Quiz questions keep their first answer in the activity log.
+            if not (concept.check or {}).get("question_id"):
+                attempt_log[concept.id] = {"answer": text_, "score": score, "correct": ok, "action": action,
+                                           "misconception": assessment.get("misconception")}
+            if ok:
+                pointer = sm.clear_weak(pointer, concept.id)
+                svc.clear_weak(user_id=user_id, package_session_id=package_session_id, concept_id=concept.id)
+                state["weak_concepts_json"] = [c for c in (state.get("weak_concepts_json") or []) if c != concept.id]
+                _save()
+            say = decision["say"]
+            if not ok and (decision.get("fallback") or say.rstrip().endswith("?")):
+                say = prompts.tpl("fallback_move_on", lang, expected=(check.get("expected") or "")[:160])
+            revisit["current"], revisit["check"] = None, None
+            await _say(say, meta={"kind": "revisit_verdict", "score": score, "concept_id": concept.id, "cleared": ok})
+            await _ask_next_revisit()
 
         async def _meter() -> None:
             """Charge the first minute now, then one per minute; stop the
@@ -399,6 +537,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _emit_state(step.pointer.phase)
                 await _send({"type": "board", "clear": False, "ops": step.board_ops, "topic_id": step.topic.id if step.topic else None,
                              "concept_id": step.concept.id if step.concept else None})
+                svc.bump_telemetry(tutor_session_id, concepts_taught=1)
                 narration = step.concept.narration(lang)
                 # Compiled first concepts often open with their own "Hi {name},
                 # …": when the teacher has a greeting of her own (welcome back,
@@ -434,19 +573,29 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     board = board + list(step.board_ops)
                     await _send({"type": "board", "clear": False, "ops": step.board_ops, "topic_id": step.topic.id if step.topic else None})
                 await _say(prompts.tpl("topic_summary", lang, topic=step.topic.title if step.topic else ""), meta={"kind": "topic_summary"})
-                await _send({"type": "await", "what": "continue"})
+                cands = _revisit_candidates("topic")
+                if cands:
+                    await _begin_revisit("topic", cands)
+                else:
+                    await _send({"type": "await", "what": "continue"})
             elif step.kind == "slide_done":
                 await _emit_state(step.pointer.phase)
-                weak = prompts.tpl("weak_note", lang, n=len(pointer.weak)) if pointer.weak else ""
+                cands = _revisit_candidates("slide")
+                weak = prompts.tpl("weak_note", lang, n=len(pointer.weak)) if pointer.weak and not cands else ""
                 await _say(prompts.tpl("slide_done", lang, slide=_slide_name(), name=display_name, weak=weak), meta={"kind": "slide_done"})
-                await _send_slide_done()
+                if cands:
+                    await _begin_revisit("slide", cands)
+                else:
+                    await _send_slide_done()
 
         async def _open(*, first: bool) -> None:
-            nonlocal board, opened_once
-            # The rolling summary is bookkeeping, not conversation: only the
-            # part a learner would want to hear survives into the greeting.
+            nonlocal board, opened_once, revisit
+            revisit = None
+            # What the teacher says about last time: the model-written line
+            # from the previous session's summary, else just the weak count.
             weak_n = len(state.get("weak_concepts_json") or [])
-            summary = prompts.tpl("weak_note", lang, n=weak_n) if weak_n else ""
+            summary = (prompts.strip_leading_greeting(ctx.get("resume_line") or "").strip()
+                       or (prompts.tpl("weak_note", lang, n=weak_n) if weak_n else ""))
             if resumed:
                 # Put back what the topic's earlier concepts drew, so "look at
                 # the arrow" still points at something after a refresh.
@@ -541,6 +690,41 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _apply_step(step)
                 return
 
+            # A revisit question is open (or being prepared): the utterance
+            # is about it, never about the summary the pointer sits on.
+            if revisit is not None:
+                if revisit.get("current") is None:
+                    await _ask_next_revisit(); return
+                current: sm.Concept = revisit["current"]
+                if intent == "repeat":
+                    chk = revisit["check"] or {}
+                    await _say(prompts.tpl("revisit_ask", lang, concept=current.title, prompt=chk.get("prompt") or ""),
+                               meta={"concept_id": current.id, "kind": "revisit_ask"})
+                    await _send({"type": "await", "what": "answer"}); return
+                if intent == "skip":
+                    svc.record_attempt(tutor_session_id=tutor_session_id, user_id=user_id, package_session_id=package_session_id,
+                                       concept_id=current.id, tags=current.tags, attempt_no=sm.MAX_REMEDIATIONS + 1, answer=text_,
+                                       score=None, misconception=None, action="skipped", session_ops=None, note=None)
+                    revisit["current"], revisit["check"] = None, None
+                    await _say(prompts.tpl("revisit_skipped", lang), meta={"kind": "skip"})
+                    await _ask_next_revisit(); return
+                if intent in ("resume", "done") or (intent is None and short_ok):
+                    # "continue" after a pause, "okay", "yes": not an answer — ask again.
+                    chk = revisit["check"] or {}
+                    await _say(prompts.tpl("revisit_ask", lang, concept=current.title, prompt=chk.get("prompt") or ""),
+                               meta={"concept_id": current.id, "kind": "revisit_ask"})
+                    await _send({"type": "await", "what": "answer"}); return
+                if intent in ("slower", "faster"):
+                    pace = "slow" if intent == "slower" else "fast"
+                    _save()
+                    await _say(prompts.tpl(intent, lang), meta={"kind": intent})
+                    await _send({"type": "await", "what": "answer"}); return
+                if intent == "pause":
+                    await _say(prompts.tpl("pause", lang), meta={"kind": "pause"})
+                    await _send({"type": "await", "what": "answer"}); return
+                await _handle_revisit_answer(text_, spoken=spoken, kind="doubt" if (intent == "doubt" or force_doubt) else "answer")
+                return
+
             if intent == "repeat":
                 await _apply_step(sm.repeat(lesson, pointer)); return
             if intent == "skip":
@@ -620,7 +804,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                                        note=(decision.get("learner_state_delta") or {}).get("note"))
                     state = svc.reload_state(user_id, package_session_id) or state
                     attempt_log[concept.id] = {"answer": text_, "score": score, "correct": False,
-                                               "action": "advance_weak" if weak_now else "remediate"}
+                                               "action": "advance_weak" if weak_now else "remediate",
+                                               "misconception": (decision.get("assessment") or {}).get("misconception")}
                     if step.kind == "ask":
                         pointer = step.pointer
                         _save()
@@ -648,6 +833,14 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 step, _closed = pending
                 pending = None
                 await _apply_step(step)
+                return
+            if revisit is not None:
+                # Continue during a revisit: re-open the question, or ask the
+                # next one if the last was interrupted while being prepared.
+                if revisit.get("current") is not None:
+                    await _send({"type": "await", "what": "answer"})
+                else:
+                    await _ask_next_revisit()
                 return
             phase = pointer.phase
             if phase in (sm.TEACH, sm.MEDIA_TASK):
@@ -804,8 +997,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 try:
                     lesson, pointer, resumed = svc.switch_slide(tutor_session_id=tutor_session_id, user_id=user_id,
                                                                 package_session_id=package_session_id, slide_id=sid)
+                    svc.note_start_progress(tutor_session_id, lesson.slide_id, pointer.done)
                     board = []
                     pending = None
+                    revisit = None
+                    revisited.clear()
                     await _send(_lesson_frame())
                     _spawn(_open(first=False))
                 except LookupError as e:
@@ -815,6 +1011,10 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 summary = svc.end_session(tutor_session_id=tutor_session_id, user_id=user_id, package_session_id=package_session_id,
                                           lesson=lesson, pointer=pointer)
                 await _send({"type": "summary", "data": summary})
+                # The model-written rolling summary (design §6.6) is rewritten
+                # after the socket closes; the next greeting speaks its first line.
+                if summary.get("transitioned"):
+                    _fire_and_forget(rewrite_rolling_summary(**_summary_args()))
                 break
             else:
                 await _send({"type": "error", "message": f"Unknown message type: {t}", "fatal": False})
@@ -835,9 +1035,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             owner = svc.session_owner(tutor_session_id)
             if owner is not None and owner["status"] == "ACTIVE":
                 ts_status = "ABANDONED" if reached_ready else "ENDED"
-                svc.end_session(tutor_session_id=tutor_session_id, user_id=owner["user_id"],
-                                package_session_id=owner["package_session_id"],
-                                lesson=None, pointer=None, status=ts_status)
+                res = svc.end_session(tutor_session_id=tutor_session_id, user_id=owner["user_id"],
+                                      package_session_id=owner["package_session_id"],
+                                      lesson=None, pointer=None, status=ts_status)
+                if res.get("transitioned") and _summary_args is not None and reached_ready:
+                    _fire_and_forget(rewrite_rolling_summary(**_summary_args()))
         except Exception:  # noqa: BLE001
             pass
 

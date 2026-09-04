@@ -254,7 +254,7 @@ function TutorPage() {
     },
     onState: (ev) => {
       setState(ev);
-      if (ev.phase === "await_answer" || ev.phase === "remediate") applyPhase("question");
+      if (ev.phase === "await_answer" || ev.phase === "remediate" || ev.phase === "revisit") applyPhase("question");
       else if (ev.phase === "media_task") applyPhase("media");
       else if (ev.phase === "slide_done") applyPhase("done");
     },
@@ -653,7 +653,7 @@ function TutorPage() {
             teacherAvatarFileId={boot?.teacher_avatar_file_id}
             phase={phase}
             transcript={transcript}
-            check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type } : null}
+            check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type, revisit: !!check.revisit } : null}
             awaiting={awaiting}
             voiceMode={voiceMode}
             micOn={micOn}

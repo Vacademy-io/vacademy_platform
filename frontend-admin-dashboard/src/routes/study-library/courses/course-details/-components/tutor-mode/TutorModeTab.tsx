@@ -45,7 +45,7 @@ import {
     type TutorPlanStatusItem,
 } from '@/services/tutor';
 import { TutorPlanPreviewDialog } from './TutorPlanPreviewDialog';
-import { TutorInsightsCard } from './TutorInsightsCard';
+import { TutorInsightsCard } from '@/components/common/tutor/TutorInsightsCard';
 import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 

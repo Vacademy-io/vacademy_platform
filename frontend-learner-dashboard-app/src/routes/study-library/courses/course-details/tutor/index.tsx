@@ -417,7 +417,7 @@ function TutorPage() {
       // A stray press or a quiet room: nothing to transcribe.
       socket.sendAudioDiscard();
       setPhase("idle");
-      showNotice("I didn't catch anything. Press the button and speak when you're ready.");
+      showNotice("I didn't catch anything. Tap the button and speak when you're ready.");
       return;
     }
     setPhase("thinking");

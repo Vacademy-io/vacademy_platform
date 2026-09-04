@@ -30,6 +30,7 @@ from ...token_usage_service import TokenUsageService
 from .. import plan_store
 from ..slide_source import list_package_slides, slide_in_package_session
 from .settings import TutorSettings, resolve_settings
+from . import state as sm
 from .state import LessonPlan, Pointer, from_plan_view
 
 logger = logging.getLogger(__name__)
@@ -247,7 +248,8 @@ def get_or_create_state(db: Session, *, user_id: str, package_session_id: str, i
 def state_dict(st: TutorLearnerState) -> Dict[str, Any]:
     return {
         "current_slide_id": st.current_slide_id, "current_topic_id": st.current_topic_id,
-        "current_concept_id": st.current_concept_id, "mastery_json": dict(st.mastery_json or {}),
+        "current_concept_id": st.current_concept_id, "current_phase": st.current_phase,
+        "progress_json": dict(st.progress_json or {}), "mastery_json": dict(st.mastery_json or {}),
         "misconceptions_json": list(st.misconceptions_json or []), "weak_concepts_json": list(st.weak_concepts_json or []),
         "rolling_summary": st.rolling_summary, "preferred_language": st.preferred_language, "pace": st.pace,
     }
@@ -265,6 +267,51 @@ def load_lesson(db: Session, slide_id: str) -> Optional[LessonPlan]:
 
 def _norm_title(t: Optional[str]) -> str:
     return " ".join((t or "").lower().split())
+
+
+def slide_progress(st: TutorLearnerState, slide_id: str) -> Dict[str, Any]:
+    """This slide's saved position (V497); falls back to the legacy columns
+    when the row predates them."""
+    prog = (st.progress_json or {}).get(slide_id) if st.progress_json else None
+    if isinstance(prog, dict) and (prog.get("concept_id") or prog.get("phase")):
+        return dict(prog)
+    if st.current_slide_id == slide_id and (st.current_concept_id or st.current_phase):
+        return {"concept_id": st.current_concept_id, "topic_id": st.current_topic_id, "phase": st.current_phase}
+    return {}
+
+
+def previous_slide(st: TutorLearnerState, exclude_slide_id: str) -> Optional[Dict[str, Any]]:
+    """The slide the learner worked on most recently, other than this one
+    (for the "last time we worked on …" greeting)."""
+    best = None
+    for sid, prog in (st.progress_json or {}).items():
+        if sid == exclude_slide_id or not isinstance(prog, dict):
+            continue
+        if best is None or str(prog.get("updated_at") or "") > str(best[1].get("updated_at") or ""):
+            best = (sid, prog)
+    if best is None:
+        return None
+    return {"slide_id": best[0], "slide_title": best[1].get("slide_title") or "", "phase": best[1].get("phase")}
+
+
+def resume_position(db: Session, lesson: LessonPlan, st: TutorLearnerState) -> Optional[Pointer]:
+    """Where to resume THIS slide: a concept (remapped if the plan was
+    recompiled), a topic summary, or slide-done. None = start fresh."""
+    prog = slide_progress(st, lesson.slide_id)
+    if not prog:
+        return None
+    phase = prog.get("phase")
+    if phase == sm.SLIDE_DONE:
+        return sm.pointer_at_slide_end(lesson)
+    if phase == sm.TOPIC_SUMMARY:
+        ti = next((i for i, t in enumerate(lesson.topics) if t.id == prog.get("topic_id")), None)
+        if ti is None:
+            p = resolve_pointer(db, lesson, prog.get("concept_id"))
+            ti = p.topic if p is not None else None
+        if ti is None:
+            return None
+        return sm.pointer_at_topic_end(lesson, ti)
+    return resolve_pointer(db, lesson, prog.get("concept_id"))
 
 
 def resolve_pointer(db: Session, lesson: LessonPlan, concept_id: Optional[str]) -> Optional[Pointer]:
@@ -336,8 +383,8 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
         lesson = load_lesson(db, ts.started_slide_id or "")
         st = get_or_create_state(db, user_id=ts.user_id, package_session_id=ts.package_session_id, institute_id=ts.institute_id)
         state = state_dict(st)
-        pointer = (resolve_pointer(db, lesson, st.current_concept_id)
-                   if lesson is not None and st.current_slide_id == lesson.slide_id else None)
+        pointer = resume_position(db, lesson, st) if lesson is not None else None
+        previous = previous_slide(st, lesson.slide_id) if lesson is not None else None
         db.commit()
         try:
             tts_provider = settings.tts_provider or str(get_platform_setting("tutor.voice.provider", default="sarvam", db=db) or "sarvam")
@@ -349,6 +396,7 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
             "package_id": package_id, "chat_session_id": ts.chat_session_id, "mode": ts.mode,
             "language": ts.language, "started_slide_id": ts.started_slide_id,
             "settings": settings, "lesson": lesson, "state": state, "pointer": pointer,
+            "previous_slide": previous,
             "learner_name": learner_name(db, ts.user_id),
             "tts_provider": tts_provider, "tts_voice": tts_voice,
         }
@@ -407,11 +455,10 @@ def start_session(
         if lesson is None:
             raise LookupError("This slide has no teaching plan yet")
         lang = language if language in ("en", "hi") else (st.preferred_language if settings.session_language == "learner" and st.preferred_language in ("en", "hi") else settings.course_language)
-        resumed = st.current_slide_id == target_slide and st.current_concept_id is not None
-        pointer = resolve_pointer(db, lesson, st.current_concept_id) if resumed else None
+        pointer = resume_position(db, lesson, st)
+        resumed = pointer is not None
         if pointer is None:
             pointer = Pointer()
-            resumed = False
         chat = ChatSessionRepository(db).create_session(
             user_id=user_id, institute_id=institute_id, context_type="tutor",
             context_meta={"package_session_id": package_session_id, "package_id": package_id, "slide_id": target_slide,
@@ -444,10 +491,10 @@ def switch_slide(*, tutor_session_id: str, user_id: str, package_session_id: str
             raise LookupError("This slide has no teaching plan yet")
         st = db.query(TutorLearnerState).filter(TutorLearnerState.user_id == user_id,
                                                 TutorLearnerState.package_session_id == package_session_id).first()
-        resumed = bool(st and st.current_slide_id == slide_id and st.current_concept_id)
-        pointer = resolve_pointer(db, lesson, st.current_concept_id) if resumed and st else None
+        pointer = resume_position(db, lesson, st) if st else None
+        resumed = pointer is not None
         if pointer is None:
-            pointer, resumed = Pointer(), False
+            pointer = Pointer()
         if st:
             st.current_slide_id = slide_id
             st.updated_at = datetime.utcnow()
@@ -467,9 +514,25 @@ def save_pointer(*, user_id: str, package_session_id: str, lesson: LessonPlan, p
                 return
             concept = lesson.concept_at(pointer)
             topic = lesson.topic_at(pointer)
+            # At a topic summary / slide end there is no current concept: keep
+            # the last taught one so a legacy reader still lands nearby, and
+            # persist the phase so the next session resumes exactly there.
+            if concept is None and topic is not None and topic.concepts:
+                concept = topic.concepts[-1]
+            if concept is None and pointer.phase == sm.SLIDE_DONE and lesson.topics and lesson.topics[-1].concepts:
+                topic = lesson.topics[-1]
+                concept = topic.concepts[-1]
             st.current_slide_id = lesson.slide_id
             st.current_topic_id = topic.id if topic else None
             st.current_concept_id = concept.id if concept else None
+            st.current_phase = pointer.phase
+            prog = dict(st.progress_json or {})
+            prog[lesson.slide_id] = {
+                "topic_id": topic.id if topic else None, "concept_id": concept.id if concept else None,
+                "phase": pointer.phase, "done": int(pointer.done), "total": int(lesson.total_concepts),
+                "slide_title": lesson.slide_title, "updated_at": datetime.utcnow().isoformat(),
+            }
+            st.progress_json = prog
             if language in ("en", "hi"):
                 st.preferred_language = language
             if pace:

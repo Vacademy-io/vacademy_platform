@@ -143,10 +143,10 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           >
             <Microphone className="size-5" weight="fill" />
             {micOn
-              ? "Listening… press when you're done"
+              ? "Listening… tap when you're done"
               : awaiting === "answer"
-                ? "Press to answer"
-                : "Press to speak"}
+                ? "Tap to answer"
+                : "Tap to speak"}
           </button>
         )}
         <div className="flex items-center gap-2">

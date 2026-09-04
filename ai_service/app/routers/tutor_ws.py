@@ -279,6 +279,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         # A transition already committed (pointer + DB) whose narration was
         # interrupted before the next board was shown: (step, concept it closed).
         pending: Optional[Tuple[sm.Step, Optional[sm.Concept]]] = None
+        previous_slide: Optional[Dict[str, Any]] = ctx.get("previous_slide")
+        # First open of this socket: later slides get a short lead-in instead.
+        opened_once = False
 
         def _lang_stt() -> str:
             return LANG_TO_STT.get(lang, "en-IN")
@@ -389,10 +392,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _send({"type": "board", "clear": False, "ops": step.board_ops, "topic_id": step.topic.id if step.topic else None,
                              "concept_id": step.concept.id if step.concept else None})
                 narration = step.concept.narration(lang)
-                # Compiled first concepts often open with their own "Hi {name}";
-                # don't greet twice.
-                if greeting and narration.lstrip()[:12].lower().startswith(("hi ", "hi,", "hello", "नमस्ते", "namaste")):
-                    greeting = None
+                # Compiled first concepts often open with their own "Hi {name},
+                # …": when the teacher has a greeting of her own (welcome back,
+                # next slide), drop the narration's, never hers.
+                if greeting:
+                    narration = prompts.strip_leading_greeting(narration)
                 text_ = (greeting + " " if greeting else "") + narration
                 if step.kind == "media_task":
                     kind = next((op.get("kind") for op in step.board_ops if op.get("op") == "media_task"), "video")
@@ -429,7 +433,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _send_slide_done()
 
         async def _open(*, first: bool) -> None:
-            nonlocal board
+            nonlocal board, opened_once
+            # The rolling summary is bookkeeping, not conversation: only the
+            # part a learner would want to hear survives into the greeting.
+            weak_n = len(state.get("weak_concepts_json") or [])
+            summary = prompts.tpl("weak_note", lang, n=weak_n) if weak_n else ""
             if resumed:
                 # Put back what the topic's earlier concepts drew, so "look at
                 # the arrow" still points at something after a refresh.
@@ -439,16 +447,28 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     t = lesson.topic_at(pointer)
                     await _send({"type": "board", "clear": True, "ops": [], "topic_id": t.id if t else None})
                     await _send({"type": "board", "clear": False, "ops": replay, "topic_id": t.id if t else None, "replay": True})
-                # The rolling summary is bookkeeping, not conversation: only the
-                # part a learner would want to hear survives into the greeting.
-                weak_n = len(state.get("weak_concepts_json") or [])
-                summary = prompts.tpl("weak_note", lang, n=weak_n) if weak_n else ""
-                greet = prompts.tpl("resume", lang, name=display_name, slide=_slide_name(), summary=summary)
-            elif first:
+                if pointer.phase == sm.SLIDE_DONE:
+                    greet = prompts.tpl("resume_done", lang, name=display_name, slide=_slide_name(), summary=summary)
+                elif pointer.phase == sm.TOPIC_SUMMARY:
+                    t = lesson.topic_at(pointer)
+                    greet = prompts.tpl("resume_summary", lang, name=display_name, slide=_slide_name(),
+                                        topic=t.title if t else "", summary=summary)
+                else:
+                    greet = prompts.tpl("resume", lang, name=display_name, slide=_slide_name(), summary=summary)
+            elif first and not opened_once and previous_slide and previous_slide.get("slide_title"):
+                greet = prompts.tpl("greet_returning", lang, name=display_name, slide=_slide_name(),
+                                    previous=previous_slide["slide_title"], summary=summary)
+            elif first and not opened_once:
                 greet = prompts.tpl("greet", lang, name=display_name, teacher=teacher, slide=_slide_name())
             else:
                 greet = prompts.tpl("next_slide", lang, slide=_slide_name())
-            await _apply_step(sm.enter(lesson, pointer), greeting=greet)
+            opened_once = True
+            step = sm.enter(lesson, pointer)
+            if step.kind in ("topic_summary", "slide_done"):
+                # Resuming on a summary / a finished slide: say the greeting,
+                # then the summary line (which carries its own await).
+                await _say(greet, meta={"kind": "greet"})
+            await _apply_step(step, greeting=greet if step.kind in ("teach", "media_task") else None)
 
         async def _commit_then_say(step: sm.Step, closed: Optional[sm.Concept], text_: str, meta: dict) -> None:
             """Verdict pattern: the transition is committed first; if the

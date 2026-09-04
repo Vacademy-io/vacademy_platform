@@ -928,7 +928,14 @@ Follow-ups shipped 2026-09-04 (owner QA round 1 and the next-batch request):
   (5-15 s sample, staff only) returns a Smallest voice id that Settings → Course settings saves
   as the institute's tutor voice. `GET /tutor/v1/voice/clones` lists them.
 - **Layout.** The lesson page is viewport-tall with per-pane scrolling, folds the app sidebar,
-  writes board elements in one at a time, and auto-listens after a question in voice mode.
+  writes board elements in one at a time; answering by voice is an explicit "Tap to answer"
+  button (no auto-listen), and the teacher's bubble fills sentence by sentence as she speaks.
+- **Resume, per slide (V497).** `tutor_learner_state.progress_json` keeps one position per slide
+  (topic, concept, phase, done) and `current_phase` the phase, so a session that ended on a topic
+  summary or at slide-done resumes exactly there ("We had just finished X…" / "You already
+  completed X…"), switching slides no longer loses the other slide's place, and a returning
+  learner starting a new slide hears "Last time we worked on …". A compiled narration's own
+  "Hi {name}, …" opener is dropped when the teacher greets, never the greeting.
 
 Still open (tracked, not silent):
 

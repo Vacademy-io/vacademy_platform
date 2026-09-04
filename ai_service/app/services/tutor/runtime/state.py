@@ -136,6 +136,19 @@ def from_plan_view(view: Dict[str, Any]) -> LessonPlan:
     )
 
 
+def pointer_at_topic_end(plan: LessonPlan, ti: int) -> Pointer:
+    """Resume on a topic's summary: every concept up to and including that
+    topic counts as done."""
+    ti = min(max(ti, 0), max(len(plan.topics) - 1, 0))
+    done = sum(len(t.concepts) for t in plan.topics[: ti + 1])
+    n = len(plan.topics[ti].concepts) if plan.topics else 0
+    return Pointer(topic=ti, concept=n, phase=TOPIC_SUMMARY, done=done)
+
+
+def pointer_at_slide_end(plan: LessonPlan) -> Pointer:
+    return Pointer(topic=len(plan.topics), concept=0, phase=SLIDE_DONE, done=plan.total_concepts)
+
+
 def replay_ops(plan: LessonPlan, p: Pointer) -> List[Dict[str, Any]]:
     """Board ops of the concepts BEFORE the pointer in its topic: what a
     resumed session must put back on the board so the narration's "look at

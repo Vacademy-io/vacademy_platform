@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 LANG_NAMES = {"en": "English", "hi": "Hindi (Devanagari; keep technical terms in English letters)"}
@@ -16,6 +17,18 @@ T = {
     "resume": {
         "en": "Welcome back, {name}! Last time we were in {slide}. {summary} Let's pick up from where we left off.",
         "hi": "वापस स्वागत है, {name}! पिछली बार हम {slide} पर थे। {summary} चलिए वहीं से आगे बढ़ते हैं।",
+    },
+    "resume_summary": {
+        "en": "Welcome back, {name}! We had just finished {topic} in {slide}. {summary} Let's carry on from there.",
+        "hi": "वापस स्वागत है, {name}! हमने {slide} में {topic} अभी पूरा किया था। {summary} चलिए वहीं से आगे बढ़ते हैं।",
+    },
+    "resume_done": {
+        "en": "Welcome back, {name}! You already completed {slide}. {summary} Let's see what's next.",
+        "hi": "वापस स्वागत है, {name}! आप {slide} पहले ही पूरा कर चुके हैं। {summary} चलिए देखते हैं आगे क्या है।",
+    },
+    "greet_returning": {
+        "en": "Welcome back, {name}! Last time we worked on {previous}. {summary} Today we're starting {slide}. Let's begin.",
+        "hi": "वापस स्वागत है, {name}! पिछली बार हमने {previous} पर काम किया था। {summary} आज हम {slide} शुरू कर रहे हैं। चलिए शुरू करते हैं।",
     },
     "topic_summary": {
         "en": "Good. That wraps up {topic}. Take a look at the board once more, then we'll move to the next part.",
@@ -51,6 +64,17 @@ T = {
     "fallback_hint": {"en": "Not quite. Look at the board again: {hint}. Try once more.", "hi": "पूरी तरह नहीं। बोर्ड को फिर देखिए: {hint}। एक बार फिर कोशिश कीजिए।"},
     "fallback_move_on": {"en": "Let's note that for later and keep going. {expected}", "hi": "इसे बाद के लिए नोट कर लेते हैं और आगे बढ़ते हैं। {expected}"},
 }
+
+
+_LEADING_GREETING = re.compile(
+    r"^\s*(?:hi|hello|hey|namaste|नमस्ते|welcome(?: back)?)[^.!?।]*[.!?।]\s*", re.IGNORECASE)
+
+
+def strip_leading_greeting(narration: str) -> str:
+    """Drop a compiled narration's own opening "Hi {name}, …" sentence when
+    the teacher already greeted (welcome back / next slide)."""
+    out = _LEADING_GREETING.sub("", narration or "", count=1)
+    return out if out.strip() else narration
 
 
 def tpl(key: str, lang: str, **kw: Any) -> str:

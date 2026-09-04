@@ -24,6 +24,10 @@ class TutorLearnerState(Base):
     current_slide_id = Column(String(255), nullable=True)
     current_topic_id = Column(String(255), nullable=True)
     current_concept_id = Column(String(255), nullable=True)
+    # V497: where in the slide (teach | await_answer | remediate | media_task |
+    # topic_summary | slide_done) and one position per slide.
+    current_phase = Column(String(32), nullable=True)
+    progress_json = Column(JSONB, nullable=False, default=dict)
     mastery_json = Column(JSONB, nullable=False, default=dict)
     misconceptions_json = Column(JSONB, nullable=False, default=list)
     weak_concepts_json = Column(JSONB, nullable=False, default=list)

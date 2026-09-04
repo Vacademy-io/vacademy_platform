@@ -341,3 +341,41 @@ def test_quiz_results_resolve_option_ids_for_the_activity_log():
     assert by["q3"]["selected_option_ids"] == ["r"]                                  # "option 1" → first option
     assert len(rows) == 3 and all(r["answered"] for r in rows)
     assert quiz_results(L, {})[0]["answered"] is False
+
+
+def test_resume_positions_for_summary_and_slide_end():
+    L = _lesson()
+    p = sm.pointer_at_topic_end(L, 0)
+    assert p.phase == sm.TOPIC_SUMMARY and p.concept == 3 and p.done == 3
+    assert sm.enter(L, p).kind == "topic_summary"
+    q = sm.pointer_at_slide_end(L)
+    assert q.phase == sm.SLIDE_DONE and q.done == L.total_concepts and sm.enter(L, q).kind == "slide_done"
+    assert sm.replay_ops(L, p) and [op["id"] for op in sm.replay_ops(L, p)] == ["h", "t", "u"]
+
+
+def test_resume_position_reads_per_slide_progress_and_phase():
+    from types import SimpleNamespace as NS
+    from app.services.tutor.runtime.session_service import previous_slide, resume_position, slide_progress
+    L = _lesson()
+    st = NS(progress_json={"s": {"concept_id": "c2", "phase": sm.TEACH, "topic_id": "t1"},
+                           "other": {"slide_title": "Older slide", "phase": sm.SLIDE_DONE, "updated_at": "2026-09-04T01:00:00"}},
+            current_slide_id="s", current_concept_id="c2", current_phase=sm.TEACH, current_topic_id="t1")
+    p = resume_position(None, L, st)
+    assert p is not None and (p.topic, p.concept) == (0, 1)
+    st.progress_json["s"] = {"concept_id": "c3", "phase": sm.TOPIC_SUMMARY, "topic_id": "t1"}
+    assert resume_position(None, L, st).phase == sm.TOPIC_SUMMARY
+    st.progress_json["s"] = {"concept_id": "c3", "phase": sm.SLIDE_DONE, "topic_id": "t1"}
+    assert resume_position(None, L, st).phase == sm.SLIDE_DONE
+    assert previous_slide(st, "s")["slide_title"] == "Older slide"
+    legacy = NS(progress_json={}, current_slide_id="s", current_concept_id="c3", current_phase=None, current_topic_id=None)
+    assert slide_progress(legacy, "s")["concept_id"] == "c3"
+    assert resume_position(None, L, legacy).concept == 2
+    assert resume_position(None, L, NS(progress_json={}, current_slide_id="x", current_concept_id=None, current_phase=None, current_topic_id=None)) is None
+
+
+def test_strip_leading_greeting_keeps_the_lesson():
+    from app.services.tutor.runtime.prompts import strip_leading_greeting
+    assert strip_leading_greeting("Hi Shreyash, let's start with the core idea. Think of it as a bridge.") == "Think of it as a bridge."
+    assert strip_leading_greeting("नमस्ते राहुल! आज हम बल के बारे में सीखेंगे। बल धक्का है।") == "आज हम बल के बारे में सीखेंगे। बल धक्का है।"
+    assert strip_leading_greeting("A force is a push or a pull.") == "A force is a push or a pull."
+    assert strip_leading_greeting("Hello there!") == "Hello there!"     # nothing else to say: keep it

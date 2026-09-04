@@ -27,7 +27,10 @@ from ..services.ai_billing import preflight_tool_credits
 from ..services.tutor import plan_store
 from ..services.tutor.plan_compiler import PlanCompiler
 from ..services.tutor.roles import is_staff, normalize_roles
-from ..services.voice_tts import clone_voice_smallest, list_cloned_voices_smallest, smallest_available
+from ..services.voice_tts import (
+    _EDGE_DEFAULT_VOICES, clone_voice_smallest, default_voice_for, list_cloned_voices_smallest, list_smallest_voices,
+    sarvam_voice_catalogue, smallest_available,
+)
 from ..services.tutor.runtime.settings import TutorSettings, resolve_settings
 from ..services.tutor.slide_source import (
     list_package_slides, package_belongs_to_institute, package_of_slide, slide_belongs_to_institute,
@@ -274,6 +277,42 @@ async def put_source_description(
     )
     db.commit()
     return {"slide_id": slide_id, "plan_id": plan.id, "status": plan.status}
+
+
+# ── option catalogues for the Tutor Mode settings cards ──────────────────────
+
+@router.get("/options", summary="Voices per provider and models for the Tutor Mode settings dropdowns")
+async def tutor_options(
+    caller: Caller = Depends(_caller),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    voices: Dict[str, List[Dict[str, Any]]] = {"sarvam": sarvam_voice_catalogue(), "google": [], "edge": [], "smallest": []}
+    for lang, vid in _EDGE_DEFAULT_VOICES.items():
+        voices["edge"].append({"id": vid, "name": vid.split("-")[-1].replace("Neural", ""), "gender": "female", "languages": [lang]})
+    for lang in ("en-IN", "hi-IN"):
+        voices["google"].append({"id": default_voice_for("google", lang), "name": f"Chirp3-HD Achird ({lang})",
+                                 "gender": "female", "languages": [lang]})
+    if smallest_available():
+        try:
+            voices["smallest"] = await list_smallest_voices()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Smallest voice catalogue unavailable: %s", e)
+        try:
+            for v in await list_cloned_voices_smallest():
+                vid = v.get("voiceId") or v.get("voice_id")
+                if vid:
+                    voices["smallest"].insert(0, {"id": str(vid), "name": f"{v.get('displayName') or v.get('name') or vid} (cloned)",
+                                                  "gender": None, "languages": [], "cloned": True})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Smallest cloned voices unavailable: %s", e)
+    rows = db.execute(text("""
+        SELECT model_id, name, provider, tier, COALESCE(is_free, FALSE)
+        FROM ai_models
+        WHERE is_active = TRUE AND category NOT IN ('embedding', 'image', 'tts', 'video')
+        ORDER BY display_order, provider, name
+    """)).fetchall()
+    models = [{"model_id": r[0], "name": r[1], "provider": r[2], "tier": r[3], "is_free": bool(r[4])} for r in rows]
+    return {"voices": voices, "models": models, "smallest_available": smallest_available()}
 
 
 # ── teacher voice (Smallest.ai instant clone) ─────────────────────────────────

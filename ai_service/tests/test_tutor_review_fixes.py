@@ -467,3 +467,14 @@ def test_no_image_plan_gets_one_image_repair_round_then_is_accepted(monkeypatch)
     src = SlideSource(slide_id="s", title="T", source_type="DOCUMENT", source_id="d", kind="document", text="body")
     draft, _raw = asyncio.run(compiler._build_draft(src, None, pc._Run()))
     assert draft is not None and len(calls) == 2 and calls[1].startswith("Your plan is valid but has NO image")
+
+
+def test_smallest_speed_calibration_is_monotonic_and_hits_the_measured_points():
+    from app.services.voice_tts import smallest_speed_for_ratio as f
+    assert f(1.0) == 1.0
+    assert abs(f(0.86) - 0.8) < 0.01 and abs(f(1.45) - 1.5) < 0.01   # measured points map back
+    assert f(0.9) < 0.9                                                # 0.9× needs a lower engine speed than 0.9
+    xs = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0]
+    ys = [f(x) for x in xs]
+    assert ys == sorted(ys) and 0.5 <= min(ys) and max(ys) <= 2.0
+    assert f(0.1) == 0.5 and f(5) == 2.0                              # clamped

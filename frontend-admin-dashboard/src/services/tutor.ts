@@ -309,3 +309,39 @@ export const newCompileRunId = (): string =>
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
         : `run-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+// ── option catalogues (voices per provider, models) ──────────────────────────
+
+export interface TutorVoiceOption {
+    id: string;
+    name: string;
+    gender?: 'male' | 'female' | null;
+    languages?: string[];
+    age?: string | null;
+    accent?: string | null;
+    cloned?: boolean;
+}
+
+export interface TutorModelOption {
+    model_id: string;
+    name: string;
+    provider: string;
+    tier?: string | null;
+    is_free?: boolean;
+}
+
+export interface TutorOptions {
+    voices: Record<string, TutorVoiceOption[]>;
+    models: TutorModelOption[];
+    smallest_available: boolean;
+}
+
+let optionsCache: { at: number; value: TutorOptions } | null = null;
+
+/** Voices per provider and chat-capable models for the settings dropdowns (cached for the session). */
+export const getTutorOptions = async (): Promise<TutorOptions> => {
+    if (optionsCache && Date.now() - optionsCache.at < 10 * 60 * 1000) return optionsCache.value;
+    const res = await authenticatedAxiosInstance.get<TutorOptions>(`${BASE}/options`);
+    optionsCache = { at: Date.now(), value: res.data };
+    return res.data;
+};

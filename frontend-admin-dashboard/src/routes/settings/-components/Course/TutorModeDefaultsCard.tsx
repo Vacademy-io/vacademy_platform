@@ -22,9 +22,12 @@ import {
     TUTOR_TTS_PROVIDERS,
     TUTOR_VOICE_PACES,
     cloneTutorVoice,
+    getTutorOptions,
     type TutorModeSetting,
+    type TutorOptions,
 } from '@/services/tutor';
 import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
+import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 
 const DEFAULTS: TutorModeSetting = {
     enabled: true,
@@ -56,6 +59,12 @@ export const TutorModeDefaultsCard: React.FC = () => {
     const [dirty, setDirty] = useState(false);
     const [cloning, setCloning] = useState(false);
     const [cloneName, setCloneName] = useState('');
+    const [options, setOptions] = useState<TutorOptions | null>(null);
+    useEffect(() => {
+        getTutorOptions()
+            .then(setOptions)
+            .catch(() => setOptions(null));
+    }, []);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const cloneVoice = async () => {
@@ -210,10 +219,12 @@ export const TutorModeDefaultsCard: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                         <Label>Voice</Label>
-                        <Input
-                            value={value.ttsVoice ?? ''}
-                            placeholder="provider default (female)"
-                            onChange={(e) => update('ttsVoice', e.target.value)}
+                        <VoicePicker
+                            value={value.ttsVoice || undefined}
+                            onChange={(v) => update('ttsVoice', v ?? '')}
+                            provider={value.ttsProvider ?? 'sarvam'}
+                            voices={options?.voices?.[value.ttsProvider ?? 'sarvam'] ?? []}
+                            inheritLabel="Provider default (female)"
                         />
                     </div>
                     <div className="space-y-1">
@@ -257,18 +268,20 @@ export const TutorModeDefaultsCard: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                         <Label>Live model (LLM)</Label>
-                        <Input
-                            value={value.llmModel ?? ''}
-                            placeholder="platform default"
-                            onChange={(e) => update('llmModel', e.target.value)}
+                        <ModelPicker
+                            value={value.llmModel || undefined}
+                            onChange={(v) => update('llmModel', v ?? '')}
+                            models={options?.models ?? []}
+                            inheritLabel="Platform default"
                         />
                     </div>
                     <div className="space-y-1">
                         <Label>Compile model</Label>
-                        <Input
-                            value={value.compileModel ?? ''}
-                            placeholder="platform default"
-                            onChange={(e) => update('compileModel', e.target.value)}
+                        <ModelPicker
+                            value={value.compileModel || undefined}
+                            onChange={(v) => update('compileModel', v ?? '')}
+                            models={options?.models ?? []}
+                            inheritLabel="Platform default"
                         />
                     </div>
                     <div className="space-y-1">

@@ -30,6 +30,7 @@ import {
     TUTOR_VOICE_PACES,
     compileTutorPlans,
     getInstituteTutorDefaults,
+    getTutorOptions,
     getTutorPlans,
     getTutorSlidePlan,
     newCompileRunId,
@@ -38,12 +39,14 @@ import {
     type TutorCompileEvent,
     type TutorCompileOptions,
     type TutorModeSetting,
+    type TutorOptions,
     type TutorPackagePlans,
     type TutorPlanStatus,
     type TutorPlanStatusItem,
 } from '@/services/tutor';
 import { TutorPlanPreviewDialog } from './TutorPlanPreviewDialog';
 import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
+import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 
 interface TutorModeTabProps {
     packageId: string;
@@ -149,6 +152,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
     // ── settings ──
     const [setting, setSetting] = useState<TutorModeSetting>(EMPTY_SETTING);
     const [institute, setInstitute] = useState<TutorModeSetting | null>(null);
+    const [options, setOptions] = useState<TutorOptions | null>(null);
     const [settingLoading, setSettingLoading] = useState(true);
     const [settingSaving, setSettingSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
@@ -218,6 +222,9 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
     useEffect(() => {
         void loadSetting();
         void loadPlans();
+        getTutorOptions()
+            .then(setOptions)
+            .catch(() => setOptions(null));
         return () => abortRef.current?.abort();
     }, [loadSetting, loadPlans]);
 
@@ -490,10 +497,20 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                         </div>
                         <div className="space-y-1">
                             <Label>Voice</Label>
-                            <Input
-                                value={setting.ttsVoice ?? ''}
-                                placeholder={inherited.ttsVoice || 'provider default (female)'}
-                                onChange={(e) => update('ttsVoice', e.target.value)}
+                            <VoicePicker
+                                value={setting.ttsVoice || undefined}
+                                onChange={(v) => update('ttsVoice', v ?? '')}
+                                provider={setting.ttsProvider || inherited.ttsProvider}
+                                voices={
+                                    options?.voices?.[
+                                        setting.ttsProvider || inherited.ttsProvider
+                                    ] ?? []
+                                }
+                                inheritLabel={
+                                    inherited.ttsVoice
+                                        ? `Institute default (${inherited.ttsVoice})`
+                                        : 'Institute default (provider female voice)'
+                                }
                             />
                         </div>
                         <div className="space-y-1">
@@ -553,20 +570,28 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                         </div>
                         <div className="space-y-1">
                             <Label>Live model (LLM)</Label>
-                            <Input
-                                value={setting.llmModel ?? ''}
-                                placeholder={inherited.llmModel || 'institute / platform default'}
-                                onChange={(e) => update('llmModel', e.target.value)}
+                            <ModelPicker
+                                value={setting.llmModel || undefined}
+                                onChange={(v) => update('llmModel', v ?? '')}
+                                models={options?.models ?? []}
+                                inheritLabel={
+                                    inherited.llmModel
+                                        ? `Institute default (${inherited.llmModel})`
+                                        : 'Institute / platform default'
+                                }
                             />
                         </div>
                         <div className="space-y-1">
                             <Label>Compile model</Label>
-                            <Input
-                                value={setting.compileModel ?? ''}
-                                placeholder={
-                                    inherited.compileModel || 'platform default (Gemini Flash)'
+                            <ModelPicker
+                                value={setting.compileModel || undefined}
+                                onChange={(v) => update('compileModel', v ?? '')}
+                                models={options?.models ?? []}
+                                inheritLabel={
+                                    inherited.compileModel
+                                        ? `Institute default (${inherited.compileModel})`
+                                        : 'Institute / platform default'
                                 }
-                                onChange={(e) => update('compileModel', e.target.value)}
                             />
                         </div>
                     </div>

@@ -9,7 +9,7 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { isValidPhoneValue } from "@/lib/phone-validation";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 
 interface FieldOption {
   label: string;
@@ -140,12 +140,12 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   }, [isOpen]);
 
   // Validation functions
-  // Preferred / default phone country — same source the enroll-invite flow uses.
-  const preferredCountries = React.useMemo(() => {
-    const cached = getCachedPreferredCountries();
-    return cached && cached.length > 0 ? cached : ["in"];
-  }, []);
-  const defaultPhoneCountry = preferredCountries[0] ?? "in";
+  // What this phone field starts on: the institute's configured preferred
+  // countries, or — when it configured none, or the portal is on GEO_FIRST —
+  // the country the visitor is opening this page from. Resolved once per
+  // mount; the browser's timezone cannot change under an open dialog.
+  const { defaultCountry: defaultPhoneCountry, preferredCountries } =
+    React.useMemo(() => getPreferredPhoneCountries(), []);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

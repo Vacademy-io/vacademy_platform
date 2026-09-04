@@ -41,7 +41,7 @@ import createInviteLink from '@/routes/manage-students/invite/-utils/createInvit
 import PhoneInput from 'react-phone-input-2';
 import { validatePhoneField } from '@/lib/phone-validation';
 import 'react-phone-input-2/lib/bootstrap.css';
-import { getCachedPreferredCountries } from '@/services/domain-routing';
+import { getPreferredPhoneCountries } from '@/services/domain-routing';
 
 interface SubOrgDetailModalProps {
     open: boolean;
@@ -311,6 +311,13 @@ export function AddUserToSubOrgSection({
     const [email, setEmail] = useState('');
     const [mobileNumber, setMobileNumber] = useState('');
     // (Course + role pickers removed — both are inherited from sub-org creation.)
+
+    // Institute preference first, then the country this portal is being used
+    // from. Resolved once — the answer cannot change while the modal is open.
+    const {
+        defaultCountry: phoneDefaultCountry,
+        preferredCountries: phonePreferredCountries,
+    } = useMemo(() => getPreferredPhoneCountries(), []);
 
     // Per-learner payment-option override. "FREE" → no override (default).
     // A CPO mirror id → backend generates SFPs + applies cpoConfig + FIFO-allocates payment.
@@ -647,14 +654,8 @@ export function AddUserToSubOrgSection({
                         <div className="space-y-1">
                             <Label className="text-xs">Phone</Label>
                             <PhoneInput
-                                country={
-                                    (getCachedPreferredCountries()[0] || 'in').toLowerCase()
-                                }
-                                preferredCountries={
-                                    getCachedPreferredCountries().length > 0
-                                        ? getCachedPreferredCountries()
-                                        : ['in', 'us', 'gb', 'au']
-                                }
+                                country={phoneDefaultCountry}
+                                preferredCountries={phonePreferredCountries}
                                 enableSearch
                                 placeholder="123 456 7890"
                                 value={mobileNumber}

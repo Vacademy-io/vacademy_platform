@@ -33,7 +33,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import type { AudienceCampaignResponse } from "../-services/enquiry-campaign-services";
 import {
   submitEnquiryWithLead,
@@ -273,12 +273,14 @@ const AudienceResponseForm = ({
     void syncBranding();
   }, [instituteId, instituteData]);
 
-  // Get phone country code dynamically, falling back to the institute's
-  // configured preferred country (commaSeparatedPreferredCountry) instead of
-  // a hardcoded default so the phone input honors institute settings.
+  // A country field in this form, when there is one, is the strongest signal
+  // — the visitor just told us where they are. Everything else defers to the
+  // portal's own resolution chain (institute preference / detected region).
   const getPhoneCountryCode = () => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+    // Whatever the portal decided a phone field should start on: the
+    // institute's configured preferred country, or — when that is unset, or
+    // the portal is on GEO_FIRST — the country this form is being opened in.
+    const { defaultCountry: fallback } = getPreferredPhoneCountries();
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {

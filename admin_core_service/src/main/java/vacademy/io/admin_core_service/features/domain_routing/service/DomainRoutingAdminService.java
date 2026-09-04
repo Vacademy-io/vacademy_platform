@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.domain_routing.dto.DomainRoutingUpsertRequest;
 import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
+import vacademy.io.admin_core_service.features.domain_routing.enums.PhoneCountryGeoMode;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 
 import java.util.Optional;
@@ -136,6 +137,9 @@ public class DomainRoutingAdminService {
                                 .commaSeparatedPreferredCountry(
                                                 request.getCommaSeparatedPreferredCountry() == null ? null
                                                                 : request.getCommaSeparatedPreferredCountry().trim())
+                                .phoneCountryGeoMode(
+                                                PhoneCountryGeoMode.normalizeForStorage(
+                                                                request.getPhoneCountryGeoMode()))
                                 .hideInstituteName(request.getHideInstituteName())
                                 .logoWidthPx(request.getLogoWidthPx())
                                 .logoHeightPx(request.getLogoHeightPx())
@@ -206,6 +210,19 @@ public class DomainRoutingAdminService {
                         existing.setCommaSeparatedPreferredCountry(
                                         request.getCommaSeparatedPreferredCountry() == null ? null
                                                         : request.getCommaSeparatedPreferredCountry().trim());
+                        // Keep on null, like subOrgId and primary below, rather than
+                        // blanking. The white-label wizard is the only thing that can set
+                        // this, and it round-trips through THIS method — so a caller that
+                        // predates the field (the generic CRUD, a script, a stale frontend
+                        // bundle saving an unrelated change) would otherwise silently reset
+                        // a portal's chosen mode by simply not mentioning it. Nothing is
+                        // lost: clearing to null and choosing INSTITUTE_FIRST mean the same
+                        // thing, and the wizard always sends a concrete value.
+                        if (StringUtils.hasText(request.getPhoneCountryGeoMode())) {
+                                existing.setPhoneCountryGeoMode(
+                                                PhoneCountryGeoMode.normalizeForStorage(
+                                                                request.getPhoneCountryGeoMode()));
+                        }
                         existing.setHideInstituteName(request.getHideInstituteName());
                         existing.setLogoWidthPx(request.getLogoWidthPx());
                         existing.setLogoHeightPx(request.getLogoHeightPx());

@@ -63,6 +63,55 @@ class DomainRoutingAdminServiceTest {
     }
 
     @Nested
+    @DisplayName("phoneCountryGeoMode")
+    class PhoneCountryGeoMode {
+
+        @Test
+        @DisplayName("A caller that never heard of the field cannot wipe a portal's chosen mode")
+        void updateWithoutTheFieldKeepsIt() {
+            // Same trap as subOrgId and primary: the white-label wizard is the only
+            // thing that sets this, and its save round-trips through update(). A
+            // generic-CRUD caller, a script, or a stale frontend bundle saving an
+            // unrelated change sends no mode — blanking on null would silently
+            // revert the portal to INSTITUTE_FIRST with nothing to notice it by.
+            InstituteDomainRouting existing = existingRow();
+            existing.setPhoneCountryGeoMode("GEO_FIRST");
+            when(repository.findById("row-1")).thenReturn(Optional.of(existing));
+
+            DomainRoutingUpsertRequest request = bareRequest();
+            assertNull(request.getPhoneCountryGeoMode(), "precondition: request omits the field");
+
+            InstituteDomainRouting updated = service.update("row-1", request).orElseThrow();
+
+            assertEquals("GEO_FIRST", updated.getPhoneCountryGeoMode());
+        }
+
+        @Test
+        @DisplayName("An explicit mode still overwrites, and is canonicalised")
+        void updateWithTheFieldSetsIt() {
+            InstituteDomainRouting existing = existingRow();
+            existing.setPhoneCountryGeoMode("GEO_FIRST");
+            when(repository.findById("row-1")).thenReturn(Optional.of(existing));
+
+            DomainRoutingUpsertRequest request = bareRequest();
+            request.setPhoneCountryGeoMode("  institute_only ");
+
+            InstituteDomainRouting updated = service.update("row-1", request).orElseThrow();
+
+            assertEquals("INSTITUTE_ONLY", updated.getPhoneCountryGeoMode());
+        }
+
+        @Test
+        @DisplayName("A new row that never chose a mode stores null, not a stamped default")
+        void createLeavesItNull() {
+            // Null is what every pre-migration row holds and what the resolve
+            // endpoint reads as INSTITUTE_FIRST. Stamping the default here would
+            // make "never chose" indistinguishable from "chose the default".
+            assertNull(service.create(bareRequest()).getPhoneCountryGeoMode());
+        }
+    }
+
+    @Nested
     @DisplayName("create()")
     class Create {
 

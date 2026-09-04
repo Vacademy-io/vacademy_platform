@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -44,6 +45,50 @@ class WhiteLabelStatusResponseJsonTest {
         assertTrue(json.containsKey("is_portal_url"), "keys were: " + json.keySet());
         assertEquals(Boolean.TRUE, json.get("is_primary"));
         assertEquals(Boolean.FALSE, json.get("is_portal_url"));
+    }
+
+    @Test
+    @DisplayName("A routing entry exposes the phone-country keys the settings form round-trips")
+    void routingEntryUsesPhoneCountryKeys() throws Exception {
+        // The White Label form prefills from these exact keys and posts the whole
+        // config object back. A key that stops matching does not error — it reads
+        // `undefined`, the form renders the default, and the next save silently
+        // overwrites whatever the institute had configured. That is the same
+        // failure that blanked sub_org_id, so pin both phone keys here.
+        Map<String, Object> json = serialize(WhiteLabelStatusResponse.RoutingEntry.builder()
+                .id("row-1")
+                .role("LEARNER")
+                .domain("myschool.com")
+                .subdomain("learn")
+                .commaSeparatedPreferredCountry("gb,ie")
+                .phoneCountryGeoMode("GEO_FIRST")
+                .build());
+
+        assertTrue(json.containsKey("comma_separated_preferred_country"),
+                "keys were: " + json.keySet());
+        assertTrue(json.containsKey("phone_country_geo_mode"), "keys were: " + json.keySet());
+        assertEquals("gb,ie", json.get("comma_separated_preferred_country"));
+        assertEquals("GEO_FIRST", json.get("phone_country_geo_mode"));
+    }
+
+    @Test
+    @DisplayName("A portal that never chose a mode reports null, not a stamped default")
+    void unsetPhoneCountryGeoModeStaysNull() throws Exception {
+        // This payload feeds an editor that posts every field straight back. If the
+        // status read resolved null to "INSTITUTE_FIRST", the first save of an
+        // unrelated field would write that string into the column for every portal
+        // on the platform, and "never chose" would stop being distinguishable from
+        // "chose the default" — which is the only thing that would let us change
+        // that default later. The public resolve endpoint is the one that resolves.
+        Map<String, Object> json = serialize(WhiteLabelStatusResponse.RoutingEntry.builder()
+                .id("row-1")
+                .role("LEARNER")
+                .domain("myschool.com")
+                .subdomain("learn")
+                .build());
+
+        assertNull(json.get("phone_country_geo_mode"),
+                "an unset mode must not be reported as a concrete choice");
     }
 
     @Test

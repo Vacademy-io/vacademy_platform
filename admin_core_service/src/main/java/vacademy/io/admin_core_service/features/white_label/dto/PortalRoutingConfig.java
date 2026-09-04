@@ -99,6 +99,21 @@ public class PortalRoutingConfig {
     private String commaSeparatedPreferredCountry;
 
     /**
+     * How a phone field on this portal picks its country code — one of
+     * {@code INSTITUTE_FIRST} (default), {@code GEO_FIRST} or
+     * {@code INSTITUTE_ONLY}. See {@code PhoneCountryGeoMode}.
+     *
+     * <p>
+     * {@code INSTITUTE_FIRST} keeps {@link #commaSeparatedPreferredCountry}
+     * authoritative and only follows the visitor's own country when no
+     * preferred countries are configured. {@code GEO_FIRST} pre-selects the
+     * visitor's country and uses the configured list to order the rest of the
+     * picker. {@code INSTITUTE_ONLY} never looks at the visitor.
+     */
+    @JsonProperty("phone_country_geo_mode")
+    private String phoneCountryGeoMode;
+
+    /**
      * When true, the institute name is suppressed next to the logo on the login
      * page and sidebar. Useful when the logo already contains the name.
      */

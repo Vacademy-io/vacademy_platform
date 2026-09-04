@@ -34,7 +34,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "../-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 // Replace heavy country-state-city with lightweight country-region-data
 // import { State, City } from "country-state-city";
@@ -249,12 +249,14 @@ const RegistrationStep = ({
     control: form.control,
   });
 
-  // Determine the phone country code based on country field value.
-  // Falls back to the institute's first configured preferred country (from
-  // domain routing) so the phone input defaults match the institute settings.
+  // A country field in this form, when there is one, is the strongest signal
+  // — the visitor just told us where they are. Everything else defers to the
+  // portal's own resolution chain (institute preference / detected region).
   const getPhoneCountryCode = (): string => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+    // Whatever the portal decided a phone field should start on: the
+    // institute's configured preferred country, or — when that is unset, or
+    // the portal is on GEO_FIRST — the country this form is being opened in.
+    const { defaultCountry: fallback } = getPreferredPhoneCountries();
     if (countryFieldKey && formValues) {
       const countryField = formValues[countryFieldKey];
       if (countryField && typeof countryField.value === "string") {

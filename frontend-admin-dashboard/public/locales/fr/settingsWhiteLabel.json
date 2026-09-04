@@ -55,7 +55,24 @@
         "phone": {
             "heading": "Préférences de saisie du téléphone",
             "preferredCountriesLabel": "Pays préférés",
-            "preferredCountriesHint": "Le premier pays sélectionné est présélectionné dans les champs téléphone des portails apprenant et administrateur. La liste complète détermine l'ordre du sélecteur de pays. Utilisez les flèches ↑ / ↓ sur chaque puce pour réorganiser."
+            "preferredCountriesHint": "Le premier pays sélectionné est présélectionné dans les champs téléphone des portails apprenant et administrateur. La liste complète détermine l'ordre du sélecteur de pays. Utilisez les flèches ↑ / ↓ sur chaque puce pour réorganiser.",
+            "geoModeLabel": "Quand un formulaire est ouvert à l'étranger",
+            "geoModePreview": "Vous êtes en {{detected}}. Avec ces réglages, un champ téléphone sur ce portail démarrerait sur {{resolved}}. Ajoutez ?phoneCountry=ru à l'URL d'un formulaire pour prévisualiser un autre pays.",
+            "geoModePreviewUnknown": "Votre région n'a pas pu être détectée depuis ce navigateur ; la valeur de repli s'applique : un champ téléphone démarrerait sur {{resolved}}.",
+            "geoModes": {
+                "INSTITUTE_FIRST": {
+                    "label": "Les pays préférés priment",
+                    "hint": "La liste ci-dessus décide. Le pays depuis lequel le formulaire est ouvert n'est utilisé que si vous n'avez sélectionné aucun pays préféré — un formulaire ouvert en Russie démarre alors sur +7 au lieu de l'Inde."
+                },
+                "GEO_FIRST": {
+                    "label": "Suivre le pays du visiteur",
+                    "hint": "Le pays depuis lequel le formulaire est ouvert est pré-sélectionné ; vos pays préférés ordonnent le reste du sélecteur. Idéal si vous recrutez dans plusieurs pays."
+                },
+                "INSTITUTE_ONLY": {
+                    "label": "Pays préférés uniquement",
+                    "hint": "Ne jamais tenir compte du lieu d'ouverture du formulaire. À choisir si tous les numéros collectés appartiennent à un seul pays."
+                }
+            }
         },
         "routes": {
             "heading": "Routes",

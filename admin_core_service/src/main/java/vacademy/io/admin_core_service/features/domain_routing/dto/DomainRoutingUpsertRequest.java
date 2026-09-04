@@ -33,6 +33,11 @@ public class DomainRoutingUpsertRequest {
     private Boolean convertUsernamePasswordToLowercase;
     private String subOrgId;
     private String commaSeparatedPreferredCountry;
+    /**
+     * One of PhoneCountryGeoMode. Blank/unrecognised is stored as null, which
+     * reads back as INSTITUTE_FIRST.
+     */
+    private String phoneCountryGeoMode;
     private Boolean hideInstituteName;
     private Integer logoWidthPx;
     private Integer logoHeightPx;

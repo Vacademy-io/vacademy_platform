@@ -102,6 +102,18 @@ public class InstituteDomainRouting {
     @Column(name = "comma_separated_preferred_country", length = 500)
     private String commaSeparatedPreferredCountry;
 
+    /**
+     * How phone inputs on this portal pick their country code — one of
+     * {@link vacademy.io.admin_core_service.features.domain_routing.enums.PhoneCountryGeoMode}.
+     *
+     * <p>
+     * Null means INSTITUTE_FIRST: {@link #commaSeparatedPreferredCountry} wins,
+     * and the country the visitor is actually in is consulted only when no
+     * preferred countries are configured.
+     */
+    @Column(name = "phone_country_geo_mode", length = 30)
+    private String phoneCountryGeoMode;
+
     @Column(name = "hide_institute_name")
     private Boolean hideInstituteName;
 

@@ -2,8 +2,8 @@
 .tutor-board-preview .tutor-board {
     @apply relative min-h-48 rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-4 text-neutral-800;
     background-image:
-        linear-gradient(theme('colors.neutral.200') 1px, transparent 1px),
-        linear-gradient(90deg, theme('colors.neutral.200') 1px, transparent 1px);
+        linear-gradient(theme('colors.neutral.100') 1px, transparent 1px),
+        linear-gradient(90deg, theme('colors.neutral.100') 1px, transparent 1px);
     background-size: 24px 24px;
     font-family: 'Segoe Print', 'Bradley Hand', 'Comic Neue', 'Trebuchet MS', ui-rounded, system-ui, sans-serif;
     line-height: 1.5;

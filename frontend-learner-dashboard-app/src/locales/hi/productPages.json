@@ -40,6 +40,15 @@
     "catalogStep": {
         "selectPrompt": "जिन {{courses}} में आप नामांकन लेना चाहते हैं उन्हें चुनें"
     },
+    "courseFinder": {
+        "dialogHeading": "अपनी कक्षा चुनें",
+        "showCourses": "मेरे {{courses}} दिखाएं",
+        "defaultSubheading": "अपना चुनें और अपने लिए उपलब्ध {{courses}} देखें",
+        "courseCount": "{{count}} {{courses}}",
+        "view": "देखें",
+        "skip": "सभी {{courses}} दिखाएं",
+        "change": "चयन बदलें"
+    },
     "cartStep": {
         "basket": {
             "spendForTier": "पूरी बास्केट पर {{offer}} पाने के लिए {{amount}} और खर्च करें।",

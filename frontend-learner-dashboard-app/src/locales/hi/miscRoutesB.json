@@ -548,7 +548,10 @@
         "title": "क्या आप अपनी सदस्यता रोकना चाहते हैं?",
         "description": "आप <bold>{{date}}</bold> तक {{liveClasses}} में शामिल हो सकते हैं। उसके बाद आपकी सदस्यता समाप्त हो जाएगी और आपसे दोबारा शुल्क नहीं लिया जाएगा। आप इसे कभी भी फिर से शुरू कर सकते हैं।",
         "keepMembership": "सदस्यता जारी रखें"
-      }
+      },
+      "changePlan": "Change plan",
+      "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+      "planChangeCancelScheduled": "Cancel this change"
     }
   },
   "termsAndConditions": {

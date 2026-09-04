@@ -548,7 +548,10 @@
         "title": "Stop your membership?",
         "description": "You can still join {{liveClasses}} until <bold>{{date}}</bold>. After that your membership ends and you won't be charged again. You can start it again anytime.",
         "keepMembership": "Keep membership"
-      }
+      },
+      "changePlan": "Change plan",
+      "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+      "planChangeCancelScheduled": "Cancel this change"
     }
   },
   "termsAndConditions": {

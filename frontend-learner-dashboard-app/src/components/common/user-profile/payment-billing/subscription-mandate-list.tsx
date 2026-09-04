@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { ArrowsClockwise, Info, SpinnerGap, Warning } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -15,10 +15,20 @@ import {
 import {
   SUBSCRIPTION_LIST_QUERY_KEY,
   fetchSubscriptions,
+  cancelScheduledPlanChange,
   cancelSubscription,
+  requestPlanChange,
+  type PlanChangeResult,
+  type PlanChangeTarget,
   type Subscription,
 } from "./subscription-services";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
+import { ChangePlanDialog } from "@/components/common/subscription/ChangePlanDialog";
+import {
+  RazorpayCheckoutForm,
+  type RazorpayCheckoutFormRef,
+} from "@/components/common/enroll-by-invite/-components/razorpay-checkout-form";
+import { Preferences } from "@capacitor/preferences";
 
 interface SubscriptionMandateListProps {
   instituteId: string;
@@ -52,6 +62,86 @@ export const SubscriptionMandateList = ({
   const { t } = useTranslation("userProfileExtra");
   const queryClient = useQueryClient();
   const [toCancel, setToCancel] = useState<Subscription | null>(null);
+  const [toChange, setToChange] = useState<Subscription | null>(null);
+  const [changingPlanId, setChangingPlanId] = useState<string | null>(null);
+  const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
+
+  const invalidateSubscriptions = () =>
+    queryClient.invalidateQueries({
+      queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, instituteId],
+    });
+
+  /**
+   * Book a plan change from the billing settings. An upgrade opens the gateway checkout
+   * for the prorated difference; a downgrade is booked for the end of the cycle and only
+   * needs a refetch. Auto-pay re-authorisation is forced when the backend reports the
+   * current mandate cannot carry the new plan — otherwise the upgrade would land and every
+   * subsequent auto-charge would be rejected.
+   */
+  const startPlanChange = async (
+    sub: Subscription,
+    target: PlanChangeTarget,
+    withAutopay: boolean
+  ): Promise<PlanChangeResult | null> => {
+    try {
+      setChangingPlanId(sub.user_plan_id);
+      const result = await requestPlanChange(
+        instituteId,
+        sub.user_plan_id,
+        target.plan_id,
+        withAutopay || Boolean(target.requires_mandate_reauth)
+      );
+      if (result.status === "PENDING_PAYMENT" && result.payment_response) {
+        const orderDetails =
+          result.payment_response?.payment_response?.response_data ??
+          result.payment_response?.response_data;
+        if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) {
+          throw new Error(t("subscriptionMandate.toast.planChangeOrderFailed"));
+        }
+        let email = "";
+        let mobile = "";
+        try {
+          const stored = await Preferences.get({ key: "StudentDetails" });
+          if (stored.value) {
+            const details = JSON.parse(stored.value);
+            email = details?.email ?? "";
+            mobile = details?.mobile_number ?? details?.mobileNumber ?? "";
+          }
+        } catch {
+          // best effort — the backend resolves the customer from the JWT anyway
+        }
+        razorpayRef.current?.openPayment({
+          razorpayKeyId: orderDetails.razorpayKeyId,
+          razorpayOrderId: orderDetails.razorpayOrderId,
+          amount: orderDetails.amount,
+          currency: orderDetails.currency || target.currency || "INR",
+          contact: mobile,
+          email,
+          recurring: orderDetails.recurring,
+          customerId: orderDetails.customerId,
+        });
+      } else {
+        invalidateSubscriptions();
+      }
+      return result;
+    } catch (e) {
+      toast.error(t("subscriptionMandate.toast.planChangeFailedTitle"), {
+        description:
+          e instanceof Error
+            ? e.message
+            : t("subscriptionMandate.toast.planChangeFailedDescription"),
+      });
+      return null;
+    } finally {
+      setChangingPlanId(null);
+    }
+  };
+
+  const cancelPlanChangeMutation = useMutation({
+    mutationFn: (userPlanId: string) =>
+      cancelScheduledPlanChange(instituteId, userPlanId),
+    onSuccess: () => invalidateSubscriptions(),
+  });
 
   const {
     data: subscriptions,
@@ -155,20 +245,108 @@ export const SubscriptionMandateList = ({
                 </p>
               </div>
             </div>
-            {cancellable && (
-              <MyButton
-                type="button"
-                scale="small"
-                buttonType="secondary"
-                layoutVariant="default"
-                onClick={() => setToCancel(sub)}
-              >
-                {t("subscriptionMandate.cancelAutopay")}
-              </MyButton>
-            )}
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Switch plan — only when the institute flagged another plan switchable
+                  and nothing is already booked on this membership. */}
+              {sub.can_change_plan && !sub.scheduled_plan_change && (
+                <MyButton
+                  type="button"
+                  scale="small"
+                  buttonType="secondary"
+                  layoutVariant="default"
+                  onClick={() => setToChange(sub)}
+                  disable={changingPlanId === sub.user_plan_id}
+                >
+                  {t("subscriptionMandate.changePlan")}
+                </MyButton>
+              )}
+              {cancellable && (
+                <MyButton
+                  type="button"
+                  scale="small"
+                  buttonType="secondary"
+                  layoutVariant="default"
+                  onClick={() => setToCancel(sub)}
+                >
+                  {t("subscriptionMandate.cancelAutopay")}
+                </MyButton>
+              )}
+            </div>
           </div>
         );
       })}
+
+      {/* A downgrade already booked. Listed after the rows so a member never reads
+          "auto-renews on <date>" without also seeing which plan it renews onto. */}
+      {autopaySubs
+        .filter((sub) => sub.scheduled_plan_change)
+        .map((sub) => (
+          <div
+            key={`scheduled-${sub.user_plan_id}`}
+            className="flex items-start gap-2 rounded-lg bg-info-50 p-3 text-sm text-info-600"
+          >
+            <ArrowsClockwise className="mt-0.5 size-4 shrink-0" weight="duotone" />
+            <div className="min-w-0 flex-1">
+              <span>
+                {t("subscriptionMandate.planChangeScheduled", {
+                  plan: sub.scheduled_plan_change?.to_plan_name,
+                  date:
+                    formatDate(sub.scheduled_plan_change?.effective_from) ??
+                    t("subscriptionMandate.dialog.defaultEndDate"),
+                })}
+              </span>
+              <MyButton
+                type="button"
+                scale="small"
+                buttonType="text"
+                layoutVariant="default"
+                disable={cancelPlanChangeMutation.isPending}
+                onClick={() => cancelPlanChangeMutation.mutate(sub.user_plan_id)}
+              >
+                {t("subscriptionMandate.planChangeCancelScheduled")}
+              </MyButton>
+            </div>
+          </div>
+        ))}
+
+      <ChangePlanDialog
+        open={Boolean(toChange)}
+        onOpenChange={(open) => {
+          if (!open) setToChange(null);
+        }}
+        subscription={toChange}
+        instituteId={instituteId}
+        isSubmitting={Boolean(changingPlanId)}
+        onConfirm={(target, withAutopay) =>
+          startPlanChange(toChange as Subscription, target, withAutopay)
+        }
+      />
+
+      {/* Gateway checkout host — visually hidden; the SDK's modal attaches to
+          document.body, so hiding this wrapper doesn't affect the checkout. */}
+      <div className="hidden">
+        <RazorpayCheckoutForm
+          ref={razorpayRef}
+          error={null}
+          amount={0}
+          currency="INR"
+          onPaymentReady={() => {
+            toast.success(t("subscriptionMandate.toast.planChangePaidTitle"), {
+              description: t("subscriptionMandate.toast.planChangePaidDescription"),
+            });
+            // The webhook applies the change asynchronously — re-poll so the row
+            // flips to the new plan without a manual reload.
+            [3000, 8000, 15000].forEach((ms) =>
+              setTimeout(invalidateSubscriptions, ms)
+            );
+          }}
+          onError={(message) =>
+            toast.error(t("subscriptionMandate.toast.planChangeFailedTitle"), {
+              description: message,
+            })
+          }
+        />
+      </div>
 
       <Dialog
         open={Boolean(toCancel)}

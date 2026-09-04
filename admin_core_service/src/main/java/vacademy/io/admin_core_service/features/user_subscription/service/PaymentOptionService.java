@@ -170,6 +170,11 @@ public class PaymentOptionService {
         paymentOption.setPaymentOptionMetadataJson(paymentOptionDTO.getPaymentOptionMetadataJson());
         paymentOption.setRequireApproval(paymentOptionDTO.isRequireApproval());
         paymentOption.setUnit(paymentOptionDTO.getUnit());
+        // Null-guarded: an edit payload that predates the plan-change feature must not
+        // silently turn the master switch off for an option that already has it on.
+        if (paymentOptionDTO.getPlanChangeAllowed() != null) {
+            paymentOption.setPlanChangeAllowed(paymentOptionDTO.getPlanChangeAllowed());
+        }
         List<PaymentPlan> paymentPlans = paymentPlanService.editPaymentPlans(paymentOption.getPaymentPlans(), paymentOptionDTO.getPaymentPlans(), paymentOption);
         paymentOption.setPaymentPlans(paymentPlans);
         paymentOptionRepository.save(paymentOption);

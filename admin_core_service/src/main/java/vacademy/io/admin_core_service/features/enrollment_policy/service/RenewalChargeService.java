@@ -49,6 +49,7 @@ public class RenewalChargeService {
     private final PaymentService paymentService;
     private final UserInstitutePaymentGatewayMappingService mandateService;
     private final RenewalPaymentService renewalPaymentService;
+    private final vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final AuthService authService;
 
@@ -347,7 +348,19 @@ public class RenewalChargeService {
                 || "captured".equalsIgnoreCase(status.toString()));
     }
 
+    /**
+     * What to charge this cycle. A downgrade booked for the end of the cycle lands at
+     * exactly this renewal, so the learner is billed the plan they are moving TO — charging
+     * the old price here would take money for a plan they will not be on the moment the
+     * charge settles.
+     */
     private double resolveAmount(UserPlan plan) {
+        PaymentPlan pending = planChangeService.pendingTargetPlan(plan);
+        if (pending != null) {
+            log.info("[RenewalCharge] Plan {} has a scheduled change — charging target plan {} ({})",
+                    plan.getId(), pending.getId(), pending.getActualPrice());
+            return pending.getActualPrice();
+        }
         PaymentPlan pp = plan.getPaymentPlan();
         return pp != null ? pp.getActualPrice() : 0.0;
     }

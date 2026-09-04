@@ -20,7 +20,9 @@
         "priceLabel": "Prix",
         "featuresLabel": "Fonctionnalités",
         "removeInterval": "Supprimer l'intervalle",
-        "intervalPlanFallback": "Forfait de {{value}} {{unit}}"
+        "intervalPlanFallback": "Forfait de {{value}} {{unit}}",
+        "planChangeLabel": "Members can switch to this plan",
+        "planChangeHint": "(turn on plan switching for this option first)"
     },
     "donation": {
         "title": "Configuration du don",

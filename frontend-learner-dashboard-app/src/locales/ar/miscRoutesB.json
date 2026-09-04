@@ -548,7 +548,10 @@
         "title": "هل تريد إيقاف عضويتك؟",
         "description": "يمكنك الانضمام إلى {{liveClasses}} حتى <bold>{{date}}</bold>. بعد ذلك تنتهي عضويتك ولن يُحصَّل منك أي رسوم مرة أخرى. يمكنك إعادة تفعيلها في أي وقت.",
         "keepMembership": "الإبقاء على العضوية"
-      }
+      },
+      "changePlan": "Change plan",
+      "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+      "planChangeCancelScheduled": "Cancel this change"
     }
   },
   "termsAndConditions": {

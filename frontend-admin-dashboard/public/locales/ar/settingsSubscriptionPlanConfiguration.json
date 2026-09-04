@@ -18,7 +18,9 @@
             "featuresHeading": "الميزات",
             "addFeaturePlaceholder": "أضف ميزة",
             "addFeatureButton": "إضافة",
-            "removeButton": "إزالة الفترة"
+            "removeButton": "إزالة الفترة",
+            "planChangeLabel": "Members can switch to this plan",
+            "planChangeHint": "(turn on plan switching for this option first)"
         }
     }
 }

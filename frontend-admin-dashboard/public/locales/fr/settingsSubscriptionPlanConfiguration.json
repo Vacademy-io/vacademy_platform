@@ -18,7 +18,9 @@
             "featuresHeading": "Fonctionnalités",
             "addFeaturePlaceholder": "Ajouter une fonctionnalité",
             "addFeatureButton": "Ajouter",
-            "removeButton": "Supprimer l'intervalle"
+            "removeButton": "Supprimer l'intervalle",
+            "planChangeLabel": "Members can switch to this plan",
+            "planChangeHint": "(turn on plan switching for this option first)"
         }
     }
 }

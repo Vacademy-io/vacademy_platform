@@ -13,16 +13,21 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { getCurrencySymbol } from '../utils/utils';
 import { DAYS_IN_MONTH } from '@/routes/settings/-constants/terms';
 
 interface CustomInterval {
+    /** payment_plan.id — carried so an edit updates this plan instead of replacing it. */
+    id?: string;
     value: number | string;
     unit: 'days' | 'months';
     price: number | string;
     features?: string[];
     newFeature?: string;
     title?: string;
+    /** Members on another plan may switch to this interval. */
+    planChangeAllowed?: boolean;
 }
 
 interface SubscriptionPlanConfigurationProps {
@@ -33,6 +38,11 @@ interface SubscriptionPlanConfigurationProps {
     onCustomIntervalsChange: (intervals: CustomInterval[]) => void;
     selectedUnit: 'days' | 'months';
     onUnitChange: (unit: 'days' | 'months') => void;
+    /**
+     * Option-level master switch. The per-interval checkboxes are disabled while it is off,
+     * because the backend ignores a plan's flag unless its option carries one too.
+     */
+    planChangeAllowed?: boolean;
 }
 
 export const SubscriptionPlanConfiguration: React.FC<SubscriptionPlanConfigurationProps> = ({
@@ -43,6 +53,7 @@ export const SubscriptionPlanConfiguration: React.FC<SubscriptionPlanConfigurati
     onCustomIntervalsChange,
     selectedUnit,
     onUnitChange,
+    planChangeAllowed = false,
 }) => {
     const { t } = useTranslation('settingsSubscriptionPlanConfiguration');
 
@@ -96,6 +107,7 @@ export const SubscriptionPlanConfiguration: React.FC<SubscriptionPlanConfigurati
             price: 0,
             features: [...featuresGlobal],
             newFeature: '',
+            planChangeAllowed: false,
         };
         onCustomIntervalsChange([...customIntervals, newInterval as CustomInterval]);
     };
@@ -105,8 +117,12 @@ export const SubscriptionPlanConfiguration: React.FC<SubscriptionPlanConfigurati
         if (updatedIntervals[index]) {
             const currentInterval = updatedIntervals[index];
             if (!currentInterval) return;
-            // Create a new interval with only the properties that are actually defined
+            // Create a new interval with only the properties that are actually defined.
+            // Every field the interval can carry must be listed here — this rebuilds the
+            // object from scratch, so anything omitted is silently dropped on the first
+            // edit (which is how `id` would be lost, retiring the plan on save).
             const updatedInterval: CustomInterval = {
+                id: updates.id !== undefined ? updates.id : currentInterval.id,
                 value: updates.value !== undefined ? updates.value : currentInterval.value,
                 unit: updates.unit !== undefined ? updates.unit : currentInterval.unit,
                 price: updates.price !== undefined ? updates.price : currentInterval.price,
@@ -117,6 +133,10 @@ export const SubscriptionPlanConfiguration: React.FC<SubscriptionPlanConfigurati
                         ? updates.newFeature
                         : currentInterval.newFeature,
                 title: updates.title !== undefined ? updates.title : currentInterval.title,
+                planChangeAllowed:
+                    updates.planChangeAllowed !== undefined
+                        ? updates.planChangeAllowed
+                        : currentInterval.planChangeAllowed,
             };
 
             updatedIntervals[index] = updatedInterval;
@@ -308,6 +328,37 @@ export const SubscriptionPlanConfiguration: React.FC<SubscriptionPlanConfigurati
                                             {t('pricingIntervals.interval.addFeatureButton')}
                                         </Button>
                                     </div>
+                                </div>
+
+                                {/* Switchable target opt-in for this interval */}
+                                <div className="mt-4 border-t pt-3">
+                                    <label
+                                        className={cn(
+                                            'flex items-start gap-2 text-xs',
+                                            planChangeAllowed
+                                                ? 'cursor-pointer text-neutral-700'
+                                                : 'cursor-not-allowed text-neutral-400'
+                                        )}
+                                    >
+                                        <Checkbox
+                                            className="mt-0.5"
+                                            checked={interval.planChangeAllowed || false}
+                                            disabled={!planChangeAllowed}
+                                            onCheckedChange={(checked) =>
+                                                updateInterval(idx, {
+                                                    planChangeAllowed: !!checked,
+                                                })
+                                            }
+                                        />
+                                        <span>
+                                            {t('pricingIntervals.interval.planChangeLabel')}
+                                            {!planChangeAllowed && (
+                                                <span className="ms-1 text-neutral-400">
+                                                    {t('pricingIntervals.interval.planChangeHint')}
+                                                </span>
+                                            )}
+                                        </span>
+                                    </label>
                                 </div>
 
                                 {/* Remove interval button */}

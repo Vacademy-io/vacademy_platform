@@ -18,6 +18,8 @@ import {
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
 import { getUserPlans, UserPlan } from '@/services/user-plan';
+import { getInstituteId } from '@/constants/helper';
+import { ChangePlanDialog } from '../student-membership/change-plan-dialog';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { toast } from 'sonner';
 import { format, formatDate } from 'date-fns';
@@ -56,6 +58,14 @@ const getPlanName = (plan: UserPlan, t: TFunction): string => {
 
 const getOptionName = (plan: UserPlan, t: TFunction): string =>
     plan.payment_option?.name || t('fallback.paymentOption');
+
+/**
+ * CPO-backed memberships carry an installment schedule (student_fee_payment rows), so
+ * switching them would leave already-allocated payments stranded against bills for a plan
+ * the learner is no longer on. The backend refuses them too — this just hides the button.
+ */
+const isCpoPlan = (plan: UserPlan): boolean =>
+    (plan.payment_option?.type || '').toUpperCase() === 'CPO';
 
 const getPlanAmount = (plan: UserPlan): number => plan.payment_plan_dto?.actual_price || 0;
 
@@ -428,13 +438,17 @@ const getDaysLeftTone = (
 const PlanCard = ({
     plan,
     enrollmentStatus,
+    onChangePlan,
 }: {
     plan: UserPlan;
     enrollmentStatus: 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | null;
+    /** Absent in the history dialog — past plans are not switchable. */
+    onChangePlan?: (plan: UserPlan) => void;
 }) => {
     const { t } = useTranslation('manageStudentsPlanDetails');
     const policy = getFirstPolicy(plan);
     const courseLabel = getCourseLabel(plan, t);
+    const planName = getPlanName(plan, t);
     const daysLeft = computeDaysLeft(plan.end_date);
     const tone = getDaysLeftTone(t, daysLeft);
     const expiryLabel = getExpiryLabel(plan);
@@ -452,16 +466,22 @@ const PlanCard = ({
                     <div className="rounded-md bg-primary-50 p-1.5">
                         <Clock className="size-4 text-primary-600" />
                     </div>
+                    {/* The payment PLAN leads, not the payment option — the plan is what
+                        the learner is billed on and what a plan change moves them between.
+                        The course and the option follow as context. */}
                     <div className="min-w-0 flex-1">
                         <h4
                             className="truncate text-xs font-semibold text-neutral-900"
-                            title={courseLabel}
+                            title={planName}
                         >
-                            {courseLabel}
+                            {planName}
                         </h4>
-                        <p className="mt-0.5 truncate text-xs text-neutral-500">
-                            {getOptionName(plan, t)} · {getPlanName(plan, t)}
+                        <p className="mt-0.5 truncate text-xs text-neutral-500" title={courseLabel}>
+                            {courseLabel}
                         </p>
+                        <span className="mt-1 inline-flex max-w-full items-center truncate rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+                            {getOptionName(plan, t)}
+                        </span>
                     </div>
                 </div>
                 <TrendUp className={cn('size-3.5 shrink-0', tone.color)} />
@@ -527,6 +547,21 @@ const PlanCard = ({
             <CouponAppliedRow plan={plan} currency={currency} />
 
             <PolicyDetailsSection policy={policy} compact />
+
+            {/* CPO-backed memberships are excluded: their price comes from an installment
+                schedule that a plan swap would leave unreconciled. */}
+            {onChangePlan && plan.status === 'ACTIVE' && !isCpoPlan(plan) && (
+                <div className="mt-3 flex justify-end border-t border-neutral-100 pt-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => onChangePlan(plan)}
+                    >
+                        <ArrowsClockwise className="mr-1 size-3" />
+                        {t('changePlan.button')}
+                    </MyButton>
+                </div>
+            )}
         </div>
     );
 };
@@ -541,7 +576,11 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(0);
+    const [planToChange, setPlanToChange] = useState<UserPlan | null>(null);
     const pageSize = 5;
+    // The dialog needs an explicit institute id; the prop is optional here because most
+    // callers let the service derive it from the token.
+    const resolvedInstituteId = instituteId || getInstituteId() || '';
 
     // The selected learner row's package_session_id reflects the batch the admin
     // is viewing them under. If the admin marked them INACTIVE in this batch, we
@@ -660,11 +699,24 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                                     key={plan.id}
                                     plan={plan}
                                     enrollmentStatus={resolveEnrollmentStatus(plan)}
+                                    onChangePlan={setPlanToChange}
                                 />
                             ))}
                     </div>
                 )}
             </div>
+
+            <ChangePlanDialog
+                open={Boolean(planToChange)}
+                onOpenChange={(open) => {
+                    if (!open) setPlanToChange(null);
+                }}
+                userPlanId={planToChange?.id ?? null}
+                instituteId={resolvedInstituteId}
+                // Not react-query here — this component owns its plans in local state, so
+                // just re-run the same loader rather than introducing a second cache.
+                onChanged={loadActivePlans}
+            />
 
             <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
                 <DialogContent className="max-h-screen max-w-2xl overflow-y-auto">

@@ -57,6 +57,17 @@ public class PaymentOption {
     private String unit;
 
     /**
+     * Master switch for plan change: members already enrolled under another option of the
+     * same package session may switch INTO this option. A plan is only offered as a switch
+     * target when BOTH this and {@code PaymentPlan.planChangeAllowed} are true.
+     *
+     * Boxed rather than primitive so a partial DTO that omits the field can be told apart
+     * from an explicit false and left alone on edit.
+     */
+    @Column(name = "plan_change_allowed")
+    private Boolean planChangeAllowed = false;
+
+    /**
      * Scalar FK to ComplexPaymentOption. Intentionally NOT also mapped as a @ManyToOne
      * relation — two Hibernate mappings on the same column cause the scalar to come back
      * null on some read paths (notably the enroll-invite payload). All callers use
@@ -92,6 +103,7 @@ public class PaymentOption {
         this.type = paymentOptionDTO.getType();
         this.requireApproval = paymentOptionDTO.isRequireApproval();
         this.unit = paymentOptionDTO.getUnit();
+        this.planChangeAllowed = Boolean.TRUE.equals(paymentOptionDTO.getPlanChangeAllowed());
         this.complexPaymentOptionId = paymentOptionDTO.getComplexPaymentOptionId();
         this.paymentOptionMetadataJson = paymentOptionDTO.getPaymentOptionMetadataJson();
         if (paymentOptionDTO.getPaymentPlans() != null && !paymentOptionDTO.getPaymentPlans().isEmpty()) {
@@ -115,6 +127,7 @@ public class PaymentOption {
                 .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
                 .requireApproval(this.requireApproval)
                 .unit(this.unit)
+                .planChangeAllowed(Boolean.TRUE.equals(this.planChangeAllowed))
                 .complexPaymentOptionId(this.complexPaymentOptionId)
                 .paymentPlans(this.paymentPlans != null
                         ? this.paymentPlans.stream()
@@ -136,6 +149,7 @@ public class PaymentOption {
             .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
             .requireApproval(this.requireApproval)
             .unit(this.unit)
+            .planChangeAllowed(Boolean.TRUE.equals(this.planChangeAllowed))
             .complexPaymentOptionId(this.complexPaymentOptionId)
             .build();
     }

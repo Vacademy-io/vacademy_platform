@@ -175,7 +175,10 @@ class Misconception(BaseModel):
 
 
 class Check(BaseModel):
-    type: Literal["open", "mcq", "numeric", "none"] = "open"
+    # Default "none": a concept that omits its check (allowed for the first
+    # concept of a board) must not turn into an empty "open" check that the
+    # validator then rejects — that bug cost three model calls per slide.
+    type: Literal["open", "mcq", "numeric", "none"] = "none"
     prompt: Optional[str] = None
     options: List[str] = Field(default_factory=list)
     expected: Optional[str] = None

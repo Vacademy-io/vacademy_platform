@@ -60,6 +60,7 @@ const DEFAULT_SETTING: Required<
     llmModel: '',
     compileModel: '',
     strictness: 'normal',
+    generateImages: true,
 };
 
 const STATUS_LABEL: Record<string, { label: string; tone: string }> = {
@@ -175,6 +176,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
             const opts = {
                 language: (setting.languages?.[0] as 'en' | 'hi') || 'en',
                 teacher_name: setting.teacherName || 'Asha',
+                generate_images: setting.generateImages !== false,
                 compile_run_id: newCompileRunId(),
             };
             if (slideIds && slideIds.length === 1) {
@@ -251,6 +253,13 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                 onCheckedChange={(v) => update('defaultOn', v)}
                             />
                             Start learners in teaching mode
+                        </label>
+                        <label className="flex items-center gap-2 text-sm" title="AI-generated pictures on the whiteboard where a photo teaches better than a diagram. About 1 credit each, at most 4 per slide.">
+                            <Switch
+                                checked={setting.generateImages !== false}
+                                onCheckedChange={(v) => update('generateImages', v)}
+                            />
+                            AI images on boards
                         </label>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -419,7 +428,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             </MyButton>
                         )}
                         <span className="text-xs text-neutral-500">
-                            Each document or video slide costs about 2 credits to prepare; quizzes are free.
+                            Each document or video slide costs a few credits to prepare (more with AI images); quizzes are free.
                             Already-prepared slides are skipped.
                         </span>
                     </div>

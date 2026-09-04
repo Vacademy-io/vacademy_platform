@@ -25,7 +25,7 @@ async function startTutorPreparation(courseId: string): Promise<void> {
         await savePackageSettingKey(
             courseId,
             TUTOR_MODE_SETTING_KEY,
-            { enabled: true, defaultOn: true, languages: [language, language === 'en' ? 'hi' : 'en'] },
+            { enabled: true, defaultOn: true, generateImages: true, languages: [language, language === 'en' ? 'hi' : 'en'] },
             'Tutor Mode'
         );
         toast.info('Preparing the AI teacher for this course in the background…');
@@ -35,6 +35,7 @@ async function startTutorPreparation(courseId: string): Promise<void> {
             courseId,
             {
                 language,
+                generate_images: true,
                 compile_run_id: newCompileRunId(),
                 kb_grounding: kb?.knowledge_base_id
                     ? { knowledge_base_id: kb.knowledge_base_id, mode: kb.mode ?? 'STRICT' }

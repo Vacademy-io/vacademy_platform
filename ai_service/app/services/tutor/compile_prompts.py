@@ -25,7 +25,8 @@ OPS_REFERENCE = """BOARD OPERATIONS (the only ops you may use; every element op 
       a simple, clean diagram; give the parts a teacher would point at their own id= inside the svg.
       Inside the svg use SINGLE quotes for every attribute (viewBox='0 0 400 240', id='nucleus') so the JSON string needs no escaping.
 - {"op":"image","id":"...","generate":"prompt for an image generator","description":"what it shows","caption":"..."}
-      ONLY when a photograph-like picture teaches better than a diagram (rare)
+      a realistic picture where a photo teaches better than a line drawing (anatomy, equipment, real-world
+      scenes, a patient doing an exercise): write a concrete, well-lit, educational illustration prompt
 - {"op":"table","id":"...","rows":[["Header","Header"],["a","b"]]}
 - {"op":"callout","id":"...","text":"...","kind":"tip|warning|definition|example"}
 - {"op":"annotate","id":"...","target":"<existing element id>","text":"...","position":"right|below|above|left"}
@@ -80,8 +81,12 @@ def rules_text() -> str:
    Do not add facts the material does not contain; do not skip facts it does.
 3. Every concept except the first of a topic has a check. Checks test the concept just taught, in the
    learner's own words where possible; give a rubric and 1-3 realistic misconceptions with hints.
-4. Prefer an SVG diagram for anything structural (parts of a cell, a circuit, a force diagram, a timeline);
-   label the parts a teacher would point at with ids and list them in "parts". Keep SVGs simple and clean.
+4. VISUALS ARE THE POINT OF A WHITEBOARD. Every topic (board) gets at least one visual, and most concepts add
+   or extend one. Use an SVG diagram for anything structural (parts of a cell, a circuit, a force diagram, a
+   flow, a timeline, a comparison): viewBox='0 0 640 360', a small palette of 3-4 harmonious colours plus dark
+   text, rounded shapes, clear labels in 16-20px text, arrows between related parts, and ids on the parts a
+   teacher would point at (listed in "parts"). Use an image op (up to one per topic) where a realistic picture
+   teaches better than a drawing. Tables for comparisons, callouts for definitions and warnings.
 5. `say` is what the teacher SAYS out loud: warm, second person, 2-4 sentences, refers to the board
    ("look at the arrow on the left"). Use {{student_name}} where the teacher would say the learner's name.
    Provide the same narration in the other language under say_i18n.

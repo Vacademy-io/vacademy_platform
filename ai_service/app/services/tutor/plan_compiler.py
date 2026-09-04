@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 MAX_REPAIRS = 2
 MAX_CONCURRENT_SLIDES = 3
+# AI images are the expensive visual; SVG diagrams are free. Cap per slide.
+MAX_GENERATED_IMAGES_PER_SLIDE = 4
 COMPILE_MAX_TOKENS = 12_000
 # Flash, not Pro: on this platform's credit pricing a single failed Pro compile
 # (3 × ~7k output tokens) cost 35 credits on 2026-09-03; Flash is an order of
@@ -329,6 +331,9 @@ class PlanCompiler:
                         break
                 except ValidationError as ve:
                     errors = _pydantic_errors(ve)
+            # Which rules bounce plans is what tunes the prompt; keep it visible.
+            logger.info("Tutor compile attempt %d for slide %s: %d validation error(s): %s",
+                        attempt + 1, source.slide_id, len(errors), "; ".join(errors[:4])[:600])
             if attempt < MAX_REPAIRS:
                 messages.append({"role": "assistant", "content": last_json[:60000] or content or ""})
                 messages.append({"role": "user", "content": prompts.repair_prompt(errors, last_json)})
@@ -393,6 +398,7 @@ class PlanCompiler:
         """Fill media-task urls, generate or drop requested images. References
         (annotate / arrow) to a dropped element are pruned across the whole
         topic, since a later concept may point at an earlier concept's image."""
+        images_left = MAX_GENERATED_IMAGES_PER_SLIDE
         for topic in draft.topics:
             dropped_ids: set = set()
             for concept in topic.concepts:
@@ -406,8 +412,11 @@ class PlanCompiler:
                             dropped_ids.add(op.id)
                             continue
                     if kind == "image" and not op.url:
-                        url = (await self._generate_image(op.generate or op.description, source.course_name)
-                               if self.generate_images else None)
+                        url = None
+                        if self.generate_images and images_left > 0:
+                            url = await self._generate_image(op.generate or op.description, source.course_name)
+                            if url:
+                                images_left -= 1
                         if not url:
                             dropped_ids.add(op.id)
                             continue

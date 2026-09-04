@@ -4,6 +4,7 @@ import { CircleNotch } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { getTutorSlidePlan, type TutorPlanView } from '@/services/tutor';
+import '@/styles/tutor-board.css';
 
 interface TutorPlanPreviewDialogProps {
     slideId: string | null;
@@ -107,7 +108,7 @@ export const TutorPlanPreviewDialog: React.FC<TutorPlanPreviewDialogProps> = ({
                                                     Board after concept {c.order}: {c.title}
                                                 </p>
                                                 <div
-                                                    className="tutor-board-preview prose prose-sm max-w-none"
+                                                    className="tutor-board-preview max-w-none"
                                                     dangerouslySetInnerHTML={{
                                                         __html: DOMPurify.sanitize(c.board_html, {
                                                             USE_PROFILES: { html: true, svg: true },

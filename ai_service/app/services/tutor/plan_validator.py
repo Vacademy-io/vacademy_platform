@@ -48,6 +48,18 @@ def sentence_count(text: str) -> int:
     return max(1, len(_SENT.findall(text)))
 
 
+def normalize_plan(plan: TeachingPlanDraft) -> None:
+    """Cheap fixes that are not worth a repair round-trip: a check with no
+    prompt is no check; stray whitespace in ids; empty say_i18n entries."""
+    for topic in plan.topics:
+        topic.id = (topic.id or "").strip()
+        for concept in topic.concepts:
+            concept.id = (concept.id or "").strip()
+            if concept.check and concept.check.type != "none" and not (concept.check.prompt or "").strip():
+                concept.check.type = "none"
+            concept.say_i18n = {k: v for k, v in (concept.say_i18n or {}).items() if (v or "").strip()}
+
+
 def validate_plan(
     plan: TeachingPlanDraft,
     course_lang: str = "en",
@@ -55,6 +67,7 @@ def validate_plan(
     limits: Limits = DEFAULT_LIMITS,
     require_media_urls: bool = True,
 ) -> List[str]:
+    normalize_plan(plan)
     errors: List[str] = []
     seen_ids: Set[str] = set()
     other_lang = "hi" if course_lang == "en" else "en"
@@ -117,7 +130,7 @@ def validate_plan(
 
             chk = concept.check
             if ci > 0 and chk.type == "none":
-                errors.append(f"{cloc}: only the first concept of a topic may skip its check")
+                errors.append(f"{cloc}: every concept after the first of a board needs a check with a prompt and an expected answer or rubric")
             if chk.type != "none":
                 if not (chk.prompt or "").strip():
                     errors.append(f"{cloc}: check needs a prompt")

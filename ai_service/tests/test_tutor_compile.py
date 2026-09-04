@@ -116,7 +116,7 @@ def test_validator_catches_missing_translation_check_and_word_bloat():
     p.topics[0].concepts[0].board_ops[1].items = ["word"] * 80
     errors = " | ".join(validate_plan(p, "en"))
     assert "say_i18n['hi'] is missing" in errors
-    assert "only the first concept of a topic may skip its check" in errors
+    assert "every concept after the first of a board needs a check" in errors
     assert "keep a concept under" in errors
 
 
@@ -285,3 +285,16 @@ async def test_router_caller_rejects_non_staff(monkeypatch):
     monkeypatch.setattr(tutor_router, "get_pinned_principal", staff_principal)
     caller = await tutor_router._caller(request=None, authorization="Bearer x", settings=None)
     assert caller.institute_id == "inst" and "ADMIN" in caller.roles
+
+
+def test_missing_check_on_first_concept_is_allowed_and_empty_checks_normalize_to_none():
+    data = _plan().model_dump(by_alias=True)
+    del data["topics"][0]["concepts"][0]["check"]                      # omitted entirely
+    data["topics"][0]["concepts"][1]["check"] = {"type": "open"}      # present but empty
+    p = TeachingPlanDraft.model_validate(data)
+    assert p.topics[0].concepts[0].check.type == "none"
+    errors = validate_plan(p, "en")
+    assert p.topics[0].concepts[1].check.type == "none"                # coerced, not rejected as empty
+    joined = " | ".join(errors)
+    assert "check needs a prompt" not in joined
+    assert "every concept after the first of a board needs a check" in joined   # still required later

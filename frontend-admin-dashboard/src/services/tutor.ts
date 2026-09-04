@@ -128,6 +128,8 @@ export interface TutorModeSetting {
     llmModel?: string;
     compileModel?: string;
     strictness?: 'gentle' | 'normal' | 'strict';
+    /** Let the compiler generate AI images (about 1 credit each plus tokens; at most 4 per slide). */
+    generateImages?: boolean;
 }
 
 export const TUTOR_MODE_SETTING_KEY = 'TUTOR_MODE_SETTING';

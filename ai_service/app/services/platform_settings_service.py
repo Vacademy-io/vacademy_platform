@@ -522,9 +522,15 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
     return out
 
 
-def _openrouter_one_token(model_id: str, disable_reasoning: bool, api_key: str, timeout_seconds: float) -> Optional[str]:
-    """One-token completion in the chatbot's request shape; None if it worked, else the error."""
+def _openrouter_one_token(model_id: str, mode: str, api_key: str, timeout_seconds: float) -> Optional[str]:
+    """
+    One-token completion in the chatbot's request shape; None if it worked,
+    else the provider's error (with OpenRouter's upstream text unwrapped).
+    mode: "disabled" (reasoning off), "on" (explicitly on, as the owner's
+    working curl), "on-no-temp" (on, and no temperature parameter).
+    """
     import httpx
+    from .chat_llm_client import openrouter_error_text
 
     payload: Dict[str, Any] = {
         "model": model_id,
@@ -532,13 +538,13 @@ def _openrouter_one_token(model_id: str, disable_reasoning: bool, api_key: str, 
         "max_tokens": 5,
         "temperature": 0,
     }
-    if disable_reasoning:
+    if mode == "disabled":
         payload["reasoning"] = {"enabled": False}
     else:
-        # Explicitly on: merely omitting the flag still resolved to "disabled"
-        # for z-ai/glm-5.3-flash and kept failing.
-        payload["reasoning"] = {"enabled": True, "effort": "low"}
+        payload["reasoning"] = {"enabled": True}
         payload["max_tokens"] = 64
+        if mode == "on-no-temp":
+            payload.pop("temperature", None)
     try:
         resp = httpx.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -554,16 +560,11 @@ def _openrouter_one_token(model_id: str, disable_reasoning: bool, api_key: str, 
     except Exception as exc:
         return f"could not reach OpenRouter: {exc}"
     if resp.status_code >= 400:
-        body = resp.text[:300]
-        try:
-            body = resp.json().get("error", {}).get("message") or body
-        except Exception:
-            pass
-        return f"OpenRouter {resp.status_code}: {body}"
+        return f"OpenRouter {resp.status_code}: {openrouter_error_text(resp.text)}"
     try:
         data = resp.json()
         if data.get("error"):
-            return f"OpenRouter error: {str(data['error'])[:300]}"
+            return f"OpenRouter error: {openrouter_error_text(resp.text)}"
         if not (data.get("choices") or []):
             return "OpenRouter returned no choices"
     except Exception as exc:
@@ -574,44 +575,40 @@ def _openrouter_one_token(model_id: str, disable_reasoning: bool, api_key: str, 
 def probe_model_live(model_id: str, timeout_seconds: float = 25.0) -> Optional[str]:
     """
     Ask OpenRouter for one token from `model_id` in the chatbot's request shape.
-    Returns None when it works, else the provider's error text.
+    Returns None when some shape works, else the provider's error text.
 
     Saving a model the account cannot actually call took the chatbot down for
     every institute (2026-09-04, z-ai/glm-5.3-flash). The registry knows the id
     exists; only a real call knows whether OUR key may use it, in OUR shape.
 
-    Tried twice when reasoning suppression is on: with the flag (what the
-    chatbot sends), then without. Some reasoning models refuse to have thinking
-    switched off; the runtime client retries without the flag in that case, so
-    such a model stays usable — the save goes through and the limitation is
-    recorded for the portal.
+    Shapes are tried in the order the runtime client uses them: as configured
+    (reasoning off when suppression is on), then reasoning explicitly on, then
+    on without a temperature parameter. A model that only works with reasoning
+    on is saved, the client is told which shape to use, and the portal shows
+    the note.
     """
+    from .chat_llm_client import mark_reasoning_required, _mode_note
+
     settings = get_settings()
     api_key = getattr(settings, "openrouter_api_key", None)
     if not api_key:
         return None  # nothing to test against; don't block the save
     disable = bool(get_platform_setting("chatbot.llm.disable_reasoning", default=settings.llm_disable_reasoning))
-    first = _openrouter_one_token(model_id, disable, api_key, timeout_seconds)
-    if first is None:
-        return None
-    if disable:
-        second = _openrouter_one_token(model_id, False, api_key, timeout_seconds)
-        if second is None:
-            # Usable — with reasoning on. Tell the client so it never sends the
-            # failing shape, and tell the portal why replies spend reasoning tokens.
-            try:
-                from .chat_llm_client import mark_reasoning_required
-                mark_reasoning_required(model_id)
-            except Exception:
-                pass
-            record_model_success(model_id)
-            record_model_note(
-                model_id,
-                f"this endpoint requires reasoning; running with reasoning on (low effort). "
-                f"Provider said: {first[:120]}",
-            )
+    modes = (["disabled"] if disable else []) + ["on", "on-no-temp"]
+    last_error: Optional[str] = None
+    for mode in modes:
+        err = _openrouter_one_token(model_id, mode, api_key, timeout_seconds)
+        if err is None:
+            if mode != "disabled" and disable:
+                mark_reasoning_required(model_id, mode)
+                record_model_success(model_id)
+                record_model_note(model_id, f"{_mode_note(mode)}. Provider said: {(last_error or '')[:120]}")
             return None
-    return first
+        last_error = err
+        if mode == "disabled" and "reasoning" not in err.lower():
+            # Not a reasoning complaint: a different shape won't help.
+            return err
+    return last_error
 
 
 def set_platform_setting(db: Session, key: str, value: Any, updated_by: Optional[str]) -> None:

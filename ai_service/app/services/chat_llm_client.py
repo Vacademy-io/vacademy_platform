@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
 import httpx
 
 from ..services.api_key_resolver import ApiKeyResolver
@@ -15,37 +15,112 @@ from ..services.api_key_resolver import ApiKeyResolver
 logger = logging.getLogger(__name__)
 
 
-# Models whose endpoint refuses `reasoning: {enabled: false}` ("Reasoning is
-# mandatory for this endpoint" — z-ai/glm-5.3-flash, 2026-09-04). For these we
-# send reasoning explicitly ON with low effort and a larger token budget, so
-# the thinking doesn't eat the answer. Learned per process on the first 400,
-# and pre-seeded by the portal's save-time probe.
-_REASONING_REQUIRED: set = set()
-
-_REASONING_ON = {"enabled": True, "effort": "low"}
+# How to call a model whose endpoint refuses `reasoning: {enabled: false}`
+# ("Reasoning is mandatory for this endpoint and cannot be disabled" —
+# z-ai/glm-5.3-flash, 2026-09-04). Learned per process from the first failure
+# (and pre-seeded by the portal's save-time probe): "on" sends reasoning
+# explicitly enabled — exactly the shape the owner's working curl used —
+# and "on-no-temp" additionally drops `temperature`, for endpoints that reject
+# sampling parameters in thinking mode.
+_REASONING_MODE: Dict[str, str] = {}
 _REASONING_ON_MIN_TOKENS = 3000
+_REASONING_MODES = ("on", "on-no-temp")
+
+# A model whose every variant failed is skipped for a while: the fallback
+# answers directly instead of every turn paying for three rejected attempts.
+_BROKEN_UNTIL: Dict[str, float] = {}
+_BROKEN_TTL_SECONDS = 300.0
+
+
+def openrouter_error_text(raw: str) -> str:
+    """The provider's actual complaint. OpenRouter wraps upstream errors as
+    'Provider returned error' and puts the real text in error.metadata.raw."""
+    try:
+        data = json.loads(raw or "")
+        err = data.get("error") or {}
+        msg = err.get("message") or ""
+        meta = err.get("metadata") or {}
+        upstream = meta.get("raw")
+        if isinstance(upstream, (dict, list)):
+            upstream = json.dumps(upstream)
+        provider = meta.get("provider_name")
+        parts = [msg]
+        if upstream:
+            parts.append(f"provider said: {str(upstream)[:220]}")
+        if provider:
+            parts.append(f"[{provider}]")
+        text = " — ".join(p for p in parts if p)
+        return text or (raw or "")[:300]
+    except Exception:
+        return (raw or "")[:300]
 
 
 def _mandatory_reasoning_error(body: str) -> bool:
     b = (body or "").lower()
-    return "reasoning is mandatory" in b or "cannot be disabled" in b or "reasoning" in b and "disable" in b
+    return "reasoning is mandatory" in b or "cannot be disabled" in b or ("reasoning" in b and "disable" in b)
 
 
-def mark_reasoning_required(model: str) -> None:
-    _REASONING_REQUIRED.add(model)
+def mark_reasoning_required(model: str, mode: str = "on") -> None:
+    _REASONING_MODE[model] = mode if mode in _REASONING_MODES else "on"
 
 
-def reasoning_payload_for(model: str, disable_reasoning: bool, max_tokens: int):
-    """(reasoning param or None, max_tokens) honouring what we know about the model."""
-    if model in _REASONING_REQUIRED:
-        return dict(_REASONING_ON), max(max_tokens, _REASONING_ON_MIN_TOKENS)
-    if disable_reasoning:
-        return {"enabled": False}, max_tokens
-    return None, max_tokens
+def reasoning_mode_for(model: str) -> Optional[str]:
+    return _REASONING_MODE.get(model)
 
 
-class _ReasoningRejected(Exception):
-    """OpenRouter answered 4xx to a payload that disabled reasoning."""
+def apply_reasoning_mode(payload: Dict[str, Any], mode: str) -> Dict[str, Any]:
+    p = dict(payload)
+    p["reasoning"] = {"enabled": True}
+    p["max_tokens"] = max(int(p.get("max_tokens") or 0), _REASONING_ON_MIN_TOKENS)
+    if mode == "on-no-temp":
+        p.pop("temperature", None)
+    return p
+
+
+def payload_variants(model: str, base: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
+    """Ordered (label, payload) attempts for one call."""
+    known = _REASONING_MODE.get(model)
+    if known:
+        return [(known, apply_reasoning_mode(base, known))]
+    variants = [("as-configured", base)]
+    if (base.get("reasoning") or {}).get("enabled") is False:
+        variants += [(m, apply_reasoning_mode(base, m)) for m in _REASONING_MODES]
+    return variants
+
+
+def should_try_next_variant(label: str, error_text: str) -> bool:
+    # Only escalate from the configured shape when the provider said reasoning
+    # is mandatory; once we are in reasoning-on territory, try the next shape.
+    if label == "as-configured":
+        return _mandatory_reasoning_error(error_text)
+    return True
+
+
+def mark_model_broken(model: str) -> None:
+    import time
+    _BROKEN_UNTIL[model] = time.monotonic() + _BROKEN_TTL_SECONDS
+
+
+def is_model_broken(model: str) -> bool:
+    import time
+    until = _BROKEN_UNTIL.get(model)
+    if until is None:
+        return False
+    if time.monotonic() >= until:
+        _BROKEN_UNTIL.pop(model, None)
+        return False
+    return True
+
+
+def _mode_note(mode: str) -> str:
+    return (
+        "this endpoint requires reasoning; running with reasoning on"
+        + (" and without a temperature parameter" if mode == "on-no-temp" else "")
+    )
+
+
+class _AttemptRejected(Exception):
+    """OpenRouter answered 4xx to one payload variant (status + provider text)."""
 
     def __init__(self, status: int, body: str):
         super().__init__(f"OpenRouter {status}: {body}")
@@ -187,6 +262,17 @@ class ChatLLMClient:
 
         # Try OpenRouter first (primary provider)
         if openrouter_key:
+            # A model that failed every variant recently is skipped for a while:
+            # the fallback answers directly instead of each turn paying for the
+            # rejected attempts first.
+            broken_fallback = self._fallback_model_for(model, explicit_model) if is_model_broken(model) else None
+            if broken_fallback:
+                logger.warning(f"Model {model} marked broken; answering with {broken_fallback}")
+                result = await self._call_openrouter(
+                    messages, tools, temperature, max_tokens, openrouter_key, broken_fallback
+                )
+                result["fallback_from"] = model
+                return result
             try:
                 logger.info(f"Attempting OpenRouter API call with model: {model}")
                 result = await self._call_openrouter(messages, tools, temperature, max_tokens, openrouter_key, model)
@@ -200,6 +286,7 @@ class ChatLLMClient:
                 # default and record why, so the portal can show it.
                 fallback = self._fallback_model_for(model, explicit_model)
                 if fallback:
+                    mark_model_broken(model)
                     self._note_model_failure(model, str(e), fallback)
                     try:
                         logger.error(
@@ -266,7 +353,6 @@ class ChatLLMClient:
         if has_attachments:
             messages = self._convert_to_multimodal_messages(messages)
 
-        reasoning_param, max_tokens = reasoning_payload_for(model, self.disable_reasoning, max_tokens)
         payload = {
             "model": model,
             "messages": messages,
@@ -276,66 +362,47 @@ class ChatLLMClient:
 
         # Per-client opt-in only — see __init__. Never global: this client also
         # serves copy-check grading and assessment generation, where reasoning earns
-        # its cost. A model known to require reasoning gets it explicitly ON.
-        if reasoning_param is not None:
-            payload["reasoning"] = reasoning_param
+        # its cost. Models known to require reasoning are handled by payload_variants.
+        if self.disable_reasoning:
+            payload["reasoning"] = {"enabled": False}
 
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
-        response = await self.http_client.post(url, json=payload, headers=headers)
+        response = None
+        variants = payload_variants(model, payload)
+        for index, (label, attempt) in enumerate(variants):
+            response = await self.http_client.post(url, json=attempt, headers=headers)
 
-        # Some endpoints refuse to have thinking switched off ("Reasoning is
-        # mandatory for this endpoint and cannot be disabled" — z-ai/glm-5.3-flash).
-        # Merely omitting the flag is not enough; send it explicitly ON, remember
-        # the model, and retry this call.
-        if (
-            400 <= response.status_code < 500
-            and response.status_code != 402
-            and payload.get("reasoning", {}).get("enabled") is False
-            and _mandatory_reasoning_error(response.text)
-        ):
-            first_error = response.text[:200]
-            logger.warning(
-                f"OpenRouter {response.status_code} for {model}: reasoning is mandatory; "
-                f"retrying with reasoning on (low effort): {first_error}"
-            )
-            mark_reasoning_required(model)
-            retry_payload = dict(payload)
-            retry_payload["reasoning"] = dict(_REASONING_ON)
-            retry_payload["max_tokens"] = max(payload["max_tokens"], _REASONING_ON_MIN_TOKENS)
-            response = await self.http_client.post(url, json=retry_payload, headers=headers)
-            if response.status_code < 400:
-                self._note_model_ok(model)
-                self._note_model_note(
-                    model, "this endpoint requires reasoning; running with reasoning on (low effort)"
+            if response.status_code == 402:
+                error_body = response.text
+                logger.error(
+                    f"OpenRouter 402 Payment Required - insufficient credits or quota exceeded. "
+                    f"Model: {model}, Status: {response.status_code}, Response: {error_body}"
+                )
+                raise Exception(
+                    f"OpenRouter 402 Payment Required: insufficient credits or quota exceeded. "
+                    f"Model: {model}. Details: {error_body}"
                 )
 
-        if response.status_code == 402:
-            error_body = response.text
-            logger.error(
-                f"OpenRouter 402 Payment Required - insufficient credits or quota exceeded. "
-                f"Model: {model}, Status: {response.status_code}, "
-                f"Response: {error_body}"
-            )
-            raise Exception(
-                f"OpenRouter 402 Payment Required: insufficient credits or quota exceeded. "
-                f"Model: {model}. Details: {error_body}"
-            )
+            if response.status_code >= 400:
+                # raise_for_status() would drop the body — and the body is the
+                # only place the provider says WHY. Keep it: it is what the logs,
+                # model_health and the portal show.
+                err = openrouter_error_text(response.text)
+                is_last = index == len(variants) - 1
+                logger.warning(f"OpenRouter {response.status_code} for {model} [{label}]: {err}")
+                if not is_last and 400 <= response.status_code < 500 and should_try_next_variant(label, err):
+                    continue
+                raise Exception(f"OpenRouter {response.status_code} for {model} [{label}]: {err}")
 
-        if response.status_code >= 400:
-            # raise_for_status() would drop the body — and the body is the only
-            # place the provider says WHY (data policy, unsupported parameter,
-            # model not available to this account). Keep it: it is what the
-            # logs, model_health and the portal show.
-            body = response.text[:300]
-            try:
-                body = response.json().get("error", {}).get("message") or body
-            except Exception:
-                pass
-            logger.error(f"OpenRouter {response.status_code} for {model}: {body}")
-            raise Exception(f"OpenRouter {response.status_code} for {model}: {body}")
+            if label != "as-configured" and reasoning_mode_for(model) != label:
+                # A reasoning-on variant answered where the configured shape
+                # failed: remember it so the next call skips the rejected attempt.
+                mark_reasoning_required(model, label)
+                self._note_model_note(model, _mode_note(label))
+            break
 
         data = response.json()
         choice = data["choices"][0]
@@ -367,13 +434,19 @@ class ChatLLMClient:
         openrouter_key, _gemini_key, model = self._resolve(institute_id, user_id)
 
         if openrouter_key:
+            stream_model = model
+            broken_fallback = self._fallback_model_for(model, None) if is_model_broken(model) else None
+            if broken_fallback:
+                logger.warning(f"Model {model} marked broken; streaming with {broken_fallback}")
+                stream_model = broken_fallback
             try:
-                async for chunk in self._stream_openrouter(messages, tools, temperature, max_tokens, openrouter_key, model):
+                async for chunk in self._stream_openrouter(messages, tools, temperature, max_tokens, openrouter_key, stream_model):
                     yield chunk
                 return
             except Exception as e:
                 logger.warning(f"OpenRouter streaming failed: {e}")
-                self._note_model_failure(model, f"streaming: {e}", None)
+                if stream_model == model:
+                    self._note_model_failure(model, f"streaming: {e}", None)
 
         # Fallback to non-streaming (which falls back to the env default model
         # if the configured one is what OpenRouter rejects)
@@ -407,7 +480,6 @@ class ChatLLMClient:
             "X-Title": "Vacademy AI Tutor"
         }
 
-        reasoning_param, max_tokens = reasoning_payload_for(model, self.disable_reasoning, max_tokens)
         payload = {
             "model": model,
             "messages": messages,
@@ -416,45 +488,32 @@ class ChatLLMClient:
             "stream": True,
         }
 
-        # Per-client opt-in only — see __init__. A model known to require
-        # reasoning gets it explicitly ON (see reasoning_payload_for).
-        if reasoning_param is not None:
-            payload["reasoning"] = reasoning_param
+        # Per-client opt-in only — see __init__. Models known to require
+        # reasoning are handled by payload_variants.
+        if self.disable_reasoning:
+            payload["reasoning"] = {"enabled": False}
 
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
-        # One attempt as configured; if the status check fails with a 4xx and we
-        # had asked to disable reasoning, one more attempt without that flag.
-        # The status is checked before any token is yielded, so a retry never
-        # duplicates output — and never opens two streams for one turn.
-        attempts = [payload]
-        if payload.get("reasoning", {}).get("enabled") is False:
-            retry_payload = dict(payload)
-            retry_payload["reasoning"] = dict(_REASONING_ON)
-            retry_payload["max_tokens"] = max(payload["max_tokens"], _REASONING_ON_MIN_TOKENS)
-            attempts.append(retry_payload)
-
-        for attempt_index, attempt_payload in enumerate(attempts):
+        # One streaming request per variant. The status is checked before any
+        # token is yielded, so moving to the next variant never duplicates
+        # output — and never leaves two streams open for one turn.
+        variants = payload_variants(model, payload)
+        for index, (label, attempt) in enumerate(variants):
             try:
-                async for chunk in self._stream_openrouter_once(url, headers, attempt_payload, model):
+                async for chunk in self._stream_openrouter_once(url, headers, attempt, model):
                     yield chunk
-                if attempt_index > 0:
-                    # The reasoning-on retry produced the answer: remember it.
-                    mark_reasoning_required(model)
-                    self._note_model_ok(model)
-                    self._note_model_note(
-                        model, "this endpoint requires reasoning; running with reasoning on (low effort)"
-                    )
+                if label != "as-configured" and reasoning_mode_for(model) != label:
+                    mark_reasoning_required(model, label)
+                    self._note_model_note(model, _mode_note(label))
                 return
-            except _ReasoningRejected as rejected:
-                if attempt_index == len(attempts) - 1 or not _mandatory_reasoning_error(rejected.body):
-                    raise Exception(str(rejected))
-                logger.warning(
-                    f"OpenRouter {rejected.status} for {model} (streaming): reasoning is mandatory; "
-                    f"retrying with reasoning on (low effort): {rejected.body}"
-                )
+            except _AttemptRejected as rejected:
+                is_last = index == len(variants) - 1
+                logger.warning(f"OpenRouter {rejected.status} for {model} (streaming) [{label}]: {rejected.body}")
+                if is_last or not should_try_next_variant(label, rejected.body):
+                    raise Exception(f"OpenRouter {rejected.status} for {model} [{label}]: {rejected.body}")
 
     async def _stream_openrouter_once(
         self,
@@ -463,17 +522,17 @@ class ChatLLMClient:
         payload: Dict[str, Any],
         model: str,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """A single streaming request. Raises _ReasoningRejected on a 4xx when
-        the payload asked to disable reasoning, so the caller can retry."""
+        """A single streaming request. Raises _AttemptRejected on a 4xx (with
+        the provider's text) so the caller can try the next payload variant."""
         accumulated_tool_calls = {}  # index -> {id, function: {name, arguments}}
 
         async with self.http_client.stream("POST", url, json=payload, headers=headers) as response:
             if response.status_code == 402:
                 raise Exception(f"OpenRouter 402 Payment Required")
-            if 400 <= response.status_code < 500 and payload.get("reasoning", {}).get("enabled") is False:
-                body = (await response.aread())[:200].decode("utf-8", "ignore")
-                raise _ReasoningRejected(response.status_code, body)
-            if response.status_code >= 400:
+            if 400 <= response.status_code < 500:
+                body = (await response.aread())[:600].decode("utf-8", "ignore")
+                raise _AttemptRejected(response.status_code, openrouter_error_text(body))
+            if response.status_code >= 500:
                 body = (await response.aread())[:300].decode("utf-8", "ignore")
                 logger.error(f"OpenRouter {response.status_code} for {model} (streaming): {body}")
                 raise Exception(f"OpenRouter {response.status_code} for {model}: {body}")

@@ -386,6 +386,18 @@ def record_model_success(model: str) -> None:
     _model_health.pop(model, None)
 
 
+_model_notes: Dict[str, str] = {}
+
+
+def record_model_note(model: str, note: str) -> None:
+    """Informational, not a failure: e.g. 'runs with reasoning on'."""
+    _model_notes[model] = (note or "")[:200]
+
+
+def get_model_notes() -> Dict[str, str]:
+    return dict(_model_notes)
+
+
 def get_model_health() -> Dict[str, Dict[str, Any]]:
     return {k: dict(v) for k, v in _model_health.items()}
 
@@ -395,6 +407,7 @@ def get_cache_status() -> Dict[str, Any]:
     age = None if _cache.loaded_at is None else round(time.monotonic() - _cache.loaded_at, 1)
     return {
         "model_health": get_model_health(),
+        "model_notes": get_model_notes(),
         "loaded": _cache.loaded_at is not None and not _cache.load_failed,
         "load_failed": _cache.load_failed,
         "last_error": _cache.last_error,
@@ -521,6 +534,11 @@ def _openrouter_one_token(model_id: str, disable_reasoning: bool, api_key: str, 
     }
     if disable_reasoning:
         payload["reasoning"] = {"enabled": False}
+    else:
+        # Explicitly on: merely omitting the flag still resolved to "disabled"
+        # for z-ai/glm-5.3-flash and kept failing.
+        payload["reasoning"] = {"enabled": True, "effort": "low"}
+        payload["max_tokens"] = 64
     try:
         resp = httpx.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -579,11 +597,18 @@ def probe_model_live(model_id: str, timeout_seconds: float = 25.0) -> Optional[s
     if disable:
         second = _openrouter_one_token(model_id, False, api_key, timeout_seconds)
         if second is None:
-            record_model_failure(
+            # Usable — with reasoning on. Tell the client so it never sends the
+            # failing shape, and tell the portal why replies spend reasoning tokens.
+            try:
+                from .chat_llm_client import mark_reasoning_required
+                mark_reasoning_required(model_id)
+            except Exception:
+                pass
+            record_model_success(model_id)
+            record_model_note(
                 model_id,
-                f"works only with reasoning enabled (with 'Suppress reasoning tokens' on it answered: {first}); "
-                "ai-service retries without the flag, so replies will spend reasoning tokens",
-                None,
+                f"this endpoint requires reasoning; running with reasoning on (low effort). "
+                f"Provider said: {first[:120]}",
             )
             return None
     return first
@@ -641,6 +666,8 @@ __all__ = [
     "get_cache_status",
     "record_model_failure",
     "record_model_success",
+    "record_model_note",
+    "get_model_notes",
     "get_model_health",
     "probe_model_live",
     "invalidate_platform_settings_cache",

@@ -15,6 +15,35 @@ from ..services.api_key_resolver import ApiKeyResolver
 logger = logging.getLogger(__name__)
 
 
+# Models whose endpoint refuses `reasoning: {enabled: false}` ("Reasoning is
+# mandatory for this endpoint" — z-ai/glm-5.3-flash, 2026-09-04). For these we
+# send reasoning explicitly ON with low effort and a larger token budget, so
+# the thinking doesn't eat the answer. Learned per process on the first 400,
+# and pre-seeded by the portal's save-time probe.
+_REASONING_REQUIRED: set = set()
+
+_REASONING_ON = {"enabled": True, "effort": "low"}
+_REASONING_ON_MIN_TOKENS = 3000
+
+
+def _mandatory_reasoning_error(body: str) -> bool:
+    b = (body or "").lower()
+    return "reasoning is mandatory" in b or "cannot be disabled" in b or "reasoning" in b and "disable" in b
+
+
+def mark_reasoning_required(model: str) -> None:
+    _REASONING_REQUIRED.add(model)
+
+
+def reasoning_payload_for(model: str, disable_reasoning: bool, max_tokens: int):
+    """(reasoning param or None, max_tokens) honouring what we know about the model."""
+    if model in _REASONING_REQUIRED:
+        return dict(_REASONING_ON), max(max_tokens, _REASONING_ON_MIN_TOKENS)
+    if disable_reasoning:
+        return {"enabled": False}, max_tokens
+    return None, max_tokens
+
+
 class _ReasoningRejected(Exception):
     """OpenRouter answered 4xx to a payload that disabled reasoning."""
 
@@ -81,6 +110,14 @@ class ChatLLMClient:
         try:
             from .platform_settings_service import record_model_failure
             record_model_failure(model, reason, fallback)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _note_model_note(model: str, note: str) -> None:
+        try:
+            from .platform_settings_service import record_model_note
+            record_model_note(model, note)
         except Exception:
             pass
 
@@ -229,6 +266,7 @@ class ChatLLMClient:
         if has_attachments:
             messages = self._convert_to_multimodal_messages(messages)
 
+        reasoning_param, max_tokens = reasoning_payload_for(model, self.disable_reasoning, max_tokens)
         payload = {
             "model": model,
             "messages": messages,
@@ -238,9 +276,9 @@ class ChatLLMClient:
 
         # Per-client opt-in only — see __init__. Never global: this client also
         # serves copy-check grading and assessment generation, where reasoning earns
-        # its cost. Accepted by every model we serve and does not affect tool calls.
-        if self.disable_reasoning:
-            payload["reasoning"] = {"enabled": False}
+        # its cost. A model known to require reasoning gets it explicitly ON.
+        if reasoning_param is not None:
+            payload["reasoning"] = reasoning_param
 
         if tools:
             payload["tools"] = tools
@@ -248,20 +286,30 @@ class ChatLLMClient:
 
         response = await self.http_client.post(url, json=payload, headers=headers)
 
-        # Some reasoning models refuse to have thinking switched off and answer
-        # 4xx to `reasoning: {enabled: false}` (z-ai/glm-5.3-flash, 2026-09-04).
-        # Retry once without the flag rather than failing the whole turn.
-        if 400 <= response.status_code < 500 and response.status_code != 402 and "reasoning" in payload:
+        # Some endpoints refuse to have thinking switched off ("Reasoning is
+        # mandatory for this endpoint and cannot be disabled" — z-ai/glm-5.3-flash).
+        # Merely omitting the flag is not enough; send it explicitly ON, remember
+        # the model, and retry this call.
+        if (
+            400 <= response.status_code < 500
+            and response.status_code != 402
+            and payload.get("reasoning", {}).get("enabled") is False
+            and _mandatory_reasoning_error(response.text)
+        ):
             first_error = response.text[:200]
             logger.warning(
-                f"OpenRouter {response.status_code} for {model} with reasoning disabled; "
-                f"retrying without the reasoning flag: {first_error}"
+                f"OpenRouter {response.status_code} for {model}: reasoning is mandatory; "
+                f"retrying with reasoning on (low effort): {first_error}"
             )
-            retry_payload = {k: v for k, v in payload.items() if k != "reasoning"}
+            mark_reasoning_required(model)
+            retry_payload = dict(payload)
+            retry_payload["reasoning"] = dict(_REASONING_ON)
+            retry_payload["max_tokens"] = max(payload["max_tokens"], _REASONING_ON_MIN_TOKENS)
             response = await self.http_client.post(url, json=retry_payload, headers=headers)
             if response.status_code < 400:
-                self._note_model_failure(
-                    model, f"reasoning cannot be disabled for this model ({first_error}); answered with reasoning on", None
+                self._note_model_ok(model)
+                self._note_model_note(
+                    model, "this endpoint requires reasoning; running with reasoning on (low effort)"
                 )
 
         if response.status_code == 402:
@@ -359,6 +407,7 @@ class ChatLLMClient:
             "X-Title": "Vacademy AI Tutor"
         }
 
+        reasoning_param, max_tokens = reasoning_payload_for(model, self.disable_reasoning, max_tokens)
         payload = {
             "model": model,
             "messages": messages,
@@ -367,11 +416,10 @@ class ChatLLMClient:
             "stream": True,
         }
 
-        # Per-client opt-in only — see __init__. Never global: this client also
-        # serves copy-check grading and assessment generation, where reasoning earns
-        # its cost. Accepted by every model we serve and does not affect tool calls.
-        if self.disable_reasoning:
-            payload["reasoning"] = {"enabled": False}
+        # Per-client opt-in only — see __init__. A model known to require
+        # reasoning gets it explicitly ON (see reasoning_payload_for).
+        if reasoning_param is not None:
+            payload["reasoning"] = reasoning_param
 
         if tools:
             payload["tools"] = tools
@@ -382,25 +430,30 @@ class ChatLLMClient:
         # The status is checked before any token is yielded, so a retry never
         # duplicates output — and never opens two streams for one turn.
         attempts = [payload]
-        if "reasoning" in payload:
-            attempts.append({k: v for k, v in payload.items() if k != "reasoning"})
+        if payload.get("reasoning", {}).get("enabled") is False:
+            retry_payload = dict(payload)
+            retry_payload["reasoning"] = dict(_REASONING_ON)
+            retry_payload["max_tokens"] = max(payload["max_tokens"], _REASONING_ON_MIN_TOKENS)
+            attempts.append(retry_payload)
 
         for attempt_index, attempt_payload in enumerate(attempts):
             try:
                 async for chunk in self._stream_openrouter_once(url, headers, attempt_payload, model):
                     yield chunk
+                if attempt_index > 0:
+                    # The reasoning-on retry produced the answer: remember it.
+                    mark_reasoning_required(model)
+                    self._note_model_ok(model)
+                    self._note_model_note(
+                        model, "this endpoint requires reasoning; running with reasoning on (low effort)"
+                    )
                 return
             except _ReasoningRejected as rejected:
-                if attempt_index == len(attempts) - 1:
+                if attempt_index == len(attempts) - 1 or not _mandatory_reasoning_error(rejected.body):
                     raise Exception(str(rejected))
                 logger.warning(
-                    f"OpenRouter {rejected.status} for {model} (streaming, reasoning disabled); "
-                    f"retrying without the reasoning flag: {rejected.body}"
-                )
-                self._note_model_failure(
-                    model,
-                    f"reasoning cannot be disabled for this model ({rejected.body}); answered with reasoning on",
-                    None,
+                    f"OpenRouter {rejected.status} for {model} (streaming): reasoning is mandatory; "
+                    f"retrying with reasoning on (low effort): {rejected.body}"
                 )
 
     async def _stream_openrouter_once(
@@ -417,7 +470,7 @@ class ChatLLMClient:
         async with self.http_client.stream("POST", url, json=payload, headers=headers) as response:
             if response.status_code == 402:
                 raise Exception(f"OpenRouter 402 Payment Required")
-            if 400 <= response.status_code < 500 and "reasoning" in payload:
+            if 400 <= response.status_code < 500 and payload.get("reasoning", {}).get("enabled") is False:
                 body = (await response.aread())[:200].decode("utf-8", "ignore")
                 raise _ReasoningRejected(response.status_code, body)
             if response.status_code >= 400:

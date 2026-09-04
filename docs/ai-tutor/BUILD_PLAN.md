@@ -222,6 +222,12 @@ Folded into V494 (see WP1); nothing left to do here.
 
 ### WP6 — Tutor socket and state machine (ai_service)
 
+**Status: shipped 2026-09-04** (3081f6b1ea, 6ec82abd61 and follow-ups). Verified on production
+with a text-mode probe (scratchpad/tutor_ws_probe.py): greeting and resume, board ops, check,
+correct answer → praise and advance, wrong answer → live highlight, hint and remediation, session
+end with telemetry (two decision turns cost ~2.6k tokens). Design change from the first probe: a
+concept with a check flows explain → ask in one turn; the client is told `await answer`.
+
 | File | Contents |
 |---|---|
 | `models/tutor_runtime.py` | three ORM models |
@@ -263,6 +269,11 @@ Verify: audition three Hindi and three English sentences at 24 kHz through the b
 before choosing the default voice; confirm the pods see the key (`list_tts_providers`).
 
 ### WP8 — Learner app
+
+**Status: shipped 2026-09-04** as fad2a070a0 (text and voice modes; drip-condition gating on the
+next slide is not applied yet — the tutor offers the next prepared slide in chapter order).
+Owner browser QA pending. Regenerate `routeTree.gen.ts` with the router generator directly; a
+short vite run does not pick up a new route.
 
 - Route `src/routes/study-library/courses/course-details/tutor/index.tsx` with search params
   `courseId`, `packageSessionId`, `slideId?`; regenerate `routeTree.gen.ts` by starting vite

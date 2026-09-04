@@ -17,18 +17,17 @@
  *
  * - DETAILS — the standard details page. The default, and what any course
  *   left out of `courses` keeps, so turning the setting on changes nothing
- *   until a course is given a mode.
+ *   until a course is given a mode. Its course structure renders as tiles,
+ *   which is the platform default; OUTLINE below is how a course opts out.
  * - PAGE    — a page authored in the catalogue editor replaces the details
  *   page entirely. Reached at `/<tag>/<route>`, which the `$tagName/$courseId`
  *   route already serves as a CourseSubPage whenever the segment is not an id.
  *   That dual purpose is what makes this work without a new route.
  * - OUTLINE — the details page, syllabus first: the highlights accordion is
- *   dropped and the course structure leads, as the usual folder-row tree.
- *   Still the same URL, so pricing, enrolment and the site header/footer are
- *   untouched.
- * - TILES   — the same syllabus-first page, but the subjects render as artwork
- *   cards instead of folder rows, matching the admin dashboard and the
- *   enrolled learner's Content Structure.
+ *   dropped and the course structure leads, drawn as a plain folder-row tree
+ *   rather than the default tiles. Still the same URL, so pricing, enrolment
+ *   and the site header/footer are untouched.
+ * - TILES   — the same syllabus-first page, keeping the default artwork cards.
  *
  * Keys are matched course id (the package id) FIRST, then packageSessionId —
  * so an institute that sells one course at several levels can give a single

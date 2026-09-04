@@ -91,11 +91,19 @@ interface CourseStructureDetailsProps {
   packageSessionId: string;
   levelId?: string; // Add levelId parameter
   /**
-   * How the top level reads. "outline" is the folder-row tree this page has
-   * always shown. "tiles" draws the subjects as artwork cards — the same shape
+   * How the top level reads.
+   *
+   * "tiles" draws the subjects as artwork cards — the same shape
    * the admin dashboard and the enrolled learner's Content Structure use — and
-   * drills into one subject at a time beneath the grid. Only depth-5 courses
-   * have subjects to tile; anything shallower falls back to the outline.
+   * drills into one subject at a time beneath the grid. "outline" is the
+   * folder-row tree, and the default here so that callers which do not read
+   * the institute's learner settings keep what they always showed. The public
+   * course page passes the variant those settings imply.
+   *
+   * Tiles apply only where there is a top level to tile: a depth-5 course with
+   * at least one non-"default" subject. Everything shallower, and every course
+   * whose subject layer is a single "default" row, renders the outline no
+   * matter what is asked for.
    */
   variant?: "outline" | "tiles";
 }

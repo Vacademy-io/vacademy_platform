@@ -141,9 +141,9 @@
         "TILES": "Contenu du cours — vignettes"
       },
       "modeHint": {
-        "DETAILS": "La page de cours habituelle : points forts, programme, prix et inscription.",
+        "DETAILS": "La page de cours habituelle : points forts, programme en cartes illustrées, prix et inscription.",
         "PAGE": "Ouvre plutôt une page de ce site. Créez-la d'abord dans Pages.",
-        "OUTLINE": "La même page, programme en premier et section points forts retirée. Prix et inscription conservés.",
+        "OUTLINE": "Programme en premier, en liste de dossiers simple au lieu des cartes illustrées par défaut.",
         "TILES": "Comme le plan, mais les matières s'affichent en cartes illustrées avec l'image de chaque matière, comme dans le tableau de bord admin."
       }
     },

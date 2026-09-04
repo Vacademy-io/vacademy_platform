@@ -9,6 +9,8 @@ from .chat_message import ChatMessage
 from .copy_check import CopyCheckRubric, CopyCheckQuestionAnswer
 from .chat_quiz_state import ChatQuizState
 from .teaching_plan import TeachingPlan, TeachingTopic, TeachingConcept, TeachingMedia
+from .tutor_runtime import TutorLearnerState, TutorSession, TutorConceptAttempt
 
-__all__ = ["AiGenVideo", "AiApiKeys", "AiTokenUsage", "ApiProvider", "RequestType", "ChatSession", "ChatMessage", "Base", "CopyCheckRubric", "CopyCheckQuestionAnswer", "ChatQuizState", "TeachingPlan", "TeachingTopic", "TeachingConcept", "TeachingMedia"]
+__all__ = ["AiGenVideo", "AiApiKeys", "AiTokenUsage", "ApiProvider", "RequestType", "ChatSession", "ChatMessage", "Base", "CopyCheckRubric", "CopyCheckQuestionAnswer", "ChatQuizState", "TeachingPlan", "TeachingTopic", "TeachingConcept", "TeachingMedia",
+           "TutorLearnerState", "TutorSession", "TutorConceptAttempt"]
 

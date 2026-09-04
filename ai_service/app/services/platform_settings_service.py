@@ -164,6 +164,23 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             type="model",
             default=lambda: os.environ.get("TUTOR_COMPILE_MODEL") or "google/gemini-2.5-flash",
         ),
+        SettingSpec(
+            key="tutor.voice.provider",
+            group="tutor",
+            label="Tutor voice provider",
+            description="TTS engine for the Live AI Tutor's browser sessions (sarvam | google | edge; smallest once wired). Institutes and courses can override.",
+            type="string",
+            default=lambda: os.environ.get("TUTOR_TTS_PROVIDER") or "sarvam",
+        ),
+        SettingSpec(
+            key="tutor.voice.voice",
+            group="tutor",
+            label="Tutor voice",
+            description="Default (female) voice id for the tutor's provider. Blank = provider default. Hindi verb gender follows the voice.",
+            type="string",
+            default=lambda: os.environ.get("TUTOR_TTS_VOICE") or "",
+            nullable=True,
+        ),
     )
 }
 

@@ -34,6 +34,7 @@ from .routers.kb_paper import router as kb_paper_router
 from .routers.kb_library import router as kb_library_router
 from .routers.voice_agent import router as voice_agent_router
 from .routers.tutor import router as tutor_router
+from .routers.tutor_ws import router as tutor_ws_router
 from .routers.input_asset import router as input_asset_router
 from .routers.reels import router as reels_router
 from .routers.studio_projects import router as studio_router
@@ -246,6 +247,7 @@ def create_app() -> FastAPI:
     app.include_router(kb_library_router, prefix=settings.api_base_path)
     app.include_router(voice_agent_router, prefix=settings.api_base_path)
     app.include_router(tutor_router, prefix=settings.api_base_path)
+    app.include_router(tutor_ws_router, prefix=settings.api_base_path)
     # Primary path: /input-asset/* — handles both video and image kinds.
     app.include_router(
         input_asset_router,

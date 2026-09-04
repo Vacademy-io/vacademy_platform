@@ -23,13 +23,16 @@ class Limits:
     board_words_per_topic: int = 220
     min_say_sentences: int = 1
     max_say_sentences: int = 6
+    # Whiteboards teach with pictures: every board must carry at least one
+    # svg / image / video (media tasks count). Off for quizzes.
+    require_visual_per_topic: bool = True
 
 
 DEFAULT_LIMITS = Limits()
 # Quiz boards show the question and its options verbatim; a six-option MCQ is
 # not a wall of text, it is the question. One topic per question keeps each
 # board to one question anyway.
-QUIZ_LIMITS = Limits(words_per_concept=160, board_words_per_topic=400)
+QUIZ_LIMITS = Limits(words_per_concept=160, board_words_per_topic=400, require_visual_per_topic=False)
 
 MAX_WORDS_PER_CONCEPT = DEFAULT_LIMITS.words_per_concept
 MAX_HEADINGS_PER_CONCEPT = DEFAULT_LIMITS.headings_per_concept
@@ -141,6 +144,10 @@ def validate_plan(
                 if not (0.3 <= chk.pass_threshold <= 1.0):
                     errors.append(f"{cloc}: pass_threshold must be between 0.3 and 1.0")
 
+        if limits.require_visual_per_topic and not any(
+            op.get("op") in VISUAL_OPS for c in topic.concepts for op in ops_to_dicts(c.board_ops)
+        ):
+            errors.append(f"{tloc}: this board has no visual — add an svg diagram (or an image) to one of its concepts")
         if topic_words > limits.board_words_per_topic:
             errors.append(f"{tloc}: the topic's whole board is {topic_words} words; a board must fit one screen (<= {limits.board_words_per_topic})")
         s_errors, _ = validate_ops(ops_to_dicts(topic.summary_ops), set(board_ids), where=f"{tloc}.summary_",

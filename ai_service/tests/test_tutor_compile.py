@@ -88,6 +88,8 @@ def _plan(**overrides):
             "concepts": [
                 {"id": "t1c1", "title": "Push and pull", "concept_tags": ["force.definition"],
                  "board_ops": [{"op": "heading", "id": "t1-h", "text": "What is force?"},
+                               {"op": "svg", "id": "t1c1-d", "svg": "<svg viewBox='0 0 10 10'><circle id='ball' r='2'/></svg>",
+                                "description": "a ball being pushed", "parts": [{"id": "ball", "label": "Ball"}]},
                                {"op": "bullet", "id": "t1c1-b", "items": ["A push or a pull"]}],
                  "say": "A force is a push or a pull. Look at the board.",
                  "say_i18n": {"hi": "बल एक धक्का या खिंचाव है।"},
@@ -113,7 +115,8 @@ def test_validator_catches_missing_translation_check_and_word_bloat():
     p = _plan()
     p.topics[0].concepts[1].say_i18n = {}
     p.topics[0].concepts[1].check.type = "none"
-    p.topics[0].concepts[0].board_ops[1].items = ["word"] * 80
+    bullet = next(op for op in p.topics[0].concepts[0].board_ops if getattr(op, "op", "") == "bullet")
+    bullet.items = ["word"] * 80
     errors = " | ".join(validate_plan(p, "en"))
     assert "say_i18n['hi'] is missing" in errors
     assert "every concept after the first of a board needs a check" in errors
@@ -298,3 +301,11 @@ def test_missing_check_on_first_concept_is_allowed_and_empty_checks_normalize_to
     joined = " | ".join(errors)
     assert "check needs a prompt" not in joined
     assert "every concept after the first of a board needs a check" in joined   # still required later
+
+
+def test_board_without_visual_is_rejected_except_for_quizzes():
+    p = _plan()
+    p.topics[0].concepts[0].board_ops = [op for op in p.topics[0].concepts[0].board_ops if getattr(op, "op", "") != "svg"]
+    errors = " | ".join(validate_plan(p, "en"))
+    assert "this board has no visual" in errors
+    assert "this board has no visual" not in " | ".join(validate_plan(p, "en", limits=QUIZ_LIMITS))

@@ -480,10 +480,16 @@ export default defineConfig(({ mode }) => {
             setupFiles: '.vitest/setup',
             // `**/test.{ts,tsx}` came in with the vendored excalidraw setup and
             // matches only files named literally `test.ts`, so no `*.test.ts`
-            // in this repo has ever run. Route-local tests are added
-            // explicitly rather than by widening to `src/**/*.test.*`, which
-            // would sweep in excalidraw's vendored suite and its own harness.
-            include: ['**/test.{ts,tsx}', 'src/routes/**/*.test.{ts,tsx}'],
+            // in this repo has ever run. Route- and service-local tests are
+            // added explicitly rather than by widening to `src/**/*.test.*`,
+            // which would sweep in excalidraw's vendored suite (it lives under
+            // src/components/common/excalidraw) and its own harness.
+            include: [
+                '**/test.{ts,tsx}',
+                'src/routes/**/*.test.{ts,tsx}',
+                'src/services/**/*.test.{ts,tsx}',
+                'src/constants/**/*.test.{ts,tsx}',
+            ],
         },
         server: {
             headers: {

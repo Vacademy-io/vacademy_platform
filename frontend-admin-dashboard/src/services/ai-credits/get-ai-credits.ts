@@ -112,7 +112,9 @@ export type ToolKey =
     | 'kb_library_unlock'
     // Live AI tutor: per-slide teaching-plan compile and per-image media (V494)
     | 'tutor_compile_slide'
-    | 'tutor_media_image';
+    | 'tutor_media_image'
+    // Voice lessons: one charge per started minute (V496)
+    | 'tutor_live_minute';
 export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat' | 'pages';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 

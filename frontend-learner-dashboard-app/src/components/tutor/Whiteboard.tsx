@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { isElementOp, mountMediaTask, renderOp, typesetFormulas, type BoardOp } from "./boardRenderer";
+import { animateDiagram, isElementOp, mountMediaTask, renderOp, revealAllSteps, typesetFormulas, type BoardOp } from "./boardRenderer";
 import { getPublicUrl } from "@/services/upload_file";
 import "@/styles/tutor-board.css";
 
@@ -11,6 +11,8 @@ interface WhiteboardProps {
   /** Bumps whenever the board is cleared so entrance animations replay. */
   boardKey: string;
   teacherName?: string;
+  /** Bumps when the narration ends: every stepped diagram part still hidden is shown. */
+  revealKey?: number;
 }
 
 /**
@@ -19,7 +21,7 @@ interface WhiteboardProps {
  * live highlights toggle a class on the target by data-op-id. After each
  * insertion formulas are typeset and media tasks get their player.
  */
-export const Whiteboard: React.FC<WhiteboardProps> = ({ ops, liveOps, boardKey, teacherName }) => {
+export const Whiteboard: React.FC<WhiteboardProps> = ({ ops, liveOps, boardKey, teacherName, revealKey }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const renderedRef = useRef<Set<string>>(new Set());
   const lastKeyRef = useRef(boardKey);
@@ -51,10 +53,15 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ ops, liveOps, boardKey, 
       el.offsetHeight; // reflow so the entrance animation plays
       el.classList.add("tb-enter");
       if (el.classList.contains("tb-media-task")) void mountMediaTask(el, getPublicUrl);
+      if (op.op === "svg") animateDiagram(el, (op.parts as Array<{ id?: unknown; step?: unknown }>) || []);
     }
     typesetFormulas(root);
     root.scrollTo({ top: root.scrollHeight, behavior: "smooth" });
   }, [ops, boardKey]);
+
+  useEffect(() => {
+    if (rootRef.current && revealKey) revealAllSteps(rootRef.current);
+  }, [revealKey]);
 
   useEffect(() => {
     const root = rootRef.current;

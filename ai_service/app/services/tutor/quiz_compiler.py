@@ -88,6 +88,8 @@ def compile_quiz(source: SlideSource, lang: str = "en") -> TeachingPlanDraft:
                     expected=_shorten(answer, 400) or None,
                     rubric=rubric,
                     misconceptions=[],
+                    question_id=q.id,
+                    option_ids=[o["id"] for o in q.options if o["text"]][:6] if is_mcq else [],
                     pass_threshold=1.0 if is_mcq else 0.7,
                 ),
             )],

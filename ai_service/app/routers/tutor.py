@@ -11,7 +11,7 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -27,6 +27,7 @@ from ..services.ai_billing import preflight_tool_credits
 from ..services.tutor import plan_store
 from ..services.tutor.plan_compiler import PlanCompiler
 from ..services.tutor.roles import is_staff, normalize_roles
+from ..services.voice_tts import clone_voice_smallest, list_cloned_voices_smallest, smallest_available
 from ..services.tutor.runtime.settings import TutorSettings, resolve_settings
 from ..services.tutor.slide_source import (
     list_package_slides, package_belongs_to_institute, package_of_slide, slide_belongs_to_institute,
@@ -273,6 +274,51 @@ async def put_source_description(
     )
     db.commit()
     return {"slide_id": slide_id, "plan_id": plan.id, "status": plan.status}
+
+
+# ── teacher voice (Smallest.ai instant clone) ─────────────────────────────────
+
+_CLONE_MAX_BYTES = 5 * 1024 * 1024
+
+
+@router.post("/voice/clone", summary="Clone a teacher's voice from a 5-15 s sample (Smallest.ai)")
+async def clone_voice(
+    file: UploadFile = File(...),
+    display_name: str = Form(..., min_length=1, max_length=80),
+    language: Optional[str] = Form(default=None),
+    caller: Caller = Depends(_caller),
+) -> Dict[str, Any]:
+    """Returns the new voice id; the admin saves it as the tutor voice with
+    provider `smallest`. Consent: the institute uploads its own teacher's
+    sample — the card states this before the upload."""
+    if not smallest_available():
+        raise HTTPException(status_code=503, detail="Voice cloning is not configured on this server")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+    if len(data) > _CLONE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Sample must be under 5 MB (5-15 seconds of clean speech)")
+    try:
+        result = await clone_voice_smallest(audio=data, filename=file.filename or "sample.wav",
+                                            display_name=display_name, language=language)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    logger.info("Voice cloned for institute %s by %s: %s", caller.institute_id, caller.user_id, result["voice_id"])
+    return {"voice_id": result["voice_id"], "provider": "smallest", "display_name": display_name}
+
+
+@router.get("/voice/clones", summary="Cloned voices available to the tutor (Smallest.ai)")
+async def cloned_voices(caller: Caller = Depends(_caller)) -> Dict[str, Any]:
+    if not smallest_available():
+        return {"available": False, "voices": []}
+    try:
+        voices = await list_cloned_voices_smallest()
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"available": True, "voices": [
+        {"voice_id": v.get("voiceId") or v.get("voice_id"), "name": v.get("displayName") or v.get("name"),
+         "status": v.get("status")} for v in voices
+    ]}
 
 
 __all__ = ["router"]

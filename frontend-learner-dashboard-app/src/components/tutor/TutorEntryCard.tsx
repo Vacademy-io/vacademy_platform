@@ -36,12 +36,18 @@ export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packag
   }, [courseId, packageSessionId]);
 
   if (!avail || !avail.available) return null;
+  const resuming = !!avail.resume_slide_id;
   const slideId = avail.resume_slide_id || avail.first_slide_id || undefined;
-  const chapterId = avail.resume_slide_id ? avail.resume_chapter_id : avail.first_chapter_id;
+  const chapterId = resuming ? avail.resume_chapter_id : avail.first_chapter_id;
+  const moduleId = resuming ? avail.resume_module_id : avail.first_module_id;
+  const subjectId = resuming ? avail.resume_subject_id : avail.first_subject_id;
   const go = (mode: "text" | "voice") =>
     navigate({
       to: "/study-library/courses/course-details/tutor",
-      search: { courseId, packageSessionId, slideId, chapterId: chapterId || undefined, mode } as never,
+      search: {
+        courseId, packageSessionId, slideId, chapterId: chapterId || undefined,
+        moduleId: moduleId || undefined, subjectId: subjectId || undefined, mode,
+      } as never,
     });
 
   return (

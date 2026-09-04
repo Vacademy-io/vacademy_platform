@@ -41,6 +41,8 @@ T = {
     "skipped": {"en": "Okay, let's move on.", "hi": "ठीक है, आगे बढ़ते हैं।"},
     "next_slide": {"en": "Now let's move on to {slide}.", "hi": "अब चलिए {slide} पर चलते हैं।"},
     "pause": {"en": "Okay, I'll wait. Say continue when you're ready.", "hi": "ठीक है, मैं रुकती हूँ। जब तैयार हों तो 'continue' कहिए।"},
+    "credits_end": {"en": "Your institute's lesson credits have run out for now, so I'll stop here. Your place is saved; ask them to top up and we'll continue.",
+                    "hi": "आपके संस्थान के पाठ क्रेडिट अभी समाप्त हो गए हैं, इसलिए मैं यहीं रुकती हूँ। आपकी जगह सुरक्षित है; टॉप-अप के बाद हम आगे बढ़ेंगे।"},
     "idle_end": {"en": "We've been quiet for a while, so I'll stop here. Come back any time and we'll pick up where we left off.",
                  "hi": "काफ़ी देर से कोई बात नहीं हुई, इसलिए मैं यहीं रुकती हूँ। जब चाहें वापस आइए, हम वहीं से आगे बढ़ेंगे।"},
     "slower": {"en": "Sure, I'll go slower.", "hi": "ज़रूर, मैं धीरे बोलूँगी।"},

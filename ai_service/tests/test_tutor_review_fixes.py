@@ -279,3 +279,36 @@ def test_sarvam_speaker_rejects_unknown_voices():
     assert sarvam_speaker("nirupma", SARVAM_DEFAULT_FEMALE) == "priya"     # a Smallest.ai voice
     assert sarvam_speaker(" Ritu ", SARVAM_DEFAULT_FEMALE) == "ritu"
     assert sarvam_speaker(None, "shubh") == "shubh"
+
+
+def test_quiz_checks_carry_question_and_option_ids():
+    from app.services.tutor.quiz_compiler import compile_quiz
+    from app.services.tutor.slide_source import QuizQuestion, SlideSource
+    q = QuizQuestion(id="q1", order=1, question_type="MCQS", stem="2+2?", options=[{"id": "o1", "text": "3"}, {"id": "o2", "text": "4"}],
+                     correct_option_ids=["o2"], correct_texts=["4"])
+    src = SlideSource(slide_id="s", title="Quiz", source_type="QUIZ", source_id="q", kind="quiz", questions=[q])
+    draft = compile_quiz(src, "en")
+    chk = draft.topics[1].concepts[0].check
+    assert chk.question_id == "q1" and chk.option_ids == ["o1", "o2"]
+    assert "question_id" in chk.model_dump()
+
+
+def test_svg_part_step_is_bounded():
+    from app.schemas.tutor import SvgPart
+    assert SvgPart(id="a", label="A").step == 0
+    assert SvgPart(id="a", label="A", step=3).step == 3
+    with pytest.raises(Exception):
+        SvgPart(id="a", label="A", step=99)
+
+
+def test_live_minute_tool_is_priced():
+    from app.services.tool_cost_estimator import DEFAULT_TOOL_PRICING
+    row = DEFAULT_TOOL_PRICING["tutor_live_minute"]
+    assert row["unit_field"] == "audio_minutes" and row["per_unit_credits"] > 0
+
+
+def test_smallest_engine_is_registered_and_falls_back_without_key(monkeypatch):
+    from app.services import voice_tts
+    monkeypatch.delenv("SMALLEST_API_KEY", raising=False)
+    assert "smallest" in voice_tts._ENGINES and not voice_tts.smallest_available()
+    assert voice_tts.default_voice_for("smallest", "hi-IN") == voice_tts.SMALLEST_DEFAULT_VOICE

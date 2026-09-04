@@ -33,6 +33,29 @@ export interface TutorLessonEvent {
   progress: { done: number; total: number; percent: number };
 }
 
+export interface TutorQuizResult {
+  question_id: string;
+  question_name: string;
+  answered: boolean;
+  correct: boolean;
+  answer: string;
+  selected_option_ids: string[];
+  correct_option_ids: string[];
+  options: Array<{ id: string; name: string }>;
+  score: number | null;
+  skipped: boolean;
+}
+
+export interface TutorSlideDoneEvent {
+  slide_id: string;
+  weak_concepts: string[];
+  skipped_concepts: string[];
+  done: number;
+  total: number;
+  /** Quiz slides only: what to write to the quiz activity log. */
+  quiz_results?: TutorQuizResult[];
+}
+
 interface Callbacks {
   onReady?: (ev: Record<string, unknown>) => void;
   /** After next_slide: the new slide's topics and progress. */
@@ -47,7 +70,7 @@ interface Callbacks {
   onCheck?: (ev: TutorCheckEvent) => void;
   onAwait?: (what: "continue" | "answer" | "done") => void;
   onTranscriptFinal?: (text: string) => void;
-  onSlideDone?: (ev: { slide_id: string; weak_concepts: string[]; skipped_concepts: string[]; done: number; total: number }) => void;
+  onSlideDone?: (ev: TutorSlideDoneEvent) => void;
   onSummary?: (data: unknown) => void;
   /** `fatal` frames end the session (auth, missing plan); the rest are transient notices. */
   onError?: (message: string, fatal: boolean) => void;
@@ -165,7 +188,7 @@ export function useTutorSocket(callbacks: Callbacks) {
             cb.onTranscriptFinal?.(String(msg.text ?? ""));
             break;
           case "slide_done":
-            cb.onSlideDone?.(msg as unknown as Parameters<NonNullable<Callbacks["onSlideDone"]>>[0]);
+            cb.onSlideDone?.(msg as unknown as TutorSlideDoneEvent);
             break;
           case "summary":
             cb.onSummary?.(msg.data);

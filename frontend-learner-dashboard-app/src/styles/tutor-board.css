@@ -60,3 +60,13 @@
 .tutor-board-preview .tb-media-embed iframe.tb-pdf { aspect-ratio: 3 / 4; @apply bg-white; }
 .tutor-board-preview .tb-media-link { @apply mt-2 inline-block text-sm text-primary-500 underline; }
 .tutor-board-preview .tb-formula .katex-display { @apply my-1; }
+
+/* Diagrams draw themselves: strokes animate on (pathLength='1' normalises the
+   dash), fills fade in, and parts the plan marks with a step stay hidden
+   until their turn in the narration. */
+.tutor-board-preview .tb-svg .tb-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tb-draw 0.9s ease-out forwards; }
+@keyframes tb-draw { 0% { stroke-dashoffset: 1; fill-opacity: 0; } 60% { fill-opacity: 0; } 100% { stroke-dashoffset: 0; fill-opacity: 1; } }
+.tutor-board-preview .tb-svg text { animation: tb-fade-in 0.6s ease-out both; animation-delay: 0.5s; }
+@keyframes tb-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.tutor-board-preview .tb-svg .tb-step { opacity: 0; transform: translateY(6px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.tutor-board-preview .tb-svg .tb-step.tb-step-on { opacity: 1; transform: none; }

@@ -97,6 +97,52 @@ export const isElementOp = (op: BoardOp): boolean =>
 const YOUTUBE = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i;
 const VIMEO = /vimeo\.com\/(?:video\/)?(\d+)/i;
 
+const DRAWABLE = "path, line, polyline, polygon, circle, ellipse, rect";
+const STEP_MS = 1100;
+
+/**
+ * Make an inserted diagram draw itself: every stroke animates on (pathLength
+ * normalises the dash to 0-1 whatever the shape's real length) with a small
+ * stagger, and parts the compiler marked with a `step` stay hidden until
+ * their turn, appearing one by one while the teacher speaks.
+ */
+export function animateDiagram(figure: HTMLElement, parts: Array<{ id?: unknown; step?: unknown }>): void {
+  const svg = figure.querySelector("svg");
+  if (!svg) return;
+  const stepped = new Map<string, number>();
+  for (const p of parts) {
+    const id = String(p.id ?? "");
+    const step = Number(p.step) || 0;
+    if (id && step > 0) stepped.set(id, step);
+  }
+  let maxStep = 0;
+  stepped.forEach((step, id) => {
+    const el = svg.querySelector<SVGElement>(`#${CSS.escape(id)}`);
+    if (!el) return;
+    el.classList.add("tb-step");
+    el.dataset.step = String(step);
+    maxStep = Math.max(maxStep, step);
+  });
+  let i = 0;
+  svg.querySelectorAll<SVGElement>(DRAWABLE).forEach((shape) => {
+    if (shape.closest(".tb-step")) return; // stepped parts pop in whole, later
+    shape.setAttribute("pathLength", "1");
+    shape.classList.add("tb-draw");
+    shape.style.animationDelay = `${Math.min(i, 24) * 70}ms`;
+    i += 1;
+  });
+  for (let step = 1; step <= maxStep; step++) {
+    window.setTimeout(() => {
+      svg.querySelectorAll<SVGElement>(`.tb-step[data-step="${step}"]`).forEach((el) => el.classList.add("tb-step-on"));
+    }, step * STEP_MS);
+  }
+}
+
+/** Show every stepped part at once (the narration is over or was interrupted). */
+export function revealAllSteps(root: ParentNode): void {
+  root.querySelectorAll<SVGElement>(".tb-step:not(.tb-step-on)").forEach((el) => el.classList.add("tb-step-on"));
+}
+
 /** Typeset every formula inside `root` that has not been typeset yet. */
 export function typesetFormulas(root: ParentNode): void {
   root.querySelectorAll<HTMLElement>(".tb-latex:not([data-typeset])").forEach((el) => {

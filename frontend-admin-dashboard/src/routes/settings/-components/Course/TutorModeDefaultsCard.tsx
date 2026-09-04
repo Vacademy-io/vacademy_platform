@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ChalkboardTeacher, CircleNotch, FloppyDisk } from '@phosphor-icons/react';
+import { ChalkboardTeacher, CircleNotch, FloppyDisk, Waveform } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,6 +20,7 @@ import { saveInstituteSettingKey } from '@/services/package-settings';
 import {
     TUTOR_MODE_SETTING_KEY,
     TUTOR_TTS_PROVIDERS,
+    cloneTutorVoice,
     type TutorModeSetting,
 } from '@/services/tutor';
 
@@ -49,6 +50,37 @@ export const TutorModeDefaultsCard: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
+    const [cloning, setCloning] = useState(false);
+    const [cloneName, setCloneName] = useState('');
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    const cloneVoice = async () => {
+        const file = fileRef.current?.files?.[0];
+        if (!file) {
+            toast.error('Choose a 5–15 second recording of the teacher first');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('The sample must be under 5 MB');
+            return;
+        }
+        setCloning(true);
+        try {
+            const res = await cloneTutorVoice(
+                file,
+                cloneName.trim() || value.teacherName || 'Teacher'
+            );
+            setValue((s) => ({ ...s, ttsProvider: 'smallest', ttsVoice: res.voice_id }));
+            setDirty(true);
+            toast.success('Voice cloned. Save defaults to start using it.');
+        } catch (e: unknown) {
+            const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data
+                ?.detail;
+            toast.error(detail || (e instanceof Error ? e.message : 'Could not clone the voice'));
+        } finally {
+            setCloning(false);
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -232,6 +264,51 @@ export const TutorModeDefaultsCard: React.FC = () => {
                                 <SelectItem value="strict">Strict</SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+                </div>
+                <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                    <p className="flex items-center gap-2 text-sm font-medium text-neutral-800">
+                        <Waveform className="size-4 text-primary-500" />
+                        Clone your teacher&apos;s voice (Smallest.ai)
+                    </p>
+                    <p className="text-xs text-neutral-600">
+                        Upload a clean 5–15 second recording of the teacher speaking (mp3, wav, mp4
+                        or webm, under 5 MB). Only upload a voice you have the person&apos;s
+                        permission to use. The cloned voice becomes the tutor voice for every course
+                        that inherits these defaults.
+                    </p>
+                    <div className="flex flex-wrap items-end gap-2">
+                        <div className="space-y-1">
+                            <Label>Voice name</Label>
+                            <Input
+                                value={cloneName}
+                                maxLength={80}
+                                placeholder={value.teacherName || 'Teacher'}
+                                onChange={(e) => setCloneName(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Sample</Label>
+                            <Input
+                                ref={fileRef}
+                                type="file"
+                                accept=".mp3,.wav,.mp4,.webm,audio/*"
+                            />
+                        </div>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            layoutVariant="default"
+                            disable={cloning}
+                            onClick={() => void cloneVoice()}
+                        >
+                            {cloning ? (
+                                <CircleNotch className="size-4 animate-spin" />
+                            ) : (
+                                <Waveform className="size-4" />
+                            )}
+                            Clone voice
+                        </MyButton>
                     </div>
                 </div>
                 <div className="flex justify-end">

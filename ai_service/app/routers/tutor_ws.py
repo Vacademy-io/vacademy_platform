@@ -41,7 +41,10 @@ from ..services.tutor.runtime.intents import detect_intent
 from ..services.tutor.runtime import prompts
 from ..services.tutor.runtime.settings import TutorSettings
 from ..services.tutor.slide_source import package_belongs_to_institute
-from ..services.voice_tts import SARVAM_DEFAULT_FEMALE, default_voice_for, sarvam_speaker, synthesize_speech
+from ..services.voice_tts import (
+    SARVAM_DEFAULT_FEMALE, SMALLEST_DEFAULT_VOICE, default_voice_for, sarvam_speaker, smallest_available,
+    synthesize_speech,
+)
 from .voice_agent import MIN_SPEECH_WAV_BYTES, TTS_CHUNK_SIZE, _split_for_speech, _transcode_to_wav
 
 logger = logging.getLogger(__name__)
@@ -58,7 +61,10 @@ MAX_TURNS_PER_MINUTE = 20
 MAX_TURNS_PER_SESSION = 400
 LANG_TO_STT = {"en": "en-IN", "hi": "hi-IN"}
 PACE_MULTIPLIER = {"slow": 0.85, "normal": 1.0, "fast": 1.2}
-SERVER_TTS_PROVIDERS = ("sarvam", "google", "edge")
+SERVER_TTS_PROVIDERS = ("smallest", "sarvam", "google", "edge")
+# Voice lessons are metered per started minute (design §4.8, tool
+# tutor_live_minute); the first minute is charged at open, the next every 60 s.
+LIVE_METER_SECONDS = 60
 
 # ── in-process TTS cache (compiled narration repeats across learners) ────────
 _TTS_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
@@ -152,6 +158,10 @@ def start_session(
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
     _batch_access(db, caller, payload.package_session_id)
+    if payload.mode == "VOICE":
+        short = svc.preflight_live_session(db, caller.institute_id)
+        if short:
+            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=short)
     try:
         boot = svc.start_session(user_id=caller.user_id, institute_id=caller.institute_id,
                                  package_session_id=payload.package_session_id, slide_id=payload.slide_id,
@@ -202,6 +212,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
     reached_ready = False
     turn_times: Deque[float] = deque()
     turns = 0
+    meter_task: Optional[asyncio.Task] = None
 
     async def _send(payload: dict) -> None:
         async with send_lock:
@@ -249,14 +260,17 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         state: Dict[str, Any] = ctx["state"]
         lang = ctx["language"] if ctx["language"] in ("en", "hi") else settings.course_language
         display_name = ctx["learner_name"] or ""
-        pointer = lesson.find(state.get("current_concept_id")) if state.get("current_slide_id") == lesson.slide_id else None
+        pointer = ctx.get("pointer")
         resumed = pointer is not None
         pointer = pointer or sm.Pointer()
         sarvam = SarvamService()
         tts_provider = ctx["tts_provider"]
-        if tts_provider not in SERVER_TTS_PROVIDERS:
-            tts_provider = "sarvam"    # Smallest lands in the browser path in WP7
+        if tts_provider not in SERVER_TTS_PROVIDERS or (tts_provider == "smallest" and not smallest_available()):
+            tts_provider = "sarvam"
         tts_voice = ctx["tts_voice"]
+        # What the learner answered per concept this session; quiz slides
+        # write it back as a quiz activity log when the slide is done.
+        attempt_log: Dict[str, Dict[str, Any]] = {}
         pace = state.get("pace") or "normal"
         board: List[Dict[str, Any]] = []          # cumulative ops of the current topic
         transcript: List[Dict[str, str]] = []
@@ -284,7 +298,12 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 return
             # The teacher is female by default (owner decision); a voice name
             # Sarvam does not serve (v2 names, Smallest voices) falls back to it.
-            voice = sarvam_speaker(tts_voice, SARVAM_DEFAULT_FEMALE) if tts_provider == "sarvam" else (tts_voice or default_voice_for(tts_provider, _lang_stt()))
+            if tts_provider == "sarvam":
+                voice = sarvam_speaker(tts_voice, SARVAM_DEFAULT_FEMALE)
+            elif tts_provider == "smallest":
+                voice = (tts_voice or SMALLEST_DEFAULT_VOICE).strip()
+            else:
+                voice = tts_voice or default_voice_for(tts_provider, _lang_stt())
             for segment in _split_for_speech(text_):
                 key = _cache_key(tts_provider, voice, _lang_stt(), pace, segment)
                 audio = _cache_get(key)
@@ -325,9 +344,75 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                          "concept_title": c.title if c else None, "phase": phase, "progress": pointer.progress(lesson),
                          "language": lang, "remediations": pointer.remediations})
 
+        def _quiz_results() -> List[Dict[str, Any]]:
+            """For quiz slides: one row per question with what the tutor
+            recorded, in the shape the learner app writes to the quiz
+            activity log (option ids resolved from the answer text)."""
+            out: List[Dict[str, Any]] = []
+            for t in lesson.topics:
+                for c in t.concepts:
+                    chk = c.check or {}
+                    qid = chk.get("question_id")
+                    if not qid:
+                        continue
+                    att = attempt_log.get(c.id) or {}
+                    options = list(chk.get("options") or [])
+                    option_ids = list(chk.get("option_ids") or [])
+                    correct_ids = [oid for oid, txt in zip(option_ids, options)
+                                   if txt and (chk.get("expected") or "") and txt.strip().lower() in (chk.get("expected") or "").lower()]
+                    answer = str(att.get("answer") or "")
+                    correct = bool(att.get("correct"))
+                    selected: List[str] = []
+                    if option_ids:
+                        if correct:
+                            selected = correct_ids or option_ids[:0]
+                        else:
+                            low = answer.lower()
+                            m = next((oid for oid, txt in zip(option_ids, options) if txt and txt.strip().lower() in low), None)
+                            if m is None:
+                                import re as _re
+                                num = _re.search(r"\b(?:option\s*)?([1-6]|[a-f])\b", low)
+                                if num:
+                                    tok = num.group(1)
+                                    idx = int(tok) - 1 if tok.isdigit() else ord(tok) - ord("a")
+                                    if 0 <= idx < len(option_ids):
+                                        m = option_ids[idx]
+                            selected = [m] if m else (["tutor:unmatched"] if answer else [])
+                    out.append({
+                        "question_id": qid, "question_name": chk.get("prompt") or c.title,
+                        "answered": bool(att), "correct": correct, "answer": answer[:1000],
+                        "selected_option_ids": selected, "correct_option_ids": correct_ids,
+                        "options": [{"id": oid, "name": txt} for oid, txt in zip(option_ids, options)],
+                        "score": att.get("score"), "skipped": att.get("action") == "skipped",
+                    })
+            return out
+
         async def _send_slide_done() -> None:
-            await _send({"type": "slide_done", "slide_id": lesson.slide_id, "weak_concepts": list(pointer.weak),
-                         "skipped_concepts": list(pointer.skipped), "done": pointer.done, "total": lesson.total_concepts})
+            frame: Dict[str, Any] = {"type": "slide_done", "slide_id": lesson.slide_id, "weak_concepts": list(pointer.weak),
+                                     "skipped_concepts": list(pointer.skipped), "done": pointer.done, "total": lesson.total_concepts}
+            qr = _quiz_results()
+            if qr:
+                frame["quiz_results"] = qr
+            await _send(frame)
+
+        async def _meter() -> None:
+            """Charge the first minute now, then one per minute; stop the
+            lesson politely when the institute cannot afford the next one."""
+            minute = 0
+            while True:
+                minute += 1
+                ok = await asyncio.to_thread(svc.bill_live_minute, tutor_session_id=tutor_session_id,
+                                             institute_id=institute_id, user_id=user_id, minute_no=minute)
+                if not ok:
+                    await _cancel_current()
+                    await _say(prompts.tpl("credits_end", lang), meta={"kind": "credits_end"})
+                    await _send({"type": "ended", "reason": "credits"})
+                    try:
+                        await websocket.close(code=4402)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    return
+                await asyncio.sleep(LIVE_METER_SECONDS)
 
         async def _apply_step(step: sm.Step, *, greeting: Optional[str] = None) -> None:
             nonlocal pointer, board
@@ -473,6 +558,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     svc.record_attempt(tutor_session_id=tutor_session_id, user_id=user_id, package_session_id=package_session_id,
                                        concept_id=concept.id, tags=concept.tags, attempt_no=pointer.remediations + 1, answer=text_,
                                        score=None, misconception=None, action="skipped", session_ops=None, note=None)
+                    attempt_log.setdefault(concept.id, {"answer": "", "score": None, "correct": False, "action": "skipped"})
                 await _say(prompts.tpl("skipped", lang), meta={"kind": "skip"})
                 await _apply_step(sm.skip(lesson, pointer)); return
             if intent in ("slower", "faster"):
@@ -523,6 +609,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                                        score=score, misconception=(decision.get("assessment") or {}).get("misconception"),
                                        action="advance", session_ops=decision["board_ops"], note=(decision.get("learner_state_delta") or {}).get("note"))
                     state = svc.reload_state(user_id, package_session_id) or state
+                    attempt_log[concept.id] = {"answer": text_, "score": score, "correct": True, "action": "advance"}
                     await _commit_then_say(sm.advance(lesson, pointer, mark_done=True), concept, decision["say"],
                                            {"kind": "evaluate", "score": score})
                 elif action == "remediate":
@@ -534,6 +621,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                                        action="advance_weak" if weak_now else "remediate", session_ops=decision["board_ops"],
                                        note=(decision.get("learner_state_delta") or {}).get("note"))
                     state = svc.reload_state(user_id, package_session_id) or state
+                    attempt_log[concept.id] = {"answer": text_, "score": score, "correct": False,
+                                               "action": "advance_weak" if weak_now else "remediate"}
                     if step.kind == "ask":
                         pointer = step.pointer
                         _save()
@@ -634,6 +723,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                      "slide_title": lesson.slide_title,
                      "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in lesson.topics]})
         reached_ready = True
+        if mode == "voice":
+            meter_task = asyncio.create_task(_meter())
         _spawn(_open(first=True))
 
         # ── 4. loop ──
@@ -739,6 +830,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
     finally:
         if current_task and not current_task.done():
             current_task.cancel()
+        if meter_task is not None and not meter_task.done():
+            meter_task.cancel()
         try:
             owner = svc.session_owner(tutor_session_id)
             if owner is not None and owner["status"] == "ACTIVE":

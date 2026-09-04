@@ -902,16 +902,38 @@ billing, data/docs) ran over everything shipped since WP0. Fixed the same day, o
   the next concept; the sidebar's boards follow `next_slide`; a session opened during navigation
   is ended; the entry card is gated on availability alone.
 
-Still open after the review (tracked, not silent):
+Follow-ups shipped 2026-09-04 (owner QA round 1 and the next-batch request):
 
-- **Live metering.** TTS / STT are recorded as usage rows but not deducted, and there is no
-  `tutor_live_minute` meter (rates deferred by the owner). `minutes_billed` is stamped only.
-- **Quiz completion.** A quiz slide taught by the tutor is not marked complete (the tracking
-  service rejects a manual mark for quizzes); the quiz activity log is not written yet.
+- **Audio.** Sarvam bulbul:v3 rejects the v2 speaker name; the tutor's default is now `priya`,
+  unknown speakers fall back to it, and a failed Sarvam line retries with the default speaker.
+- **Live metering.** Voice lessons are charged per started minute (`tutor_live_minute`, V496:
+  3 credits/minute by default, edit the `ai_tool_pricing` row to change it; idempotency key
+  `tutor_live:{session}:{minute}`). The first minute is charged when the socket opens, then one
+  every 60 s; the REST start refuses a voice lesson with a 402 when the institute cannot afford
+  five minutes, and a lesson whose institute runs dry mid-way is closed with `ended{reason:
+  "credits"}` after the teacher says so. Text lessons stay per-turn (LLM only).
+- **Quiz completion.** Quiz checks carry `question_id` / `option_ids`; `slide_done` carries
+  `quiz_results` (answer, correctness, resolved option ids) and the learner app writes the same
+  quiz activity log the quiz viewer writes, so quiz slides taught by the tutor complete and the
+  tracking service re-grades them from the answer key. Availability / chapter slides now carry
+  `module_id` / `subject_id` so completion writes land for every slide.
+- **Resume after recompile.** `resolve_pointer` remaps a saved concept id through the old
+  concept's title and position when the plan was recompiled.
+- **Animated diagrams.** SVG parts take a `step`; the learner board draws strokes on, fades
+  fills in, and reveals stepped parts one by one while the teacher speaks (shown at once when the
+  narration ends). The compile prompt asks for steps on processes and build-ups.
+- **Smallest.ai (WP7).** `smallest` engine in `voice_tts` (REST, lightning_v3.1, WAV 24 kHz,
+  speed from pace), the platform default when `SMALLEST_API_KEY` is on ai-service (else Sarvam;
+  a failing line falls back to Sarvam), and instant voice cloning: `POST /tutor/v1/voice/clone`
+  (5-15 s sample, staff only) returns a Smallest voice id that Settings → Course settings saves
+  as the institute's tutor voice. `GET /tutor/v1/voice/clones` lists them.
+- **Layout.** The lesson page is viewport-tall with per-pane scrolling, folds the app sidebar,
+  writes board elements in one at a time, and auto-listens after a question in voice mode.
+
+Still open (tracked, not silent):
+
 - **AI-video slides.** Copilot `HTML_VIDEO` slides are parked in NEEDS_DETAILS like uploaded
   videos; compiling from the video's script (§4.2 table) is not implemented.
-- **Pointer remap across plan versions.** Concept ids are new per version, so a recompile restarts
-  the slide for a learner mid-way.
 - **KB source material on doubt turns** (§6.5 budget row) is not supplied; the doubt prompt has
   the concept text only.
 - **Weak-concept revisits** at topic / chapter end (§6.6) and the model-written rolling summary
@@ -919,5 +941,6 @@ Still open after the review (tracked, not silent):
 - **Stock images** (§4.5) do not exist; the compile prompt only offers generated images.
 - **Fallback to the ordinary slide viewer** for non-teachable slides (§4.2) is not implemented:
   the sidebar skips them.
-- **Smallest.ai** in the browser TTS path (WP7), and the TTS cache under the media path.
+- The TTS cache is in-process (empties on deploy); moving it under the media path is open.
 - `teaching_media.cost_credits` / `file_id` are not populated for generated images.
+- Teacher-facing insights (WP9: weak-concept heatmap, session counts) are not built.

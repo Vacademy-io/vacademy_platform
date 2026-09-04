@@ -338,6 +338,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # Voice lessons: one charge per started minute (TTS + STT + the turn
+    # overhead), keyed tutor_live:{session}:{minute}. Text lessons bill per
+    # decision turn instead. Rate lives on the ai_tool_pricing row (V496).
+    "tutor_live_minute": {
+        "request_type": "conversation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("3"),
+        "unit_field": "audio_minutes",
+        "params": {"min_credits": 0},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

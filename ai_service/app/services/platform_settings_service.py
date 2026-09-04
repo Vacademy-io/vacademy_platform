@@ -168,9 +168,9 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             key="tutor.voice.provider",
             group="tutor",
             label="Tutor voice provider",
-            description="TTS engine for the Live AI Tutor's browser sessions (sarvam | google | edge; smallest once wired). Institutes and courses can override.",
+            description="TTS engine for the Live AI Tutor's browser sessions (smallest | sarvam | google | edge). Smallest.ai when its key is present, else Sarvam. Institutes and courses can override; a failing engine falls back to Sarvam per line.",
             type="string",
-            default=lambda: os.environ.get("TUTOR_TTS_PROVIDER") or "sarvam",
+            default=lambda: os.environ.get("TUTOR_TTS_PROVIDER") or ("smallest" if os.environ.get("SMALLEST_API_KEY") else "sarvam"),
         ),
         SettingSpec(
             key="tutor.voice.voice",

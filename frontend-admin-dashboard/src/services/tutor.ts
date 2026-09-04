@@ -143,10 +143,28 @@ export const TUTOR_TTS_PROVIDERS: Array<{
     value: NonNullable<TutorModeSetting['ttsProvider']>;
     label: string;
 }> = [
+    { value: 'smallest', label: 'Smallest.ai (voice cloning)' },
     { value: 'sarvam', label: 'Sarvam' },
     { value: 'google', label: 'Google' },
-    { value: 'smallest', label: 'Smallest.ai (coming soon — Sarvam is used until then)' },
 ];
+
+/** Clone a teacher's voice from a 5-15 s sample; returns the Smallest.ai voice id. */
+export const cloneTutorVoice = async (
+    file: File,
+    displayName: string
+): Promise<{ voice_id: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('display_name', displayName);
+    const res = await authenticatedAxiosInstance.post<{ voice_id: string }>(
+        `${BASE}/voice/clone`,
+        form,
+        {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        }
+    );
+    return res.data;
+};
 
 /**
  * Institute-wide Tutor Mode defaults (institute setting key TUTOR_MODE_SETTING).

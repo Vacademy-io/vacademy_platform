@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 
 from ....db import db_session
 from ....models.ai_token_usage import ApiProvider, RequestType
+from ....models.teaching_plan import TeachingConcept, TeachingTopic
+from ...ai_billing import preflight_tool_credits, record_tool_billing
 from ....models.tutor_runtime import TutorConceptAttempt, TutorLearnerState, TutorSession
 from ....repositories.chat_message_repository import ChatMessageRepository
 from ....repositories.chat_session_repository import ChatSessionRepository
@@ -64,6 +66,19 @@ def learner_name(db: Session, user_id: str) -> Optional[str]:
     return None
 
 
+def chapter_lineage(db: Session, chapter_id: str) -> Dict[str, Optional[str]]:
+    """module_id / subject_id of a chapter: the learner app needs both to
+    write progress (mark-completion, quiz activity) for a slide."""
+    row = db.execute(text("""
+        SELECT mcm.module_id, smm.subject_id
+        FROM module_chapter_mapping mcm
+        LEFT JOIN subject_module_mapping smm ON smm.module_id = mcm.module_id
+        WHERE mcm.chapter_id = :c
+        LIMIT 1
+    """), {"c": chapter_id}).first()
+    return {"module_id": row[0] if row else None, "subject_id": row[1] if row else None}
+
+
 def chapter_slides(db: Session, *, package_session_id: str, chapter_id: str) -> List[Dict[str, Any]]:
     """Ordered slides of one chapter in one batch with their plan status."""
     rows = db.execute(text("""
@@ -76,12 +91,53 @@ def chapter_slides(db: Session, *, package_session_id: str, chapter_id: str) -> 
     """), {"ps": package_session_id, "c": chapter_id}).fetchall()
     ids = [r[0] for r in rows]
     ready = plan_store.latest_plans_for_slides(db, ids, ready_only=True)
+    lineage = chapter_lineage(db, chapter_id)
     return [
         {"slide_id": r[0], "title": r[1], "source_type": (r[2] or "").upper(), "order": r[3],
          "teachable": (r[2] or "").upper() in SUPPORTED and r[0] in ready,
-         "plan_id": ready[r[0]].id if r[0] in ready else None}
+         "plan_id": ready[r[0]].id if r[0] in ready else None,
+         "chapter_id": chapter_id, **lineage}
         for r in rows
     ]
+
+
+# ── live-minute meter (voice lessons) ────────────────────────────────────────
+
+LIVE_MINUTE_TOOL = "tutor_live_minute"
+LIVE_PREFLIGHT_MINUTES = 5
+
+
+def preflight_live_session(db: Session, institute_id: str) -> Optional[str]:
+    """Voice lessons cost credits per minute: refuse to start one the
+    institute cannot afford for a few minutes. Returns the 402 detail, or
+    None when the session may start (unknown balance never blocks)."""
+    try:
+        est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL,
+                                     tool_params={"audio_minutes": LIVE_PREFLIGHT_MINUTES}, institute_id=institute_id)
+    except Exception:  # noqa: BLE001
+        return None
+    if est.get("sufficient") is False:
+        return (f"Not enough credits for a voice lesson: {LIVE_PREFLIGHT_MINUTES} minutes need ≈"
+                f"{est.get('estimated_credits')} credits, balance is {est.get('current_balance')}.")
+    return None
+
+
+def bill_live_minute(*, tutor_session_id: str, institute_id: str, user_id: str, minute_no: int) -> bool:
+    """Charge minute `minute_no` (1-based; idempotent per session+minute) and
+    report whether the institute can still afford the next one."""
+    record_tool_billing(
+        tool_key=LIVE_MINUTE_TOOL, tool_params={"audio_minutes": 1}, request_type=RequestType.CONVERSATION,
+        model="tutor-live", institute_id=institute_id, user_id=user_id, user_role="STUDENT",
+        request_id=tutor_session_id, idempotency_key=f"tutor_live:{tutor_session_id}:{minute_no}",
+    )
+    bump_telemetry(tutor_session_id, minutes_charged=1)
+    try:
+        with db_session() as db:
+            est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL, tool_params={"audio_minutes": 1},
+                                         institute_id=institute_id)
+        return est.get("sufficient") is not False
+    except Exception:  # noqa: BLE001
+        return True
 
 
 def availability(db: Session, *, package_id: str, package_session_id: Optional[str], institute_id: str,
@@ -99,11 +155,17 @@ def availability(db: Session, *, package_id: str, package_session_id: Optional[s
               .first())
         if st and st.current_slide_id and st.current_slide_id in ready:
             resume = next((x for x in ordered_ready if x["slide_id"] == st.current_slide_id), None)
+    first_lin = chapter_lineage(db, first["chapter_id"]) if first and first.get("chapter_id") else {}
+    resume_lin = chapter_lineage(db, resume["chapter_id"]) if resume and resume.get("chapter_id") else {}
     return {
         "resume_slide_id": resume["slide_id"] if resume else None,
         "resume_chapter_id": resume["chapter_id"] if resume else None,
+        "resume_module_id": resume_lin.get("module_id"),
+        "resume_subject_id": resume_lin.get("subject_id"),
         "first_slide_id": first["slide_id"] if first else None,
         "first_chapter_id": first["chapter_id"] if first else None,
+        "first_module_id": first_lin.get("module_id"),
+        "first_subject_id": first_lin.get("subject_id"),
         "enabled": bool(s.enabled),
         "default_on": bool(s.default_on),
         "teacher_name": s.teacher_name,
@@ -150,6 +212,41 @@ def load_lesson(db: Session, slide_id: str) -> Optional[LessonPlan]:
     return from_plan_view(view)
 
 
+def _norm_title(t: Optional[str]) -> str:
+    return " ".join((t or "").lower().split())
+
+
+def resolve_pointer(db: Session, lesson: LessonPlan, concept_id: Optional[str]) -> Optional[Pointer]:
+    """Where to resume. Concept ids are new on every recompile, so a saved id
+    that is not in this plan is remapped through the OLD concept's title and
+    position (its row survives: plans are marked DELETED, never dropped)."""
+    if not concept_id:
+        return None
+    p = lesson.find(concept_id)
+    if p is not None:
+        return p
+    old = (db.query(TeachingConcept.title, TeachingConcept.concept_order, TeachingTopic.title, TeachingTopic.topic_order)
+           .join(TeachingTopic, TeachingTopic.id == TeachingConcept.topic_id)
+           .filter(TeachingConcept.id == concept_id).first())
+    if old is None or not lesson.topics:
+        return None
+    c_title, c_order, t_title, t_order = old
+    # 1. Same concept title anywhere in the new plan.
+    for t in lesson.topics:
+        for c in t.concepts:
+            if _norm_title(c.title) == _norm_title(c_title):
+                return lesson.find(c.id)
+    # 2. Same topic title (or position) → same concept position, clamped.
+    ti = next((i for i, t in enumerate(lesson.topics) if _norm_title(t.title) == _norm_title(t_title)), None)
+    if ti is None:
+        ti = min(max(int(t_order or 1) - 1, 0), len(lesson.topics) - 1)
+    topic = lesson.topics[ti]
+    if not topic.concepts:
+        return None
+    ci = min(max(int(c_order or 1) - 1, 0), len(topic.concepts) - 1)
+    return lesson.find(topic.concepts[ci].id)
+
+
 def reload_state(user_id: str, package_session_id: str) -> Optional[Dict[str, Any]]:
     """Fresh learner-state snapshot (after an attempt was recorded) so the
     next decision prompt sees what this session just learned."""
@@ -188,6 +285,8 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
         lesson = load_lesson(db, ts.started_slide_id or "")
         st = get_or_create_state(db, user_id=ts.user_id, package_session_id=ts.package_session_id, institute_id=ts.institute_id)
         state = state_dict(st)
+        pointer = (resolve_pointer(db, lesson, st.current_concept_id)
+                   if lesson is not None and st.current_slide_id == lesson.slide_id else None)
         db.commit()
         try:
             tts_provider = settings.tts_provider or str(get_platform_setting("tutor.voice.provider", default="sarvam", db=db) or "sarvam")
@@ -198,7 +297,7 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
             "user_id": ts.user_id, "institute_id": ts.institute_id, "package_session_id": ts.package_session_id,
             "package_id": package_id, "chat_session_id": ts.chat_session_id, "mode": ts.mode,
             "language": ts.language, "started_slide_id": ts.started_slide_id,
-            "settings": settings, "lesson": lesson, "state": state,
+            "settings": settings, "lesson": lesson, "state": state, "pointer": pointer,
             "learner_name": learner_name(db, ts.user_id),
             "tts_provider": tts_provider, "tts_voice": tts_voice,
         }
@@ -258,7 +357,7 @@ def start_session(
             raise LookupError("This slide has no teaching plan yet")
         lang = language if language in ("en", "hi") else (st.preferred_language if settings.session_language == "learner" and st.preferred_language in ("en", "hi") else settings.course_language)
         resumed = st.current_slide_id == target_slide and st.current_concept_id is not None
-        pointer = lesson.find(st.current_concept_id) if resumed else None
+        pointer = resolve_pointer(db, lesson, st.current_concept_id) if resumed else None
         if pointer is None:
             pointer = Pointer()
             resumed = False
@@ -295,7 +394,7 @@ def switch_slide(*, tutor_session_id: str, user_id: str, package_session_id: str
         st = db.query(TutorLearnerState).filter(TutorLearnerState.user_id == user_id,
                                                 TutorLearnerState.package_session_id == package_session_id).first()
         resumed = bool(st and st.current_slide_id == slide_id and st.current_concept_id)
-        pointer = lesson.find(st.current_concept_id) if resumed and st else None
+        pointer = resolve_pointer(db, lesson, st.current_concept_id) if resumed and st else None
         if pointer is None:
             pointer, resumed = Pointer(), False
         if st:

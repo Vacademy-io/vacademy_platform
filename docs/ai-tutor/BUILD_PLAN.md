@@ -248,6 +248,8 @@ budget trimming. A `scripts/tutor_ws_probe.mjs` drives a full text-mode session 
 
 ### WP7 — Smallest in the browser TTS path, TTS cache, key plumbing
 
+**Status: shipped 2026-09-04** — `smallest` engine (REST lightning_v3.1) in `voice_tts.py`, platform default when `SMALLEST_API_KEY` is set on ai-service (workflow `docker-publish-ai-service.yml`), Sarvam fallback per line, instant voice cloning endpoint + Settings card. TTS cache is in-process (media-path cache still open). Live metering (`tutor_live_minute`, V496) shipped the same day.
+
 - `ai_service/app/config.py`: `smallest_api_key` beside `sarvam_api_key` (line 166).
 - `.github/workflows/docker-publish-ai-service.yml` (the `kubectl set env` block, line ~104,
   where `SARVAM_API_KEY` is passed): add `SMALLEST_API_KEY=${{ secrets.SMALLEST_API_KEY }}`.

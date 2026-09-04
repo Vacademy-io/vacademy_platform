@@ -54,6 +54,9 @@ class FormulaOp(_OpBase):
 class SvgPart(BaseModel):
     id: str
     label: str
+    # 0 = drawn with the diagram; 1, 2, 3… = revealed in that order while the
+    # teacher speaks, so a diagram builds up instead of landing whole.
+    step: int = Field(default=0, ge=0, le=12)
 
 
 class SvgOp(_OpBase):
@@ -185,6 +188,11 @@ class Check(BaseModel):
     rubric: Optional[str] = None
     misconceptions: List[Misconception] = Field(default_factory=list)
     pass_threshold: float = 0.7
+    # Quiz slides only: the source question and its option ids in the same
+    # order as `options`, so a tutor answer can be written back as a quiz
+    # activity log (learner_tracking) when the slide is done.
+    question_id: Optional[str] = None
+    option_ids: List[str] = Field(default_factory=list)
 
 
 class ConceptDraft(BaseModel):

@@ -16,6 +16,7 @@ import {
   type TutorStartResponse,
 } from "@/services/tutor-api";
 import { markSlideCompletion } from "@/services/study-library/tracking-api/mark-slide-completion";
+import { submitTutorQuizActivity } from "@/services/tutor-api";
 
 interface TutorSearch {
   courseId: string;
@@ -40,7 +41,7 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
   }),
 });
 
-type Disconnect = { reason: "lost" | "idle" | "limit" | "ended" };
+type Disconnect = { reason: "lost" | "idle" | "limit" | "credits" | "ended" };
 
 // The teacher "writes" a concept's elements one at a time while speaking,
 // instead of dropping the whole board at once.
@@ -50,6 +51,7 @@ const DISCONNECT_TEXT: Record<Disconnect["reason"], string> = {
   lost: "The connection to your teacher dropped.",
   idle: "The lesson paused because nothing happened for a while.",
   limit: "This lesson reached its time limit.",
+  credits: "Your institute's lesson credits have run out for now.",
   ended: "The lesson ended.",
 };
 
@@ -76,6 +78,7 @@ function TutorPage() {
   const [boardOps, setBoardOps] = useState<TutorBoardOp[]>([]);
   const [liveOps, setLiveOps] = useState<TutorBoardOp[]>([]);
   const [boardKey, setBoardKey] = useState("b0");
+  const [revealKey, setRevealKey] = useState(0);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [check, setCheck] = useState<TutorCheckEvent | null>(null);
   const [awaiting, setAwaiting] = useState<"continue" | "answer" | "done" | null>(null);
@@ -262,6 +265,7 @@ function TutorPage() {
     onAudioEnd: () => {
       // Whatever the teacher has not "written" yet lands before the next step.
       flushReveal();
+      setRevealKey((k) => k + 1);
       turnEndedRef.current = true;
       const seg = takeSegment();
       if (seg) queueRef.current.push(seg);
@@ -294,19 +298,29 @@ function TutorPage() {
       setAwaiting(null);
       setCheck(null);
       const slideType = currentSlideType();
-      // Quiz completion is recorded by the quiz activity log, which the tutor
-      // does not write yet; the tracking service rejects a manual mark for it.
-      if (slideType === "QUIZ") return;
+      const current = chapterSlides.find((s) => s.slide_id === ev.slide_id);
+      const ids = {
+        chapterId: search.chapterId || current?.chapter_id || undefined,
+        moduleId: search.moduleId || current?.module_id || undefined,
+        subjectId: search.subjectId || current?.subject_id || undefined,
+      };
       try {
-        await markSlideCompletion({
-          slideId: ev.slide_id,
-          slideType,
-          chapterId: search.chapterId,
-          moduleId: search.moduleId,
-          subjectId: search.subjectId,
-          packageSessionId: search.packageSessionId,
-          completed: true,
-        });
+        if (slideType === "QUIZ" || (ev.quiz_results?.length ?? 0) > 0) {
+          // A quiz is completed through its activity log (the tracking
+          // service rejects a manual mark); the server graded each answer.
+          await submitTutorQuizActivity({
+            slideId: ev.slide_id, packageSessionId: search.packageSessionId, ...ids,
+            results: ev.quiz_results ?? [],
+          });
+        } else {
+          await markSlideCompletion({
+            slideId: ev.slide_id,
+            slideType,
+            ...ids,
+            packageSessionId: search.packageSessionId,
+            completed: true,
+          });
+        }
       } catch {
         showNotice("Your progress for this slide could not be saved right now.");
       }
@@ -316,7 +330,7 @@ function TutorPage() {
     },
     onEnded: (reason) => {
       stopAudio();
-      setDisconnected({ reason: reason === "idle" || reason === "limit" ? reason : "ended" });
+      setDisconnected({ reason: reason === "idle" || reason === "limit" || reason === "credits" ? reason : "ended" });
       setPhase("idle");
     },
     onError: (m, isFatal) => {
@@ -504,16 +518,18 @@ function TutorPage() {
           {disconnected && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
               <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
-              <button type="button" onClick={reconnect} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
-                {disconnected.reason === "lost" ? "Reconnect" : "Continue the lesson"}
-              </button>
+              {disconnected.reason !== "credits" && (
+                <button type="button" onClick={reconnect} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
+                  {disconnected.reason === "lost" ? "Reconnect" : "Continue the lesson"}
+                </button>
+              )}
               <button type="button" onClick={endAndLeave} className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-700">
                 Back to course
               </button>
             </div>
           )}
           <div className="min-h-96 flex-1 lg:min-h-0">
-            <Whiteboard ops={boardOps} liveOps={liveOps} boardKey={boardKey} teacherName={boot?.teacher_name} />
+            <Whiteboard ops={boardOps} liveOps={liveOps} boardKey={boardKey} teacherName={boot?.teacher_name} revealKey={revealKey} />
           </div>
           {lessonOver && !disconnected && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">

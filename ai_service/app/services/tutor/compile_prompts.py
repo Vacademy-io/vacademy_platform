@@ -21,9 +21,11 @@ OPS_REFERENCE = """BOARD OPERATIONS (the only ops you may use; every element op 
 - {"op":"text","id":"...","text":"..."}                            a short line, not a paragraph
 - {"op":"bullet","id":"...","items":["...","..."]}                 2-4 short items
 - {"op":"formula","id":"...","latex":"F = m a","caption":"..."}   LaTeX, no $ delimiters
-- {"op":"svg","id":"...","svg":"<svg viewBox='0 0 400 240'>...</svg>","description":"what it shows","parts":[{"id":"nucleus","label":"Nucleus"}]}
-      a simple, clean diagram; give the parts a teacher would point at their own id= inside the svg.
-      Inside the svg use SINGLE quotes for every attribute (viewBox='0 0 400 240', id='nucleus') so the JSON string needs no escaping.
+- {"op":"svg","id":"...","svg":"<svg viewBox='0 0 640 360'>...</svg>","description":"what it shows","parts":[{"id":"nucleus","label":"Nucleus","step":0},{"id":"arrow1","label":"Energy flow","step":1}]}
+      a clean diagram; give the parts a teacher would point at their own id= inside the svg (wrap a shape and its
+      label in one <g id='...'>). "step" ANIMATES the diagram: parts with step 0 are drawn at once, parts with
+      step 1, 2, 3… appear in that order while the teacher speaks, so mention them in `say` in the same order.
+      Inside the svg use SINGLE quotes for every attribute (viewBox='0 0 640 360', id='nucleus') so the JSON string needs no escaping.
 - {"op":"image","id":"...","generate":"prompt for an image generator","description":"what it shows","caption":"..."}
       a realistic picture where a photo teaches better than a line drawing (anatomy, equipment, real-world
       scenes, a patient doing an exercise): write a concrete, well-lit, educational illustration prompt
@@ -91,7 +93,8 @@ def rules_text() -> str:
    - Labels 18-22px, text-anchor='middle' inside or under their shape; a label fits in about 11px per
      character, so a 12-character label needs a shape at least 150px wide. Never let text cross a line or
      another label; never rely on font width to line things up.
-   - Give the parts a teacher would point at their own id= (listed in "parts").
+   - Give the parts a teacher would point at their own id= (listed in "parts"), and use "step" so a
+     process, a flow or a build-up appears piece by piece as the narration reaches it.
    Add an image op (one per topic, more where the material is visual) wherever a realistic picture teaches
    better than a drawing: anatomy, equipment, a patient doing an exercise, a real-world scene. Tables for
    comparisons, callouts for definitions and warnings.

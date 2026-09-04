@@ -60,7 +60,10 @@ def sanitize_svg(svg: str) -> str:
     """Return a safe inline SVG or '' when nothing safe remains."""
     if not svg or "<svg" not in svg:
         return ""
-    svg = svg.strip()[:_MAX_SVG_CHARS]
+    svg = svg.strip()
+    if len(svg) > _MAX_SVG_CHARS:
+        # Never truncate mid-markup: a half diagram passes as a diagram.
+        return ""
     try:
         import nh3
         cleaned = nh3.clean(
@@ -151,15 +154,22 @@ def validate_ops(ops: Sequence[Dict[str, Any]], known_ids: Optional[set] = None,
                 if op.get(k) not in ids:
                     errors.append(f"{loc}: arrow '{k}' '{op.get(k)}' is not an element on this board")
         if kind == "svg":
-            if not sanitize_svg(op.get("svg", "")):
+            if len(str(op.get("svg") or "")) > _MAX_SVG_CHARS:
+                errors.append(f"{loc}: svg is too long ({len(str(op.get('svg')))} chars, max {_MAX_SVG_CHARS}); draw a simpler diagram")
+            elif not sanitize_svg(op.get("svg", "")):
                 errors.append(f"{loc}: svg is empty or unsafe after sanitizing")
             # Parts whose id is not in the svg are pruned by clean_ops, not
             # reported: a diagram that loses a pointer is still a diagram, and
             # bouncing the whole plan over it cost three model calls per slide.
         if kind in ("image", "video") and op.get("url") and not safe_url(op.get("url")):
             errors.append(f"{loc}: {kind} url must be https")
-        if kind == "media_task" and require_media_urls and not (op.get("url") or op.get("file_id")):
-            errors.append(f"{loc}: media_task needs a url or file_id")
+        if kind == "media_task":
+            # Same rule clean_ops applies at store time, so a plan that would
+            # lose its task on save is rejected here instead.
+            if op.get("url") and not safe_url(op.get("url")) and not op.get("file_id"):
+                errors.append(f"{loc}: media_task url must be https (or give a file_id)")
+            elif require_media_urls and not (safe_url(op.get("url")) or op.get("file_id")):
+                errors.append(f"{loc}: media_task needs a url or file_id")
     return errors, ids
 
 

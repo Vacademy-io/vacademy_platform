@@ -18,11 +18,14 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ....db import db_session
+from ....models.ai_token_usage import ApiProvider, RequestType
 from ....models.tutor_runtime import TutorConceptAttempt, TutorLearnerState, TutorSession
 from ....repositories.chat_message_repository import ChatMessageRepository
 from ....repositories.chat_session_repository import ChatSessionRepository
+from ...platform_settings_service import get_platform_setting
+from ...token_usage_service import TokenUsageService
 from .. import plan_store
-from ..slide_source import list_package_slides
+from ..slide_source import list_package_slides, slide_in_package_session
 from .settings import TutorSettings, resolve_settings
 from .state import LessonPlan, Pointer, from_plan_view
 
@@ -37,7 +40,7 @@ def learner_is_enrolled(db: Session, *, user_id: str, package_session_id: str, i
     row = db.execute(text("""
         SELECT 1 FROM student_session_institute_group_mapping
         WHERE user_id = :u AND package_session_id = :ps AND institute_id = :i
-          AND status IN ('ACTIVE', 'PENDING_FOR_APPROVAL', 'INVITED')
+          AND status = 'ACTIVE'
         LIMIT 1
     """), {"u": user_id, "ps": package_session_id, "i": institute_id}).first()
     return row is not None
@@ -67,7 +70,7 @@ def chapter_slides(db: Session, *, package_session_id: str, chapter_id: str) -> 
         SELECT sl.id, sl.title, sl.source_type, cts.slide_order
         FROM chapter_package_session_mapping cpsm
         JOIN chapter_to_slides cts ON cts.chapter_id = cpsm.chapter_id AND cts.status <> 'DELETED'
-        JOIN slide sl ON sl.id = cts.slide_id AND sl.status = 'PUBLISHED'
+        JOIN slide sl ON sl.id = cts.slide_id AND sl.status IN ('PUBLISHED', 'UNSYNC')
         WHERE cpsm.package_session_id = :ps AND cpsm.chapter_id = :c AND cpsm.status = 'ACTIVE'
         ORDER BY cts.slide_order NULLS LAST, sl.title
     """), {"ps": package_session_id, "c": chapter_id}).fetchall()
@@ -141,7 +144,87 @@ def load_lesson(db: Session, slide_id: str) -> Optional[LessonPlan]:
     plan = plan_store.latest_ready_plan(db, slide_id)
     if plan is None:
         return None
-    return from_plan_view(plan_store.plan_view(db, plan))
+    view = plan_store.plan_view(db, plan)
+    row = db.execute(text("SELECT title FROM slide WHERE id = :s"), {"s": slide_id}).first()
+    view["slide_title"] = (row[0] if row else None) or ""
+    return from_plan_view(view)
+
+
+def reload_state(user_id: str, package_session_id: str) -> Optional[Dict[str, Any]]:
+    """Fresh learner-state snapshot (after an attempt was recorded) so the
+    next decision prompt sees what this session just learned."""
+    try:
+        with db_session() as db:
+            st = (db.query(TutorLearnerState)
+                  .filter(TutorLearnerState.user_id == user_id, TutorLearnerState.package_session_id == package_session_id)
+                  .first())
+            return state_dict(st) if st is not None else None
+    except Exception:  # noqa: BLE001
+        logger.warning("reload_state failed", exc_info=True)
+        return None
+
+
+def session_owner(tutor_session_id: str) -> Optional[Dict[str, Any]]:
+    """Who owns the session and whether it is still ACTIVE — the only thing
+    the socket needs before the auth frame arrives."""
+    with db_session() as db:
+        ts = db.get(TutorSession, tutor_session_id)
+        if ts is None:
+            return None
+        return {"user_id": ts.user_id, "status": ts.status, "package_session_id": ts.package_session_id}
+
+
+def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
+    """Everything the socket needs to open, read in ONE short session that is
+    closed before the first model or TTS await: the handler itself never
+    holds a pool connection."""
+    with db_session() as db:
+        ts = db.get(TutorSession, tutor_session_id)
+        if ts is None:
+            return None
+        pkg = package_of_session(db, ts.package_session_id)
+        package_id = pkg[0] if pkg else ""
+        settings = resolve_settings(db, package_id=package_id, institute_id=ts.institute_id)
+        lesson = load_lesson(db, ts.started_slide_id or "")
+        st = get_or_create_state(db, user_id=ts.user_id, package_session_id=ts.package_session_id, institute_id=ts.institute_id)
+        state = state_dict(st)
+        db.commit()
+        try:
+            tts_provider = settings.tts_provider or str(get_platform_setting("tutor.voice.provider", default="sarvam", db=db) or "sarvam")
+            tts_voice = settings.tts_voice or str(get_platform_setting("tutor.voice.voice", default="", db=db) or "")
+        except Exception:  # noqa: BLE001
+            tts_provider, tts_voice = settings.tts_provider or "sarvam", settings.tts_voice or ""
+        return {
+            "user_id": ts.user_id, "institute_id": ts.institute_id, "package_session_id": ts.package_session_id,
+            "package_id": package_id, "chat_session_id": ts.chat_session_id, "mode": ts.mode,
+            "language": ts.language, "started_slide_id": ts.started_slide_id,
+            "settings": settings, "lesson": lesson, "state": state,
+            "learner_name": learner_name(db, ts.user_id),
+            "tts_provider": tts_provider, "tts_voice": tts_voice,
+        }
+
+
+def record_media_usage(*, kind: str, institute_id: str, user_id: str, session_id: str, language: str,
+                       characters: int, detail: Optional[str] = None, provider: str = "sarvam") -> None:
+    """Attribute TTS / STT spend to the institute (same row shape as the
+    voice call's metering), in its own short session."""
+    try:
+        with db_session() as db:
+            TokenUsageService(db).record_usage(
+                api_provider=ApiProvider.GOOGLE_TTS,
+                prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                request_type=RequestType.TTS_PREMIUM if kind == "tts" else RequestType.TRANSCRIPTION,
+                institute_id=institute_id, user_id=user_id,
+                model=({"sarvam": "sarvam:bulbul-v3", "google": "google:chirp3-hd", "edge": "edge:neural"}.get(provider, provider)
+                       if kind == "tts" else "sarvam:saaras-v3"),
+                request_id=session_id,
+                tts_provider=provider if kind == "tts" else "sarvam",
+                character_count=max(int(characters or 0), 0),
+                metadata={"surface": "tutor", "language": language, "detail": detail},
+            )
+            db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("tutor media usage not recorded for %s", session_id, exc_info=True)
 
 
 # ── session lifecycle ────────────────────────────────────────────────────────
@@ -163,6 +246,12 @@ def start_session(
         st = get_or_create_state(db, user_id=user_id, package_session_id=package_session_id, institute_id=institute_id)
         target_slide = slide_id or st.current_slide_id
         if not target_slide:
+            raise ValueError("No slide to teach: pass slide_id")
+        # The session teaches only what this batch exposes: a slide id from
+        # another course (or an unpublished one) is not a plan lookup.
+        if not slide_in_package_session(db, target_slide, package_session_id):
+            if slide_id:
+                raise LookupError("This slide is not part of this batch")
             raise ValueError("No slide to teach: pass slide_id")
         lesson = load_lesson(db, target_slide)
         if lesson is None:
@@ -198,6 +287,8 @@ def start_session(
 
 def switch_slide(*, tutor_session_id: str, user_id: str, package_session_id: str, slide_id: str) -> Tuple[LessonPlan, Pointer, bool]:
     with db_session() as db:
+        if not slide_in_package_session(db, slide_id, package_session_id):
+            raise LookupError("This slide is not part of this batch")
         lesson = load_lesson(db, slide_id)
         if lesson is None:
             raise LookupError("This slide has no teaching plan yet")

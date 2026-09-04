@@ -7,25 +7,57 @@ import { getUserRoles, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { submitForReview } from '@/routes/study-library/courses/-services/approval-services';
 import { savePackageSettingKey } from '@/services/package-settings';
-import { TUTOR_MODE_SETTING_KEY, compileTutorPlans, newCompileRunId } from '@/services/tutor';
+import {
+    TUTOR_MODE_SETTING_KEY,
+    compileTutorPlans,
+    getInstituteTutorDefaults,
+    newCompileRunId,
+    type TutorModeSetting,
+} from '@/services/tutor';
 
 /**
  * Live AI Tutor: after the copilot persists a course, mark it tutor-enabled and
- * compile every teachable slide. Reads the prompt page's choice from the
- * courseConfig it stored in sessionStorage. Never throws.
+ * compile every teachable slide.
+ *
+ * The prompt page's choices survive in their OWN sessionStorage keys
+ * (`coursePersonalizedTeaching`, `courseLanguage`, `courseKbGrounding`): the
+ * generating page deletes `courseConfig` as soon as the outline loads, long
+ * before the course is created. The institute's Tutor Mode defaults decide
+ * whether images are generated and whether tutor mode is available at all.
+ * Never throws; failures are shown, not swallowed.
  */
 async function startTutorPreparation(courseId: string): Promise<void> {
     try {
-        const raw = sessionStorage.getItem('courseConfig');
-        const cfg = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
-        const structure = (cfg?.courseStructure ?? {}) as { personalizedTeaching?: boolean };
-        if (structure.personalizedTeaching === false) return;
-        const language = String(cfg?.language ?? 'English').toLowerCase().startsWith('hi') ? 'hi' : 'en';
-        const kb = cfg?.kbGrounding as { knowledge_base_id?: string; mode?: 'STRICT' | 'BLENDED' } | undefined;
+        if (sessionStorage.getItem('coursePersonalizedTeaching') === '0') return;
+        const institute: TutorModeSetting | null = await getInstituteTutorDefaults().catch(
+            () => null
+        );
+        if (institute?.enabled === false) return; // tutor mode switched off for the institute
+        const language = (sessionStorage.getItem('courseLanguage') || 'English')
+            .toLowerCase()
+            .startsWith('hi')
+            ? 'hi'
+            : 'en';
+        let kb: { knowledge_base_id?: string; mode?: 'STRICT' | 'BLENDED' } | null = null;
+        try {
+            kb = JSON.parse(sessionStorage.getItem('courseKbGrounding') || 'null');
+        } catch {
+            kb = null;
+        }
+        const kbGrounding = kb?.knowledge_base_id
+            ? { knowledge_base_id: kb.knowledge_base_id, mode: kb.mode ?? 'STRICT' }
+            : null;
+        const generateImages = institute?.generateImages !== false;
         await savePackageSettingKey(
             courseId,
             TUTOR_MODE_SETTING_KEY,
-            { enabled: true, defaultOn: true, generateImages: true, languages: [language, language === 'en' ? 'hi' : 'en'] },
+            {
+                enabled: true,
+                defaultOn: institute?.defaultOn !== false,
+                generateImages,
+                languages: [language, language === 'en' ? 'hi' : 'en'],
+                kbGrounding,
+            },
             'Tutor Mode'
         );
         toast.info('Preparing the AI teacher for this course in the background…');
@@ -35,11 +67,9 @@ async function startTutorPreparation(courseId: string): Promise<void> {
             courseId,
             {
                 language,
-                generate_images: true,
+                generate_images: generateImages,
                 compile_run_id: newCompileRunId(),
-                kb_grounding: kb?.knowledge_base_id
-                    ? { knowledge_base_id: kb.knowledge_base_id, mode: kb.mode ?? 'STRICT' }
-                    : null,
+                ...(kbGrounding ? { kb_grounding: kbGrounding } : {}),
             },
             (ev) => {
                 if (ev.type === 'PLAN_READY' || ev.type === 'PLAN_UP_TO_DATE') ready += 1;
@@ -47,12 +77,18 @@ async function startTutorPreparation(courseId: string): Promise<void> {
             }
         );
         if (failed === 0) toast.success(`AI teacher ready: ${ready} slide(s) prepared.`);
-        else toast.warning(`AI teacher: ${ready} prepared, ${failed} failed — see the course’s Tutor Mode tab.`);
+        else
+            toast.warning(
+                `AI teacher: ${ready} prepared, ${failed} failed — see the course’s Tutor Mode tab.`
+            );
     } catch (error) {
-        console.warn('[Course Creation] Tutor preparation skipped:', error);
+        console.warn('[Course Creation] Tutor preparation failed:', error);
+        const msg = error instanceof Error ? error.message : 'unknown error';
+        toast.error(
+            `The AI teacher could not be prepared (${msg}). Open the course’s Tutor Mode tab to retry.`
+        );
     }
 }
-
 
 /**
  * Custom hook for handling course creation

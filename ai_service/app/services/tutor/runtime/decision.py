@@ -123,8 +123,12 @@ async def run_turn(
     mode: str,                       # "voice" | "text"
     tutor_session_id: str,
     source_block: Optional[str] = None,
+    final_attempt: bool = False,
+    concept: Optional[Concept] = None,
 ) -> Tuple[Decision, Dict[str, int]]:
-    concept = lesson.concept_at(pointer)
+    """`concept` overrides the pointer's concept (a doubt raised during a
+    topic summary or right after a verdict is about the concept just taught)."""
+    concept = concept or lesson.concept_at(pointer)
     assert concept is not None
     check = concept.check or {}
     lb = prompts.learner_block(state, concept.tags)
@@ -140,6 +144,7 @@ async def run_turn(
             objectives=lesson.objectives, board_ops=board_ops, concept_title=concept.title,
             concept_say=concept.narration(lang), teach_notes=concept.teach_notes, check=check,
             transcript=transcript, learner_message=learner_message, remediation_no=pointer.remediations, mode=mode,
+            final_attempt=final_attempt,
         )
     messages = [{"role": "system", "content": prompts.system_prompt(teacher, lang, strictness)},
                 {"role": "user", "content": user}]

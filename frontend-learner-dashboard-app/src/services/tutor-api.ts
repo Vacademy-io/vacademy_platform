@@ -36,6 +36,7 @@ export interface TutorChapterSlide {
 export interface TutorStartResponse {
   tutor_session_id: string;
   slide_id: string;
+  slide_title?: string;
   language: "en" | "hi";
   resumed: boolean;
   teacher_name: string;

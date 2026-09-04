@@ -606,7 +606,6 @@ export const CourseDetailsPage = () => {
                     <TutorEntryCard
                       courseId={searchParams.courseId || ""}
                       packageSessionId={packageSessionIdForCurrentLevel || ""}
-                      enrolled={isEnrolledInCourse}
                     />
                     <CourseStructureDetails
                       selectedSession={selectedSession}

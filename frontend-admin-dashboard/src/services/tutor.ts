@@ -11,6 +11,8 @@ import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { getInstituteId } from '@/constants/helper';
+import { GET_INSTITUTE_SETTING_DATA } from '@/constants/urls';
 
 const BASE = `${AI_SERVICE_BASE_URL}/tutor/v1`;
 
@@ -130,9 +132,40 @@ export interface TutorModeSetting {
     strictness?: 'gentle' | 'normal' | 'strict';
     /** Let the compiler generate AI images (about 1 credit each plus tokens; at most 4 per slide). */
     generateImages?: boolean;
+    /** Knowledge base the course was grounded on at creation; recompiles stay grounded. */
+    kbGrounding?: { knowledge_base_id: string; mode?: 'STRICT' | 'BLENDED' } | null;
 }
 
 export const TUTOR_MODE_SETTING_KEY = 'TUTOR_MODE_SETTING';
+
+/** Voice providers the runtime can speak with today; Smallest.ai lands with the browser path (WP7). */
+export const TUTOR_TTS_PROVIDERS: Array<{
+    value: NonNullable<TutorModeSetting['ttsProvider']>;
+    label: string;
+}> = [
+    { value: 'sarvam', label: 'Sarvam' },
+    { value: 'google', label: 'Google' },
+    { value: 'smallest', label: 'Smallest.ai (coming soon — Sarvam is used until then)' },
+];
+
+/**
+ * Institute-wide Tutor Mode defaults (institute setting key TUTOR_MODE_SETTING).
+ * saveInstituteSettingKey stores { data: {...} }; both shapes are tolerated.
+ * Resolves to null when the key was never saved.
+ */
+export const getInstituteTutorDefaults = async (): Promise<TutorModeSetting | null> => {
+    const instituteId = getInstituteId();
+    if (!instituteId) return null;
+    const res = await authenticatedAxiosInstance.get<
+        { data?: TutorModeSetting } | TutorModeSetting | null
+    >(GET_INSTITUTE_SETTING_DATA, { params: { instituteId, settingKey: TUTOR_MODE_SETTING_KEY } });
+    const raw = res.data;
+    const data =
+        raw && typeof raw === 'object' && 'data' in raw
+            ? (raw as { data?: TutorModeSetting }).data
+            : (raw as TutorModeSetting | null);
+    return data && typeof data === 'object' ? data : null;
+};
 
 export const getTutorPlans = async (packageId: string): Promise<TutorPackagePlans> => {
     const res = await authenticatedAxiosInstance.get<TutorPackagePlans>(
@@ -145,9 +178,12 @@ export const getTutorSlidePlan = async (
     slideId: string,
     latest = false
 ): Promise<TutorPlanView> => {
-    const res = await authenticatedAxiosInstance.get<TutorPlanView>(`${BASE}/slides/${slideId}/plan`, {
-        params: latest ? { latest: true } : undefined,
-    });
+    const res = await authenticatedAxiosInstance.get<TutorPlanView>(
+        `${BASE}/slides/${slideId}/plan`,
+        {
+            params: latest ? { latest: true } : undefined,
+        }
+    );
     return res.data;
 };
 
@@ -155,9 +191,12 @@ export const putTutorSourceDescription = async (
     slideId: string,
     description: string
 ): Promise<{ slide_id: string; plan_id: string; status: string }> => {
-    const res = await authenticatedAxiosInstance.put(`${BASE}/slides/${slideId}/source-description`, {
-        description,
-    });
+    const res = await authenticatedAxiosInstance.put(
+        `${BASE}/slides/${slideId}/source-description`,
+        {
+            description,
+        }
+    );
     return res.data;
 };
 

@@ -22,6 +22,10 @@ from .board_ops import clean_ops, materialize, ops_to_dicts
 logger = logging.getLogger(__name__)
 
 TERMINAL_OK = "READY"
+# A STALE plan (source edited since it was compiled) keeps serving learners
+# until a newer READY version replaces it (design §4.7); only compile-time
+# decisions treat STALE as "needs work".
+SERVING_STATUSES = ("READY", "STALE")
 # A compile that has not finished in this long is dead (the worker was
 # cancelled, crashed or redeployed); its row is retired so the slide can be
 # compiled again and the course page stops showing "compiling" forever.
@@ -38,12 +42,22 @@ def latest_plan(db: Session, slide_id: str) -> Optional[TeachingPlan]:
 
 
 def latest_ready_plan(db: Session, slide_id: str) -> Optional[TeachingPlan]:
+    """Newest plan learners can be taught from (READY, or STALE until a
+    recompile lands)."""
     return (
         db.query(TeachingPlan)
-        .filter(TeachingPlan.slide_id == slide_id, TeachingPlan.status == "READY")
+        .filter(TeachingPlan.slide_id == slide_id, TeachingPlan.status.in_(SERVING_STATUSES))
         .order_by(TeachingPlan.version.desc())
         .first()
     )
+
+
+def reinstate_ready(db: Session, plan: TeachingPlan) -> None:
+    """A STALE plan whose source hash still matches: nothing to recompile."""
+    plan.status = TERMINAL_OK
+    plan.error = None
+    plan.updated_at = datetime.utcnow()
+    db.flush()
 
 
 def retire_stuck_compiling(db: Session, slide_id: Optional[str] = None) -> int:
@@ -199,7 +213,8 @@ def store_draft(
     plan.key_terms_json = [kt.model_dump() for kt in draft.key_terms]
     plan.raw_plan_json = {"draft": raw, "compile_inputs": compile_inputs or {}}
     plan.model = model
-    plan.language = draft.language or plan.language
+    # plan.language is the REQUESTED language (set at start_plan); the model's
+    # echo of it is not trusted (it may be missing, "Hindi", or anything).
     db.refresh(plan, attribute_names=["source_description"])
     changed_meanwhile = (
         compiled_with_description is not None
@@ -210,13 +225,15 @@ def store_draft(
     plan.updated_at = datetime.utcnow()
     db.flush()
 
-    # Older versions of this slide give way to the new READY plan.
-    db.query(TeachingPlan).filter(
-        TeachingPlan.slide_id == plan.slide_id,
-        TeachingPlan.id != plan.id,
-        TeachingPlan.status.in_(["READY", "STALE", "FAILED", "NEEDS_DETAILS"]),
-    ).update({"status": "DELETED", "updated_at": datetime.utcnow()}, synchronize_session=False)
-    db.flush()
+    # Older versions of this slide give way to the new plan — only once the
+    # new one is READY; a STALE landing keeps the previous READY plan serving.
+    if plan.status == TERMINAL_OK:
+        db.query(TeachingPlan).filter(
+            TeachingPlan.slide_id == plan.slide_id,
+            TeachingPlan.id != plan.id,
+            TeachingPlan.status.in_(["READY", "STALE", "FAILED", "NEEDS_DETAILS"]),
+        ).update({"status": "DELETED", "updated_at": datetime.utcnow()}, synchronize_session=False)
+        db.flush()
     return plan
 
 
@@ -297,7 +314,7 @@ def latest_plans_for_slides(db: Session, slide_ids: Iterable[str], *, ready_only
     if not ids:
         return {}
     q = db.query(TeachingPlan).filter(TeachingPlan.slide_id.in_(ids))
-    q = q.filter(TeachingPlan.status == "READY") if ready_only else q.filter(TeachingPlan.status != "DELETED")
+    q = q.filter(TeachingPlan.status.in_(SERVING_STATUSES)) if ready_only else q.filter(TeachingPlan.status != "DELETED")
     out: Dict[str, TeachingPlan] = {}
     for plan in q.order_by(TeachingPlan.slide_id, TeachingPlan.version.desc()).all():
         out.setdefault(plan.slide_id, plan)

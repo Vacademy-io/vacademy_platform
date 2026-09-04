@@ -181,6 +181,7 @@ class SarvamService:
         text: str,
         language: str = "en-IN",
         voice: str = "shubh",
+        pace: Optional[float] = None,
     ) -> bytes:
         """Convert text to speech audio bytes using Sarvam Bulbul v3.
 
@@ -203,7 +204,7 @@ class SarvamService:
 
         async with httpx.AsyncClient(timeout=REST_TIMEOUT_SECONDS) as client:
             for chunk in chunks:
-                audio = await self._tts_single(client, chunk, language, voice)
+                audio = await self._tts_single(client, chunk, language, voice, pace)
                 if audio:
                     audio_parts.append(audio)
 
@@ -215,6 +216,7 @@ class SarvamService:
         text: str,
         language: str,
         voice: str,
+        pace: Optional[float] = None,
     ) -> bytes:
         """Synthesize a single text chunk (<=2500 chars)."""
         body = {
@@ -225,6 +227,8 @@ class SarvamService:
             "speech_sample_rate": 24000,
             "enable_preprocessing": True,
         }
+        if pace is not None and abs(float(pace) - 1.0) >= 0.05:
+            body["pace"] = round(max(0.5, min(2.0, float(pace))), 2)
         try:
             response = await client.post(
                 TTS_ENDPOINT,

@@ -39,6 +39,15 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
   }),
 });
 
+type Disconnect = { reason: "lost" | "idle" | "limit" | "ended" };
+
+const DISCONNECT_TEXT: Record<Disconnect["reason"], string> = {
+  lost: "The connection to your teacher dropped.",
+  idle: "The lesson paused because nothing happened for a while.",
+  limit: "This lesson reached its time limit.",
+  ended: "The lesson ended.",
+};
+
 /**
  * Learn with your teacher (design §6): a whiteboard the teacher fills in while
  * speaking, a check after each concept, and a sidebar with the boards of this
@@ -52,9 +61,13 @@ function TutorPage() {
   const voiceMode = search.mode === "voice";
 
   const [boot, setBoot] = useState<TutorStartResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [fatal, setFatal] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [disconnected, setDisconnected] = useState<Disconnect | null>(null);
   const [phase, setPhase] = useState<TutorPhase>("connecting");
   const [state, setState] = useState<TutorStateEvent | null>(null);
+  const [topics, setTopics] = useState<TutorTopicItem[]>([]);
+  const [slideTitle, setSlideTitle] = useState("");
   const [boardOps, setBoardOps] = useState<TutorBoardOp[]>([]);
   const [liveOps, setLiveOps] = useState<TutorBoardOp[]>([]);
   const [boardKey, setBoardKey] = useState("b0");
@@ -67,12 +80,24 @@ function TutorPage() {
   const currentSlideRef = useRef<string | null>(null);
   const sessionRef = useRef<string | null>(null);
   const boardCounter = useRef(0);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bootSeq = useRef(0);
+
+  const showNotice = useCallback((m: string) => {
+    setNotice(m);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 7000);
+  }, []);
 
   // ── audio out ──
   const audioPlayer = useAudioPlayer();
   const chunksRef = useRef<Uint8Array[]>([]);
   const queueRef = useRef<ArrayBuffer[]>([]);
   const drainingRef = useRef(false);
+  // The server's phase for AFTER the current narration; applied when the
+  // last queued segment finishes so the label never flips mid-sentence.
+  const pendingPhaseRef = useRef<TutorPhase | null>(null);
+  const turnEndedRef = useRef(false);
   const takeSegment = useCallback((): ArrayBuffer | null => {
     const chunks = chunksRef.current;
     chunksRef.current = [];
@@ -86,6 +111,17 @@ function TutorPage() {
     }
     return out.buffer as ArrayBuffer;
   }, []);
+  const audioBusy = () => voiceMode && speakOn && (drainingRef.current || queueRef.current.length > 0);
+  const applyPhase = useCallback(
+    (p: TutorPhase) => {
+      if (voiceMode && speakOn && (drainingRef.current || queueRef.current.length > 0)) {
+        pendingPhaseRef.current = p;
+        return;
+      }
+      setPhase(p);
+    },
+    [voiceMode, speakOn],
+  );
   const drain = useCallback(async () => {
     if (drainingRef.current) return;
     drainingRef.current = true;
@@ -102,33 +138,57 @@ function TutorPage() {
       }
     } finally {
       drainingRef.current = false;
+      if (turnEndedRef.current && !queueRef.current.length) {
+        const next = pendingPhaseRef.current;
+        pendingPhaseRef.current = null;
+        setPhase((p) => (p === "speaking" ? (next ?? "idle") : next ?? p));
+      }
     }
+  }, [audioPlayer]);
+  const stopAudio = useCallback(() => {
+    turnEndedRef.current = false;
+    pendingPhaseRef.current = null;
+    queueRef.current = [];
+    chunksRef.current = [];
+    audioPlayer.stop();
   }, [audioPlayer]);
 
   // ── socket ──
   const socket = useTutorSocket({
-    onReady: () => setPhase("idle"),
+    onReady: (ev) => {
+      setDisconnected(null);
+      setPhase("idle");
+      if (Array.isArray(ev.topics)) setTopics(ev.topics as TutorTopicItem[]);
+      if (typeof ev.slide_title === "string") setSlideTitle(ev.slide_title);
+    },
+    onLesson: (ev) => {
+      setTopics(ev.topics);
+      setSlideTitle(ev.slide_title || "");
+      currentSlideRef.current = ev.slide_id;
+    },
     onState: (ev) => {
       setState(ev);
-      if (ev.phase === "await_answer" || ev.phase === "remediate") setPhase("question");
-      else if (ev.phase === "media_task") setPhase("media");
-      else if (ev.phase === "slide_done") setPhase("done");
+      if (ev.phase === "await_answer" || ev.phase === "remediate") applyPhase("question");
+      else if (ev.phase === "media_task") applyPhase("media");
+      else if (ev.phase === "slide_done") applyPhase("done");
     },
     onBoard: (ops, clear, live) => {
       if (live) {
         setLiveOps(ops);
         return;
       }
+      // A new concept's elements retire the previous turn's highlights.
+      setLiveOps([]);
       if (clear) {
         boardCounter.current += 1;
         setBoardKey(`b${boardCounter.current}`);
         setBoardOps([]);
-        setLiveOps([]);
         return;
       }
       setBoardOps((prev) => [...prev, ...ops]);
     },
     onAiText: (text) => {
+      turnEndedRef.current = false;
       setTranscript((prev) => [...prev, { role: "teacher", text }]);
       if (!voiceMode) setPhase("idle");
     },
@@ -147,19 +207,27 @@ function TutorPage() {
       }
     },
     onAudioEnd: () => {
+      turnEndedRef.current = true;
       const seg = takeSegment();
       if (seg) queueRef.current.push(seg);
-      void drain().then(() => setPhase((p) => (p === "speaking" ? "idle" : p)));
+      if (drainingRef.current || queueRef.current.length) {
+        void drain();
+      } else {
+        const next = pendingPhaseRef.current;
+        pendingPhaseRef.current = null;
+        setPhase((p) => (p === "speaking" ? (next ?? "idle") : next ?? p));
+      }
     },
     onCheck: (ev) => {
       setCheck(ev);
       setAwaiting("answer");
-      setPhase("question");
+      applyPhase("question");
     },
     onAwait: (what) => {
       setAwaiting(what);
-      if (what === "answer") setPhase("question");
-      else if (what === "done") setPhase("media");
+      if (what === "answer") applyPhase("question");
+      else if (what === "done") applyPhase("media");
+      else applyPhase("idle");
     },
     onTranscriptFinal: (text) => {
       if (text) setTranscript((prev) => [...prev, { role: "learner", text }]);
@@ -169,10 +237,14 @@ function TutorPage() {
       setPhase("done");
       setAwaiting(null);
       setCheck(null);
+      const slideType = currentSlideType();
+      // Quiz completion is recorded by the quiz activity log, which the tutor
+      // does not write yet; the tracking service rejects a manual mark for it.
+      if (slideType === "QUIZ") return;
       try {
         await markSlideCompletion({
           slideId: ev.slide_id,
-          slideType: currentSlideType(),
+          slideType,
           chapterId: search.chapterId,
           moduleId: search.moduleId,
           subjectId: search.subjectId,
@@ -180,14 +252,28 @@ function TutorPage() {
           completed: true,
         });
       } catch {
-        /* progress write is best-effort here; the viewer path still works */
+        showNotice("Your progress for this slide could not be saved right now.");
       }
     },
     onSummary: () => {
       setPhase("done");
     },
-    onError: (m) => setError(m),
-    onClose: () => setPhase((p) => (p === "done" ? p : "idle")),
+    onEnded: (reason) => {
+      stopAudio();
+      setDisconnected({ reason: reason === "idle" || reason === "limit" ? reason : "ended" });
+      setPhase("idle");
+    },
+    onError: (m, isFatal) => {
+      if (isFatal) setFatal(m);
+      else {
+        showNotice(m);
+        setPhase((p) => (p === "thinking" ? "idle" : p));
+      }
+    },
+    onClose: () => {
+      setPhase((p) => (p === "done" ? p : "idle"));
+      setDisconnected((d) => d ?? { reason: "lost" });
+    },
   });
 
   const currentSlideType = () =>
@@ -206,6 +292,7 @@ function TutorPage() {
       recorder.stopRecording();
       setMicOn(false);
       socket.sendAudioDiscard();
+      setPhase("idle");
     },
     silenceTimeout: 2000,
     maxWaitForSpeechMs: 15000,
@@ -215,9 +302,11 @@ function TutorPage() {
       recorder.stopRecording();
       setMicOn(false);
       socket.sendAudioEnd(recorder.mimeType);
+      setPhase("thinking");
       return;
     }
-    audioPlayer.stop();
+    // Barge-in: nothing queued may keep talking into the open microphone.
+    stopAudio();
     socket.sendInterrupt();
     const ok = await recorder.startRecording();
     if (ok) {
@@ -226,35 +315,57 @@ function TutorPage() {
     }
   };
 
-  // ── boot ──
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [b, slides] = await Promise.all([
-          startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
-          search.chapterId ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
-        ]);
-        if (cancelled) return;
-        setBoot(b);
-        setChapterSlides(slides);
-        currentSlideRef.current = b.slide_id;
-        sessionRef.current = b.tutor_session_id;
-        socket.connect(b.socket_path);
-      } catch (e: unknown) {
-        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-        setError(msg || (e instanceof Error ? e.message : "Could not start the tutor"));
+  // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
+  const bootSession = useCallback(async () => {
+    const seq = ++bootSeq.current;
+    setFatal(null);
+    setDisconnected(null);
+    setPhase("connecting");
+    try {
+      const [b, slides] = await Promise.all([
+        startTutorSession({ packageSessionId: search.packageSessionId, slideId: search.slideId, mode: voiceMode ? "VOICE" : "TEXT" }),
+        search.chapterId ? getTutorChapterSlides(search.chapterId, search.packageSessionId) : Promise.resolve([]),
+      ]);
+      if (seq !== bootSeq.current) {
+        // The page moved on while the request was in flight: close what we opened.
+        void endTutorSession(b.tutor_session_id);
+        return;
       }
-    })();
+      setBoot(b);
+      setTopics(b.topics ?? []);
+      setSlideTitle(b.slide_title || "");
+      setChapterSlides(slides);
+      currentSlideRef.current = b.slide_id;
+      sessionRef.current = b.tutor_session_id;
+      socket.connect(b.socket_path);
+    } catch (e: unknown) {
+      if (seq !== bootSeq.current) return;
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setFatal(msg || (e instanceof Error ? e.message : "Could not start the tutor"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.packageSessionId, search.slideId, search.chapterId, voiceMode]);
+
+  useEffect(() => {
+    void bootSession();
     return () => {
-      cancelled = true;
+      bootSeq.current += 1;
       socket.disconnect();
       if (sessionRef.current) void endTutorSession(sessionRef.current);
+      sessionRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search.packageSessionId, search.slideId, voiceMode]);
+  }, [bootSession]);
 
-  const topics: TutorTopicItem[] = useMemo(() => boot?.topics ?? [], [boot]);
+  const reconnect = () => {
+    stopAudio();
+    setTranscript([]);
+    setCheck(null);
+    setAwaiting(null);
+    setLiveOps([]);
+    void bootSession();
+  };
+
   const nextSlides = useMemo(
     () => chapterSlides.map((s) => ({ ...s, current: s.slide_id === (state?.slide_id ?? boot?.slide_id) })),
     [chapterSlides, state?.slide_id, boot?.slide_id],
@@ -265,42 +376,51 @@ function TutorPage() {
   }, [chapterSlides, state?.slide_id, boot?.slide_id]);
 
   const goToSlide = (slideId: string) => {
+    stopAudio();
     currentSlideRef.current = slideId;
     setTranscript([]);
     setCheck(null);
     setAwaiting(null);
+    setLiveOps([]);
     socket.sendNextSlide(slideId);
   };
 
   const endAndLeave = () => {
+    stopAudio();
     socket.sendEndSession();
     setTimeout(() => {
       navigate({ to: "/study-library/courses/course-details", search: { courseId: search.courseId, packageSessionId: search.packageSessionId } as never });
     }, 400);
   };
 
-  if (error) {
+  if (fatal) {
     return (
       <LayoutContainer>
         <div className="mx-auto max-w-lg rounded-2xl border border-danger-200 bg-danger-50 p-6 text-center">
-          <p className="text-sm text-danger-700">{error}</p>
-          <button type="button" className="mt-4 rounded-full bg-primary-500 px-4 py-2 text-sm text-white" onClick={() => window.history.back()}>
-            Go back
-          </button>
+          <p className="text-sm text-danger-700">{fatal}</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button type="button" className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-700" onClick={() => window.history.back()}>
+              Go back
+            </button>
+            <button type="button" className="rounded-full bg-primary-500 px-4 py-2 text-sm text-white" onClick={reconnect}>
+              Try again
+            </button>
+          </div>
         </div>
       </LayoutContainer>
     );
   }
 
-  const slideTitle = boot?.topics?.[0]?.title ? (chapterSlides.find((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id))?.title || "Lesson") : "Lesson";
+  const title = slideTitle || chapterSlides.find((s) => s.slide_id === (state?.slide_id ?? boot?.slide_id))?.title || "Lesson";
   const progress = state?.progress ?? boot?.progress ?? { done: 0, total: 1, percent: 0 };
+  const lessonOver = phase === "done" && !audioBusy();
 
   return (
     <LayoutContainer>
       <div className="grid min-h-96 grid-cols-1 gap-3 lg:h-full lg:grid-cols-12">
         <div className="hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
           <TutorSidebar
-            slideTitle={slideTitle}
+            slideTitle={title}
             topics={topics}
             activeTopicId={state?.topic_id ?? null}
             progressPercent={progress.percent}
@@ -311,8 +431,19 @@ function TutorPage() {
           />
         </div>
         <div className="min-h-0 lg:col-span-6">
+          {disconnected && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+              <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
+              <button type="button" onClick={reconnect} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
+                {disconnected.reason === "lost" ? "Reconnect" : "Continue the lesson"}
+              </button>
+              <button type="button" onClick={endAndLeave} className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs text-neutral-700">
+                Back to course
+              </button>
+            </div>
+          )}
           <Whiteboard ops={boardOps} liveOps={liveOps} boardKey={boardKey} teacherName={boot?.teacher_name} />
-          {phase === "done" && (
+          {lessonOver && !disconnected && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
               <span>Slide complete.</span>
               {nextTeachable ? (
@@ -337,6 +468,8 @@ function TutorPage() {
             voiceMode={voiceMode}
             micOn={micOn}
             speakOn={speakOn}
+            notice={notice}
+            disabled={!!disconnected || phase === "connecting"}
             onSendText={(t) => {
               setTranscript((prev) => [...prev, { role: "learner", text: t }]);
               setPhase("thinking");
@@ -360,13 +493,12 @@ function TutorPage() {
             onToggleSpeak={() => {
               setSpeakOn((v) => {
                 socket.sendConfig({ speak: !v });
-                if (v) audioPlayer.stop();
+                if (v) stopAudio();
                 return !v;
               });
             }}
             onInterrupt={() => {
-              audioPlayer.stop();
-              queueRef.current = [];
+              stopAudio();
               socket.sendInterrupt();
               setPhase("idle");
             }}

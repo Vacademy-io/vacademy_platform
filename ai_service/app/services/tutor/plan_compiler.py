@@ -3,16 +3,18 @@
 One PlanCompiler per compile request; `compile_many` runs slides under a small
 semaphore and yields SSE-ready events as each finishes. Every slide owns its
 own DB sessions (the pool is shared with the chatbot; three concurrent slides
-is the ceiling), its own model calls, and its own billing row, so one bad
-slide never fails a course.
+is the ceiling), its own model calls, its own token counters and its own
+billing row, so one bad slide never fails — or overcharges — another.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+from dataclasses import dataclass, field, replace
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
+import httpx
 from pydantic import ValidationError
 
 from ...db import db_session
@@ -41,6 +43,10 @@ COMPILE_MAX_TOKENS = 12_000
 # magnitude cheaper and the validator + repair loop carries the quality. Raise
 # it per platform setting tutor.compile.model when the economics allow.
 DEFAULT_COMPILE_MODEL = "google/gemini-2.5-flash"
+# Provider answers that mean "this model id is not served": fall back to the
+# institute default. Timeouts and 5xx are NOT retried on another model — that
+# doubled cost and latency for nothing.
+_MODEL_REJECTED_STATUSES = {400, 404, 422}
 
 
 def resolve_compile_model(override: Optional[str] = None) -> Optional[str]:
@@ -61,6 +67,17 @@ def _pydantic_errors(exc: ValidationError) -> List[str]:
     return out
 
 
+def _description_unchanged(plan: TeachingPlan) -> bool:
+    """For video / PDF plans the description is part of the source: a STALE
+    row whose description differs from the one it was compiled with must be
+    recompiled even though the slide body hash matches."""
+    inputs = ((plan.raw_plan_json or {}).get("compile_inputs") or {}) if isinstance(plan.raw_plan_json, dict) else {}
+    if "source_description" not in inputs:
+        # Compiled before the description was recorded: trust the body hash.
+        return True
+    return (inputs.get("source_description") or "").strip() == (plan.source_description or "").strip()
+
+
 class _Skip(Exception):
     """Raised by the draft stage when a slide should be reported as skipped
     (not failed): nothing to teach, no model call made."""
@@ -75,6 +92,16 @@ class _FixedKeys:
 
     def resolve_keys(self, institute_id=None, user_id=None, request_model=None, **_ignored):
         return self._keys
+
+
+@dataclass
+class _Run:
+    """Per-slide compile state. compile_many runs slides concurrently on one
+    compiler, so nothing that counts tokens or money may live on `self`."""
+    usage: Dict[str, int] = field(default_factory=lambda: {"prompt_tokens": 0, "completion_tokens": 0})
+    model_used: Optional[str] = None
+    # Generated images: (url, usage). Billed only once the plan is stored.
+    images: List[Tuple[str, Dict[str, Any]]] = field(default_factory=list)
 
 
 class PlanCompiler:
@@ -147,7 +174,7 @@ class PlanCompiler:
                 return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found in this institute"}
             source = load_slide_source(db, slide_id)
             if source is None:
-                return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found"}
+                return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found or not published"}
 
             plan_store.retire_stuck_compiling(db, slide_id)
             in_progress = plan_store.active_compiling(db, slide_id)
@@ -177,13 +204,21 @@ class PlanCompiler:
                 return {"type": "PLAN_NEEDS_DETAILS", "slide_id": slide_id,
                         "reason": "Add what this video / PDF teaches before it can be compiled"}
 
-            if (existing is not None and existing.status == "READY"
-                    and existing.content_hash == source.content_hash
-                    and existing.language == self.language and not self.force):
+            unchanged = (existing is not None and existing.content_hash == source.content_hash
+                         and existing.language == self.language and not self.force)
+            if unchanged and existing.status == "READY":
                 counts = plan_store.plan_counts(db, existing.id)
                 db.commit()
                 return {"type": "PLAN_UP_TO_DATE", "slide_id": slide_id, "plan_id": existing.id,
                         "version": existing.version, **counts}
+            if unchanged and existing.status == "STALE" and _description_unchanged(existing):
+                # Re-published without a body change: the plan is still right.
+                # No model call, no charge.
+                plan_store.reinstate_ready(db, existing)
+                counts = plan_store.plan_counts(db, existing.id)
+                db.commit()
+                return {"type": "PLAN_UP_TO_DATE", "slide_id": slide_id, "plan_id": existing.id,
+                        "version": existing.version, "reason": "unchanged since last compile", **counts}
 
             plan = plan_store.start_plan(
                 db, slide_id=slide_id, institute_id=self.institute_id,
@@ -194,53 +229,59 @@ class PlanCompiler:
             plan_id, version = plan.id, plan.version
 
         # 2. Build the draft
-        self._usage = {"prompt_tokens": 0, "completion_tokens": 0}
-        self._model_used: Optional[str] = None
+        run = _Run()
         try:
-            draft, raw = await self._build_draft(source, description)
+            draft, raw = await self._build_draft(source, description, run)
         except _Skip as skip:
             self._fail(plan_id, f"skipped: {skip}")
             return {"type": "PLAN_SKIPPED", "slide_id": slide_id, "plan_id": plan_id, "reason": str(skip)}
         except asyncio.CancelledError:
-            # Client went away or the server is shutting down: never leave the
-            # row COMPILING. The write is synchronous, so it completes even
-            # though this task is being cancelled.
+            # Server shutting down (compiles outlive the request that started
+            # them): never leave the row COMPILING. The write is synchronous,
+            # so it completes even though this task is being cancelled.
             self._fail(plan_id, "compile cancelled")
-            self._bill_partial(slide_id)
+            self._bill_partial(slide_id, run)
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("Compile failed for slide %s: %s", slide_id, exc, exc_info=True)
             self._fail(plan_id, str(exc))
-            self._bill_partial(slide_id)
+            self._bill_partial(slide_id, run)
             return {"type": "PLAN_ERROR", "slide_id": slide_id, "plan_id": plan_id, "error": str(exc)[:500]}
 
-        # 3. Persist + bill
-        with db_session() as db:
-            plan = db.get(TeachingPlan, plan_id)
-            if plan is None:
-                return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "plan row vanished"}
-            plan_store.store_draft(
-                db, plan, draft, model=self._model_used, raw=raw,
-                compile_inputs={
-                    "kb": self.kb_grounding.model_dump() if self.kb_grounding else None,
-                    "teacher_name": self.teacher_name, "language": self.language,
-                    "generate_images": self.generate_images, "kind": source.kind,
-                    "compile_run_id": self.compile_run_id,
-                },
-                compiled_with_description=description,
-            )
-            status_after = plan.status
-            db.commit()
-            counts = plan_store.plan_counts(db, plan_id)
+        # 3. Persist + bill (a storage failure is a failed compile too)
+        try:
+            with db_session() as db:
+                plan = db.get(TeachingPlan, plan_id)
+                if plan is None:
+                    return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "plan row vanished"}
+                plan_store.store_draft(
+                    db, plan, draft, model=run.model_used, raw=raw,
+                    compile_inputs={
+                        "kb": self.kb_grounding.model_dump() if self.kb_grounding else None,
+                        "teacher_name": self.teacher_name, "language": self.language,
+                        "generate_images": self.generate_images, "kind": source.kind,
+                        "compile_run_id": self.compile_run_id,
+                        "source_description": description,
+                    },
+                    compiled_with_description=description,
+                )
+                status_after = plan.status
+                db.commit()
+                counts = plan_store.plan_counts(db, plan_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Storing plan %s failed: %s", plan_id, exc, exc_info=True)
+            self._fail(plan_id, f"could not store the plan: {exc}")
+            self._bill_partial(slide_id, run)
+            return {"type": "PLAN_ERROR", "slide_id": slide_id, "plan_id": plan_id, "error": str(exc)[:500]}
 
         if source.kind != "quiz":
             record_tool_billing(
                 tool_key="tutor_compile_slide",
                 tool_params={},
                 request_type=RequestType.CONTENT,
-                model=self._model_used or "unknown",
-                prompt_tokens=int(self._usage.get("prompt_tokens") or 0),
-                completion_tokens=int(self._usage.get("completion_tokens") or 0),
+                model=run.model_used or "unknown",
+                prompt_tokens=int(run.usage.get("prompt_tokens") or 0),
+                completion_tokens=int(run.usage.get("completion_tokens") or 0),
                 institute_id=self.institute_id,
                 user_id=self.user_id,
                 user_role="ADMIN",
@@ -250,9 +291,12 @@ class PlanCompiler:
                 idempotency_key=(f"tutor_compile:{self.compile_run_id}:{slide_id}"
                                  if self.compile_run_id else f"tutor_compile:{plan_id}"),
             )
+        # Images are charged only for a plan that was actually delivered.
+        self._bill_images(run)
         return {"type": "PLAN_READY" if status_after == "READY" else "PLAN_STALE",
                 "slide_id": slide_id, "plan_id": plan_id, "version": version,
-                "kind": source.kind, "model": self._model_used, "status": status_after, **counts}
+                "kind": source.kind, "model": run.model_used, "status": status_after,
+                "images": len(run.images), **counts}
 
     # ── failure paths ────────────────────────────────────────────────────
 
@@ -266,23 +310,37 @@ class PlanCompiler:
         except Exception:  # noqa: BLE001
             logger.warning("Could not mark plan %s failed", plan_id, exc_info=True)
 
-    def _bill_partial(self, slide_id: str) -> None:
+    def _bill_partial(self, slide_id: str, run: _Run) -> None:
         """A failed compile still spent model tokens: log and charge the
-        ACTUAL usage (no parametric floor — nothing was delivered)."""
-        pt, ct = int(self._usage.get("prompt_tokens") or 0), int(self._usage.get("completion_tokens") or 0)
+        ACTUAL usage (no parametric floor — nothing was delivered). Images
+        generated for a failed plan are the platform's loss, not billed."""
+        pt, ct = int(run.usage.get("prompt_tokens") or 0), int(run.usage.get("completion_tokens") or 0)
         if pt + ct <= 0:
             return
         record_llm_billing(
-            request_type=RequestType.CONTENT, model=self._model_used or "unknown",
+            request_type=RequestType.CONTENT, model=run.model_used or "unknown",
             prompt_tokens=pt, completion_tokens=ct, total_tokens=pt + ct,
             institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id,
             metadata={"tool": "tutor_compile_slide", "slide_id": slide_id, "outcome": "failed"},
         )
 
+    def _bill_images(self, run: _Run) -> None:
+        for url, usage in run.images:
+            try:
+                record_tool_billing(
+                    tool_key="tutor_media_image", tool_params={}, request_type=RequestType.IMAGE,
+                    model="image", prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
+                    completion_tokens=int((usage or {}).get("completion_tokens") or 0),
+                    institute_id=self.institute_id, user_id=self.user_id, user_role="ADMIN",
+                    request_id=self.compile_run_id, idempotency_key=f"tutor_media:{url}"[:255],
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning("Image billing failed for %s", url, exc_info=True)
+
     # ── draft building ───────────────────────────────────────────────────
 
     async def _build_draft(
-        self, source: SlideSource, description: Optional[str]
+        self, source: SlideSource, description: Optional[str], run: _Run
     ) -> Tuple[TeachingPlanDraft, Optional[Dict[str, Any]]]:
         if source.kind == "quiz":
             if not source.questions:
@@ -291,7 +349,7 @@ class PlanCompiler:
             errors = validate_plan(draft, self.language, limits=QUIZ_LIMITS)
             if errors:
                 raise RuntimeError("quiz plan failed validation: " + "; ".join(errors[:5]))
-            self._model_used = "deterministic"
+            run.model_used = "deterministic"
             return draft, None
 
         kb_block = await self._kb_block(source)
@@ -305,6 +363,7 @@ class PlanCompiler:
             user = prompts.user_prompt(
                 slide_title=source.title, chapter_title=source.chapter_name, course_title=source.course_name,
                 slide_kind="document", source_text=source.text, lang=self.language, kb_block=kb_block,
+                images_enabled=self.generate_images,
             )
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
@@ -312,9 +371,18 @@ class PlanCompiler:
         draft: Optional[TeachingPlanDraft] = None
         errors: List[str] = []
         for attempt in range(MAX_REPAIRS + 1):
-            content = await self._chat(messages)
-            data = prompts.extract_json(content)
-            if data is None:
+            content, finish_reason = await self._chat(messages, run)
+            data = None if finish_reason == "length" else prompts.extract_json(content)
+            if finish_reason == "length":
+                # A cut-off reply repaired into "valid" JSON is a plan with
+                # its last topics missing. Ask for a shorter one instead.
+                logger.warning("Tutor compile: reply %d truncated at %d tokens for slide %s",
+                               attempt + 1, COMPILE_MAX_TOKENS, source.slide_id)
+                errors = ["the reply was cut off at the output-token limit: return a SHORTER plan — fewer, "
+                          "simpler SVG diagrams (well under 20,000 characters each), fewer concepts per topic, "
+                          "shorter narration — that still covers the whole slide"]
+                last_json = ""
+            elif data is None:
                 shape = prompts.describe_reply(content)
                 logger.warning("Tutor compile: reply %d was not JSON for slide %s: %s", attempt + 1, source.slide_id, shape)
                 errors = [f"the reply was not a single JSON object ({shape})"]
@@ -335,24 +403,28 @@ class PlanCompiler:
             logger.info("Tutor compile attempt %d for slide %s: %d validation error(s): %s",
                         attempt + 1, source.slide_id, len(errors), "; ".join(errors[:4])[:600])
             if attempt < MAX_REPAIRS:
-                messages.append({"role": "assistant", "content": last_json[:60000] or content or ""})
+                messages.append({"role": "assistant", "content": last_json[:60000] or (content or "")[:60000]})
                 messages.append({"role": "user", "content": prompts.repair_prompt(errors, last_json)})
         if draft is None:
             raise RuntimeError("plan failed validation after repairs: " + "; ".join(errors[:6]))
 
         raw = json.loads(last_json) if last_json else None
-        await self._resolve_media(draft, source)
-        errors = validate_plan(draft, self.language, limits=DEFAULT_LIMITS, require_media_urls=True)
+        await self._resolve_media(draft, source, run)
+        # An image the system could not fill (images off, per-slide cap, a
+        # generation error) is dropped, not fatal: the board keeps its text
+        # and the plan is still delivered.
+        errors = validate_plan(draft, self.language, limits=replace(DEFAULT_LIMITS, require_visual_per_topic=False),
+                               require_media_urls=True)
         if errors:
             raise RuntimeError("plan invalid after media stage: " + "; ".join(errors[:6]))
         return draft, raw
 
-    async def _chat(self, messages: List[Dict[str, Any]]) -> str:
-        """One model call. Keys are resolved in a short-lived session and the
-        session is closed BEFORE the await, so no pool connection sits idle in
-        an open transaction for the length of a model call. Falls back to the
-        institute's default model when the configured compile model is
-        rejected by the provider."""
+    async def _chat(self, messages: List[Dict[str, Any]], run: _Run) -> Tuple[str, Optional[str]]:
+        """One model call → (content, finish_reason). Keys are resolved in a
+        short-lived session closed BEFORE the await, so no pool connection
+        sits idle in an open transaction for the length of a model call.
+        Falls back to the institute's default model only when the provider
+        rejects the configured compile model id."""
         candidates = (self.model, None) if self.model else (None,)
         last_exc: Optional[Exception] = None
         for model in candidates:
@@ -364,17 +436,19 @@ class PlanCompiler:
                     messages, temperature=0.2, max_tokens=COMPILE_MAX_TOKENS,
                     institute_id=self.institute_id, user_id=self.user_id, model=model,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except httpx.HTTPStatusError as exc:
                 last_exc = exc
-                if model is None:
+                status_code = exc.response.status_code if exc.response is not None else 0
+                if model is None or status_code not in _MODEL_REJECTED_STATUSES:
                     raise
-                logger.warning("Compile model %s failed (%s); retrying with the default model", model, exc)
+                logger.warning("Compile model %s rejected by the provider (%s); retrying with the default model",
+                               model, status_code)
                 continue
             usage = resp.get("usage") or {}
-            for k in self._usage:
-                self._usage[k] += int(usage.get(k) or 0)
-            self._model_used = resp.get("model") or model or self._model_used
-            return resp.get("content") or ""
+            for k in run.usage:
+                run.usage[k] += int(usage.get(k) or 0)
+            run.model_used = resp.get("model") or model or run.model_used
+            return resp.get("content") or "", resp.get("finish_reason")
         raise last_exc or RuntimeError("no model answered")
 
     async def _kb_block(self, source: SlideSource) -> Optional[str]:
@@ -394,7 +468,7 @@ class PlanCompiler:
             logger.warning("KB grounding unavailable for slide %s", source.slide_id, exc_info=True)
         return None
 
-    async def _resolve_media(self, draft: TeachingPlanDraft, source: SlideSource) -> None:
+    async def _resolve_media(self, draft: TeachingPlanDraft, source: SlideSource, run: _Run) -> None:
         """Fill media-task urls, generate or drop requested images. References
         (annotate / arrow) to a dropped element are pruned across the whole
         topic, since a later concept may point at an earlier concept's image."""
@@ -414,7 +488,7 @@ class PlanCompiler:
                     if kind == "image" and not op.url:
                         url = None
                         if self.generate_images and images_left > 0:
-                            url = await self._generate_image(op.generate or op.description, source.course_name)
+                            url = await self._generate_image(op.generate or op.description, source.course_name, run)
                             if url:
                                 images_left -= 1
                         if not url:
@@ -448,7 +522,7 @@ class PlanCompiler:
                         description=f"{'Watch' if source.kind == 'video' else 'Read'}: {source.title}",
                     ))
 
-    async def _generate_image(self, prompt: Optional[str], course_name: Optional[str]) -> Optional[str]:
+    async def _generate_image(self, prompt: Optional[str], course_name: Optional[str], run: _Run) -> Optional[str]:
         if not prompt:
             return None
         try:
@@ -458,13 +532,7 @@ class PlanCompiler:
                 course_name=course_name or "tutor", prompt=prompt,
             )
             if url:
-                record_tool_billing(
-                    tool_key="tutor_media_image", tool_params={}, request_type=RequestType.IMAGE,
-                    model="image", prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
-                    completion_tokens=int((usage or {}).get("completion_tokens") or 0),
-                    institute_id=self.institute_id, user_id=self.user_id, user_role="ADMIN",
-                    request_id=self.compile_run_id, idempotency_key=f"tutor_media:{url}"[:255],
-                )
+                run.images.append((url, dict(usage or {})))
             return url
         except Exception:  # noqa: BLE001
             logger.warning("Tutor image generation failed", exc_info=True)

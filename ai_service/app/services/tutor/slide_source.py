@@ -133,10 +133,43 @@ _PACKAGE_SLIDES_SQL = text("""
     JOIN chapter_package_session_mapping cpsm ON cpsm.package_session_id = ps.id AND cpsm.status = 'ACTIVE'
     JOIN chapter c ON c.id = cpsm.chapter_id AND c.status <> 'DELETED'
     JOIN chapter_to_slides cts ON cts.chapter_id = c.id AND cts.status <> 'DELETED'
-    JOIN slide sl ON sl.id = cts.slide_id AND sl.status <> 'DELETED'
+    JOIN slide sl ON sl.id = cts.slide_id AND sl.status IN ('PUBLISHED', 'UNSYNC')
     WHERE ps.package_id = :package_id AND ps.status <> 'DELETED'
     ORDER BY sl.id, cpsm.chapter_order NULLS LAST, cts.slide_order NULLS LAST
 """)
+
+# Statuses learners can see; DRAFT bodies are never compiled or taught
+# (UNSYNC = published once, edited since: its published_data still serves).
+VISIBLE_SLIDE_STATUSES = ("PUBLISHED", "UNSYNC")
+
+_SLIDE_IN_BATCH_SQL = text("""
+    SELECT 1
+    FROM chapter_package_session_mapping cpsm
+    JOIN chapter_to_slides cts ON cts.chapter_id = cpsm.chapter_id AND cts.status <> 'DELETED'
+    JOIN slide sl ON sl.id = cts.slide_id AND sl.status IN ('PUBLISHED', 'UNSYNC')
+    WHERE cpsm.package_session_id = :ps AND cpsm.status = 'ACTIVE' AND sl.id = :slide_id
+    LIMIT 1
+""")
+
+
+def slide_in_package_session(db: Session, slide_id: str, package_session_id: str) -> bool:
+    """The slide is a visible member of this batch's content (design §6.1:
+    a session teaches only what the batch exposes)."""
+    if not slide_id or not package_session_id:
+        return False
+    return db.execute(_SLIDE_IN_BATCH_SQL, {"ps": package_session_id, "slide_id": slide_id}).first() is not None
+
+
+def package_of_slide(db: Session, slide_id: str) -> Optional[str]:
+    row = db.execute(text("""
+        SELECT ps.package_id
+        FROM chapter_to_slides cts
+        JOIN chapter_package_session_mapping cpsm ON cpsm.chapter_id = cts.chapter_id AND cpsm.status <> 'DELETED'
+        JOIN package_session ps ON ps.id = cpsm.package_session_id
+        WHERE cts.slide_id = :s AND cts.status <> 'DELETED'
+        LIMIT 1
+    """), {"s": slide_id}).first()
+    return row[0] if row else None
 
 
 def list_package_slides(db: Session, package_id: str) -> List[Dict[str, Any]]:
@@ -200,7 +233,13 @@ def _video(db: Session, src: SlideSource, source_id: str, html_video: bool) -> N
         ).first()
         url = ((row[1] or row[0]) if row else None) or None
     src.kind = "video"
-    src.media_url = url
+    # Uploaded videos store the media file id in `url` (source_type FILE_ID);
+    # only real https links are media urls. The learner app resolves file ids
+    # to signed public urls itself.
+    if url and _UUID_RE.match(url.strip()):
+        src.media_file_id = url.strip()
+    else:
+        src.media_url = url
     src.content_hash = _hash("video", src.title, url)
 
 
@@ -282,7 +321,7 @@ def _correct_option_ids(auto_json: Optional[str], options: List[Dict[str, str]])
 
 def load_slide_source(db: Session, slide_id: str) -> Optional[SlideSource]:
     row = db.execute(_SLIDE_SQL, {"slide_id": slide_id}).first()
-    if not row or (row[4] or "").upper() == "DELETED":
+    if not row or (row[4] or "").upper() not in VISIBLE_SLIDE_STATUSES:
         return None
     src = SlideSource(
         slide_id=row[0], title=row[1] or "", source_type=(row[2] or "").upper(), source_id=row[3],

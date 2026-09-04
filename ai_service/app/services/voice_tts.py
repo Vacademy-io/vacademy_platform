@@ -96,8 +96,8 @@ def list_tts_providers() -> List[Dict[str, Any]]:
 # Engines
 # --------------------------------------------------------------------------
 
-async def _sarvam(text: str, language: str, voice: str) -> Tuple[bytes, str]:
-    audio = await SarvamService().text_to_speech(text=text, language=language, voice=voice or "shubh")
+async def _sarvam(text: str, language: str, voice: str, pace: Optional[float] = None) -> Tuple[bytes, str]:
+    audio = await SarvamService().text_to_speech(text=text, language=language, voice=voice or "shubh", pace=pace)
     return audio, "audio/wav"
 
 
@@ -129,15 +129,18 @@ def _google_sync(text: str, language: str, voice: str) -> bytes:
     return bytes(response.audio_content or b"")
 
 
-async def _google(text: str, language: str, voice: str) -> Tuple[bytes, str]:
+async def _google(text: str, language: str, voice: str, pace: Optional[float] = None) -> Tuple[bytes, str]:
     audio = await asyncio.to_thread(_google_sync, text, language, voice)
     return audio, "audio/mpeg"
 
 
-async def _edge(text: str, language: str, voice: str) -> Tuple[bytes, str]:
+async def _edge(text: str, language: str, voice: str, pace: Optional[float] = None) -> Tuple[bytes, str]:
     import edge_tts  # lazy: only when the engine is selected
 
-    communicate = edge_tts.Communicate(text, voice or default_voice_for("edge", language))
+    kwargs = {}
+    if pace and abs(pace - 1.0) >= 0.05:
+        kwargs["rate"] = f"{'+' if pace > 1 else '-'}{int(round(abs(pace - 1.0) * 100))}%"
+    communicate = edge_tts.Communicate(text, voice or default_voice_for("edge", language), **kwargs)
     buf = bytearray()
     async for chunk in communicate.stream():
         if chunk.get("type") == "audio" and chunk.get("data"):
@@ -153,19 +156,24 @@ async def synthesize_speech(
     language: str,
     voice: Optional[str],
     provider: str,
+    pace: Optional[float] = None,
 ) -> Tuple[bytes, str, str]:
     """
     Speak `text` with `provider`. Returns (audio_bytes, mime_type, provider_used) —
     provider_used differs from `provider` when the engine failed and Sarvam
-    covered the line, so metering records what actually ran.
+    covered the line, so metering records what actually ran. `pace` is a
+    speed multiplier (0.5–2.0; 1.0 = normal) honoured by Sarvam and Edge;
+    Google Chirp3-HD rejects a rate field, so it is ignored there.
     """
     provider = (provider or "sarvam").strip().lower()
     engine = _ENGINES.get(provider, _sarvam)
     if not text.strip():
         return b"", "audio/wav", provider
+    if pace is not None:
+        pace = max(0.5, min(2.0, float(pace)))
 
     try:
-        audio, mime = await asyncio.wait_for(engine(text, language, voice or ""), timeout=30)
+        audio, mime = await asyncio.wait_for(engine(text, language, voice or "", pace), timeout=30)
         if audio:
             return audio, mime, provider
         logger.warning("TTS engine %s returned no audio; falling back to Sarvam", provider)

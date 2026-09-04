@@ -1481,6 +1481,9 @@ public class SlideService {
         // Shared edit path for question/quiz/assignment/audio slides — the content a
         // learner already downloaded just changed.
         bumpOfflineManifest(chapterId, status, "SLIDE_UPDATED");
+        // Quiz / HTML-video / question edits reach the tutor through this path:
+        // the compiled teaching plan (and its answer key) is now behind.
+        teachingPlanStaleMarker.markStaleIfPublished(slide.getId(), status);
         return slide;
     }
 

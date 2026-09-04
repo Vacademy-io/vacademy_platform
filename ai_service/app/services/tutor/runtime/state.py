@@ -65,6 +65,7 @@ class LessonPlan:
     language: str
     objectives: List[str]
     topics: List[Topic]
+    slide_title: str = ""
 
     def concept_at(self, p: "Pointer") -> Optional[Concept]:
         if 0 <= p.topic < len(self.topics):
@@ -131,7 +132,21 @@ def from_plan_view(view: Dict[str, Any]) -> LessonPlan:
     return LessonPlan(
         plan_id=view["plan_id"], slide_id=view["slide_id"], version=int(view.get("version") or 1),
         language=view.get("language") or "en", objectives=list(view.get("objectives") or []), topics=topics,
+        slide_title=str(view.get("slide_title") or ""),
     )
+
+
+def replay_ops(plan: LessonPlan, p: Pointer) -> List[Dict[str, Any]]:
+    """Board ops of the concepts BEFORE the pointer in its topic: what a
+    resumed session must put back on the board so the narration's "look at
+    the arrow" still points at something."""
+    topic = plan.topic_at(p)
+    if topic is None:
+        return []
+    out: List[Dict[str, Any]] = []
+    for c in topic.concepts[:max(0, p.concept)]:
+        out.extend(c.board_ops)
+    return out
 
 
 # ── transitions ──────────────────────────────────────────────────────────────

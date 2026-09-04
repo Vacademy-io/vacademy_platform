@@ -306,6 +306,18 @@ Text-mode session first (no microphone variables), then voice. Check: resume aft
 media task on a video slide, remediation loop and WEAK flag, slide completion visible in the
 normal course view, `tutor_session.summary_json` cost telemetry, and the per-minute meter rows.
 
+## 4b. Deep review 2026-09-04
+
+**Status: fixes shipped 2026-09-04.** A seven-lens adversarial review of WP0–WP8 produced 92
+candidates; 32 were verified by two refuters each (29 confirmed), the rest were checked by hand
+against the code. Everything confirmed as a blocker or major was fixed the same day (tenancy of
+slides vs batch, ACTIVE-only enrolment, the socket's pinned DB connection, barge-in ordering,
+final-attempt re-asks, per-slide billing counters, truncated-reply repair, STALE plans not
+serving, dead compile-model / KB-grounding settings, the copilot reading a deleted storage key,
+media tasks with no player, KaTeX, reconnect). `LIVE_TUTOR_DESIGN.md` §13 has the full list and
+the open items (live metering, quiz completion, AI-video scripts, pointer remap, KB on doubts,
+weak-concept revisits, Smallest TTS). Regression tests: `tests/test_tutor_review_fixes.py`.
+
 ## 5. Push sequence
 
 1. Docs only (no deploy).

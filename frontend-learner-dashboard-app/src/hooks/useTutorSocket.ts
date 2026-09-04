@@ -25,8 +25,18 @@ export interface TutorCheckEvent {
   remediation: number;
 }
 
+export interface TutorLessonEvent {
+  slide_id: string;
+  slide_title: string;
+  resumed: boolean;
+  topics: Array<{ id: string; title: string; concepts: number }>;
+  progress: { done: number; total: number; percent: number };
+}
+
 interface Callbacks {
   onReady?: (ev: Record<string, unknown>) => void;
+  /** After next_slide: the new slide's topics and progress. */
+  onLesson?: (ev: TutorLessonEvent) => void;
   onState?: (ev: TutorStateEvent) => void;
   onBoard?: (ops: TutorBoardOp[], clear: boolean, live: boolean, topicId?: string | null) => void;
   onAiText?: (text: string) => void;
@@ -38,7 +48,10 @@ interface Callbacks {
   onTranscriptFinal?: (text: string) => void;
   onSlideDone?: (ev: { slide_id: string; weak_concepts: string[]; skipped_concepts: string[]; done: number; total: number }) => void;
   onSummary?: (data: unknown) => void;
-  onError?: (message: string) => void;
+  /** `fatal` frames end the session (auth, missing plan); the rest are transient notices. */
+  onError?: (message: string, fatal: boolean) => void;
+  /** The server closed the session on its own (idle, time limit). */
+  onEnded?: (reason: string) => void;
   onClose?: () => void;
 }
 
@@ -117,6 +130,12 @@ export function useTutorSocket(callbacks: Callbacks) {
           case "ready":
             cb.onReady?.(msg);
             break;
+          case "lesson":
+            cb.onLesson?.(msg as unknown as TutorLessonEvent);
+            break;
+          case "ended":
+            cb.onEnded?.(String(msg.reason ?? "ended"));
+            break;
           case "state":
             cb.onState?.(msg as unknown as TutorStateEvent);
             break;
@@ -151,7 +170,7 @@ export function useTutorSocket(callbacks: Callbacks) {
             cb.onSummary?.(msg.data);
             break;
           case "error":
-            cb.onError?.(String(msg.message ?? "Error"));
+            cb.onError?.(String(msg.message ?? "Error"), !!msg.fatal);
             break;
           default:
             break;

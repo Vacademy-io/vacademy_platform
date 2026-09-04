@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { isElementOp, renderOp, type BoardOp } from "./boardRenderer";
+import { isElementOp, mountMediaTask, renderOp, typesetFormulas, type BoardOp } from "./boardRenderer";
+import { getPublicUrl } from "@/services/upload_file";
 import "@/styles/tutor-board.css";
 
 interface WhiteboardProps {
@@ -15,7 +16,8 @@ interface WhiteboardProps {
 /**
  * The whiteboard. Elements are appended (never re-rendered) so an element that
  * is already on the board keeps its place while new ones write themselves in;
- * live highlights toggle a class on the target by data-op-id.
+ * live highlights toggle a class on the target by data-op-id. After each
+ * insertion formulas are typeset and media tasks get their player.
  */
 export const Whiteboard: React.FC<WhiteboardProps> = ({ ops, liveOps, boardKey, teacherName }) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -48,7 +50,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ ops, liveOps, boardKey, 
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       el.offsetHeight; // reflow so the entrance animation plays
       el.classList.add("tb-enter");
+      if (el.classList.contains("tb-media-task")) void mountMediaTask(el, getPublicUrl);
     }
+    typesetFormulas(root);
     root.scrollTo({ top: root.scrollHeight, behavior: "smooth" });
   }, [ops, boardKey]);
 

@@ -68,12 +68,12 @@ export const TutorSidebar: React.FC<TutorSidebarProps> = ({
                   type="button"
                   disabled={!s.teachable || s.current}
                   onClick={() => onPickSlide(s.slide_id)}
-                  className={`w-full rounded-lg px-2 py-1.5 text-left text-sm disabled:cursor-default ${
+                  className={`w-full rounded-lg px-2 py-1.5 text-start text-sm disabled:cursor-default ${
                     s.current ? "bg-neutral-100 font-medium text-neutral-900" : s.teachable ? "text-neutral-700 hover:bg-neutral-50" : "text-neutral-400"
                   }`}
                 >
                   {s.title || "Untitled"}
-                  {!s.teachable && <span className="ml-1 text-xs">(not in tutor mode)</span>}
+                  {!s.teachable && <span className="ms-1 text-xs">(not in tutor mode)</span>}
                 </button>
               </li>
             ))}

@@ -22,11 +22,14 @@ from ..db import db_dependency
 from ..schemas.tutor import (
     CompileRequest, PackagePlansResponse, PlanStatusItem, RecompileOptions, SourceDescriptionRequest,
 )
+from ..schemas.tutor import CompileKbGrounding, CompileOptions
 from ..services.ai_billing import preflight_tool_credits
 from ..services.tutor import plan_store
 from ..services.tutor.plan_compiler import PlanCompiler
+from ..services.tutor.roles import is_staff, normalize_roles
+from ..services.tutor.runtime.settings import TutorSettings, resolve_settings
 from ..services.tutor.slide_source import (
-    list_package_slides, package_belongs_to_institute, slide_belongs_to_institute,
+    list_package_slides, package_belongs_to_institute, package_of_slide, slide_belongs_to_institute,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,8 +41,10 @@ _HEARTBEAT_SECONDS = 15
 # and are not billed, so they are supported but not "billable".
 SUPPORTED_SOURCE_TYPES = {"DOCUMENT", "QUIZ", "VIDEO", "HTML_VIDEO"}
 BILLABLE_SOURCE_TYPES = {"DOCUMENT", "VIDEO", "HTML_VIDEO"}
-# Roles allowed to compile, read plans and answer keys, and spend credits.
-STAFF_ROLES = {"ADMIN", "TEACHER", "SUPER_ADMIN", "COURSE_CREATOR"}
+# Compiles outlive the request that started them: closing the admin tab must
+# not turn paid model calls into FAILED rows. Tasks are kept here so the
+# event loop does not garbage-collect them mid-flight.
+_BACKGROUND_COMPILES: set = set()
 
 
 class Caller:
@@ -62,10 +67,10 @@ async def _caller(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Missing Authorization: Bearer <jwt> (with a clientId header)")
     principal = await get_pinned_principal(request, authorization, settings)
-    roles = [str(r).upper() for r in (principal.roles or [])]
-    if not principal.is_root_user and not (set(roles) & STAFF_ROLES):
+    roles = sorted(normalize_roles(principal.roles))
+    if not is_staff(roles, is_root=bool(principal.is_root_user)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Teaching plans are managed by institute staff (admin or teacher roles)")
+                            detail="Teaching plans are managed by institute staff (admin, teacher or content-creator roles)")
     return Caller(principal.institute_id, principal.user_id, roles, bool(principal.is_root_user))
 
 
@@ -93,6 +98,8 @@ def _sse(compiler: PlanCompiler, slide_ids: List[str]) -> StreamingResponse:
                 await queue.put((_DONE, None))
 
         task = asyncio.create_task(_pump())
+        _BACKGROUND_COMPILES.add(task)
+        task.add_done_callback(_BACKGROUND_COMPILES.discard)
         try:
             yield f"data: {json.dumps({'type': 'INFO', 'message': f'Compiling {len(slide_ids)} slide(s)', 'total': len(slide_ids)})}\n\n"
             while True:
@@ -109,7 +116,9 @@ def _sse(compiler: PlanCompiler, slide_ids: List[str]) -> StreamingResponse:
                     yield f"data: {json.dumps({'type': 'ERROR', 'message': val})}\n\n"
             yield f"data: {json.dumps({'type': 'DONE'})}\n\n"
         finally:
-            task.cancel()
+            # The client went away (or DONE was sent): the pump keeps running
+            # to completion in the background; its later events are dropped.
+            pass
 
     return StreamingResponse(
         event_generator(), media_type="text/event-stream",
@@ -118,6 +127,8 @@ def _sse(compiler: PlanCompiler, slide_ids: List[str]) -> StreamingResponse:
 
 
 def _preflight(db: Session, institute_id: str, n_slides: int) -> None:
+    if n_slides <= 0:
+        return   # quizzes only: nothing will be billed
     estimate = preflight_tool_credits(db, tool_key="tutor_compile_slide", tool_params={}, institute_id=institute_id)
     if estimate.get("sufficient") is False:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -132,6 +143,24 @@ def _preflight(db: Session, institute_id: str, n_slides: int) -> None:
         raise
     except Exception:  # noqa: BLE001 — never block on a malformed estimate
         pass
+
+
+def _compiler(db: Session, caller: Caller, package_id: str, p: CompileOptions, *, force: bool) -> PlanCompiler:
+    """Course Tutor Mode settings (package → institute → platform) supply what
+    the request leaves at its defaults: the compile model, the teacher's
+    name, the KB grounding saved at creation, and whether images are on."""
+    s: TutorSettings = resolve_settings(db, package_id=package_id, institute_id=caller.institute_id)
+    fields = p.model_fields_set
+    teacher = p.teacher_name if "teacher_name" in fields else (s.teacher_name or p.teacher_name)
+    language = p.language if "language" in fields else s.course_language
+    images = p.generate_images if "generate_images" in fields else bool(s.generate_images)
+    kb = p.kb_grounding if "kb_grounding" in fields else (
+        CompileKbGrounding(**s.kb_grounding) if s.kb_grounding else None)
+    return PlanCompiler(
+        institute_id=caller.institute_id, user_id=caller.user_id, language=language,
+        teacher_name=teacher, force=force, generate_images=images, kb_grounding=kb,
+        compile_run_id=p.compile_run_id or str(uuid.uuid4()), model_override=s.compile_model,
+    )
 
 
 @router.post("/compile", summary="Compile slides of a course into teaching plans (SSE)")
@@ -150,11 +179,7 @@ async def compile_plans(
         raise HTTPException(status_code=400, detail="No slides to compile")
     # Only document and video slides cost credits; quizzes compile for free.
     _preflight(db, caller.institute_id, _billable_count(db, slide_ids))
-    compiler = PlanCompiler(
-        institute_id=caller.institute_id, user_id=caller.user_id, language=payload.language,
-        teacher_name=payload.teacher_name, force=payload.force, generate_images=payload.generate_images,
-        kb_grounding=payload.kb_grounding, compile_run_id=payload.compile_run_id or str(uuid.uuid4()),
-    )
+    compiler = _compiler(db, caller, payload.package_id, payload, force=payload.force)
     return _sse(compiler, slide_ids)
 
 
@@ -169,11 +194,7 @@ async def recompile_slide(
         raise HTTPException(status_code=404, detail="Slide not found in this institute")
     _preflight(db, caller.institute_id, _billable_count(db, [slide_id]))
     p = payload or RecompileOptions()
-    compiler = PlanCompiler(
-        institute_id=caller.institute_id, user_id=caller.user_id, language=p.language,
-        teacher_name=p.teacher_name, force=True, generate_images=p.generate_images,
-        kb_grounding=p.kb_grounding, compile_run_id=p.compile_run_id or str(uuid.uuid4()),
-    )
+    compiler = _compiler(db, caller, package_of_slide(db, slide_id) or "", p, force=True)
     return _sse(compiler, [slide_id])
 
 

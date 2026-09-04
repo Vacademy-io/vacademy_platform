@@ -39,6 +39,10 @@ T = {
         "hi": "कृपया अभी यह दस्तावेज़ पढ़िए। आराम से पढ़िए, और जब हो जाए तो मुझे बताइए।",
     },
     "skipped": {"en": "Okay, let's move on.", "hi": "ठीक है, आगे बढ़ते हैं।"},
+    "next_slide": {"en": "Now let's move on to {slide}.", "hi": "अब चलिए {slide} पर चलते हैं।"},
+    "pause": {"en": "Okay, I'll wait. Say continue when you're ready.", "hi": "ठीक है, मैं रुकती हूँ। जब तैयार हों तो 'continue' कहिए।"},
+    "idle_end": {"en": "We've been quiet for a while, so I'll stop here. Come back any time and we'll pick up where we left off.",
+                 "hi": "काफ़ी देर से कोई बात नहीं हुई, इसलिए मैं यहीं रुकती हूँ। जब चाहें वापस आइए, हम वहीं से आगे बढ़ेंगे।"},
     "slower": {"en": "Sure, I'll go slower.", "hi": "ज़रूर, मैं धीरे बोलूँगी।"},
     "faster": {"en": "Sure, I'll speed up a little.", "hi": "ज़रूर, थोड़ा तेज़ चलते हैं।"},
     "fallback_correct": {"en": "That's right. Let's continue.", "hi": "बिल्कुल सही। चलिए आगे बढ़ते हैं।"},
@@ -122,6 +126,7 @@ def turn_prompt(
     learner_message: str,
     remediation_no: int,
     mode: str,
+    final_attempt: bool = False,
 ) -> str:
     parts = [
         f"LEARNER: {learner_name or 'the learner'}\n{learner_block}".strip(),
@@ -136,10 +141,13 @@ def turn_prompt(
         }, ensure_ascii=False),
         "RECENT TRANSCRIPT:\n" + "\n".join(f"{m['role']}: {m['text']}" for m in transcript[-6:]),
         f"THIS IS REMEDIATION #{remediation_no} FOR THIS CONCEPT." if remediation_no else "FIRST ANSWER FOR THIS CONCEPT.",
+        ("THIS IS THE LEARNER'S FINAL ATTEMPT ON THIS CHECK. Do NOT re-ask. If the answer is still wrong, use action "
+         "\"remediate\" and in `say` give the correct answer in one clear sentence, then say you will move on."
+         if final_attempt else ""),
         f"LEARNER NOW SAYS ({mode}): {learner_message.strip()}",
         "Decide. JSON only.",
     ]
-    return "\n\n".join(parts)
+    return "\n\n".join(p for p in parts if p)
 
 
 def doubt_prompt(

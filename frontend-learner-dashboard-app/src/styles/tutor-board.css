@@ -45,3 +45,13 @@
 .tutor-board-preview .tb-arrow { @apply my-1 mr-1 inline-block rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700; }
 .tutor-board-preview .tb-arrow::before { content: '\2192\00a0'; }
 .tutor-board-preview .tb-media-task { @apply my-2 rounded-lg border-2 border-dashed border-primary-300 bg-primary-50 p-3 font-semibold text-primary-500; }
+
+/* Media tasks: the video / PDF the teacher asks the learner to watch or read. */
+.tutor-board-preview .tb-media-task { @apply font-normal; }
+.tutor-board-preview .tb-media-task > p { @apply mb-2 font-semibold; }
+.tutor-board-preview .tb-media-embed { @apply w-full overflow-hidden rounded-md bg-neutral-900; }
+.tutor-board-preview .tb-media-embed iframe,
+.tutor-board-preview .tb-media-embed video { @apply block w-full border-0; aspect-ratio: 16 / 9; }
+.tutor-board-preview .tb-media-embed iframe.tb-pdf { aspect-ratio: 3 / 4; @apply bg-white; }
+.tutor-board-preview .tb-media-link { @apply mt-2 inline-block text-sm text-primary-500 underline; }
+.tutor-board-preview .tb-formula .katex-display { @apply my-1; }

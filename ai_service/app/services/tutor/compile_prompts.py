@@ -116,11 +116,14 @@ def user_prompt(
     lang: str,
     kb_block: Optional[str] = None,
     institute_prompt: Optional[str] = None,
+    images_enabled: bool = True,
 ) -> str:
     parts: List[str] = []
     parts.append(f"COURSE: {course_title or '(untitled)'}\nCHAPTER: {chapter_title or '(none)'}\nSLIDE: {slide_title}\nSLIDE KIND: {slide_kind}")
     if institute_prompt:
         parts.append("INSTITUTE TEACHING STYLE:\n" + institute_prompt.strip()[:2000])
+    if not images_enabled:
+        parts.append("AI IMAGES ARE OFF for this course: do not use image ops; draw every visual as an svg diagram.")
     parts.append("SLIDE MATERIAL (teach all of it, in this order):\n" + source_text.strip())
     if kb_block:
         parts.append(kb_block.strip())

@@ -36,6 +36,9 @@ class TutorSettings:
     compile_model: Optional[str] = None
     strictness: str = "normal"
     generate_images: bool = True
+    # {"knowledge_base_id": ..., "mode": "STRICT"|"BLENDED"} saved at creation
+    # so recompiles from the course page stay grounded.
+    kb_grounding: Optional[Dict[str, Any]] = None
 
     @property
     def course_language(self) -> str:
@@ -75,6 +78,10 @@ def _apply(s: TutorSettings, d: Dict[str, Any]) -> None:
     v = pick("compileModel", "compile_model"); s.compile_model = str(v) if v else s.compile_model
     v = pick("strictness");              s.strictness = str(v) if v else s.strictness
     v = pick("generateImages", "generate_images"); s.generate_images = bool(v) if v is not None else s.generate_images
+    v = pick("kbGrounding", "kb_grounding")
+    if isinstance(v, dict) and v.get("knowledge_base_id"):
+        s.kb_grounding = {"knowledge_base_id": str(v["knowledge_base_id"]),
+                          "mode": v.get("mode") if v.get("mode") in ("STRICT", "BLENDED") else "STRICT"}
 
 
 def resolve_settings(db: Session, *, package_id: str, institute_id: str) -> TutorSettings:

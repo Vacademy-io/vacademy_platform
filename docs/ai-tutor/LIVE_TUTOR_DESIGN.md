@@ -1,6 +1,8 @@
 # Live AI Tutor (Personalized Teaching Mode) — Design
 
-Status: design agreed in discussion on 2026-09-03. Nothing is built yet.
+Status: design agreed 2026-09-03; WP0–WP3, WP6 and WP8 are on production (see `BUILD_PLAN.md` for
+per-package status). A deep adversarial review on 2026-09-04 fixed 40-odd findings; §13 lists what
+the code does differently from the earlier sections and what is still open.
 Companion docs: `docs/lms/LMS_COURSE_ARCHITECTURE.md` (course model, tracking) and
 `docs/ai-course/AI_COURSE_CREATION_AND_KNOWLEDGE_BASE.md` (copilot, KB, credits, auth).
 
@@ -468,16 +470,25 @@ Fields at both levels (any field absent at the package level falls through to th
   "enabled": true,
   "defaultOn": true,
   "teacherName": "Asha",
-  "ttsProvider": "smallest",
-  "ttsModel": "lightning_v3.1",
-  "ttsVoice": "nirupma",
+  "ttsProvider": "sarvam",
+  "ttsVoice": "anushka",
   "languages": ["en", "hi"],
   "sessionLanguage": "course",
-  "llmModel": "google/gemini-2.5-flash",
-  "compileModel": "anthropic/claude-sonnet-5",
-  "strictness": "normal"
+  "llmModel": "",
+  "compileModel": "",
+  "strictness": "normal",
+  "generateImages": true,
+  "kbGrounding": { "knowledge_base_id": "…", "mode": "STRICT" }
 }
 ```
+
+Shipped defaults differ from the first draft of this section: the runtime speaks with **Sarvam**
+until Smallest.ai lands in the browser path (WP7; the admin UI lists it as "coming soon"), the
+compile model defaults to the platform setting `tutor.compile.model` (**Gemini 2.5 Flash**, see
+§4.8), and empty strings mean "inherit" (institute → platform). `kbGrounding` is written by the
+copilot at creation so recompiles from the course page stay grounded; the compile router resolves
+`compileModel`, `teacherName`, `generateImages` and `kbGrounding` from these settings whenever the
+request leaves them at their defaults.
 
 The learner app reads the resolved package value to decide whether to show the tutor entry and
 whether teaching mode starts on. ai_service reads the same resolved value at compile time
@@ -645,7 +656,9 @@ so roll-ups and certificates are untouched:
 
 ## 8. Voice: TTS, STT, languages
 
-- **TTS default: Smallest.ai** (owner decision; cloning and better rates). Today it exists
+- **TTS default: Smallest.ai — target, not yet shipped.** Until WP7 lands the browser path speaks
+  with Sarvam (bulbul v3, voice `anushka`); the admin cards default to Sarvam and list Smallest.ai
+  as coming soon so a saved setting never silently means something else. Today Smallest exists
   only in the phone bot (`voice_bot_service/app/providers.py`, `_build_smallest`, and the
   `_smallest_tts_wav` helper in its main module). The browser voice path switches only between
   Sarvam, Google, and Edge in `ai_service/app/services/voice_tts.py`; add a `smallest` engine
@@ -659,9 +672,12 @@ so roll-ups and certificates are untouched:
   language; because `say` is compiled in both phase-1 languages, the override switches to the
   other compiled narration with no live model call and the TTS cache still applies (owner
   decision 2026-09-03).
-- **TTS cache from day one**: key `(provider, voice, language, sha256(text))`, stored under the
-  media path. The phone bot already caches; the browser path does not. Compiled `say` text is
-  identical across learners, so the cache pays off immediately even before any other cost work.
+- **TTS cache from day one**: key `(provider, voice, language, pace, sha256(text))`. Shipped as
+  an in-process LRU (300 entries) in `routers/tutor_ws.py`; it empties on every ai_service
+  restart. Moving it under the media path is still open. Compiled `say` text is identical across
+  learners, so even the in-process cache pays off within one deploy.
+- **Pace**: "slower" / "faster" change the TTS speed (Sarvam `pace`, Edge `rate`; Google Chirp3-HD
+  rejects a rate field, so it is ignored there) and are remembered per learner.
 - Voice cloning later: institute uploads a teacher sample, we register a voice with the
   provider, store the voice id on the package setting, and re-render the cache lazily.
 
@@ -831,3 +847,77 @@ Reuse and extend (read these first):
 - `frontend-learner-dashboard-app/src/stores/study-library/drip-conditions-store.ts`, `chapter-sidebar-store.ts`, `utils/drip-conditions/parseDripCondition.ts`: next-slide resolution.
 - `admin_core_service/.../features/course_settings/service/PackageSettingService.java`: package setting envelope.
 - `admin_core_service/src/main/resources/db/migration/`: next number V494 at time of writing; verify before use.
+
+---
+
+## 13. Review 2026-09-04: what the code does, and what is still open
+
+A seven-lens adversarial review (runtime socket, compiler, admin UI, learner UI, security,
+billing, data/docs) ran over everything shipped since WP0. Fixed the same day, on main:
+
+- **Tenancy.** A session teaches only slides that are visible members of its batch
+  (`slide_in_package_session`); staff tokens are pinned to their institute for batch access; only
+  `ACTIVE` enrolments (not pending / invited) can start sessions; `DRAFT` slides are never compiled
+  or taught (`PUBLISHED` / `UNSYNC` only). Staff role names are normalised, so `CONTENT CREATOR`
+  and `COURSE CREATOR` count as staff.
+- **Socket.** The handler holds no pooled DB connection (every read/write is a short session);
+  transitions are committed before the verdict is spoken, so a barge-in never leaves the pointer
+  behind the database or grades "okay" as an answer; a second wrong answer is told to the model as
+  the final attempt (no re-ask) and, if it re-asks anyway, the deterministic move-on line is spoken
+  instead; questions asked during a topic summary or after slide-done are answered against the
+  last concept taught; "continue / go on / chalo" continue, "pause" waits; resume replays the
+  earlier concepts' board ops; idle is measured on real frames (pings do not count; 30 minutes
+  while a media task is open); a per-session turn budget (20/minute, 400/session) bounds model
+  spend; non-fatal errors carry `fatal: false` and `ended{reason}` closes idle / time-limit
+  sessions; `lesson` follows `next_slide` with the new topics; later slides get a short "Now
+  let's move on to …" instead of a second introduction; skips write an attempt row; learner state
+  is reloaded after each attempt so later prompts see it.
+- **Compiler.** Token counters, model id and generated images live on a per-slide run object
+  (they were shared across the three concurrent slides, so slide B was billed A's tokens);
+  images are billed only for a plan that was delivered; a `finish_reason == "length"` reply is
+  never repaired into a partial plan (the repair round asks for a shorter one); post-media
+  validation tolerates an image the system could not fill; a fallback to the institute's default
+  model happens only on a provider rejection (400/404/422), never on a timeout; step 3 (store)
+  failures mark the row FAILED and bill actual usage; compiles outlive the request that started
+  them (closing the admin tab no longer cancels them); uploaded videos' file ids are `file_id`,
+  not `url`; SVGs over 20,000 characters are rejected instead of truncated; `plan.language` is the
+  requested language, not the model's echo.
+- **Plans.** A `STALE` plan keeps serving learners until a READY successor exists (the publish
+  hook flips READY→STALE in place, so this is what makes "the old plan keeps serving" true); a
+  STALE plan whose content hash and description are unchanged is reinstated READY without a
+  model call or a charge; the DELETED sweep runs only when the new version is READY; quiz and
+  HTML-video edits go through the shared slide update path and mark plans STALE too.
+- **Admin.** The copilot reads its own keys (`coursePersonalizedTeaching`, `courseLanguage`,
+  `courseKbGrounding`) rather than the `courseConfig` the generating page deletes; respects the
+  institute's `enabled` and `generateImages`; saves `kbGrounding` on the package; and shows compile
+  failures. The Tutor Mode tab starts every field empty (institute defaults as placeholders),
+  strips empties on save, shows "Institute default (…)" options, only lets live compile events
+  override statuses while the stream is open, prefills the description editor, and blocks
+  "Save and prepare" while a compile runs.
+- **Learner.** Media tasks embed the video (YouTube / Vimeo / `<video>`) or the PDF (iframe, file
+  ids resolved to signed urls); formulas are typeset with KaTeX; transient errors are a notice
+  line, fatal ones the error card with "Try again"; connection loss and server-side endings show a
+  banner with Reconnect (the server resumes from the saved pointer); the phase label follows the
+  audio queue instead of the first `audio_end`; barge-in clears queued audio; highlights clear on
+  the next concept; the sidebar's boards follow `next_slide`; a session opened during navigation
+  is ended; the entry card is gated on availability alone.
+
+Still open after the review (tracked, not silent):
+
+- **Live metering.** TTS / STT are recorded as usage rows but not deducted, and there is no
+  `tutor_live_minute` meter (rates deferred by the owner). `minutes_billed` is stamped only.
+- **Quiz completion.** A quiz slide taught by the tutor is not marked complete (the tracking
+  service rejects a manual mark for quizzes); the quiz activity log is not written yet.
+- **AI-video slides.** Copilot `HTML_VIDEO` slides are parked in NEEDS_DETAILS like uploaded
+  videos; compiling from the video's script (§4.2 table) is not implemented.
+- **Pointer remap across plan versions.** Concept ids are new per version, so a recompile restarts
+  the slide for a learner mid-way.
+- **KB source material on doubt turns** (§6.5 budget row) is not supplied; the doubt prompt has
+  the concept text only.
+- **Weak-concept revisits** at topic / chapter end (§6.6) and the model-written rolling summary
+  are not implemented; the summary is deterministic.
+- **Stock images** (§4.5) do not exist; the compile prompt only offers generated images.
+- **Fallback to the ordinary slide viewer** for non-teachable slides (§4.2) is not implemented:
+  the sidebar skips them.
+- **Smallest.ai** in the browser TTS path (WP7), and the TTS cache under the media path.
+- `teaching_media.cost_credits` / `file_id` are not populated for generated images.

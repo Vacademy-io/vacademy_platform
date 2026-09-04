@@ -6,20 +6,22 @@ import { getTutorAvailability, type TutorAvailability } from "@/services/tutor-a
 interface TutorEntryCardProps {
   courseId: string;
   packageSessionId: string;
-  enrolled: boolean;
 }
 
 /**
  * "Learn with your teacher" — shown on the course page when the course has
  * tutor mode enabled and at least one prepared slide. Resumes where the
- * learner left off, else starts at the first prepared slide.
+ * learner left off, else starts at the first prepared slide. Enrolment is
+ * enforced by the server when the session starts (the page's own
+ * `isEnrolledInCourse` flag is documented as unreliable), so the card is
+ * gated on availability alone.
  */
-export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packageSessionId, enrolled }) => {
+export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packageSessionId }) => {
   const navigate = useNavigate();
   const [avail, setAvail] = useState<TutorAvailability | null>(null);
 
   useEffect(() => {
-    if (!courseId || !packageSessionId || !enrolled) return;
+    if (!courseId || !packageSessionId) return;
     let cancelled = false;
     getTutorAvailability(courseId, packageSessionId)
       .then((a) => {
@@ -31,7 +33,7 @@ export const TutorEntryCard: React.FC<TutorEntryCardProps> = ({ courseId, packag
     return () => {
       cancelled = true;
     };
-  }, [courseId, packageSessionId, enrolled]);
+  }, [courseId, packageSessionId]);
 
   if (!avail || !avail.available) return null;
   const slideId = avail.resume_slide_id || avail.first_slide_id || undefined;

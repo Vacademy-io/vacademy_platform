@@ -25,6 +25,10 @@ interface TeacherPanelProps {
   onToggleSpeak: () => void;
   onInterrupt: () => void;
   onEnd: () => void;
+  /** Transient server notice (a failed transcription, a slide that cannot be opened). */
+  notice?: string | null;
+  /** Socket gone: inputs are inert until the learner reconnects. */
+  disabled?: boolean;
 }
 
 const PHASE_LABEL: Record<TutorPhase, string> = {
@@ -42,6 +46,7 @@ const PHASE_LABEL: Record<TutorPhase, string> = {
 export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
+  notice, disabled,
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
@@ -53,7 +58,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
 
   const submit = () => {
     const t = text.trim();
-    if (!t) return;
+    if (!t || disabled) return;
     if (askMode || awaiting !== "answer") onAsk(t);
     else onSendText(t);
     setText("");
@@ -82,6 +87,12 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         )}
       </div>
 
+      {notice && (
+        <p role="status" className="mt-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-1.5 text-xs text-warning-700">
+          {notice}
+        </p>
+      )}
+
       <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto py-3">
         {transcript.map((m, i) => (
           <div key={i} className={`flex ${m.role === "learner" ? "justify-end" : "justify-start"}`}>
@@ -97,7 +108,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
             {check.options.length > 0 && (
               <div className="mt-2 flex flex-col gap-1">
                 {check.options.map((o, i) => (
-                  <button key={i} type="button" onClick={() => onSendText(o)} className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-left text-sm hover:border-primary-300">
+                  <button key={i} type="button" onClick={() => onSendText(o)} className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-start text-sm hover:border-primary-300">
                     {o}
                   </button>
                 ))}
@@ -107,7 +118,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         )}
       </div>
 
-      <div className="space-y-2 border-t border-neutral-200 pt-3">
+      <div className={`space-y-2 border-t border-neutral-200 pt-3 ${disabled ? "pointer-events-none opacity-50" : ""}`}>
         <div className="flex flex-wrap gap-1">
           {awaiting === "continue" && (
             <button type="button" onClick={onContinue} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">Continue</button>
@@ -118,7 +129,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           <button type="button" onClick={() => onControl("repeat")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><ArrowCounterClockwise className="size-3" /> Repeat</button>
           <button type="button" onClick={() => setAskMode((v) => !v)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs ${askMode ? "border-primary-500 bg-primary-50 text-primary-500" : "border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}><Question className="size-3" /> Doubt</button>
           <button type="button" onClick={() => onControl("skip")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><SkipForward className="size-3" /> Skip</button>
-          <button type="button" onClick={onEnd} className="ml-auto rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500 hover:bg-neutral-50">End</button>
+          <button type="button" onClick={onEnd} className="ms-auto rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500 hover:bg-neutral-50">End</button>
         </div>
         <div className="flex items-center gap-2">
           {voiceMode && (

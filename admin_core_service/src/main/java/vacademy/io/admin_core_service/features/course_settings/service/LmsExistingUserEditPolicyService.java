@@ -14,9 +14,11 @@ import vacademy.io.admin_core_service.features.institute.service.setting.Institu
  *
  * <p>Today the Vet enrolment workflow looks the learner up by email
  * ({@code GET /crm/v1/user}); if it finds them it keeps the returned id and skips creation
- * ({@code create-user} is gated on {@code learndashUserId == null}). The existing account is
- * left exactly as it was, so a returning learner whose name changed in Vacademy keeps the old
- * name on the LMS. This flag is what lets a workflow push the correction instead.</p>
+ * ({@code create-user} is gated on the existing-user id being null). The existing account is
+ * left exactly as it was, so a returning learner keeps whatever password they already have on the
+ * LMS. This flag is what lets a workflow reset that password to ours ({@code edit-user} with the
+ * enrolment password) instead — a returning learner logs in with the credentials we issued, while
+ * a migration keeps this off so pre-existing accounts are never disturbed.</p>
  *
  * <p><b>Read as {@code COURSE_SETTING.data.lms.editExistingUser}</b>, per course first and
  * institute-wide as a fallback:</p>
@@ -47,10 +49,12 @@ public class LmsExistingUserEditPolicyService {
     private static final String EDIT_EXISTING_USER = "editExistingUser";
 
     /**
-     * Context key the workflow graph reads. An HTTP_REQUEST node gates itself with
-     * {@code "condition": "#ctx['lmsEditExistingUser'] == true && #ctx['learndashUserId'] != null"}
-     * — the handler's SpEL evaluation already defaults to false on error, so a run whose context
-     * never received this key simply skips the edit.
+     * Context key the workflow graph reads. The edit-user HTTP_REQUEST node gates itself with
+     * {@code "condition": "#ctx['lmsEditExistingUser'] == true && <existing-user-id> != null"},
+     * where {@code <existing-user-id>} is whichever key that graph stored the looked-up LMS user id
+     * under — {@code #ctx['newMemberId']} in the add-member (staff) workflow, and the onboarding
+     * (admin) workflow's own equivalent. The handler's SpEL evaluation already defaults to false on
+     * error, so a run whose context never received this key simply skips the edit.
      */
     public static final String CONTEXT_KEY = "lmsEditExistingUser";
 

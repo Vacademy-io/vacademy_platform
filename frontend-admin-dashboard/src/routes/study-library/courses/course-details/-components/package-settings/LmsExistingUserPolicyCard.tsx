@@ -18,7 +18,7 @@ type CourseSettingData = Record<string, unknown> & {
 };
 
 /**
- * "When a learner already exists on the LMS, update their details?"
+ * "When a learner already exists on the LMS, reset their password to ours?"
  *
  * Backs `COURSE_SETTING.data.lms.editExistingUser` for this course. The enrolment workflow reads
  * it (course setting first, institute setting as fallback — see `LmsExistingUserEditPolicyService`)
@@ -27,7 +27,8 @@ type CourseSettingData = Record<string, unknown> & {
  *
  * Off by default and off when unset: the enrolment workflow looks the learner up by email and, on
  * a hit, keeps the existing account untouched. Turning this on makes it overwrite that account's
- * name with ours — a write to a system we don't own, so it's opt-in.
+ * password with the one from here — a write to a system we don't own, and the reason a migration
+ * (where we must NOT disturb existing accounts) leaves it off. Opt-in per course.
  */
 export const LmsExistingUserPolicyCard: React.FC<LmsExistingUserPolicyCardProps> = ({
     packageId,
@@ -75,7 +76,7 @@ export const LmsExistingUserPolicyCard: React.FC<LmsExistingUserPolicyCardProps>
             await savePackageSettingKey(packageId, COURSE_SETTING_KEY, merged, 'Course settings');
             toast.success(
                 next
-                    ? 'Existing LMS users will be updated on enrolment for this course.'
+                    ? "Existing LMS users' passwords will be reset on enrolment for this course."
                     : 'Existing LMS users will be left untouched for this course.'
             );
         } catch {
@@ -98,17 +99,19 @@ export const LmsExistingUserPolicyCard: React.FC<LmsExistingUserPolicyCardProps>
                 <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
                         <Label htmlFor="lms-edit-existing-user" className="text-sm">
-                            Update their details on enrolment
+                            Reset their password on enrolment
                         </Label>
                         <p className="max-w-2xl text-caption text-neutral-500">
                             When someone enrols and already has an account on the connected LMS,
-                            push their current name from here to that account. Leave this off to
-                            enrol them into the course without touching the account they already
-                            have.
+                            overwrite that account's password with the one from here. Leave this off
+                            to enrol them into the course without changing the password they already
+                            have — the safe choice for a migration, where existing accounts must not
+                            be disturbed.
                         </p>
                         <p className="max-w-2xl text-caption text-neutral-400">
-                            Their email is how the LMS account is found, so it is never changed —
-                            and their LMS password is never touched.
+                            Their email is how the LMS account is found, so it is never changed. Only
+                            the password is overwritten — their name and other profile details are
+                            left as-is.
                         </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2 pt-1">

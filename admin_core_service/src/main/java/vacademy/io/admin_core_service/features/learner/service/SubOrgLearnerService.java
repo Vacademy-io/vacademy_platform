@@ -97,6 +97,7 @@ public class SubOrgLearnerService {
     private final FeeLedgerAllocationService feeLedgerAllocationService;
     private final vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
     private final vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
+    private final vacademy.io.admin_core_service.features.course_settings.service.LmsExistingUserEditPolicyService lmsExistingUserEditPolicyService;
 
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -1087,10 +1088,22 @@ public class SubOrgLearnerService {
         if (optionalPackageSession.isEmpty()) {
             throw new VacademyException("PackageSession Not found");
         }
+        // May a workflow overwrite an existing LMS account's password for this enrolment?
+        // Resolved course-then-institute (defaults false) so the staff/add-member path carries the
+        // same lmsEditExistingUser flag the batch path already sets. Best-effort — a read failure
+        // must not stop the enrolment, and false leaves the existing account untouched.
+        boolean mayEditExistingLmsUser = false;
+        try {
+            mayEditExistingLmsUser = lmsExistingUserEditPolicyService.mayEditExistingUser(
+                    instituteId, optionalPackageSession.get().getPackageEntity().getId());
+        } catch (Exception e) {
+            log.warn("Could not resolve lmsEditExistingUser for institute {} / package {} — defaulting to false: {}",
+                    instituteId, optionalPackageSession.get().getPackageEntity().getId(), e.getMessage());
+        }
         // Built centrally so this route and bulk/v3/assign publish an identical context —
         // see SubOrgMemberEnrollmentContext for why 'user' is published alongside 'member'.
         Map<String, Object> contextData = SubOrgMemberEnrollmentContext.build(
-                userDTO, adminDTO, optionalPackageSession.get());
+                userDTO, adminDTO, optionalPackageSession.get(), mayEditExistingLmsUser);
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),
                 packageSessionId, instituteId, contextData);
     }

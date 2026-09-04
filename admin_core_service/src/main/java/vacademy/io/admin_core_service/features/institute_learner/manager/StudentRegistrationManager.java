@@ -14,6 +14,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.course_settings.service.LmsExistingUserEditPolicyService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enrollment_policy.dto.EnrollmentPolicySettingsDTO;
 import vacademy.io.admin_core_service.features.enrollment_policy.dto.ReenrollmentPolicyDTO;
@@ -67,6 +68,9 @@ public class StudentRegistrationManager {
 
     @Autowired
     private PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    private LmsExistingUserEditPolicyService lmsExistingUserEditPolicyService;
 
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
@@ -1203,6 +1207,21 @@ public class StudentRegistrationManager {
         // and HTTP_REQUEST webhook bodies can reference the course name directly
         // without needing a separate QUERY node to look it up.
         contextData.put("packageName", pkg.getPackageName());
+        // May a workflow overwrite an LMS account that already exists for this learner?
+        // Resolved here, once, rather than by a QUERY node in each graph: the setting is
+        // course-then-institute (see LmsExistingUserEditPolicyService) and the graph has no
+        // clean way to express that fallback in SpEL. Nodes gate on
+        // #ctx['lmsEditExistingUser'] == true. Best-effort — a failure to read it must not
+        // stop the enrolment, and false is the safe answer (leave the LMS account alone).
+        boolean mayEditExistingLmsUser = false;
+        try {
+            mayEditExistingLmsUser = lmsExistingUserEditPolicyService
+                    .mayEditExistingUser(instituteId, pkg.getId());
+        } catch (Exception e) {
+            log.warn("Could not resolve {} for institute {} / package {} — defaulting to false: {}",
+                    LmsExistingUserEditPolicyService.CONTEXT_KEY, instituteId, pkg.getId(), e.getMessage());
+        }
+        contextData.put(LmsExistingUserEditPolicyService.CONTEXT_KEY, mayEditExistingLmsUser);
 
         final String eventName = WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name();
         final String finalInstituteId = instituteId;

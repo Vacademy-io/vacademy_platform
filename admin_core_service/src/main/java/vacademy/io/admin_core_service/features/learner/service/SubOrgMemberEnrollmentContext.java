@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.learner.service;
 
+import vacademy.io.admin_core_service.features.course_settings.service.LmsExistingUserEditPolicyService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
@@ -72,6 +73,31 @@ public final class SubOrgMemberEnrollmentContext {
                 packageSession != null && packageSession.getPackageEntity() != null
                         ? packageSession.getPackageEntity().getId()
                         : null);
+        return contextData;
+    }
+
+    /**
+     * add-member-route variant (actor IS the leader) that also carries the
+     * {@code lmsEditExistingUser} policy flag, so the edit-user node can run on the staff path
+     * exactly as it does on {@code LEARNER_BATCH_ENROLLMENT}. See
+     * {@link LmsExistingUserEditPolicyService} for how the flag is resolved (course → institute,
+     * defaults false).
+     */
+    public static Map<String, Object> build(UserDTO member, UserDTO subOrgAdmin,
+                                            PackageSession packageSession, boolean mayEditExistingUser) {
+        return build(member, subOrgAdmin, subOrgAdmin, packageSession, mayEditExistingUser);
+    }
+
+    /**
+     * Wizard variant (actor differs from the sub-org leader) that also carries the
+     * {@code lmsEditExistingUser} policy flag. Placing the key here keeps the sub-org event's
+     * context shape defined in one place, matching how {@code StudentRegistrationManager} sets the
+     * same key on the batch event.
+     */
+    public static Map<String, Object> build(UserDTO member, UserDTO subOrgAdmin, UserDTO enrolledBy,
+                                            PackageSession packageSession, boolean mayEditExistingUser) {
+        Map<String, Object> contextData = build(member, subOrgAdmin, enrolledBy, packageSession);
+        contextData.put(LmsExistingUserEditPolicyService.CONTEXT_KEY, mayEditExistingUser);
         return contextData;
     }
 }

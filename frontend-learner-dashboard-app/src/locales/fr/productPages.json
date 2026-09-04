@@ -40,6 +40,15 @@
     "catalogStep": {
         "selectPrompt": "Sélectionnez les {{courses}} auxquels vous souhaitez vous inscrire"
     },
+    "courseFinder": {
+        "dialogHeading": "Sélectionnez votre classe",
+        "showCourses": "Afficher mes {{courses}}",
+        "defaultSubheading": "Choisissez le vôtre pour voir les {{courses}} disponibles pour vous",
+        "courseCount": "{{count}} {{courses}}",
+        "view": "Voir",
+        "skip": "Afficher tous les {{courses}}",
+        "change": "Modifier la sélection"
+    },
     "cartStep": {
         "basket": {
             "spendForTier": "Dépensez {{amount}} de plus pour obtenir {{offer}} sur tout le panier.",

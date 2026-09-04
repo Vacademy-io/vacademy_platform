@@ -40,6 +40,15 @@
     "catalogStep": {
         "selectPrompt": "اختر {{courses}} التي ترغب في التسجيل بها"
     },
+    "courseFinder": {
+        "dialogHeading": "اختر صفك",
+        "showCourses": "عرض {{courses}} الخاصة بي",
+        "defaultSubheading": "اختر ما يناسبك لعرض {{courses}} المتاحة لك",
+        "courseCount": "{{count}} {{courses}}",
+        "view": "عرض",
+        "skip": "عرض كل {{courses}}",
+        "change": "تغيير الاختيار"
+    },
     "cartStep": {
         "basket": {
             "spendForTier": "أنفق {{amount}} إضافية للحصول على {{offer}} على السلة كاملة.",

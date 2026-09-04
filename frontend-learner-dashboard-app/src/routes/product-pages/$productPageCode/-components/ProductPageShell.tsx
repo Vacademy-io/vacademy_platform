@@ -227,6 +227,7 @@ export const ProductPageShell = ({
             tagName={tagName}
             productPageCode={productPageCode}
             levels={levels}
+            courseIds={courseIds}
             onNext={() => setStep("CART")}
           />
         </CatalogueChrome>

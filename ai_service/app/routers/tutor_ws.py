@@ -107,7 +107,8 @@ def learner_availability(
 ) -> Dict[str, Any]:
     if not package_belongs_to_institute(db, package_id, caller.institute_id):
         raise HTTPException(status_code=404, detail="Course not found in this institute")
-    return svc.availability(db, package_id=package_id, package_session_id=package_session_id, institute_id=caller.institute_id)
+    return svc.availability(db, package_id=package_id, package_session_id=package_session_id,
+                            institute_id=caller.institute_id, user_id=caller.user_id)
 
 
 @router.get("/v1/learner/chapters/{chapter_id}/slides", summary="Ordered slides of a chapter with tutor readiness")
@@ -293,17 +294,25 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _emit_state(step.pointer.phase)
                 await _send({"type": "board", "clear": False, "ops": step.board_ops, "topic_id": step.topic.id if step.topic else None,
                              "concept_id": step.concept.id if step.concept else None})
-                text_ = (greeting + " " if greeting else "") + step.concept.narration(lang)
+                narration = step.concept.narration(lang)
+                # Compiled first concepts often open with their own "Hi {name}";
+                # don't greet twice.
+                if greeting and narration.lstrip()[:12].lower().startswith(("hi ", "hi,", "hello", "नमस्ते", "namaste")):
+                    greeting = None
+                text_ = (greeting + " " if greeting else "") + narration
                 if step.kind == "media_task":
                     kind = next((op.get("kind") for op in step.board_ops if op.get("op") == "media_task"), "video")
                     text_ = (greeting + " " if greeting else "") + prompts.tpl("media_task_video" if kind == "video" else "media_task_pdf", lang)
                 await _say(text_, meta={"concept_id": step.concept.id if step.concept else None, "kind": step.kind})
                 svc.save_pointer(user_id=user_id, package_session_id=package_session_id, lesson=lesson, pointer=pointer, language=lang, pace=pace)
-                if step.kind == "teach" and step.concept and not step.concept.has_check:
+                if step.kind == "media_task":
+                    await _send({"type": "await", "what": "done"})
+                elif step.concept and step.concept.has_check:
+                    # Explain, then ask — in one breath, like a teacher would.
+                    await _apply_step(sm.after_teach(lesson, pointer))
+                else:
                     # nothing to ask: the client sends `continue` when the audio ends
                     await _send({"type": "await", "what": "continue"})
-                elif step.kind == "media_task":
-                    await _send({"type": "await", "what": "done"})
             elif step.kind == "ask":
                 await _emit_state(step.pointer.phase)
                 c = step.concept
@@ -312,6 +321,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                              "prompt": chk.get("prompt"), "options": chk.get("options") or [],
                              "remediation": step.pointer.remediations})
                 await _say(prompts.tpl("ask", lang, prompt=chk.get("prompt") or ""), meta={"concept_id": c.id if c else None, "kind": "ask"})
+                await _send({"type": "await", "what": "answer"})
             elif step.kind == "topic_summary":
                 await _emit_state(step.pointer.phase)
                 if step.board_ops:

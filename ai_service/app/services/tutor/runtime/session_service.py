@@ -81,12 +81,26 @@ def chapter_slides(db: Session, *, package_session_id: str, chapter_id: str) -> 
     ]
 
 
-def availability(db: Session, *, package_id: str, package_session_id: Optional[str], institute_id: str) -> Dict[str, Any]:
+def availability(db: Session, *, package_id: str, package_session_id: Optional[str], institute_id: str,
+                 user_id: Optional[str] = None) -> Dict[str, Any]:
     s = resolve_settings(db, package_id=package_id, institute_id=institute_id)
     slides = list_package_slides(db, package_id)
     supported = [x for x in slides if (x["source_type"] or "").upper() in SUPPORTED]
     ready = plan_store.latest_plans_for_slides(db, [x["slide_id"] for x in supported], ready_only=True)
+    ordered_ready = [x for x in supported if x["slide_id"] in ready]
+    first = ordered_ready[0] if ordered_ready else None
+    resume = None
+    if user_id and package_session_id:
+        st = (db.query(TutorLearnerState)
+              .filter(TutorLearnerState.user_id == user_id, TutorLearnerState.package_session_id == package_session_id)
+              .first())
+        if st and st.current_slide_id and st.current_slide_id in ready:
+            resume = next((x for x in ordered_ready if x["slide_id"] == st.current_slide_id), None)
     return {
+        "resume_slide_id": resume["slide_id"] if resume else None,
+        "resume_chapter_id": resume["chapter_id"] if resume else None,
+        "first_slide_id": first["slide_id"] if first else None,
+        "first_chapter_id": first["chapter_id"] if first else None,
         "enabled": bool(s.enabled),
         "default_on": bool(s.default_on),
         "teacher_name": s.teacher_name,

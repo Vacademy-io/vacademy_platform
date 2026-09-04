@@ -91,6 +91,25 @@ def test_the_repair_does_not_touch_a_clean_shot():
     assert apply_ready_kick(GOOD) == GOOD
 
 
+def test_the_kick_lands_inside_the_body_of_a_full_document():
+    """The render harness keeps only <body>…</body> of a full-document shot.
+    A kick appended after </html> is discarded, and the shot renders frozen
+    exactly as before — the repair was a no-op on 8 of 31 shipped frames, and
+    the film's closing shot rendered blank."""
+    html = (
+        "<!DOCTYPE html><html><head><style>.x{}</style></head>"
+        "<body><div id='p'></div><script>window.onload=function(){gsap.to('#p',{opacity:1});}</script></body></html>"
+    )
+    fixed = apply_ready_kick(html)
+    assert READY_KICK in fixed
+    assert fixed.index(READY_KICK) < fixed.index("</body>")
+    assert apply_ready_kick(fixed) == fixed  # still idempotent
+
+    # A fragment (no body) keeps the append behaviour.
+    frag = PREAMBLE + "<div id='shot-root'><script>window.onload=function(){}</script></div>"
+    assert apply_ready_kick(frag).endswith(READY_KICK)
+
+
 def test_a_repaired_load_handler_is_not_reported_for_regeneration():
     """Reporting it after the kick would send a working shot into a pointless
     and expensive regeneration."""

@@ -106,9 +106,24 @@ def needs_ready_kick(html: str) -> bool:
     return bool(html) and bool(_LOAD_HANDLER.search(html)) and "vx-ready-kick" not in html
 
 
+_BODY_CLOSE = re.compile(r"</body>", re.I)
+
+
 def apply_ready_kick(html: str) -> str:
-    """Repair the load-handler case. Idempotent; leaves anything else alone."""
-    return html + READY_KICK if needs_ready_kick(html) else html
+    """Repair the load-handler case. Idempotent; leaves anything else alone.
+
+    The kick must land INSIDE <body> when the shot is a full document: the
+    render harness keeps only the body's inner HTML of such a shot, so a kick
+    appended after </html> is discarded and the shot renders frozen exactly as
+    it did before the "repair". Measured on a shipped 31-shot film, 8 kicked
+    frames were silently dropped this way and the closing shot rendered blank.
+    """
+    if not needs_ready_kick(html):
+        return html
+    m = _BODY_CLOSE.search(html)
+    if m:
+        return html[: m.start()] + READY_KICK + html[m.start() :]
+    return html + READY_KICK
 
 
 def is_fully_seekable(html: str) -> bool:

@@ -611,6 +611,7 @@ function TutorPage() {
         <div className="min-h-96 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:min-h-0">
           <TeacherPanel
             teacherName={boot?.teacher_name || "Teacher"}
+            teacherAvatarFileId={boot?.teacher_avatar_file_id}
             phase={phase}
             transcript={transcript}
             check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type } : null}

@@ -11,6 +11,7 @@ export interface TutorAvailability {
   enabled: boolean;
   default_on: boolean;
   teacher_name: string;
+  teacher_avatar_file_id?: string | null;
   course_language: "en" | "hi";
   languages: string[];
   session_language: "course" | "learner";
@@ -47,6 +48,7 @@ export interface TutorStartResponse {
   language: "en" | "hi";
   resumed: boolean;
   teacher_name: string;
+  teacher_avatar_file_id?: string | null;
   learner_name: string | null;
   topics: Array<{ id: string; title: string; concepts: number }>;
   progress: { done: number; total: number; percent: number };

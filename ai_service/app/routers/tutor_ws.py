@@ -181,6 +181,7 @@ def start_session(
         "language": boot["language"],
         "resumed": boot["resumed"],
         "teacher_name": settings.teacher_name,
+        "teacher_avatar_file_id": settings.teacher_avatar_file_id,
         "learner_name": boot["learner_name"],
         "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in lesson.topics],
         "progress": boot["pointer"].progress(lesson),
@@ -273,6 +274,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         # write it back as a quiz activity log when the slide is done.
         attempt_log: Dict[str, Dict[str, Any]] = {}
         pace = state.get("pace") or "normal"
+        # Course / institute voice speed; the learner's slower / faster sits on top.
+        base_pace = float(getattr(settings, "voice_pace", 1.0) or 1.0)
+
+        def _effective_pace() -> float:
+            return round(max(0.5, min(2.0, base_pace * PACE_MULTIPLIER.get(pace, 1.0))), 2)
         board: List[Dict[str, Any]] = []          # cumulative ops of the current topic
         transcript: List[Dict[str, str]] = []
         speak_enabled = mode == "voice"
@@ -312,13 +318,13 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 # The sentence(s) this audio segment speaks: the client shows
                 # them as the segment starts playing, not the whole reply upfront.
                 await _send({"type": "segment_text", "text": segment})
-                key = _cache_key(tts_provider, voice, _lang_stt(), pace, segment)
+                key = _cache_key(tts_provider, voice, _lang_stt(), str(_effective_pace()), segment)
                 audio = _cache_get(key)
                 provider_used = tts_provider
                 if audio is None:
                     audio, _mime, provider_used = await synthesize_speech(
                         text=segment, language=_lang_stt(), voice=voice, provider=tts_provider,
-                        pace=PACE_MULTIPLIER.get(pace, 1.0),
+                        pace=_effective_pace(),
                     )
                     if audio:
                         _cache_put(key, audio)
@@ -701,7 +707,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
 
         # ── 3. ready + opening ──
         await _send({"type": "ready", "tutor_session_id": tutor_session_id, "mode": mode, "language": lang,
-                     "teacher_name": teacher, "learner_name": display_name, "slide_id": lesson.slide_id,
+                     "teacher_name": teacher, "teacher_avatar_file_id": settings.teacher_avatar_file_id,
+                     "learner_name": display_name, "slide_id": lesson.slide_id,
                      "slide_title": lesson.slide_title,
                      "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in lesson.topics]})
         reached_ready = True

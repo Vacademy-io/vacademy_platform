@@ -134,7 +134,20 @@ export interface TutorModeSetting {
     generateImages?: boolean;
     /** Knowledge base the course was grounded on at creation; recompiles stay grounded. */
     kbGrounding?: { knowledge_base_id: string; mode?: 'STRICT' | 'BLENDED' } | null;
+    /** Teacher voice speed, 0.7–1.3 (1 = the engine's natural pace). Learners can still ask for slower/faster. */
+    voicePace?: number;
+    /** Media file id of the teacher's face; blank = the built-in illustrated face. */
+    teacherAvatarFileId?: string;
 }
+
+/** Voice speed choices offered in both Tutor Mode cards. */
+export const TUTOR_VOICE_PACES: Array<{ value: number; label: string }> = [
+    { value: 0.8, label: 'Slower (0.8×)' },
+    { value: 0.9, label: 'A little slower (0.9×)' },
+    { value: 1.0, label: 'Normal (1×)' },
+    { value: 1.1, label: 'A little faster (1.1×)' },
+    { value: 1.25, label: 'Faster (1.25×)' },
+];
 
 export const TUTOR_MODE_SETTING_KEY = 'TUTOR_MODE_SETTING';
 

@@ -27,6 +27,7 @@ import { getPackageSettingData, savePackageSettingKey } from '@/services/package
 import {
     TUTOR_MODE_SETTING_KEY,
     TUTOR_TTS_PROVIDERS,
+    TUTOR_VOICE_PACES,
     compileTutorPlans,
     getInstituteTutorDefaults,
     getTutorPlans,
@@ -42,6 +43,7 @@ import {
     type TutorPlanStatusItem,
 } from '@/services/tutor';
 import { TutorPlanPreviewDialog } from './TutorPlanPreviewDialog';
+import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
 
 interface TutorModeTabProps {
     packageId: string;
@@ -177,6 +179,8 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
             llmModel: institute?.llmModel || '',
             compileModel: institute?.compileModel || '',
             generateImages: institute?.generateImages !== false,
+            voicePace: typeof institute?.voicePace === 'number' ? institute.voicePace : 1,
+            teacherAvatarFileId: institute?.teacherAvatarFileId || '',
         }),
         [institute]
     );
@@ -517,6 +521,37 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             </Select>
                         </div>
                         <div className="space-y-1">
+                            <Label>Voice pace</Label>
+                            <Select
+                                value={
+                                    typeof setting.voicePace === 'number'
+                                        ? String(setting.voicePace)
+                                        : INHERIT
+                                }
+                                onValueChange={(v) =>
+                                    update('voicePace', v === INHERIT ? undefined : Number(v))
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={INHERIT}>
+                                        Institute default (
+                                        {TUTOR_VOICE_PACES.find(
+                                            (p) => p.value === inherited.voicePace
+                                        )?.label ?? `${inherited.voicePace}×`}
+                                        )
+                                    </SelectItem>
+                                    {TUTOR_VOICE_PACES.map((p) => (
+                                        <SelectItem key={p.value} value={String(p.value)}>
+                                            {p.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
                             <Label>Live model (LLM)</Label>
                             <Input
                                 value={setting.llmModel ?? ''}
@@ -535,6 +570,12 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             />
                         </div>
                     </div>
+                    <TeacherFaceField
+                        fileId={setting.teacherAvatarFileId || undefined}
+                        inheritedFileId={inherited.teacherAvatarFileId || undefined}
+                        teacherName={setting.teacherName || inherited.teacherName}
+                        onChange={(id) => update('teacherAvatarFileId', id)}
+                    />
                     {setting.kbGrounding?.knowledge_base_id && (
                         <p className="text-xs text-neutral-500">
                             Grounded on knowledge base {setting.kbGrounding.knowledge_base_id} (

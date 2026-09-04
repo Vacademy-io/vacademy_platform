@@ -36,6 +36,12 @@ class TutorSettings:
     compile_model: Optional[str] = None
     strictness: str = "normal"
     generate_images: bool = True
+    # Teacher voice speed multiplier (0.7–1.3, 1.0 = the engine's natural
+    # pace); a learner's own "slower / faster" is applied on top of it.
+    voice_pace: float = 1.0
+    # Media file id of the teacher's face shown to learners; blank = the
+    # built-in illustrated face.
+    teacher_avatar_file_id: Optional[str] = None
     # {"knowledge_base_id": ..., "mode": "STRICT"|"BLENDED"} saved at creation
     # so recompiles from the course page stay grounded.
     kb_grounding: Optional[Dict[str, Any]] = None
@@ -78,6 +84,13 @@ def _apply(s: TutorSettings, d: Dict[str, Any]) -> None:
     v = pick("compileModel", "compile_model"); s.compile_model = str(v) if v else s.compile_model
     v = pick("strictness");              s.strictness = str(v) if v else s.strictness
     v = pick("generateImages", "generate_images"); s.generate_images = bool(v) if v is not None else s.generate_images
+    v = pick("voicePace", "voice_pace")
+    if v is not None:
+        try:
+            s.voice_pace = max(0.7, min(1.3, float(v)))
+        except (TypeError, ValueError):
+            pass
+    v = pick("teacherAvatarFileId", "teacher_avatar_file_id"); s.teacher_avatar_file_id = str(v)[:255] if v else s.teacher_avatar_file_id
     v = pick("kbGrounding", "kb_grounding")
     if isinstance(v, dict) and v.get("knowledge_base_id"):
         s.kb_grounding = {"knowledge_base_id": str(v["knowledge_base_id"]),

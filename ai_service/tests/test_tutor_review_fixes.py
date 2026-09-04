@@ -413,3 +413,15 @@ def test_platform_setting_specs_carry_catalogs():
     assert SETTING_SPECS["tutor.compile.model"].catalog == "llm"
     assert SETTING_SPECS["tutor.voice.provider"].type == "enum" and "smallest" in SETTING_SPECS["tutor.voice.provider"].options
     assert "tutor" in GROUP_LABELS and "images" in GROUP_LABELS
+
+
+def test_settings_voice_pace_and_avatar():
+    s = TutorSettings()
+    _apply(s, {"voicePace": "0.9", "teacherAvatarFileId": "file-1"})
+    assert s.voice_pace == 0.9 and s.teacher_avatar_file_id == "file-1"
+    _apply(s, {"voicePace": 5})
+    assert s.voice_pace == 1.3          # clamped
+    _apply(s, {"voicePace": "fast"})
+    assert s.voice_pace == 1.3          # unparsable: unchanged
+    _apply(s, {"teacherAvatarFileId": ""})
+    assert s.teacher_avatar_file_id == "file-1"

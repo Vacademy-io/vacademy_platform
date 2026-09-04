@@ -20,9 +20,11 @@ import { saveInstituteSettingKey } from '@/services/package-settings';
 import {
     TUTOR_MODE_SETTING_KEY,
     TUTOR_TTS_PROVIDERS,
+    TUTOR_VOICE_PACES,
     cloneTutorVoice,
     type TutorModeSetting,
 } from '@/services/tutor';
+import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
 
 const DEFAULTS: TutorModeSetting = {
     enabled: true,
@@ -38,6 +40,8 @@ const DEFAULTS: TutorModeSetting = {
     compileModel: '',
     strictness: 'normal',
     generateImages: true,
+    voicePace: 1,
+    teacherAvatarFileId: '',
 };
 
 /**
@@ -232,6 +236,26 @@ export const TutorModeDefaultsCard: React.FC = () => {
                         </Select>
                     </div>
                     <div className="space-y-1">
+                        <Label>Voice pace</Label>
+                        <Select
+                            value={String(
+                                typeof value.voicePace === 'number' ? value.voicePace : 1
+                            )}
+                            onValueChange={(v) => update('voicePace', Number(v))}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {TUTOR_VOICE_PACES.map((p) => (
+                                    <SelectItem key={p.value} value={String(p.value)}>
+                                        {p.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
                         <Label>Live model (LLM)</Label>
                         <Input
                             value={value.llmModel ?? ''}
@@ -266,6 +290,11 @@ export const TutorModeDefaultsCard: React.FC = () => {
                         </Select>
                     </div>
                 </div>
+                <TeacherFaceField
+                    fileId={value.teacherAvatarFileId || undefined}
+                    teacherName={value.teacherName}
+                    onChange={(id) => update('teacherAvatarFileId', id ?? '')}
+                />
                 <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
                     <p className="flex items-center gap-2 text-sm font-medium text-neutral-800">
                         <Waveform className="size-4 text-primary-500" />

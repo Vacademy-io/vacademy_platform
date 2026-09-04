@@ -221,6 +221,7 @@ def availability(db: Session, *, package_id: str, package_session_id: Optional[s
         "enabled": bool(s.enabled),
         "default_on": bool(s.default_on),
         "teacher_name": s.teacher_name,
+        "teacher_avatar_file_id": s.teacher_avatar_file_id,
         "course_language": s.course_language,
         "languages": s.languages,
         "session_language": s.session_language,

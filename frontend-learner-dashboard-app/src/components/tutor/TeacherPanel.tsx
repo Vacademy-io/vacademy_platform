@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop } from "@phosphor-icons/react";
+import { TeacherAvatar } from "./TeacherAvatar";
 
 export interface TranscriptLine {
   role: "teacher" | "learner";
@@ -10,6 +11,7 @@ export type TutorPhase = "connecting" | "speaking" | "listening" | "thinking" | 
 
 interface TeacherPanelProps {
   teacherName: string;
+  teacherAvatarFileId?: string | null;
   phase: TutorPhase;
   transcript: TranscriptLine[];
   check: { prompt: string | null; options: string[]; check_type: string | null } | null;
@@ -44,7 +46,7 @@ const PHASE_LABEL: Record<TutorPhase, string> = {
 
 /** Right rail: the teacher, the conversation, the check, and the controls. */
 export const TeacherPanel: React.FC<TeacherPanelProps> = ({
-  teacherName, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
+  teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
   notice, disabled,
 }) => {
@@ -68,9 +70,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-neutral-200 pb-3">
-        <div className={`flex size-12 items-center justify-center rounded-full bg-primary-100 text-lg font-semibold text-primary-500 ${phase === "speaking" ? "ring-4 ring-primary-200" : ""}`}>
-          {teacherName.slice(0, 1).toUpperCase()}
-        </div>
+        <TeacherAvatar fileId={teacherAvatarFileId} name={teacherName} speaking={phase === "speaking"} className="size-12" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-neutral-900">{teacherName}</p>
           <p className="text-xs text-neutral-500">{PHASE_LABEL[phase]}</p>

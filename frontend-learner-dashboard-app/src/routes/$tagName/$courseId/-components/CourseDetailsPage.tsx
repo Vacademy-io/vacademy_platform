@@ -12,6 +12,10 @@ import { JsonRenderer } from "../../-components/JsonRenderer";
 import { CourseCatalogueService } from "../../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { resolveCourseView } from "../../-utils/course-page-routing";
+import {
+  resolveLearnerStructureVariant,
+  type LearnerCourseDetailsSettings,
+} from "../../-utils/learner-course-details-settings";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -417,6 +421,21 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // STUDENT_DISPLAY_SETTINGS. Fetched from the public (open) settings endpoint
   // because this catalogue page is unauthenticated.
   const [showInstructors, setShowInstructors] = useState(false);
+  /**
+   * How the institute has configured the course page for its LOGGED-IN
+   * learners (Settings -> Student Display Settings -> courseDetails). The
+   * logged-out page reads the same record so a visitor and an enrolled
+   * learner see the course laid out the same way.
+   *
+   * - `enrolledLayout: "contentOnly"` means the learner's page IS the content
+   *   card grid, so the public page shows cards too.
+   * - otherwise the opening tab decides: CONTENT_STRUCTURE is the card grid,
+   *   OUTLINE is the folder-row list.
+   * Null until the settings land, or when the request fails — the outline is
+   * the safe fallback either way.
+   */
+  const [learnerCourseDetails, setLearnerCourseDetails] =
+    useState<LearnerCourseDetailsSettings | null>(null);
 
   // Debug catalogue data changes
   useEffect(() => {
@@ -442,7 +461,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // subjects drawn as artwork cards rather than folder rows.
   const isOutlineView =
     courseView.mode === "OUTLINE" || courseView.mode === "TILES";
-  const structureVariant = courseView.mode === "TILES" ? "tiles" : "outline";
+  // The course structure follows whatever the institute set for its logged-in
+  // learners, so the page reads the same signed in or out. A per-course
+  // OUTLINE/TILES mode is an explicit override and wins over the inherited
+  // setting; DETAILS (and no configuration at all) inherits.
+  const structureVariant: "outline" | "tiles" =
+    courseView.mode === "OUTLINE"
+      ? "outline"
+      : courseView.mode === "TILES"
+        ? "tiles"
+        : resolveLearnerStructureVariant(learnerCourseDetails);
   useEffect(() => {
     if (!customCoursePageRoute) return;
     navigate({
@@ -463,12 +491,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       .then((res) => {
         if (cancelled) return;
         const cd = (
-          res.data as { courseDetails?: { showInstructors?: boolean } } | null
+          res.data as { courseDetails?: LearnerCourseDetailsSettings } | null
         )?.courseDetails;
         setShowInstructors(cd?.showInstructors ?? false);
+        setLearnerCourseDetails(cd ?? null);
       })
       .catch(() => {
-        if (!cancelled) setShowInstructors(false);
+        if (cancelled) return;
+        setShowInstructors(false);
+        setLearnerCourseDetails(null);
       });
     return () => {
       cancelled = true;

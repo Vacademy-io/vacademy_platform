@@ -141,9 +141,9 @@
         "TILES": "Course content — tiles"
       },
       "modeHint": {
-        "DETAILS": "The usual course page: highlights, syllabus, price and enrol.",
+        "DETAILS": "The usual course page: highlights, syllabus as picture cards, price and enrol.",
         "PAGE": "Opens a page from this site instead. Build it under Pages first.",
-        "OUTLINE": "Same page with the syllabus first and the highlights section dropped. Price and enrol stay.",
+        "OUTLINE": "Syllabus first, drawn as a plain folder list instead of the default picture cards.",
         "TILES": "Same as outline, but the subjects show as picture cards using each subject's image, like the admin dashboard."
       }
     },

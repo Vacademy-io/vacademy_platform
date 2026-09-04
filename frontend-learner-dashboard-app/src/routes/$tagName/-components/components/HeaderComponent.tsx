@@ -21,7 +21,10 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { StudentAuthPresentation } from "@/types/student-display-settings";
 
 export const HeaderComponent: React.FC<HeaderProps & {
-  navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
+  /** `enabled: false` hides a link the author kept but does not want live.
+   *  Absent means visible, so headers authored before the toggle existed are
+   *  unchanged. */
+  navigation?: Array<{ label: string; route: string; openInSameTab?: boolean; enabled?: boolean }>;
   authLinks?: Array<{ label: string; route: string; audienceId?: string; formTitle?: string }>;
   useAuthModal?: boolean;
   catalogueData?: CourseCatalogueData;
@@ -101,6 +104,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
         (link.label || '').toLowerCase().includes('get started')
       );
     };
+
+    // Links the author switched off in the editor never reach the bar, the
+    // mobile menu, or the "is there anything to show?" checks that gate them.
+    const visibleNavigation = navigation.filter((item) => item?.enabled !== false);
 
     // Filter out "Sign Up" auth links when signup is disabled at the institute level.
     const visibleAuthLinks = signupEnabled
@@ -266,7 +273,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
         // If this is a "Home" item, don't make it active if "Courses" exists
         if (label.toLowerCase() === 'home') {
           // Check if there's a "Courses" item in the navigation
-          const hasCoursesItem = navigation.some(item => item.label.toLowerCase() === 'courses');
+          const hasCoursesItem = visibleNavigation.some(item => item.label.toLowerCase() === 'courses');
           // Only highlight "Home" if there's no "Courses" item
           return !hasCoursesItem;
         }
@@ -526,9 +533,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
             </div>
 
             {/* Desktop Navigation */}
-            {navigation.length > 0 && (
+            {visibleNavigation.length > 0 && (
               <nav className="hidden md:flex items-center gap-1">
-                {navigation.map((item, index) => {
+                {visibleNavigation.map((item, index) => {
                   const isActive = isActiveRoute(item.route, item.label);
                   const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                   return (
@@ -554,7 +561,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   actually renders: a header configured with only Login /
                   Get Started (no nav) used to show no toggle at all, leaving
                   those links unreachable on a phone. */}
-              {!isCourseCatalogeTypeEnabled && (navigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
+              {!isCourseCatalogeTypeEnabled && (visibleNavigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
                 <button
                   ref={setHamburgerButtonRef}
                   onClick={() => {
@@ -682,9 +689,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 }`}>
                 <div className="px-4 py-4 space-y-3">
                   {/* Navigation Links */}
-                  {navigation.length > 0 && (
+                  {visibleNavigation.length > 0 && (
                     <div className="space-y-1 pb-3 border-b border-catalogue-border-subtle">
-                      {navigation.map((item, index) => {
+                      {visibleNavigation.map((item, index) => {
                         const isActive = isActiveRoute(item.route, item.label);
                         const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                         return (
@@ -848,7 +855,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             </div>
           ) : (
             // Standard mobile menu
-            isMobileMenuOpen && (navigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
+            isMobileMenuOpen && (visibleNavigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
               <div
                 ref={setMobileMenuRef}
                 className={`md:hidden fixed start-0 end-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-catalogue-bg-elevated ${isAndroid || isIOS ? 'mt-8' : ''}`}
@@ -856,7 +863,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
               >
                 <div className="px-4 py-3 space-y-1">
                   {/* Navigation Links */}
-                  {navigation.map((item, index) => {
+                  {visibleNavigation.map((item, index) => {
                     const isActive = isActiveRoute(item.route, item.label);
                     const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                     return (
@@ -880,7 +887,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       above — with no nav configured there is nothing to
                       separate, so it would read as a stray line. */}
                   {(visibleAuthLinks.length > 0 || isAuthenticated) && (
-                    <div className={`space-y-2 ${navigation.length > 0 ? 'border-t border-catalogue-border-subtle pt-3 mt-3' : ''}`}>
+                    <div className={`space-y-2 ${visibleNavigation.length > 0 ? 'border-t border-catalogue-border-subtle pt-3 mt-3' : ''}`}>
                       {isAuthenticated ? (
                         <>
                           <button

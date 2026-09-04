@@ -3534,9 +3534,11 @@ def _build_chrome_prompt(req: SiteChromeRequest, catalog: Dict[str, Any]) -> str
     )
     parts.append(
         "## HEADER RULES\n"
-        "- `navigation`: [{label, route, openInSameTab}] — the main menu. `route` is a page route "
+        "- `navigation`: [{label, route, openInSameTab, enabled}] — the main menu. `route` is a page route "
         "from the PAGES list below (use \"\" for home), an #anchor, or an absolute URL. NEVER invent "
-        "a route: a menu item pointing at a page that does not exist is a dead link.\n"
+        "a route: a menu item pointing at a page that does not exist is a dead link. `enabled: false` "
+        "means the admin deliberately hid that link; carry the flag through untouched unless the "
+        "instruction is to show or hide it.\n"
         "- `authLinks`: [{label, route}] — the buttons on the RIGHT. Use route 'login' for Login and "
         "'signup' for Sign Up. An enquiry/registration button that opens a campaign form needs an "
         "audienceId the ADMIN must choose, so emit it with route '' and NO audienceId; the admin "

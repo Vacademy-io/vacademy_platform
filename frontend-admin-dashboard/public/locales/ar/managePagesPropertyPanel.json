@@ -357,7 +357,10 @@
     "labelWithExamplePlaceholder": "النص (مثل تسجيل الدخول)",
     "onClick": "عند النقر",
     "formToOpen": "النموذج المراد فتحه (الحملة)",
-    "popupTitlePlaceholder": "عنوان النافذة (النص الافتراضي هو نص الزر)"
+    "popupTitlePlaceholder": "عنوان النافذة (النص الافتراضي هو نص الزر)",
+    "hideLink": "إخفاء هذا الرابط",
+    "showLink": "إظهار هذا الرابط",
+    "hiddenBadge": "مخفي"
   },
   "footer": {
     "column2": "العمود 2",

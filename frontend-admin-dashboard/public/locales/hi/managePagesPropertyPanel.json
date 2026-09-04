@@ -353,7 +353,10 @@
     "labelWithExamplePlaceholder": "लेबल (जैसे Login)",
     "onClick": "क्लिक करने पर",
     "formToOpen": "खोलने के लिए फॉर्म (कैंपेन)",
-    "popupTitlePlaceholder": "पॉपअप टाइटल (डिफ़ॉल्ट रूप से लेबल)"
+    "popupTitlePlaceholder": "पॉपअप टाइटल (डिफ़ॉल्ट रूप से लेबल)",
+    "hideLink": "यह लिंक छिपाएँ",
+    "showLink": "यह लिंक दिखाएँ",
+    "hiddenBadge": "छिपा हुआ"
   },
   "footer": {
     "column2": "कॉलम 2",

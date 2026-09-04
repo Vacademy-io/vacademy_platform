@@ -27,6 +27,14 @@ public class PaymentSettingService {
     /** Flag inside PAYMENT_SETTING.data that opts an institute into the daily scan. */
     public static final String RENEWAL_SCHEDULER_ENABLED_KEY = "packageSessionRenewalSchedulerEnabled";
 
+    /**
+     * Flag inside PAYMENT_SETTING.data that opts an institute into learner-facing plan
+     * switching. Off (or absent) means learners never see a "change plan" affordance
+     * anywhere, whatever the per-option and per-plan flags say — those configure WHICH
+     * plans are switchable; this decides whether the feature is exposed at all.
+     */
+    public static final String PLAN_CHANGE_ENABLED_KEY = "planChangeEnabled";
+
     private final InstituteRepository instituteRepository;
     private final ObjectMapper objectMapper;
 
@@ -59,5 +67,41 @@ public class PaymentSettingService {
             }
         }
         return enabled;
+    }
+
+    /**
+     * Whether this institute exposes learner-facing plan switching.
+     *
+     * <p>Opt-in like everything else in this blob: a missing PAYMENT_SETTING, a missing
+     * flag, or unparseable JSON all mean disabled. An institute must choose to show its
+     * members a way to move between plans rather than find it already on.
+     */
+    public boolean isPlanChangeEnabled(String instituteId) {
+        return readFlag(instituteId, PLAN_CHANGE_ENABLED_KEY);
+    }
+
+    /** Reads one boolean out of PAYMENT_SETTING.data. False on anything unexpected. */
+    private boolean readFlag(String instituteId, String flagKey) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return false;
+        }
+        try {
+            String settingJson = instituteRepository.findById(instituteId)
+                    .map(vacademy.io.common.institute.entity.Institute::getSetting)
+                    .orElse(null);
+            if (settingJson == null || settingJson.isBlank()) {
+                return false;
+            }
+            return objectMapper.readTree(settingJson)
+                    .path("setting")
+                    .path(SettingKeyEnums.PAYMENT_SETTING.name())
+                    .path("data")
+                    .path(flagKey)
+                    .asBoolean(false);
+        } catch (Exception e) {
+            log.warn("[PaymentSetting] Could not read {} for institute {} — treating as disabled",
+                    flagKey, instituteId, e);
+            return false;
+        }
     }
 }

@@ -20,7 +20,9 @@
         "priceLabel": "Price",
         "featuresLabel": "Features",
         "removeInterval": "Remove Interval",
-        "intervalPlanFallback": "{{value}} {{unit}} Plan"
+        "intervalPlanFallback": "{{value}} {{unit}} Plan",
+        "planChangeLabel": "Members can switch to this plan",
+        "planChangeHint": "(turn on plan switching for this option first)"
     },
     "donation": {
         "title": "Donation Configuration",

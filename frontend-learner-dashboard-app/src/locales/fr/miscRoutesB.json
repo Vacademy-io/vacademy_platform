@@ -548,7 +548,10 @@
         "title": "Arrêter votre abonnement ?",
         "description": "Vous pouvez encore accéder à vos {{liveClasses}} jusqu'au <bold>{{date}}</bold>. Passé ce délai, votre abonnement prend fin et vous ne serez plus prélevé(e). Vous pourrez le réactiver à tout moment.",
         "keepMembership": "Conserver l'abonnement"
-      }
+      },
+      "changePlan": "Change plan",
+      "planChangeScheduled": "Moving to {{plan}} on {{date}}.",
+      "planChangeCancelScheduled": "Cancel this change"
     }
   },
   "termsAndConditions": {

@@ -5,6 +5,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import java.util.List;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeOptionsDTO;
+import vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
@@ -146,5 +148,38 @@ public class UserPlanController {
 
         return ResponseEntity
                 .ok(userPlanService.getMembershipDetails(filterDTO, pageNo, pageSize));
+    }
+
+    /**
+     * The plans this learner could be moved to, with the proration figures shown for
+     * information. Same eligibility rules as the learner-facing listing — an admin cannot
+     * move someone onto a plan the institute has not flagged as switchable.
+     */
+    @GetMapping("/{userPlanId}/change-options")
+    public ResponseEntity<PlanChangeOptionsDTO> getPlanChangeOptions(
+            @PathVariable String userPlanId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        return ResponseEntity.ok(userPlanService.getPlanChangeOptions(userPlanId, instituteId));
+    }
+
+    /**
+     * Admin override: move the learner onto another plan immediately, with no payment.
+     * For comps, corrections and negotiated moves.
+     *
+     * <p>The access window is left as-is — no money changed hands, so extending or
+     * truncating what the learner already paid for would be arbitrary. The new price takes
+     * effect at the next renewal.
+     */
+    @PostMapping("/{userPlanId}/change-plan")
+    public ResponseEntity<UserPlanDTO> changePlan(
+            @PathVariable String userPlanId,
+            @RequestParam String instituteId,
+            @RequestBody PlanChangeRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        return ResponseEntity.ok(
+                userPlanService.adminChangePlan(userPlanId, instituteId, request, userDetails));
     }
 }

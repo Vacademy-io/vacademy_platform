@@ -25,6 +25,9 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
     const [featuresGlobal, setFeaturesGlobal] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [requireApproval, setRequireApproval] = useState(false);
+    // Option-level master switch for plan change. Carried here so an option created from
+    // the invite flow can opt into switching too, exactly as one created from Settings can.
+    const [planChangeAllowed, setPlanChangeAllowed] = useState(false);
     const instituteId = getInstituteId();
     const createCPOMutation = useCreateCPO();
 
@@ -38,6 +41,7 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
         setShowPaymentPlanCreator(false);
         setEditingPlan(null);
         setRequireApproval(false);
+        setPlanChangeAllowed(false);
     };
 
     const handleSavePaymentPlan = async (plan: PaymentPlan) => {
@@ -62,10 +66,18 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
                 setEditingPlan(null);
                 setShowPaymentPlanCreator(false);
                 setRequireApproval(false);
+        setPlanChangeAllowed(false);
                 return;
             }
 
-            const apiPlans = transformLocalPlanToApiFormatArray(plan);
+            // A ONE_TIME option has one plan and no per-interval checkbox, so the option
+            // toggle IS that plan's flag. Mirrors PaymentSettings.handleSavePaymentPlan —
+            // without it a one-time option created here could never be a switch target.
+            const apiPlans = transformLocalPlanToApiFormatArray({
+                ...plan,
+                planChangeAllowed,
+                config: { ...plan.config, planChangeAllowed },
+            });
             const paymentOptionRequest = {
                 id: plan.id, // Use the plan ID directly (either existing or new)
                 name: plan.name,
@@ -74,6 +86,7 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
                 source_id: instituteId ?? '',
                 type: plan.type,
                 require_approval: requireApproval,
+                plan_change_allowed: planChangeAllowed,
                 payment_plans: apiPlans,
                 payment_option_metadata_json: JSON.stringify({
                     currency: plan.currency,
@@ -124,6 +137,7 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
             setEditingPlan(null);
             setShowPaymentPlanCreator(false);
             setRequireApproval(false);
+        setPlanChangeAllowed(false);
             queryClient.invalidateQueries({ queryKey: ['GET_PAYMENT_DETAILS'] });
         } catch (error) {
             handleError(error, t('errors.operations.savePaymentPlan'));
@@ -150,6 +164,8 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
                 isSaving={isSaving}
                 requireApproval={requireApproval}
                 setRequireApproval={setRequireApproval}
+                planChangeAllowed={planChangeAllowed}
+                setPlanChangeAllowed={setPlanChangeAllowed}
             />
         </>
     );

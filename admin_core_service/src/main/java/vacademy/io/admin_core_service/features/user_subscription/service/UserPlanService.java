@@ -120,6 +120,14 @@ public class UserPlanService {
     @Autowired
     private vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
 
+    /**
+     * @Lazy breaks a startup cycle: PlanChangeService needs PaymentService to open an
+     * upgrade checkout, and PaymentService needs this service back.
+     */
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService planChangeService;
+
     @Autowired
     private vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponRedemptionService couponRedemptionService;
 
@@ -1276,6 +1284,37 @@ public class UserPlanService {
 
         userPlans.forEach(plan -> plan.setStatus(normalizedStatus));
         userPlanRepository.saveAll(userPlans);
+    }
+
+    // ── Plan change (admin side) ────────────────────────────────────────────
+
+    /**
+     * The plans an admin could move this learner onto. Same eligibility rules as the
+     * learner-facing listing — an admin cannot move someone onto a plan the institute has
+     * not flagged as switchable — with the proration figures included for information.
+     */
+    public vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeOptionsDTO getPlanChangeOptions(
+            String userPlanId, String instituteId) {
+        return planChangeService.getChangeOptions(findById(userPlanId), instituteId);
+    }
+
+    /**
+     * Admin override: swap the plan with no payment taken. The access window is untouched
+     * (see {@code PlanChangeService.adminApplyChange}); the new price bills at the next
+     * renewal.
+     *
+     * <p>Evicts the same caches as a bulk status change — the side-view membership card,
+     * the plan listing and the membership roster all read through them, and a stale entry
+     * would show the learner on the plan they just left.
+     */
+    @CacheEvict(value = { "userPlanById", "userPlansByUser", "userPlanWithPaymentLogs",
+            "membershipDetails" }, allEntries = true)
+    public UserPlanDTO adminChangePlan(String userPlanId, String instituteId,
+            vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeRequestDTO request,
+            vacademy.io.common.auth.model.CustomUserDetails adminDetails) {
+        UserPlan updated = planChangeService.adminApplyChange(
+                findById(userPlanId), instituteId, request, adminDetails);
+        return mapToDTO(updated);
     }
 
     /**

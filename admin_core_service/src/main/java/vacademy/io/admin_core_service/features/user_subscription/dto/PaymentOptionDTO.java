@@ -20,6 +20,12 @@ public class PaymentOptionDTO {
     private String type;
     private boolean requireApproval;
     private String unit;
+    /**
+     * Master switch for plan change — members on another option of the same package
+     * session may switch INTO this option. Boxed so a partial edit payload that omits it
+     * leaves the stored value alone instead of silently turning the feature off.
+     */
+    private Boolean planChangeAllowed;
     /** Set when type='CPO'. Points at the underlying ComplexPaymentOption row. */
     private String complexPaymentOptionId;
     private List<PaymentPlanDTO> paymentPlans;

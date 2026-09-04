@@ -30,6 +30,11 @@ public enum WorkflowTriggerEvent {
     SUBSCRIPTION_CANCELLED,
     SUBSCRIPTION_TERMINATED,
     LEARNER_RE_ENROLLMENT,
+    // Fired once a plan change is actually APPLIED to the user_plan — after the upgrade
+    // payment clears, after a scheduled downgrade takes effect at renewal, or immediately
+    // on an admin override. Keyed by eventId = enrollInviteId (the NEW one on a
+    // cross-option move), falling back to instituteId.
+    SUBSCRIPTION_PLAN_CHANGED,
 
     // Fired when an admin makes a learner INACTIVE in a package session
     // (institute_learner MAKE_INACTIVE operation). Keyed by eventId = packageSessionId.

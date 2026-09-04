@@ -20,7 +20,9 @@
         "priceLabel": "मूल्य",
         "featuresLabel": "सुविधाएं",
         "removeInterval": "अंतराल हटाएं",
-        "intervalPlanFallback": "{{value}} {{unit}} योजना"
+        "intervalPlanFallback": "{{value}} {{unit}} योजना",
+        "planChangeLabel": "Members can switch to this plan",
+        "planChangeHint": "(turn on plan switching for this option first)"
     },
     "donation": {
         "title": "दान कॉन्फ़िगरेशन",

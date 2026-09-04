@@ -37,12 +37,16 @@ import PackageSessionRenewalSettings from './PackageSessionRenewalSettings';
 import { useTranslation } from 'react-i18next';
 
 interface Interval {
+    /** payment_plan.id — round-tripped so a save updates the plan instead of replacing it. */
+    id?: string;
     price: string;
     originalPrice: string;
     title?: string;
     value: number;
     unit: string;
     features?: string[];
+    /** Members on another plan may switch to this interval (option flag must also be on). */
+    planChangeAllowed?: boolean;
 }
 
 interface DiscountCoupon {
@@ -73,6 +77,10 @@ const PaymentSettings = () => {
     const [planToDelete, setPlanToDelete] = useState<PaymentPlan | null>(null);
     const previewDialogRef = useRef<HTMLDivElement>(null);
     const [requireApproval, setRequireApproval] = useState(false);
+    // Option-level master switch for plan change; the per-plan checkboxes are inert
+    // while this is off. Held here, like requireApproval, because it belongs to the
+    // payment option rather than to any one plan inside it.
+    const [planChangeAllowed, setPlanChangeAllowed] = useState(false);
 
     const [paymentPlans, setPaymentPlans] = useState<PaymentPlan[]>([]);
     const instituteId = getInstituteId();
@@ -180,12 +188,17 @@ const PaymentSettings = () => {
                         if (paymentOption.type === PaymentPlans.SUBSCRIPTION) {
                             // Aggregate all intervals
                             const intervals = paymentOption.payment_plans.map((plan) => ({
+                                // The id is round-tripped so a later save UPDATES this
+                                // plan. Without it the backend retires every stored plan
+                                // and mints new ids, orphaning user_plan.plan_id.
+                                id: plan.id,
                                 price: plan.actual_price, // discounted price
                                 originalPrice: plan.elevated_price, // original price
                                 title: plan.name || '',
                                 value: plan.validity_in_days,
                                 unit: 'days', // or 'months', depending on your logic
                                 features: JSON.parse(plan.feature_json || '[]'),
+                                planChangeAllowed: plan.plan_change_allowed ?? false,
                             }));
                             // Use the first plan for other fields
                             const basePlan = paymentOption.payment_plans[0];
@@ -231,6 +244,7 @@ const PaymentSettings = () => {
                                     },
                                 },
                                 requireApproval: paymentOption.require_approval,
+                                planChangeAllowed: paymentOption.plan_change_allowed ?? false,
                             } as PaymentPlan;
                         } else if (paymentOption.type === PaymentPlans.FREE) {
                             // For FREE plans, we can create a plan even without payment_plans
@@ -264,6 +278,7 @@ const PaymentSettings = () => {
                                 },
                                 isDefault: false,
                                 requireApproval: paymentOption.require_approval,
+                                planChangeAllowed: paymentOption.plan_change_allowed ?? false,
                             } as PaymentPlan;
                         } else if (paymentOption.type === PaymentPlans.CPO) {
                             // CPO mirror: id = mirror PaymentOption ID (used for makeDefault)
@@ -279,6 +294,7 @@ const PaymentSettings = () => {
                                     cpoId: paymentOption.complex_payment_option_id || '',
                                 },
                                 requireApproval: paymentOption.require_approval,
+                                planChangeAllowed: paymentOption.plan_change_allowed ?? false,
                             } as PaymentPlan;
                         } else if (paymentOption.payment_plans?.length > 0) {
                             // For other non-subscription plans, just use the first plan
@@ -301,6 +317,7 @@ const PaymentSettings = () => {
                                 name: paymentOption.name || '',
                                 currency: localPlan.currency || '',
                                 requireApproval: paymentOption.require_approval,
+                                planChangeAllowed: paymentOption.plan_change_allowed ?? false,
                             } as PaymentPlan;
                         }
                         return null;
@@ -385,6 +402,11 @@ const PaymentSettings = () => {
         try {
             // Clear any previous editing state and set the new plan to edit
             setEditingPlan(plan);
+            // Option-level toggles live outside the plan object, so seed them from the
+            // plan being opened — otherwise reopening an option shows them off and the
+            // next save turns the feature off for everyone on it.
+            setRequireApproval(plan.requireApproval || false);
+            setPlanChangeAllowed(plan.planChangeAllowed || false);
             setShowPaymentPlanCreator(true);
         } catch (error) {
             handleError(error, 'edit plan');
@@ -395,6 +417,7 @@ const PaymentSettings = () => {
         setShowPaymentPlanCreator(false);
         setEditingPlan(null);
         setRequireApproval(false);
+        setPlanChangeAllowed(false);
     };
 
     // Helper function to calculate discounted prices for intervals
@@ -442,10 +465,19 @@ const PaymentSettings = () => {
                 setEditingPlan(null);
                 setShowPaymentPlanCreator(false);
                 setRequireApproval(false);
+                setPlanChangeAllowed(false);
                 return;
             }
 
-            const apiPlans = transformLocalPlanToApiFormatArray(plan);
+            // A ONE_TIME option has exactly one plan, so there is no per-interval
+            // checkbox for it — the option toggle IS the plan's flag. Stamped here rather
+            // than in the creator and the editor separately, so both paths agree.
+            const planForApi: PaymentPlan = {
+                ...plan,
+                planChangeAllowed,
+                config: { ...plan.config, planChangeAllowed },
+            };
+            const apiPlans = transformLocalPlanToApiFormatArray(planForApi);
             const discountedIntervals = calculateDiscountedIntervals(plan);
 
             const paymentOptionRequest = {
@@ -456,6 +488,9 @@ const PaymentSettings = () => {
                 source_id: instituteId ?? '',
                 type: plan.type.toUpperCase(),
                 require_approval: requireApproval,
+                // Master switch. The per-plan checkboxes only take effect while this is on,
+                // so it rides alongside require_approval on the option itself.
+                plan_change_allowed: planChangeAllowed,
                 payment_plans: apiPlans,
                 payment_option_metadata_json: JSON.stringify({
                     currency: plan.currency,
@@ -542,6 +577,7 @@ const PaymentSettings = () => {
             setEditingPlan(null);
             setShowPaymentPlanCreator(false);
             setRequireApproval(false);
+            setPlanChangeAllowed(false);
             // Clear features after successfully creating/updating a plan
             setFeaturesGlobal([]);
         } catch (error) {
@@ -728,6 +764,8 @@ const PaymentSettings = () => {
                 }))}
                 requireApproval={requireApproval}
                 setRequireApproval={setRequireApproval}
+                planChangeAllowed={planChangeAllowed}
+                setPlanChangeAllowed={setPlanChangeAllowed}
             />
 
             <Dialog open={showPlanPreview} onOpenChange={setShowPlanPreview}>

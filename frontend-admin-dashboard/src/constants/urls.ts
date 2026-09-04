@@ -1119,6 +1119,11 @@ export const WORKFLOW_LOGS_BASE = `${BASE_URL}/admin-core-service/workflow/logs`
 export const GET_USER_PLANS = `${BASE_URL}/admin-core-service/v1/user-plan/all`;
 export const GET_PAYMENT_LOGS = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
 export const GET_PAYMENT_COLLECTION_SUMMARY = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/collection-summary`;
+// Plan change (admin override — applies immediately, takes no payment).
+export const GET_USER_PLAN_CHANGE_OPTIONS = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/change-options`;
+export const CHANGE_USER_PLAN = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/change-plan`;
 
 // System files
 export const ADD_SYSTEM_FILE = `${BASE_URL}/admin-core-service/system-files/v1/add`;

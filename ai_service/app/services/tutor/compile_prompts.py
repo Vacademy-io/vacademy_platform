@@ -162,6 +162,10 @@ def user_prompt(
     return "\n\n".join(parts)
 
 
+TEXT_KIND_LABEL = {"script": "NARRATION SCRIPT", "captions": "CAPTIONS", "transcript": "TRANSCRIPT (speech recognition; may contain errors)",
+                   "pdf": "TEXT"}
+
+
 def media_task_user_prompt(
     *,
     slide_title: str,
@@ -170,18 +174,43 @@ def media_task_user_prompt(
     kind: str,
     description: str,
     lang: str,
+    transcript: Optional[str] = None,
+    text_kind: Optional[str] = None,
 ) -> str:
+    """A video or PDF slide. With only a teacher's description: one topic, the
+    media task, then 2-4 check questions. With the material's own words
+    (script / captions / transcript / PDF text): the media task, then real
+    teaching concepts drawn from the text (design §4.2)."""
     what = "video" if kind == "video" else "PDF"
-    return (
+    head = (
         f"COURSE: {course_title or '(untitled)'}\nCHAPTER: {chapter_title or '(none)'}\nSLIDE: {slide_title}\n"
         f"SLIDE KIND: {what} the learner must {'watch' if kind == 'video' else 'read'} (a MEDIA TASK)\n\n"
-        f"WHAT THE {what.upper()} TEACHES (written by the teacher who added it):\n{description.strip()}\n\n"
-        "Build ONE topic. Its FIRST concept is the task itself: board_ops = exactly one op "
+    )
+    task = (
+        "Its FIRST concept is the task itself: board_ops = exactly one op "
         f'{{"op":"media_task","id":"t1c1-m","kind":"{kind}","description":"..."}} (the url is filled in by the system), '
         f"`say` asks the learner to {'watch the video' if kind == 'video' else 'read the document'} now and tell you when done, and check.type = \"none\". "
-        "Then 2 to 4 concepts that each ask ONE check question about what the material covered "
-        "(board: a short heading or bullet restating the point after the learner answers), with rubric and misconceptions "
-        "drawn from the description. Nothing else.\n\n"
+    )
+    if transcript and transcript.strip():
+        label = TEXT_KIND_LABEL.get(text_kind or "", "TEXT")
+        note = f"WHAT THE {what.upper()} TEACHES (the teacher's note):\n{description.strip()}\n\n" if description and description.strip() else ""
+        return (
+            head + note
+            + f"{label} OF THE {what.upper()} (what it actually says):\n{transcript.strip()}\n\n"
+            + "Build 1 to 3 topics in the order the material presents its ideas. " + task
+            + "Every other concept teaches ONE key idea from the text: a board that shows it (heading, bullets, formula, table, "
+              "or an svg where the idea is visual), a narration in your own words (never a quote of the text), and a check with "
+              "rubric and misconceptions drawn from the text. 3 to 8 teaching concepts in total; ignore small talk, "
+              "greetings and sponsor messages in the text. Nothing else.\n\n"
+            + plan_schema_text(lang)
+        )
+    return (
+        head
+        + f"WHAT THE {what.upper()} TEACHES (written by the teacher who added it):\n{description.strip()}\n\n"
+        + "Build ONE topic. " + task
+        + "Then 2 to 4 concepts that each ask ONE check question about what the material covered "
+          "(board: a short heading or bullet restating the point after the learner answers), with rubric and misconceptions "
+          "drawn from the description. Nothing else.\n\n"
         + plan_schema_text(lang)
     )
 

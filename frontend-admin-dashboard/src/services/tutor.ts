@@ -40,6 +40,10 @@ export interface TutorPlanStatusItem {
     topics: number;
     concepts: number;
     updated_at: string | null;
+    /** document | pdf | quiz | ai_video | youtube | video_upload | video_link | other */
+    source_kind?: string | null;
+    /** What the newest plan was compiled from: script | captions | transcript | pdf | null */
+    text_kind?: string | null;
 }
 
 export interface TutorPackagePlans {
@@ -90,8 +94,69 @@ export interface TutorCompileOptions {
     teacher_name?: string;
     generate_images?: boolean;
     kb_grounding?: { knowledge_base_id: string; mode?: 'STRICT' | 'BLENDED' } | null;
+    /** Uploaded videos without a transcript: run speech-to-text (per-minute credits). */
+    transcribe_videos?: boolean;
     compile_run_id?: string;
 }
+
+export type TutorEstimateAction =
+    | 'compile'
+    | 'up_to_date'
+    | 'needs_details'
+    | 'free'
+    | 'skip'
+    | 'unsupported'
+    | 'unpublished';
+
+export interface TutorCompileEstimate {
+    package_id: string;
+    slides: Array<{
+        slide_id: string;
+        title: string | null;
+        kind: string;
+        action: TutorEstimateAction;
+        compile: number;
+        transcription: number;
+        minutes: number;
+        images_max: number;
+        total: number;
+        note: string | null;
+        text: string | null;
+    }>;
+    totals: {
+        to_compile: number;
+        up_to_date: number;
+        needs_details: number;
+        free: number;
+        compile_credits: number;
+        transcription_credits: number;
+        transcription_minutes: number;
+        images_max: number;
+        images_max_credits: number;
+        required: number;
+        worst_case: number;
+    };
+    prices: {
+        compile_slide: number;
+        image: number;
+        transcription_per_minute: number;
+        transcription_minimum: number;
+    };
+    balance: number | null;
+    sufficient: boolean | null;
+    transcription_available: boolean;
+}
+
+export const estimateTutorCompile = async (
+    packageId: string,
+    options: TutorCompileOptions & { slide_ids?: string[]; force?: boolean }
+): Promise<TutorCompileEstimate> => {
+    const res = await authenticatedAxiosInstance.post<TutorCompileEstimate>(
+        `${BASE}/compile/estimate`,
+        { package_id: packageId, ...options }
+    );
+    return res.data;
+};
 
 export interface TutorCompileEvent {
     type:

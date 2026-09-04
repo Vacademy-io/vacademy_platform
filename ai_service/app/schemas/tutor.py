@@ -245,6 +245,9 @@ class CompileOptions(BaseModel):
     # Let the compiler request AI-generated images (billed per image).
     generate_images: bool = False
     kb_grounding: Optional[CompileKbGrounding] = None
+    # Uploaded videos without a transcript: run speech-to-text (per-minute
+    # credits) so they compile like documents; off = park them for a description.
+    transcribe_videos: bool = True
     # Stable across transport retries; keys idempotent charges.
     compile_run_id: Optional[str] = Field(default=None, pattern=_RUN_ID)
 
@@ -279,6 +282,10 @@ class PlanStatusItem(BaseModel):
     topics: int = 0
     concepts: int = 0
     updated_at: Optional[str] = None
+    # document | pdf | quiz | ai_video | youtube | video_upload | video_link | other
+    source_kind: Optional[str] = None
+    # What the newest plan was compiled from: script | captions | transcript | pdf | None
+    text_kind: Optional[str] = None
 
 
 class PackagePlansResponse(BaseModel):

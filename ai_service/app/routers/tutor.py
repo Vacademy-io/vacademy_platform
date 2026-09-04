@@ -23,11 +23,12 @@ from ..schemas.tutor import (
     CompileRequest, PackagePlansResponse, PlanStatusItem, RecompileOptions, SourceDescriptionRequest,
 )
 from ..schemas.tutor import CompileKbGrounding, CompileOptions
-from ..services.ai_billing import preflight_tool_credits
 from ..services.tutor import plan_store
 from ..services.tutor.plan_compiler import PlanCompiler
 from ..services.tutor.roles import is_staff, normalize_roles
 from ..services.tutor.insights_export import insights_csv_text
+from ..services.tutor.compile_estimate import estimate_compile
+from ..services.tutor.slide_source import source_kinds_for_slides
 from ..services.voice_tts import (
     _EDGE_DEFAULT_VOICES, clone_voice_smallest, default_voice_for, list_cloned_voices_smallest, list_smallest_voices,
     sarvam_voice_catalogue, smallest_available,
@@ -45,7 +46,6 @@ _HEARTBEAT_SECONDS = 15
 # Slide types the compiler handles in phase 1; quizzes compile deterministically
 # and are not billed, so they are supported but not "billable".
 SUPPORTED_SOURCE_TYPES = {"DOCUMENT", "QUIZ", "VIDEO", "HTML_VIDEO"}
-BILLABLE_SOURCE_TYPES = {"DOCUMENT", "VIDEO", "HTML_VIDEO"}
 # Compiles outlive the request that started them: closing the admin tab must
 # not turn paid model calls into FAILED rows. Tasks are kept here so the
 # event loop does not garbage-collect them mid-flight.
@@ -77,15 +77,6 @@ async def _caller(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Teaching plans are managed by institute staff (admin, teacher or content-creator roles)")
     return Caller(principal.institute_id, principal.user_id, roles, bool(principal.is_root_user))
-
-
-def _billable_count(db: Session, slide_ids: List[str]) -> int:
-    if not slide_ids:
-        return 0
-    rows = db.execute(
-        text("SELECT source_type FROM slide WHERE id = ANY(:ids)"), {"ids": list(slide_ids)}
-    ).fetchall()
-    return sum(1 for r in rows if (r[0] or "").upper() in BILLABLE_SOURCE_TYPES)
 
 
 def _sse(compiler: PlanCompiler, slide_ids: List[str]) -> StreamingResponse:
@@ -131,23 +122,21 @@ def _sse(compiler: PlanCompiler, slide_ids: List[str]) -> StreamingResponse:
     )
 
 
-def _preflight(db: Session, institute_id: str, n_slides: int) -> None:
-    if n_slides <= 0:
-        return   # quizzes only: nothing will be billed
-    estimate = preflight_tool_credits(db, tool_key="tutor_compile_slide", tool_params={}, institute_id=institute_id)
-    if estimate.get("sufficient") is False:
-        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                            detail=f"Insufficient credits: compiling needs ≈{estimate.get('estimated_credits')} credits per slide, balance is {estimate.get('current_balance')}.")
+def _preflight(db: Session, institute_id: str, slide_ids: List[str], p: CompileOptions, *, force: bool) -> None:
+    """Refuse (402) a compile the institute cannot pay for: compile credits plus
+    transcription minutes for uploaded videos. Images are not gated (capped,
+    charged as delivered). An unknown balance never blocks."""
     try:
-        per = float(estimate.get("estimated_credits") or 0)
-        bal = estimate.get("current_balance")
-        if bal is not None and per > 0 and float(bal) < per * max(1, n_slides):
-            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                                detail=f"Insufficient credits: {n_slides} slide(s) need ≈{per * n_slides:g} credits, balance is {bal}.")
-    except HTTPException:
-        raise
+        est = estimate_compile(db, institute_id=institute_id, slide_ids=slide_ids, language=p.language,
+                               generate_images=bool(p.generate_images), transcribe_videos=bool(p.transcribe_videos), force=force)
     except Exception:  # noqa: BLE001 — never block on a malformed estimate
-        pass
+        return
+    if est.get("sufficient") is False:
+        t = est["totals"]
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                            detail=(f"Insufficient credits: preparing {t['to_compile']} slide(s) needs ≈{t['required']:g} credits "
+                                    f"({t['compile_credits']:g} to compile + {t['transcription_credits']:g} for "
+                                    f"{t['transcription_minutes']} min of transcription), balance is {est['balance']:g}."))
 
 
 def _compiler(db: Session, caller: Caller, package_id: str, p: CompileOptions, *, force: bool) -> PlanCompiler:
@@ -165,6 +154,7 @@ def _compiler(db: Session, caller: Caller, package_id: str, p: CompileOptions, *
         institute_id=caller.institute_id, user_id=caller.user_id, language=language,
         teacher_name=teacher, force=force, generate_images=images, kb_grounding=kb,
         compile_run_id=p.compile_run_id or str(uuid.uuid4()), model_override=s.compile_model,
+        transcribe_videos=p.transcribe_videos,
     )
 
 
@@ -182,10 +172,34 @@ async def compile_plans(
                      if (s["source_type"] or "").upper() in SUPPORTED_SOURCE_TYPES]
     if not slide_ids:
         raise HTTPException(status_code=400, detail="No slides to compile")
-    # Only document and video slides cost credits; quizzes compile for free.
-    _preflight(db, caller.institute_id, _billable_count(db, slide_ids))
+    _preflight(db, caller.institute_id, slide_ids, payload, force=payload.force)
     compiler = _compiler(db, caller, payload.package_id, payload, force=payload.force)
     return _sse(compiler, slide_ids)
+
+
+@router.post("/compile/estimate", summary="What preparing these slides will cost (no credits spent)")
+def compile_estimate(
+    payload: CompileRequest,
+    caller: Caller = Depends(_caller),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    """Per slide: up to date / needs details / will compile, compile credits,
+    transcription minutes and credits for uploaded videos without a
+    transcript, and the image cap. Same rules as the compile itself."""
+    if not package_belongs_to_institute(db, payload.package_id, caller.institute_id):
+        raise HTTPException(status_code=404, detail="Course not found in this institute")
+    slide_ids = list(dict.fromkeys(payload.slide_ids))
+    if not slide_ids:
+        slide_ids = [s["slide_id"] for s in list_package_slides(db, payload.package_id)
+                     if (s["source_type"] or "").upper() in SUPPORTED_SOURCE_TYPES]
+    s = resolve_settings(db, package_id=payload.package_id, institute_id=caller.institute_id)
+    fields = payload.model_fields_set
+    images = payload.generate_images if "generate_images" in fields else bool(s.generate_images)
+    language = payload.language if "language" in fields else s.course_language
+    out = estimate_compile(db, institute_id=caller.institute_id, slide_ids=slide_ids, language=language,
+                           generate_images=images, transcribe_videos=payload.transcribe_videos, force=payload.force)
+    out["package_id"] = payload.package_id
+    return out
 
 
 @router.post("/slides/{slide_id}/recompile", summary="Recompile one slide (SSE)")
@@ -197,8 +211,8 @@ async def recompile_slide(
 ) -> StreamingResponse:
     if not slide_belongs_to_institute(db, slide_id, caller.institute_id):
         raise HTTPException(status_code=404, detail="Slide not found in this institute")
-    _preflight(db, caller.institute_id, _billable_count(db, [slide_id]))
     p = payload or RecompileOptions()
+    _preflight(db, caller.institute_id, [slide_id], p, force=True)
     compiler = _compiler(db, caller, package_of_slide(db, slide_id) or "", p, force=True)
     return _sse(compiler, [slide_id])
 
@@ -221,6 +235,7 @@ def package_plans(
     newest = plan_store.latest_plans_for_slides(db, ids)
     serving = plan_store.latest_plans_for_slides(db, ids, ready_only=True)
     counts_by_plan = plan_store.counts_for_plans(db, [p.id for p in serving.values()])
+    kinds = source_kinds_for_slides(db, slides)
     items: List[PlanStatusItem] = []
     counts: Dict[str, int] = {}
     for s in slides:
@@ -230,9 +245,11 @@ def package_plans(
         if plan is None:
             status_ = "NOT_COMPILED" if st in SUPPORTED_SOURCE_TYPES else "UNSUPPORTED"
             item = PlanStatusItem(slide_id=s["slide_id"], slide_title=s["title"], source_type=st,
-                                  chapter_id=s["chapter_id"], chapter_name=s["chapter_name"], status=status_)
+                                  chapter_id=s["chapter_id"], chapter_name=s["chapter_name"], status=status_,
+                                  source_kind=kinds.get(s["slide_id"]))
         else:
             c = counts_by_plan.get(serve.id, {"topics": 0, "concepts": 0}) if serve else {"topics": 0, "concepts": 0}
+            inputs = ((plan.raw_plan_json or {}).get("compile_inputs") or {}) if isinstance(plan.raw_plan_json, dict) else {}
             item = PlanStatusItem(
                 slide_id=s["slide_id"], slide_title=s["title"], source_type=st,
                 chapter_id=s["chapter_id"], chapter_name=s["chapter_name"],
@@ -240,6 +257,7 @@ def package_plans(
                 serving_plan_id=serve.id if serve else None,
                 topics=c["topics"], concepts=c["concepts"],
                 updated_at=plan.updated_at.isoformat() if plan.updated_at else None,
+                source_kind=kinds.get(s["slide_id"]), text_kind=inputs.get("text_kind"),
             )
         counts[item.status] = counts.get(item.status, 0) + 1
         items.append(item)

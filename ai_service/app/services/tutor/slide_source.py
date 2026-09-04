@@ -46,9 +46,19 @@ class SlideSource:
     source_id: Optional[str]
     kind: str                       # document | quiz | video | pdf | other
     text: str = ""
+    # Where `text` came from for a video / PDF: script | captions | transcript | pdf
+    # (None = the slide body itself, or nothing yet). See source_text.py.
+    text_kind: Optional[str] = None
+    # Why no text could be read (shown to the admin when the slide is parked).
+    text_note: Optional[str] = None
     questions: List[QuizQuestion] = field(default_factory=list)
     media_url: Optional[str] = None
     media_file_id: Optional[str] = None
+    # Videos: the AI-video id (HTML_VIDEO), the stored length in ms, the
+    # admin's own description from the slide editor.
+    ai_gen_video_id: Optional[str] = None
+    video_length_ms: Optional[int] = None
+    video_description: Optional[str] = None
     chapter_id: Optional[str] = None
     chapter_name: Optional[str] = None
     course_name: Optional[str] = None
@@ -128,7 +138,7 @@ def package_belongs_to_institute(db: Session, package_id: str, institute_id: str
 _PACKAGE_SLIDES_SQL = text("""
     SELECT DISTINCT ON (sl.id)
            sl.id, sl.title, sl.source_type, c.id AS chapter_id, c.chapter_name,
-           cpsm.chapter_order, cts.slide_order
+           cpsm.chapter_order, cts.slide_order, sl.source_id
     FROM package_session ps
     JOIN chapter_package_session_mapping cpsm ON cpsm.package_session_id = ps.id AND cpsm.status = 'ACTIVE'
     JOIN chapter c ON c.id = cpsm.chapter_id AND c.status <> 'DELETED'
@@ -176,7 +186,7 @@ def list_package_slides(db: Session, package_id: str) -> List[Dict[str, Any]]:
     rows = db.execute(_PACKAGE_SLIDES_SQL, {"package_id": package_id}).fetchall()
     items = [
         {"slide_id": r[0], "title": r[1], "source_type": r[2], "chapter_id": r[3],
-         "chapter_name": r[4], "chapter_order": r[5], "slide_order": r[6]}
+         "chapter_name": r[4], "chapter_order": r[5], "slide_order": r[6], "source_id": r[7]}
         for r in rows
     ]
     items.sort(key=lambda x: ((x["chapter_order"] if x["chapter_order"] is not None else 1e9),
@@ -224,14 +234,20 @@ def _document(db: Session, src: SlideSource, source_id: str) -> None:
 def _video(db: Session, src: SlideSource, source_id: str, html_video: bool) -> None:
     if html_video:
         row = db.execute(
-            text("SELECT url, ai_gen_video_id FROM html_video_slide WHERE id = :id"), {"id": source_id}
+            text("SELECT url, ai_gen_video_id, video_length FROM html_video_slide WHERE id = :id"), {"id": source_id}
         ).first()
         url = (row[0] if row else None) or None
+        src.ai_gen_video_id = (row[1] if row else None) or None
+        src.video_length_ms = int(row[2]) if row and row[2] else None
     else:
         row = db.execute(
-            text("SELECT url, published_url FROM video WHERE id = :id"), {"id": source_id}
+            text("SELECT url, published_url, published_video_length, video_length, description FROM video WHERE id = :id"),
+            {"id": source_id},
         ).first()
         url = ((row[1] or row[0]) if row else None) or None
+        length = (row[2] or row[3]) if row else None
+        src.video_length_ms = int(length) if length else None
+        src.video_description = ((row[4] or "").strip() or None) if row else None
     src.kind = "video"
     # Uploaded videos store the media file id in `url` (source_type FILE_ID);
     # only real https links are media urls. The learner app resolves file ids
@@ -343,3 +359,56 @@ def load_slide_source(db: Session, slide_id: str) -> Optional[SlideSource]:
     if not src.content_hash:
         src.content_hash = _hash(src.kind, src.title, src.source_type, sid)
     return src
+
+
+# ── what kind of thing a slide is, for the admin's table and the estimate ────
+
+def source_kind_label(src: SlideSource) -> str:
+    """document | pdf | quiz | ai_video | youtube | video_upload | video_link | other"""
+    if src.kind in ("document", "pdf", "quiz", "other"):
+        return src.kind
+    if src.ai_gen_video_id:
+        return "ai_video"
+    if src.media_file_id:
+        return "video_upload"
+    if src.media_url and _YOUTUBE_HOST_RE.search(src.media_url):
+        return "youtube"
+    return "video_link"
+
+
+_YOUTUBE_HOST_RE = re.compile(r"(youtube\.com|youtu\.be)", re.IGNORECASE)
+
+
+def source_kinds_for_slides(db: Session, slides: List[Dict[str, Any]]) -> Dict[str, str]:
+    """source_kind_label per slide id for a course listing, in two queries."""
+    out: Dict[str, str] = {}
+    video_ids = [s["source_id"] for s in slides if (s.get("source_type") or "").upper() == "VIDEO" and s.get("source_id")]
+    doc_ids = [s["source_id"] for s in slides if (s.get("source_type") or "").upper() == "DOCUMENT" and s.get("source_id")]
+    videos: Dict[str, str] = {}
+    if video_ids:
+        for vid, url, purl in db.execute(text("SELECT id, url, published_url FROM video WHERE id = ANY(:ids)"),
+                                         {"ids": video_ids}).fetchall():
+            u = (purl or url or "").strip()
+            videos[vid] = ("video_upload" if _UUID_RE.match(u) else "youtube" if _YOUTUBE_HOST_RE.search(u)
+                           else "video_link" if u else "video_link")
+    docs: Dict[str, str] = {}
+    if doc_ids:
+        for did, dtype, data, published in db.execute(
+                text("SELECT id, type, data, published_data FROM document_slide WHERE id = ANY(:ids)"), {"ids": doc_ids}).fetchall():
+            body = (published or data or "").strip()
+            docs[did] = "pdf" if ((dtype or "").upper() in ("PDF", "DOC") or _UUID_RE.match(body)) and not (
+                (dtype or "").upper() in ("HTML", "DOC") and body and not _UUID_RE.match(body)) else "document"
+    for s in slides:
+        st = (s.get("source_type") or "").upper()
+        sid = s.get("source_id")
+        if st == "VIDEO":
+            out[s["slide_id"]] = videos.get(sid, "video_link")
+        elif st == "HTML_VIDEO":
+            out[s["slide_id"]] = "ai_video"
+        elif st == "DOCUMENT":
+            out[s["slide_id"]] = docs.get(sid, "document")
+        elif st == "QUIZ":
+            out[s["slide_id"]] = "quiz"
+        else:
+            out[s["slide_id"]] = "other"
+    return out

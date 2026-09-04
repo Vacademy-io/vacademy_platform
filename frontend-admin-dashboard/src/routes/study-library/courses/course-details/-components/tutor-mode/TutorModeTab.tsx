@@ -45,6 +45,7 @@ import {
     type TutorPlanStatusItem,
 } from '@/services/tutor';
 import { TutorPlanPreviewDialog } from './TutorPlanPreviewDialog';
+import { TutorCompileEstimateDialog } from './TutorCompileEstimateDialog';
 import { TutorInsightsCard } from '@/components/common/tutor/TutorInsightsCard';
 import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
@@ -126,6 +127,24 @@ const StatusBadge: React.FC<{ status: TutorPlanStatus | string }> = ({ status })
 };
 
 const isMediaSlide = (t: string | null) => t === 'VIDEO' || t === 'HTML_VIDEO' || t === 'DOCUMENT';
+
+const SOURCE_KIND_LABEL: Record<string, string> = {
+    document: 'Document',
+    pdf: 'PDF',
+    quiz: 'Quiz',
+    ai_video: 'AI video',
+    youtube: 'YouTube video',
+    video_upload: 'Uploaded video',
+    video_link: 'Video link',
+    other: 'Not supported',
+};
+
+const TEXT_KIND_LABEL: Record<string, string> = {
+    script: 'narration script',
+    captions: 'captions',
+    transcript: 'transcript',
+    pdf: 'PDF text',
+};
 
 /** Drop empty strings / undefined so the saved object only carries real overrides. */
 const stripEmpty = (s: TutorModeSetting): Record<string, unknown> => {
@@ -259,6 +278,26 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
         if (ev.type === 'ERROR') toast.error(ev.message || 'Compile error');
     }, []);
 
+    // Show what the compile will cost (per slide) before spending credits.
+    const [estimateFor, setEstimateFor] = useState<{ slideIds?: string[] } | null>(null);
+    const [transcribeVideos, setTranscribeVideos] = useState(true);
+
+    const compileOptions = (): TutorCompileOptions => {
+        // Only explicit course overrides travel with the request; the
+        // server fills the rest (model, KB grounding, images, teacher)
+        // from the course → institute → platform settings.
+        const opts: TutorCompileOptions = {
+            language: effectiveLanguage,
+            compile_run_id: newCompileRunId(),
+            transcribe_videos: transcribeVideos,
+        };
+        if (setting.teacherName?.trim()) opts.teacher_name = setting.teacherName.trim();
+        if (typeof setting.generateImages === 'boolean')
+            opts.generate_images = setting.generateImages;
+        if (setting.kbGrounding?.knowledge_base_id) opts.kb_grounding = setting.kbGrounding;
+        return opts;
+    };
+
     const runCompile = async (slideIds?: string[]) => {
         if (compiling) {
             toast.info('A compile is already running; wait for it to finish.');
@@ -269,17 +308,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
         const controller = new AbortController();
         abortRef.current = controller;
         try {
-            // Only explicit course overrides travel with the request; the
-            // server fills the rest (model, KB grounding, images, teacher)
-            // from the course → institute → platform settings.
-            const opts: TutorCompileOptions = {
-                language: effectiveLanguage,
-                compile_run_id: newCompileRunId(),
-            };
-            if (setting.teacherName?.trim()) opts.teacher_name = setting.teacherName.trim();
-            if (typeof setting.generateImages === 'boolean')
-                opts.generate_images = setting.generateImages;
-            if (setting.kbGrounding?.knowledge_base_id) opts.kb_grounding = setting.kbGrounding;
+            const opts = compileOptions();
             if (slideIds && slideIds.length === 1) {
                 await recompileTutorSlide(slideIds[0]!, opts, onEvent, controller.signal);
             } else {
@@ -659,7 +688,7 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             scale="medium"
                             layoutVariant="default"
                             disable={compiling || plansLoading}
-                            onClick={() => void runCompile()}
+                            onClick={() => setEstimateFor({})}
                         >
                             {compiling ? (
                                 <CircleNotch className="size-4 animate-spin" />
@@ -688,9 +717,9 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                             </MyButton>
                         )}
                         <span className="text-xs text-neutral-500">
-                            Each document or video slide costs about 2 credits to prepare
-                            {effectiveImages ? ' plus about 1 credit per AI image' : ''}; quizzes
-                            are free. Already-prepared slides are skipped.
+                            Documents, PDFs, YouTube and AI videos prepare from their own text;
+                            uploaded videos are transcribed first. You see the credits before
+                            anything is spent; quizzes are free and prepared slides are skipped.
                         </span>
                     </div>
 
@@ -800,7 +829,9 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                                 )}
                                             </td>
                                             <td className="py-2 pe-3 text-neutral-600">
-                                                {s.source_type ?? '—'}
+                                                {SOURCE_KIND_LABEL[s.source_kind ?? ''] ??
+                                                    s.source_type ??
+                                                    '—'}
                                             </td>
                                             <td className="py-2 pe-3">
                                                 <StatusBadge status={status} />
@@ -813,6 +844,13 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                                     <span className="text-neutral-400">
                                                         {' '}
                                                         · v{s.version}
+                                                    </span>
+                                                ) : null}
+                                                {s.text_kind ? (
+                                                    <span className="block text-xs text-neutral-400">
+                                                        from{' '}
+                                                        {TEXT_KIND_LABEL[s.text_kind] ??
+                                                            s.text_kind}
                                                     </span>
                                                 ) : null}
                                             </td>
@@ -848,7 +886,9 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                                                             title="Recompile this slide"
                                                             disabled={compiling}
                                                             onClick={() =>
-                                                                void runCompile([s.slide_id])
+                                                                setEstimateFor({
+                                                                    slideIds: [s.slide_id],
+                                                                })
                                                             }
                                                         >
                                                             <ArrowsClockwise className="size-4" />
@@ -876,6 +916,21 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
             </Card>
 
             <TutorInsightsCard packageId={packageId} />
+
+            <TutorCompileEstimateDialog
+                packageId={packageId}
+                slideIds={estimateFor?.slideIds}
+                open={estimateFor !== null}
+                options={estimateFor ? compileOptions() : null}
+                transcribeVideos={transcribeVideos}
+                onTranscribeVideosChange={setTranscribeVideos}
+                onClose={() => setEstimateFor(null)}
+                onConfirm={() => {
+                    const ids = estimateFor?.slideIds;
+                    setEstimateFor(null);
+                    void runCompile(ids);
+                }}
+            />
 
             <TutorPlanPreviewDialog
                 slideId={previewSlide?.slide_id ?? null}

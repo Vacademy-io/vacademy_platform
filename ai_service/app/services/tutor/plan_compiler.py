@@ -30,6 +30,7 @@ from . import plan_store
 from .plan_validator import DEFAULT_LIMITS, QUIZ_LIMITS, validate_plan
 from .quiz_compiler import compile_quiz
 from .slide_source import SlideSource, load_slide_source, slide_belongs_to_institute
+from . import source_text
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,8 @@ class _Run:
     model_used: Optional[str] = None
     # Generated images: (url, usage). Billed only once the plan is stored.
     images: List[Tuple[str, Dict[str, Any]]] = field(default_factory=list)
+    # Uploaded video transcribed for this compile (billed inside source_text).
+    transcription_minutes: int = 0
 
 
 class PlanCompiler:
@@ -121,8 +124,12 @@ class PlanCompiler:
         kb_grounding: Optional[CompileKbGrounding] = None,
         compile_run_id: Optional[str] = None,
         model_override: Optional[str] = None,
+        transcribe_videos: bool = True,
     ) -> None:
         self.institute_id = institute_id
+        # Uploaded videos with no transcript yet: run Whisper (per-minute
+        # credits) or park the slide for a description.
+        self.transcribe_videos = bool(transcribe_videos) and source_text.transcription_available()
         self.user_id = user_id
         self.language = language if language in ("en", "hi") else "en"
         self.teacher_name = (teacher_name or "Asha")[:60]
@@ -185,7 +192,18 @@ class PlanCompiler:
             source = load_slide_source(db, slide_id)
             if source is None:
                 return {"type": "PLAN_ERROR", "slide_id": slide_id, "error": "Slide not found or not published"}
+            db.commit()
 
+        # Video / PDF: the material's own words (script, captions, cached
+        # transcript, PDF text) — network and CPU, so outside any DB session.
+        if source.kind in ("video", "pdf"):
+            await source_text.resolve_free_text(source)
+            if (source.kind == "video" and not source.text and source.media_file_id and self.transcribe_videos):
+                # Whisper runs later in _build_draft; the plan must hash as
+                # a transcript plan so an up-to-date one is not re-paid.
+                source.content_hash = source_text.hash_for(source, "transcript")
+
+        with db_session() as db:
             plan_store.retire_stuck_compiling(db, slide_id)
             in_progress = plan_store.active_compiling(db, slide_id)
             if in_progress is not None:
@@ -201,9 +219,14 @@ class PlanCompiler:
                 return {"type": "PLAN_SKIPPED", "slide_id": slide_id,
                         "reason": f"{source.source_type or 'this'} slides are not compiled in phase 1"}
 
-            if source.kind in ("video", "pdf") and not (description or "").strip():
-                # Park the slide in NEEDS_DETAILS (once) so the course page can
-                # list it; the admin's description flips it to STALE.
+            # The admin's own video description (slide editor) counts as details.
+            if not (description or "").strip() and source.video_description:
+                description = source.video_description
+            will_transcribe = (source.kind == "video" and not source.text and bool(source.media_file_id)
+                               and self.transcribe_videos)
+            if source.kind in ("video", "pdf") and not source.text and not will_transcribe and not (description or "").strip():
+                # Nothing to teach from: park the slide in NEEDS_DETAILS (once)
+                # so the course page can list it; a description flips it to STALE.
                 if existing is None or existing.status != "NEEDS_DETAILS":
                     plan_store.start_plan(
                         db, slide_id=slide_id, institute_id=self.institute_id,
@@ -211,8 +234,10 @@ class PlanCompiler:
                         user_id=self.user_id, source_description=None, status="NEEDS_DETAILS",
                     )
                 db.commit()
-                return {"type": "PLAN_NEEDS_DETAILS", "slide_id": slide_id,
-                        "reason": "Add what this video / PDF teaches before it can be compiled"}
+                why = source.text_note or ("Turn on video transcription or add what this video teaches"
+                                           if source.kind == "video" and source.media_file_id
+                                           else "Add what this video / PDF teaches before it can be compiled")
+                return {"type": "PLAN_NEEDS_DETAILS", "slide_id": slide_id, "reason": why}
 
             unchanged = (existing is not None and existing.content_hash == source.content_hash
                          and existing.language == self.language and not self.force)
@@ -272,6 +297,8 @@ class PlanCompiler:
                         "generate_images": self.generate_images, "kind": source.kind,
                         "compile_run_id": self.compile_run_id,
                         "source_description": description,
+                        "text_kind": source.text_kind, "text_chars": len(source.text or ""),
+                        "transcription_minutes": run.transcription_minutes,
                     },
                     compiled_with_description=description,
                 )
@@ -362,12 +389,22 @@ class PlanCompiler:
             run.model_used = "deterministic"
             return draft, None
 
+        if source.kind == "video" and not source.text and source.media_file_id and self.transcribe_videos:
+            # The one paid text source: Whisper on the render worker, cached per file.
+            try:
+                run.transcription_minutes = await source_text.transcribe_upload(
+                    source, institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id)
+            except Exception as exc:  # noqa: BLE001
+                if not (description or "").strip():
+                    raise RuntimeError(f"Transcription failed ({str(exc)[:160]}); add what this video teaches instead") from exc
+                logger.warning("Transcription failed for slide %s; compiling from the description: %s", source.slide_id, exc)
         kb_block = await self._kb_block(source)
         system = prompts.system_prompt(self.teacher_name, self.language, images_enabled=self.generate_images)
         if source.kind in ("video", "pdf"):
             user = prompts.media_task_user_prompt(
                 slide_title=source.title, chapter_title=source.chapter_name, course_title=source.course_name,
                 kind=source.kind, description=description or "", lang=self.language,
+                transcript=source.text or None, text_kind=source.text_kind,
             )
         else:
             user = prompts.user_prompt(

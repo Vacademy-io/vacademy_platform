@@ -199,12 +199,14 @@ def test_uploaded_video_url_becomes_file_id():
         def execute(self, *_a, **_k):
             class R:
                 def first(self):
-                    return ("5d4a0e0e-1111-2222-3333-444444444444", None)
+                    # url, published_url, published_video_length, video_length, description
+                    return ("5d4a0e0e-1111-2222-3333-444444444444", None, None, 4672000, " what it teaches ")
             return R()
 
     src = SlideSource(slide_id="s", title="v", source_type="VIDEO", source_id="x", kind="other")
     _video(_DB(), src, "x", html_video=False)
     assert src.media_file_id and src.media_url is None
+    assert src.video_length_ms == 4672000 and src.video_description == "what it teaches"
 
 
 # ── runtime: resume replay, final attempt, settings ─────────────────────────

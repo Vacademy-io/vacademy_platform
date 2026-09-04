@@ -957,8 +957,18 @@ Follow-ups shipped 2026-09-04 (owner QA round 1 and the next-batch request):
 
 Still open (tracked, not silent):
 
-- **AI-video slides.** Copilot `HTML_VIDEO` slides are parked in NEEDS_DETAILS like uploaded
-  videos; compiling from the video's script (§4.2 table) is not implemented.
+- **Video and PDF slides now compile from their own words** (`services/tutor/source_text.py`):
+  AI videos from the copilot's narration script (S3, free), YouTube videos from their caption
+  track (free; parked with a reason when the video has no captions or YouTube blocks the
+  datacenter IP), uploaded videos through Whisper on the render worker (`transcription` tool,
+  per audio-minute, once per file — cached in `file_conversion`), PDFs from the PyMuPDF text
+  layer (free; scanned PDFs are parked — no OCR). The plan keeps the media task first, then
+  3–8 teaching concepts with checks drawn from the text. A description typed in the slide
+  editor (`video.description`) now counts as details. `POST /tutor/v1/compile/estimate`
+  prices a compile before it runs (compile + transcription minutes + image cap, from the
+  estimator so portal overrides apply) and the admin confirms in a dialog; the 402 gate uses
+  the same numbers. Still open: OCR for scanned PDFs, Whisper for caption-less YouTube (needs
+  yt-dlp or an egress proxy), and AI-video slides whose script was never generated.
 - **Weak-concept revisits** (§6.6) are per slide, not per chapter: a topic summary re-asks the
   weak concepts of that topic (fresh model-written question, one attempt, at most three), slide
   end re-asks up to three weakest weak-or-skipped concepts not yet revisited this session. A

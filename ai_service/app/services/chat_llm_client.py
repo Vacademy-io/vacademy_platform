@@ -15,6 +15,15 @@ from ..services.api_key_resolver import ApiKeyResolver
 logger = logging.getLogger(__name__)
 
 
+class _ReasoningRejected(Exception):
+    """OpenRouter answered 4xx to a payload that disabled reasoning."""
+
+    def __init__(self, status: int, body: str):
+        super().__init__(f"OpenRouter {status}: {body}")
+        self.status = status
+        self.body = body
+
+
 class ChatLLMClient:
     """
     Handles LLM calls through OpenRouter. Supports tool calling for
@@ -239,6 +248,22 @@ class ChatLLMClient:
 
         response = await self.http_client.post(url, json=payload, headers=headers)
 
+        # Some reasoning models refuse to have thinking switched off and answer
+        # 4xx to `reasoning: {enabled: false}` (z-ai/glm-5.3-flash, 2026-09-04).
+        # Retry once without the flag rather than failing the whole turn.
+        if 400 <= response.status_code < 500 and response.status_code != 402 and "reasoning" in payload:
+            first_error = response.text[:200]
+            logger.warning(
+                f"OpenRouter {response.status_code} for {model} with reasoning disabled; "
+                f"retrying without the reasoning flag: {first_error}"
+            )
+            retry_payload = {k: v for k, v in payload.items() if k != "reasoning"}
+            response = await self.http_client.post(url, json=retry_payload, headers=headers)
+            if response.status_code < 400:
+                self._note_model_failure(
+                    model, f"reasoning cannot be disabled for this model ({first_error}); answered with reasoning on", None
+                )
+
         if response.status_code == 402:
             error_body = response.text
             logger.error(
@@ -341,11 +366,49 @@ class ChatLLMClient:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
+        # One attempt as configured; if the status check fails with a 4xx and we
+        # had asked to disable reasoning, one more attempt without that flag.
+        # The status is checked before any token is yielded, so a retry never
+        # duplicates output — and never opens two streams for one turn.
+        attempts = [payload]
+        if "reasoning" in payload:
+            attempts.append({k: v for k, v in payload.items() if k != "reasoning"})
+
+        for attempt_index, attempt_payload in enumerate(attempts):
+            try:
+                async for chunk in self._stream_openrouter_once(url, headers, attempt_payload, model):
+                    yield chunk
+                return
+            except _ReasoningRejected as rejected:
+                if attempt_index == len(attempts) - 1:
+                    raise Exception(str(rejected))
+                logger.warning(
+                    f"OpenRouter {rejected.status} for {model} (streaming, reasoning disabled); "
+                    f"retrying without the reasoning flag: {rejected.body}"
+                )
+                self._note_model_failure(
+                    model,
+                    f"reasoning cannot be disabled for this model ({rejected.body}); answered with reasoning on",
+                    None,
+                )
+
+    async def _stream_openrouter_once(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        payload: Dict[str, Any],
+        model: str,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """A single streaming request. Raises _ReasoningRejected on a 4xx when
+        the payload asked to disable reasoning, so the caller can retry."""
         accumulated_tool_calls = {}  # index -> {id, function: {name, arguments}}
 
         async with self.http_client.stream("POST", url, json=payload, headers=headers) as response:
             if response.status_code == 402:
                 raise Exception(f"OpenRouter 402 Payment Required")
+            if 400 <= response.status_code < 500 and "reasoning" in payload:
+                body = (await response.aread())[:200].decode("utf-8", "ignore")
+                raise _ReasoningRejected(response.status_code, body)
             response.raise_for_status()
 
             async for line in response.aiter_lines():
@@ -397,7 +460,6 @@ class ChatLLMClient:
                             accumulated_tool_calls[idx]["function"]["name"] = func["name"]
                         if func.get("arguments"):
                             accumulated_tool_calls[idx]["function"]["arguments"] += func["arguments"]
-
     async def close(self):
         """Close the HTTP client."""
         await self.http_client.aclose()

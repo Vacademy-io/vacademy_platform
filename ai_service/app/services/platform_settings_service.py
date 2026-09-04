@@ -509,6 +509,86 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
     return out
 
 
+def _openrouter_one_token(model_id: str, disable_reasoning: bool, api_key: str, timeout_seconds: float) -> Optional[str]:
+    """One-token completion in the chatbot's request shape; None if it worked, else the error."""
+    import httpx
+
+    payload: Dict[str, Any] = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": "Reply with the single word: ok"}],
+        "max_tokens": 5,
+        "temperature": 0,
+    }
+    if disable_reasoning:
+        payload["reasoning"] = {"enabled": False}
+    try:
+        resp = httpx.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://vacademy.io",
+                "X-Title": "Vacademy AI Tutor",
+            },
+            timeout=timeout_seconds,
+        )
+    except Exception as exc:
+        return f"could not reach OpenRouter: {exc}"
+    if resp.status_code >= 400:
+        body = resp.text[:300]
+        try:
+            body = resp.json().get("error", {}).get("message") or body
+        except Exception:
+            pass
+        return f"OpenRouter {resp.status_code}: {body}"
+    try:
+        data = resp.json()
+        if data.get("error"):
+            return f"OpenRouter error: {str(data['error'])[:300]}"
+        if not (data.get("choices") or []):
+            return "OpenRouter returned no choices"
+    except Exception as exc:
+        return f"unreadable OpenRouter response: {exc}"
+    return None
+
+
+def probe_model_live(model_id: str, timeout_seconds: float = 25.0) -> Optional[str]:
+    """
+    Ask OpenRouter for one token from `model_id` in the chatbot's request shape.
+    Returns None when it works, else the provider's error text.
+
+    Saving a model the account cannot actually call took the chatbot down for
+    every institute (2026-09-04, z-ai/glm-5.3-flash). The registry knows the id
+    exists; only a real call knows whether OUR key may use it, in OUR shape.
+
+    Tried twice when reasoning suppression is on: with the flag (what the
+    chatbot sends), then without. Some reasoning models refuse to have thinking
+    switched off; the runtime client retries without the flag in that case, so
+    such a model stays usable — the save goes through and the limitation is
+    recorded for the portal.
+    """
+    settings = get_settings()
+    api_key = getattr(settings, "openrouter_api_key", None)
+    if not api_key:
+        return None  # nothing to test against; don't block the save
+    disable = bool(get_platform_setting("chatbot.llm.disable_reasoning", default=settings.llm_disable_reasoning))
+    first = _openrouter_one_token(model_id, disable, api_key, timeout_seconds)
+    if first is None:
+        return None
+    if disable:
+        second = _openrouter_one_token(model_id, False, api_key, timeout_seconds)
+        if second is None:
+            record_model_failure(
+                model_id,
+                f"works only with reasoning enabled (with 'Suppress reasoning tokens' on it answered: {first}); "
+                "ai-service retries without the flag, so replies will spend reasoning tokens",
+                None,
+            )
+            return None
+    return first
+
+
 def set_platform_setting(db: Session, key: str, value: Any, updated_by: Optional[str]) -> None:
     """Validate and upsert one setting, then drop the cache so it applies at once."""
     spec = SETTING_SPECS.get(key)
@@ -518,6 +598,15 @@ def set_platform_setting(db: Session, key: str, value: Any, updated_by: Optional
     if spec.type == "model" and coerced and not _model_exists(db, coerced, spec.catalog):
         what = "an active image model" if spec.catalog == "image" else "an active chat model"
         raise ValueError(f"{coerced} is not {what} in the ai_models registry")
+    # Only chat models are exercised live: image models don't take a chat
+    # completion, and the runtime fallback is for the chatbot path.
+    if spec.type == "model" and coerced and getattr(spec, "catalog", "chat") != "image":
+        problem = probe_model_live(coerced)
+        if problem:
+            raise ValueError(
+                f"{coerced} cannot be used with the platform's OpenRouter account — not saved. {problem}"
+            )
+        record_model_success(coerced)
 
     db.execute(
         text(

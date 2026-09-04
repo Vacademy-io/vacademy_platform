@@ -145,7 +145,10 @@ function TutorPage() {
   // ── audio out ──
   const audioPlayer = useAudioPlayer();
   const chunksRef = useRef<Uint8Array[]>([]);
-  const queueRef = useRef<ArrayBuffer[]>([]);
+  // Each queued segment carries the sentence(s) it speaks, shown as it starts.
+  const queueRef = useRef<Array<{ buf: ArrayBuffer; text: string }>>([]);
+  const segmentTextRef = useRef("");
+  const teacherTextRef = useRef("");
   const drainingRef = useRef(false);
   // The server's phase for AFTER the current narration; applied when the
   // last queued segment finishes so the label never flips mid-sentence.
@@ -175,6 +178,25 @@ function TutorPage() {
     },
     [voiceMode, speakOn],
   );
+  /** Append spoken text to the teacher's current bubble (voice mode). */
+  const revealTeacherText = useCallback((text: string) => {
+    if (!text) return;
+    setTranscript((prev) => {
+      const last = prev[prev.length - 1];
+      if (!last || last.role !== "teacher") return [...prev, { role: "teacher", text }];
+      const merged = last.text ? `${last.text} ${text}` : text;
+      return [...prev.slice(0, -1), { ...last, text: merged }];
+    });
+  }, []);
+  const completeTeacherText = useCallback(() => {
+    const full = teacherTextRef.current;
+    if (!full) return;
+    setTranscript((prev) => {
+      const last = prev[prev.length - 1];
+      if (!last || last.role !== "teacher" || last.text === full) return prev;
+      return [...prev.slice(0, -1), { ...last, text: full }];
+    });
+  }, []);
   const drain = useCallback(async () => {
     if (drainingRef.current) return;
     drainingRef.current = true;
@@ -183,8 +205,9 @@ function TutorPage() {
         const seg = queueRef.current.shift();
         if (!seg) continue;
         setPhase("speaking");
+        revealTeacherText(seg.text);
         try {
-          await audioPlayer.playAudio(seg);
+          await audioPlayer.playAudio(seg.buf);
         } catch {
           /* autoplay blocked or decode error: keep going */
         }
@@ -195,16 +218,18 @@ function TutorPage() {
         const next = pendingPhaseRef.current;
         pendingPhaseRef.current = null;
         setPhase((p) => (p === "speaking" ? (next ?? "idle") : next ?? p));
+        completeTeacherText();
       }
     }
-  }, [audioPlayer]);
+  }, [audioPlayer, revealTeacherText, completeTeacherText]);
   const stopAudio = useCallback(() => {
     turnEndedRef.current = false;
     pendingPhaseRef.current = null;
     queueRef.current = [];
     chunksRef.current = [];
     audioPlayer.stop();
-  }, [audioPlayer]);
+    completeTeacherText();
+  }, [audioPlayer, completeTeacherText]);
 
   // ── socket ──
   const socket = useTutorSocket({
@@ -245,8 +270,17 @@ function TutorPage() {
     },
     onAiText: (text) => {
       turnEndedRef.current = false;
-      setTranscript((prev) => [...prev, { role: "teacher", text }]);
-      if (!voiceMode) setPhase("idle");
+      teacherTextRef.current = text;
+      if (voiceMode && speakOn) {
+        // The bubble fills sentence by sentence as the audio plays.
+        setTranscript((prev) => [...prev, { role: "teacher", text: "" }]);
+      } else {
+        setTranscript((prev) => [...prev, { role: "teacher", text }]);
+        setPhase("idle");
+      }
+    },
+    onSegmentText: (text) => {
+      segmentTextRef.current = text;
     },
     onAudioChunk: (b64) => {
       if (!speakOn) return;
@@ -257,9 +291,14 @@ function TutorPage() {
     },
     onAudioSegmentEnd: () => {
       const seg = takeSegment();
+      const text = segmentTextRef.current;
+      segmentTextRef.current = "";
       if (seg) {
-        queueRef.current.push(seg);
+        queueRef.current.push({ buf: seg, text });
         void drain();
+      } else {
+        // No audio for this sentence (engine hiccup): still show the words.
+        revealTeacherText(text);
       }
     },
     onAudioEnd: () => {
@@ -268,10 +307,12 @@ function TutorPage() {
       setRevealKey((k) => k + 1);
       turnEndedRef.current = true;
       const seg = takeSegment();
-      if (seg) queueRef.current.push(seg);
+      if (seg) queueRef.current.push({ buf: seg, text: segmentTextRef.current });
+      segmentTextRef.current = "";
       if (drainingRef.current || queueRef.current.length) {
         void drain();
       } else {
+        completeTeacherText();
         const next = pendingPhaseRef.current;
         pendingPhaseRef.current = null;
         setPhase((p) => (p === "speaking" ? (next ?? "idle") : next ?? p));
@@ -353,10 +394,7 @@ function TutorPage() {
   const recorder = useVoiceRecorder({
     onAudioChunk: (b64) => socket.sendAudioChunk(b64),
     onSilenceStop: () => {
-      recorder.stopRecording();
-      setMicOn(false);
-      socket.sendAudioEnd(recorder.mimeType);
-      setPhase("thinking");
+      finishRecording();
     },
     onNoSpeech: () => {
       recorder.stopRecording();
@@ -367,35 +405,43 @@ function TutorPage() {
     silenceTimeout: 2000,
     maxWaitForSpeechMs: 15000,
   });
+  // MediaRecorder flushes its last chunk AFTER stop() returns; sending
+  // audio_end at once would leave that tail in the server buffer, where it
+  // corrupts the next recording's header (every second recording failed).
+  const AUDIO_END_DELAY_MS = 400;
+  const finishRecording = () => {
+    const mime = recorder.mimeType;
+    recorder.stopRecording();
+    setMicOn(false);
+    if (!recorder.hadSpeech()) {
+      // A stray press or a quiet room: nothing to transcribe.
+      socket.sendAudioDiscard();
+      setPhase("idle");
+      showNotice("I didn't catch anything. Press the button and speak when you're ready.");
+      return;
+    }
+    setPhase("thinking");
+    window.setTimeout(() => socket.sendAudioEnd(mime), AUDIO_END_DELAY_MS);
+  };
   const toggleMic = async () => {
     if (disconnected) return;
     if (micOn) {
-      recorder.stopRecording();
-      setMicOn(false);
-      socket.sendAudioEnd(recorder.mimeType);
-      setPhase("thinking");
+      finishRecording();
       return;
     }
-    // Barge-in: nothing queued may keep talking into the open microphone.
+    // Barge-in: nothing queued may keep talking into the open microphone,
+    // and nothing stale may sit in the server's audio buffer.
     stopAudio();
     socket.sendInterrupt();
+    socket.sendAudioDiscard();
     const ok = await recorder.startRecording();
     if (ok) {
       setMicOn(true);
       setPhase("listening");
+    } else {
+      showNotice("The microphone could not be started. Check the browser's microphone permission.");
     }
   };
-
-  // Like a call: once the teacher has asked and gone quiet, listen for the
-  // answer without a tap. The recorder stops itself on silence / no speech.
-  useEffect(() => {
-    if (!voiceMode || phase !== "question" || micOn || disconnected) return;
-    const t = setTimeout(() => {
-      void toggleMic();
-    }, 600);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, voiceMode, micOn, disconnected]);
 
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
   const bootSession = useCallback(async () => {
@@ -500,7 +546,7 @@ function TutorPage() {
   const lessonOver = phase === "done" && !audioBusy();
 
   return (
-    <LayoutContainer fillViewport>
+    <LayoutContainer fillViewport enableChatbotPanel={false}>
       <div className="grid grid-cols-1 gap-3 lg:h-full lg:min-h-0 lg:grid-cols-12">
         <div className="hidden min-h-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
           <TutorSidebar

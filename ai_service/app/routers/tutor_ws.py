@@ -5,7 +5,7 @@ Protocol (client → server): auth{token} FIRST, then config{language?,speak?},
 continue, answer{text}, ask{text}, control{intent}, next_slide{slide_id},
 audio_chunk{data}, audio_end{mime}, audio_discard, interrupt, end_session, ping.
 Server → client: ready, lesson (after next_slide), state, board{ops, clear},
-ai_text, audio_chunk, audio_segment_end, audio_end{reason}, check{...},
+ai_text, segment_text, audio_chunk, audio_segment_end, audio_end{reason}, check{...},
 await{what}, transcript_final, slide_done, summary, ended{reason},
 error{message, fatal}, pong.
 
@@ -305,6 +305,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             else:
                 voice = tts_voice or default_voice_for(tts_provider, _lang_stt())
             for segment in _split_for_speech(text_):
+                # The sentence(s) this audio segment speaks: the client shows
+                # them as the segment starts playing, not the whole reply upfront.
+                await _send({"type": "segment_text", "text": segment})
                 key = _cache_key(tts_provider, voice, _lang_stt(), pace, segment)
                 audio = _cache_get(key)
                 provider_used = tts_provider

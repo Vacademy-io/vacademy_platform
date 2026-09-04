@@ -197,6 +197,11 @@ export const ChatbotFloatingButton = () => {
     return null;
   }
 
+  // The Live AI Tutor is its own conversation: no second assistant on screen.
+  if (location.pathname.includes("/course-details/tutor")) {
+    return null;
+  }
+
   // Hide the floating button when the panel is open
   if (isOpen) {
     return null;

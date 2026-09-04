@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Microphone, MicrophoneSlash, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop } from "@phosphor-icons/react";
+import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop } from "@phosphor-icons/react";
 
 export interface TranscriptLine {
   role: "teacher" | "learner";
@@ -131,12 +131,25 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
           <button type="button" onClick={() => onControl("skip")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"><SkipForward className="size-3" /> Skip</button>
           <button type="button" onClick={onEnd} className="ms-auto rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500 hover:bg-neutral-50">End</button>
         </div>
+        {voiceMode && (
+          <button
+            type="button"
+            onClick={onToggleMic}
+            disabled={phase === "thinking" || phase === "connecting"}
+            aria-pressed={micOn}
+            className={`flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
+              micOn ? "bg-danger-500 text-white animate-pulse" : "bg-primary-500 text-white hover:bg-primary-400"
+            }`}
+          >
+            <Microphone className="size-5" weight="fill" />
+            {micOn
+              ? "Listening… press when you're done"
+              : awaiting === "answer"
+                ? "Press to answer"
+                : "Press to speak"}
+          </button>
+        )}
         <div className="flex items-center gap-2">
-          {voiceMode && (
-            <button type="button" onClick={onToggleMic} className={`rounded-full p-2 ${micOn ? "bg-danger-500 text-white" : "bg-neutral-100 text-neutral-600"}`} title={micOn ? "Stop listening" : "Tap to speak"}>
-              {micOn ? <MicrophoneSlash className="size-4" /> : <Microphone className="size-4" />}
-            </button>
-          )}
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}

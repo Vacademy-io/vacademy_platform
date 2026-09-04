@@ -64,6 +64,8 @@ interface Callbacks {
   /** `replay` = the board being restored on resume (show at once, no writing animation pacing). */
   onBoard?: (ops: TutorBoardOp[], clear: boolean, live: boolean, topicId?: string | null, replay?: boolean) => void;
   onAiText?: (text: string) => void;
+  /** The sentence(s) the next audio segment speaks (voice mode). */
+  onSegmentText?: (text: string) => void;
   onAudioChunk?: (base64: string) => void;
   onAudioSegmentEnd?: () => void;
   onAudioEnd?: (reason: string, detail?: string) => void;
@@ -168,6 +170,9 @@ export function useTutorSocket(callbacks: Callbacks) {
             break;
           case "ai_text":
             cb.onAiText?.(String(msg.text ?? ""));
+            break;
+          case "segment_text":
+            cb.onSegmentText?.(String(msg.text ?? ""));
             break;
           case "audio_chunk":
             cb.onAudioChunk?.(String(msg.data ?? ""));

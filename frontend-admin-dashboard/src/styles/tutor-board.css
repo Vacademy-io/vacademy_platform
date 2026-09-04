@@ -37,10 +37,16 @@
 .tutor-board-preview .tb-video {
     @apply my-3 rounded-xl border border-neutral-200 bg-white p-2 shadow-sm;
 }
+.tutor-board-preview .tb-svg { @apply px-4 py-5; }
+/* Diagrams are drawn for a plain sans face (the handwriting font is wider and
+   made labels run into shapes); overflow keeps top-line titles unclipped. */
 .tutor-board-preview .tb-svg svg {
     @apply block h-auto w-full;
-    max-height: 22rem;
+    max-height: 24rem;
+    overflow: visible;
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
+.tutor-board-preview .tb-svg svg text { font-family: inherit; }
 .tutor-board-preview .tb-image img {
     @apply block w-full rounded-lg object-contain;
     max-height: 22rem;

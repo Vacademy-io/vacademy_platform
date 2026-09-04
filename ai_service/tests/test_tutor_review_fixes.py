@@ -271,3 +271,11 @@ def test_lesson_frame_shape_is_json_serialisable():
              "topics": [{"id": t.id, "title": t.title, "concepts": len(t.concepts)} for t in L.topics],
              "progress": sm.Pointer().progress(L)}
     assert json.loads(json.dumps(frame))["topics"][0]["concepts"] == 3
+
+
+def test_sarvam_speaker_rejects_unknown_voices():
+    from app.services.voice_tts import SARVAM_DEFAULT_FEMALE, sarvam_speaker
+    assert sarvam_speaker("anushka", SARVAM_DEFAULT_FEMALE) == "priya"     # bulbul:v2 name → silent lesson before
+    assert sarvam_speaker("nirupma", SARVAM_DEFAULT_FEMALE) == "priya"     # a Smallest.ai voice
+    assert sarvam_speaker(" Ritu ", SARVAM_DEFAULT_FEMALE) == "ritu"
+    assert sarvam_speaker(None, "shubh") == "shubh"

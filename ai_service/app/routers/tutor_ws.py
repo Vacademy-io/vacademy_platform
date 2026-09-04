@@ -41,7 +41,7 @@ from ..services.tutor.runtime.intents import detect_intent
 from ..services.tutor.runtime import prompts
 from ..services.tutor.runtime.settings import TutorSettings
 from ..services.tutor.slide_source import package_belongs_to_institute
-from ..services.voice_tts import default_voice_for, synthesize_speech
+from ..services.voice_tts import SARVAM_DEFAULT_FEMALE, default_voice_for, sarvam_speaker, synthesize_speech
 from .voice_agent import MIN_SPEECH_WAV_BYTES, TTS_CHUNK_SIZE, _split_for_speech, _transcode_to_wav
 
 logger = logging.getLogger(__name__)
@@ -282,7 +282,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         async def _speak(text_: str) -> None:
             if not speak_enabled or not text_.strip():
                 return
-            voice = (tts_voice or "anushka") if tts_provider == "sarvam" else (tts_voice or default_voice_for(tts_provider, _lang_stt()))
+            # The teacher is female by default (owner decision); a voice name
+            # Sarvam does not serve (v2 names, Smallest voices) falls back to it.
+            voice = sarvam_speaker(tts_voice, SARVAM_DEFAULT_FEMALE) if tts_provider == "sarvam" else (tts_voice or default_voice_for(tts_provider, _lang_stt()))
             for segment in _split_for_speech(text_):
                 key = _cache_key(tts_provider, voice, _lang_stt(), pace, segment)
                 audio = _cache_get(key)

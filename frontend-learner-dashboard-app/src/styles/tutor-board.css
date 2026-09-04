@@ -28,7 +28,12 @@
 .tutor-board-preview .tb-formula { @apply my-2 rounded-lg border border-dashed border-primary-300 bg-primary-50 px-3 py-2 font-mono text-base; }
 .tutor-board-preview .tb-formula figcaption { @apply mt-1 font-sans text-sm text-neutral-600; }
 .tutor-board-preview .tb-svg, .tutor-board-preview .tb-image, .tutor-board-preview .tb-video { @apply my-3 rounded-xl border border-neutral-200 bg-white p-2 shadow-sm; }
-.tutor-board-preview .tb-svg svg { @apply block h-auto w-full; max-height: 22rem; }
+.tutor-board-preview .tb-svg { @apply px-4 py-5; }
+/* Diagrams are drawn for a plain sans face: the handwriting board font is
+   wider and made labels run into their shapes. overflow keeps glyphs that
+   poke past the viewBox edge (a title on the top line) from being clipped. */
+.tutor-board-preview .tb-svg svg { @apply block h-auto w-full; max-height: 24rem; overflow: visible; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.tutor-board-preview .tb-svg svg text { font-family: inherit; }
 .tutor-board-preview .tb-svg .tb-highlight, .tutor-board-preview .tb-svg [id].tb-highlight { filter: drop-shadow(0 0 6px theme('colors.warning.400')); }
 .tutor-board-preview .tb-image img { @apply block w-full rounded-lg object-contain; max-height: 22rem; }
 .tutor-board-preview .tb-video video { @apply block w-full rounded-lg; max-height: 22rem; }

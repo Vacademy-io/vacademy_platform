@@ -38,7 +38,8 @@ interface Callbacks {
   /** After next_slide: the new slide's topics and progress. */
   onLesson?: (ev: TutorLessonEvent) => void;
   onState?: (ev: TutorStateEvent) => void;
-  onBoard?: (ops: TutorBoardOp[], clear: boolean, live: boolean, topicId?: string | null) => void;
+  /** `replay` = the board being restored on resume (show at once, no writing animation pacing). */
+  onBoard?: (ops: TutorBoardOp[], clear: boolean, live: boolean, topicId?: string | null, replay?: boolean) => void;
   onAiText?: (text: string) => void;
   onAudioChunk?: (base64: string) => void;
   onAudioSegmentEnd?: () => void;
@@ -140,7 +141,7 @@ export function useTutorSocket(callbacks: Callbacks) {
             cb.onState?.(msg as unknown as TutorStateEvent);
             break;
           case "board":
-            cb.onBoard?.((msg.ops as TutorBoardOp[]) || [], !!msg.clear, !!msg.live, msg.topic_id as string | null);
+            cb.onBoard?.((msg.ops as TutorBoardOp[]) || [], !!msg.clear, !!msg.live, msg.topic_id as string | null, !!msg.replay);
             break;
           case "ai_text":
             cb.onAiText?.(String(msg.text ?? ""));

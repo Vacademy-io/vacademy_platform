@@ -32,6 +32,13 @@ interface LayoutContainerProps {
      * they did before the contract existed.
      */
     fullWidth?: boolean;
+    /**
+     * Pin the page to the viewport: the main column becomes exactly one
+     * screen tall and the content wrapper a min-h-0 flex column, so a route
+     * can give each of its panes its own scroll (tutor whiteboard, chat rail)
+     * instead of growing the whole page. Implies fullWidth.
+     */
+    fillViewport?: boolean;
 }
 
 export const LayoutContainer = ({
@@ -41,6 +48,7 @@ export const LayoutContainer = ({
     hideBrandingHeader,
     enableChatbotPanel = true, // Docked panel enabled by default
     fullWidth = false,
+    fillViewport = false,
 }: LayoutContainerProps) => {
     const { setHasCustomSidebar } = useStore();
     const { isOpen: chatbotIsOpen } = useChatbotContext();
@@ -121,7 +129,7 @@ export const LayoutContainer = ({
             />
             {showPlayRail && <PlayNavRail />}
             <SidebarInset
-                className="overflow-x-hidden w-full"
+                className={cn("overflow-x-hidden w-full", fillViewport && "h-svh max-h-svh overflow-hidden")}
                 style={{
                     // Reduce content width when chatbot panel is open (desktop only)
                     marginRight: showDockedPanel ? `${panelWidth}px` : "0",
@@ -137,9 +145,11 @@ export const LayoutContainer = ({
                 <div
                     className={cn(
                         "overflow-x-hidden",
-                        fullWidth
-                            ? "m-3 md:m-5 max-w-full"
-                            : "mx-auto w-full max-w-screen-xl px-4 py-4 sm:px-6 lg:px-8 lg:py-6",
+                        fillViewport
+                            ? "flex min-h-0 flex-1 flex-col p-3 max-w-full md:p-4"
+                            : fullWidth
+                              ? "m-3 md:m-5 max-w-full"
+                              : "mx-auto w-full max-w-screen-xl px-4 py-4 sm:px-6 lg:px-8 lg:py-6",
                         (isPlayTheme || isCleanerPlayTheme) && isMobile && "pb-20",
                         className
                     )}

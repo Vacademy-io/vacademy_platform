@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
+import { useSidebar } from "@/components/ui/sidebar";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorStateEvent } from "@/hooks/useTutorSocket";
@@ -40,6 +41,10 @@ export const Route = createFileRoute("/study-library/courses/course-details/tuto
 });
 
 type Disconnect = { reason: "lost" | "idle" | "limit" | "ended" };
+
+// The teacher "writes" a concept's elements one at a time while speaking,
+// instead of dropping the whole board at once.
+const REVEAL_MS = 900;
 
 const DISCONNECT_TEXT: Record<Disconnect["reason"], string> = {
   lost: "The connection to your teacher dropped.",
@@ -82,6 +87,51 @@ function TutorPage() {
   const boardCounter = useRef(0);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bootSeq = useRef(0);
+
+  // The app sidebar folds to its icon rail for the lesson and comes back on leave.
+  const sidebar = useSidebar();
+  useEffect(() => {
+    const wasOpen = sidebar.open;
+    if (wasOpen) sidebar.setOpen(false);
+    return () => {
+      if (wasOpen) sidebar.setOpen(true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── progressive board reveal ──
+  const revealQueueRef = useRef<TutorBoardOp[]>([]);
+  const revealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopReveal = useCallback(() => {
+    if (revealTimerRef.current) {
+      clearInterval(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  }, []);
+  const flushReveal = useCallback(() => {
+    stopReveal();
+    const rest = revealQueueRef.current;
+    revealQueueRef.current = [];
+    if (rest.length) setBoardOps((prev) => [...prev, ...rest]);
+  }, [stopReveal]);
+  const queueReveal = useCallback(
+    (ops: TutorBoardOp[]) => {
+      if (!ops.length) return;
+      // The first element lands with the narration; the rest write in one by one.
+      const [first, ...rest] = ops;
+      setBoardOps((prev) => [...prev, first as TutorBoardOp]);
+      revealQueueRef.current.push(...rest);
+      if (revealQueueRef.current.length && !revealTimerRef.current) {
+        revealTimerRef.current = setInterval(() => {
+          const op = revealQueueRef.current.shift();
+          if (op) setBoardOps((prev) => [...prev, op]);
+          if (!revealQueueRef.current.length) stopReveal();
+        }, REVEAL_MS);
+      }
+    },
+    [stopReveal],
+  );
+  useEffect(() => () => stopReveal(), [stopReveal]);
 
   const showNotice = useCallback((m: string) => {
     setNotice(m);
@@ -172,7 +222,7 @@ function TutorPage() {
       else if (ev.phase === "media_task") applyPhase("media");
       else if (ev.phase === "slide_done") applyPhase("done");
     },
-    onBoard: (ops, clear, live) => {
+    onBoard: (ops, clear, live, _topicId, replay) => {
       if (live) {
         setLiveOps(ops);
         return;
@@ -180,12 +230,15 @@ function TutorPage() {
       // A new concept's elements retire the previous turn's highlights.
       setLiveOps([]);
       if (clear) {
+        stopReveal();
+        revealQueueRef.current = [];
         boardCounter.current += 1;
         setBoardKey(`b${boardCounter.current}`);
         setBoardOps([]);
         return;
       }
-      setBoardOps((prev) => [...prev, ...ops]);
+      if (replay) setBoardOps((prev) => [...prev, ...ops]);
+      else queueReveal(ops);
     },
     onAiText: (text) => {
       turnEndedRef.current = false;
@@ -207,6 +260,8 @@ function TutorPage() {
       }
     },
     onAudioEnd: () => {
+      // Whatever the teacher has not "written" yet lands before the next step.
+      flushReveal();
       turnEndedRef.current = true;
       const seg = takeSegment();
       if (seg) queueRef.current.push(seg);
@@ -219,6 +274,7 @@ function TutorPage() {
       }
     },
     onCheck: (ev) => {
+      flushReveal();
       setCheck(ev);
       setAwaiting("answer");
       applyPhase("question");
@@ -298,6 +354,7 @@ function TutorPage() {
     maxWaitForSpeechMs: 15000,
   });
   const toggleMic = async () => {
+    if (disconnected) return;
     if (micOn) {
       recorder.stopRecording();
       setMicOn(false);
@@ -314,6 +371,17 @@ function TutorPage() {
       setPhase("listening");
     }
   };
+
+  // Like a call: once the teacher has asked and gone quiet, listen for the
+  // answer without a tap. The recorder stops itself on silence / no speech.
+  useEffect(() => {
+    if (!voiceMode || phase !== "question" || micOn || disconnected) return;
+    const t = setTimeout(() => {
+      void toggleMic();
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, voiceMode, micOn, disconnected]);
 
   // ── boot (also used by Reconnect: the server resumes from the saved pointer) ──
   const bootSession = useCallback(async () => {
@@ -377,6 +445,8 @@ function TutorPage() {
 
   const goToSlide = (slideId: string) => {
     stopAudio();
+    stopReveal();
+    revealQueueRef.current = [];
     currentSlideRef.current = slideId;
     setTranscript([]);
     setCheck(null);
@@ -416,9 +486,9 @@ function TutorPage() {
   const lessonOver = phase === "done" && !audioBusy();
 
   return (
-    <LayoutContainer>
-      <div className="grid min-h-96 grid-cols-1 gap-3 lg:h-full lg:grid-cols-12">
-        <div className="hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
+    <LayoutContainer fillViewport>
+      <div className="grid grid-cols-1 gap-3 lg:h-full lg:min-h-0 lg:grid-cols-12">
+        <div className="hidden min-h-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
           <TutorSidebar
             slideTitle={title}
             topics={topics}
@@ -430,7 +500,7 @@ function TutorPage() {
             onPickSlide={goToSlide}
           />
         </div>
-        <div className="min-h-0 lg:col-span-6">
+        <div className="flex min-h-96 flex-col lg:col-span-6 lg:min-h-0">
           {disconnected && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
               <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
@@ -442,7 +512,9 @@ function TutorPage() {
               </button>
             </div>
           )}
-          <Whiteboard ops={boardOps} liveOps={liveOps} boardKey={boardKey} teacherName={boot?.teacher_name} />
+          <div className="min-h-96 flex-1 lg:min-h-0">
+            <Whiteboard ops={boardOps} liveOps={liveOps} boardKey={boardKey} teacherName={boot?.teacher_name} />
+          </div>
           {lessonOver && !disconnected && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
               <span>Slide complete.</span>
@@ -458,7 +530,7 @@ function TutorPage() {
             </div>
           )}
         </div>
-        <div className="rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3">
+        <div className="min-h-96 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:min-h-0">
           <TeacherPanel
             teacherName={boot?.teacher_name || "Teacher"}
             phase={phase}

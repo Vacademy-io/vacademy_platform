@@ -83,10 +83,18 @@ def rules_text() -> str:
    learner's own words where possible; give a rubric and 1-3 realistic misconceptions with hints.
 4. VISUALS ARE THE POINT OF A WHITEBOARD. Every topic (board) gets at least one visual, and most concepts add
    or extend one. Use an SVG diagram for anything structural (parts of a cell, a circuit, a force diagram, a
-   flow, a timeline, a comparison): viewBox='0 0 640 360', a small palette of 3-4 harmonious colours plus dark
-   text, rounded shapes, clear labels in 16-20px text, arrows between related parts, and ids on the parts a
-   teacher would point at (listed in "parts"). Use an image op (up to one per topic) where a realistic picture
-   teaches better than a drawing. Tables for comparisons, callouts for definitions and warnings.
+   flow, a timeline, a comparison). SVG craft rules (the board renders them at ~700px wide in a sans-serif font):
+   - viewBox='0 0 640 360' and FILL it: shapes spread across the whole canvas, nothing crammed into one corner
+     or floating in empty white space; keep a 24px margin from every edge (text baselines >= 32 from the top).
+   - 3-4 harmonious fill colours (soft blues/greens/ambers with a darker stroke) plus dark text; rounded
+     rects (rx='10'), arrows with marker-end, thick strokes (2-3px).
+   - Labels 18-22px, text-anchor='middle' inside or under their shape; a label fits in about 11px per
+     character, so a 12-character label needs a shape at least 150px wide. Never let text cross a line or
+     another label; never rely on font width to line things up.
+   - Give the parts a teacher would point at their own id= (listed in "parts").
+   Add an image op (one per topic, more where the material is visual) wherever a realistic picture teaches
+   better than a drawing: anatomy, equipment, a patient doing an exercise, a real-world scene. Tables for
+   comparisons, callouts for definitions and warnings.
 5. `say` is what the teacher SAYS out loud: warm, second person, 2-4 sentences, refers to the board
    ("look at the arrow on the left"). Use {{student_name}} where the teacher would say the learner's name.
    Provide the same narration in the other language under say_i18n.

@@ -55,6 +55,23 @@ TTS_PROVIDERS: Dict[str, Dict[str, Any]] = {
 }
 
 
+# Speakers Sarvam's bulbul:v3 accepts (its 400 lists them). Any other name —
+# a v2 voice such as "anushka", a Smallest.ai voice typed into the admin card
+# — is silently replaced, because a wrong speaker means a SILENT lesson.
+SARVAM_V3_SPEAKERS = frozenset({
+    "aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev",
+    "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand",
+    "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham",
+    "rupali",
+})
+SARVAM_DEFAULT_FEMALE = "priya"
+
+
+def sarvam_speaker(voice: Optional[str], default: str = "shubh") -> str:
+    v = (voice or "").strip().lower()
+    return v if v in SARVAM_V3_SPEAKERS else default
+
+
 def default_voice_for(provider: str, language: str) -> str:
     lang = (language or "en-IN").strip()
     if provider == "google":
@@ -97,6 +114,7 @@ def list_tts_providers() -> List[Dict[str, Any]]:
 # --------------------------------------------------------------------------
 
 async def _sarvam(text: str, language: str, voice: str, pace: Optional[float] = None) -> Tuple[bytes, str]:
+    voice = sarvam_speaker(voice, "shubh")
     audio = await SarvamService().text_to_speech(text=text, language=language, voice=voice or "shubh", pace=pace)
     return audio, "audio/wav"
 
@@ -180,14 +198,14 @@ async def synthesize_speech(
     except Exception:
         logger.exception("TTS engine %s failed; falling back to Sarvam", provider)
 
-    if provider == "sarvam":
-        return b"", "audio/wav", provider
     try:
-        audio, mime = await _sarvam(text, language, "")
+        # Second try on Sarvam with its default speaker: a bad voice name must
+        # degrade to a different voice, never to silence.
+        audio, mime = await _sarvam(text, language, "", pace)
         return audio, mime, "sarvam"
     except Exception:
         logger.exception("Sarvam fallback failed too")
         return b"", "audio/wav", "sarvam"
 
 
-__all__ = ["TTS_PROVIDERS", "default_voice_for", "list_tts_providers", "synthesize_speech"]
+__all__ = ["SARVAM_DEFAULT_FEMALE", "SARVAM_V3_SPEAKERS", "TTS_PROVIDERS", "default_voice_for", "list_tts_providers", "sarvam_speaker", "synthesize_speech"]

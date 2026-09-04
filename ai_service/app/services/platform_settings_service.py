@@ -360,10 +360,41 @@ def get_platform_setting(key: str, default: Any = None, db: Optional[Session] = 
     return default if value is None else value
 
 
+# --------------------------------------------------------------------------
+# Model health — why the configured model failed, and what answered instead
+# --------------------------------------------------------------------------
+
+_model_health: Dict[str, Dict[str, Any]] = {}
+_MODEL_HEALTH_MAX = 8
+
+
+def record_model_failure(model: str, reason: str, fallback_model: Optional[str] = None) -> None:
+    """Remember the last failure for `model` so the portal can show it."""
+    entry = _model_health.setdefault(model, {"failures": 0})
+    entry["failures"] = int(entry.get("failures", 0)) + 1
+    entry["last_error"] = (reason or "")[:300]
+    entry["last_failed_at"] = datetime.utcnow().isoformat() + "Z"
+    if fallback_model:
+        entry["fallback_model"] = fallback_model
+    while len(_model_health) > _MODEL_HEALTH_MAX:
+        oldest = min(_model_health, key=lambda k: _model_health[k].get("last_failed_at", ""))
+        _model_health.pop(oldest, None)
+
+
+def record_model_success(model: str) -> None:
+    """A successful call clears a model's failure record."""
+    _model_health.pop(model, None)
+
+
+def get_model_health() -> Dict[str, Dict[str, Any]]:
+    return {k: dict(v) for k, v in _model_health.items()}
+
+
 def get_cache_status() -> Dict[str, Any]:
     """What this process is serving from — for the portal's 'effective' view."""
     age = None if _cache.loaded_at is None else round(time.monotonic() - _cache.loaded_at, 1)
     return {
+        "model_health": get_model_health(),
         "loaded": _cache.loaded_at is not None and not _cache.load_failed,
         "load_failed": _cache.load_failed,
         "last_error": _cache.last_error,
@@ -519,6 +550,10 @@ __all__ = [
     "GROUP_LABELS",
     "get_platform_setting",
     "get_cache_status",
+    "record_model_failure",
+    "record_model_success",
+    "get_model_health",
+    "probe_model_live",
     "invalidate_platform_settings_cache",
     "list_platform_settings",
     "set_platform_setting",

@@ -50,6 +50,39 @@ class ChatLLMClient:
         self.platform_model_key = platform_model_key
         self.http_client = httpx.AsyncClient(timeout=120.0)
 
+    @staticmethod
+    def _fallback_model_for(model: str, explicit_model: Optional[str]) -> Optional[str]:
+        """
+        The env default model, when it differs from the one that just failed and
+        the caller did not pin the model on purpose (an explicit override —
+        escalation to a stronger model — should fail loudly, not silently
+        downgrade).
+        """
+        if explicit_model:
+            return None
+        try:
+            from ..config import get_settings
+            default = get_settings().llm_default_model
+        except Exception:
+            return None
+        return default if default and default != model else None
+
+    @staticmethod
+    def _note_model_failure(model: str, reason: str, fallback: Optional[str]) -> None:
+        try:
+            from .platform_settings_service import record_model_failure
+            record_model_failure(model, reason, fallback)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _note_model_ok(model: str) -> None:
+        try:
+            from .platform_settings_service import record_model_success
+            record_model_success(model)
+        except Exception:
+            pass
+
     def _resolve(self, institute_id: Optional[str], user_id: Optional[str]):
         """
         resolve_keys with the platform-default hint, tolerating resolvers that
@@ -97,6 +130,7 @@ class ChatLLMClient:
         # Resolve keys. gemini_key is ignored — the Gemini fallback was retired.
         openrouter_key, _gemini_key, resolved_model = self._resolve(institute_id, user_id)
         # Caller override wins over the resolver's pick.
+        explicit_model = model
         model = model or resolved_model
 
         # Track per-provider failure reasons so the final exception surfaces
@@ -109,10 +143,30 @@ class ChatLLMClient:
         if openrouter_key:
             try:
                 logger.info(f"Attempting OpenRouter API call with model: {model}")
-                return await self._call_openrouter(messages, tools, temperature, max_tokens, openrouter_key, model)
+                result = await self._call_openrouter(messages, tools, temperature, max_tokens, openrouter_key, model)
+                self._note_model_ok(model)
+                return result
             except Exception as e:
                 logger.warning(f"OpenRouter failed: {e}")
                 failures.append(f"OpenRouter: {e}")
+                # A model chosen in the portal / institute settings that OpenRouter
+                # rejects must not take the chatbot down: answer with the env
+                # default and record why, so the portal can show it.
+                fallback = self._fallback_model_for(model, explicit_model)
+                if fallback:
+                    self._note_model_failure(model, str(e), fallback)
+                    try:
+                        logger.error(
+                            f"Model {model} failed; falling back to {fallback} for this call"
+                        )
+                        result = await self._call_openrouter(
+                            messages, tools, temperature, max_tokens, openrouter_key, fallback
+                        )
+                        result["fallback_from"] = model
+                        return result
+                    except Exception as e2:
+                        logger.warning(f"OpenRouter fallback {fallback} failed too: {e2}")
+                        failures.append(f"OpenRouter fallback {fallback}: {e2}")
         else:
             failures.append("OpenRouter: no key configured")
 
@@ -235,8 +289,10 @@ class ChatLLMClient:
                 return
             except Exception as e:
                 logger.warning(f"OpenRouter streaming failed: {e}")
+                self._note_model_failure(model, f"streaming: {e}", None)
 
-        # Fallback to non-streaming
+        # Fallback to non-streaming (which falls back to the env default model
+        # if the configured one is what OpenRouter rejects)
         response = await self.chat_completion(messages, tools, temperature, max_tokens, institute_id, user_id)
         if response.get("content"):
             yield {"type": "token", "content": response["content"]}

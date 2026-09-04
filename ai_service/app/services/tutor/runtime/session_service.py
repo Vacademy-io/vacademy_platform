@@ -103,6 +103,33 @@ def chapter_slides(db: Session, *, package_session_id: str, chapter_id: str) -> 
     ]
 
 
+# ── knowledge base passages for doubt / remediation turns (design §6.5) ─────
+
+KB_SOURCE_MAX_CHARS = 6000
+
+
+async def kb_source_block(lesson: LessonPlan, institute_id: str, concept_title: str, question: str) -> Optional[str]:
+    """Passages from the course's own knowledge base for this concept and
+    question, budgeted to ~1.5k tokens. None when the plan was not grounded
+    or the KB does not cover the question."""
+    if not lesson.kb or not lesson.kb.get("knowledge_base_id"):
+        return None
+    try:
+        from ...kb import course_grounding
+        with db_session() as db:
+            g = await course_grounding.ground_slide(
+                db, kb_id=str(lesson.kb["knowledge_base_id"]), institute_id=institute_id,
+                query=" ".join(p for p in [lesson.slide_title, concept_title, (question or "")[:300]] if p),
+                mode=str(lesson.kb.get("mode") or "STRICT"), faithful=False,
+            )
+        if not g or not g.supported or not (g.passages or "").strip():
+            return None
+        return g.passages.strip()[:KB_SOURCE_MAX_CHARS]
+    except Exception:  # noqa: BLE001
+        logger.warning("KB passages unavailable for doubt turn", exc_info=True)
+        return None
+
+
 # ── quiz slides: what to write back to the activity log ─────────────────────
 
 _OPTION_REF = re.compile(r"\b(?:option\s*)?([1-6]|[a-f])\b")
@@ -159,17 +186,36 @@ LIVE_MINUTE_TOOL = "tutor_live_minute"
 LIVE_PREFLIGHT_MINUTES = 5
 
 
+def preflight_minutes(db: Optional[Session] = None) -> int:
+    try:
+        return max(0, int(float(get_platform_setting("tutor.live.preflight_minutes", default=LIVE_PREFLIGHT_MINUTES, db=db) or 0)))
+    except Exception:  # noqa: BLE001
+        return LIVE_PREFLIGHT_MINUTES
+
+
+def session_max_seconds(db: Optional[Session] = None) -> int:
+    try:
+        minutes = int(float(get_platform_setting("tutor.live.max_minutes", default=90, db=db) or 90))
+    except Exception:  # noqa: BLE001
+        minutes = 90
+    return max(10, min(240, minutes)) * 60
+
+
 def preflight_live_session(db: Session, institute_id: str) -> Optional[str]:
     """Voice lessons cost credits per minute: refuse to start one the
-    institute cannot afford for a few minutes. Returns the 402 detail, or
-    None when the session may start (unknown balance never blocks)."""
+    institute cannot afford for a few minutes (super-admin setting). Returns
+    the 402 detail, or None when the session may start (unknown balance
+    never blocks)."""
+    minutes = preflight_minutes(db)
+    if minutes <= 0:
+        return None
     try:
         est = preflight_tool_credits(db, tool_key=LIVE_MINUTE_TOOL,
-                                     tool_params={"audio_minutes": LIVE_PREFLIGHT_MINUTES}, institute_id=institute_id)
+                                     tool_params={"audio_minutes": minutes}, institute_id=institute_id)
     except Exception:  # noqa: BLE001
         return None
     if est.get("sufficient") is False:
-        return (f"Not enough credits for a voice lesson: {LIVE_PREFLIGHT_MINUTES} minutes need ≈"
+        return (f"Not enough credits for a voice lesson: {minutes} minutes need ≈"
                 f"{est.get('estimated_credits')} credits, balance is {est.get('current_balance')}.")
     return None
 
@@ -406,6 +452,7 @@ def boot_context(tutor_session_id: str) -> Optional[Dict[str, Any]]:
             "previous_slide": previous,
             "learner_name": learner_name(db, ts.user_id),
             "tts_provider": tts_provider, "tts_voice": tts_voice, "live_model": live_model,
+            "max_seconds": session_max_seconds(db),
         }
 
 

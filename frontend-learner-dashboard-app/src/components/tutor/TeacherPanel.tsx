@@ -31,6 +31,8 @@ interface TeacherPanelProps {
   notice?: string | null;
   /** Socket gone: inputs are inert until the learner reconnects. */
   disabled?: boolean;
+  /** Phones: the page shows its own teacher strip, so the panel header hides below lg. */
+  compact?: boolean;
 }
 
 const PHASE_LABEL: Record<TutorPhase, string> = {
@@ -48,7 +50,7 @@ const PHASE_LABEL: Record<TutorPhase, string> = {
 export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
-  notice, disabled,
+  notice, disabled, compact,
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
@@ -68,8 +70,8 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-neutral-200 pb-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className={`flex items-center gap-3 border-b border-neutral-200 pb-3 ${compact ? "hidden lg:flex" : ""}`}>
         <TeacherAvatar fileId={teacherAvatarFileId} name={teacherName} speaking={phase === "speaking"} className="size-12" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-neutral-900">{teacherName}</p>
@@ -93,7 +95,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         </p>
       )}
 
-      <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto py-3">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto py-3">
         {transcript.map((m, i) => (
           <div key={i} className={`flex ${m.role === "learner" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-md rounded-2xl px-3 py-2 text-sm ${m.role === "learner" ? "bg-primary-500 text-white" : "bg-neutral-100 text-neutral-800"}`}>

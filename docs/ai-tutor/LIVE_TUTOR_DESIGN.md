@@ -946,12 +946,19 @@ Follow-ups shipped 2026-09-04 (owner QA round 1 and the next-batch request):
   (`data[0].b64_json`, PNG, 30-70 s), chat image models (Gemini, GPT) call chat completions with
   `modalities`. The page also edits `ai_model_defaults` (default / fallback per pipeline use case).
 
+- **Batch 3 (2026-09-04).** Teacher insights (WP9): `GET /tutor/v1/packages/{id}/insights` and a
+  card on the Tutor Mode tab — lessons, learners, minutes, the concepts learners get wrong most
+  with the recorded misconceptions, and a per-learner table, filterable by batch and period.
+  Phones: a compact teacher strip, the outline in a bottom sheet, board and chat splitting the
+  screen. Admin preview plays boards (entrance, stroke-draw, stepped parts). Doubt and remediation
+  turns carry passages from the course's knowledge base (`kb_source_block`, §6.5). Super-admin
+  portal: Credits & pricing card editing `ai_tool_pricing` (tutor compile / image / live minute
+  first), plus `tutor.live.preflight_minutes` and `tutor.live.max_minutes` as number settings.
+
 Still open (tracked, not silent):
 
 - **AI-video slides.** Copilot `HTML_VIDEO` slides are parked in NEEDS_DETAILS like uploaded
   videos; compiling from the video's script (§4.2 table) is not implemented.
-- **KB source material on doubt turns** (§6.5 budget row) is not supplied; the doubt prompt has
-  the concept text only.
 - **Weak-concept revisits** at topic / chapter end (§6.6) and the model-written rolling summary
   are not implemented; the summary is deterministic.
 - **Stock images** (§4.5) do not exist; the compile prompt only offers generated images.
@@ -959,4 +966,4 @@ Still open (tracked, not silent):
   the sidebar skips them.
 - The TTS cache is in-process (empties on deploy); moving it under the media path is open.
 - `teaching_media.cost_credits` / `file_id` are not populated for generated images.
-- Teacher-facing insights (WP9: weak-concept heatmap, session counts) are not built.
+- Teacher insights are per course; an institute-wide view and a CSV export are not built.

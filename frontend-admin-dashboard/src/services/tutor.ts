@@ -345,3 +345,58 @@ export const getTutorOptions = async (): Promise<TutorOptions> => {
     optionsCache = { at: Date.now(), value: res.data };
     return res.data;
 };
+
+// ── teacher insights ─────────────────────────────────────────────────────────
+
+export interface TutorInsights {
+    package_id: string;
+    package_session_id: string | null;
+    days: number;
+    batches: Array<{ package_session_id: string; name: string; sessions: number }>;
+    totals: {
+        sessions: number;
+        learners: number;
+        minutes: number;
+        voice_sessions: number;
+        abandoned: number;
+    };
+    learners: Array<{
+        user_id: string;
+        name: string | null;
+        sessions: number;
+        minutes: number;
+        attempts: number;
+        avg_score: number | null;
+        weak_attempts: number;
+        last_active: string | null;
+    }>;
+    concepts: Array<{
+        concept_id: string;
+        concept: string;
+        topic: string;
+        slide: string;
+        slide_id: string;
+        attempts: number;
+        learners: number;
+        avg_score: number | null;
+        weak_attempts: number;
+        weak_learners: number;
+        misconceptions: string[];
+    }>;
+}
+
+export const getTutorInsights = async (
+    packageId: string,
+    params: { packageSessionId?: string; days?: number } = {}
+): Promise<TutorInsights> => {
+    const res = await authenticatedAxiosInstance.get<TutorInsights>(
+        `${BASE}/packages/${packageId}/insights`,
+        {
+            params: {
+                package_session_id: params.packageSessionId || undefined,
+                days: params.days ?? 90,
+            },
+        }
+    );
+    return res.data;
+};

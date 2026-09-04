@@ -45,6 +45,7 @@ import {
     type TutorPlanStatusItem,
 } from '@/services/tutor';
 import { TutorPlanPreviewDialog } from './TutorPlanPreviewDialog';
+import { TutorInsightsCard } from './TutorInsightsCard';
 import { TeacherFaceField } from '@/components/common/tutor/TeacherFaceField';
 import { ModelPicker, VoicePicker } from '@/components/common/tutor/TutorPickers';
 
@@ -873,6 +874,8 @@ export const TutorModeTab: React.FC<TutorModeTabProps> = ({ packageId }) => {
                     </div>
                 </CardContent>
             </Card>
+
+            <TutorInsightsCard packageId={packageId} />
 
             <TutorPlanPreviewDialog
                 slideId={previewSlide?.slide_id ?? null}

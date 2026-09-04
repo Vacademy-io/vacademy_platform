@@ -7,6 +7,9 @@ import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorStateEvent } from "@/hooks/useTutorSocket";
 import { Whiteboard } from "@/components/tutor/Whiteboard";
 import { TutorSidebar, type TutorTopicItem } from "@/components/tutor/TutorSidebar";
+import { TeacherAvatar } from "@/components/tutor/TeacherAvatar";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ListBullets } from "@phosphor-icons/react";
 import { TeacherPanel, type TranscriptLine, type TutorPhase } from "@/components/tutor/TeacherPanel";
 import {
   endTutorSession,
@@ -88,6 +91,8 @@ function TutorPage() {
   const [chapterSlides, setChapterSlides] = useState<TutorChapterSlide[]>([]);
   const [speakOn, setSpeakOn] = useState(true);
   const [micOn, setMicOn] = useState(false);
+  // Phones: the outline lives in a bottom sheet instead of a left rail.
+  const [outlineOpen, setOutlineOpen] = useState(false);
   const currentSlideRef = useRef<string | null>(null);
   const sessionRef = useRef<string | null>(null);
   const boardCounter = useRef(0);
@@ -561,22 +566,55 @@ function TutorPage() {
   const progress = state?.progress ?? boot?.progress ?? { done: 0, total: 1, percent: 0 };
   const lessonOver = phase === "done" && !audioBusy();
 
+  const outline = (
+    <TutorSidebar
+      slideTitle={title}
+      topics={topics}
+      activeTopicId={state?.topic_id ?? null}
+      progressPercent={progress.percent}
+      done={progress.done}
+      total={progress.total}
+      nextSlides={nextSlides}
+      onPickSlide={(id) => {
+        setOutlineOpen(false);
+        goToSlide(id);
+      }}
+    />
+  );
+
   return (
     <LayoutContainer fillViewport enableChatbotPanel={false}>
-      <div className="grid grid-cols-1 gap-3 lg:h-full lg:min-h-0 lg:grid-cols-12">
-        <div className="hidden min-h-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
-          <TutorSidebar
-            slideTitle={title}
-            topics={topics}
-            activeTopicId={state?.topic_id ?? null}
-            progressPercent={progress.percent}
-            done={progress.done}
-            total={progress.total}
-            nextSlides={nextSlides}
-            onPickSlide={goToSlide}
-          />
+      {/* Phones: a compact teacher strip on top (name, status, outline, end). */}
+      <div className="mb-2 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 lg:hidden">
+        <TeacherAvatar fileId={boot?.teacher_avatar_file_id} name={boot?.teacher_name} speaking={phase === "speaking"} className="size-9" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-neutral-900">{boot?.teacher_name || "Teacher"}</p>
+          <p className="truncate text-xs text-neutral-500">
+            {title} · {progress.done}/{progress.total}
+          </p>
         </div>
-        <div className="flex min-h-96 flex-col lg:col-span-6 lg:min-h-0">
+        <button
+          type="button"
+          onClick={() => setOutlineOpen(true)}
+          className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700"
+        >
+          <ListBullets className="size-4" /> Outline
+        </button>
+      </div>
+      <Sheet open={outlineOpen} onOpenChange={setOutlineOpen}>
+        <SheetContent side="bottom" className="max-h-svh overflow-y-auto rounded-t-2xl">
+          <SheetHeader>
+            <SheetTitle className="text-start">This lesson</SheetTitle>
+          </SheetHeader>
+          <div className="mt-3">{outline}</div>
+        </SheetContent>
+      </Sheet>
+
+      <div className="flex h-full min-h-0 flex-col gap-2 lg:grid lg:grid-cols-12 lg:gap-3">
+        <div className="hidden min-h-0 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:block">
+          {outline}
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col lg:col-span-6 lg:min-h-0">
           {disconnected && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
               <span>{DISCONNECT_TEXT[disconnected.reason]} Your place is saved.</span>
@@ -590,7 +628,7 @@ function TutorPage() {
               </button>
             </div>
           )}
-          <div className="min-h-96 flex-1 lg:min-h-0">
+          <div className="min-h-0 flex-1">
             <Whiteboard ops={boardOps} liveOps={liveOps} boardKey={boardKey} teacherName={boot?.teacher_name} revealKey={revealKey} />
           </div>
           {lessonOver && !disconnected && (
@@ -608,8 +646,9 @@ function TutorPage() {
             </div>
           )}
         </div>
-        <div className="min-h-96 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:min-h-0">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 lg:col-span-3 lg:min-h-0">
           <TeacherPanel
+            compact
             teacherName={boot?.teacher_name || "Teacher"}
             teacherAvatarFileId={boot?.teacher_avatar_file_id}
             phase={phase}

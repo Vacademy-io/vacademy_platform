@@ -270,6 +270,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             tts_provider = "sarvam"
         tts_voice = ctx["tts_voice"]
         live_model: Optional[str] = ctx.get("live_model")
+        max_seconds = int(ctx.get("max_seconds") or SESSION_MAX_SECONDS)
         # What the learner answered per concept this session; quiz slides
         # write it back as a quiz activity log when the slide is done.
         attempt_log: Dict[str, Dict[str, Any]] = {}
@@ -491,11 +492,13 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             await _apply_step(step)
 
         async def _answer_doubt(text_: str, concept: sm.Concept, *, spoken: bool, what_next: str) -> None:
+            source_block = await svc.kb_source_block(lesson, institute_id, concept.title, text_)
             decision, usage = await run_turn(
                 institute_id=institute_id, user_id=user_id, model=live_model, teacher=teacher, lang=lang,
                 strictness=settings.strictness, learner_name=display_name or None, state=state, lesson=lesson,
                 pointer=pointer, board_ops=board, transcript=transcript, learner_message=text_, kind="doubt",
                 mode="voice" if spoken else "text", tutor_session_id=tutor_session_id, concept=concept,
+                source_block=source_block,
             )
             svc.bump_telemetry(tutor_session_id, turns=1, llm_prompt_tokens=usage.get("prompt_tokens", 0),
                                llm_completion_tokens=usage.get("completion_tokens", 0), fallbacks=1 if decision.get("fallback") else 0)
@@ -578,11 +581,18 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
 
             kind = "answer" if phase in (sm.AWAIT_ANSWER, sm.REMEDIATE) and intent != "doubt" and not force_doubt else "doubt"
             final_attempt = kind == "answer" and pointer.remediations + 1 >= sm.MAX_REMEDIATIONS
+            # Design §6.5: the course's own material reaches the model on
+            # doubt turns and on remediation (a wrong answer), never on the
+            # first grading pass — that one is the rubric's job.
+            source_block = None
+            if kind == "doubt" or pointer.remediations > 0:
+                source_block = await svc.kb_source_block(lesson, institute_id, concept.title, text_)
             decision, usage = await run_turn(
                 institute_id=institute_id, user_id=user_id, model=live_model, teacher=teacher, lang=lang,
                 strictness=settings.strictness, learner_name=display_name or None, state=state, lesson=lesson,
                 pointer=pointer, board_ops=board, transcript=transcript, learner_message=text_, kind=kind,
                 mode="voice" if spoken else "text", tutor_session_id=tutor_session_id, final_attempt=final_attempt,
+                source_block=source_block,
             )
             svc.bump_telemetry(tutor_session_id, turns=1, llm_prompt_tokens=usage.get("prompt_tokens", 0),
                                llm_completion_tokens=usage.get("completion_tokens", 0), fallbacks=1 if decision.get("fallback") else 0)
@@ -725,7 +735,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _send({"type": "ended", "reason": "idle"})
                 break
             now = time.time()
-            if now - started_at > SESSION_MAX_SECONDS:
+            if now - started_at > max_seconds:
                 await _send({"type": "ended", "reason": "limit"})
                 break
             try:

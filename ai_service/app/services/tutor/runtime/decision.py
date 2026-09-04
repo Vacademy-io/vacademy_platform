@@ -144,7 +144,7 @@ async def run_turn(
             objectives=lesson.objectives, board_ops=board_ops, concept_title=concept.title,
             concept_say=concept.narration(lang), teach_notes=concept.teach_notes, check=check,
             transcript=transcript, learner_message=learner_message, remediation_no=pointer.remediations, mode=mode,
-            final_attempt=final_attempt,
+            final_attempt=final_attempt, source_block=source_block,
         )
     messages = [{"role": "system", "content": prompts.system_prompt(teacher, lang, strictness)},
                 {"role": "user", "content": user}]

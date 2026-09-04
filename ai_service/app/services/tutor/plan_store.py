@@ -282,6 +282,10 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
         "key_terms": list(plan.key_terms_json or []),
         "source_description": plan.source_description,
         "error": plan.error,
+        # Knowledge base the plan was compiled from (None for ungrounded
+        # slides): the live tutor pulls passages from it on doubt turns.
+        "kb": ((plan.raw_plan_json or {}).get("compile_inputs") or {}).get("kb")
+        if isinstance(plan.raw_plan_json, dict) else None,
         "topics": [
             {
                 "id": t.id, "order": t.topic_order, "title": t.title,

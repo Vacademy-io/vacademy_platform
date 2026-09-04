@@ -153,6 +153,7 @@ def turn_prompt(
     remediation_no: int,
     mode: str,
     final_attempt: bool = False,
+    source_block: Optional[str] = None,
 ) -> str:
     parts = [
         f"LEARNER: {learner_name or 'the learner'}\n{learner_block}".strip(),
@@ -165,6 +166,8 @@ def turn_prompt(
             "expected": check.get("expected"), "rubric": check.get("rubric"),
             "misconceptions": check.get("misconceptions") or [], "pass_threshold": check.get("pass_threshold", 0.7),
         }, ensure_ascii=False),
+        ("SOURCE MATERIAL (the course's own material for this concept; ground your hint in it):\n" + source_block[:6000])
+        if source_block else "",
         "RECENT TRANSCRIPT:\n" + "\n".join(f"{m['role']}: {m['text']}" for m in transcript[-6:]),
         f"THIS IS REMEDIATION #{remediation_no} FOR THIS CONCEPT." if remediation_no else "FIRST ANSWER FOR THIS CONCEPT.",
         ("THIS IS THE LEARNER'S FINAL ATTEMPT ON THIS CHECK. Do NOT re-ask. If the answer is still wrong, use action "

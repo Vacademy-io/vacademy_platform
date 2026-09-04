@@ -279,6 +279,118 @@ async def put_source_description(
     return {"slide_id": slide_id, "plan_id": plan.id, "status": plan.status}
 
 
+# ── teacher insights (design WP9) ────────────────────────────────────────────
+
+@router.get("/packages/{package_id}/insights", summary="What the tutor learned about this course's learners")
+def package_insights(
+    package_id: str,
+    package_session_id: Optional[str] = Query(default=None, description="One batch; default every batch of the course"),
+    days: int = Query(default=90, ge=1, le=365),
+    caller: Caller = Depends(_caller),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    """Sessions, minutes and scores per learner, the concepts learners get
+    wrong most (with the misconceptions the teacher recorded), and the
+    batches that have used the tutor. Read-only; three queries."""
+    if not package_belongs_to_institute(db, package_id, caller.institute_id):
+        raise HTTPException(status_code=404, detail="Course not found in this institute")
+    params: Dict[str, Any] = {"pkg": package_id, "inst": caller.institute_id, "days": days}
+    batch_filter = ""
+    if package_session_id:
+        batch_filter = "AND ts.package_session_id = :ps"
+        params["ps"] = package_session_id
+
+    batches = db.execute(text("""
+        SELECT ps.id, COALESCE(l.level_name, '') AS level_name, COALESCE(s.session_name, '') AS session_name,
+               COUNT(ts.id) AS sessions
+        FROM package_session ps
+        LEFT JOIN level l ON l.id = ps.level_id
+        LEFT JOIN session s ON s.id = ps.session_id
+        LEFT JOIN tutor_session ts ON ts.package_session_id = ps.id AND ts.institute_id = :inst
+             AND ts.started_at > now() - make_interval(days => :days)
+        WHERE ps.package_id = :pkg AND ps.status <> 'DELETED'
+        GROUP BY ps.id, l.level_name, s.session_name
+        ORDER BY sessions DESC, level_name
+    """), params).fetchall()
+
+    totals = db.execute(text(f"""
+        SELECT COUNT(*) AS sessions, COUNT(DISTINCT ts.user_id) AS learners,
+               COALESCE(SUM(ts.minutes_billed), 0) AS minutes,
+               COUNT(*) FILTER (WHERE ts.mode = 'VOICE') AS voice_sessions,
+               COUNT(*) FILTER (WHERE ts.status = 'ABANDONED') AS abandoned
+        FROM tutor_session ts
+        JOIN package_session ps ON ps.id = ts.package_session_id
+        WHERE ps.package_id = :pkg AND ts.institute_id = :inst
+          AND ts.started_at > now() - make_interval(days => :days) {batch_filter}
+    """), params).first()
+
+    learners = db.execute(text(f"""
+        WITH s AS (
+            SELECT ts.id, ts.user_id, ts.minutes_billed, ts.started_at
+            FROM tutor_session ts
+            JOIN package_session ps ON ps.id = ts.package_session_id
+            WHERE ps.package_id = :pkg AND ts.institute_id = :inst
+              AND ts.started_at > now() - make_interval(days => :days) {batch_filter}
+        ), att AS (
+            SELECT a.user_id, COUNT(*) AS attempts, AVG(a.score) AS avg_score,
+                   COUNT(*) FILTER (WHERE a.action_taken IN ('advance_weak', 'skipped')) AS weak_attempts
+            FROM tutor_concept_attempt a
+            JOIN s ON s.id = a.tutor_session_id
+            GROUP BY a.user_id
+        )
+        SELECT s.user_id, MAX(st.full_name) AS name, COUNT(s.id) AS sessions,
+               COALESCE(SUM(s.minutes_billed), 0) AS minutes,
+               COALESCE(MAX(att.attempts), 0) AS attempts, MAX(att.avg_score) AS avg_score,
+               COALESCE(MAX(att.weak_attempts), 0) AS weak_attempts, MAX(s.started_at) AS last_active
+        FROM s
+        LEFT JOIN att ON att.user_id = s.user_id
+        LEFT JOIN student st ON st.user_id = s.user_id
+        GROUP BY s.user_id
+        ORDER BY last_active DESC
+        LIMIT 200
+    """), params).fetchall()
+
+    concepts = db.execute(text(f"""
+        SELECT c.id, c.title AS concept, t.title AS topic, sl.title AS slide, sl.id AS slide_id,
+               COUNT(a.id) AS attempts, COUNT(DISTINCT a.user_id) AS learners,
+               AVG(a.score) AS avg_score,
+               COUNT(a.id) FILTER (WHERE a.action_taken IN ('advance_weak', 'skipped')) AS weak_attempts,
+               COUNT(DISTINCT a.user_id) FILTER (WHERE a.action_taken IN ('advance_weak', 'skipped')) AS weak_learners,
+               (ARRAY_AGG(a.misconception ORDER BY a.created_at DESC) FILTER (WHERE a.misconception IS NOT NULL AND a.misconception <> ''))[1:3] AS misconceptions
+        FROM tutor_concept_attempt a
+        JOIN tutor_session ts ON ts.id = a.tutor_session_id
+        JOIN package_session ps ON ps.id = ts.package_session_id
+        JOIN teaching_concept c ON c.id = a.concept_id
+        JOIN teaching_topic t ON t.id = c.topic_id
+        JOIN slide sl ON sl.id = t.slide_id
+        WHERE ps.package_id = :pkg AND ts.institute_id = :inst
+          AND ts.started_at > now() - make_interval(days => :days) {batch_filter}
+        GROUP BY c.id, c.title, t.title, sl.title, sl.id
+        HAVING COUNT(a.id) > 0
+        ORDER BY weak_learners DESC, avg_score ASC NULLS LAST, attempts DESC
+        LIMIT 40
+    """), params).fetchall()
+
+    def _f(v: Any) -> Optional[float]:
+        return round(float(v), 3) if v is not None else None
+
+    return {
+        "package_id": package_id, "package_session_id": package_session_id, "days": days,
+        "batches": [{"package_session_id": b[0], "name": (" · ".join(x for x in (b[1], b[2]) if x) or "Batch"),
+                     "sessions": int(b[3] or 0)} for b in batches],
+        "totals": {"sessions": int(totals[0] or 0), "learners": int(totals[1] or 0), "minutes": int(totals[2] or 0),
+                   "voice_sessions": int(totals[3] or 0), "abandoned": int(totals[4] or 0)} if totals else {},
+        "learners": [{"user_id": r[0], "name": (r[1] or "").strip() or None, "sessions": int(r[2] or 0),
+                      "minutes": int(r[3] or 0), "attempts": int(r[4] or 0), "avg_score": _f(r[5]),
+                      "weak_attempts": int(r[6] or 0), "last_active": r[7].isoformat() if r[7] else None}
+                     for r in learners],
+        "concepts": [{"concept_id": r[0], "concept": r[1], "topic": r[2], "slide": r[3], "slide_id": r[4],
+                      "attempts": int(r[5] or 0), "learners": int(r[6] or 0), "avg_score": _f(r[7]),
+                      "weak_attempts": int(r[8] or 0), "weak_learners": int(r[9] or 0),
+                      "misconceptions": list(r[10] or [])} for r in concepts],
+    }
+
+
 # ── option catalogues for the Tutor Mode settings cards ──────────────────────
 
 @router.get("/options", summary="Voices per provider and models for the Tutor Mode settings dropdowns")
@@ -314,6 +426,8 @@ async def tutor_options(
     models = [{"model_id": r[0], "name": r[1], "provider": r[2], "tier": r[3], "is_free": bool(r[4])} for r in rows]
     return {"voices": voices, "models": models, "smallest_available": smallest_available()}
 
+
+# (tool pricing lives in super_admin.py — see /super-admin/v1/tool-pricing)
 
 # ── teacher voice (Smallest.ai instant clone) ─────────────────────────────────
 

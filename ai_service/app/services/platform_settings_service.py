@@ -46,7 +46,7 @@ class SettingSpec:
     label: str
     description: str
     # "model" (validated against ai_models), "enum" (validated against options),
-    # "bool", "string".
+    # "bool", "string", "number" (bounded by min_value / max_value).
     type: str
     default: Callable[[], Any]
     options: tuple = ()
@@ -57,6 +57,9 @@ class SettingSpec:
     catalog: str = "llm"
     # What a blank value means, shown by the portal for nullable settings.
     blank_label: str = "Same as chatbot model"
+    # Bounds for "number" settings.
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
 
 
 def _env_bool(name: str, fallback: bool) -> bool:
@@ -214,6 +217,27 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             type="string",
             default=lambda: os.environ.get("TUTOR_TTS_VOICE") or "",
             nullable=True,
+        ),
+        SettingSpec(
+            key="tutor.live.preflight_minutes",
+            group="tutor",
+            label="Voice lesson: minutes of credit required to start",
+            description=(
+                "A voice lesson starts only if the institute can afford this many minutes at the "
+                "tutor_live_minute rate (see Credits & pricing below). 0 disables the check."
+            ),
+            type="number",
+            default=lambda: 5,
+            min_value=0, max_value=60,
+        ),
+        SettingSpec(
+            key="tutor.live.max_minutes",
+            group="tutor",
+            label="Voice/text lesson: maximum length (minutes)",
+            description="A lesson is closed politely when it reaches this wall-clock length; the learner's place is saved.",
+            type="number",
+            default=lambda: 90,
+            min_value=10, max_value=240,
         ),
         SettingSpec(
             key="image.model",
@@ -380,6 +404,17 @@ def _coerce(spec: SettingSpec, value: Any) -> Any:
             raise ValueError(f"{spec.key} is too long")
         return v
 
+    if spec.type == "number":
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{spec.key} must be a number")
+        if spec.min_value is not None and n < spec.min_value:
+            raise ValueError(f"{spec.key} must be at least {spec.min_value:g}")
+        if spec.max_value is not None and n > spec.max_value:
+            raise ValueError(f"{spec.key} must be at most {spec.max_value:g}")
+        return int(n) if n.is_integer() else n
+
     raise ValueError(f"Unsupported setting type {spec.type}")
 
 
@@ -430,6 +465,8 @@ def list_platform_settings(db: Session) -> List[Dict[str, Any]]:
                 "nullable": spec.nullable,
                 "catalog": spec.catalog,
                 "blank_label": spec.blank_label,
+                "min_value": spec.min_value,
+                "max_value": spec.max_value,
                 "options": list(spec.options),
                 "value": value,
                 "default": default,

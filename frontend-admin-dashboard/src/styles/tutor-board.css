@@ -93,3 +93,12 @@
 .tutor-board-preview .tb-media-task {
     @apply my-2 rounded-lg border-2 border-dashed border-primary-300 bg-primary-50 p-3 font-semibold text-primary-600;
 }
+
+/* Preview playback: the same entrance, stroke-draw and stepped-part rules the
+   learner's lesson uses, so "Play" shows what learners see. */
+.tutor-board-preview .tb-op { opacity: 0; transform: translateY(6px); }
+.tutor-board-preview .tb-op.tb-enter { opacity: 1; transform: none; transition: opacity 0.5s ease, transform 0.5s ease; }
+.tutor-board-preview .tb-svg .tb-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tb-draw 0.9s ease-out forwards; }
+@keyframes tb-draw { 0% { stroke-dashoffset: 1; fill-opacity: 0; } 60% { fill-opacity: 0; } 100% { stroke-dashoffset: 0; fill-opacity: 1; } }
+.tutor-board-preview .tb-svg .tb-step { opacity: 0; transform: translateY(6px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.tutor-board-preview .tb-svg .tb-step.tb-step-on { opacity: 1; transform: none; }

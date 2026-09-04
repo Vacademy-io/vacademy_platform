@@ -478,3 +478,24 @@ def test_smallest_speed_calibration_is_monotonic_and_hits_the_measured_points():
     ys = [f(x) for x in xs]
     assert ys == sorted(ys) and 0.5 <= min(ys) and max(ys) <= 2.0
     assert f(0.1) == 0.5 and f(5) == 2.0                              # clamped
+
+
+def test_number_settings_are_bounded_and_listed():
+    from app.services.platform_settings_service import SETTING_SPECS, _coerce
+    spec = SETTING_SPECS["tutor.live.preflight_minutes"]
+    assert spec.type == "number" and _coerce(spec, "5") == 5 and _coerce(spec, 2.5) == 2.5
+    with pytest.raises(ValueError):
+        _coerce(spec, 500)
+    with pytest.raises(ValueError):
+        _coerce(spec, "many")
+    assert SETTING_SPECS["tutor.live.max_minutes"].max_value == 240
+
+
+def test_kb_source_block_is_skipped_for_ungrounded_plans():
+    from app.services.tutor.runtime.session_service import kb_source_block
+    L = _lesson()
+    assert asyncio.run(kb_source_block(L, "inst", "Force", "why?")) is None
+    view = {"plan_id": "p", "slide_id": "s", "version": 1, "language": "en", "objectives": [], "topics": [],
+            "kb": {"knowledge_base_id": "kb1", "mode": "STRICT"}}
+    assert sm.from_plan_view(view).kb == {"knowledge_base_id": "kb1", "mode": "STRICT"}
+    assert sm.from_plan_view({**view, "kb": {"mode": "STRICT"}}).kb is None

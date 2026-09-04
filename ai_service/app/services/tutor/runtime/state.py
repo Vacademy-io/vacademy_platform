@@ -66,6 +66,8 @@ class LessonPlan:
     objectives: List[str]
     topics: List[Topic]
     slide_title: str = ""
+    # {"knowledge_base_id", "mode"} when the plan was compiled from a KB.
+    kb: Optional[Dict[str, Any]] = None
 
     def concept_at(self, p: "Pointer") -> Optional[Concept]:
         if 0 <= p.topic < len(self.topics):
@@ -133,6 +135,7 @@ def from_plan_view(view: Dict[str, Any]) -> LessonPlan:
         plan_id=view["plan_id"], slide_id=view["slide_id"], version=int(view.get("version") or 1),
         language=view.get("language") or "en", objectives=list(view.get("objectives") or []), topics=topics,
         slide_title=str(view.get("slide_title") or ""),
+        kb=view.get("kb") if isinstance(view.get("kb"), dict) and view["kb"].get("knowledge_base_id") else None,
     )
 
 

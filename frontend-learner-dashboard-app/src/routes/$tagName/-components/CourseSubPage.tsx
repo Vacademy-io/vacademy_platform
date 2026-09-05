@@ -9,6 +9,7 @@ import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
+import { pageOpensWithOwnHeader } from "../-utils/page-own-header";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -344,16 +345,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const enabledComponents = (currentPage.components || []).filter(
     (c: any) => c?.enabled !== false
   );
-  const OPENS_WITH_OWN_TITLE = new Set([
-    "heroSection",
-    "sectionHeading",
-    "detailBlocks",
-    "htmlBlock",
-    "banner",
-  ]);
-  const hasOwnPageHeader =
-    enabledComponents.some((c: any) => c?.type === "heroSection") ||
-    OPENS_WITH_OWN_TITLE.has(enabledComponents[0]?.type);
+  const hasOwnPageHeader = pageOpensWithOwnHeader(enabledComponents);
   const themeSettings = catalogueData?.globalSettings?.theme as any;
 
   return (

@@ -1475,5 +1475,48 @@
     transform: translateZ(0);
     overflow: clip;
   }
+
+  /* =============================================
+     MULTI-COURSE BASKET
+     A catalogue block can let a visitor collect several courses before
+     checking out (Product Page Offer → "Let visitors pick several courses").
+     Two surfaces need styling for that: the chosen card, and the bar that
+     carries the basket at the foot of the viewport.
+     ============================================= */
+
+  /* Chosen card. A ring rather than a thicker border, so selecting a card
+     never shifts it by a pixel inside a snapped carousel row. Doubled up with
+     .catalogue-card-elevated so it outranks that class's own :hover shadow —
+     both live in this layer, where specificity, not source order, decides. */
+  .catalogue-card-elevated.catalogue-card-selected,
+  .catalogue-card-elevated.catalogue-card-selected:hover {
+    border-color: hsl(var(--primary-500));
+    box-shadow: 0 0 0 2px hsl(var(--primary-500) / 0.35), var(--catalogue-elevation-2);
+  }
+
+  /* Clear of the iOS home indicator — the checkout button is the last thing
+     that should sit under it. */
+  .catalogue-checkout-bar {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Room for the bar so it never covers the last row of cards or the footer.
+     min-height is border-box here, so the padding does not add a scrollbar. */
+  body.catalogue-has-checkout-bar [data-catalogue-theme] {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* The catalogue's mobile action bar (Login / Enquire) and the basket bar are
+     both fixed to bottom-0 on a phone, so they would stack on top of each
+     other. A half-filled basket is the more urgent of the two, so the action
+     bar stands down while it is open, and the WhatsApp bubble lifts clear. */
+  body.catalogue-has-checkout-bar .catalogue-mobile-action-bar {
+    display: none;
+  }
+
+  body.catalogue-has-checkout-bar .catalogue-fab,
+  body.catalogue-has-checkout-bar .catalogue-floating-cta {
+    bottom: 6.5rem;
+  }
 }
 

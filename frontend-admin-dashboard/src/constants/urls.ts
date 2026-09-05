@@ -79,6 +79,17 @@ export const TRANSLATION_STATUS_URL = `${BASE_URL}/admin-core-service/translatio
 export const TRANSLATION_ITEMS_URL = `${BASE_URL}/admin-core-service/translations/v1/items`;
 export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/translations/v1/item/state`;
 
+// Quiz Results — the teacher/admin view of how a batch performed on the QUIZ slides in a
+// course. Batch-scoped: a quiz slide is shared across batches, so slideId alone would mix
+// other classes into the numbers.
+export const QUIZ_RESULTS_OVERVIEW = `${BASE_URL}/admin-core-service/quiz-results/overview`;
+export const QUIZ_RESULTS_QUIZ = `${BASE_URL}/admin-core-service/quiz-results/quiz`;
+export const QUIZ_RESULTS_QUESTIONS = `${BASE_URL}/admin-core-service/quiz-results/questions`;
+// Learner-wise pivot of the same data: the roster, one learner's quizzes, and their answers.
+export const QUIZ_RESULTS_LEARNERS = `${BASE_URL}/admin-core-service/quiz-results/learners`;
+export const QUIZ_RESULTS_LEARNER = `${BASE_URL}/admin-core-service/quiz-results/learner`;
+export const QUIZ_RESULTS_LEARNER_ANSWERS = `${BASE_URL}/admin-core-service/quiz-results/learner/answers`;
+
 export const COURSE_PULSE_SUMMARY = `${BASE_URL}/admin-core-service/course-pulse/summary`;
 export const COURSE_PULSE_CONTENT_MAP = `${BASE_URL}/admin-core-service/course-pulse/content-map`;
 export const COURSE_PULSE_FEED = `${BASE_URL}/admin-core-service/course-pulse/feed`;
@@ -500,6 +511,10 @@ export const MARK_QUESTION_PAPER_STATUS = `${BASE_URL}/assessment-service/questi
 export const GET_QUESTION_PAPER_BY_ID = `${BASE_URL}/assessment-service/question-paper/view/v1/get-by-id`;
 export const GET_QUESTION_TAGS = `${BASE_URL}/assessment-service/question-paper/view/v1/question-tags`;
 export const ADD_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/add`;
+// Browse INDIVIDUAL questions in the institute's bank (filter by knowledge base,
+// topic, difficulty, type, tag). Distinct from GET_QUESTION_PAPER_FILTERED_DATA
+// above, which lists whole papers.
+export const FILTER_QUESTION_BANK_QUESTIONS = `${BASE_URL}/assessment-service/question-bank/v1/questions/filter`;
 export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/edit`;
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;
 export const STEP2_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/add-questions/create/v1/submit`;
@@ -518,6 +533,18 @@ export const GET_EXPORT_PDF_URL_RANK_MARK = `${BASE_URL}/assessment-service/asse
 export const GET_EXPORT_CSV_URL_RANK_MARK = `${BASE_URL}/assessment-service/assessment/export/csv/marks-rank`;
 export const GET_EXPORT_PDF_URL_QUESTION_INSIGHTS = `${BASE_URL}/assessment-service/assessment/export/pdf/question-insights`;
 export const GET_EXPORT_PDF_URL_STUDENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/student-report`;
+// AI diagnostic report (teacher copy). The PDF endpoint generates the analysis
+// when it does not exist yet, which spends the institute's AI credits — the
+// status endpoint says which of the two a download would be, and is free.
+// ONE AI diagnostic report for a whole assessment. The FIRST generation makes a
+// real model call and spends AI credits; the result is stored and every later
+// download re-serves it free. regenerate=true is a deliberate paid refresh.
+// Free, read-only: does a report already exist, is it stale, and what would a
+// new one cost. Asked before offering Generate so the price is shown up front.
+export const GET_AI_ASSESSMENT_REPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/ai-assessment-report/status`;
+export const GET_EXPORT_PDF_URL_AI_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/ai-assessment-report`;
+export const GET_EXPORT_PDF_URL_AI_STUDENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/ai-student-report`;
+export const GET_AI_STUDENT_REPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/ai-student-report/status`;
 export const GET_EXPORT_PDF_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/respondent-list`;
 export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/respondent-list`;
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
@@ -583,6 +610,7 @@ export const UPDATE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/update-
 export const ADD_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/add-subject`;
 export const DELETE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/delete-subject`;
 export const UPDATE_SUBJECT_ORDER = `${BASE_URL}/admin-core-service/subject/v1/update-subject-order`;
+export const GET_SUBJECTS_BY_IDS = `${BASE_URL}/admin-core-service/subject/v1/subjects-by-ids`;
 
 export const ADD_MODULE = `${BASE_URL}/admin-core-service/subject/v1/add-module`;
 export const DELETE_MODULE = `${BASE_URL}/admin-core-service/subject/v1/delete-module`;
@@ -614,6 +642,9 @@ export const PACKAGE_SETTING_APPLY_INSTITUTE_LMS = `${PACKAGE_SETTING_BASE}/appl
 export const LMS_PROVIDERS = `${BASE_URL}/admin-core-service/lms/v1/providers`;
 // Live-tests an LMS connection from the settings form.
 export const LMS_TEST_CONNECTION = `${BASE_URL}/admin-core-service/lms/v1/test-connection`;
+// Live health of the institute's SAVED LMS connections, tested server-side (credentials never
+// reach the browser). Backs the dashboard's LMS connection health widget.
+export const LMS_CONNECTION_HEALTH = `${BASE_URL}/admin-core-service/lms/v1/connection-health`;
 // Apply an institute LMS connection (+courseId, +optional workflow) to a course; list institute
 // workflows for the "attach workflow" picker.
 export const LMS_APPLY_CONNECTION_TO_PACKAGE = `${BASE_URL}/admin-core-service/lms/v1/apply-connection-to-package`;
@@ -1101,6 +1132,11 @@ export const WORKFLOW_LOGS_BASE = `${BASE_URL}/admin-core-service/workflow/logs`
 export const GET_USER_PLANS = `${BASE_URL}/admin-core-service/v1/user-plan/all`;
 export const GET_PAYMENT_LOGS = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
 export const GET_PAYMENT_COLLECTION_SUMMARY = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/collection-summary`;
+// Plan change (admin override — applies immediately, takes no payment).
+export const GET_USER_PLAN_CHANGE_OPTIONS = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/change-options`;
+export const CHANGE_USER_PLAN = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-plan/${userPlanId}/change-plan`;
 
 // System files
 export const ADD_SYSTEM_FILE = `${BASE_URL}/admin-core-service/system-files/v1/add`;
@@ -1237,6 +1273,10 @@ export const CATALOGUE_REVISION_HISTORY = (catalogueId: string) =>
     `${CATALOGUE_BASE_URL}/revision/history?catalogueId=${catalogueId}`;
 export const CATALOGUE_REVISION_GET = (revisionId: string) =>
     `${CATALOGUE_BASE_URL}/revision/get?revisionId=${revisionId}`;
+// Catalogue site analytics (first-party page views, joined to leads)
+export const CATALOGUE_ANALYTICS_SUMMARY = (instituteId: string, days: number) =>
+    `${BASE_URL}/admin-core-service/v1/catalogue-analytics/summary?instituteId=${instituteId}&days=${days}`;
+
 // AI Page Builder (ai_service)
 export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;
 // Institute scope comes from the auth token — no params
@@ -1351,6 +1391,12 @@ export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white
 export const WHITE_LABEL_STATUS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
 
+// App Registry Status (read-only) — mobile/desktop app registration status for this institute,
+// sourced from the health-check dashboard's App Registration module. Registration itself stays
+// ops-only in that dashboard; this is a status view only.
+export const APP_REGISTRY_STATUS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/institute/app-registry/v1/status?instituteId=${instituteId}`;
+
 // Institute Payment Gateway Admin CRUD
 export const INSTITUTE_PAYMENT_GATEWAYS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/institute/payment-gateways?instituteId=${instituteId}`;
@@ -1448,6 +1494,10 @@ export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFi
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
 export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;
+export const REORDER_PRODUCT_PAGE_CUSTOM_FIELDS = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/order`;
+export const UPDATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
 
 // Institute-scoped coupon management (backend V308/V309). The CRUD endpoints
 // are admin-gated via JWT + clientId header (auto-injected by axiosInstance);
@@ -1694,3 +1744,153 @@ export const ENGAGEMENT_ENGINES_BASE = `${BASE_URL}/admin-core-service/v1/engage
 export const ENGAGEMENT_DATA_POINTS = `${ENGAGEMENT_ENGINES_BASE}/data-points`;
 export const ENGAGEMENT_TASKS_BASE = `${BASE_URL}/admin-core-service/v1/engagement/tasks`;
 export const ENGAGEMENT_TEMPLATES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/template-proposals`;
+
+// ---- ERP · HR & Payroll (admin-core-service) ----
+// Backend: see docs/erp/hr-payroll-review-and-gap-plan.md. Every endpoint is
+// institute-scoped via an `instituteId` query param (never a body field) and
+// role-gated server-side (HR_ADMIN / HR_MANAGER); the UI's role hooks only
+// decide what to *offer*.
+const HR_BASE = `${BASE_URL}/admin-core-service/api/v1/hr`;
+
+// People
+export const HR_EMPLOYEES = `${HR_BASE}/employees`;
+export const HR_EMPLOYEE_BY_ID = (id: string) => `${HR_BASE}/employees/${id}`;
+export const HR_EMPLOYEE_STATUS = (id: string) => `${HR_BASE}/employees/${id}/status`;
+export const HR_EMPLOYEE_ORG_CHART = (id: string) => `${HR_BASE}/employees/${id}/org-chart`;
+export const HR_EMPLOYEE_BANK_DETAILS = (id: string) => `${HR_BASE}/employees/${id}/bank-details`;
+export const HR_EMPLOYEE_BANK_DETAIL_BY_ID = (id: string, bankId: string) =>
+    `${HR_BASE}/employees/${id}/bank-details/${bankId}`;
+export const HR_EMPLOYEE_DOCUMENTS = (id: string) => `${HR_BASE}/employees/${id}/documents`;
+export const HR_EMPLOYEE_DOCUMENT_BY_ID = (id: string, docId: string) =>
+    `${HR_BASE}/employees/${id}/documents/${docId}`;
+export const HR_STAFF_BRIDGE = `${HR_BASE}/employees/staff-bridge`;
+export const HR_EMPLOYEE_FROM_STAFF = `${HR_BASE}/employees/from-staff`;
+export const HR_DEPARTMENTS = `${HR_BASE}/departments`;
+export const HR_DEPARTMENT_BY_ID = (id: string) => `${HR_BASE}/departments/${id}`;
+export const HR_DESIGNATIONS = `${HR_BASE}/designations`;
+export const HR_DESIGNATION_BY_ID = (id: string) => `${HR_BASE}/designations/${id}`;
+
+// Salary setup
+export const HR_SALARY_COMPONENTS = `${HR_BASE}/salary/components`;
+export const HR_SALARY_COMPONENT_BY_ID = (id: string) => `${HR_BASE}/salary/components/${id}`;
+export const HR_SALARY_TEMPLATES = `${HR_BASE}/salary/templates`;
+export const HR_SALARY_TEMPLATE_BY_ID = (id: string) => `${HR_BASE}/salary/templates/${id}`;
+export const HR_SALARY_STRUCTURES = `${HR_BASE}/salary/structures`;
+export const HR_SALARY_STRUCTURE_BY_ID = (id: string) => `${HR_BASE}/salary/structures/${id}`;
+export const HR_SALARY_REVISIONS = `${HR_BASE}/salary/revisions`;
+
+// Payroll runs & entries
+export const HR_PAYROLL_RUNS = `${HR_BASE}/payroll/runs`;
+export const HR_PAYROLL_RUN_BY_ID = (id: string) => `${HR_BASE}/payroll/runs/${id}`;
+export const HR_PAYROLL_RUN_PROCESS = (id: string) => `${HR_BASE}/payroll/runs/${id}/process`;
+export const HR_PAYROLL_RUN_APPROVE = (id: string) => `${HR_BASE}/payroll/runs/${id}/approve`;
+export const HR_PAYROLL_RUN_REJECT = (id: string) => `${HR_BASE}/payroll/runs/${id}/reject`;
+export const HR_PAYROLL_RUN_MARK_PAID = (id: string) => `${HR_BASE}/payroll/runs/${id}/mark-paid`;
+export const HR_PAYROLL_RUN_ENTRIES = (id: string) => `${HR_BASE}/payroll/runs/${id}/entries`;
+export const HR_PAYROLL_RUN_ERRORS = (id: string) => `${HR_BASE}/payroll/runs/${id}/errors`;
+export const HR_PAYROLL_ENTRY_BY_ID = (id: string) => `${HR_BASE}/payroll/entries/${id}`;
+export const HR_PAYROLL_ENTRY_HOLD = (id: string) => `${HR_BASE}/payroll/entries/${id}/hold`;
+export const HR_PAYROLL_ENTRY_RELEASE = (id: string) => `${HR_BASE}/payroll/entries/${id}/release`;
+
+// Variable pay, loans, claims, F&F
+export const HR_PAYROLL_ADJUSTMENTS = `${HR_BASE}/payroll/adjustments`;
+export const HR_PAYROLL_ADJUSTMENT_BY_ID = (id: string) => `${HR_BASE}/payroll/adjustments/${id}`;
+export const HR_PAYROLL_FNF_PREPARE = `${HR_BASE}/payroll/fnf/prepare`;
+export const HR_PAYROLL_LOANS = `${HR_BASE}/payroll/loans`;
+export const HR_PAYROLL_LOAN_APPROVE = (id: string) => `${HR_BASE}/payroll/loans/${id}/approve`;
+export const HR_PAYROLL_LOAN_REPAYMENTS = (id: string) => `${HR_BASE}/payroll/loans/${id}/repayments`;
+export const HR_REIMBURSEMENTS = `${HR_BASE}/payroll/reimbursements`;
+export const HR_REIMBURSEMENT_ACTION = (id: string) => `${HR_BASE}/payroll/reimbursements/${id}/action`;
+
+// Payslips & bank export
+export const HR_PAYSLIPS_GENERATE = `${HR_BASE}/payslips/generate`;
+export const HR_PAYSLIPS = `${HR_BASE}/payslips`;
+export const HR_PAYSLIP_DOWNLOAD = (id: string) => `${HR_BASE}/payslips/${id}/download`;
+export const HR_PAYSLIPS_EMAIL = `${HR_BASE}/payslips/email`;
+export const HR_BANK_EXPORT = `${HR_BASE}/reports/bank-export`;
+export const HR_BANK_EXPORT_DOWNLOAD = (id: string) => `${HR_BASE}/reports/bank-export/${id}/download`;
+export const HR_REPORT_PAYROLL_SUMMARY = `${HR_BASE}/reports/payroll-summary`;
+
+// Attendance
+export const HR_ATTENDANCE = `${HR_BASE}/attendance`;
+export const HR_ATTENDANCE_CHECK_IN = `${HR_BASE}/attendance/check-in`;
+export const HR_ATTENDANCE_CHECK_OUT = `${HR_BASE}/attendance/check-out`;
+export const HR_ATTENDANCE_MARK = `${HR_BASE}/attendance/mark`;
+export const HR_ATTENDANCE_SUMMARY = `${HR_BASE}/attendance/summary`;
+export const HR_ATTENDANCE_CONFIG = `${HR_BASE}/attendance/config`;
+export const HR_ATTENDANCE_REGULARIZATION = `${HR_BASE}/attendance/regularization`;
+export const HR_ATTENDANCE_REGULARIZATION_ACTION = (id: string) =>
+    `${HR_BASE}/attendance/regularization/${id}/approve`;
+export const HR_SHIFTS = `${HR_BASE}/shifts`;
+export const HR_SHIFT_BY_ID = (id: string) => `${HR_BASE}/shifts/${id}`;
+export const HR_SHIFTS_ASSIGN = `${HR_BASE}/shifts/assign`;
+export const HR_HOLIDAYS = `${HR_BASE}/holidays`;
+export const HR_HOLIDAY_BY_ID = (id: string) => `${HR_BASE}/holidays/${id}`;
+export const HR_HOLIDAYS_BULK = `${HR_BASE}/holidays/bulk`;
+
+// Leave
+export const HR_LEAVE_TYPES = `${HR_BASE}/leaves/types`;
+export const HR_LEAVE_TYPE_BY_ID = (id: string) => `${HR_BASE}/leaves/types/${id}`;
+export const HR_LEAVE_POLICIES = `${HR_BASE}/leaves/policies`;
+export const HR_LEAVE_POLICY_BY_ID = (id: string) => `${HR_BASE}/leaves/policies/${id}`;
+export const HR_LEAVE_APPLY = `${HR_BASE}/leaves/apply`;
+export const HR_LEAVE_APPLICATIONS = `${HR_BASE}/leaves/applications`;
+export const HR_LEAVE_APPLICATION_ACTION = (id: string) =>
+    `${HR_BASE}/leaves/applications/${id}/action`;
+export const HR_LEAVE_APPLICATION_CANCEL = (id: string) =>
+    `${HR_BASE}/leaves/applications/${id}/cancel`;
+export const HR_LEAVE_BALANCES = `${HR_BASE}/leaves/balances`;
+export const HR_LEAVE_BALANCE_ADJUST = (id: string) => `${HR_BASE}/leaves/balances/${id}/adjust`;
+export const HR_LEAVE_ACCRUE = `${HR_BASE}/leaves/accrue`;
+export const HR_LEAVE_YEAR_END = `${HR_BASE}/leaves/year-end-process`;
+export const HR_COMP_OFF = `${HR_BASE}/leaves/comp-off`;
+export const HR_COMP_OFF_ACTION = (id: string) => `${HR_BASE}/leaves/comp-off/${id}/action`;
+
+// Tax
+export const HR_TAX_CONFIG = `${HR_BASE}/tax/config`;
+export const HR_TAX_DECLARATIONS = `${HR_BASE}/tax/declarations`;
+export const HR_TAX_DECLARATION_BY_ID = (id: string) => `${HR_BASE}/tax/declarations/${id}`;
+export const HR_TAX_DECLARATION_VERIFY = (id: string) => `${HR_BASE}/tax/declarations/${id}/verify`;
+export const HR_TAX_COMPUTATION = `${HR_BASE}/tax/computation`;
+
+// Compliance (India + Gulf filings)
+const HR_COMPLIANCE_BASE = `${HR_BASE}/compliance`;
+export const HR_COMPLIANCE_CHALLANS = `${HR_COMPLIANCE_BASE}/challans`;
+export const HR_COMPLIANCE_CHALLAN_BY_ID = (id: string) => `${HR_COMPLIANCE_BASE}/challans/${id}`;
+export const HR_COMPLIANCE_FORM16 = `${HR_COMPLIANCE_BASE}/form16`;
+export const HR_COMPLIANCE_FORM16_DOWNLOAD = `${HR_COMPLIANCE_BASE}/form16/download`;
+export const HR_COMPLIANCE_24Q = `${HR_COMPLIANCE_BASE}/24q`;
+export const HR_COMPLIANCE_24Q_DOWNLOAD = `${HR_COMPLIANCE_BASE}/24q/download`;
+export const HR_COMPLIANCE_PF_ECR = `${HR_COMPLIANCE_BASE}/pf-ecr`;
+export const HR_COMPLIANCE_PF_ECR_DOWNLOAD = `${HR_COMPLIANCE_BASE}/pf-ecr/download`;
+export const HR_COMPLIANCE_ESI_RETURN = `${HR_COMPLIANCE_BASE}/esi-return`;
+export const HR_COMPLIANCE_ESI_RETURN_DOWNLOAD = `${HR_COMPLIANCE_BASE}/esi-return/download`;
+export const HR_COMPLIANCE_PT_RETURN = `${HR_COMPLIANCE_BASE}/pt-return`;
+export const HR_COMPLIANCE_PT_RETURN_DOWNLOAD = `${HR_COMPLIANCE_BASE}/pt-return/download`;
+export const HR_COMPLIANCE_WPS = `${HR_COMPLIANCE_BASE}/wps`;
+export const HR_COMPLIANCE_WPS_DOWNLOAD = `${HR_COMPLIANCE_BASE}/wps/download`;
+export const HR_COMPLIANCE_GRATUITY = `${HR_COMPLIANCE_BASE}/gratuity-provision`;
+export const HR_COMPLIANCE_GRATUITY_DOWNLOAD = `${HR_COMPLIANCE_BASE}/gratuity-provision/download`;
+export const HR_COMPLIANCE_EOSB = `${HR_COMPLIANCE_BASE}/eosb-provision`;
+export const HR_COMPLIANCE_EOSB_DOWNLOAD = `${HR_COMPLIANCE_BASE}/eosb-provision/download`;
+export const HR_COMPLIANCE_BONUS = `${HR_COMPLIANCE_BASE}/bonus-computation`;
+export const HR_COMPLIANCE_BONUS_MATERIALIZE = `${HR_COMPLIANCE_BASE}/bonus-computation/materialize`;
+
+// Teaching pay & CRM incentives (connected ERP)
+export const HR_TEACHING_SUMMARY = `${HR_BASE}/teaching/summary`;
+export const HR_TEACHING_ATTENDANCE_SYNC = `${HR_BASE}/teaching/attendance-sync`;
+export const HR_TEACHING_PAY_PREVIEW = `${HR_BASE}/teaching/pay/preview`;
+export const HR_TEACHING_PAY_MATERIALIZE = `${HR_BASE}/teaching/pay/materialize`;
+export const HR_INCENTIVES_PREVIEW = `${HR_BASE}/incentives/preview`;
+export const HR_INCENTIVES_MATERIALIZE = `${HR_BASE}/incentives/materialize`;
+
+// ---- ERP · Finance / GL (admin-core-service) ----
+const ERP_FINANCE_BASE = `${BASE_URL}/admin-core-service/api/v1/erp/finance`;
+export const ERP_JOURNAL = `${ERP_FINANCE_BASE}/journal`;
+export const ERP_JOURNAL_EXPORT = `${ERP_FINANCE_BASE}/journal/export`;
+export const ERP_PNL_SNAPSHOT = `${ERP_FINANCE_BASE}/pnl-snapshot`;
+export const ERP_PNL_SNAPSHOT_DOWNLOAD = `${ERP_FINANCE_BASE}/pnl-snapshot/download`;
+
+// ERP · My HR (self-service): the caller's own employee record. Every other HR
+// read is keyed on an employee id the employee cannot discover.
+export const HR_EMPLOYEE_ME = `${BASE_URL}/admin-core-service/api/v1/hr/employees/me`;

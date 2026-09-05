@@ -1,7 +1,17 @@
 import { useEffect, useRef } from 'react';
 import { useInboxStore } from '../-stores/inbox-store';
+import type { InboxMessage } from '../-services/inbox-api';
 import { ReplyBox } from './reply-box';
-import { ChatCircle, User, Robot, ArrowUp, ArrowLeft, FileText } from '@phosphor-icons/react';
+import {
+    ChatCircle,
+    User,
+    Robot,
+    ArrowUp,
+    ArrowLeft,
+    FileText,
+    HandWaving,
+    WarningCircle,
+} from '@phosphor-icons/react';
 
 interface Props {
     onLoadOlder: () => void;
@@ -63,6 +73,23 @@ export function ChatPanel({ onLoadOlder }: Props) {
                 </div>
             </div>
 
+            {/* The chatbot stepped aside on this conversation — say so, and say why, so the
+                admin knows what they are answering before scrolling the thread. */}
+            {selectedConvo?.awaitingReply && (
+                <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 shrink-0">
+                    <HandWaving size={16} className="mt-0.5 shrink-0 text-amber-600" />
+                    <div className="min-w-0 text-xs text-amber-800">
+                        <p className="font-medium">Waiting for your reply</p>
+                        <p className="text-amber-700">{escalationReasonText(selectedConvo.escalationReason)}</p>
+                        {selectedConvo.escalationMessage && (
+                            <p className="mt-0.5 italic text-amber-700">
+                                They asked: “{selectedConvo.escalationMessage}”
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Messages area */}
             <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
                 {/* Load older button */}
@@ -86,9 +113,11 @@ export function ChatPanel({ onLoadOlder }: Props) {
                     >
                         <div
                             className={`max-w-[65%] px-3 py-2 rounded-lg text-sm shadow-sm ${
-                                msg.direction === 'OUTGOING'
-                                    ? 'bg-[#dcf8c6] rounded-tr-none'
-                                    : 'bg-white rounded-tl-none'
+                                msg.deliveryStatus === 'FAILED'
+                                    ? 'bg-red-50 border border-red-200 rounded-tr-none'
+                                    : msg.direction === 'OUTGOING'
+                                      ? 'bg-[#dcf8c6] rounded-tr-none'
+                                      : 'bg-white rounded-tl-none'
                             }`}
                         >
                             {/* Sender label */}
@@ -132,6 +161,19 @@ export function ChatPanel({ onLoadOlder }: Props) {
                                     )}
                                 </p>
                             )}
+                            {/* Non-template sends carry no "via template" line, so the failure
+                                needs its own label — otherwise a red bubble has no explanation. */}
+                            {msg.deliveryStatus === 'FAILED' && !msg.templateName && (
+                                <p className="text-caption mt-1 flex flex-wrap items-center gap-1 text-red-600">
+                                    <WarningCircle size={11} />
+                                    <span className="font-medium">Not delivered</span>
+                                    {msg.attemptedType && msg.attemptedType !== 'text' && (
+                                        <span className="rounded bg-red-100 px-1 py-px uppercase tracking-wide">
+                                            {msg.attemptedType}
+                                        </span>
+                                    )}
+                                </p>
+                            )}
                             {msg.deliveryStatus === 'FAILED' && msg.error && (
                                 <p className="text-caption text-red-500 mt-0.5 break-words">{msg.error}</p>
                             )}
@@ -141,9 +183,9 @@ export function ChatPanel({ onLoadOlder }: Props) {
                                 msg.direction === 'OUTGOING' ? 'text-gray-500' : 'text-gray-400'
                             }`}>
                                 {msg.timestamp ? formatTime(msg.timestamp) : ''}
-                                {msg.direction === 'OUTGOING' && (
-                                    <span className="ml-1">
-                                        {msg.status?.includes('READ') ? '✓✓' : msg.status?.includes('DELIVERED') ? '✓✓' : '✓'}
+                                {msg.direction === 'OUTGOING' && msg.deliveryStatus !== 'FAILED' && (
+                                    <span className="ml-1" title={msg.deliveryStatus}>
+                                        {deliveryTicks(msg)}
                                     </span>
                                 )}
                             </p>
@@ -160,11 +202,38 @@ export function ChatPanel({ onLoadOlder }: Props) {
     );
 }
 
+/**
+ * WhatsApp-style ticks. deliveryStatus is WhatsApp's own verdict from its status webhook; msg.status
+ * is only the log row type ("WHATSAPP_MESSAGE_OUTGOING"), which never contains READ or DELIVERED —
+ * so before the webhook was reconciled onto the row, every outgoing message showed a single tick.
+ */
+function deliveryTicks(msg: InboxMessage): string {
+    const seen = (value?: string) =>
+        !!value && (value.includes('READ') || value.includes('DELIVERED'));
+    // Both, not one or the other: the msg.status check is the pre-existing rule and stays exactly as
+    // it was, deliveryStatus only adds the cases it could never see.
+    return seen(msg.deliveryStatus) || seen(msg.status) ? '✓✓' : '✓';
+}
+
 function formatTime(timestamp: string): string {
     try {
         return new Date(timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     } catch {
         return '';
+    }
+}
+
+/** Plain-language version of why the chatbot handed this conversation over. */
+function escalationReasonText(reason?: string): string {
+    switch (reason) {
+        case 'MAX_TURNS':
+            return 'The conversation reached its automated reply limit.';
+        case 'AI_ERROR':
+            return 'The assistant could not generate a reply.';
+        case 'MANUAL':
+            return 'Handed over by an admin.';
+        default:
+            return "The assistant didn't have the information to answer, so it said it would check with the team.";
     }
 }
 

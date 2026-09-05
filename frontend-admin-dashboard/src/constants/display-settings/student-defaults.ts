@@ -78,8 +78,27 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
         { id: 'gamification', visible: true },
         { id: 'exploreMemberships', visible: true },
         { id: 'exploreBooks', visible: true },
+        // Declared LAST on purpose — see FRACTIONAL_ORDERS below.
+        { id: 'enrolledCourses', visible: true },
     ];
-    return defaults.map((w, idx) => ({ ...w, order: idx + 1 }));
+    // Widgets added after this list shipped cannot simply be spliced in: order
+    // comes from the array index, and an institute that saved earlier already
+    // holds orders 1..15. Inserting mid-list would renumber the defaults and
+    // hand the new widget an order a saved widget occupies — and moveWidget
+    // reorders by SWAPPING two rows' order values, so a tie leaves both rows'
+    // arrows permanently inert and onSave writes the duplicate back.
+    //
+    // So the new id is declared last (every pre-existing widget keeps its exact
+    // original order) and given a FRACTIONAL order instead: 2.5 sorts between
+    // continueLearning (2) and coursesStat (3), which is where the widget
+    // belongs, and can never equal an integer order a saved institute holds.
+    // Swapping preserves the set of orders, so reordering cannot create a
+    // duplicate either.
+    const FRACTIONAL_ORDERS: Record<string, number> = { enrolledCourses: 2.5 };
+    return defaults.map((w, idx) => ({
+        ...w,
+        order: FRACTIONAL_ORDERS[w.id] ?? idx + 1,
+    }));
 }
 
 export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {

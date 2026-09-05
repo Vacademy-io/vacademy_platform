@@ -1,0 +1,49 @@
+{
+  "menu": {
+    "changeRoleType": "Changer le type de rôle",
+    "disableUser": "Désactiver l'utilisateur",
+    "enableUser": "Activer l'utilisateur",
+    "deleteUser": "Supprimer l'utilisateur"
+  },
+  "changeRoleType": {
+    "title": "Modifier les rôles",
+    "roleTypeLabel": "Type de rôle",
+    "submit": "Soumettre",
+    "validation": {
+      "roleRequired": "Au moins un type de rôle est requis"
+    },
+    "toast": {
+      "success": "Les rôles de l'utilisateur ont été modifiés avec succès !"
+    }
+  },
+  "disableUser": {
+    "title": "Désactiver l'utilisateur",
+    "attention": "Attention",
+    "confirmPrefix": "Êtes-vous sûr de vouloir désactiver",
+    "confirmSuffix" : " ?",
+    "confirmButton": "Oui",
+    "toast": {
+      "success": "L'utilisateur a été désactivé avec succès !"
+    }
+  },
+  "enableUser": {
+    "title": "Activer l'utilisateur",
+    "attention": "Attention",
+    "confirmPrefix": "Êtes-vous sûr de vouloir activer",
+    "confirmSuffix" : " ?",
+    "confirmButton": "Oui",
+    "toast": {
+      "success": "L'utilisateur a été activé avec succès !"
+    }
+  },
+  "deleteUser": {
+    "title": "Supprimer l'utilisateur",
+    "attention": "Attention",
+    "confirmPrefix": "Êtes-vous sûr de vouloir supprimer",
+    "confirmSuffix" : " ?",
+    "confirmButton": "Oui",
+    "toast": {
+      "success": "L'utilisateur a été supprimé avec succès !"
+    }
+  }
+}

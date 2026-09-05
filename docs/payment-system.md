@@ -2,6 +2,10 @@
 
 This document covers every payment-related entity in `admin_core_service`, how they are created, how they get assigned to users, and how discounts/concessions work.
 
+> **See also:** [`plan-change.md`](./plan-change.md) — how a learner moves between payment
+> plans (upgrade with prorated charge, downgrade scheduled to the end of the cycle, admin
+> override) without the `UserPlan` being replaced.
+
 ---
 
 ## Table of Contents

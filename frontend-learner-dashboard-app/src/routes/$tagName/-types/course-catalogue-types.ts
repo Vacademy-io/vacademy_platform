@@ -38,6 +38,17 @@ export interface AdditionalCharge {
 }
 
 export interface GlobalSettings {
+  /**
+   * This catalogue's own words for a course / level / session. Seeded into the
+   * terminology store so authored copy and terminology-driven UI agree without
+   * editing the institute record, which every other surface shares.
+   */
+  naming?: {
+    course?: string;
+    coursePlural?: string;
+    level?: string;
+    session?: string;
+  };
   courseCatalogeType: {
     enabled: boolean;
     value: string
@@ -82,6 +93,24 @@ export interface GlobalSettings {
     enabled: boolean;
     requirePayment: boolean;
   };
+  /**
+   * What each course opens when a visitor clicks "View course": the standard
+   * details page (DETAILS, the default), a page authored in the catalogue
+   * editor (PAGE + route), or the details page with the syllabus leading and
+   * the marketing accordion dropped — as folder rows (OUTLINE) or artwork
+   * cards (TILES). Keyed by course id or package
+   * session id; a course with no entry keeps the details page, so this is
+   * purely additive. See -utils/course-page-routing.ts.
+   */
+  coursePages?: {
+    enabled: boolean;
+    courses?: Record<
+      string,
+      { mode?: "DETAILS" | "PAGE" | "OUTLINE" | "TILES"; route?: string }
+    >;
+    /** Pre-modes shape: course id → page route, always meaning PAGE. */
+    map?: Record<string, string>;
+  };
   payment: {
     enabled: boolean;
     provider: "razorpay" | "stripe" | "paypal" | "PHONEPE";
@@ -89,8 +118,10 @@ export interface GlobalSettings {
     additionalCharges?: AdditionalCharge[];
   };
   /**
-   * Step-by-step Level → Session → Tag picker shown once, the first time a
-   * visitor opens this catalogue page, before any course grid is filtered.
+   * Step-by-step Level → Session → Tag picker shown on every visit to this
+   * catalogue page, before any course grid is filtered. Not persisted across
+   * page views: a refresh or a later return re-asks, since a returning
+   * visitor is usually shopping for a different level/session than last time.
    * Options are sourced live from whichever `courseCatalog` block(s) are on
    * the page (via a `courseFinderOptionsReady` event) — never a separate
    * fetch — so a pick can never reference a level/session/tag that has zero

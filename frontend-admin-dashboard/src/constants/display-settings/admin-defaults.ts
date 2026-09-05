@@ -17,12 +17,25 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
     // Display Settings → CRM → Leads.
     'counsellors',
     'sales-dashboard',
+    // AI calls waiting to go out. Off until an institute is actually running enough
+    // AI calling for a queue to mean anything -- on a quiet institute nothing ever
+    // waits, so the page would only ever show an empty table.
+    'calling-call-queue',
 ]);
 
 // Tabs that ship hidden until an institute admin opts them in via the
 // Display Settings UI. Distinct from admissions/fee-management which are
 // shipped hidden for historical sub-org reasons.
-const OPT_IN_TAB_IDS = new Set<string>(['admin-activity-logs', 'ai-copilot-tab', 'mentorship']);
+const OPT_IN_TAB_IDS = new Set<string>([
+    'admin-activity-logs',
+    'ai-copilot-tab',
+    'mentorship',
+    // NOTE: the ERP modules are deliberately NOT listed here. The opt-in gate
+    // for ERP is the rail CATEGORY, which ships `visible: false` (see
+    // display-settings.ts). Hiding the modules as well made turning the
+    // category on produce an empty panel with no obvious way to fill it —
+    // one deliberate switch is the gate, not eight.
+]);
 
 function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu.map((item, index) => ({
@@ -64,7 +77,15 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
     //   6. LMS operations                — classes, courses, assessments
     //   7. Reference data                — team makeup, institute summary
     //   8. Promotional                   — discovery cards, last slot
+    // Ships OFF for everyone. A connection-health card is only meaningful to an institute
+    // that has actually connected an external LMS, and enabling it starts polling that
+    // customer's site every minute — so an admin opts in rather than opting out.
+    const defaultOff = new Set<DashboardWidgetConfig['id']>(['lmsConnectionHealth']);
+
     const ids: DashboardWidgetConfig['id'][] = [
+        // 0. Integration health — first on the page: a broken LMS connection silently
+        //    breaks enrolment for every course wired to it.
+        'lmsConnectionHealth',
         // 1. Navigation shortcuts
         'quickActions',
         // 2. KPIs
@@ -91,6 +112,7 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         'realTimeActiveUsers',
         'currentlyActiveUsers',
         // 6. LMS operations
+        'lmsConnectionHealth',
         'liveClasses',
         'enrollLearners',
         'learningCenter',
@@ -103,7 +125,7 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         // 8. Promotional
         'aiFeaturesCard',
     ];
-    return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
+    return ids.map((id, idx) => ({ id, order: idx + 1, visible: !defaultOff.has(id) }));
 }
 
 export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
@@ -144,6 +166,17 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
             { id: 'LEARNER', order: 3, visible: true },
             { id: 'TEACHER', order: 4, visible: true },
             { id: 'ASSESSMENT', order: 5, visible: true },
+            // Quiz Results sits next to Assessment: both answer "how did they do",
+            // one for exams and one for the quiz slides inside the course.
+            // Ordered 5.5 so it slots between Assessment (5) and whatever a role has
+            // at 6, WITHOUT renumbering the tabs after it. Renumbering looked tidier
+            // but collides: 92 of the 94 institutes with a saved courseDetails config
+            // already store a tab at order 6 (32x LIVE_SESSION, 60x PLANNING), and
+            // saved values win the merge — so a shared order is what would actually
+            // ship. Two tabs on the same order make the Display Settings up/down
+            // arrows a dead click, because swapOrder swaps the two order VALUES and
+            // swapping equal numbers changes nothing.
+            { id: 'QUIZ_RESULTS', order: 5.5, visible: true },
             { id: 'LIVE_SESSION', order: 6, visible: false },
             { id: 'PLANNING', order: 7, visible: false },
             { id: 'ACTIVITY', order: 8, visible: false },
@@ -156,6 +189,9 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
             // institute OFFLINE_ACCESS_SETTING master switch.
             { id: 'DOWNLOADS', order: 12, visible: true },
             { id: 'SETTINGS', order: 13, visible: false },
+            // Live AI Tutor (2026-09): 13.5 slots it after Settings without renumbering
+            // tabs institutes have already saved orders for (same trick as QUIZ_RESULTS).
+            { id: 'TUTOR_MODE', order: 13.5, visible: true },
         ],
         defaultTab: 'OUTLINE',
     },
@@ -227,6 +263,10 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         applicationTab: false,
         leadTab: false,
         fullHistoryTab: false,
+        // OFF by default for every role. Re-running an automation re-sends its
+        // messages, so the tab is opt-in per role from Display Settings rather
+        // than something that appears on every learner profile unasked.
+        workflowsTab: false,
         parentTab: false,
         onboardingTab: false,
         // Default rendering order. Tabs render left-to-right by ascending number.
@@ -250,6 +290,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
             lead: 16,
             fullHistory: 17,
             parent: 18,
+            workflows: 19,
         },
         defaultTab: 'overview',
     },

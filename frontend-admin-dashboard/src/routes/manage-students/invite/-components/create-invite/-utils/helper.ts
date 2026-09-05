@@ -1,8 +1,16 @@
+import i18next from 'i18next';
 import { getInstituteId } from '@/constants/helper';
 import { InviteLinkFormValues } from '../GenerateInviteLinkSchema';
 import { CustomField } from '../../../-schema/InviteFormSchema';
 import { IndividualInviteLinkDetails } from '@/types/study-library/individual-invite-interface';
 import { PaymentPlanApi } from '@/types/payment';
+
+// This module calls i18next.t('manageStudentsCreateInviteHelper:...') from plain function
+// bodies (not from a React component), so react-i18next never auto-triggers a load for this
+// namespace via useTranslation(). Without an explicit load, every t() call below would return
+// the raw key until something else happens to load it. Fire the load eagerly on import so the
+// namespace is warm well before any of these functions actually run.
+void i18next.loadNamespaces('manageStudentsCreateInviteHelper');
 
 interface DropdownOptionForConversion {
     id: number | string;
@@ -220,6 +228,11 @@ function transformCustomFields(customFields: CustomField[], instituteId: string)
             type: '',
             type_id: '',
             individual_order: index,
+            // Per-form required-ness. The nested `isMandatory` below is the SHARED master row
+            // that every other form using this field reads, and the backend deliberately does
+            // not write it from here — so without this key the Required switch saved nothing
+            // and flipped back on the next open.
+            is_mandatory: field.isRequired,
             custom_field: {
                 guestId: '',
                 id: field._id || '',
@@ -327,7 +340,12 @@ export function ReTransformCustomFields(inviteDetails: IndividualInviteLinkDetai
             type: field.custom_field.fieldType || 'text',
             name: field.custom_field.fieldName,
             oldKey: isSeeded,
-            isRequired: field.custom_field.isMandatory || isSeeded,
+            // What THIS invite stored, not what the field is called and not the shared master:
+            // OR-ing `isSeeded` in here dragged Full Name / Email / Phone Number back to Required
+            // every time the invite was reopened, and reading the master instead of the mapping
+            // showed another form's answer. Seeded fields still START required — that is decided
+            // when they are seeded, not here.
+            isRequired: field.is_mandatory ?? field.custom_field.isMandatory ?? isSeeded,
             key: field.custom_field.fieldName
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, '_')
@@ -515,6 +533,24 @@ export function convertInviteData(
                 const { AVAILABILITY_SETTING: _removedAvail, ...restSetting } = next.setting;
                 next.setting = restSetting;
             }
+            // Team notifications → setting.NOTIFICATION_SETTING.TO_NOTIFY (comma-separated,
+            // same shape as audience.to_notify). The backend mails each address when a
+            // learner fills this invite's form. Removed when the admin clears the list.
+            const notifyEmails = (data.teamNotificationEmails || [])
+                .map((email) => email.trim())
+                .filter(Boolean);
+            if (notifyEmails.length > 0) {
+                next.setting = {
+                    ...(next.setting || existing.setting || {}),
+                    NOTIFICATION_SETTING: {
+                        ENABLED: true,
+                        TO_NOTIFY: notifyEmails.join(', '),
+                    },
+                };
+            } else if (next.setting?.NOTIFICATION_SETTING) {
+                const { NOTIFICATION_SETTING: _removedNotify, ...restSetting } = next.setting;
+                next.setting = restSetting;
+            }
             return JSON.stringify(next);
         })(),
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -543,7 +579,9 @@ export function splitPlansByType(data: PaymentOption[]): {
             paidPlans.push({
                 id: item.id,
                 name: item.name,
-                description: 'Complex payment option (installments).',
+                description: i18next.t(
+                    'manageStudentsCreateInviteHelper:planDescription.complexPaymentOption'
+                ),
                 price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
                 currency: syntheticPlan?.currency || 'INR',
                 type: item.type,
@@ -557,7 +595,9 @@ export function splitPlansByType(data: PaymentOption[]): {
                 freePlans.push({
                     id: item.id,
                     name: item.name,
-                    description: 'Access to donation plan.',
+                    description: i18next.t(
+                        'manageStudentsCreateInviteHelper:planDescription.donation'
+                    ),
                     suggestedAmount:
                         parsedData?.donationData?.suggestedAmounts
                             ?.split(',')
@@ -570,7 +610,9 @@ export function splitPlansByType(data: PaymentOption[]): {
                 freePlans.push({
                     id: item.id,
                     name: item.name,
-                    description: 'Access to free plan.',
+                    description: i18next.t(
+                        'manageStudentsCreateInviteHelper:planDescription.free'
+                    ),
                     days: parsedData?.freeData?.validityDays || 0,
                     type: item.type,
                 });
@@ -581,7 +623,9 @@ export function splitPlansByType(data: PaymentOption[]): {
                 paidPlans.push({
                     id: item.id,
                     name: item.name,
-                    description: 'Access to one time payment plan.',
+                    description: i18next.t(
+                        'manageStudentsCreateInviteHelper:planDescription.oneTime'
+                    ),
                     price: parsedData?.upfrontData?.fullPrice || '',
                     currency: parsedData?.currency || '',
                     type: item.type,
@@ -590,7 +634,9 @@ export function splitPlansByType(data: PaymentOption[]): {
                 paidPlans.push({
                     id: item.id,
                     name: item.name,
-                    description: 'Access to subscription plan.',
+                    description: i18next.t(
+                        'manageStudentsCreateInviteHelper:planDescription.subscription'
+                    ),
                     currency: parsedData?.currency || '',
                     type: item.type,
                     paymentOption:
@@ -634,7 +680,9 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Complex payment option (installments).',
+            description: i18next.t(
+                'manageStudentsCreateInviteHelper:planDescription.complexPaymentOption'
+            ),
             price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
             currency: syntheticPlan?.currency || 'INR',
             type: item.type,
@@ -646,7 +694,7 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to donation plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.donation'),
             suggestedAmount:
                 parsedData?.donationData?.suggestedAmounts
                     ?.split(',')
@@ -659,7 +707,7 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to free plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.free'),
             days: parsedData?.freeData?.validityDays || 0,
             type: item.type,
         };
@@ -667,7 +715,7 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to one time payment plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.oneTime'),
             price: parsedData?.upfrontData?.fullPrice || '',
             currency: parsedData?.currency || '',
             type: item.type,
@@ -676,7 +724,7 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to subscription plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.subscription'),
             currency: parsedData?.currency || '',
             type: item.type,
             paymentOption:
@@ -716,7 +764,9 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Complex payment option (installments).',
+            description: i18next.t(
+                'manageStudentsCreateInviteHelper:planDescription.complexPaymentOption'
+            ),
             price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
             currency: syntheticPlan?.currency || 'INR',
             type: item.type,
@@ -728,7 +778,7 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to donation plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.donation'),
             suggestedAmount:
                 parsedData?.donationData?.suggestedAmounts
                     ?.split(',')
@@ -741,7 +791,7 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to free plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.free'),
             days: parsedData?.freeData?.validityDays || 0,
             type: item.type,
         };
@@ -749,7 +799,7 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to one time payment plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.oneTime'),
             price: parsedData?.upfrontData?.fullPrice || '',
             currency: parsedData?.currency || '',
             type: item.type,
@@ -758,7 +808,7 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
         return {
             id: item.id,
             name: item.name,
-            description: 'Access to subscription plan.',
+            description: i18next.t('manageStudentsCreateInviteHelper:planDescription.subscription'),
             currency: parsedData?.currency || '',
             type: item.type,
             paymentOption:
@@ -927,7 +977,9 @@ export function convertReferralData(data: ReferralData[]) {
                         contentUrl: benefitValue?.contentUrl as string,
                         fileIds: benefitValue?.fileIds as string[],
                         template: benefitValue?.templateId as string,
-                        title: (benefit.description as string) || 'Bonus Content',
+                        title:
+                            (benefit.description as string) ||
+                            i18next.t('manageStudentsCreateInviteHelper:referral.defaultBonusContentTitle'),
                     }),
                     ...(type === 'points_system' && {
                         pointsPerReferral: (benefitValue?.points as number) || 0,
@@ -1097,7 +1149,13 @@ export function getPlanDisplayName(selectedPlan: SelectedPlan | null, planId: st
         if (parts.length === 2 && parts[1]) {
             const optionIndex = parseInt(parts[1]);
             const option = selectedPlan.paymentOption[optionIndex];
-            return option?.title || `${selectedPlan.name} - Option ${optionIndex + 1}`;
+            return (
+                option?.title ||
+                i18next.t('manageStudentsCreateInviteHelper:planOption.fallbackTitle', {
+                    name: selectedPlan.name,
+                    number: optionIndex + 1,
+                })
+            );
         }
     }
 

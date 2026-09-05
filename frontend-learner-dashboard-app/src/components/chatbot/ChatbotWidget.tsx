@@ -25,13 +25,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useTranslation } from "react-i18next";
 import { useChatbot } from "./useChatbot";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 const markdownComponents = {
   h1: ({ ...props }) => (
@@ -79,6 +82,11 @@ const markdownComponents = {
 };
 
 export const ChatbotWidget = () => {
+  const avatarUrl = useChatbotAvatarUrl();
+  const { t } = useTranslation("chatFeatureB");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const slide = getTerminology(ContentTerms.Slides, SystemTerms.Slides);
+  const learnerModule = getTerminology(ContentTerms.Modules, SystemTerms.Modules);
   const {
     isOpen,
     setIsOpen,
@@ -141,7 +149,7 @@ export const ChatbotWidget = () => {
                 isExpanded ? "h-full w-full" : "h-blob-lg"
               )}
             >
-              <CardHeader className="bg-primary text-primary-foreground p-4 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="bg-primary text-primary-foreground p-card flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center space-x-2">
                   <Avatar className="h-8 w-8 bg-background">
                     {avatarUrl ? (
@@ -162,7 +170,7 @@ export const ChatbotWidget = () => {
                       {chatbotSettings.assistant_name}
                     </CardTitle>
                     <p className="text-xs text-primary-foreground/80">
-                      {instituteName} AI Assistant
+                      {t("widget.assistantSubtitle", { instituteName })}
                     </p>
                   </div>
                 </div>
@@ -172,7 +180,7 @@ export const ChatbotWidget = () => {
                     size="icon"
                     className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={startNewChat}
-                    title="Start new chat"
+                    title={t("common.startNewChat")}
                   >
                     <Plus className="h-5 w-5" />
                   </Button>
@@ -204,7 +212,7 @@ export const ChatbotWidget = () => {
                   <div className="flex flex-col space-y-4">
                     {isInitializing && messages.length === 0 && (
                       <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
-                        Initialising chat...
+                        {t("panel.initializing")}
                       </div>
                     )}
 
@@ -273,13 +281,13 @@ export const ChatbotWidget = () => {
                               </PopoverTrigger>
                               <PopoverContent
                                 side="right"
-                                className="max-w-64 text-xs p-2 z-50"
+                                className="max-w-64 text-xs p-2 z-50 space-y-1"
                               >
-                                <p className="font-bold mb-1">Context Used:</p>
+                                <p className="font-bold">{t("widget.context.title")}</p>
                                 <div className="space-y-1">
                                   <p>
                                     <span className="font-semibold">
-                                      Route:
+                                      {t("widget.context.route")}
                                     </span>{" "}
                                     <span className="break-all">
                                       {msg.context.route}
@@ -288,7 +296,7 @@ export const ChatbotWidget = () => {
                                   {msg.context.courseId && (
                                     <p>
                                       <span className="font-semibold">
-                                        Course ID:
+                                        {t("widget.context.courseId", { course })}
                                       </span>{" "}
                                       <span className="break-all">
                                         {msg.context.courseId}
@@ -298,7 +306,7 @@ export const ChatbotWidget = () => {
                                   {msg.context.slideId && (
                                     <p>
                                       <span className="font-semibold">
-                                        Slide ID:
+                                        {t("widget.context.slideId", { slide })}
                                       </span>{" "}
                                       <span className="break-all">
                                         {msg.context.slideId}
@@ -308,7 +316,7 @@ export const ChatbotWidget = () => {
                                   {msg.context.moduleId && (
                                     <p>
                                       <span className="font-semibold">
-                                        Module ID:
+                                        {t("widget.context.moduleId", { module: learnerModule })}
                                       </span>{" "}
                                       <span className="break-all">
                                         {msg.context.moduleId}
@@ -378,19 +386,19 @@ export const ChatbotWidget = () => {
 
                     {isCreditsExhausted && (
                       <div className="w-full bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-center text-sm text-amber-800">
-                        Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.
+                        {t("common.creditsExhausted")}
                       </div>
                     )}
 
                     {hasError && !isCreditsExhausted && (
                       <div className="w-full bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-2 text-center text-sm text-destructive">
-                        An error occurred, please start new
+                        {t("widget.error")}
                       </div>
                     )}
 
                     {isSessionClosed && (
                       <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
-                        This chat has ended
+                        {t("panel.sessionEnded")}
                       </div>
                     )}
 
@@ -402,7 +410,7 @@ export const ChatbotWidget = () => {
               <CardFooter className="p-3 bg-background border-t">
                 <div className="flex w-full items-center space-x-2">
                   <Input
-                    placeholder="Type your message..."
+                    placeholder={t("widget.inputPlaceholder")}
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -440,7 +448,7 @@ export const ChatbotWidget = () => {
         ) : avatarUrl ? (
           <img
             src={avatarUrl}
-            alt="Chat"
+            alt={t("widget.chatButtonAlt")}
             className="w-full h-full object-cover rounded-full shadow-2xl"
           />
         ) : (

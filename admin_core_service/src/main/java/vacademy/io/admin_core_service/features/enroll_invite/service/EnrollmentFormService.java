@@ -44,14 +44,17 @@ public class EnrollmentFormService {
     @Autowired
     private CustomFieldValueService customFieldValueService;
 
+    @Autowired
+    private InviteFormAdminNotificationService inviteFormAdminNotificationService;
+
 
     @Transactional
     public EnrollmentFormSubmitResponseDTO submitEnrollmentForm(EnrollmentFormSubmitDTO request) {
-        log.info("Processing enrollment form submission for email: {}", 
+        log.info("Processing enrollment form submission for email: {}",
                 request.getUserDetails() != null ? request.getUserDetails().getEmail() : "null");
 
         // Step 1: Validate EnrollInvite
-        validateEnrollInvite(request.getEnrollInviteId(), request.getInstituteId());
+        EnrollInvite enrollInvite = validateEnrollInvite(request.getEnrollInviteId(), request.getInstituteId());
 
         // Step 2: Create or update user
         UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(
@@ -107,6 +110,15 @@ public class EnrollmentFormService {
                     CustomFieldValueSourceTypeEnum.USER.name(),
                     createdUser.getId());
         }
+
+        // Step 6: Alert the team members configured on this invite
+        // (setting_json → setting.NOTIFICATION_SETTING). FREE invites never reach this
+        // endpoint — the learner FE skips form-submit for them — so that path fires the
+        // same notification from LearnerEnrollRequestService instead.
+        inviteFormAdminNotificationService.notifyAdminsOnFormFill(
+                enrollInvite,
+                createdUser,
+                request.getCustomFieldValues());
 
         log.info("Enrollment form submitted successfully for user: {}, created {} ABANDONED_CART entries",
                 createdUser.getId(), abandonedCartEntryIds.size());

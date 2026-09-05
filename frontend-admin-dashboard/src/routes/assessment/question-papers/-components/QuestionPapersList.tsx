@@ -34,6 +34,10 @@ import { AssignmentFormType } from '@/routes/study-library/courses/course-detail
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { describeMerge, mergeSectionQuestions } from '../-utils/merge-section-questions';
+import { calculateTotalMarks } from '../../create-assessment/$assessmentId/$examtype/-utils/helper';
 export type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 
 // Picks N random questions per tag (as configured in `tagCounts`) and merges
@@ -87,6 +91,7 @@ export const QuestionPapersList = ({
     examType?: string;
     onManualSelectionReady?: (questions: MyQuestion[]) => void;
 }) => {
+    const { t, i18n } = useTranslation('assessmentQuestionPapersList');
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const data = getTokenDecodedData(accessToken);
     const INSTITUTE_ID = data && Object.keys(data.authorities)[0];
@@ -130,7 +135,7 @@ export const QuestionPapersList = ({
     const availableTags = useMemo(() => {
         const counts = new Map<string, number>();
         paperQuestions.forEach((q) =>
-            (q.tags ?? []).forEach((t) => counts.set(t, (counts.get(t) ?? 0) + 1))
+            (q.tags ?? []).forEach((tg) => counts.set(tg, (counts.get(tg) ?? 0) + 1))
         );
         return Array.from(counts.entries())
             .map(([tag, count]) => ({ tag, count }))
@@ -160,7 +165,9 @@ export const QuestionPapersList = ({
             refetchData();
         },
         onError: (error: unknown) => {
+            // Was console.error only, so a failed favourite/delete looked like it worked.
             console.error(error);
+            toast.error('Could not update this question paper. Please try again.');
         },
     });
 
@@ -310,26 +317,45 @@ export const QuestionPapersList = ({
             questionsToUse = selectQuestionsByTags(questions, tagCounts);
         }
 
+        const incoming = questionsToUse.map((question) => ({
+            questionId: question.questionId,
+            questionName: question.questionName,
+            questionType: question.questionType,
+            questionMark: question.questionMark,
+            questionPenalty: question.questionPenalty,
+            ...(question.questionType === 'MCQM' && {
+                correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
+                    (item) => item.isSelected
+                ).length,
+            }),
+            questionDuration: {
+                hrs: question.questionDuration.hrs,
+                min: question.questionDuration.min,
+            },
+        }));
+
+        // Append: picking a second saved paper for the same section used to discard
+        // everything the first one put there.
+        const mergeResult = mergeSectionQuestions(
+            sectionsForm.getValues(`section.${index}.adaptive_marking_for_each_question`) as
+                | typeof incoming
+                | undefined,
+            incoming
+        );
+
         sectionsForm.setValue(
             `section.${index}.adaptive_marking_for_each_question`,
-            questionsToUse.map((question) => ({
-                questionId: question.questionId,
-                questionName: question.questionName,
-                questionType: question.questionType,
-                questionMark: question.questionMark,
-                questionPenalty: question.questionPenalty,
-                ...(question.questionType === 'MCQM' && {
-                    correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
-                        (item) => item.isSelected
-                    ).length,
-                }),
-                questionDuration: {
-                    hrs: question.questionDuration.hrs,
-                    min: question.questionDuration.min,
-                },
-            }))
+            mergeResult.merged
+        );
+        // The section total is derived from its questions, and the effect that keeps it
+        // in sync only watches marks_per_question — so adding questions has to update it
+        // here, exactly as the knowledge-base dialog does.
+        sectionsForm.setValue(
+            `section.${index}.total_marks`,
+            String(calculateTotalMarks(mergeResult.merged))
         );
         sectionsForm.trigger(`section.${index}.adaptive_marking_for_each_question`);
+        toast.success(describeMerge(mergeResult));
         setIsSavedQuestionPaperDialogOpen(false);
         resetSelectionConfig();
     };
@@ -398,19 +424,23 @@ export const QuestionPapersList = ({
                     onClick={resetSelectionConfig}
                 >
                     <ArrowLeft size={14} />
-                    Back to list
+                    {t('config.backToList')}
                 </button>
 
                 <div className="w-full rounded-lg border border-neutral-200 bg-primary-50 p-4">
                     <p className="truncate text-sm font-medium text-neutral-800">{pendingPaper.title}</p>
                     <p className="mt-0.5 text-xs text-neutral-500">
-                        Created on {new Date(pendingPaper.created_on).toLocaleDateString()}
+                        {t('config.createdOn', {
+                            date: new Date(pendingPaper.created_on).toLocaleDateString(
+                                i18n.language
+                            ),
+                        })}
                     </p>
                 </div>
 
                 <div className="flex w-full flex-col gap-3">
                     <p className="text-sm font-medium text-neutral-700">
-                        How many questions to include?
+                        {t('config.selectQuestionCount')}
                     </p>
                     {isLoadingPaper ? (
                         <DashboardLoader />
@@ -430,7 +460,7 @@ export const QuestionPapersList = ({
                                     htmlFor="config-all"
                                     className="cursor-pointer text-sm text-neutral-700"
                                 >
-                                    All Questions
+                                    {t('config.modeAll')}
                                 </label>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -439,19 +469,21 @@ export const QuestionPapersList = ({
                                     htmlFor="config-random"
                                     className="cursor-pointer text-sm text-neutral-700"
                                 >
-                                    Random Selection
+                                    {t('config.modeRandom')}
                                 </label>
                                 {selectionMode === 'random' && (
                                     <div className="flex items-center gap-2">
                                         <Input
                                             type="number"
-                                            placeholder="e.g. 20"
+                                            placeholder={t('config.randomPlaceholder')}
                                             min={1}
                                             className="h-8 w-24"
                                             value={questionCount}
                                             onChange={(e) => setQuestionCount(e.target.value)}
                                         />
-                                        <span className="text-xs text-neutral-400">questions</span>
+                                        <span className="text-xs text-neutral-400">
+                                            {t('config.questionsLabel')}
+                                        </span>
                                     </div>
                                 )}
                             </div>
@@ -463,7 +495,7 @@ export const QuestionPapersList = ({
                                             htmlFor="config-tags"
                                             className="cursor-pointer text-sm text-neutral-700"
                                         >
-                                            Random by Tag
+                                            {t('config.modeTags')}
                                         </label>
                                     </div>
                                     {selectionMode === 'tags' && (
@@ -478,7 +510,11 @@ export const QuestionPapersList = ({
                                                             {tag}
                                                         </span>
                                                         <span className="shrink-0 text-xs text-neutral-400">
-                                                            ({available} available)
+                                                            (
+                                                            {t('config.tagAvailable', {
+                                                                count: available,
+                                                            })}
+                                                            )
                                                         </span>
                                                     </div>
                                                     <Input
@@ -500,10 +536,10 @@ export const QuestionPapersList = ({
                                             ))}
                                             <div className="mt-1 flex items-center justify-between border-t border-neutral-200 pt-2">
                                                 <span className="text-sm font-medium text-neutral-700">
-                                                    Total
+                                                    {t('config.total')}
                                                 </span>
                                                 <span className="text-sm font-medium text-primary-600">
-                                                    {tagsTotal} question{tagsTotal !== 1 ? 's' : ''}
+                                                    {t('config.totalQuestions', { count: tagsTotal })}
                                                 </span>
                                             </div>
                                         </div>
@@ -516,11 +552,11 @@ export const QuestionPapersList = ({
                                     htmlFor="config-manual"
                                     className="cursor-pointer text-sm text-neutral-700"
                                 >
-                                    Select Manually
+                                    {t('config.modeManual')}
                                 </label>
                                 {selectionMode === 'manual' && (
                                     <span className="text-xs text-neutral-400">
-                                        — pick specific questions on the next screen
+                                        {t('config.modeManualHint')}
                                     </span>
                                 )}
                             </div>
@@ -530,7 +566,7 @@ export const QuestionPapersList = ({
 
                 <div className="flex w-full items-center justify-end gap-3">
                     <MyButton buttonType="secondary" scale="medium" onClick={resetSelectionConfig}>
-                        Cancel
+                        {t('config.cancel')}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
@@ -540,23 +576,23 @@ export const QuestionPapersList = ({
                     >
                         {selectionMode === 'manual' ? (
                             <>
-                                Choose Questions
+                                {t('config.chooseQuestions')}
                                 <ArrowRight size={14} className="ml-1.5" />
                             </>
                         ) : selectionMode === 'tags' ? (
                             <>
                                 <Shuffle size={14} className="mr-1.5" />
-                                Add {tagsTotal} Random Question{tagsTotal !== 1 ? 's' : ''}
+                                {t('config.addRandomCount', { count: tagsTotal })}
                             </>
                         ) : selectionMode === 'random' && count > 0 ? (
                             <>
                                 <Shuffle size={14} className="mr-1.5" />
-                                Add {count} Random Questions
+                                {t('config.addRandomCount', { count })}
                             </>
                         ) : (
                             <>
                                 <Shuffle size={14} className="mr-1.5" />
-                                Add All Questions
+                                {t('config.addAllQuestions')}
                             </>
                         )}
                     </MyButton>
@@ -570,7 +606,7 @@ export const QuestionPapersList = ({
             {questionPaperList?.content?.map((questionsData, idx) => (
                 <div
                     key={idx}
-                    className={`flex flex-col gap-2 rounded-xl border-[1.5px] bg-neutral-50 p-4 ${
+                    className={`flex flex-col gap-2 rounded-xl border-2 bg-neutral-50 p-4 ${
                         index !== undefined || isStudyLibraryAssignment ? 'cursor-pointer' : ''
                     }`}
                     onClick={
@@ -607,7 +643,7 @@ export const QuestionPapersList = ({
                                     buttonText={
                                         <span className="flex items-center gap-1.5">
                                             <Eye size={16} />
-                                            View
+                                            {t('list.viewButton')}
                                         </span>
                                     }
                                     triggerVariant="secondary"
@@ -632,7 +668,7 @@ export const QuestionPapersList = ({
                                             }
                                             className="cursor-pointer"
                                         >
-                                            Delete Question Paper
+                                            {t('list.deleteQuestionPaper')}
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
@@ -641,16 +677,19 @@ export const QuestionPapersList = ({
                     </div>
                     <div className="flex w-full items-center justify-start gap-8 text-xs">
                         <p>
-                            Created On:{' '}
-                            {new Date(questionsData.created_on).toLocaleDateString() || 'N/A'}
+                            {t('list.createdOnLabel')}{' '}
+                            {new Date(questionsData.created_on).toLocaleDateString(
+                                i18n.language
+                            ) ||
+                                t('list.notAvailable')}
                         </p>
                         <p>
-                            Year/Class:{' '}
+                            {t('list.yearClassLabel')}{' '}
                             {instituteDetails &&
                                 getLevelNameById(instituteDetails.levels, questionsData.level_id)}
                         </p>
                         <p>
-                            Subject:{' '}
+                            {t('list.subjectLabel')}{' '}
                             {instituteDetails && instituteDetails.subjects &&
                                 getSubjectNameById(
                                     instituteDetails.subjects,

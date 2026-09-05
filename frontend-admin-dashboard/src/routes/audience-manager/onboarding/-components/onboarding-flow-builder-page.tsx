@@ -5,6 +5,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { toast } from 'sonner';
 import {
     ArrowLeft,
@@ -45,6 +47,7 @@ interface OnboardingFlowBuilderPageProps {
 }
 
 export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageProps) {
+    const { t } = useTranslation('audienceManagerOnboardingFlowBuilderPage');
     const setNavHeading = useNavHeadingStore((s) => s.setNavHeading);
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -63,8 +66,8 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
     });
 
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">{flowQuery.data?.name ?? 'Onboarding Flow'}</h1>);
-    }, [setNavHeading, flowQuery.data?.name]);
+        setNavHeading(<h1 className="text-lg">{flowQuery.data?.name ?? t('navHeading.fallback')}</h1>);
+    }, [setNavHeading, flowQuery.data?.name, t]);
 
     const [steps, setSteps] = useState<OnboardingStepDTO[]>([]);
     useEffect(() => {
@@ -87,7 +90,7 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
                 ordered.map((s, index) => ({ step_id: s.id, order: index }))
             ),
         onError: () => {
-            toast.error('Could not save the new order. Reverting.');
+            toast.error(t('toasts.reorderError'));
             invalidateSteps();
         },
     });
@@ -95,20 +98,20 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
     const { mutate: removeStep, isPending: deleting } = useMutation({
         mutationFn: (stepId: string) => deleteOnboardingStep(flowId, stepId),
         onSuccess: () => {
-            toast.success('Step removed');
+            toast.success(t('toasts.stepRemoved'));
             setDeleteTarget(null);
             invalidateSteps();
         },
-        onError: () => toast.error('Could not remove the step.'),
+        onError: () => toast.error(t('toasts.removeError')),
     });
 
     const { mutate: activateFlow, isPending: activating } = useMutation({
         mutationFn: () => updateOnboardingFlow(flowId, { status: 'ACTIVE' }),
         onSuccess: () => {
-            toast.success('Flow activated');
+            toast.success(t('toasts.flowActivated'));
             invalidateSteps();
         },
-        onError: () => toast.error('Could not activate the flow.'),
+        onError: () => toast.error(t('toasts.activateError')),
     });
 
     const handleMove = ({ activeIndex, overIndex }: { activeIndex: number; overIndex: number }) => {
@@ -130,14 +133,14 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
     };
 
     if (flowQuery.isLoading) {
-        return <div className="p-6 text-body text-neutral-500">Loading flow…</div>;
+        return <div className="p-6 text-body text-neutral-500">{t('states.loadingFlow')}</div>;
     }
     if (flowQuery.isError || !flowQuery.data) {
         return (
             <div className="flex flex-col items-center gap-3 p-12 text-center">
-                <p className="text-body text-danger-700">Couldn&apos;t load this onboarding flow.</p>
+                <p className="text-body text-danger-700">{t('states.loadFlowError')}</p>
                 <MyButton buttonType="secondary" scale="small" onClick={() => flowQuery.refetch()}>
-                    Retry
+                    {t('actions.retry')}
                 </MyButton>
             </div>
         );
@@ -153,14 +156,14 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
                 onClick={() => navigate({ to: '/audience-manager/onboarding' })}
                 className="flex w-fit items-center gap-1.5 text-caption font-medium text-neutral-500 hover:text-primary-600"
             >
-                <ArrowLeft size={14} /> Back to Onboarding Flows
+                <ArrowLeft size={14} /> {t('actions.backToFlows')}
             </button>
 
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <h1 className="text-h1 font-medium text-neutral-900">{flow.name}</h1>
-                        <StatusBadge status={flow.status} />
+                        <StatusBadge status={flow.status} t={t} />
                     </div>
                     {flow.description && (
                         <p className="text-subtitle text-neutral-500">{flow.description}</p>
@@ -169,32 +172,32 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
                 <div className="flex items-center gap-2">
                     {canActivate && (
                         <MyButton buttonType="primary" scale="medium" onClick={() => activateFlow()} disable={activating}>
-                            <Rocket size={16} /> {activating ? 'Activating…' : 'Activate Flow'}
+                            <Rocket size={16} /> {activating ? t('actions.activating') : t('actions.activateFlow')}
                         </MyButton>
                     )}
                     <MyButton buttonType="secondary" scale="medium" onClick={openAddStep}>
-                        <Plus size={16} weight="bold" /> Add Step
+                        <Plus size={16} weight="bold" /> {t('actions.addStep')}
                     </MyButton>
                 </div>
             </div>
 
             {flow.status === 'DRAFT' && steps.length === 0 && (
                 <div className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-caption text-warning-700">
-                    Add at least one step before activating this flow.
+                    {t('states.addStepBeforeActivating')}
                 </div>
             )}
 
             {stepsQuery.isLoading ? (
-                <div className="text-body text-neutral-500">Loading steps…</div>
+                <div className="text-body text-neutral-500">{t('states.loadingSteps')}</div>
             ) : steps.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-neutral-200 bg-white py-14 text-center shadow-sm">
                     <CheckCircle size={32} className="text-neutral-300" />
-                    <h3 className="text-body font-semibold text-neutral-900">No steps yet</h3>
+                    <h3 className="text-body font-semibold text-neutral-900">{t('states.noStepsTitle')}</h3>
                     <p className="max-w-sm text-caption text-neutral-500">
-                        Add the first step (e.g. an enrollment form) to start building this flow.
+                        {t('states.noStepsDescription')}
                     </p>
                     <MyButton buttonType="primary" scale="medium" onClick={openAddStep}>
-                        <Plus size={16} weight="bold" /> Add Step
+                        <Plus size={16} weight="bold" /> {t('actions.addStep')}
                     </MyButton>
                 </div>
             ) : (
@@ -217,10 +220,14 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
                                             {step.step_name}
                                         </div>
                                         <div className="flex flex-wrap gap-1.5 pt-1">
-                                            <Tag>{step.step_type}</Tag>
-                                            {step.is_optional && <Tag tone="neutral">Optional</Tag>}
-                                            {step.grants_student_role && <Tag tone="info">Grants STUDENT role</Tag>}
-                                            {step.sends_login_credentials && <Tag tone="success">Sends credentials</Tag>}
+                                            <Tag>{stepTypeLabel(t, step.step_type)}</Tag>
+                                            {step.is_optional && <Tag tone="neutral">{t('tags.optional')}</Tag>}
+                                            {step.grants_student_role && (
+                                                <Tag tone="info">{t('tags.grantsStudentRole')}</Tag>
+                                            )}
+                                            {step.sends_login_credentials && (
+                                                <Tag tone="success">{t('tags.sendsCredentials')}</Tag>
+                                            )}
                                         </div>
                                     </div>
                                     <MyButton
@@ -228,7 +235,7 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
                                         scale="small"
                                         onClick={() => openEditStep(step)}
                                     >
-                                        <PencilSimple size={14} /> Edit
+                                        <PencilSimple size={14} /> {t('actions.edit')}
                                     </MyButton>
                                     <MyButton
                                         buttonType="secondary"
@@ -259,21 +266,19 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
             <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Remove this step?</AlertDialogTitle>
+                        <AlertDialogTitle>{t('deleteDialog.title')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            &quot;{deleteTarget?.step_name}&quot; will be archived. Learners already on this
-                            step keep their progress, but the step won&apos;t appear for anyone starting the
-                            flow after this.
+                            {t('deleteDialog.description', { stepName: deleteTarget?.step_name ?? '' })}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel disabled={deleting}>{t('actions.cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                             disabled={deleting}
                             onClick={() => deleteTarget && removeStep(deleteTarget.id)}
                             className="bg-danger-600 hover:bg-danger-700"
                         >
-                            {deleting ? 'Removing…' : 'Remove'}
+                            {deleting ? t('actions.removing') : t('actions.remove')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -282,7 +287,7 @@ export function OnboardingFlowBuilderPage({ flowId }: OnboardingFlowBuilderPageP
     );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, t }: { status: string; t: TFunction }) {
     const toneClass =
         status === 'ACTIVE'
             ? 'bg-success-50 text-success-700'
@@ -291,9 +296,22 @@ function StatusBadge({ status }: { status: string }) {
               : 'bg-warning-50 text-warning-700';
     return (
         <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-caption font-medium ${toneClass}`}>
-            {status === 'DRAFT' ? 'Draft' : status === 'ACTIVE' ? 'Active' : 'Archived'}
+            {status === 'DRAFT'
+                ? t('statusLabels.draft')
+                : status === 'ACTIVE'
+                  ? t('statusLabels.active')
+                  : t('statusLabels.archived')}
         </span>
     );
+}
+
+/** Translated label for a step's backend type — falls back to the raw enum
+ *  value for a type the catalog doesn't know about yet (future-proofing
+ *  against new OnboardingStepType values landing before copy does). */
+function stepTypeLabel(t: TFunction, stepType: string): string {
+    const key = `stepTypeLabels.${stepType}`;
+    const translated = t(key);
+    return translated === key ? stepType : translated;
 }
 
 function Tag({ children, tone = 'primary' }: { children: ReactNode; tone?: 'primary' | 'neutral' | 'info' | 'success' }) {

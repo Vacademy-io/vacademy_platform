@@ -872,10 +872,14 @@ export function RouteComponent() {
                     sessionStorage.removeItem('courseKbGrounding');
                 }
 
-                if (numChapters) {
+                // A knowledge base decides the course's shape: never send
+                // chapter / slide counts for a KB-grounded course (the server
+                // ignores them as well). Prompt-only courses keep the controls.
+                const kbBound = !!courseConfig.kbGrounding?.knowledge_base_id;
+                if (!kbBound && numChapters) {
                     payload.generation_options.num_chapters = parseInt(numChapters);
                 }
-                if (totalSlides) {
+                if (!kbBound && totalSlides) {
                     payload.generation_options.num_slides = totalSlides;
                 }
                 if (courseLength) {

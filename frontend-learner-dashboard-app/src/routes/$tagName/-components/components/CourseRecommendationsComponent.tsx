@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { CourseRecommendationsProps } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface CourseRecommendationsComponentProps extends CourseRecommendationsProps {
   instituteId: string;
@@ -27,6 +30,7 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
   tagName,
   globalSettings,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const [recommendedCourses, setRecommendedCourses] = useState<RecommendedCourse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,7 +74,12 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
 
             return {
               id: course.id || course.packageId,
-              title: course.package_name || course.title || "Untitled Course",
+              title:
+                course.package_name ||
+                course.title ||
+                t("courseRecommendations.untitledCourse", {
+                  course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                }),
               description: course.short_description || course.description || "",
               thumbnail: thumbnailUrl,
               price: course.package_price || course.price || 0,
@@ -100,11 +109,11 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
     return (
       // NEUTRAL: Loading skeleton background
       <section className="py-6 bg-gray-50 w-full">
-        <div className="w-full px-4 sm:px-6 lg:px-8">
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">{title}</h2>
+        <div className="w-full px-4 sm:px-6 lg:px-8 space-y-4">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900">{title}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[...Array(limit)].map((_, i) => (
-              <div key={i} className="bg-gray-200 animate-pulse rounded-lg h-48" />
+              <div key={i} className="bg-gray-200 animate-pulse rounded-catalogue-md h-48" />
             ))}
           </div>
         </div>
@@ -128,7 +137,7 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
             // NEUTRAL: Card with subtle border
             <div
               key={course.id}
-              className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors cursor-pointer"
+              className="bg-white border border-gray-200 rounded-catalogue-md overflow-hidden hover:border-gray-300 transition-colors cursor-pointer"
               onClick={() => handleCourseClick(course.id)}
             >
               {/* Thumbnail */}
@@ -161,13 +170,13 @@ export const CourseRecommendationsComponent: React.FC<CourseRecommendationsCompo
                   {/* PRIMARY ACCENT: Price */}
                   {globalSettings?.payment?.enabled !== false && (
                     <span className="text-base font-bold text-primary-600">
-                      {course.price === 0 ? "Free" : `₹${course.price}`}
+                      {course.price === 0 ? t("courseRecommendations.free") : `₹${course.price}`}
                     </span>
                   )}
                   {/* NEUTRAL: Instructor */}
                   {course.instructor && (
                     <span className="text-xs text-gray-500">
-                      by {course.instructor}
+                      {t("courseRecommendations.by", { instructor: course.instructor })}
                     </span>
                   )}
                 </div>

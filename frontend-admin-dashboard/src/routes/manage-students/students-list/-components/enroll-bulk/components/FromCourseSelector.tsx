@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Select,
     SelectContent,
@@ -38,6 +39,7 @@ interface StudentRow {
 }
 
 export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Props) => {
+    const { t } = useTranslation('manageStudentsFromCourseSelector');
     const { getPackageWiseLevels } = useInstituteDetailsStore();
     const packageGroups = getPackageWiseLevels();
 
@@ -58,7 +60,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
 
     const handleSearch = async () => {
         if (!selectedPackageSessionId) {
-            toast.error('Please select a course level first');
+            toast.error(t('toasts.selectLevelFirst'));
             return;
         }
         setLoading(true);
@@ -82,7 +84,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
             );
             setCheckedIds(new Set());
         } catch {
-            toast.error('Failed to load students from course');
+            toast.error(t('toasts.loadFailed'));
         } finally {
             setLoading(false);
         }
@@ -121,11 +123,11 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
             }));
 
         if (toAdd.length === 0) {
-            toast.info('All selected students are already in your list');
+            toast.info(t('toasts.alreadyInList'));
             return;
         }
         onAdd(toAdd);
-        toast.success(`Added ${toAdd.length} student${toAdd.length !== 1 ? 's' : ''}`);
+        toast.success(t('toasts.added', { count: toAdd.length }));
     };
 
     return (
@@ -133,7 +135,9 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
             {/* Source course picker */}
             <div className="grid grid-cols-2 gap-3">
                 <div>
-                    <Label className="mb-1 text-xs text-neutral-500">Source {courseTerm}</Label>
+                    <Label className="mb-1 text-xs text-neutral-500">
+                        {t('labels.sourceCourse', { courseTerm })}
+                    </Label>
                     <Select
                         value={selectedCourseId}
                         onValueChange={(v) => {
@@ -143,7 +147,11 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                         }}
                     >
                         <SelectTrigger>
-                            <SelectValue placeholder={`Select ${courseTerm.toLowerCase()}`} />
+                            <SelectValue
+                                placeholder={t('placeholders.select', {
+                                    term: courseTerm.toLowerCase(),
+                                })}
+                            />
                         </SelectTrigger>
                         <SelectContent>
                             {packageGroups.map((g) => (
@@ -165,7 +173,11 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                         disabled={!selectedCourseId}
                     >
                         <SelectTrigger>
-                            <SelectValue placeholder={`Select ${levelTerm.toLowerCase()}`} />
+                            <SelectValue
+                                placeholder={t('placeholders.select', {
+                                    term: levelTerm.toLowerCase(),
+                                })}
+                            />
                         </SelectTrigger>
                         <SelectContent>
                             {levels.map((l) => (
@@ -180,15 +192,17 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                     </Select>
                 </div>
                 <div>
-                    <Label className="mb-1 text-xs text-neutral-500">Status filter</Label>
+                    <Label className="mb-1 text-xs text-neutral-500">
+                        {t('labels.statusFilter')}
+                    </Label>
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
                         <SelectTrigger>
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="ACTIVE">Active</SelectItem>
-                            <SelectItem value="INACTIVE">Inactive</SelectItem>
-                            <SelectItem value="INVITED">Invited</SelectItem>
+                            <SelectItem value="ACTIVE">{t('status.active')}</SelectItem>
+                            <SelectItem value="INACTIVE">{t('status.inactive')}</SelectItem>
+                            <SelectItem value="INVITED">{t('status.invited')}</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -200,7 +214,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                         onClick={handleSearch}
                         disable={!selectedPackageSessionId || loading}
                     >
-                        {loading ? 'Loading…' : `Load ${learnersTerm}`}
+                        {loading ? t('actions.loading') : t('actions.load', { learnersTerm })}
                     </MyButton>
                 </div>
             </div>
@@ -214,7 +228,10 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                             onCheckedChange={toggleAll}
                         />
                         <span className="text-xs font-semibold text-neutral-500">
-                            {checkedIds.size}/{students.length} selected
+                            {t('list.selectedCount', {
+                                checked: checkedIds.size,
+                                total: students.length,
+                            })}
                         </span>
                         {checkedIds.size > 0 && (
                             <MyButton
@@ -223,11 +240,13 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                                 layoutVariant="default"
                                 onClick={handleAdd}
                             >
-                                Add {checkedIds.size}{' '}
-                                {(checkedIds.size !== 1
-                                    ? learnersTerm
-                                    : learnerTerm
-                                ).toLowerCase()}
+                                {t('actions.add', {
+                                    count: checkedIds.size,
+                                    term: (checkedIds.size !== 1
+                                        ? learnersTerm
+                                        : learnerTerm
+                                    ).toLowerCase(),
+                                })}
                             </MyButton>
                         )}
                     </div>
@@ -256,8 +275,10 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
             )}
             {students.length === 0 && !loading && selectedPackageSessionId && (
                 <p className="text-center text-sm text-neutral-400 py-6">
-                    No {learnersTerm.toLowerCase()} found. Click &quot;Load {learnersTerm}&quot; to
-                    search.
+                    {t('list.empty', {
+                        learnersTerm: learnersTerm.toLowerCase(),
+                        loadLabel: t('actions.load', { learnersTerm }),
+                    })}
                 </p>
             )}
         </div>

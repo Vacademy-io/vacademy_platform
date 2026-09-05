@@ -71,6 +71,15 @@ if (import.meta.env.VITE_ENABLE_SENTRY === "true") {
       "error loading dynamically imported module",
       "Unable to preload CSS",
       "ChunkLoadError",
+      // Junk from CEFSharp — a .NET library that embeds Chromium in Windows
+      // desktop apps. The host app's own script rejects with a bare string, so
+      // Sentry wraps it as a non-Error rejection; nothing here is ours and
+      // there is nothing to fix. The SDK already denies this by default, but
+      // its built-in regex hardcodes `MethodName:simulateEvent`, so the
+      // `MethodName:update` variant slips through. Match the whole family, and
+      // leave the end unanchored because beforeSend appends a
+      // " — user: …, institute: …" suffix to the value.
+      /Non-Error promise rejection captured with value: Object Not Found Matching Id:\d+, MethodName:\w+, ParamCount:\d+/,
     ],
     beforeSend(event) {
       try {

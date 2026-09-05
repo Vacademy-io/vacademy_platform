@@ -1,6 +1,6 @@
 import { useEditorStore } from '../-stores/editor-store';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
-import { componentTemplates } from '../-utils/component-templates';
+import { buildComponentTemplates } from '../-utils/component-templates';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -23,8 +23,12 @@ import {
     ClipboardText as ClipboardPaste,
     Anchor,
     Sparkle,
+    Eye,
+    EyeSlash,
 } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { AiSectionVariantsDialog } from './AiSectionVariantsDialog';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
@@ -32,19 +36,36 @@ import { VideoUploadField } from './VideoUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
+import { useToast } from '@/hooks/use-toast';
+import { HTML_PAGE_AI_PROMPT } from '../-utils/html-page-prompt';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { fetchCampaignLeads } from '@/routes/audience-manager/list/-services/get-campaign-users';
-import { SUBMIT_CATALOGUE_LEAD_URL, AUDIENCE_CAMPAIGN } from '@/constants/urls';
+import {
+    SUBMIT_CATALOGUE_LEAD_URL,
+    AUDIENCE_CAMPAIGN,
+    GET_INVITE_LIST,
+} from '@/constants/urls';
 import axios from 'axios';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { CoursePagesEditor } from './CoursePagesEditor';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
 
+// Shared display labels for short enum-style tokens reused across many
+// sub-editors below (alignment, size, style pickers, ...). The stored value
+// passed to updateProp/onChange always stays the original English token —
+// only the label shown in the UI is translated, so nothing persisted changes.
+const optionLabel = (t: TFunction, key: string): string => t(`options.${key}`, { defaultValue: key });
+
 export const PropertyPanel = () => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const {
         config,
         selectedComponentId,
@@ -58,6 +79,7 @@ export const PropertyPanel = () => {
         reorderComponents,
         updatePageSeo,
         updatePageBackgroundColor,
+        setPageHideSiteChrome,
         copyComponent,
         pasteComponent,
         clipboard,
@@ -119,7 +141,7 @@ export const PropertyPanel = () => {
             }
         }
 
-        if (!component) return <div className="p-4">Component not found</div>;
+        if (!component) return <div className="p-4">{t('componentNotFound')}</div>;
 
         // Compute position within page for reorder
         const pageComponents = config.pages.find((p) => p.id === pageId)?.components ?? [];
@@ -155,7 +177,7 @@ export const PropertyPanel = () => {
                             <div>
                                 <h3 className={`text-base font-semibold capitalize ${component.type === 'columnLayout' ? 'text-teal-700' : ''}`}>
                                     {component.type === 'columnLayout'
-                                        ? `${component.props?.slots?.length ?? 2} Column Layout`
+                                        ? t('columnLayoutTitle', { count: component.props?.slots?.length ?? 2 })
                                         : component.type.replace(/([A-Z])/g, ' $1').trim()}
                                 </h3>
                                 <div className="text-xs text-gray-400">ID: {component.id}</div>
@@ -168,7 +190,7 @@ export const PropertyPanel = () => {
                                 size="sm"
                                 className="size-7 p-0 text-gray-500 hover:text-primary-500"
                                 onClick={() => setVariantsOpen(true)}
-                                title="Try another version of this section (AI)"
+                                title={t('actions.tryAnotherVersion')}
                             >
                                 <Sparkle className="size-3.5" />
                             </Button>
@@ -178,7 +200,7 @@ export const PropertyPanel = () => {
                                 className="size-7 p-0 text-gray-500 hover:text-gray-900"
                                 disabled={isFirst || isNested}
                                 onClick={moveUp}
-                                title={isNested ? 'Cannot reorder nested components' : 'Move up'}
+                                title={isNested ? t('actions.cannotReorderNested') : t('actions.moveUp')}
                             >
                                 <ArrowUp className="size-3.5" />
                             </Button>
@@ -188,7 +210,7 @@ export const PropertyPanel = () => {
                                 className="size-7 p-0 text-gray-500 hover:text-gray-900"
                                 disabled={isLast || isNested}
                                 onClick={moveDown}
-                                title={isNested ? 'Cannot reorder nested components' : 'Move down'}
+                                title={isNested ? t('actions.cannotReorderNested') : t('actions.moveDown')}
                             >
                                 <ArrowDown className="size-3.5" />
                             </Button>
@@ -198,7 +220,7 @@ export const PropertyPanel = () => {
                                 className="size-7 p-0 text-gray-500 hover:text-blue-600"
                                 disabled={isNested}
                                 onClick={() => duplicateComponent(pageId, component!.id)}
-                                title={isNested ? 'Cannot duplicate nested components' : 'Duplicate'}
+                                title={isNested ? t('actions.cannotDuplicateNested') : t('actions.duplicate')}
                             >
                                 <Copy className="size-3.5" />
                             </Button>
@@ -207,7 +229,7 @@ export const PropertyPanel = () => {
                                 size="sm"
                                 className="size-7 p-0 text-gray-500 hover:text-red-600"
                                 onClick={() => deleteComponent(pageId, component!.id)}
-                                title="Delete"
+                                title={t('actions.delete')}
                             >
                                 <Trash2 className="size-3.5" />
                             </Button>
@@ -234,7 +256,7 @@ export const PropertyPanel = () => {
                 />
 
                 <div className="flex items-center justify-between">
-                    <Label htmlFor="enabled-switch">Enabled</Label>
+                    <Label htmlFor="enabled-switch">{t('enabled')}</Label>
                     <Switch
                         id="enabled-switch"
                         checked={component.enabled}
@@ -247,16 +269,16 @@ export const PropertyPanel = () => {
                 {/* Anchor ID */}
                 <div className="space-y-1">
                     <Label className="flex items-center gap-1 text-xs text-gray-500">
-                        <Anchor className="size-3" /> Anchor ID
+                        <Anchor className="size-3" /> {t('anchorId.label')}
                     </Label>
                     <Input
                         value={component.anchorId || ''}
                         onChange={(e) => updateComponent(pageId, component!.id, { anchorId: e.target.value.replace(/[^a-zA-Z0-9-_]/g, '') })}
-                        placeholder="e.g. pricing, faq, contact"
+                        placeholder={t('anchorId.placeholder')}
                         className="h-7 text-xs"
                     />
                     {component.anchorId && (
-                        <p className="text-caption text-gray-400">Link to this: <code className="rounded bg-gray-100 px-1">#{component.anchorId}</code></p>
+                        <p className="text-caption text-gray-400">{t('anchorId.linkToThis')} <code className="rounded bg-gray-100 px-1">#{component.anchorId}</code></p>
                     )}
                 </div>
 
@@ -267,7 +289,7 @@ export const PropertyPanel = () => {
                     className="w-full text-xs"
                     onClick={() => copyComponent(pageId, component!.id)}
                 >
-                    <Clipboard className="mr-1.5 size-3" /> Copy to Clipboard
+                    <Clipboard className="me-1.5 size-3" /> {t('actions.copyToClipboard')}
                 </Button>
 
                 {/* Component-specific editors */}
@@ -295,34 +317,47 @@ export const PropertyPanel = () => {
         if (page) {
             return (
                 <div className="flex flex-col gap-5 p-4">
-                    <h3 className="text-base font-semibold">Page Settings</h3>
+                    <h3 className="text-base font-semibold">{t('pageSettings.title')}</h3>
 
                     {/* Per-page publish toggle removed: the flag was never
                         enforced learner-side ("Hidden from visitors" was
                         untrue). The site-level Draft/Publish in the editor
                         header is the single gate. */}
                     <div className="rounded-lg border bg-gray-50 p-3 text-xs text-gray-500">
-                        Pages go live together when you hit Publish in the top bar.
+                        {t('pageSettings.publishTogetherHint')}
                     </div>
 
                     {/* Basic info (read-only) */}
                     <div className="space-y-3">
                         <div className="space-y-1.5">
-                            <Label>Page Title</Label>
+                            <Label>{t('pageSettings.pageTitle')}</Label>
                             <Input value={page.title || ''} readOnly disabled />
                         </div>
                         <div className="space-y-1.5">
-                            <Label>Route Slug</Label>
+                            <Label>{t('pageSettings.routeSlug')}</Label>
                             <Input value={page.route} readOnly disabled />
                         </div>
                     </div>
 
                     {/* Page Background Color */}
                     <ColorPickerField
-                        label="Page Background Color"
+                        label={t('pageSettings.pageBackgroundColor')}
                         value={page.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor swatch/seed value
                         onChange={(c) => updatePageBackgroundColor(page.id, c)}
                     />
+
+                    <div className="flex items-center justify-between rounded border bg-gray-50 p-3">
+                        <div className="pr-3">
+                            <Label className="text-xs">{t('pageSettings.hideSiteChrome.label')}</Label>
+                            <p className="text-caption text-gray-400">
+                                {t('pageSettings.hideSiteChrome.hint')}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={!!(page as any).hideSiteChrome}
+                            onCheckedChange={(v) => setPageHideSiteChrome(page.id, v)}
+                        />
+                    </div>
 
                     {/* Paste component */}
                     {clipboard && (
@@ -332,15 +367,15 @@ export const PropertyPanel = () => {
                             className="w-full text-xs"
                             onClick={() => pasteComponent(page.id)}
                         >
-                            <ClipboardPaste className="mr-1.5 size-3" /> Paste: {clipboard.type.replace(/([A-Z])/g, ' $1').trim()}
+                            <ClipboardPaste className="me-1.5 size-3" /> {t('pageSettings.pasteType', { type: clipboard.type.replace(/([A-Z])/g, ' $1').trim() })}
                         </Button>
                     )}
 
                     {/* SEO */}
                     <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
-                        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">SEO</h4>
+                        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{t('pageSettings.seo.heading')}</h4>
                         <div className="space-y-1.5">
-                            <Label className="text-xs">Meta Title</Label>
+                            <Label className="text-xs">{t('pageSettings.seo.metaTitle')}</Label>
                             <Input
                                 value={page.seo?.metaTitle || ''}
                                 placeholder={page.title || page.route}
@@ -348,19 +383,19 @@ export const PropertyPanel = () => {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label className="text-xs">Meta Description</Label>
+                            <Label className="text-xs">{t('pageSettings.seo.metaDescription')}</Label>
                             <Textarea
                                 rows={2}
                                 value={page.seo?.metaDescription || ''}
-                                placeholder="Brief page description for search engines..."
+                                placeholder={t('pageSettings.seo.metaDescriptionPlaceholder')}
                                 onChange={(e) => updatePageSeo(page.id, { metaDescription: e.target.value })}
                             />
                         </div>
                         <ImageUploadField
-                            label="OG Image"
+                            label={t('pageSettings.seo.ogImage')}
                             value={page.seo?.ogImage || ''}
                             onChange={(url) => updatePageSeo(page.id, { ogImage: url })}
-                            placeholder="Social share image URL"
+                            placeholder={t('pageSettings.seo.ogImagePlaceholder')}
                         />
                     </div>
                 </div>
@@ -368,7 +403,7 @@ export const PropertyPanel = () => {
         }
     }
 
-    return <div className="p-8 text-center text-gray-400">Select an item to edit</div>;
+    return <div className="p-8 text-center text-gray-400">{t('selectItemToEdit')}</div>;
 };
 
 // Global Layout Editor — edits globalSettings.layout.header or .footer
@@ -381,6 +416,7 @@ const GlobalLayoutEditor = ({
     section: 'header' | 'footer';
     updateGlobalSettings: (updates: any) => void;
 }) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const layoutData = config.globalSettings?.layout?.[section];
     const props = layoutData?.props || {};
 
@@ -420,10 +456,10 @@ const GlobalLayoutEditor = ({
                 <div className="flex items-start justify-between">
                     <div>
                         <h3 className="text-base font-semibold capitalize">
-                            Global {section === 'header' ? 'Header' : 'Footer'}
+                            {section === 'header' ? t('globalLayout.titleHeader') : t('globalLayout.titleFooter')}
                         </h3>
                         <p className="mt-0.5 text-xs text-purple-600">
-                            Appears on every page
+                            {t('globalLayout.appearsOnEveryPage')}
                         </p>
                     </div>
                     <Button
@@ -431,7 +467,7 @@ const GlobalLayoutEditor = ({
                         size="sm"
                         className="size-8 p-0 text-gray-400 hover:text-red-600"
                         onClick={removeSection}
-                        title={`Remove global ${section}`}
+                        title={section === 'header' ? t('globalLayout.removeHeader') : t('globalLayout.removeFooter')}
                     >
                         <Trash2 className="size-4" />
                     </Button>
@@ -440,7 +476,7 @@ const GlobalLayoutEditor = ({
 
             {/* Enabled toggle */}
             <div className="flex items-center justify-between">
-                <Label>Enabled</Label>
+                <Label>{t('enabled')}</Label>
                 <Switch checked={isEnabled} onCheckedChange={toggleEnabled} />
             </div>
 
@@ -462,6 +498,313 @@ const GlobalLayoutEditor = ({
 };
 
 // Global Settings Editor Component
+/**
+ * Level grouping for the Course Finder's first step.
+ *
+ * The wizard lists whatever this catalogue's courses call their levels. On an
+ * institute that names a level per subject — "English - Class 6",
+ * "Mathematics - Class 6", "Cyber AI- Class 6" — that step turns into fifty
+ * rows for a visitor who only ever wanted to say "Class 6". A group folds them
+ * into one option; picking it selects every level inside it.
+ *
+ * Stored as `courseFinder.levelGroups`: { 'Class 6': ['English - Class 6', …] }.
+ * Key order IS display order — the wizard renders Object.keys() unsorted — so
+ * every edit rebuilds the object in order instead of mutating a key in place.
+ *
+ * Level names are offered from the institute's product pages, the same source
+ * the catalogue's course blocks read: a group whose names match no real level
+ * matches no courses either, and does so silently.
+ */
+const CourseFinderLevelGroups = ({
+    groups,
+    onChange,
+}: {
+    groups: Record<string, string[]>;
+    onChange: (next: Record<string, string[]>) => void;
+}) => {
+    const instituteId = getCurrentInstituteId();
+    const { getAllLevels } = useInstituteDetailsStore();
+    const [openIndex, setOpenIndex] = useState<number | null>(null);
+    const [search, setSearch] = useState('');
+    const [manualName, setManualName] = useState('');
+    const [renameError, setRenameError] = useState<string | null>(null);
+
+    // Same query key as the Product Page Offer editor, so opening both panels
+    // costs one request.
+    const { data: pages, isLoading } = useQuery({
+        queryKey: ['PRODUCT_PAGES_FOR_CATALOGUE', instituteId],
+        queryFn: () => getAllProductPages(instituteId!),
+        enabled: !!instituteId,
+        staleTime: 60_000,
+    });
+
+    // Two sources, because a catalogue can take its courses from either: a
+    // `productPageOffer` block sells one product page's courses, while
+    // `courseCatalog` lists the whole institute. Offering only one source would
+    // leave the other kind of catalogue with an empty picker.
+    const knownLevels: string[] = Array.from(
+        new Set([
+            ...((pages || []) as any[])
+                .flatMap((p: any) => p.mappings || [])
+                .map((m: any) => m.level_name),
+            ...getAllLevels().map((l) => l.level_name),
+        ].filter((v: any): v is string => typeof v === 'string' && v.trim() !== ''))
+    ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+    const entries = Object.entries(groups) as [string, string[]][];
+    const commit = (next: [string, string[]][]) => onChange(Object.fromEntries(next));
+
+    const addGroup = () => {
+        // Numbered rather than blank so two "Add" clicks cannot collide on the
+        // same empty key and silently become one group.
+        let n = entries.length + 1;
+        while (entries.some(([label]) => label === `Group ${n}`)) n += 1;
+        commit([...entries, [`Group ${n}`, []] as [string, string[]]]);
+        setOpenIndex(entries.length);
+    };
+
+    const rename = (index: number, label: string) => {
+        const trimmed = label.trim();
+        const current = entries[index]?.[0];
+        if (!trimmed || trimmed === current) return;
+        if (entries.some(([existing], i) => i !== index && existing === trimmed)) {
+            setRenameError(`There is already a group called “${trimmed}”.`);
+            return;
+        }
+        setRenameError(null);
+        commit(entries.map((e, i) => (i === index ? ([trimmed, e[1]] as [string, string[]]) : e)));
+    };
+
+    const move = (index: number, delta: number) => {
+        const target = index + delta;
+        if (target < 0 || target >= entries.length) return;
+        const next = [...entries];
+        const [row] = next.splice(index, 1);
+        next.splice(target, 0, row!);
+        commit(next);
+        setOpenIndex(target);
+    };
+
+    const setLevels = (index: number, levels: string[]) =>
+        commit(entries.map((e, i) => (i === index ? ([e[0], levels] as [string, string[]]) : e)));
+
+    const addManual = (index: number, levels: string[]) => {
+        const name = manualName.trim();
+        if (!name || levels.includes(name)) return;
+        setLevels(index, [...levels, name]);
+        setManualName('');
+    };
+
+    return (
+        <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+            <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs">Group the options</Label>
+                <Button variant="outline" size="sm" onClick={addGroup} className="h-7 gap-1 px-2">
+                    <Plus className="size-3.5" /> Add group
+                </Button>
+            </div>
+            <p className="text-2xs text-gray-400">
+                Optional. Ask &ldquo;Class 6&rdquo; once instead of listing every subject&apos;s own
+                level name. Visitors see the group names, in this order; picking one matches every
+                level inside it.
+            </p>
+
+            {renameError && <p className="text-2xs text-danger-600">{renameError}</p>}
+
+            {entries.length === 0 && (
+                <p className="rounded bg-gray-50 p-2 text-2xs text-gray-500">
+                    No groups — the wizard lists each level name on its own.
+                </p>
+            )}
+
+            {entries.map(([label, levels], index) => {
+                const open = openIndex === index;
+                // Names that no course on any product page actually uses. They
+                // match nothing, so they are worth calling out rather than
+                // leaving to be discovered as an empty result page.
+                const unknown = levels.filter((l) => !knownLevels.includes(l));
+                const suggestion = knownLevels.filter(
+                    (l) => !levels.includes(l) && l.toLowerCase().includes(label.trim().toLowerCase())
+                );
+                const visibleLevels = search.trim()
+                    ? knownLevels.filter((l) => l.toLowerCase().includes(search.trim().toLowerCase()))
+                    : knownLevels;
+
+                return (
+                    <div key={`${index}-${label}`} className="rounded border bg-white p-2">
+                        <div className="flex items-center gap-1">
+                            <Input
+                                defaultValue={label}
+                                onBlur={(e) => rename(index, e.target.value)}
+                                className="h-7"
+                            />
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => move(index, -1)}
+                                disabled={index === 0}
+                                className="size-7 shrink-0 p-0"
+                                aria-label="Move group up"
+                            >
+                                <ArrowUp className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => move(index, 1)}
+                                disabled={index === entries.length - 1}
+                                className="size-7 shrink-0 p-0"
+                                aria-label="Move group down"
+                            >
+                                <ArrowDown className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => commit(entries.filter((_, i) => i !== index))}
+                                className="size-7 shrink-0 p-0 text-danger-600"
+                                aria-label={`Delete group ${label}`}
+                            >
+                                <Trash2 className="size-3.5" />
+                            </Button>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setOpenIndex(open ? null : index);
+                                setSearch('');
+                                setManualName('');
+                            }}
+                            className="mt-1 flex w-full items-center justify-between gap-2 text-start text-2xs text-gray-500"
+                        >
+                            <span>
+                                {levels.length === 0
+                                    ? 'No levels yet — this option would match nothing'
+                                    : `${levels.length} level${levels.length === 1 ? '' : 's'}`}
+                                {unknown.length > 0 && ` · ${unknown.length} not found`}
+                            </span>
+                            {open ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                        </button>
+
+                        {levels.length === 0 && (
+                            <p className="text-2xs text-warning-600">
+                                Add at least one level, or delete the group.
+                            </p>
+                        )}
+                        {unknown.length > 0 && (
+                            <p className="text-2xs text-warning-600">
+                                No course uses {unknown.map((u) => `“${u}”`).join(', ')} — check the
+                                spelling against the list below.
+                            </p>
+                        )}
+
+                        {open && (
+                            <div className="mt-2 space-y-2 border-t pt-2">
+                                {suggestion.length > 0 && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setLevels(index, [...levels, ...suggestion])}
+                                        className="h-7 w-full gap-1 px-2 text-2xs"
+                                    >
+                                        <Plus className="size-3.5" />
+                                        Add the {suggestion.length} level
+                                        {suggestion.length === 1 ? '' : 's'} containing “{label.trim()}”
+                                    </Button>
+                                )}
+
+                                <Input
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Search levels"
+                                    className="h-7"
+                                />
+
+                                {/* Escape hatch. An institute whose levels this
+                                    panel cannot see — courses not on a product
+                                    page, details not loaded — can still name one
+                                    by hand; it is flagged as "not found" below
+                                    until a course actually uses it. */}
+                                <div className="flex items-center gap-1">
+                                    <Input
+                                        value={manualName}
+                                        onChange={(e) => setManualName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                addManual(index, levels);
+                                            }
+                                        }}
+                                        placeholder="Or type a level name"
+                                        className="h-7"
+                                    />
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => addManual(index, levels)}
+                                        disabled={!manualName.trim() || levels.includes(manualName.trim())}
+                                        className="h-7 shrink-0 px-2 text-2xs"
+                                    >
+                                        Add
+                                    </Button>
+                                </div>
+
+                                <div className="max-h-48 space-y-1 overflow-y-auto pe-1">
+                                    {isLoading && <p className="text-2xs text-gray-400">Loading levels…</p>}
+                                    {!isLoading && knownLevels.length === 0 && (
+                                        <p className="text-2xs text-gray-400">
+                                            No levels found. They are read from this
+                                            institute&apos;s courses and product pages — set one up
+                                            first, or type the name into a group by hand.
+                                        </p>
+                                    )}
+                                    {visibleLevels.map((level) => (
+                                        <label
+                                            key={level}
+                                            className="flex items-center gap-2 text-2xs text-gray-700"
+                                        >
+                                            <Checkbox
+                                                checked={levels.includes(level)}
+                                                onCheckedChange={() =>
+                                                    setLevels(
+                                                        index,
+                                                        levels.includes(level)
+                                                            ? levels.filter((l) => l !== level)
+                                                            : [...levels, level]
+                                                    )
+                                                }
+                                            />
+                                            {level}
+                                        </label>
+                                    ))}
+                                    {/* Kept selectable even though no course uses them: they may
+                                        be a typo the admin wants to uncheck, or a level on a page
+                                        that is not ACTIVE yet. */}
+                                    {unknown.map((level) => (
+                                        <label
+                                            key={level}
+                                            className="flex items-center gap-2 text-2xs text-warning-600"
+                                        >
+                                            <Checkbox
+                                                checked
+                                                onCheckedChange={() =>
+                                                    setLevels(index, levels.filter((l) => l !== level))
+                                                }
+                                            />
+                                            {level}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
 const GlobalSettingsEditor = ({
     config,
     updateGlobalSettings,
@@ -469,6 +812,7 @@ const GlobalSettingsEditor = ({
     config: any;
     updateGlobalSettings: (updates: any) => void;
 }) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const gs = config.globalSettings || {};
 
     const updateField = (path: string, value: any) => {
@@ -503,46 +847,47 @@ const GlobalSettingsEditor = ({
         <div className="flex flex-col gap-6 overflow-auto p-4">
             <div className="flex items-center gap-2 border-b pb-4">
                 <Settings className="size-5 text-indigo-600" />
-                <h3 className="text-lg font-semibold">Global Settings</h3>
+                <h3 className="text-lg font-semibold">{t('global.title')}</h3>
             </div>
 
             {/* Catalogue Type */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
-                <h4 className="font-medium text-gray-700">Catalogue Type</h4>
+                <h4 className="font-medium text-gray-700">{t('global.catalogueType.heading')}</h4>
                 <div className="flex items-center justify-between">
-                    <Label>Type</Label>
+                    <Label>{t('global.catalogueType.type')}</Label>
                     <select
                         className="rounded border px-3 py-1.5 text-sm"
                         value={gs.courseCatalogeType?.value || 'Course'}
                         onChange={(e) => updateField('courseCatalogeType.value', e.target.value)}
                     >
-                        <option value="Course">Course</option>
-                        <option value="Product">Product</option>
+                        <option value="Course">{t('global.catalogueType.course')}</option>
+                        <option value="Product">{t('global.catalogueType.product')}</option>
                     </select>
                 </div>
             </div>
 
             {/* Theme Settings */}
             <div className="space-y-4 rounded-lg border bg-gray-50 p-4">
-                <h4 className="font-medium text-gray-700">Theme</h4>
+                <h4 className="font-medium text-gray-700">{t('global.theme.heading')}</h4>
 
                 {/* Color Presets */}
                 <div className="space-y-2">
-                    <Label className="text-xs text-gray-500">Color Preset</Label>
+                    <Label className="text-xs text-gray-500">{t('global.theme.colorPreset')}</Label>
                     <div className="grid grid-cols-3 gap-2">
                         {(
                             [
-                                { key: 'default', label: 'Default',  color: '#3B82F6' }, // design-lint-ignore: color-editor swatch/seed value
-                                { key: 'ocean',   label: 'Ocean',    color: '#0EA5E9' }, // design-lint-ignore: color-editor swatch/seed value
-                                { key: 'forest',  label: 'Forest',   color: '#16A34A' }, // design-lint-ignore: color-editor swatch/seed value
-                                { key: 'sunset',  label: 'Sunset',   color: '#F97316' }, // design-lint-ignore: color-editor swatch/seed value
-                                { key: 'midnight',label: 'Midnight', color: '#7C3AED' }, // design-lint-ignore: color-editor swatch/seed value
-                                { key: 'rose',    label: 'Rose',     color: '#E11D48' }, // design-lint-ignore: color-editor swatch/seed value
-                                { key: 'violet',  label: 'Violet',   color: '#8B5CF6' }, // design-lint-ignore: color-editor swatch/seed value
-                                { key: 'amber',   label: 'Amber',    color: '#D97706' }, // design-lint-ignore: color-editor swatch/seed value
-                                { key: 'slate',   label: 'Slate',    color: '#334155' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'default', color: '#3B82F6' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'ocean',   color: '#0EA5E9' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'forest',  color: '#16A34A' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'sunset',  color: '#F97316' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'midnight',color: '#7C3AED' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'rose',    color: '#E11D48' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'violet',  color: '#8B5CF6' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'amber',   color: '#D97706' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'slate',   color: '#334155' }, // design-lint-ignore: color-editor swatch/seed value
                             ] as const
-                        ).map(({ key, label, color }) => {
+                        ).map(({ key, color }) => {
+                            const label = optionLabel(t, key);
                             const isActive = (gs.theme?.preset || 'default') === key;
                             return (
                                 <button
@@ -570,14 +915,14 @@ const GlobalSettingsEditor = ({
                 {/* Custom primary color override */}
                 <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                        <Label className="text-xs text-gray-500">Custom Color Override</Label>
+                        <Label className="text-xs text-gray-500">{t('global.theme.customColorOverride')}</Label>
                         {gs.theme?.primaryColor && (
                             <button
                                 type="button"
                                 onClick={() => updateField('theme.primaryColor', undefined)}
                                 className="text-caption text-gray-400 hover:text-red-500"
                             >
-                                Clear
+                                {t('actions.clear')}
                             </button>
                         )}
                     </div>
@@ -589,25 +934,25 @@ const GlobalSettingsEditor = ({
                             className="h-8 w-10 cursor-pointer rounded border bg-white p-0.5"
                         />
                         <span className="font-mono text-xs text-gray-500">
-                            {gs.theme?.primaryColor || 'Using preset'}
+                            {gs.theme?.primaryColor || t('global.theme.usingPreset')}
                         </span>
                     </div>
                     <p className="text-caption text-gray-400">
-                        Overrides the preset color with a custom brand color.
+                        {t('global.theme.customColorHint')}
                     </p>
                 </div>
 
                 {/* Border Radius */}
                 <div className="space-y-2">
-                    <Label className="text-xs text-gray-500">Corner Style</Label>
+                    <Label className="text-xs text-gray-500">{t('global.theme.cornerStyle')}</Label>
                     <div className="flex gap-2">
                         {(
                             [
-                                { key: 'sharp',   label: 'Sharp',   preview: '2px'    },
-                                { key: 'rounded', label: 'Rounded', preview: '8px'    },
-                                { key: 'pill',    label: 'Pill',    preview: '9999px' },
+                                { key: 'sharp',   preview: '2px'    },
+                                { key: 'rounded', preview: '8px'    },
+                                { key: 'pill',    preview: '9999px' },
                             ] as const
-                        ).map(({ key, label, preview }) => {
+                        ).map(({ key, preview }) => {
                             const isActive = (gs.theme?.borderRadius || 'rounded') === key;
                             return (
                                 <button
@@ -624,7 +969,7 @@ const GlobalSettingsEditor = ({
                                         className="h-4 w-8 border-2 border-gray-600 bg-transparent"
                                         style={{ borderRadius: preview }}
                                     />
-                                    {label}
+                                    {optionLabel(t, key)}
                                 </button>
                             );
                         })}
@@ -633,16 +978,16 @@ const GlobalSettingsEditor = ({
 
                 {/* Heading Scale */}
                 <div className="space-y-2">
-                    <Label className="text-xs text-gray-500">Heading Scale</Label>
+                    <Label className="text-xs text-gray-500">{t('global.theme.headingScale')}</Label>
                     <div className="flex gap-2">
                         {(
                             [
-                                { key: 'compact',  label: 'Compact' },
-                                { key: 'default',  label: 'Default' },
-                                { key: 'large',    label: 'Large' },
-                                { key: 'display',  label: 'Display' },
+                                { key: 'compact' },
+                                { key: 'default' },
+                                { key: 'large' },
+                                { key: 'display' },
                             ] as const
-                        ).map(({ key, label }) => {
+                        ).map(({ key }) => {
                             const isActive = (gs.theme?.headingScale || 'default') === key;
                             return (
                                 <button
@@ -655,7 +1000,7 @@ const GlobalSettingsEditor = ({
                                             : 'border-transparent bg-white hover:border-gray-300'
                                     }`}
                                 >
-                                    {label}
+                                    {optionLabel(t, key)}
                                 </button>
                             );
                         })}
@@ -664,16 +1009,17 @@ const GlobalSettingsEditor = ({
 
                 {/* Atmosphere — page canvas treatment (data-catalogue-atmosphere) */}
                 <div className="space-y-2">
-                    <Label className="text-xs text-gray-500">Atmosphere</Label>
+                    <Label className="text-xs text-gray-500">{t('global.theme.atmosphere')}</Label>
                     <div className="flex gap-2">
                         {(
                             [
-                                { key: 'flat',   label: 'Flat' },
-                                { key: 'soft',   label: 'Soft' },
-                                { key: 'mesh',   label: 'Mesh' },
-                                { key: 'aurora', label: 'Aurora' },
+                                { key: 'flat' },
+                                { key: 'soft' },
+                                { key: 'mesh' },
+                                { key: 'aurora' },
                             ] as const
-                        ).map(({ key, label }) => {
+                        ).map(({ key }) => {
+                            const label = optionLabel(t, key);
                             const isActive = (gs.theme?.atmosphere?.canvas || 'flat') === key;
                             return (
                                 <button
@@ -700,11 +1046,12 @@ const GlobalSettingsEditor = ({
                         <div className="flex gap-2">
                             {(
                                 [
-                                    { key: 'subtle', label: 'Subtle' },
-                                    { key: 'medium', label: 'Medium' },
-                                    { key: 'bold',   label: 'Bold' },
+                                    { key: 'subtle' },
+                                    { key: 'medium' },
+                                    { key: 'bold' },
                                 ] as const
-                            ).map(({ key, label }) => {
+                            ).map(({ key }) => {
+                                const label = optionLabel(t, key);
                                 const isActive = (gs.theme?.atmosphere?.intensity || 'subtle') === key;
                                 return (
                                     <button
@@ -732,16 +1079,17 @@ const GlobalSettingsEditor = ({
 
                 {/* Motion personality — entrance duration/easing site-wide */}
                 <div className="space-y-2">
-                    <Label className="text-xs text-gray-500">Motion</Label>
+                    <Label className="text-xs text-gray-500">{t('global.theme.motion')}</Label>
                     <div className="flex gap-2">
                         {(
                             [
-                                { key: 'none',     label: 'None' },
-                                { key: 'calm',     label: 'Calm' },
-                                { key: 'balanced', label: 'Balanced' },
-                                { key: 'dynamic',  label: 'Dynamic' },
+                                { key: 'none' },
+                                { key: 'calm' },
+                                { key: 'balanced' },
+                                { key: 'dynamic' },
                             ] as const
-                        ).map(({ key, label }) => {
+                        ).map(({ key }) => {
+                            const label = optionLabel(t, key);
                             // Unset ≠ Balanced: legacy configs omit the attribute and keep
                             // the :root motion fallbacks, so no button is pre-lit.
                             const isActive = gs.motion?.personality === key;
@@ -765,7 +1113,7 @@ const GlobalSettingsEditor = ({
 
                 {/* Back to Top Button */}
                 <div className="flex items-center justify-between">
-                    <Label className="text-xs text-gray-500">Back to Top Button</Label>
+                    <Label className="text-xs text-gray-500">{t('global.theme.backToTopButton')}</Label>
                     <Switch
                         checked={gs.backToTop || false}
                         onCheckedChange={(c) => updateField('backToTop', c)}
@@ -774,7 +1122,7 @@ const GlobalSettingsEditor = ({
 
                 {/* Mode */}
                 <div className="flex items-center justify-between">
-                    <Label className="text-xs text-gray-500">Mode</Label>
+                    <Label className="text-xs text-gray-500">{t('global.theme.mode')}</Label>
                     <div className="flex overflow-hidden rounded-lg border">
                         {(['light', 'dark'] as const).map((m) => (
                             <button
@@ -787,31 +1135,31 @@ const GlobalSettingsEditor = ({
                                         : 'bg-white text-gray-500 hover:bg-gray-50'
                                 }`}
                             >
-                                {m}
+                                {optionLabel(t, m)}
                             </button>
                         ))}
                     </div>
                 </div>
 
                 <div className="flex items-center justify-between">
-                    <Label className="text-xs text-gray-500">Compactness</Label>
+                    <Label className="text-xs text-gray-500">{t('global.theme.compactness')}</Label>
                     <select
                         className="rounded border px-3 py-1.5 text-sm"
                         value={gs.compactness || 'medium'}
                         onChange={(e) => updateField('compactness', e.target.value)}
                     >
-                        <option value="small">Small</option>
-                        <option value="medium">Medium</option>
-                        <option value="large">Large</option>
+                        <option value="small">{optionLabel(t, 'small')}</option>
+                        <option value="medium">{optionLabel(t, 'medium')}</option>
+                        <option value="large">{optionLabel(t, 'large')}</option>
                     </select>
                 </div>
             </div>
 
             {/* Fonts */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
-                <h4 className="font-medium text-gray-700">Typography</h4>
+                <h4 className="font-medium text-gray-700">{t('global.fonts.heading')}</h4>
                 <div className="flex items-center justify-between">
-                    <Label>Custom Fonts</Label>
+                    <Label>{t('global.fonts.customFonts')}</Label>
                     <Switch
                         checked={gs.fonts?.enabled || false}
                         onCheckedChange={(c) => updateField('fonts.enabled', c)}
@@ -819,7 +1167,7 @@ const GlobalSettingsEditor = ({
                 </div>
                 {gs.fonts?.enabled && (
                     <div className="space-y-2">
-                        <Label className="text-xs">Body Font</Label>
+                        <Label className="text-xs">{t('global.fonts.bodyFont')}</Label>
                         <select
                             className="w-full rounded border px-3 py-1.5 text-sm"
                             value={gs.fonts?.family || 'Inter, sans-serif'}
@@ -829,21 +1177,21 @@ const GlobalSettingsEditor = ({
                                 <option key={f.label} value={f.stack}>{f.label}</option>
                             ))}
                         </select>
-                        <Label className="text-xs">Heading Font</Label>
+                        <Label className="text-xs">{t('global.fonts.headingFont')}</Label>
                         <select
                             className="w-full rounded border px-3 py-1.5 text-sm"
                             value={gs.fonts?.headingFamily || ''}
                             onChange={(e) => updateField('fonts.headingFamily', e.target.value || undefined)}
                         >
-                            <option value="">Same as body</option>
+                            <option value="">{t('global.fonts.sameAsBody')}</option>
                             {CATALOGUE_FONTS.map((f) => (
                                 <option key={f.label} value={f.stack}>
-                                    {f.label}{f.serif ? ' (serif)' : ''}
+                                    {f.label}{f.serif ? ` ${t('global.fonts.serifSuffix')}` : ''}
                                 </option>
                             ))}
                         </select>
                         <p className="text-caption text-gray-400">
-                            Pair a serif heading with a sans body for an editorial, premium feel.
+                            {t('global.fonts.pairingHint')}
                         </p>
                     </div>
                 )}
@@ -851,9 +1199,9 @@ const GlobalSettingsEditor = ({
 
             {/* Payment Settings */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
-                <h4 className="font-medium text-gray-700">Payment</h4>
+                <h4 className="font-medium text-gray-700">{t('global.payment.heading')}</h4>
                 <div className="flex items-center justify-between">
-                    <Label>Enable Payments</Label>
+                    <Label>{t('global.payment.enable')}</Label>
                     <Switch
                         checked={gs.payment?.enabled || false}
                         onCheckedChange={(c) => updateField('payment.enabled', c)}
@@ -861,12 +1209,13 @@ const GlobalSettingsEditor = ({
                 </div>
                 {gs.payment?.enabled && (
                     <div className="space-y-2">
-                        <Label className="text-xs">Provider</Label>
+                        <Label className="text-xs">{t('global.payment.provider')}</Label>
                         <select
                             className="w-full rounded border px-3 py-1.5 text-sm"
                             value={gs.payment?.provider || 'razorpay'}
                             onChange={(e) => updateField('payment.provider', e.target.value)}
                         >
+                            {/* Payment provider names are real brand names — never translated. */}
                             <option value="razorpay">Razorpay</option>
                             <option value="stripe">Stripe</option>
                             <option value="PHONEPE">PhonePe</option>
@@ -880,36 +1229,35 @@ const GlobalSettingsEditor = ({
                 a floating button on every page, tracked as a conversion. */}
             <div className="space-y-3 border-b pb-4">
                 <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-700">WhatsApp button</h4>
+                    <h4 className="font-medium text-gray-700">{t('global.whatsapp.heading')}</h4>
                     <Switch
                         checked={gs.whatsapp?.enabled || false}
                         onCheckedChange={(c) => updateField('whatsapp.enabled', c)}
                     />
                 </div>
                 <p className="text-caption text-gray-400">
-                    Shows a floating WhatsApp button on every page of your website. Taps are counted
-                    as enquiries in your analytics.
+                    {t('global.whatsapp.hint')}
                 </p>
                 {gs.whatsapp?.enabled && (
                     <>
                         <div>
-                            <Label className="text-xs">WhatsApp number (with country code)</Label>
+                            <Label className="text-xs">{t('global.whatsapp.numberLabel')}</Label>
                             <Input className="mt-1" placeholder="919895603342" value={gs.whatsapp?.phone || ''} onChange={(e) => updateField('whatsapp.phone', e.target.value)} />
                         </div>
                         <div>
-                            <Label className="text-xs">Prefilled message</Label>
-                            <Input className="mt-1" placeholder="Hi! I'd like to know about your batches." value={gs.whatsapp?.message || ''} onChange={(e) => updateField('whatsapp.message', e.target.value)} />
+                            <Label className="text-xs">{t('global.whatsapp.prefilledMessage')}</Label>
+                            <Input className="mt-1" placeholder={t('global.whatsapp.prefilledMessagePlaceholder')} value={gs.whatsapp?.message || ''} onChange={(e) => updateField('whatsapp.message', e.target.value)} />
                         </div>
                         <div>
-                            <Label className="text-xs">Button label (optional)</Label>
-                            <Input className="mt-1" placeholder="Chat with us" value={gs.whatsapp?.label || ''} onChange={(e) => updateField('whatsapp.label', e.target.value)} />
+                            <Label className="text-xs">{t('global.whatsapp.buttonLabelOptional')}</Label>
+                            <Input className="mt-1" placeholder={t('global.whatsapp.buttonLabelPlaceholder')} value={gs.whatsapp?.label || ''} onChange={(e) => updateField('whatsapp.label', e.target.value)} />
                         </div>
                         <div>
-                            <Label className="text-xs">Position</Label>
+                            <Label className="text-xs">{t('global.whatsapp.position')}</Label>
                             <div className="mt-1 flex gap-1">
                                 {(['right', 'left'] as const).map((pos) => (
                                     <button key={pos} onClick={() => updateField('whatsapp.position', pos)}
-                                        className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(gs.whatsapp?.position || 'right') === pos ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{pos}</button>
+                                        className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(gs.whatsapp?.position || 'right') === pos ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, pos)}</button>
                                 ))}
                             </div>
                         </div>
@@ -921,32 +1269,30 @@ const GlobalSettingsEditor = ({
                 Stored in the catalogue JSON, injected on learner catalogue
                 routes only; lead submissions fire a standard Lead event. */}
             <div className="space-y-3 border-b pb-4">
-                <h4 className="font-medium text-gray-700">Tracking &amp; Analytics</h4>
+                <h4 className="font-medium text-gray-700">{t('global.tracking.heading')}</h4>
                 <p className="text-caption text-gray-400">
-                    Paste IDs from Google Analytics / Meta Events Manager. They load only on your
-                    public website pages, and every form submission fires a Lead conversion event
-                    automatically — so ad campaigns can optimise on real enquiries.
+                    {t('global.tracking.hint')}
                 </p>
                 <div>
-                    <Label className="text-xs">Google Analytics 4 — Measurement ID</Label>
+                    <Label className="text-xs">{t('global.tracking.ga4Label')}</Label>
                     <Input className="mt-1" placeholder="G-XXXXXXXXXX" value={gs.tracking?.ga4MeasurementId || ''} onChange={(e) => updateField('tracking.ga4MeasurementId', e.target.value.trim())} />
                 </div>
                 <div>
-                    <Label className="text-xs">Meta (Facebook) Pixel ID</Label>
+                    <Label className="text-xs">{t('global.tracking.metaPixelLabel')}</Label>
                     <Input className="mt-1" placeholder="1234567890" value={gs.tracking?.metaPixelId || ''} onChange={(e) => updateField('tracking.metaPixelId', e.target.value.trim())} />
                 </div>
                 <div>
-                    <Label className="text-xs">Google Tag Manager — Container ID</Label>
+                    <Label className="text-xs">{t('global.tracking.gtmLabel')}</Label>
                     <Input className="mt-1" placeholder="GTM-XXXXXXX" value={gs.tracking?.gtmId || ''} onChange={(e) => updateField('tracking.gtmId', e.target.value.trim())} />
-                    <p className="mt-1 text-caption text-gray-400">Use GTM alone, or GA4/Pixel directly — both work.</p>
+                    <p className="mt-1 text-caption text-gray-400">{t('global.tracking.gtmHint')}</p>
                 </div>
             </div>
 
             {/* Lead Collection */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
-                <h4 className="font-medium text-gray-700">Lead Collection</h4>
+                <h4 className="font-medium text-gray-700">{t('global.leadCollection.heading')}</h4>
                 <div className="flex items-center justify-between">
-                    <Label>Enable Lead Form</Label>
+                    <Label>{t('global.leadCollection.enable')}</Label>
                     <Switch
                         checked={gs.leadCollection?.enabled || false}
                         onCheckedChange={(c) => updateField('leadCollection.enabled', c)}
@@ -955,20 +1301,20 @@ const GlobalSettingsEditor = ({
                 {gs.leadCollection?.enabled && (
                     <>
                         <div className="flex items-center justify-between">
-                            <Label className="text-xs">Mandatory</Label>
+                            <Label className="text-xs">{t('global.leadCollection.mandatory')}</Label>
                             <Switch
                                 checked={gs.leadCollection?.mandatory || false}
                                 onCheckedChange={(c) => updateField('leadCollection.mandatory', c)}
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-xs">Invite Link</Label>
+                            <Label className="text-xs">{t('global.leadCollection.inviteLink')}</Label>
                             <Input
                                 value={gs.leadCollection?.inviteLink || ''}
                                 onChange={(e) =>
                                     updateField('leadCollection.inviteLink', e.target.value)
                                 }
-                                placeholder="Optional invite link"
+                                placeholder={t('global.leadCollection.inviteLinkPlaceholder')}
                             />
                         </div>
                     </>
@@ -977,14 +1323,12 @@ const GlobalSettingsEditor = ({
 
             {/* Course Finder */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
-                <h4 className="font-medium text-gray-700">Course Finder Wizard</h4>
+                <h4 className="font-medium text-gray-700">{t('global.courseFinder.heading')}</h4>
                 <p className="text-caption text-gray-500">
-                    Asks visitors to pick filters step by step the first time they open this
-                    page, then shows only the matching courses. Options are pulled live from
-                    this page&apos;s own course grid — nothing extra to configure.
+                    {t('global.courseFinder.hint')}
                 </p>
                 <div className="flex items-center justify-between">
-                    <Label>Enable Course Finder</Label>
+                    <Label>{t('global.courseFinder.enable')}</Label>
                     <Switch
                         checked={gs.courseFinder?.enabled || false}
                         onCheckedChange={(c) => updateField('courseFinder.enabled', c)}
@@ -993,7 +1337,7 @@ const GlobalSettingsEditor = ({
                 {gs.courseFinder?.enabled && (
                     <>
                         <div className="space-y-2">
-                            <Label className="text-xs">Steps to ask</Label>
+                            <Label className="text-xs">{t('global.courseFinder.stepsToAsk')}</Label>
                             <div className="flex flex-col gap-2">
                                 {(
                                     [
@@ -1021,26 +1365,85 @@ const GlobalSettingsEditor = ({
                                 })}
                             </div>
                             <p className="text-2xs text-gray-400">
-                                Asked in this fixed order — skipping any step left unchecked, or
-                                any step this page&apos;s courses have no options for.
+                                {t('global.courseFinder.stepsOrderHint')}
                             </p>
                         </div>
                         <div className="flex items-center justify-between">
-                            <Label className="text-xs">Require completion (no skip)</Label>
+                            <Label className="text-xs">{t('global.courseFinder.requireCompletion')}</Label>
                             <Switch
                                 checked={gs.courseFinder?.mandatory || false}
                                 onCheckedChange={(c) => updateField('courseFinder.mandatory', c)}
                             />
                         </div>
+
+                        {/* Step titles. The wizard otherwise asks "Choose your
+                            Level", which is platform vocabulary — a parent is
+                            looking for a Class, a college for a Semester. */}
+                        <div className="space-y-2">
+                            <Label className="text-xs">What each step is called</Label>
+                            {(
+                                [
+                                    ['level', ContentTerms.Level, SystemTerms.Level, 'Class'],
+                                    ['session', ContentTerms.Session, SystemTerms.Session, 'Batch'],
+                                    ['tag', ContentTerms.PopularTag, SystemTerms.PopularTag, 'Board'],
+                                ] as const
+                            )
+                                .filter(([key]) => (gs.courseFinder?.steps || []).includes(key))
+                                .map(([key, contentTerm, systemTerm, example]) => (
+                                    <div key={key} className="flex items-center gap-2">
+                                        <span className="w-20 shrink-0 text-caption text-gray-500">
+                                            {getTerminology(contentTerm, systemTerm)}
+                                        </span>
+                                        <Input
+                                            value={gs.courseFinder?.stepLabels?.[key] || ''}
+                                            onChange={(e) =>
+                                                updateField(`courseFinder.stepLabels.${key}`, e.target.value)
+                                            }
+                                            placeholder={`e.g. ${example}`}
+                                        />
+                                    </div>
+                                ))}
+                            <p className="text-2xs text-gray-400">
+                                Leave blank to use the platform wording. Only the steps you ticked
+                                above are asked, so only those are listed here.
+                            </p>
+                        </div>
+
+                        {(gs.courseFinder?.steps || []).includes('level') && (
+                            <CourseFinderLevelGroups
+                                groups={gs.courseFinder?.levelGroups || {}}
+                                onChange={(next) => updateField('courseFinder.levelGroups', next)}
+                            />
+                        )}
                     </>
+                )}
+            </div>
+
+            {/* Course pages */}
+            <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
+                <h4 className="font-medium text-gray-700">{t('global.coursePages.heading')}</h4>
+                <p className="text-caption text-gray-500">{t('global.coursePages.hint')}</p>
+                <div className="flex items-center justify-between">
+                    <Label>{t('global.coursePages.enable')}</Label>
+                    <Switch
+                        checked={gs.coursePages?.enabled || false}
+                        onCheckedChange={(c) => updateField('coursePages.enabled', c)}
+                    />
+                </div>
+                {gs.coursePages?.enabled && (
+                    <CoursePagesEditor
+                        courses={gs.coursePages?.courses || {}}
+                        pages={config.pages || []}
+                        onChange={(next) => updateField('coursePages.courses', next)}
+                    />
                 )}
             </div>
 
             {/* Enquiry */}
             <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
-                <h4 className="font-medium text-gray-700">Enquiry</h4>
+                <h4 className="font-medium text-gray-700">{t('global.enquiry.heading')}</h4>
                 <div className="flex items-center justify-between">
-                    <Label>Enable Enquiry</Label>
+                    <Label>{t('global.enquiry.enable')}</Label>
                     <Switch
                         checked={gs.enrquiry?.enabled || false}
                         onCheckedChange={(c) => updateField('enrquiry.enabled', c)}
@@ -1053,6 +1456,7 @@ const GlobalSettingsEditor = ({
 
 // ── Column Layout Editor ──────────────────────────────────────────────────────
 const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { selectComponent, deleteFromSlot } = useEditorStore();
     const { slots = [] as any[][], columnWidths = [] as string[], gap = 'md', align = 'top', stackOnMobile = true } = component.props;
 
@@ -1076,28 +1480,28 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
     };
 
     const TYPE_LABEL: Record<string, string> = {
-        heroSection: 'Hero Section', courseCatalog: 'Course Catalog', bookCatalogue: 'Book Catalogue',
-        statsHighlights: 'Stats', testimonialSection: 'Testimonials', mediaShowcase: 'Media Showcase',
-        faqSection: 'FAQ', ctaBanner: 'CTA Banner', pricingTable: 'Pricing', contactForm: 'Contact Form',
-        teamSection: 'Team', announcementFeed: 'Announcements', imageGallery: 'Image Gallery',
-        videoEmbed: 'Video', buyRentSection: 'Buy/Rent', policyRenderer: 'Policy',
-        cartComponent: 'Cart', courseDetails: 'Course Details', bookDetails: 'Book Details',
-        spacer: 'Spacer', tabsAccordion: 'Tabs/Accordion', logoCloud: 'Logo Cloud', trustChip: 'Trust Chip',
-        sectionHeading: 'Section Heading',
-        mapEmbed: 'Map', countdownTimer: 'Countdown', textBlock: 'Text Block',
-        featureGrid: 'Feature Grid', imageBlock: 'Image', buttonBlock: 'Button',
-        newsletterSignup: 'Newsletter', stepsProcess: 'Steps/Process',
+        heroSection: t('componentTypes.heroSection'), courseCatalog: t('componentTypes.courseCatalog'), bookCatalogue: t('componentTypes.bookCatalogue'),
+        statsHighlights: t('componentTypes.statsHighlights'), testimonialSection: t('componentTypes.testimonialSection'), mediaShowcase: t('componentTypes.mediaShowcase'),
+        faqSection: t('componentTypes.faqSection'), ctaBanner: t('componentTypes.ctaBanner'), pricingTable: t('componentTypes.pricingTable'), contactForm: t('componentTypes.contactForm'),
+        teamSection: t('componentTypes.teamSection'), announcementFeed: t('componentTypes.announcementFeed'), imageGallery: t('componentTypes.imageGallery'),
+        videoEmbed: t('componentTypes.videoEmbed'), buyRentSection: t('componentTypes.buyRentSection'), policyRenderer: t('componentTypes.policyRenderer'),
+        cartComponent: t('componentTypes.cartComponent'), courseDetails: t('componentTypes.courseDetails'), bookDetails: t('componentTypes.bookDetails'),
+        spacer: t('componentTypes.spacer'), tabsAccordion: t('componentTypes.tabsAccordion'), logoCloud: t('componentTypes.logoCloud'), trustChip: t('componentTypes.trustChip'),
+        sectionHeading: t('componentTypes.sectionHeading'),
+        mapEmbed: t('componentTypes.mapEmbed'), countdownTimer: t('componentTypes.countdownTimer'), textBlock: t('componentTypes.textBlock'),
+        featureGrid: t('componentTypes.featureGrid'), imageBlock: t('componentTypes.imageBlock'), buttonBlock: t('componentTypes.buttonBlock'),
+        newsletterSignup: t('componentTypes.newsletterSignup'), stepsProcess: t('componentTypes.stepsProcess'),
     };
 
     return (
         <div className="flex flex-col gap-5">
             {/* Layout Settings */}
             <div className="rounded-lg border p-3 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Layout Settings</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">{t('columnLayout.layoutSettings')}</p>
 
                 {/* Column count */}
                 <div>
-                    <Label className="text-xs">Columns</Label>
+                    <Label className="text-xs">{t('columnLayout.columns')}</Label>
                     <div className="mt-1 flex gap-1.5">
                         {[2, 3, 4].map((n) => (
                             <button
@@ -1113,7 +1517,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
 
                 {/* Gap */}
                 <div>
-                    <Label className="text-xs">Column Gap</Label>
+                    <Label className="text-xs">{t('columnLayout.columnGap')}</Label>
                     <div className="mt-1 flex gap-1.5">
                         {(['none', 'sm', 'md', 'lg', 'xl', '2xl'] as const).map((g) => (
                             <button
@@ -1121,7 +1525,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                                 onClick={() => updateProp('gap', g)}
                                 className={`flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${gap === g ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
                             >
-                                {g}
+                                {optionLabel(t, g)}
                             </button>
                         ))}
                     </div>
@@ -1129,7 +1533,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
 
                 {/* Align */}
                 <div>
-                    <Label className="text-xs">Vertical Align</Label>
+                    <Label className="text-xs">{t('columnLayout.verticalAlign')}</Label>
                     <div className="mt-1 flex gap-1.5">
                         {(['top', 'center', 'bottom', 'stretch'] as const).map((a) => (
                             <button
@@ -1137,7 +1541,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                                 onClick={() => updateProp('align', a)}
                                 className={`flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${align === a ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
                             >
-                                {a}
+                                {optionLabel(t, a)}
                             </button>
                         ))}
                     </div>
@@ -1145,11 +1549,11 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
 
                 {/* Column widths */}
                 <div>
-                    <Label className="text-xs">Column Widths</Label>
+                    <Label className="text-xs">{t('columnLayout.columnWidths')}</Label>
                     <div className="mt-1 flex gap-1.5">
                         {slots.map((_: any, i: number) => (
                             <div key={i} className="flex-1">
-                                <Label className="text-caption text-gray-400">Col {i + 1}</Label>
+                                <Label className="text-caption text-gray-400">{t('columnLayout.colN', { n: i + 1 })}</Label>
                                 <select
                                     value={columnWidths[i] || defaultWidth}
                                     onChange={(e) => {
@@ -1178,10 +1582,10 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                     which beats the legacy width fractions on both renderers */}
                 {slots.length === 2 && (
                     <div>
-                        <Label className="text-xs">Width Ratio (precise)</Label>
+                        <Label className="text-xs">{t('columnLayout.widthRatioPrecise')}</Label>
                         <div className="mt-1 flex gap-1.5">
                             {[
-                                { label: 'Auto', fr: undefined as string[] | undefined },
+                                { label: optionLabel(t, 'auto'), fr: undefined as string[] | undefined },
                                 { label: '50/50', fr: ['1fr', '1fr'] },
                                 { label: '60/40', fr: ['3fr', '2fr'] },
                                 { label: '40/60', fr: ['2fr', '3fr'] },
@@ -1207,7 +1611,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
 
                 {/* Stack on mobile */}
                 <div className="flex items-center justify-between">
-                    <Label className="text-xs">Stack on mobile</Label>
+                    <Label className="text-xs">{t('columnLayout.stackOnMobile')}</Label>
                     <Switch
                         checked={stackOnMobile}
                         onCheckedChange={(v) => updateProp('stackOnMobile', v)}
@@ -1215,7 +1619,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
                 {stackOnMobile && (
                     <div className="flex items-center justify-between">
-                        <Label className="text-xs">Reverse order on mobile</Label>
+                        <Label className="text-xs">{t('columnLayout.reverseOrderOnMobile')}</Label>
                         <Switch
                             checked={component.props.reverseOnMobile || false}
                             onCheckedChange={(v) => updateProp('reverseOnMobile', v || undefined)}
@@ -1228,13 +1632,13 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
             {slots.map((slotComps: any[], slotIdx: number) => (
                 <div key={slotIdx} className="rounded-lg border p-3 space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">
-                        Slot {slotIdx + 1}
+                        {t('columnLayout.slotN', { n: slotIdx + 1 })}
                         <span className="ml-2 normal-case font-normal text-gray-400">
-                            {slotComps.length} component{slotComps.length !== 1 ? 's' : ''}
+                            {t('columnLayout.componentCount', { count: slotComps.length })}
                         </span>
                     </p>
                     {slotComps.length === 0 ? (
-                        <p className="text-xs text-gray-300">Empty — drag a component here from the library</p>
+                        <p className="text-xs text-gray-300">{t('columnLayout.slotEmpty')}</p>
                     ) : (
                         slotComps.map((child: any) => (
                             <div
@@ -1244,14 +1648,14 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                                 <button
                                     className="flex-1 text-left text-xs font-medium text-gray-700 hover:text-blue-600 truncate"
                                     onClick={() => selectComponent(child.id)}
-                                    title="Click to edit"
+                                    title={t('columnLayout.clickToEdit')}
                                 >
                                     {TYPE_LABEL[child.type] || child.type.replace(/([A-Z])/g, ' $1').trim()}
                                 </button>
                                 <button
                                     onClick={() => deleteFromSlot(pageId, component.id, slotIdx, child.id)}
                                     className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-                                    title="Remove from slot"
+                                    title={t('columnLayout.removeFromSlot')}
                                 >
                                     <Trash2 className="size-3.5" />
                                 </button>
@@ -1444,6 +1848,7 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Media Showcase Editor with slide management
 const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const [expandedSlide, setExpandedSlide] = useState<number | null>(null);
     const [expandedMedia, setExpandedMedia] = useState<number | null>(null);
@@ -1461,9 +1866,9 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
     const addSlide = () => {
         const newSlide = {
             backgroundImage: 'https://images.unsplash.com/photo-1512820790803-83ca734da794',
-            heading: 'New Slide',
-            description: 'Add your description here',
-            button: { enabled: false, text: 'Learn More', action: 'navigate', target: 'homepage' },
+            heading: t('mediaShowcase.defaults.slideHeading'),
+            description: t('mediaShowcase.defaults.slideDescription'),
+            button: { enabled: false, text: t('mediaShowcase.defaults.slideButtonText'), action: 'navigate', target: 'homepage' },
         };
         updateProp('slides', [...(props.slides || []), newSlide]);
     };
@@ -1487,7 +1892,7 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
 
     // ── Media item helpers (carousel / grid) ───────────────────────────
     const addMediaItem = () => {
-        const newItem = { type: 'video', url: '', caption: 'New item' };
+        const newItem = { type: 'video', url: '', caption: t('mediaShowcase.defaults.mediaCaption') };
         updateProp('media', [...(props.media || []), newItem]);
     };
 
@@ -1505,7 +1910,7 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Showcase Settings</h4>
+            <h4 className="text-sm font-medium">{t('mediaShowcase.heading')}</h4>
 
             <VariantSwitcher
                 componentType="mediaShowcase"
@@ -1514,21 +1919,21 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
             />
 
             <div className="space-y-2">
-                <Label>Layout</Label>
+                <Label>{t('mediaShowcase.layout')}</Label>
                 <select
                     className="w-full rounded border px-3 py-2 text-sm"
                     value={layout}
                     onChange={(e) => updateProp('layout', e.target.value)}
                 >
-                    <option value="slider">Slider (hero with headings)</option>
-                    <option value="carousel">Carousel (video / images)</option>
-                    <option value="grid">Grid (video / images)</option>
+                    <option value="slider">{t('mediaShowcase.layoutSlider')}</option>
+                    <option value="carousel">{t('mediaShowcase.layoutCarousel')}</option>
+                    <option value="grid">{t('mediaShowcase.layoutGrid')}</option>
                 </select>
             </div>
 
             {isSliderMode && (
                 <div className="flex items-center justify-between">
-                    <Label>Autoplay</Label>
+                    <Label>{t('mediaShowcase.autoplay')}</Label>
                     <Switch
                         checked={props.autoplay || false}
                         onCheckedChange={(c) => updateProp('autoplay', c)}
@@ -1538,7 +1943,7 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
 
             {isSliderMode && props.autoplay && (
                 <div className="space-y-2">
-                    <Label>Autoplay Interval (ms)</Label>
+                    <Label>{t('mediaShowcase.autoplayInterval')}</Label>
                     <Input
                         type="number"
                         value={props.autoplayInterval || 3000}
@@ -1551,10 +1956,10 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
             {isSliderMode && (
                 <div className="border-t pt-4">
                     <div className="mb-3 flex items-center justify-between">
-                        <h4 className="text-sm font-medium">Slides ({props.slides?.length || 0})</h4>
+                        <h4 className="text-sm font-medium">{t('mediaShowcase.slidesCount', { count: props.slides?.length || 0 })}</h4>
                         <Button size="sm" onClick={addSlide}>
                             <Plus className="mr-1 size-4" />
-                            Add Slide
+                            {t('mediaShowcase.addSlide')}
                         </Button>
                     </div>
 
@@ -1567,7 +1972,7 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                                         className="flex flex-1 items-center gap-2 text-left text-sm font-medium"
                                     >
                                         {expandedSlide === index ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                                        Slide {index + 1}: {slide.heading}
+                                        {t('mediaShowcase.slideNTitle', { n: index + 1, heading: slide.heading })}
                                     </button>
                                     <Button size="sm" variant="ghost" onClick={() => deleteSlide(index)}
                                         className="size-8 p-0 text-red-600 hover:text-red-700">
@@ -1578,28 +1983,28 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                                 {expandedSlide === index && (
                                     <div className="mt-3 space-y-3 border-t pt-3">
                                         <ImageUploadField
-                                            label="Background Image"
+                                            label={t('mediaShowcase.backgroundImage')}
                                             value={slide.backgroundImage || ''}
                                             onChange={(url) => updateSlide(index, 'backgroundImage', url)}
                                         />
                                         <div className="space-y-2">
-                                            <Label className="text-xs">Heading</Label>
+                                            <Label className="text-xs">{t('mediaShowcase.headingLabel')}</Label>
                                             <Input value={slide.heading} onChange={(e) => updateSlide(index, 'heading', e.target.value)} />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label className="text-xs">Description</Label>
+                                            <Label className="text-xs">{t('mediaShowcase.description')}</Label>
                                             <Textarea value={slide.description} onChange={(e) => updateSlide(index, 'description', e.target.value)} rows={2} />
                                         </div>
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <Label className="text-xs">Button</Label>
+                                                <Label className="text-xs">{t('mediaShowcase.button')}</Label>
                                                 <Switch checked={slide.button?.enabled || false} onCheckedChange={(c) => updateSlide(index, 'button.enabled', c)} />
                                             </div>
                                             {slide.button?.enabled && (
                                                 <div className="ml-4 space-y-2">
-                                                    <Input placeholder="Button text" value={slide.button.text} onChange={(e) => updateSlide(index, 'button.text', e.target.value)} />
+                                                    <Input placeholder={t('mediaShowcase.buttonTextPlaceholder')} value={slide.button.text} onChange={(e) => updateSlide(index, 'button.text', e.target.value)} />
                                                     <LinkPicker
-                                                        label="Button Link"
+                                                        label={t('mediaShowcase.buttonLink')}
                                                         value={slide.button.target || ''}
                                                         onChange={(v) => updateSlide(index, 'button.target', v)}
                                                     />
@@ -1618,10 +2023,10 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
             {!isSliderMode && (
                 <div className="border-t pt-4">
                     <div className="mb-3 flex items-center justify-between">
-                        <h4 className="text-sm font-medium">Media Items ({(props.media || []).length})</h4>
+                        <h4 className="text-sm font-medium">{t('mediaShowcase.mediaItemsCount', { count: (props.media || []).length })}</h4>
                         <Button size="sm" onClick={addMediaItem}>
                             <Plus className="mr-1 size-4" />
-                            Add Item
+                            {t('mediaShowcase.addItem')}
                         </Button>
                     </div>
 
@@ -1634,8 +2039,8 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                                         className="flex flex-1 items-center gap-2 text-left text-sm font-medium"
                                     >
                                         {expandedMedia === index ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                                        <span className="capitalize text-gray-500">{item.type || 'media'}</span>
-                                        <span className="truncate">{item.caption || `Item ${index + 1}`}</span>
+                                        <span className="capitalize text-gray-500">{item.type ? optionLabel(t, item.type) : optionLabel(t, 'media')}</span>
+                                        <span className="truncate">{item.caption || t('mediaShowcase.itemN', { n: index + 1 })}</span>
                                     </button>
                                     <Button size="sm" variant="ghost" onClick={() => deleteMediaItem(index)}
                                         className="size-8 p-0 text-red-600 hover:text-red-700">
@@ -1646,26 +2051,26 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                                 {expandedMedia === index && (
                                     <div className="mt-3 space-y-3 border-t pt-3">
                                         <div className="space-y-2">
-                                            <Label className="text-xs">Type</Label>
+                                            <Label className="text-xs">{t('mediaShowcase.typeLabel')}</Label>
                                             <select
                                                 className="w-full rounded border px-3 py-2 text-sm"
                                                 value={item.type || 'video'}
                                                 onChange={(e) => updateMediaItem(index, 'type', e.target.value)}
                                             >
-                                                <option value="video">Video</option>
-                                                <option value="image">Image</option>
+                                                <option value="video">{optionLabel(t, 'video')}</option>
+                                                <option value="image">{optionLabel(t, 'image')}</option>
                                             </select>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label className="text-xs">URL</Label>
+                                            <Label className="text-xs">{t('mediaShowcase.urlLabel')}</Label>
                                             <Input
-                                                placeholder={item.type === 'image' ? 'https://... or /assets/...' : 'https://youtube.com/... or /assets/video.mp4'}
+                                                placeholder={item.type === 'image' ? t('mediaShowcase.imageUrlPlaceholder') : t('mediaShowcase.videoUrlPlaceholder')}
                                                 value={item.url || ''}
                                                 onChange={(e) => updateMediaItem(index, 'url', e.target.value)}
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label className="text-xs">Caption</Label>
+                                            <Label className="text-xs">{t('mediaShowcase.captionLabel')}</Label>
                                             <Input
                                                 value={item.caption || ''}
                                                 onChange={(e) => updateMediaItem(index, 'caption', e.target.value)}
@@ -1677,7 +2082,7 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                         ))}
 
                         {(props.media || []).length === 0 && (
-                            <p className="text-xs text-gray-400 text-center py-3">No media items yet. Click "Add Item" to get started.</p>
+                            <p className="text-xs text-gray-400 text-center py-3">{t('mediaShowcase.noMediaItems')}</p>
                         )}
                     </div>
                 </div>
@@ -1701,7 +2106,21 @@ const COURSE_CATALOG_SORT_OPTIONS = [
     'Name Z-A',
 ];
 
+// Display-only labels for COURSE_CATALOG_SORT_OPTIONS — the <option> VALUE
+// stays the exact English string above (stored as `defaultSort` and matched
+// byte-for-byte by the learner app), only the visible text is translated.
+const buildCourseCatalogSortLabels = (t: TFunction): Record<string, string> => ({
+    Newest: t('bookCatalogue.sort.newest'),
+    Oldest: t('bookCatalogue.sort.oldest'),
+    'Price: Low to High': t('bookCatalogue.sort.priceLowToHigh'),
+    'Price: High to Low': t('bookCatalogue.sort.priceHighToLow'),
+    Rating: t('bookCatalogue.sort.rating'),
+    'Name A-Z': t('bookCatalogue.sort.nameAZ'),
+    'Name Z-A': t('bookCatalogue.sort.nameZA'),
+});
+
 const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -1710,9 +2129,11 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
         });
     };
 
+    const sortLabels = buildCourseCatalogSortLabels(t);
+
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Catalogue Settings</h4>
+            <h4 className="text-sm font-medium">{t('bookCatalogue.heading')}</h4>
 
             <VariantSwitcher
                 componentType={component.type}
@@ -1721,7 +2142,7 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
             />
 
             <div className="space-y-2">
-                <Label>Title</Label>
+                <Label>{t('bookCatalogue.title')}</Label>
                 <Input
                     value={props.title || ''}
                     onChange={(e) => updateProp('title', e.target.value)}
@@ -1729,7 +2150,7 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="flex items-center justify-between">
-                <Label>Show Filters</Label>
+                <Label>{t('bookCatalogue.showFilters')}</Label>
                 <Switch
                     checked={props.showFilters || false}
                     onCheckedChange={(c) => updateProp('showFilters', c)}
@@ -1740,7 +2161,7 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                 it but crops the edges — which eats the logo/headline on wide
                 marketing banners. `contain` shows the whole artwork. */}
             <div className="space-y-2">
-                <Label>Course Image Fit</Label>
+                <Label>{t('bookCatalogue.courseImageFit')}</Label>
                 <select
                     className="w-full rounded border px-3 py-1.5 text-sm"
                     value={props.render?.styles?.imageFit || 'cover'}
@@ -1751,18 +2172,17 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                         })
                     }
                 >
-                    <option value="cover">Fill (crops edges)</option>
-                    <option value="contain">Fit whole image</option>
+                    <option value="cover">{t('bookCatalogue.imageFitCover')}</option>
+                    <option value="contain">{t('bookCatalogue.imageFitContain')}</option>
                 </select>
                 <p className="text-xs text-gray-500">
-                    Use &quot;Fit whole image&quot; when covers are wide banners
-                    with text near the edges.
+                    {t('bookCatalogue.imageFitHint')}
                 </p>
             </div>
 
             {component.type === 'courseCatalog' && (
                 <div className="space-y-2">
-                    <Label>Default Sort</Label>
+                    <Label>{t('bookCatalogue.defaultSort')}</Label>
                     <select
                         className="w-full rounded border px-3 py-1.5 text-sm"
                         value={props.defaultSort || 'Newest'}
@@ -1770,19 +2190,18 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                     >
                         {COURSE_CATALOG_SORT_OPTIONS.map((option) => (
                             <option key={option} value={option}>
-                                {option}
+                                {sortLabels[option]}
                             </option>
                         ))}
                     </select>
                     <p className="text-xs text-neutral-500">
-                        How courses are ordered when the page opens. Learners can still change
-                        it. Pick &ldquo;Price: Low to High&rdquo; to show free courses first.
+                        {t('bookCatalogue.defaultSortHint')}
                     </p>
                 </div>
             )}
 
             <div className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
-                Advanced filter configuration and cart settings coming soon.
+                {t('bookCatalogue.advancedComingSoon')}
             </div>
         </div>
     );
@@ -1790,6 +2209,7 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Buy/Rent Section Editor
 const BuyRentEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updateProp = (path: string, value: any) => {
@@ -1815,10 +2235,10 @@ const BuyRentEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Buy/Rent Settings</h4>
+            <h4 className="text-sm font-medium">{t('buyRent.heading')}</h4>
 
             <div className="space-y-2">
-                <Label>Heading</Label>
+                <Label>{t('buyRent.headingField')}</Label>
                 <Input
                     value={props.heading || ''}
                     onChange={(e) => updateProp('heading', e.target.value)}
@@ -1826,15 +2246,15 @@ const BuyRentEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="border-t pt-4">
-                <h5 className="mb-2 text-xs font-semibold">Buy Option</h5>
+                <h5 className="mb-2 text-xs font-semibold">{t('buyRent.buyOption')}</h5>
                 <div className="space-y-2">
                     <Input
-                        placeholder="Button label"
+                        placeholder={t('buyRent.buttonLabelPlaceholder')}
                         value={props.buy?.buttonLabel || ''}
                         onChange={(e) => updateProp('buy.buttonLabel', e.target.value)}
                     />
                     <Input
-                        placeholder="Level filter value"
+                        placeholder={t('buyRent.levelFilterValuePlaceholder')}
                         value={props.buy?.levelFilterValue || ''}
                         onChange={(e) => updateProp('buy.levelFilterValue', e.target.value)}
                     />
@@ -1842,15 +2262,15 @@ const BuyRentEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="border-t pt-4">
-                <h5 className="mb-2 text-xs font-semibold">Rent Option</h5>
+                <h5 className="mb-2 text-xs font-semibold">{t('buyRent.rentOption')}</h5>
                 <div className="space-y-2">
                     <Input
-                        placeholder="Button label"
+                        placeholder={t('buyRent.buttonLabelPlaceholder')}
                         value={props.rent?.buttonLabel || ''}
                         onChange={(e) => updateProp('rent.buttonLabel', e.target.value)}
                     />
                     <Input
-                        placeholder="Level filter value"
+                        placeholder={t('buyRent.levelFilterValuePlaceholder')}
                         value={props.rent?.levelFilterValue || ''}
                         onChange={(e) => updateProp('rent.levelFilterValue', e.target.value)}
                     />
@@ -1862,11 +2282,12 @@ const BuyRentEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Generic editor for other components
 const GenericEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Properties</h4>
+            <h4 className="text-sm font-medium">{t('generic.properties')}</h4>
             {Object.entries(props).map(([key, value]) => {
                 if (typeof value === 'string' || typeof value === 'number') {
                     return (
@@ -1912,7 +2333,7 @@ const GenericEditor = ({ component, pageId, updateComponent }: any) => {
             })}
             {Object.values(props).some((v) => typeof v === 'object') && (
                 <div className="rounded border border-yellow-100 bg-yellow-50 p-4 text-xs text-yellow-800">
-                    Some complex properties are hidden. Expand component details to view full JSON.
+                    {t('generic.complexPropertiesHidden')}
                 </div>
             )}
         </div>
@@ -1921,6 +2342,7 @@ const GenericEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Header Editor
 const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const [expandedNav, setExpandedNav] = useState<number | null>(null);
     const [expandedAuth, setExpandedAuth] = useState<number | null>(null);
@@ -1932,7 +2354,7 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
     };
 
     const addNavItem = () => {
-        const newItem = { label: 'New Link', route: '/', openInSameTab: true };
+        const newItem = { label: t('header.defaults.newLink'), route: '/', openInSameTab: true };
         updateProp('navigation', [...(props.navigation || []), newItem]);
     };
 
@@ -1946,14 +2368,22 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('navigation', (props.navigation || []).filter((_: any, i: number) => i !== index));
     };
 
+    /** Hide a link from the live site without losing its label and route.
+     *  Absent means visible, so every site authored before this existed keeps
+     *  showing every link. */
+    const toggleNavItem = (index: number) => {
+        const current = (props.navigation || [])[index];
+        updateNavItem(index, 'enabled', current?.enabled === false);
+    };
+
     const addAuthLink = () => {
-        updateProp('authLinks', [...(props.authLinks || []), { label: 'Login', route: 'login' }]);
+        updateProp('authLinks', [...(props.authLinks || []), { label: t('header.defaults.login'), route: 'login' }]);
     };
 
     // 'get-started' is the canonical route the learner header recognises as the
     // lead-collection / enrollment CTA (see isLeadFormLink in the learner HeaderComponent).
     const addGetStartedLink = () => {
-        updateProp('authLinks', [...(props.authLinks || []), { label: 'Get Started', route: 'get-started' }]);
+        updateProp('authLinks', [...(props.authLinks || []), { label: t('header.defaults.getStarted'), route: 'get-started' }]);
     };
 
     const updateAuthLink = (index: number, field: string, value: any) => {
@@ -1986,7 +2416,7 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Header Settings</h4>
+            <h4 className="text-sm font-medium">{t('header.heading')}</h4>
 
             <VariantSwitcher
                 componentType="header"
@@ -1995,14 +2425,14 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
             />
 
             <ImageUploadField
-                label="Logo"
+                label={t('header.logo')}
                 value={props.logo || ''}
                 onChange={(url) => updateProp('logo', url)}
                 placeholder="https://example.com/logo.png"
             />
 
             <div className="space-y-2">
-                <Label>Title</Label>
+                <Label>{t('header.title')}</Label>
                 <Input
                     value={props.title || ''}
                     onChange={(e) => updateProp('title', e.target.value)}
@@ -2010,13 +2440,13 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <ColorPickerField
-                label="Background Color"
+                label={t('header.backgroundColor')}
                 value={props.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor swatch/seed value
                 onChange={(c) => updateProp('backgroundColor', c)}
             />
 
             <ColorPickerField
-                label="Text Color"
+                label={t('header.textColor')}
                 value={props.textColor || '#000000'} // design-lint-ignore: color-editor swatch/seed value
                 onChange={(c) => updateProp('textColor', c)}
             />
@@ -2033,22 +2463,24 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
             {/* Navigation Links */}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <Label>Navigation Links</Label>
+                    <Label>{t('header.navigationLinks')}</Label>
                     <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={syncNavFromPages} title="Auto-generate from published pages" className="text-xs text-blue-600">
-                            Sync Pages
+                        <Button size="sm" variant="ghost" onClick={syncNavFromPages} title={t('header.syncPagesTitle')} className="text-xs text-blue-600">
+                            {t('header.syncPages')}
                         </Button>
                         <Button size="sm" variant="outline" onClick={addNavItem}>
-                            <Plus className="mr-1 size-3" /> Add
+                            <Plus className="me-1 size-3" /> {t('actions.add')}
                         </Button>
                     </div>
                 </div>
                 {(props.navigation || []).map((item: any, index: number) => (
                     <div key={index} className="rounded border bg-gray-50 p-2">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-1">
                             <button
                                 onClick={() => setExpandedNav(expandedNav === index ? null : index)}
-                                className="flex-1 text-left text-sm font-medium"
+                                className={`flex-1 truncate text-left text-sm font-medium ${
+                                    item.enabled === false ? 'text-gray-400 line-through' : ''
+                                }`}
                             >
                                 {expandedNav === index ? (
                                     <ChevronUp className="mr-1 inline size-3" />
@@ -2057,11 +2489,41 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                 )}
                                 {item.label}
                             </button>
+                            {item.enabled === false && (
+                                <span className="shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-caption text-gray-600">
+                                    {t('header.hiddenBadge')}
+                                </span>
+                            )}
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => toggleNavItem(index)}
+                                className="size-6 shrink-0 p-0 text-gray-500 hover:text-gray-800"
+                                title={
+                                    item.enabled === false
+                                        ? t('header.showLink')
+                                        : t('header.hideLink')
+                                }
+                                aria-label={
+                                    item.enabled === false
+                                        ? t('header.showLink')
+                                        : t('header.hideLink')
+                                }
+                                aria-pressed={item.enabled === false}
+                            >
+                                {item.enabled === false ? (
+                                    <EyeSlash className="size-3" />
+                                ) : (
+                                    <Eye className="size-3" />
+                                )}
+                            </Button>
                             <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => deleteNavItem(index)}
-                                className="size-6 p-0 text-red-600"
+                                className="size-6 shrink-0 p-0 text-red-600"
+                                title={t('actions.delete')}
+                                aria-label={t('actions.delete')}
                             >
                                 <Trash2 className="size-3" />
                             </Button>
@@ -2069,17 +2531,17 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                         {expandedNav === index && (
                             <div className="mt-2 space-y-2">
                                 <Input
-                                    placeholder="Label"
+                                    placeholder={t('header.labelPlaceholder')}
                                     value={item.label}
                                     onChange={(e) => updateNavItem(index, 'label', e.target.value)}
                                 />
                                 <LinkPicker
-                                    label="Route"
+                                    label={t('header.route')}
                                     value={item.route || ''}
                                     onChange={(v) => updateNavItem(index, 'route', v)}
                                 />
                                 <div className="flex items-center justify-between">
-                                    <Label className="text-xs">Open in same tab</Label>
+                                    <Label className="text-xs">{t('header.openInSameTab')}</Label>
                                     <Switch
                                         checked={!!item.openInSameTab}
                                         onCheckedChange={(c) =>
@@ -2096,24 +2558,21 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
             {/* Auth / CTA Buttons */}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <Label>Auth / CTA Buttons</Label>
+                    <Label>{t('header.authCtaButtons')}</Label>
                     <div className="flex items-center gap-1">
                         <Button size="sm" variant="outline" onClick={addGetStartedLink}>
-                            <Plus className="mr-1 size-3" /> Get Started
+                            <Plus className="me-1 size-3" /> {t('header.defaults.getStarted')}
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => updateProp('authLinks', [...(props.authLinks || []), { label: 'Enquire Now', route: '', audienceId: ' ', formTitle: '' }])}>
-                            <Plus className="mr-1 size-3" /> Enquire (form)
+                        <Button size="sm" variant="outline" onClick={() => updateProp('authLinks', [...(props.authLinks || []), { label: t('header.defaults.enquireNow'), route: '', audienceId: ' ', formTitle: '' }])}>
+                            <Plus className="me-1 size-3" /> {t('header.enquireForm')}
                         </Button>
                         <Button size="sm" variant="outline" onClick={addAuthLink}>
-                            <Plus className="mr-1 size-3" /> Add
+                            <Plus className="me-1 size-3" /> {t('actions.add')}
                         </Button>
                     </div>
                 </div>
                 <p className="text-caption text-gray-400">
-                    Buttons shown on the right side of the header (e.g. Login, Sign Up). A
-                    &ldquo;Get Started&rdquo; button opens the legacy lead-collection form;
-                    &ldquo;Open form popup&rdquo; opens any Audience campaign&apos;s form (Enquire
-                    Now, event registration) — pick the campaign below the toggle.
+                    {t('header.authCtaHint')}
                 </p>
                 {(props.authLinks || []).map((link: any, index: number) => (
                     <div key={index} className="rounded border bg-gray-50 p-2">
@@ -2127,7 +2586,7 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                 ) : (
                                     <ChevronDown className="mr-1 inline size-3" />
                                 )}
-                                {link.label || `Button ${index + 1}`}
+                                {link.label || t('header.buttonN', { n: index + 1 })}
                             </button>
                             <Button
                                 size="sm"
@@ -2141,14 +2600,14 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                         {expandedAuth === index && (
                             <div className="mt-2 space-y-2">
                                 <Input
-                                    placeholder="Label (e.g. Login)"
+                                    placeholder={t('header.labelWithExamplePlaceholder')}
                                     value={link.label || ''}
                                     onChange={(e) => updateAuthLink(index, 'label', e.target.value)}
                                 />
                                 <div>
-                                    <Label className="text-xs">On click</Label>
+                                    <Label className="text-xs">{t('header.onClick')}</Label>
                                     <div className="mt-1 flex gap-1">
-                                        {([['route', 'Open a link'], ['openForm', 'Open form popup']] as const).map(([v, l]) => (
+                                        {([['route', t('options.openLink')], ['openForm', t('options.openFormPopup')]] as const).map(([v, l]) => (
                                             <button key={v}
                                                 onClick={() => updateAuthLink(index, 'audienceId', v === 'openForm' ? (link.audienceId || ' ') : '')}
                                                 className={`rounded px-2.5 py-1 text-caption font-medium ${(link.audienceId ? 'openForm' : 'route') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
@@ -2158,20 +2617,20 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                 {link.audienceId ? (
                                     <>
                                         <CampaignPicker
-                                            label="Form to open (campaign)"
+                                            label={t('header.formToOpen')}
                                             allowEmpty={false}
                                             value={(link.audienceId || '').trim()}
                                             onChange={(id) => updateAuthLink(index, 'audienceId', id)}
                                         />
                                         <Input
-                                            placeholder="Popup title (defaults to the label)"
+                                            placeholder={t('header.popupTitlePlaceholder')}
                                             value={link.formTitle || ''}
                                             onChange={(e) => updateAuthLink(index, 'formTitle', e.target.value)}
                                         />
                                     </>
                                 ) : (
                                     <LinkPicker
-                                        label="Route"
+                                        label={t('header.route')}
                                         value={link.route || ''}
                                         onChange={(v) => updateAuthLink(index, 'route', v)}
                                     />
@@ -2187,6 +2646,7 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Footer Editor
 const FooterEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -2245,7 +2705,7 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
 
     const addRightSectionLink = (sectionKey: string) => {
         const section = props[sectionKey] || { title: '', links: [] };
-        const links = [...(section.links || []), { label: 'New Link', route: '/' }];
+        const links = [...(section.links || []), { label: t('header.defaults.newLink'), route: '/' }];
         updateProp(sectionKey, { ...section, links });
     };
 
@@ -2264,14 +2724,14 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
         : ['rightSection1', 'rightSection2', 'rightSection3'];
 
     const sectionLabels: Record<string, string> = {
-        rightSection1: 'Column 2',
-        rightSection2: 'Column 3',
-        rightSection3: 'Column 4',
+        rightSection1: t('footer.column2'),
+        rightSection2: t('footer.column3'),
+        rightSection3: t('footer.column4'),
     };
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Footer Settings</h4>
+            <h4 className="text-sm font-medium">{t('footer.heading')}</h4>
 
             <VariantSwitcher
                 componentType="footer"
@@ -2280,46 +2740,46 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
             />
 
             <div className="space-y-2">
-                <Label>Layout</Label>
+                <Label>{t('footer.layout')}</Label>
                 <select
                     className="w-full rounded border px-3 py-2 text-sm"
                     value={layout}
                     onChange={(e) => updateProp('layout', e.target.value)}
                 >
-                    <option value="two-column">Two Column</option>
-                    <option value="three-column">Three Column</option>
-                    <option value="four-column">Four Column</option>
+                    <option value="two-column">{t('footer.layoutTwoColumn')}</option>
+                    <option value="three-column">{t('footer.layoutThreeColumn')}</option>
+                    <option value="four-column">{t('footer.layoutFourColumn')}</option>
                 </select>
             </div>
 
             {/* Left Section */}
             <div className="space-y-3 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Column 1 — Brand</h5>
+                <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('footer.column1Brand')}</h5>
                 <div className="space-y-2">
-                    <Label className="text-xs">Title</Label>
+                    <Label className="text-xs">{t('footer.titleField')}</Label>
                     <Input
                         value={props.leftSection?.title || ''}
                         onChange={(e) => updateLeftSection('title', e.target.value)}
                     />
                 </div>
                 <RichTextField
-                    label="Description"
+                    label={t('footer.description')}
                     value={props.leftSection?.text || ''}
                     onChange={(html) => updateLeftSection('text', html)}
-                    placeholder="Platform description..."
+                    placeholder={t('footer.descriptionPlaceholder')}
                 />
 
                 {/* Social Links */}
                 <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                        <Label className="text-xs">Social Links</Label>
+                        <Label className="text-xs">{t('footer.socialLinks')}</Label>
                         <Button
                             size="sm"
                             variant="outline"
                             className="h-6 px-2 text-xs"
                             onClick={addSocial}
                         >
-                            <Plus className="mr-1 size-3" /> Add
+                            <Plus className="me-1 size-3" /> {t('actions.add')}
                         </Button>
                     </div>
                     {(props.leftSection?.socials || []).map((social: any, si: number) => (
@@ -2329,6 +2789,7 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                                 value={social.platform || 'Facebook'}
                                 onChange={(e) => updateSocialPlatform(si, e.target.value)}
                             >
+                                {/* Social platform names are brand names — never translated. */}
                                 {SOCIAL_PLATFORMS.map((p) => (
                                     <option key={p} value={p}>
                                         {p}
@@ -2353,7 +2814,7 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                     ))}
                     {(props.leftSection?.socials || []).length === 0 && (
                         <p className="text-xs text-gray-400">
-                            No social links yet — click Add.
+                            {t('footer.noSocialLinks')}
                         </p>
                     )}
                 </div>
@@ -2368,30 +2829,30 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                             {sectionLabels[sectionKey]}
                         </h5>
                         <div className="space-y-2">
-                            <Label className="text-xs">Section Title</Label>
+                            <Label className="text-xs">{t('footer.sectionTitle')}</Label>
                             <Input
                                 value={section.title || ''}
-                                placeholder="e.g. Quick Links"
+                                placeholder={t('footer.sectionTitlePlaceholder')}
                                 onChange={(e) => updateRightSection(sectionKey, 'title', e.target.value)}
                             />
                         </div>
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
-                                <Label className="text-xs">Links</Label>
+                                <Label className="text-xs">{t('footer.links')}</Label>
                                 <Button
                                     size="sm"
                                     variant="outline"
                                     className="h-6 px-2 text-xs"
                                     onClick={() => addRightSectionLink(sectionKey)}
                                 >
-                                    <Plus className="mr-1 size-3" /> Add
+                                    <Plus className="me-1 size-3" /> {t('actions.add')}
                                 </Button>
                             </div>
                             {(section.links || []).map((link: any, li: number) => (
                                 <div key={li} className="flex items-center gap-1.5">
                                     <Input
                                         className="h-7 text-xs"
-                                        placeholder="Label"
+                                        placeholder={t('header.labelPlaceholder')}
                                         value={link.label || ''}
                                         onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
                                     />
@@ -2417,10 +2878,10 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
 
             {/* Bottom Note */}
             <div className="space-y-2">
-                <Label>Bottom Note</Label>
+                <Label>{t('footer.bottomNote')}</Label>
                 <Input
                     value={props.bottomNote || ''}
-                    placeholder="© 2025 Your Company. All rights reserved."
+                    placeholder={t('footer.bottomNotePlaceholder')}
                     onChange={(e) => updateProp('bottomNote', e.target.value)}
                 />
             </div>
@@ -2430,6 +2891,7 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Hero Section Editor
 const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -2465,7 +2927,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Hero Section Settings</h4>
+            <h4 className="text-sm font-medium">{t('hero.heading')}</h4>
 
             <VariantSwitcher
                 componentType="heroSection"
@@ -2474,38 +2936,38 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
             />
 
             <div className="space-y-2">
-                <Label>Layout</Label>
+                <Label>{t('hero.layout')}</Label>
                 <select
                     className="w-full rounded border px-3 py-2 text-sm"
                     value={props.layout || 'split'}
                     onChange={(e) => updateProp('layout', e.target.value)}
                 >
-                    <option value="split">Split</option>
-                    <option value="centered">Centered</option>
-                    <option value="fullwidth">Full Width</option>
+                    <option value="split">{t('hero.layoutSplit')}</option>
+                    <option value="centered">{t('hero.layoutCentered')}</option>
+                    <option value="fullwidth">{t('hero.layoutFullWidth')}</option>
                 </select>
             </div>
 
             <ImageUploadField
-                label="Background Image"
+                label={t('hero.backgroundImage')}
                 value={props.backgroundImage || ''}
                 onChange={(url) => updateProp('backgroundImage', url)}
             />
             <p className="-mt-2 text-caption text-neutral-500">
-                A background image covers the background color. Clear it to use the color below.
+                {t('hero.backgroundImageHint')}
             </p>
 
             <ColorPickerField
-                label="Background Color"
+                label={t('hero.backgroundColor')}
                 value={props.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor swatch/seed value
                 onChange={(c) => updateProp('backgroundColor', c)}
             />
 
             {/* ── Eyebrow (badge above the title) ── */}
             <div className="space-y-2 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold">Eyebrow Badge</h5>
+                <h5 className="text-xs font-semibold">{t('hero.eyebrowBadge')}</h5>
                 <Input
-                    placeholder="e.g. COHORT 4 · STARTS JULY"
+                    placeholder={t('hero.eyebrowPlaceholder')}
                     value={props.eyebrow?.text || ''}
                     onChange={(e) =>
                         updateProp(
@@ -2522,8 +2984,8 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         value={props.eyebrow?.style || 'badge'}
                         onChange={(e) => updateProp('eyebrow', { ...props.eyebrow, style: e.target.value })}
                     >
-                        <option value="badge">Badge (pill + live dot)</option>
-                        <option value="plain">Plain (accent label)</option>
+                        <option value="badge">{t('hero.eyebrowStyleBadge')}</option>
+                        <option value="plain">{t('hero.eyebrowStylePlain')}</option>
                     </select>
                 )}
             </div>
@@ -2531,7 +2993,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
             {/* ── Stat chips row ── */}
             <div className="space-y-2 rounded border bg-gray-50 p-3">
                 <div className="flex items-center justify-between">
-                    <h5 className="text-xs font-semibold">Stat Chips</h5>
+                    <h5 className="text-xs font-semibold">{t('hero.statChips')}</h5>
                     <Button
                         variant="outline"
                         size="sm"
@@ -2544,10 +3006,10 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                             ])
                         }
                     >
-                        + Add
+                        + {t('actions.add')}
                     </Button>
                 </div>
-                <p className="text-caption text-gray-400">Learner shows up to 4 chips.</p>
+                <p className="text-caption text-gray-400">{t('hero.statChipsHint')}</p>
                 {(props.statChips || []).map((chip: any, i: number) => (
                     <div key={i} className="flex items-center gap-2">
                         <Input
@@ -2562,7 +3024,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         />
                         <Input
                             className="flex-1"
-                            placeholder="Engineers taught"
+                            placeholder={t('hero.statChipLabelPlaceholder')}
                             value={chip.label || ''}
                             onChange={(e) => {
                                 const next = [...(props.statChips || [])];
@@ -2572,7 +3034,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         />
                         <button
                             type="button"
-                            aria-label="Remove stat chip"
+                            aria-label={t('hero.removeStatChip')}
                             className="text-xs text-red-500 hover:text-red-700"
                             onClick={() =>
                                 updateProp(
@@ -2589,9 +3051,9 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
 
             {/* ── Trust chip ── */}
             <div className="space-y-2 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold">Trust Chip</h5>
+                <h5 className="text-xs font-semibold">{t('hero.trustChip')}</h5>
                 <Input
-                    placeholder='e.g. "Trusted by 20,000+ students"'
+                    placeholder={t('hero.trustChipPlaceholder')}
                     value={props.trust?.text || ''}
                     onChange={(e) =>
                         updateProp(
@@ -2603,7 +3065,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                     }
                 />
                 <div className="flex items-center gap-2">
-                    <Label className="text-xs">Rating (0 = off)</Label>
+                    <Label className="text-xs">{t('hero.ratingLabel')}</Label>
                     <Input
                         type="number"
                         min={0}
@@ -2625,7 +3087,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
             {/* ── CTA buttons (multi) ── */}
             <div className="space-y-2 rounded border bg-gray-50 p-3">
                 <div className="flex items-center justify-between">
-                    <h5 className="text-xs font-semibold">CTA Buttons (multi)</h5>
+                    <h5 className="text-xs font-semibold">{t('hero.ctaButtonsMulti')}</h5>
                     <Button
                         variant="outline"
                         size="sm"
@@ -2638,18 +3100,18 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                             ])
                         }
                     >
-                        + Add
+                        + {t('actions.add')}
                     </Button>
                 </div>
                 <p className="text-caption text-gray-400">
-                    When any button has text here, it replaces the single legacy button below. Learner shows up to 3.
+                    {t('hero.ctaButtonsHint')}
                 </p>
                 {(props.left?.buttons || []).map((b: any, i: number) => (
                     <div key={i} className="space-y-1 rounded border bg-white p-2">
                         <div className="flex items-center gap-2">
                             <Input
                                 className="flex-1"
-                                placeholder="Button text"
+                                placeholder={t('hero.buttonTextPlaceholder')}
                                 value={b.text || ''}
                                 onChange={(e) => {
                                     const next = [...(props.left?.buttons || [])];
@@ -2666,12 +3128,12 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                                     updateLeft('buttons', next);
                                 }}
                             >
-                                <option value="primary">Primary</option>
-                                <option value="secondary">Secondary</option>
+                                <option value="primary">{t('hero.variantPrimary')}</option>
+                                <option value="secondary">{t('hero.variantSecondary')}</option>
                             </select>
                             <button
                                 type="button"
-                                aria-label="Remove button"
+                                aria-label={t('hero.removeButton')}
                                 className="text-xs text-red-500 hover:text-red-700"
                                 onClick={() =>
                                     updateLeft(
@@ -2693,14 +3155,14 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                                     updateLeft('buttons', next);
                                 }}
                             >
-                                <option value="navigate">Navigate</option>
-                                <option value="openLeadCollection">Open lead form (legacy)</option>
-                                <option value="openForm">Open campaign form (popup)</option>
+                                <option value="navigate">{t('hero.actionNavigate')}</option>
+                                <option value="openLeadCollection">{t('hero.actionOpenLeadCollection')}</option>
+                                <option value="openForm">{t('hero.actionOpenCampaignForm')}</option>
                             </select>
                             {(b.action || 'navigate') === 'navigate' && (
                                 <Input
                                     className="flex-1"
-                                    placeholder="Target route / URL"
+                                    placeholder={t('hero.targetRoutePlaceholder')}
                                     value={b.target || ''}
                                     onChange={(e) => {
                                         const next = [...(props.left?.buttons || [])];
@@ -2712,7 +3174,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                         {b.action === 'openForm' && (
                             <CampaignPicker
-                                label="Audience list / campaign to connect"
+                                label={t('hero.audienceListLabel')}
                                 allowEmpty={false}
                                 value={b.audienceId || ''}
                                 onChange={(id) => {
@@ -2727,31 +3189,31 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="space-y-3 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold">Left Content</h5>
+                <h5 className="text-xs font-semibold">{t('hero.leftContent')}</h5>
                 <div className="space-y-2">
-                    <Label className="text-xs">Title</Label>
+                    <Label className="text-xs">{t('hero.titleField')}</Label>
                     <Input
                         value={props.left?.title || ''}
                         onChange={(e) => updateLeft('title', e.target.value)}
                     />
                 </div>
                 <RichTextField
-                    label="Description"
+                    label={t('hero.description')}
                     value={props.left?.description || ''}
                     onChange={(html) => updateLeft('description', html)}
-                    placeholder="Enter section description..."
+                    placeholder={t('hero.descriptionPlaceholder')}
                 />
             </div>
 
             <div className="space-y-3 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold">Right Image</h5>
+                <h5 className="text-xs font-semibold">{t('hero.rightImage')}</h5>
                 <ImageUploadField
-                    label="Image"
+                    label={t('hero.imageField')}
                     value={props.right?.image || ''}
                     onChange={(url) => updateRight('image', url)}
                 />
                 <div className="space-y-2">
-                    <Label className="text-xs">Alt Text</Label>
+                    <Label className="text-xs">{t('hero.altText')}</Label>
                     <Input
                         value={props.right?.alt || ''}
                         onChange={(e) => updateRight('alt', e.target.value)}
@@ -2762,19 +3224,18 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
             {/* Right Video — a YouTube/Vimeo link or an uploaded file. When set
                 it replaces the image/carousel in the hero media slot. */}
             <div className="space-y-3 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold">Right Video</h5>
+                <h5 className="text-xs font-semibold">{t('hero.rightVideo')}</h5>
                 <VideoUploadField
-                    label="Video"
+                    label={t('hero.videoField')}
                     value={props.right?.video || ''}
                     onChange={(url) => updateRight('video', url)}
                 />
                 <p className="text-xs text-gray-500">
-                    Paste a YouTube or Vimeo link, or upload a video file. A video
-                    takes priority over the image and carousel above.
+                    {t('hero.videoHint')}
                 </p>
                 {props.right?.video && (
                     <ImageUploadField
-                        label="Poster (uploaded video only)"
+                        label={t('hero.posterField')}
                         value={props.right?.videoPoster || ''}
                         onChange={(url) => updateRight('videoPoster', url)}
                     />
@@ -2784,26 +3245,24 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
             {/* Carousel Images */}
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <div className="flex items-center justify-between">
-                    <h5 className="text-xs font-semibold">Carousel Images</h5>
+                    <h5 className="text-xs font-semibold">{t('hero.carouselImages')}</h5>
                     <Button
                         size="sm"
                         variant="outline"
                         className="h-6 px-2 text-xs"
                         onClick={addRightImage}
                     >
-                        <Plus className="mr-1 size-3" /> Add
+                        <Plus className="me-1 size-3" /> {t('actions.add')}
                     </Button>
                 </div>
                 <p className="text-xs text-gray-500">
-                    Add 2 or more images to turn the hero media into an
-                    auto-playing carousel. With one image it stays a single
-                    image; with none it uses the Right Image above.
+                    {t('hero.carouselImagesHint')}
                 </p>
                 {(props.right?.images || []).map((img: any, i: number) => (
                     <div key={i} className="space-y-2 rounded border bg-white p-2">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-gray-500">
-                                Slide {i + 1}
+                                {t('hero.slideN', { n: i + 1 })}
                             </span>
                             <Button
                                 size="sm"
@@ -2815,13 +3274,13 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                             </Button>
                         </div>
                         <ImageUploadField
-                            label="Image"
+                            label={t('hero.imageField')}
                             value={img.image || ''}
                             onChange={(url) => updateRightImage(i, 'image', url)}
                         />
                         <Input
                             className="h-7 text-xs"
-                            placeholder="Alt text"
+                            placeholder={t('hero.altTextPlaceholder')}
                             value={img.alt || ''}
                             onChange={(e) => updateRightImage(i, 'alt', e.target.value)}
                         />
@@ -2834,6 +3293,7 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Book Details Editor
 const BookDetailsEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -2844,10 +3304,10 @@ const BookDetailsEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Book Details Settings</h4>
+            <h4 className="text-sm font-medium">{t('bookDetails.heading')}</h4>
 
             <div className="flex items-center justify-between">
-                <Label>Show Enquiry</Label>
+                <Label>{t('bookDetails.showEnquiry')}</Label>
                 <Switch
                     checked={props.showEnquiry || false}
                     onCheckedChange={(c) => updateProp('showEnquiry', c)}
@@ -2855,7 +3315,7 @@ const BookDetailsEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="flex items-center justify-between">
-                <Label>Show Payment</Label>
+                <Label>{t('bookDetails.showPayment')}</Label>
                 <Switch
                     checked={props.showPayment || false}
                     onCheckedChange={(c) => updateProp('showPayment', c)}
@@ -2863,7 +3323,7 @@ const BookDetailsEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="flex items-center justify-between">
-                <Label>Show Add to Cart</Label>
+                <Label>{t('bookDetails.showAddToCart')}</Label>
                 <Switch
                     checked={props.showAddToCart || false}
                     onCheckedChange={(c) => updateProp('showAddToCart', c)}
@@ -2875,6 +3335,7 @@ const BookDetailsEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Cart Component Editor
 const CartComponentEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -2885,10 +3346,10 @@ const CartComponentEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Cart Settings</h4>
+            <h4 className="text-sm font-medium">{t('cart.heading')}</h4>
 
             <div className="flex items-center justify-between">
-                <Label>Show Item Image</Label>
+                <Label>{t('cart.showItemImage')}</Label>
                 <Switch
                     checked={props.showItemImage ?? true}
                     onCheckedChange={(c) => updateProp('showItemImage', c)}
@@ -2896,7 +3357,7 @@ const CartComponentEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="flex items-center justify-between">
-                <Label>Show Item Title</Label>
+                <Label>{t('cart.showItemTitle')}</Label>
                 <Switch
                     checked={props.showItemTitle ?? true}
                     onCheckedChange={(c) => updateProp('showItemTitle', c)}
@@ -2904,7 +3365,7 @@ const CartComponentEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="flex items-center justify-between">
-                <Label>Show Quantity Selector</Label>
+                <Label>{t('cart.showQuantitySelector')}</Label>
                 <Switch
                     checked={props.showQuantitySelector ?? true}
                     onCheckedChange={(c) => updateProp('showQuantitySelector', c)}
@@ -2912,7 +3373,7 @@ const CartComponentEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="flex items-center justify-between">
-                <Label>Show Remove Button</Label>
+                <Label>{t('cart.showRemoveButton')}</Label>
                 <Switch
                     checked={props.showRemoveButton ?? true}
                     onCheckedChange={(c) => updateProp('showRemoveButton', c)}
@@ -2920,7 +3381,7 @@ const CartComponentEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="flex items-center justify-between">
-                <Label>Show Price</Label>
+                <Label>{t('cart.showPrice')}</Label>
                 <Switch
                     checked={props.showPrice ?? true}
                     onCheckedChange={(c) => updateProp('showPrice', c)}
@@ -2928,7 +3389,7 @@ const CartComponentEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="space-y-2">
-                <Label>Empty State Message</Label>
+                <Label>{t('cart.emptyStateMessage')}</Label>
                 <Input
                     value={props.emptyStateMessage || ''}
                     onChange={(e) => updateProp('emptyStateMessage', e.target.value)}
@@ -2940,6 +3401,7 @@ const CartComponentEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Stats Highlights Editor
 const StatsHighlightsEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -2949,7 +3411,7 @@ const StatsHighlightsEditor = ({ component, pageId, updateComponent }: any) => {
     };
 
     const addStat = () => {
-        const newStat = { label: 'New Stat', value: '0' };
+        const newStat = { label: t('stats.defaults.newStat'), value: '0' };
         updateProp('stats', [...(props.stats || []), newStat]);
     };
 
@@ -2968,10 +3430,10 @@ const StatsHighlightsEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Stats Highlights Settings</h4>
+            <h4 className="text-sm font-medium">{t('stats.heading')}</h4>
 
             <div className="space-y-2">
-                <Label>Header Text</Label>
+                <Label>{t('stats.headerText')}</Label>
                 <Input
                     value={props.headerText || ''}
                     onChange={(e) => updateProp('headerText', e.target.value)}
@@ -2979,23 +3441,23 @@ const StatsHighlightsEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="space-y-2">
-                <Label>Style</Label>
+                <Label>{t('stats.style')}</Label>
                 <select
                     className="w-full rounded border px-3 py-2 text-sm"
                     value={props.style || 'card'}
                     onChange={(e) => updateProp('style', e.target.value)}
                 >
-                    <option value="circle">Circle</option>
-                    <option value="card">Card</option>
-                    <option value="minimal">Minimal</option>
+                    <option value="circle">{t('stats.styleCircle')}</option>
+                    <option value="card">{optionLabel(t, 'card')}</option>
+                    <option value="minimal">{optionLabel(t, 'minimal')}</option>
                 </select>
             </div>
 
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <Label>Stats</Label>
+                    <Label>{t('stats.stats')}</Label>
                     <Button size="sm" variant="outline" onClick={addStat}>
-                        <Plus className="mr-1 size-3" /> Add
+                        <Plus className="me-1 size-3" /> {t('actions.add')}
                     </Button>
                 </div>
                 {props.stats?.map((stat: any, index: number) => (
@@ -3004,13 +3466,13 @@ const StatsHighlightsEditor = ({ component, pageId, updateComponent }: any) => {
                         className="flex items-center gap-2 rounded border bg-gray-50 p-2"
                     >
                         <Input
-                            placeholder="Label"
+                            placeholder={t('header.labelPlaceholder')}
                             value={stat.label}
                             onChange={(e) => updateStat(index, 'label', e.target.value)}
                             className="flex-1"
                         />
                         <Input
-                            placeholder="Value"
+                            placeholder={t('stats.valuePlaceholder')}
                             value={stat.value}
                             onChange={(e) => updateStat(index, 'value', e.target.value)}
                             className="w-24"
@@ -3032,6 +3494,7 @@ const StatsHighlightsEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Testimonials Editor
 const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updateProp = (key: string, value: any) => {
@@ -3042,9 +3505,9 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
 
     const addTestimonial = () => {
         const newItem = {
-            name: 'Customer Name',
-            role: 'Role',
-            feedback: 'Great experience!',
+            name: t('testimonials.defaults.customerName'),
+            role: t('testimonials.defaults.role'),
+            feedback: t('testimonials.defaults.feedback'),
             avatar: '',
         };
         updateProp('testimonials', [...(props.testimonials || []), newItem]);
@@ -3065,10 +3528,10 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Testimonials Settings</h4>
+            <h4 className="text-sm font-medium">{t('testimonials.heading')}</h4>
 
             <div className="space-y-2">
-                <Label>Header Text</Label>
+                <Label>{t('stats.headerText')}</Label>
                 <Input
                     value={props.headerText || ''}
                     onChange={(e) => updateProp('headerText', e.target.value)}
@@ -3076,29 +3539,29 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
             </div>
 
             <div className="space-y-2">
-                <Label>Layout</Label>
+                <Label>{t('testimonials.layout')}</Label>
                 <select
                     className="w-full rounded border px-3 py-2 text-sm"
                     value={props.layout || 'carousel'}
                     onChange={(e) => updateProp('layout', e.target.value)}
                 >
-                    <option value="carousel">Carousel</option>
-                    <option value="grid-scroll">Grid Scroll</option>
-                    <option value="static-grid">Static Grid</option>
+                    <option value="carousel">{t('testimonials.layoutCarousel')}</option>
+                    <option value="grid-scroll">{t('testimonials.layoutGridScroll')}</option>
+                    <option value="static-grid">{t('testimonials.layoutStaticGrid')}</option>
                 </select>
             </div>
 
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <Label>Testimonials</Label>
+                    <Label>{t('testimonials.testimonials')}</Label>
                     <Button size="sm" variant="outline" onClick={addTestimonial}>
-                        <Plus className="mr-1 size-3" /> Add
+                        <Plus className="me-1 size-3" /> {t('actions.add')}
                     </Button>
                 </div>
                 {props.testimonials?.map((item: any, index: number) => (
                     <div key={index} className="space-y-2 rounded border bg-gray-50 p-3">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium">Testimonial {index + 1}</span>
+                            <span className="text-xs font-medium">{t('testimonials.testimonialN', { n: index + 1 })}</span>
                             <Button
                                 size="sm"
                                 variant="ghost"
@@ -3109,28 +3572,28 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
                             </Button>
                         </div>
                         <Input
-                            placeholder="Name"
+                            placeholder={t('testimonials.namePlaceholder')}
                             value={item.name}
                             onChange={(e) => updateTestimonial(index, 'name', e.target.value)}
                         />
                         <Input
-                            placeholder="Role"
+                            placeholder={t('testimonials.rolePlaceholder')}
                             value={item.role}
                             onChange={(e) => updateTestimonial(index, 'role', e.target.value)}
                         />
                         <Textarea
-                            placeholder="Feedback"
+                            placeholder={t('testimonials.feedbackPlaceholder')}
                             rows={2}
                             value={item.feedback}
                             onChange={(e) => updateTestimonial(index, 'feedback', e.target.value)}
                         />
                         <Input
-                            placeholder="Avatar URL"
+                            placeholder={t('testimonials.avatarUrlPlaceholder')}
                             value={item.avatar}
                             onChange={(e) => updateTestimonial(index, 'avatar', e.target.value)}
                         />
                         <div className="flex items-center gap-3">
-                            <Label className="text-xs">Rating (0 = off)</Label>
+                            <Label className="text-xs">{t('hero.ratingLabel')}</Label>
                             <Input
                                 type="number"
                                 min={0}
@@ -3146,7 +3609,7 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
                                     updateProp('testimonials', next);
                                 }}
                             />
-                            <Label className="text-xs">Featured</Label>
+                            <Label className="text-xs">{t('testimonials.featured')}</Label>
                             <Switch
                                 checked={item.highlight || false}
                                 onCheckedChange={(c) => {
@@ -3165,6 +3628,7 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Policy Renderer Editor
 const PolicyRendererEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
 
     const updatePolicy = (policyKey: string, field: string, value: string) => {
@@ -3191,7 +3655,7 @@ const PolicyRendererEditor = ({ component, pageId, updateComponent }: any) => {
                 ...props,
                 policies: {
                     ...policies,
-                    [key]: { title: 'New Policy', content: '<p>Policy content here...</p>' },
+                    [key]: { title: t('policy.defaults.title'), content: t('policy.defaults.content') },
                 },
             },
         });
@@ -3199,26 +3663,26 @@ const PolicyRendererEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Policy Settings</h4>
+            <h4 className="text-sm font-medium">{t('policy.heading')}</h4>
 
             <div className="flex items-center justify-between">
-                <Label>Policies</Label>
+                <Label>{t('policy.policies')}</Label>
                 <Button size="sm" variant="outline" onClick={addPolicy}>
-                    <Plus className="mr-1 size-3" /> Add
+                    <Plus className="me-1 size-3" /> {t('actions.add')}
                 </Button>
             </div>
 
             {Object.entries(props.policies || {}).map(([key, policy]: [string, any]) => (
                 <div key={key} className="space-y-2 rounded border bg-gray-50 p-3">
                     <div className="space-y-2">
-                        <Label className="text-xs">Title</Label>
+                        <Label className="text-xs">{t('header.title')}</Label>
                         <Input
                             value={policy.title || ''}
                             onChange={(e) => updatePolicy(key, 'title', e.target.value)}
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label className="text-xs">Content (HTML)</Label>
+                        <Label className="text-xs">{t('policy.contentHtml')}</Label>
                         <Textarea
                             rows={4}
                             value={policy.content || ''}
@@ -3234,12 +3698,13 @@ const PolicyRendererEditor = ({ component, pageId, updateComponent }: any) => {
 
 // FAQ Section Editor
 const FaqSectionEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
-    const addFaq = () => updateProp('faqs', [...(props.faqs || []), { question: 'New Question', answer: 'Answer here.' }]);
+    const addFaq = () => updateProp('faqs', [...(props.faqs || []), { question: t('faq.defaults.question'), answer: t('faq.defaults.answer') }]);
     const deleteFaq = (i: number) => updateProp('faqs', props.faqs.filter((_: any, idx: number) => idx !== i));
     const updateFaq = (i: number, field: string, value: string) => {
         const next = [...(props.faqs || [])];
@@ -3249,20 +3714,20 @@ const FaqSectionEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">FAQ Settings</h4>
+            <h4 className="text-sm font-medium">{t('faq.heading')}</h4>
             <div className="space-y-2">
-                <Label>Header Text</Label>
+                <Label>{t('stats.headerText')}</Label>
                 <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label>Subheading</Label>
+                <Label>{t('faq.subheading')}</Label>
                 <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#F9FAFB' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#F9FAFB' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <div className="border-t pt-4">
                 <div className="mb-3 flex items-center justify-between">
-                    <Label>Questions ({props.faqs?.length || 0})</Label>
-                    <Button size="sm" onClick={addFaq}><Plus className="mr-1 size-3" />Add</Button>
+                    <Label>{t('faq.questionsCount', { count: props.faqs?.length || 0 })}</Label>
+                    <Button size="sm" onClick={addFaq}><Plus className="me-1 size-3" />{t('actions.add')}</Button>
                 </div>
                 {props.faqs?.map((faq: any, i: number) => (
                     <div key={i} className="mb-2 rounded border bg-gray-50 p-3">
@@ -3275,8 +3740,8 @@ const FaqSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                         {expandedFaq === i && (
                             <div className="mt-3 space-y-2 border-t pt-3">
-                                <Input placeholder="Question" value={faq.question} onChange={(e) => updateFaq(i, 'question', e.target.value)} />
-                                <Textarea placeholder="Answer" rows={2} value={faq.answer} onChange={(e) => updateFaq(i, 'answer', e.target.value)} />
+                                <Input placeholder={t('faq.questionPlaceholder')} value={faq.question} onChange={(e) => updateFaq(i, 'question', e.target.value)} />
+                                <Textarea placeholder={t('faq.answerPlaceholder')} rows={2} value={faq.answer} onChange={(e) => updateFaq(i, 'answer', e.target.value)} />
                             </div>
                         )}
                     </div>
@@ -3288,35 +3753,36 @@ const FaqSectionEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Video Embed Editor
 const VideoEmbedEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Video Embed Settings</h4>
+            <h4 className="text-sm font-medium">{t('videoEmbed.heading')}</h4>
             <div className="space-y-2">
-                <Label>YouTube / Vimeo URL</Label>
+                <Label>{t('videoEmbed.url')}</Label>
                 <Input value={props.url || ''} placeholder="https://youtu.be/..." onChange={(e) => updateProp('url', e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label>Title</Label>
+                <Label>{t('header.title')}</Label>
                 <Input value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label>Caption</Label>
-                <Input value={props.caption || ''} placeholder="Optional caption below video" onChange={(e) => updateProp('caption', e.target.value)} />
+                <Label>{t('videoEmbed.caption')}</Label>
+                <Input value={props.caption || ''} placeholder={t('videoEmbed.captionPlaceholder')} onChange={(e) => updateProp('caption', e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label>Aspect Ratio</Label>
+                <Label>{t('videoEmbed.aspectRatio')}</Label>
                 <select className="w-full rounded border px-3 py-2 text-sm" value={props.aspectRatio || '16:9'} onChange={(e) => updateProp('aspectRatio', e.target.value)}>
-                    <option value="16:9">16:9 (Widescreen)</option>
-                    <option value="4:3">4:3 (Standard)</option>
-                    <option value="1:1">1:1 (Square)</option>
-                    <option value="9:16">9:16 (Vertical)</option>
+                    <option value="16:9">{t('videoEmbed.aspect169')}</option>
+                    <option value="4:3">{t('videoEmbed.aspect43')}</option>
+                    <option value="1:1">{t('videoEmbed.aspect11')}</option>
+                    <option value="9:16">{t('videoEmbed.aspect916')}</option>
                 </select>
             </div>
             <div className="flex items-center justify-between">
-                <Label>Autoplay</Label>
+                <Label>{t('mediaShowcase.autoplay')}</Label>
                 <Switch checked={props.autoplay || false} onCheckedChange={(c) => updateProp('autoplay', c)} />
             </div>
         </div>
@@ -3325,42 +3791,43 @@ const VideoEmbedEditor = ({ component, pageId, updateComponent }: any) => {
 
 // CTA Banner Editor
 const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">CTA Banner Settings</h4>
+            <h4 className="text-sm font-medium">{t('ctaBanner.heading')}</h4>
             <div className="space-y-2">
-                <Label>Heading</Label>
+                <Label>{t('ctaBanner.headingField')}</Label>
                 <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label>Subheading</Label>
+                <Label>{t('faq.subheading')}</Label>
                 <Textarea rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
             </div>
             <div className="space-y-2">
-                <Label>Layout</Label>
+                <Label>{t('ctaBanner.layout')}</Label>
                 <select className="w-full rounded border px-3 py-2 text-sm" value={props.layout || 'centered'} onChange={(e) => updateProp('layout', e.target.value)}>
-                    <option value="centered">Centered</option>
-                    <option value="split">Split (text left, button right)</option>
+                    <option value="centered">{optionLabel(t, 'center')}</option>
+                    <option value="split">{t('ctaBanner.layoutSplit')}</option>
                 </select>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('header.textColor')} value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
             <div className="space-y-3 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold">Button</h5>
+                <h5 className="text-xs font-semibold">{t('mediaShowcase.button')}</h5>
                 <div className="flex items-center justify-between">
-                    <Label className="text-xs">Show Button</Label>
+                    <Label className="text-xs">{t('ctaBanner.showButton')}</Label>
                     <Switch checked={props.button?.enabled || false} onCheckedChange={(c) => updateProp('button', { ...props.button, enabled: c })} />
                 </div>
                 {props.button?.enabled && (
                     <>
-                        <Input placeholder="Button text" value={props.button?.text || ''} onChange={(e) => updateProp('button', { ...props.button, text: e.target.value })} />
+                        <Input placeholder={t('mediaShowcase.buttonTextPlaceholder')} value={props.button?.text || ''} onChange={(e) => updateProp('button', { ...props.button, text: e.target.value })} />
                         <div>
-                            <Label className="text-xs">On click</Label>
+                            <Label className="text-xs">{t('header.onClick')}</Label>
                             <div className="mt-1 flex gap-1">
-                                {([['navigate', 'Open a link'], ['openForm', 'Open form popup']] as const).map(([v, l]) => (
+                                {([['navigate', t('options.openLink')], ['openForm', t('options.openFormPopup')]] as const).map(([v, l]) => (
                                     <button key={v} onClick={() => updateProp('button', { ...props.button, action: v })}
                                         className={`rounded px-2.5 py-1 text-caption font-medium ${(props.button?.action || 'navigate') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
                                 ))}
@@ -3368,14 +3835,14 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                         {props.button?.action === 'openForm' ? (
                             <CampaignPicker
-                                label="Form to open (campaign)"
+                                label={t('header.formToOpen')}
                                 allowEmpty={false}
                                 value={props.button?.audienceId || ''}
                                 onChange={(id) => updateProp('button', { ...props.button, audienceId: id })}
                             />
                         ) : (
                             <LinkPicker
-                                label="Button Link"
+                                label={t('mediaShowcase.buttonLink')}
                                 value={props.button?.target || ''}
                                 onChange={(v) => updateProp('button', { ...props.button, target: v })}
                             />
@@ -3389,12 +3856,13 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Pricing Table Editor
 const PricingTableEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const [expandedPlan, setExpandedPlan] = useState<number | null>(null);
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
-    const addPlan = () => updateProp('plans', [...(props.plans || []), { name: 'New Plan', price: '₹0', period: '/month', description: '', features: ['Feature 1'], highlighted: false, buttonText: 'Get Started', buttonTarget: '' }]);
+    const addPlan = () => updateProp('plans', [...(props.plans || []), { name: t('pricingTable.defaults.planName'), price: '₹0', period: '/month', description: '', features: [t('pricingTable.defaults.feature1')], highlighted: false, buttonText: t('header.defaults.getStarted'), buttonTarget: '' }]);
     const deletePlan = (i: number) => updateProp('plans', props.plans.filter((_: any, idx: number) => idx !== i));
     const updatePlan = (i: number, field: string, value: any) => {
         const next = [...(props.plans || [])];
@@ -3404,13 +3872,13 @@ const PricingTableEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Pricing Table Settings</h4>
-            <div className="space-y-2"><Label>Header Text</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Subheading</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
+            <h4 className="text-sm font-medium">{t('pricingTable.heading')}</h4>
+            <div className="space-y-2"><Label>{t('stats.headerText')}</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
+            <div className="space-y-2"><Label>{t('faq.subheading')}</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
             <div className="border-t pt-4">
                 <div className="mb-3 flex items-center justify-between">
-                    <Label>Plans ({props.plans?.length || 0})</Label>
-                    <Button size="sm" onClick={addPlan}><Plus className="mr-1 size-3" />Add Plan</Button>
+                    <Label>{t('pricingTable.plansCount', { count: props.plans?.length || 0 })}</Label>
+                    <Button size="sm" onClick={addPlan}><Plus className="me-1 size-3" />{t('pricingTable.addPlan')}</Button>
                 </div>
                 {props.plans?.map((plan: any, i: number) => (
                     <div key={i} className="mb-2 rounded border bg-gray-50 p-3">
@@ -3423,20 +3891,20 @@ const PricingTableEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                         {expandedPlan === i && (
                             <div className="mt-3 space-y-2 border-t pt-3">
-                                <Input placeholder="Plan name" value={plan.name} onChange={(e) => updatePlan(i, 'name', e.target.value)} />
+                                <Input placeholder={t('pricingTable.planNamePlaceholder')} value={plan.name} onChange={(e) => updatePlan(i, 'name', e.target.value)} />
                                 <div className="flex gap-2">
-                                    <Input placeholder="Price (e.g. ₹999)" value={plan.price} onChange={(e) => updatePlan(i, 'price', e.target.value)} className="flex-1" />
+                                    <Input placeholder={t('pricingTable.pricePlaceholder')} value={plan.price} onChange={(e) => updatePlan(i, 'price', e.target.value)} className="flex-1" />
                                     <Input placeholder="/month" value={plan.period} onChange={(e) => updatePlan(i, 'period', e.target.value)} className="w-24" />
                                 </div>
-                                <Input placeholder="Description" value={plan.description || ''} onChange={(e) => updatePlan(i, 'description', e.target.value)} />
+                                <Input placeholder={t('pricingTable.descriptionPlaceholder')} value={plan.description || ''} onChange={(e) => updatePlan(i, 'description', e.target.value)} />
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Features (one per line)</Label>
+                                    <Label className="text-xs">{t('pricingTable.featuresOnePerLine')}</Label>
                                     <Textarea rows={3} value={(plan.features || []).join('\n')} onChange={(e) => updatePlan(i, 'features', e.target.value.split('\n').filter(Boolean))} />
                                 </div>
-                                <Input placeholder="Button text" value={plan.buttonText || ''} onChange={(e) => updatePlan(i, 'buttonText', e.target.value)} />
-                                <LinkPicker label="Button Link" value={plan.buttonTarget || ''} onChange={(v) => updatePlan(i, 'buttonTarget', v)} />
+                                <Input placeholder={t('mediaShowcase.buttonTextPlaceholder')} value={plan.buttonText || ''} onChange={(e) => updatePlan(i, 'buttonText', e.target.value)} />
+                                <LinkPicker label={t('mediaShowcase.buttonLink')} value={plan.buttonTarget || ''} onChange={(v) => updatePlan(i, 'buttonTarget', v)} />
                                 <div className="flex items-center justify-between">
-                                    <Label className="text-xs">Highlighted (recommended)</Label>
+                                    <Label className="text-xs">{t('pricingTable.highlighted')}</Label>
                                     <Switch checked={plan.highlighted || false} onCheckedChange={(c) => updatePlan(i, 'highlighted', c)} />
                                 </div>
                             </div>
@@ -3450,24 +3918,24 @@ const PricingTableEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Contact Form Editor
 const ContactFormEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Contact Form Settings</h4>
-            <div className="space-y-2"><Label>Heading</Label><Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Subheading</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Submit Button Label</Label><Input value={props.submitLabel || 'Send Message'} onChange={(e) => updateProp('submitLabel', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Success Message</Label><Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} /></div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <h4 className="text-sm font-medium">{t('contactForm.heading')}</h4>
+            <div className="space-y-2"><Label>{t('ctaBanner.headingField')}</Label><Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} /></div>
+            <div className="space-y-2"><Label>{t('faq.subheading')}</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
+            <div className="space-y-2"><Label>{t('contactForm.submitButtonLabel')}</Label><Input value={props.submitLabel || t('contactForm.defaultSubmitLabel')} onChange={(e) => updateProp('submitLabel', e.target.value)} /></div>
+            <div className="space-y-2"><Label>{t('contactForm.successMessage')}</Label><Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} /></div>
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <CampaignPicker
                 value={props.audienceId || ''}
                 onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, audienceId: id, audienceName: name } })}
             />
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
-                Submissions land as leads in the campaign above (or the default website-leads list)
-                — visible in Audience Manager → Recent Leads, with dedup and counsellor assignment.
+                {t('contactForm.submissionsHint')}
             </div>
         </div>
     );
@@ -3475,12 +3943,13 @@ const ContactFormEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Team Section Editor
 const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const [expandedMember, setExpandedMember] = useState<number | null>(null);
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
-    const addMember = () => updateProp('members', [...(props.members || []), { name: 'Team Member', role: 'Role', bio: '', avatar: '' }]);
+    const addMember = () => updateProp('members', [...(props.members || []), { name: t('team.defaults.name'), role: t('testimonials.defaults.role'), bio: '', avatar: '' }]);
     const deleteMember = (i: number) => updateProp('members', props.members.filter((_: any, idx: number) => idx !== i));
     const updateMember = (i: number, field: string, value: string) => {
         const next = [...(props.members || [])];
@@ -3490,19 +3959,19 @@ const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Team Section Settings</h4>
-            <div className="space-y-2"><Label>Header Text</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Subheading</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
+            <h4 className="text-sm font-medium">{t('team.heading')}</h4>
+            <div className="space-y-2"><Label>{t('stats.headerText')}</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
+            <div className="space-y-2"><Label>{t('faq.subheading')}</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
             <div className="space-y-2">
-                <Label>Columns</Label>
+                <Label>{t('columnLayout.columns')}</Label>
                 <select className="w-full rounded border px-3 py-2 text-sm" value={props.columns || 3} onChange={(e) => updateProp('columns', parseInt(e.target.value))}>
                     <option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
                 </select>
             </div>
             <div className="border-t pt-4">
                 <div className="mb-3 flex items-center justify-between">
-                    <Label>Members ({props.members?.length || 0})</Label>
-                    <Button size="sm" onClick={addMember}><Plus className="mr-1 size-3" />Add</Button>
+                    <Label>{t('team.membersCount', { count: props.members?.length || 0 })}</Label>
+                    <Button size="sm" onClick={addMember}><Plus className="me-1 size-3" />{t('actions.add')}</Button>
                 </div>
                 {props.members?.map((m: any, i: number) => (
                     <div key={i} className="mb-2 rounded border bg-gray-50 p-3">
@@ -3515,10 +3984,10 @@ const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                         {expandedMember === i && (
                             <div className="mt-3 space-y-2 border-t pt-3">
-                                <ImageUploadField label="Avatar" value={m.avatar || ''} onChange={(url) => updateMember(i, 'avatar', url)} />
-                                <Input placeholder="Name" value={m.name} onChange={(e) => updateMember(i, 'name', e.target.value)} />
-                                <Input placeholder="Role / Title" value={m.role} onChange={(e) => updateMember(i, 'role', e.target.value)} />
-                                <Textarea placeholder="Short bio" rows={2} value={m.bio || ''} onChange={(e) => updateMember(i, 'bio', e.target.value)} />
+                                <ImageUploadField label={t('team.avatar')} value={m.avatar || ''} onChange={(url) => updateMember(i, 'avatar', url)} />
+                                <Input placeholder={t('testimonials.namePlaceholder')} value={m.name} onChange={(e) => updateMember(i, 'name', e.target.value)} />
+                                <Input placeholder={t('team.roleTitlePlaceholder')} value={m.role} onChange={(e) => updateMember(i, 'role', e.target.value)} />
+                                <Textarea placeholder={t('team.shortBioPlaceholder')} rows={2} value={m.bio || ''} onChange={(e) => updateMember(i, 'bio', e.target.value)} />
                             </div>
                         )}
                     </div>
@@ -3530,12 +3999,13 @@ const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
 
 // Announcement Feed Editor
 const AnnouncementFeedEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const [expandedItem, setExpandedItem] = useState<number | null>(null);
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
-    const addAnnouncement = () => updateProp('announcements', [...(props.announcements || []), { title: 'New Announcement', date: new Date().toISOString().slice(0, 10), summary: 'Summary here.', tag: 'News' }]);
+    const addAnnouncement = () => updateProp('announcements', [...(props.announcements || []), { title: t('announcement.defaults.title'), date: new Date().toISOString().slice(0, 10), summary: t('announcement.defaults.summary'), tag: t('announcement.defaults.tag') }]);
     const deleteAnnouncement = (i: number) => updateProp('announcements', props.announcements.filter((_: any, idx: number) => idx !== i));
     const updateAnnouncement = (i: number, field: string, value: string) => {
         const next = [...(props.announcements || [])];
@@ -3545,19 +4015,19 @@ const AnnouncementFeedEditor = ({ component, pageId, updateComponent }: any) => 
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Announcement Feed Settings</h4>
-            <div className="space-y-2"><Label>Header Text</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Layout</Label>
+            <h4 className="text-sm font-medium">{t('announcement.heading')}</h4>
+            <div className="space-y-2"><Label>{t('stats.headerText')}</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
+            <div className="space-y-2"><Label>{t('ctaBanner.layout')}</Label>
                 <select className="w-full rounded border px-3 py-2 text-sm" value={props.layout || 'list'} onChange={(e) => updateProp('layout', e.target.value)}>
-                    <option value="list">List</option><option value="grid">Grid</option>
+                    <option value="list">{t('announcement.layoutList')}</option><option value="grid">{optionLabel(t, 'grid')}</option>
                 </select>
             </div>
-            <div className="flex items-center justify-between"><Label>Show Date</Label><Switch checked={props.showDate ?? true} onCheckedChange={(c) => updateProp('showDate', c)} /></div>
-            <div className="flex items-center justify-between"><Label>Show Tag</Label><Switch checked={props.showTag ?? true} onCheckedChange={(c) => updateProp('showTag', c)} /></div>
+            <div className="flex items-center justify-between"><Label>{t('announcement.showDate')}</Label><Switch checked={props.showDate ?? true} onCheckedChange={(c) => updateProp('showDate', c)} /></div>
+            <div className="flex items-center justify-between"><Label>{t('announcement.showTag')}</Label><Switch checked={props.showTag ?? true} onCheckedChange={(c) => updateProp('showTag', c)} /></div>
             <div className="border-t pt-4">
                 <div className="mb-3 flex items-center justify-between">
-                    <Label>Announcements ({props.announcements?.length || 0})</Label>
-                    <Button size="sm" onClick={addAnnouncement}><Plus className="mr-1 size-3" />Add</Button>
+                    <Label>{t('announcement.announcementsCount', { count: props.announcements?.length || 0 })}</Label>
+                    <Button size="sm" onClick={addAnnouncement}><Plus className="me-1 size-3" />{t('actions.add')}</Button>
                 </div>
                 {props.announcements?.map((a: any, i: number) => (
                     <div key={i} className="mb-2 rounded border bg-gray-50 p-3">
@@ -3570,10 +4040,10 @@ const AnnouncementFeedEditor = ({ component, pageId, updateComponent }: any) => 
                         </div>
                         {expandedItem === i && (
                             <div className="mt-3 space-y-2 border-t pt-3">
-                                <Input placeholder="Title" value={a.title} onChange={(e) => updateAnnouncement(i, 'title', e.target.value)} />
+                                <Input placeholder={t('header.title')} value={a.title} onChange={(e) => updateAnnouncement(i, 'title', e.target.value)} />
                                 <Input type="date" value={a.date || ''} onChange={(e) => updateAnnouncement(i, 'date', e.target.value)} />
-                                <Input placeholder="Tag (e.g. News, Update)" value={a.tag || ''} onChange={(e) => updateAnnouncement(i, 'tag', e.target.value)} />
-                                <Textarea placeholder="Summary" rows={2} value={a.summary || ''} onChange={(e) => updateAnnouncement(i, 'summary', e.target.value)} />
+                                <Input placeholder={t('announcement.tagPlaceholder')} value={a.tag || ''} onChange={(e) => updateAnnouncement(i, 'tag', e.target.value)} />
+                                <Textarea placeholder={t('announcement.summaryPlaceholder')} rows={2} value={a.summary || ''} onChange={(e) => updateAnnouncement(i, 'summary', e.target.value)} />
                             </div>
                         )}
                     </div>
@@ -3585,6 +4055,7 @@ const AnnouncementFeedEditor = ({ component, pageId, updateComponent }: any) => 
 
 // Image Gallery Editor
 const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -3599,29 +4070,29 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <h4 className="text-sm font-medium">Image Gallery Settings</h4>
-            <div className="space-y-2"><Label>Header Text</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
+            <h4 className="text-sm font-medium">{t('imageGallery.heading')}</h4>
+            <div className="space-y-2"><Label>{t('stats.headerText')}</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
             <div className="space-y-2">
-                <Label>Columns</Label>
+                <Label>{t('columnLayout.columns')}</Label>
                 <select className="w-full rounded border px-3 py-2 text-sm" value={props.columns || 3} onChange={(e) => updateProp('columns', parseInt(e.target.value))}>
                     <option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
                 </select>
             </div>
-            <div className="flex items-center justify-between"><Label>Show Captions</Label><Switch checked={props.showCaptions || false} onCheckedChange={(c) => updateProp('showCaptions', c)} /></div>
+            <div className="flex items-center justify-between"><Label>{t('imageGallery.showCaptions')}</Label><Switch checked={props.showCaptions || false} onCheckedChange={(c) => updateProp('showCaptions', c)} /></div>
             <div className="border-t pt-4">
                 <div className="mb-3 flex items-center justify-between">
-                    <Label>Images ({props.images?.length || 0})</Label>
-                    <Button size="sm" onClick={addImage}><Plus className="mr-1 size-3" />Add Image</Button>
+                    <Label>{t('imageGallery.imagesCount', { count: props.images?.length || 0 })}</Label>
+                    <Button size="sm" onClick={addImage}><Plus className="me-1 size-3" />{t('imageGallery.addImage')}</Button>
                 </div>
                 {props.images?.map((img: any, i: number) => (
                     <div key={i} className="mb-2 space-y-2 rounded border bg-gray-50 p-3">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium">Image {i + 1}</span>
+                            <span className="text-xs font-medium">{t('imageGallery.imageN', { n: i + 1 })}</span>
                             <Button size="sm" variant="ghost" onClick={() => deleteImage(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                         </div>
-                        <ImageUploadField label="Image" value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} aiKind="photo" />
-                        <Input placeholder="Alt text" value={img.alt || ''} onChange={(e) => updateImage(i, 'alt', e.target.value)} />
-                        {props.showCaptions && <Input placeholder="Caption" value={img.caption || ''} onChange={(e) => updateImage(i, 'caption', e.target.value)} />}
+                        <ImageUploadField label={t('hero.imageField')} value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} aiKind="photo" />
+                        <Input placeholder={t('hero.altTextPlaceholder')} value={img.alt || ''} onChange={(e) => updateImage(i, 'alt', e.target.value)} />
+                        {props.showCaptions && <Input placeholder={t('videoEmbed.caption')} value={img.caption || ''} onChange={(e) => updateImage(i, 'caption', e.target.value)} />}
                     </div>
                 ))}
             </div>
@@ -3636,12 +4107,14 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
  * campaigns from Audience Manager; the empty choice means the auto-provisioned
  * default website-leads list.
  */
-const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmpty = true }: {
+const CampaignPicker = ({ value, onChange, label, allowEmpty = true }: {
     value: string;
     onChange: (id: string, name: string) => void;
     label?: string;
     allowEmpty?: boolean;
 }) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const resolvedLabel = label ?? t('campaignPicker.sendResponsesTo');
     const instituteId = getCurrentInstituteId();
     const queryClient = useQueryClient();
     const { data, isLoading } = useQuery({
@@ -3700,7 +4173,7 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
 
     return (
         <div>
-            <Label className="text-xs">{label}</Label>
+            <Label className="text-xs">{resolvedLabel}</Label>
             <select
                 className="mt-1 w-full rounded border px-2 py-1.5 text-xs"
                 value={value || ''}
@@ -3710,7 +4183,7 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
                 }}
             >
                 <option value="">
-                    {isLoading ? 'Loading campaigns…' : allowEmpty ? 'Default website leads list' : 'Select a campaign'}
+                    {isLoading ? t('campaignPicker.loadingCampaigns') : allowEmpty ? t('campaignPicker.defaultWebsiteLeadsList') : t('campaignPicker.selectCampaign')}
                 </option>
                 {campaigns.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -3718,11 +4191,11 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
             </select>
             {creating ? (
                 <div className="mt-2 space-y-2 rounded border border-primary-200 bg-primary-50 p-2">
-                    <Label className="text-xs">New campaign name</Label>
+                    <Label className="text-xs">{t('campaignPicker.newCampaignName')}</Label>
                     <Input
                         autoFocus
                         className="mt-1"
-                        placeholder="e.g. Website Enquiries"
+                        placeholder={t('campaignPicker.newCampaignNamePlaceholder')}
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         onKeyDown={(e) => {
@@ -3731,17 +4204,16 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
                         }}
                     />
                     <p className="text-caption text-gray-500">
-                        Starts with Full Name, Email and Phone Number. Add more fields any time in
-                        Audience Manager.
+                        {t('campaignPicker.newCampaignHint')}
                     </p>
                     <div className="flex gap-1">
                         <Button size="sm" className="h-7 text-caption" disabled={!newName.trim() || createMutation.isPending} onClick={() => createMutation.mutate(newName.trim())}>
-                            {createMutation.isPending ? 'Creating…' : 'Create & use'}
+                            {createMutation.isPending ? t('campaignPicker.creating') : t('campaignPicker.createAndUse')}
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-caption" onClick={() => setCreating(false)}>Cancel</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-caption" onClick={() => setCreating(false)}>{t('actions.cancel')}</Button>
                     </div>
                     {createMutation.isError && (
-                        <p className="text-caption text-danger-600">Could not create it — please try again.</p>
+                        <p className="text-caption text-danger-600">{t('campaignPicker.createError')}</p>
                     )}
                 </div>
             ) : (
@@ -3750,11 +4222,11 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
                     onClick={() => setCreating(true)}
                     className="mt-1 text-caption font-medium text-primary-500 hover:underline"
                 >
-                    + New campaign
+                    + {t('campaignPicker.newCampaign')}
                 </button>
             )}
             <p className="mt-1 text-caption text-gray-400">
-                Campaigns come from Audience Manager — edit their form fields there.
+                {t('campaignPicker.campaignsFromHint')}
             </p>
             {value && <CampaignHealth audienceId={value} />}
         </div>
@@ -3772,6 +4244,7 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
  * editor or waiting for a real visitor.
  */
 const CampaignHealth = ({ audienceId }: { audienceId: string }) => {
+    const { t, i18n } = useTranslation('managePagesPropertyPanel');
     const instituteId = getCurrentInstituteId();
     const queryClient = useQueryClient();
     const { data, isLoading } = useQuery({
@@ -3819,10 +4292,13 @@ const CampaignHealth = ({ audienceId }: { audienceId: string }) => {
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1.5">
             <span className="text-caption text-gray-500">
                 {isLoading
-                    ? 'Checking submissions…'
-                    : `${data?.total ?? 0} lead${(data?.total ?? 0) === 1 ? '' : 's'} received${
-                          data?.lastAt ? ` · last ${new Date(data.lastAt).toLocaleDateString()}` : ''
-                      }`}
+                    ? t('campaignHealth.checkingSubmissions')
+                    : data?.lastAt
+                      ? t('campaignHealth.leadsReceivedWithLast', {
+                            count: data?.total ?? 0,
+                            date: new Date(data.lastAt).toLocaleDateString(i18n.language),
+                        })
+                      : t('campaignHealth.leadsReceived', { count: data?.total ?? 0 })}
             </span>
             <button
                 type="button"
@@ -3831,12 +4307,12 @@ const CampaignHealth = ({ audienceId }: { audienceId: string }) => {
                 className="rounded px-2 py-0.5 text-caption font-medium text-primary-500 hover:bg-primary-50 disabled:opacity-50"
             >
                 {testMutation.isPending
-                    ? 'Sending…'
+                    ? t('campaignHealth.sending')
                     : testMutation.isSuccess
-                      ? '✓ Test lead delivered'
+                      ? t('campaignHealth.testLeadDelivered')
                       : testMutation.isError
-                        ? 'Failed — retry?'
-                        : 'Send test lead'}
+                        ? t('campaignHealth.failedRetry')
+                        : t('campaignHealth.sendTestLead')}
             </button>
         </div>
     );
@@ -3849,54 +4325,53 @@ const CampaignHealth = ({ audienceId }: { audienceId: string }) => {
  * standalone /audience-response page).
  */
 const LeadFormEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
     return (
         <div className="space-y-4">
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
-                Renders a campaign&apos;s registration form right on the page. Fields, options and
-                mandatory flags are configured on the campaign in Audience Manager; submissions land
-                in that campaign with dedup, scoring and counsellor assignment.
+                {t('leadForm.hint')}
             </div>
             <CampaignPicker
-                label="Campaign (form + destination)"
+                label={t('leadForm.campaignLabel')}
                 allowEmpty={false}
                 value={props.audienceId || ''}
                 onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, audienceId: id, audienceName: name } })}
             />
             <div>
-                <Label className="text-xs">Title</Label>
-                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="Register your interest" />
+                <Label className="text-xs">{t('header.title')}</Label>
+                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder={t('leadForm.titlePlaceholder')} />
             </div>
             <div>
-                <Label className="text-xs">Subtitle</Label>
+                <Label className="text-xs">{t('leadForm.subtitle')}</Label>
                 <Textarea className="mt-1" rows={2} value={props.subtitle || ''} onChange={(e) => updateProp('subtitle', e.target.value)} />
             </div>
             <div>
-                <Label className="text-xs">Submit button label</Label>
-                <Input className="mt-1" value={props.submitLabel || ''} onChange={(e) => updateProp('submitLabel', e.target.value)} placeholder="Submit" />
+                <Label className="text-xs">{t('leadForm.submitButtonLabel')}</Label>
+                <Input className="mt-1" value={props.submitLabel || ''} onChange={(e) => updateProp('submitLabel', e.target.value)} placeholder={t('leadForm.submitPlaceholder')} />
             </div>
             <div>
-                <Label className="text-xs">Success message</Label>
-                <Input className="mt-1" value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} placeholder="Thank you! We've received your details." />
+                <Label className="text-xs">{t('contactForm.successMessage')}</Label>
+                <Input className="mt-1" value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} placeholder={t('leadForm.successMessagePlaceholder')} />
             </div>
             <div className="grid grid-cols-2 gap-3">
                 <div>
-                    <Label className="text-xs">Style</Label>
+                    <Label className="text-xs">{t('stats.style')}</Label>
                     <div className="mt-1 flex gap-1">
                         {(['card', 'bare'] as const).map((v) => (
                             <button key={v} onClick={() => updateProp('layout', v)}
-                                className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(props.layout || 'card') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                                className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(props.layout || 'card') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, v)}</button>
                         ))}
                     </div>
                 </div>
                 <div>
-                    <Label className="text-xs">Header align</Label>
+                    <Label className="text-xs">{t('leadForm.headerAlign')}</Label>
                     <div className="mt-1 flex gap-1">
                         {(['center', 'left'] as const).map((v) => (
                             <button key={v} onClick={() => updateProp('align', v)}
-                                className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(props.align || 'center') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                                className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(props.align || 'center') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, v)}</button>
                         ))}
                     </div>
                 </div>
@@ -3906,6 +4381,7 @@ const LeadFormEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const instituteId = getCurrentInstituteId();
     const updateProp = (key: string, value: any) =>
@@ -3921,17 +4397,18 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
     });
 
     const selected = (pages || []).find((p: any) => p.code === props.productPageCode);
+    // Backend status codes (ACTIVE/DRAFT/...) are never shown raw — always through
+    // this label map, falling back to the raw code for a status this map doesn't know.
+    const statusLabel = (status: string) => t(`productPageOffer.status.${status}`, { defaultValue: status });
 
     return (
         <div className="space-y-4">
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
-                Shows a product page&apos;s courses here and sends each click straight into that
-                page&apos;s cart. The course list, prices and images are read live from the product
-                page — edit them there, not here.
+                {t('productPageOffer.hint')}
             </div>
 
             <div>
-                <Label className="text-xs">Product page</Label>
+                <Label className="text-xs">{t('productPageOffer.productPage')}</Label>
                 <select
                     className="mt-1 w-full rounded border px-2 py-1.5 text-xs"
                     value={props.productPageCode || ''}
@@ -3946,46 +4423,98 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                         });
                     }}
                 >
-                    <option value="">{isLoading ? 'Loading product pages…' : 'Select a product page'}</option>
+                    <option value="">{isLoading ? t('productPageOffer.loadingProductPages') : t('productPageOffer.selectProductPage')}</option>
                     {(pages || []).map((p: any) => (
                         <option key={p.id} value={p.code}>
-                            {p.name}{p.status !== 'ACTIVE' ? ` (${p.status})` : ''}
+                            {p.name}{p.status !== 'ACTIVE' ? ` (${statusLabel(p.status)})` : ''}
                         </option>
                     ))}
                 </select>
                 {selected && selected.status !== 'ACTIVE' && (
                     <p className="mt-1 text-caption text-warning-600">
-                        This page is {selected.status} — set it ACTIVE or the section stays hidden to visitors.
+                        {t('productPageOffer.pageNotActiveWarning', { status: statusLabel(selected.status), activeStatus: statusLabel('ACTIVE') })}
                     </p>
                 )}
                 {selected && (
                     <p className="mt-1 text-caption text-gray-400">
-                        {selected.mappings?.filter((m: any) => (m.status ?? 'ACTIVE') === 'ACTIVE').length ?? 0}{' '}
-                        course(s) will render.
+                        {t('productPageOffer.coursesWillRender', { count: selected.mappings?.filter((m: any) => (m.status ?? 'ACTIVE') === 'ACTIVE').length ?? 0 })}
                     </p>
                 )}
                 {!isLoading && (pages || []).length === 0 && (
                     <p className="mt-1 text-caption text-gray-400">
-                        No product pages yet — create one under Manage Pages &gt; Product Pages.
+                        {t('productPageOffer.noProductPages')}
                     </p>
                 )}
             </div>
 
             <div>
-                <Label className="text-xs">Title</Label>
-                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="Our Programs" />
+                <Label className="text-xs">{t('header.title')}</Label>
+                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder={t('productPageOffer.titlePlaceholder')} />
             </div>
             <div>
-                <Label className="text-xs">Subtitle</Label>
-                <Textarea className="mt-1" rows={2} value={props.subtitle || ''} onChange={(e) => updateProp('subtitle', e.target.value)} placeholder="Pick a program and enrol in minutes." />
+                <Label className="text-xs">{t('leadForm.subtitle')}</Label>
+                <Textarea className="mt-1" rows={2} value={props.subtitle || ''} onChange={(e) => updateProp('subtitle', e.target.value)} placeholder={t('productPageOffer.subtitlePlaceholder')} />
             </div>
-            <div>
-                <Label className="text-xs">Button label</Label>
-                <Input className="mt-1" value={props.ctaLabel || ''} onChange={(e) => updateProp('ctaLabel', e.target.value)} placeholder="Enrol now" />
+            {/* Checkout mode. This is the one setting that changes what the
+                card's main button DOES, so it sits above the label fields that
+                depend on it rather than in the cosmetic groups further down. */}
+            <div className="space-y-3 rounded border border-dashed border-gray-200 p-2">
+                <p className="text-caption font-medium text-gray-500">
+                    {t('productPageOffer.checkoutModeSectionTitle')}
+                </p>
+
+                <div className="flex items-center justify-between gap-3">
+                    <Label className="text-xs">{t('productPageOffer.checkoutModeToggleLabel')}</Label>
+                    <Switch
+                        checked={!!props.enableCart}
+                        onCheckedChange={(c) => updateProp('enableCart', c)}
+                    />
+                </div>
+                <p className="-mt-1 text-caption text-gray-400">
+                    {props.enableCart
+                        ? t('productPageOffer.checkoutModeCartHint')
+                        : t('productPageOffer.checkoutModeSingleHint')}
+                </p>
+
+                {props.enableCart ? (
+                    <>
+                        <div>
+                            <Label className="text-xs">{t('productPageOffer.cartCtaLabelField')}</Label>
+                            <Input
+                                className="mt-1"
+                                value={props.cartCtaLabel || ''}
+                                onChange={(e) => updateProp('cartCtaLabel', e.target.value)}
+                                placeholder={t('productPageOffer.cartCtaPlaceholder')}
+                            />
+                        </div>
+                        <div>
+                            <Label className="text-xs">{t('productPageOffer.checkoutCtaLabelField')}</Label>
+                            <Input
+                                className="mt-1"
+                                value={props.checkoutCtaLabel || ''}
+                                onChange={(e) => updateProp('checkoutCtaLabel', e.target.value)}
+                                placeholder={t('productPageOffer.checkoutCtaPlaceholder')}
+                            />
+                            <p className="mt-1 text-caption text-gray-400">
+                                {t('productPageOffer.checkoutCtaHint')}
+                            </p>
+                        </div>
+                    </>
+                ) : (
+                    <div>
+                        <Label className="text-xs">{t('productPageOffer.buttonLabel')}</Label>
+                        <Input
+                            className="mt-1"
+                            value={props.ctaLabel || ''}
+                            onChange={(e) => updateProp('ctaLabel', e.target.value)}
+                            placeholder={t('productPageOffer.enrolNow')}
+                        />
+                    </div>
+                )}
             </div>
 
             <div className="flex items-center justify-between">
-                <Label className="text-xs">“View course” button on each card</Label>
+                <Label className="text-xs">{t('productPageOffer.viewCourseButtonToggle')}</Label>
                 <Switch
                     checked={props.showViewCourse !== false}
                     onCheckedChange={(c) => updateProp('showViewCourse', c)}
@@ -3993,39 +4522,35 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
             </div>
             {props.showViewCourse !== false && (
                 <div>
-                    <Label className="text-xs">“View course” label</Label>
-                    <Input className="mt-1" value={props.viewCourseLabel || ''} onChange={(e) => updateProp('viewCourseLabel', e.target.value)} placeholder="View course" />
+                    <Label className="text-xs">{t('productPageOffer.viewCourseLabelField')}</Label>
+                    <Input className="mt-1" value={props.viewCourseLabel || ''} onChange={(e) => updateProp('viewCourseLabel', e.target.value)} placeholder={t('productPageOffer.viewCoursePlaceholder')} />
                     <p className="mt-1 text-caption text-gray-400">
-                        Opens the course details page; enrolling from there returns to this
-                        product page&apos;s checkout.
+                        {t('productPageOffer.viewCourseHint')}
                     </p>
                 </div>
             )}
 
             <div className="grid grid-cols-2 gap-3">
                 <div>
-                    <Label className="text-xs">Header alignment</Label>
+                    <Label className="text-xs">{t('productPageOffer.headerAlignment')}</Label>
                     <div className="mt-1 flex gap-1">
-                        {([
-                            ['left', 'Left'],
-                            ['center', 'Center'],
-                        ] as const).map(([value, label]) => (
+                        {(['left', 'center'] as const).map((value) => (
                             <button
                                 key={value}
                                 onClick={() => updateProp('align', value)}
                                 className={`rounded px-2.5 py-1 text-caption font-medium ${(props.align || 'center') === value ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}
                             >
-                                {label}
+                                {optionLabel(t, value)}
                             </button>
                         ))}
                     </div>
                 </div>
                 <div>
-                    <Label className="text-xs">Header size</Label>
+                    <Label className="text-xs">{t('productPageOffer.headerSize')}</Label>
                     <div className="mt-1 flex gap-1">
                         {([
-                            ['md', 'Compact'],
-                            ['lg', 'Large'],
+                            ['md', t('options.compact')],
+                            ['lg', t('options.large')],
                         ] as const).map(([value, label]) => (
                             <button
                                 key={value}
@@ -4040,22 +4565,22 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
             </div>
 
             <div className="flex items-center justify-between">
-                <Label className="text-xs">“See all” link to the product page</Label>
+                <Label className="text-xs">{t('productPageOffer.seeAllToggle')}</Label>
                 <Switch checked={!!props.showViewAll} onCheckedChange={(c) => updateProp('showViewAll', c)} />
             </div>
             {props.showViewAll && (
                 <div>
-                    <Label className="text-xs">Link label</Label>
-                    <Input className="mt-1" value={props.viewAllLabel || ''} onChange={(e) => updateProp('viewAllLabel', e.target.value)} placeholder="See all" />
+                    <Label className="text-xs">{t('productPageOffer.linkLabel')}</Label>
+                    <Input className="mt-1" value={props.viewAllLabel || ''} onChange={(e) => updateProp('viewAllLabel', e.target.value)} placeholder={t('productPageOffer.seeAllPlaceholder')} />
                 </div>
             )}
 
             <div>
-                <Label className="text-xs">Layout</Label>
+                <Label className="text-xs">{t('ctaBanner.layout')}</Label>
                 <div className="mt-1 grid grid-cols-2 gap-1">
                     {([
-                        ['grid', 'Grid', 'Wraps onto rows'],
-                        ['carousel', 'Horizontal', 'One swipeable row'],
+                        ['grid', t('options.grid'), t('productPageOffer.layoutGridHint')],
+                        ['carousel', t('productPageOffer.layoutHorizontal'), t('productPageOffer.layoutCarouselHint')],
                     ] as const).map(([value, label, hint]) => (
                         <button
                             key={value}
@@ -4069,14 +4594,13 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                 </div>
                 {(props.layout || 'grid') === 'carousel' && (
                     <p className="mt-1 text-caption text-gray-400">
-                        Cards sit in one row that visitors swipe or scroll sideways; arrows appear
-                        when there is more to see. Columns sets how many are visible at once.
+                        {t('productPageOffer.carouselDescription')}
                     </p>
                 )}
             </div>
 
             <div>
-                <Label className="text-xs">Columns{(props.layout || 'grid') === 'carousel' ? ' visible' : ''}</Label>
+                <Label className="text-xs">{(props.layout || 'grid') === 'carousel' ? t('productPageOffer.columnsVisible') : t('columnLayout.columns')}</Label>
                 <div className="mt-1 flex gap-1">
                     {[2, 3, 4].map((c) => (
                         <button key={c} onClick={() => updateProp('columns', c)}
@@ -4086,10 +4610,10 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
             </div>
 
             <div className="space-y-3 rounded border border-dashed border-gray-200 p-2">
-                <p className="text-caption font-medium text-gray-500">Browsing</p>
+                <p className="text-caption font-medium text-gray-500">{t('productPageOffer.browsing')}</p>
 
                 <div>
-                    <Label className="text-xs">Courses per page</Label>
+                    <Label className="text-xs">{t('productPageOffer.coursesPerPage')}</Label>
                     <div className="mt-1 flex flex-wrap gap-1">
                         {[6, 9, 12, 24, 0].map((n) => (
                             <button
@@ -4097,20 +4621,20 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                                 onClick={() => updateProp('pageSize', n)}
                                 className={`rounded px-2.5 py-1 text-caption font-medium ${(props.pageSize ?? 9) === n ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}
                             >
-                                {n === 0 ? 'All' : n}
+                                {n === 0 ? t('options.all') : n}
                             </button>
                         ))}
                     </div>
                     <p className="mt-1 text-caption text-gray-400">
                         {(props.pageSize ?? 9) === 0
-                            ? 'Every course renders in one long grid — only sensible for short lists.'
-                            : 'Visitors page through the list; the canvas shows the first page.'}
+                            ? t('productPageOffer.pageSizeAllHint')
+                            : t('productPageOffer.pageSizePagedHint')}
                     </p>
                 </div>
 
                 {(props.layout || 'grid') === 'carousel' && (props.pageSize ?? 9) === 0 && (
                     <div>
-                        <Label className="text-xs">Cards in the row</Label>
+                        <Label className="text-xs">{t('productPageOffer.cardsInRow')}</Label>
                         <div className="mt-1 flex flex-wrap gap-1">
                             {[8, 12, 20, 0].map((n) => (
                                 <button
@@ -4118,24 +4642,24 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                                     onClick={() => updateProp('railMaxCards', n)}
                                     className={`rounded px-2.5 py-1 text-caption font-medium ${(props.railMaxCards ?? 12) === n ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}
                                 >
-                                    {n === 0 ? 'All' : n}
+                                    {n === 0 ? t('options.all') : n}
                                 </button>
                             ))}
                         </div>
                         <p className="mt-1 text-caption text-gray-400">
                             {(props.railMaxCards ?? 12) === 0
-                                ? 'Every course sits in one row — a long product page makes that row very long.'
-                                : 'The row stops here and ends with a card linking to the full product page.'}
+                                ? t('productPageOffer.railAllHint')
+                                : t('productPageOffer.railCappedHint')}
                         </p>
                     </div>
                 )}
 
                 <div className="flex items-center justify-between">
-                    <Label className="text-xs">Search box</Label>
+                    <Label className="text-xs">{t('productPageOffer.searchBox')}</Label>
                     <Switch checked={props.showSearch !== false} onCheckedChange={(c) => updateProp('showSearch', c)} />
                 </div>
                 <p className="-mt-1 text-caption text-gray-400">
-                    Shown only when the product page has 8+ courses.
+                    {t('productPageOffer.searchBoxHint')}
                 </p>
 
                 {/* Vertical scroll is a grid-only concern — a carousel already
@@ -4143,12 +4667,12 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                 {(props.layout || 'grid') !== 'carousel' && (
                     <>
                         <div className="flex items-center justify-between">
-                            <Label className="text-xs">Scroll inside the section</Label>
+                            <Label className="text-xs">{t('productPageOffer.scrollInsideSection')}</Label>
                             <Switch checked={!!props.scrollable} onCheckedChange={(c) => updateProp('scrollable', c)} />
                         </div>
                         {props.scrollable && (
                             <div>
-                                <Label className="text-xs">Max height (px)</Label>
+                                <Label className="text-xs">{t('productPageOffer.maxHeightPx')}</Label>
                                 <Input
                                     className="mt-1"
                                     type="number"
@@ -4164,13 +4688,13 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
             </div>
 
             <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
-                <p className="text-caption font-medium text-gray-500">Show on each card</p>
+                <p className="text-caption font-medium text-gray-500">{t('productPageOffer.showOnEachCard')}</p>
                 {([
-                    ['showImage', 'Preview image'],
-                    ['showChips', 'Level / session chips'],
-                    ['showDescription', 'Short description'],
-                    ['showValidity', 'Access period'],
-                    ['showPrice', 'Price & discount'],
+                    ['showImage', t('productPageOffer.previewImage')],
+                    ['showChips', t('productPageOffer.levelSessionChips')],
+                    ['showDescription', t('productPageOffer.shortDescription')],
+                    ['showValidity', t('productPageOffer.accessPeriod')],
+                    ['showPrice', t('productPageOffer.priceAndDiscount')],
                 ] as const).map(([key, label]) => (
                     <div key={key} className="flex items-center justify-between">
                         <Label className="text-xs">{label}</Label>
@@ -4193,6 +4717,8 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
  * `productPageOffer`, which is the product-page-scoped component.
  */
 const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const { t: tTemplates } = useTranslation('managePagesComponentTemplates');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4201,7 +4727,7 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
         updateComponent(pageId, component.id, {
             type: 'productPageOffer',
             props: {
-                ...(componentTemplates.productPageOffer?.props ?? {}),
+                ...(buildComponentTemplates(tTemplates).productPageOffer?.props ?? {}),
                 title: props.title || '',
                 columns: props.columns ?? 3,
                 showPrice: props.showPrice !== false,
@@ -4211,21 +4737,23 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
     return (
         <div className="space-y-4">
             <div className="rounded border border-warning-200 bg-warning-50 p-2 text-caption text-warning-700">
-                This block shows your <strong>entire course catalogue</strong> — it is not tied to a
-                product page, so there is no product page to pick here. To show one product
-                page&apos;s courses (and send clicks into its cart), switch to Product Page Offer.
+                <Trans
+                    t={t}
+                    i18nKey="productCourseGrid.wholeCatalogueHint"
+                    components={{ strong: <strong /> }}
+                />
             </div>
             <Button variant="outline" size="sm" className="w-full text-xs" onClick={convertToOffer}>
-                Switch to Product Page Offer
+                {t('productCourseGrid.switchToOffer')}
             </Button>
 
             <div>
-                <Label className="text-xs">Title</Label>
-                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="All Courses" />
+                <Label className="text-xs">{t('header.title')}</Label>
+                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder={t('productCourseGrid.titlePlaceholder')} />
             </div>
 
             <div>
-                <Label className="text-xs">Columns</Label>
+                <Label className="text-xs">{t('columnLayout.columns')}</Label>
                 <div className="mt-1 flex gap-1">
                     {[2, 3, 4].map((c) => (
                         <button key={c} onClick={() => updateProp('columns', c)}
@@ -4236,9 +4764,9 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
 
             <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
                 {([
-                    ['showFilters', 'Filters sidebar'],
-                    ['showPrice', 'Price'],
-                    ['showBadge', 'Badges'],
+                    ['showFilters', t('productCourseGrid.filtersSidebar')],
+                    ['showPrice', t('productCourseGrid.price')],
+                    ['showBadge', t('productCourseGrid.badges')],
                 ] as const).map(([key, label]) => (
                     <div key={key} className="flex items-center justify-between">
                         <Label className="text-xs">{label}</Label>
@@ -4250,9 +4778,254 @@ const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) =>
     );
 };
 
+/** Pick one of the institute's live enrolment invite links.
+ *
+ *  An invite URL can already be pasted as a plain web address — that is how the
+ *  first real page was wired — but it makes the admin go and find the code in
+ *  another screen first. This lists the real invitations by name and builds the
+ *  canonical URL with createInviteLink, the same helper the invite screens use,
+ *  so the institute's white-label learner domain is honoured instead of
+ *  hardcoding one. */
+const InviteLinkPicker = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+    const instituteId = getCurrentInstituteId();
+    const { instituteDetails } = useInstituteDetailsStore();
+    const { data, isLoading, isError } = useQuery({
+        queryKey: ['htmlPageInviteLinks', instituteId],
+        queryFn: async () => {
+            const res = await authenticatedAxiosInstance.post(
+                `${GET_INVITE_LIST}?instituteId=${instituteId}&pageNo=0&pageSize=100`,
+                { status: ['ACTIVE'], name: '' }
+            );
+            return (res.data?.content ?? []) as { id: string; name: string; invite_code: string }[];
+        },
+        enabled: !!instituteId,
+    });
+
+    if (isLoading) return <p className="text-caption text-gray-400">Loading invite links…</p>;
+    if (isError) return <p className="text-caption text-danger-600">Could not load invite links.</p>;
+    if (!data?.length) {
+        return (
+            <p className="text-caption text-gray-500">
+                No active invite links yet. Create one under Students → Invite, then come back — or
+                use &quot;Web address&quot; to paste a link by hand.
+            </p>
+        );
+    }
+    return (
+        <div className="space-y-1">
+            {data.map((inv) => {
+                const url = createInviteLink(inv.invite_code, instituteDetails?.learner_portal_base_url);
+                return (
+                    <button
+                        key={inv.id}
+                        onClick={() => onChange(url)}
+                        className={`block w-full rounded border p-1.5 text-start text-caption ${
+                            value === url
+                                ? 'border-primary-400 bg-primary-50 text-primary-500'
+                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                    >
+                        <span className="block font-medium">{inv.name || inv.invite_code}</span>
+                        <span className="font-mono text-gray-400">{inv.invite_code}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+};
+
+/* ─── HTML-page link manager ─────────────────────────────────────────────
+   Wiring a pasted page's buttons previously meant editing raw HTML — the enrol
+   CTAs on a real import could only be pointed at the invitation flow by hand.
+   This scans the blob, lists every link with a plain-language destination,
+   flags ones that go nowhere, and writes edits back STRUCTURALLY via
+   DOMParser (regex rewrites of attributes created an injection once already). */
+
+type HtmlLinkKind = 'page' | 'section' | 'url' | 'invite' | 'lead' | 'none';
+
+interface HtmlLinkRow {
+    index: number;
+    tag: string;
+    label: string;
+    kind: HtmlLinkKind;
+    value: string;
+}
+
+const HTML_LINK_HOOK_ATTRS = ['data-vacademy', 'data-route', 'data-target', 'data-audience', 'data-course'];
+
+const parseHtmlLinks = (html: string): { rows: HtmlLinkRow[]; sectionIds: string[] } => {
+    const doc = new DOMParser().parseFromString(html || '', 'text/html');
+    const rows: HtmlLinkRow[] = [];
+    const els = doc.querySelectorAll('a, button');
+    els.forEach((el, index) => {
+        const verb = el.getAttribute('data-vacademy');
+        const href = el.getAttribute('href') || '';
+        let kind: HtmlLinkKind = 'none';
+        let value = '';
+        if (verb === 'lead-form') { kind = 'lead'; value = el.getAttribute('data-audience') || ''; }
+        else if (verb === 'scroll') { kind = 'section'; value = el.getAttribute('data-target') || ''; }
+        else if (verb === 'route') { kind = 'page'; value = el.getAttribute('data-route') || ''; }
+        else if (/learner-invitation-response\?/i.test(href)) { kind = 'invite'; value = href; }
+        else if (/^(https?:|mailto:|tel:)/i.test(href)) { kind = 'url'; value = href; }
+        else if (href.startsWith('#') && href.length > 1) { kind = 'section'; value = href.slice(1); }
+        const label = (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 44);
+        // Rows with no text and no action are decoration, not links to manage.
+        if (label || kind !== 'none') rows.push({ index, tag: el.tagName.toLowerCase(), label: label || '(no text)', kind, value });
+    });
+    const sectionIds = [...doc.querySelectorAll('[id]')].map((n) => n.id).filter(Boolean);
+    return { rows, sectionIds };
+};
+
+const applyHtmlLink = (html: string, index: number, kind: HtmlLinkKind, value: string): string => {
+    const doc = new DOMParser().parseFromString(html || '', 'text/html');
+    const el = doc.querySelectorAll('a, button')[index];
+    if (!el) return html;
+    HTML_LINK_HOOK_ATTRS.forEach((a) => el.removeAttribute(a));
+    if (kind === 'page') {
+        el.setAttribute('data-vacademy', 'route');
+        el.setAttribute('data-route', value);
+        if (el.tagName === 'A') el.setAttribute('href', value ? `${value}/` : './');
+    } else if (kind === 'section') {
+        el.setAttribute('data-vacademy', 'scroll');
+        el.setAttribute('data-target', value);
+        if (el.tagName === 'A') el.setAttribute('href', `#${value}`);
+    } else if (kind === 'url') {
+        if (el.tagName === 'A') el.setAttribute('href', value);
+        else { el.setAttribute('data-vacademy', 'link'); el.setAttribute('data-href', value); }
+    } else if (kind === 'invite') {
+        // A plain absolute link: enrolment lives outside the catalogue router,
+        // so the binder must NOT intercept it.
+        if (el.tagName === 'A') el.setAttribute('href', value);
+        else { el.setAttribute('data-vacademy', 'link'); el.setAttribute('data-href', value); }
+    } else if (kind === 'lead') {
+        el.setAttribute('data-vacademy', 'lead-form');
+        if (value) el.setAttribute('data-audience', value);
+        if (el.tagName === 'A') el.removeAttribute('href');
+    } else if (el.tagName === 'A') {
+        el.removeAttribute('href');
+    }
+    return doc.body.innerHTML;
+};
+
+const HTML_LINK_KIND_LABELS: Record<HtmlLinkKind, string> = {
+    page: 'Page on this site',
+    section: 'Scroll to section',
+    url: 'Web address',
+    invite: 'Enrol / invite link',
+    lead: 'Lead form',
+    none: 'No action',
+};
+
+const HtmlLinkRowEditor = ({
+    row, pages, sectionIds, onApply,
+}: {
+    row: HtmlLinkRow;
+    pages: { route: string; title?: string }[];
+    sectionIds: string[];
+    onApply: (kind: HtmlLinkKind, value: string) => void;
+}) => {
+    const [editing, setEditing] = useState(false);
+    const [kind, setKind] = useState<HtmlLinkKind>(row.kind);
+    const [value, setValue] = useState(row.value);
+    const pageMissing = row.kind === 'page' && row.value !== '' && !pages.some((pg) => pg.route === row.value);
+    const leadUnbound = row.kind === 'lead' && !row.value;
+    const summary =
+        row.kind === 'page' ? `→ ${row.value || 'home'}` :
+        row.kind === 'section' ? `↓ #${row.value}` :
+        row.kind === 'invite' ? '→ enrolment invite' :
+        row.kind === 'url' ? `→ ${row.value.slice(0, 40)}` :
+        row.kind === 'lead' ? '→ lead form' : 'no action';
+    return (
+        <div className="rounded border border-gray-200 p-2">
+            <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                    <p className="truncate text-caption font-medium text-gray-700">{row.label}</p>
+                    <p className="truncate text-caption text-gray-400">
+                        {summary}
+                        {pageMissing && <span className="ms-1.5 text-warning-700">— page doesn&apos;t exist</span>}
+                        {leadUnbound && <span className="ms-1.5 text-warning-700">— no campaign chosen</span>}
+                    </p>
+                </div>
+                <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => setEditing(!editing)}>
+                    {editing ? 'Close' : 'Edit'}
+                </Button>
+            </div>
+            {editing && (
+                <div className="mt-2 space-y-2 border-t pt-2">
+                    <div className="flex flex-wrap gap-1">
+                        {(Object.keys(HTML_LINK_KIND_LABELS) as HtmlLinkKind[]).map((k) => (
+                            <button
+                                key={k}
+                                onClick={() => { setKind(k); setValue(''); }}
+                                className={`rounded-full border px-2.5 py-0.5 text-caption ${
+                                    kind === k ? 'border-primary-400 bg-primary-50 text-primary-500' : 'border-gray-200 text-gray-600'
+                                }`}
+                            >
+                                {HTML_LINK_KIND_LABELS[k]}
+                            </button>
+                        ))}
+                    </div>
+                    {kind === 'page' && (
+                        <div className="flex flex-wrap gap-1">
+                            {pages.map((pg) => (
+                                <button
+                                    key={pg.route}
+                                    onClick={() => setValue(pg.route)}
+                                    className={`rounded border px-2 py-0.5 text-caption ${
+                                        value === pg.route ? 'border-primary-400 bg-primary-50 text-primary-500' : 'border-gray-200 text-gray-600'
+                                    }`}
+                                >
+                                    {pg.title || pg.route || 'home'}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {kind === 'section' && (
+                        <div className="flex flex-wrap gap-1">
+                            {sectionIds.map((sid) => (
+                                <button
+                                    key={sid}
+                                    onClick={() => setValue(sid)}
+                                    className={`rounded border px-2 py-0.5 font-mono text-caption ${
+                                        value === sid ? 'border-primary-400 bg-primary-50 text-primary-500' : 'border-gray-200 text-gray-600'
+                                    }`}
+                                >
+                                    #{sid}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {kind === 'url' && (
+                        <Input
+                            value={value}
+                            onChange={(e) => setValue(e.target.value)}
+                            placeholder="https://… (any address, e.g. an invite link)"
+                            className="h-7 text-caption"
+                        />
+                    )}
+                    {kind === 'invite' && <InviteLinkPicker value={value} onChange={setValue} />}
+                    {kind === 'lead' && (
+                        <CampaignPicker value={value} onChange={setValue} label="Campaign" allowEmpty={false} />
+                    )}
+                    <Button
+                        size="sm"
+                        className="text-xs"
+                        disabled={!value && kind !== 'none' && kind !== 'page'}
+                        onClick={() => { onApply(kind, value); setEditing(false); }}
+                    >
+                        Apply
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+};
+
 /** The whole-page paste editor. Deliberately not a canvas: an HTML page is
  *  someone else's markup and we do not pretend to understand its structure. */
 const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
+    const { toast } = useToast();
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4262,6 +5035,23 @@ const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
     // lost with no visible cause. Detect and offer to move it rather than
     // leaving a note the admin reads after the page looks broken.
     const html: string = props.html || '';
+
+    // Every <a>/<button> in the pasted markup, plus the ids available to scroll
+    // to. Re-parsed only when the HTML changes — this walks the whole document
+    // through DOMParser, and the editor re-renders on unrelated prop edits.
+    const { rows: linkRows, sectionIds } = useMemo(() => parseHtmlLinks(html), [html]);
+
+    // Link targets for the "page" kind. Every page is offered, including
+    // unpublished ones: you routinely wire up a link while the destination is
+    // still a draft, and HtmlLinkRowEditor already flags a route that resolves
+    // to nothing. (Contrast syncNavFromPages, which filters to published —
+    // that builds the public menu, this picks a build-time target.)
+    const config = useEditorStore((s) => s.config);
+    const sitePages = useMemo(
+        () => (config?.pages ?? []).map((p) => ({ route: p.route, title: p.title })),
+        [config]
+    );
+
     const styleBlocks = html.match(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi) || [];
     const scriptCount = (html.match(/<script\b/gi) || []).length;
     const linkedCss = (html.match(/<link\b[^>]*stylesheet/gi) || []).length;
@@ -4284,43 +5074,71 @@ const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
             {(styleBlocks.length > 0 || scriptCount > 0 || linkedCss > 0) && (
                 <div className="space-y-2 rounded border border-warning-200 bg-warning-50 p-2.5">
                     <p className="text-caption font-medium text-warning-700">
-                        Some of this paste will not render
+                        {t('htmlPage.someWontRender')}
                     </p>
                     <ul className="list-disc space-y-0.5 pl-4 text-caption text-warning-700">
                         {styleBlocks.length > 0 && (
                             <li>
-                                {styleBlocks.length} &lt;style&gt; block
-                                {styleBlocks.length === 1 ? '' : 's'} — style tags are stripped, so
-                                this CSS is lost
+                                {t('htmlPage.styleBlocksLost', { count: styleBlocks.length })}
                             </li>
                         )}
                         {linkedCss > 0 && (
                             <li>
-                                {linkedCss} linked stylesheet{linkedCss === 1 ? '' : 's'} — paste that
-                                CSS into the CSS field
+                                {t('htmlPage.linkedStylesheets', { count: linkedCss })}
                             </li>
                         )}
                         {scriptCount > 0 && (
                             <li>
-                                {scriptCount} script{scriptCount === 1 ? '' : 's'} — removed; use the
-                                action attributes below instead
+                                {t('htmlPage.scriptsRemoved', { count: scriptCount })}
                             </li>
                         )}
                     </ul>
                     {styleBlocks.length > 0 && (
                         <Button size="sm" variant="outline" onClick={moveStylesToCss}>
-                            Move styles into the CSS field
+                            {t('htmlPage.moveStylesToCss')}
                         </Button>
                     )}
                 </div>
             )}
             <div className="rounded border border-primary-200 bg-primary-50 p-2 text-caption text-primary-500">
-                Paste the page you built elsewhere. Scripts, forms and iframes are removed; SVG,
-                images and your CSS are kept. Put <code>&lt;style&gt;</code> contents in the CSS
-                field — style tags are stripped.
+                <Trans
+                    t={t}
+                    i18nKey="htmlPage.pasteHint"
+                    components={{ code: <code />, styletag: <code>&lt;style&gt;</code> }}
+                />
             </div>
+            {/* Placed ABOVE the paste fields: someone who has no page yet needs
+                this before they need anywhere to paste. */}
+            <details className="rounded border border-primary-200 bg-primary-50 p-2.5">
+                <summary className="cursor-pointer text-caption font-medium text-primary-500">
+                    {t('htmlPage.aiHelpTitle')}
+                </summary>
+                <ol className="mt-2 list-decimal space-y-1 ps-4 text-caption text-gray-600">
+                    <li>{t('htmlPage.aiStep1')}</li>
+                    <li>{t('htmlPage.aiStep2')}</li>
+                    <li>{t('htmlPage.aiStep3')}</li>
+                    <li>{t('htmlPage.aiStep4')}</li>
+                </ol>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={() => {
+                        navigator.clipboard.writeText(HTML_PAGE_AI_PROMPT);
+                        toast({
+                            title: t('htmlPage.aiCopiedTitle'),
+                            description: t('htmlPage.aiCopiedBody'),
+                        });
+                    }}
+                >
+                    <Copy className="me-1.5 size-3.5" />
+                    {t('htmlPage.aiCopyPrompt')}
+                </Button>
+                <p className="mt-1.5 text-caption text-gray-400">{t('htmlPage.aiPromptHint')}</p>
+            </details>
+
             <div>
-                <Label className="text-xs">HTML</Label>
+                <Label className="text-xs">{t('htmlPage.html')}</Label>
                 <Textarea
                     value={props.html || ''}
                     onChange={(e) => updateProp('html', e.target.value)}
@@ -4330,7 +5148,7 @@ const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
                 />
             </div>
             <div>
-                <Label className="text-xs">CSS</Label>
+                <Label className="text-xs">{t('htmlPage.css')}</Label>
                 <Textarea
                     value={props.css || ''}
                     onChange={(e) => updateProp('css', e.target.value)}
@@ -4339,23 +5157,46 @@ const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
                     placeholder=".hero { background: var(--catalogue-bg); }"
                 />
                 <p className="mt-1 text-caption text-gray-400">
-                    Shared across several pasted pages? Put it in Global Settings → Custom CSS
-                    instead, so it is stored once rather than per page.
+                    {t('htmlPage.cssSharedHint')}
                 </p>
             </div>
+            {linkRows.length > 0 && (
+                <div>
+                    <Label className="text-xs">Buttons &amp; links on this page ({linkRows.length})</Label>
+                    <p className="mb-2 mt-0.5 text-caption text-gray-400">
+                        Point each one at a page, a section, a lead form, or any web address — no
+                        HTML editing needed.
+                    </p>
+                    <div className="space-y-1.5">
+                        {linkRows.map((row) => (
+                            <HtmlLinkRowEditor
+                                key={`${row.index}-${row.kind}-${row.value}`}
+                                row={row}
+                                pages={sitePages}
+                                sectionIds={sectionIds}
+                                onApply={(kind, value) =>
+                                    updateProp('html', applyHtmlLink(props.html || '', row.index, kind, value))
+                                }
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-600">
-                <p className="font-medium text-gray-700">Making buttons and links work</p>
+                <p className="font-medium text-gray-700">{t('htmlPage.makingLinksWork')}</p>
                 <p className="mt-1">
-                    A plain link leaves the site, and <code>#anchor</code> cannot work inside the
-                    page&apos;s shadow root. Use these instead — pasted links are converted
-                    automatically where we can:
+                    <Trans
+                        t={t}
+                        i18nKey="htmlPage.linksHint"
+                        components={{ code: <code /> }}
+                    />
                 </p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                    <li><code>data-vacademy=&quot;route&quot; data-route=&quot;pricing&quot;</code> — another page</li>
-                    <li><code>data-vacademy=&quot;scroll&quot; data-target=&quot;faq&quot;</code> — scroll on this page</li>
-                    <li><code>data-vacademy=&quot;lead-form&quot; data-audience=&quot;…&quot;</code> — open a campaign form</li>
-                    <li><code>data-vacademy=&quot;enrol&quot; data-course=&quot;…&quot;</code> — open a course</li>
-                    <li>External links: a normal <code>&lt;a href=&quot;https://…&quot;&gt;</code></li>
+                    <li><code>data-vacademy=&quot;route&quot; data-route=&quot;pricing&quot;</code> — {t('htmlPage.anotherPage')}</li>
+                    <li><code>data-vacademy=&quot;scroll&quot; data-target=&quot;faq&quot;</code> — {t('htmlPage.scrollOnThisPage')}</li>
+                    <li><code>data-vacademy=&quot;lead-form&quot; data-audience=&quot;…&quot;</code> — {t('htmlPage.openCampaignForm')}</li>
+                    <li><code>data-vacademy=&quot;enrol&quot; data-course=&quot;…&quot;</code> — {t('htmlPage.openCourse')}</li>
+                    <li>{t('htmlPage.externalLinks')} <code>&lt;a href=&quot;https://…&quot;&gt;</code></li>
                 </ul>
             </div>
         </div>
@@ -4363,6 +5204,7 @@ const HtmlPageEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4370,24 +5212,29 @@ const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
-                Custom section — rendered sandboxed (no scripts). Style it with the CSS field
-                below using theme variables like <code>var(--primary-500)</code>,{' '}
-                <code>var(--catalogue-text-primary)</code> and{' '}
-                <code>var(--catalogue-heading-font)</code> so it follows your site theme.
+                <Trans
+                    t={t}
+                    i18nKey="htmlBlock.hint"
+                    components={{
+                        code1: <code>var(--primary-500)</code>,
+                        code2: <code>var(--catalogue-text-primary)</code>,
+                        code3: <code>var(--catalogue-heading-font)</code>,
+                    }}
+                />
             </div>
             {props.prompt && (
                 <div>
-                    <Label className="text-xs">AI section brief</Label>
+                    <Label className="text-xs">{t('htmlBlock.aiSectionBrief')}</Label>
                     <p className="mt-1 rounded border border-gray-200 bg-white p-2 text-caption text-gray-600">
                         {props.prompt}
                     </p>
                     <p className="mt-1 text-caption text-gray-400">
-                        Tip: ask the AI copilot to “redesign this section” — it uses this brief.
+                        {t('htmlBlock.aiSectionBriefTip')}
                     </p>
                 </div>
             )}
             <div>
-                <Label className="text-xs">HTML</Label>
+                <Label className="text-xs">{t('htmlPage.html')}</Label>
                 <Textarea
                     value={props.html || ''}
                     onChange={(e) => updateProp('html', e.target.value)}
@@ -4397,7 +5244,7 @@ const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 />
             </div>
             <div>
-                <Label className="text-xs">CSS (scoped to this section)</Label>
+                <Label className="text-xs">{t('htmlBlock.cssScoped')}</Label>
                 <Textarea
                     value={props.css || ''}
                     onChange={(e) => updateProp('css', e.target.value)}
@@ -4411,6 +5258,7 @@ const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4418,7 +5266,7 @@ const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <div>
-                <Label className="text-xs">Height</Label>
+                <Label className="text-xs">{t('spacer.height')}</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
                     {['16px', '24px', '32px', '48px', '64px', '80px', '120px'].map((v) => (
                         <button key={v} onClick={() => updateProp('height', v)}
@@ -4427,23 +5275,23 @@ const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             </div>
             <div className="flex items-center justify-between">
-                <Label className="text-xs">Show Divider</Label>
+                <Label className="text-xs">{t('spacer.showDivider')}</Label>
                 <Switch checked={props.showDivider || false} onCheckedChange={(c) => updateProp('showDivider', c)} />
             </div>
             {props.showDivider && (
                 <>
                     <div>
-                        <Label className="text-xs">Divider Style</Label>
+                        <Label className="text-xs">{t('spacer.dividerStyle')}</Label>
                         <div className="flex gap-1 mt-1">
                             {['solid', 'dashed', 'dotted'].map((s) => (
                                 <button key={s} onClick={() => updateProp('dividerStyle', s)}
-                                    className={`rounded px-2 py-1 text-caption font-medium capitalize ${props.dividerStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                                    className={`rounded px-2 py-1 text-caption font-medium capitalize ${props.dividerStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                             ))}
                         </div>
                     </div>
-                    <ColorPickerField label="Divider Color" value={props.dividerColor || '#E5E7EB' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('dividerColor', c)} />
+                    <ColorPickerField label={t('spacer.dividerColor')} value={props.dividerColor || '#E5E7EB' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('dividerColor', c)} />
                     <div>
-                        <Label className="text-xs">Divider Width</Label>
+                        <Label className="text-xs">{t('spacer.dividerWidth')}</Label>
                         <div className="flex gap-1 mt-1">
                             {['1px', '2px', '3px', '4px'].map((w) => (
                                 <button key={w} onClick={() => updateProp('dividerWidth', w)}
@@ -4452,7 +5300,7 @@ const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                     </div>
                     <div>
-                        <Label className="text-xs">Max Width</Label>
+                        <Label className="text-xs">{t('spacer.maxWidth')}</Label>
                         <div className="flex gap-1 mt-1">
                             {['40%', '60%', '80%', '100%'].map((w) => (
                                 <button key={w} onClick={() => updateProp('maxWidth', w)}
@@ -4468,6 +5316,7 @@ const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Tabs / Accordion Editor ──────────────────────────────────────────── */
 const TabsAccordionEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const items = props.items || [];
     const [expandedItem, setExpandedItem] = useState<number | null>(null);
@@ -4475,7 +5324,7 @@ const TabsAccordionEditor = ({ component, pageId, updateComponent }: any) => {
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
-    const addItem = () => updateProp('items', [...items, { title: `Item ${items.length + 1}`, content: '<p>New content</p>' }]);
+    const addItem = () => updateProp('items', [...items, { title: t('tabsAccordion.itemN', { n: items.length + 1 }), content: t('tabsAccordion.defaults.content') }]);
     const deleteItem = (i: number) => { updateProp('items', items.filter((_: any, idx: number) => idx !== i)); if (expandedItem === i) setExpandedItem(null); };
     const updateItem = (i: number, field: string, value: any) => {
         const newItems = [...items];
@@ -4486,27 +5335,27 @@ const TabsAccordionEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <div>
-                <Label className="text-xs">Mode</Label>
+                <Label className="text-xs">{t('global.theme.mode')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['tabs', 'accordion'].map((m) => (
                         <button key={m} onClick={() => updateProp('mode', m)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.mode === m ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{m}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.mode === m ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, m)}</button>
                     ))}
                 </div>
             </div>
             {props.mode === 'accordion' && (
                 <>
                     <div className="flex items-center justify-between">
-                        <Label className="text-xs">Allow Multiple Open</Label>
+                        <Label className="text-xs">{t('tabsAccordion.allowMultipleOpen')}</Label>
                         <Switch checked={props.allowMultiple || false} onCheckedChange={(c) => updateProp('allowMultiple', c)} />
                     </div>
                     <div>
-                        <Label className="text-xs">Accordion Style</Label>
+                        <Label className="text-xs">{t('tabsAccordion.accordionStyle')}</Label>
                         <div className="flex gap-1 mt-1">
                             {[
-                                { key: 'plain', label: 'Plain' },
-                                { key: 'boxed', label: 'Boxed' },
-                                { key: 'split', label: 'Split + Panel' },
+                                { key: 'plain', label: optionLabel(t, 'plain') },
+                                { key: 'boxed', label: t('tabsAccordion.styleBoxed') },
+                                { key: 'split', label: t('tabsAccordion.styleSplitPanel') },
                             ].map((v) => (
                                 <button key={v.key} onClick={() => updateProp('variant', v.key)}
                                     className={`rounded px-3 py-1 text-caption font-medium ${(props.variant || 'plain') === v.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v.label}</button>
@@ -4514,36 +5363,35 @@ const TabsAccordionEditor = ({ component, pageId, updateComponent }: any) => {
                         </div>
                         {(props.variant || 'plain') === 'split' && (
                             <p className="mt-1 text-caption text-gray-400">
-                                Split shows the open item's panel on the right (desktop). Panels
-                                can hold nested components via JSON/templates; rich text renders otherwise.
+                                {t('tabsAccordion.splitHint')}
                             </p>
                         )}
                     </div>
                 </>
             )}
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <div>
                 <div className="flex items-center justify-between mb-2">
-                    <Label className="text-xs font-medium">Items ({items.length})</Label>
-                    <Button variant="ghost" size="sm" onClick={addItem} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                    <Label className="text-xs font-medium">{t('tabsAccordion.itemsCount', { count: items.length })}</Label>
+                    <Button variant="ghost" size="sm" onClick={addItem} className="h-6 text-xs"><Plus className="size-3 me-1" /> {t('actions.add')}</Button>
                 </div>
                 <div className="space-y-2">
                     {items.map((item: any, i: number) => (
                         <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
                             <div className="flex items-center justify-between">
                                 <button onClick={() => setExpandedItem(expandedItem === i ? null : i)} className="text-xs font-medium text-left flex-1">
-                                    {item.title || `Item ${i + 1}`}
+                                    {item.title || t('tabsAccordion.itemN', { n: i + 1 })}
                                 </button>
                                 <Button variant="ghost" size="sm" onClick={() => deleteItem(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                             </div>
                             {expandedItem === i && (
                                 <div className="space-y-2">
-                                    <Input value={item.title || ''} onChange={(e) => updateItem(i, 'title', e.target.value)} placeholder="Title" />
+                                    <Input value={item.title || ''} onChange={(e) => updateItem(i, 'title', e.target.value)} placeholder={t('header.title')} />
                                     <div className="flex gap-2">
-                                        <Input className="flex-1" value={item.icon || ''} onChange={(e) => updateItem(i, 'icon', e.target.value)} placeholder="Icon (emoji or e.g. Rocket)" />
-                                        <Input className="flex-1" value={item.meta || ''} onChange={(e) => updateItem(i, 'meta', e.target.value)} placeholder="Meta (e.g. 6 lessons)" />
+                                        <Input className="flex-1" value={item.icon || ''} onChange={(e) => updateItem(i, 'icon', e.target.value)} placeholder={t('tabsAccordion.iconPlaceholder')} />
+                                        <Input className="flex-1" value={item.meta || ''} onChange={(e) => updateItem(i, 'meta', e.target.value)} placeholder={t('tabsAccordion.metaPlaceholder')} />
                                     </div>
-                                    <RichTextField label="Content" value={item.content || ''} onChange={(html) => updateItem(i, 'content', html)} />
+                                    <RichTextField label={t('tabsAccordion.content')} value={item.content || ''} onChange={(html) => updateItem(i, 'content', html)} />
                                 </div>
                             )}
                         </div>
@@ -4556,6 +5404,7 @@ const TabsAccordionEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Trust Chip Editor ────────────────────────────────────────────────── */
 const TrustChipEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4566,10 +5415,10 @@ const TrustChipEditor = ({ component, pageId, updateComponent }: any) => {
             <Input
                 value={props.text || ''}
                 onChange={(e) => updateProp('text', e.target.value)}
-                placeholder='e.g. "Trusted by 10,000+ learners"'
+                placeholder={t('trustChip.textPlaceholder')}
             />
             <div className="flex items-center gap-3">
-                <Label className="text-xs">Rating (0 = off)</Label>
+                <Label className="text-xs">{t('hero.ratingLabel')}</Label>
                 <Input
                     type="number"
                     min={0}
@@ -4584,18 +5433,18 @@ const TrustChipEditor = ({ component, pageId, updateComponent }: any) => {
                 />
             </div>
             <div>
-                <Label className="text-xs">Alignment</Label>
+                <Label className="text-xs">{t('trustChip.alignment')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['left', 'center', 'right'].map((a) => (
                         <button key={a} onClick={() => updateProp('alignment', a)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.alignment || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.alignment || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, a)}</button>
                     ))}
                 </div>
             </div>
             <div>
                 <div className="flex items-center justify-between mb-2">
-                    <Label className="text-xs font-medium">Avatars ({avatars.length}/4)</Label>
-                    <Button variant="ghost" size="sm" disabled={avatars.length >= 4} onClick={() => updateProp('avatars', [...avatars, ''])} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                    <Label className="text-xs font-medium">{t('trustChip.avatarsCount', { count: avatars.length })}</Label>
+                    <Button variant="ghost" size="sm" disabled={avatars.length >= 4} onClick={() => updateProp('avatars', [...avatars, ''])} className="h-6 text-xs"><Plus className="size-3 me-1" /> {t('actions.add')}</Button>
                 </div>
                 <div className="space-y-2">
                     {avatars.map((src: string, i: number) => (
@@ -4618,6 +5467,7 @@ const TrustChipEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Section Heading Editor ───────────────────────────────────────────── */
 const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4625,15 +5475,15 @@ const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <div>
-                <Label className="text-xs">Eyebrow (small label above the title)</Label>
-                <Input value={props.eyebrow || ''} onChange={(e) => updateProp('eyebrow', e.target.value || undefined)} placeholder="e.g. Why choose us" />
+                <Label className="text-xs">{t('sectionHeading.eyebrow')}</Label>
+                <Input value={props.eyebrow || ''} onChange={(e) => updateProp('eyebrow', e.target.value || undefined)} placeholder={t('sectionHeading.eyebrowPlaceholder')} />
             </div>
             <div>
-                <Label className="text-xs">Title</Label>
-                <Input value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="Section title" />
+                <Label className="text-xs">{t('header.title')}</Label>
+                <Input value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder={t('sectionHeading.titlePlaceholder')} />
             </div>
             <div className="rounded border bg-gray-50 p-3 space-y-2">
-                <Label className="text-xs font-medium">Highlight a phrase</Label>
+                <Label className="text-xs font-medium">{t('sectionHeading.highlightPhrase')}</Label>
                 <Input
                     value={props.highlight?.text || ''}
                     onChange={(e) =>
@@ -4644,7 +5494,7 @@ const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
                                 : undefined,
                         )
                     }
-                    placeholder="Exact words from the title"
+                    placeholder={t('sectionHeading.highlightPlaceholder')}
                 />
                 {props.highlight?.text && (
                     <div className="flex gap-1">
@@ -4654,34 +5504,34 @@ const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
                                 onClick={() => updateProp('highlight', { ...props.highlight, style: s })}
                                 className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.highlight?.style || 'gradient') === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
                             >
-                                {s}
+                                {optionLabel(t, s)}
                             </button>
                         ))}
                     </div>
                 )}
                 {props.highlight?.text && !(typeof props.title === 'string' && props.title.includes(props.highlight.text)) && (
-                    <p className="text-caption text-warning-600">Not found in the title — the highlight will not show.</p>
+                    <p className="text-caption text-warning-600">{t('sectionHeading.highlightNotFound')}</p>
                 )}
             </div>
             <div>
-                <Label className="text-xs">Lead (supporting line)</Label>
-                <Textarea value={props.lead || ''} onChange={(e) => updateProp('lead', e.target.value || undefined)} rows={2} placeholder="One-sentence supporting copy under the title" />
+                <Label className="text-xs">{t('sectionHeading.lead')}</Label>
+                <Textarea value={props.lead || ''} onChange={(e) => updateProp('lead', e.target.value || undefined)} rows={2} placeholder={t('sectionHeading.leadPlaceholder')} />
             </div>
             <div>
-                <Label className="text-xs">Alignment</Label>
+                <Label className="text-xs">{t('trustChip.alignment')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['center', 'left'].map((a) => (
                         <button key={a} onClick={() => updateProp('align', a === 'center' ? undefined : a)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.align || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.align || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, a)}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Size</Label>
+                <Label className="text-xs">{t('stats.style')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['md', 'lg', 'xl'].map((s) => (
                         <button key={s} onClick={() => updateProp('size', s === 'lg' ? undefined : s)}
-                            className={`rounded px-3 py-1 text-caption font-medium uppercase ${(props.size || 'lg') === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium uppercase ${(props.size || 'lg') === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
             </div>
@@ -4691,13 +5541,14 @@ const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Logo Cloud Editor ────────────────────────────────────────────────── */
 const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const logos = props.logos || [];
 
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
-    const addLogo = () => updateProp('logos', [...logos, { image: '', alt: `Logo ${logos.length + 1}`, url: '' }]);
+    const addLogo = () => updateProp('logos', [...logos, { image: '', alt: t('logoCloud.logoN', { n: logos.length + 1 }), url: '' }]);
     const deleteLogo = (i: number) => updateProp('logos', logos.filter((_: any, idx: number) => idx !== i));
     const updateLogo = (i: number, field: string, value: any) => {
         const newLogos = [...logos];
@@ -4707,19 +5558,19 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder="Header text" />
-            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="Subheading" />
+            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder={t('logoCloud.headerTextPlaceholder')} />
+            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder={t('faq.subheading')} />
             <div>
-                <Label className="text-xs">Layout</Label>
+                <Label className="text-xs">{t('ctaBanner.layout')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['grid', 'marquee'].map((l) => (
                         <button key={l} onClick={() => updateProp('layout', l)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, l)}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Columns</Label>
+                <Label className="text-xs">{t('columnLayout.columns')}</Label>
                 <div className="flex gap-1 mt-1">
                     {[3, 4, 5, 6].map((c) => (
                         <button key={c} onClick={() => updateProp('columns', c)}
@@ -4728,16 +5579,16 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             </div>
             <div className="flex items-center justify-between">
-                <Label className="text-xs">Grayscale</Label>
+                <Label className="text-xs">{t('logoCloud.grayscale')}</Label>
                 <Switch checked={props.grayscale !== false} onCheckedChange={(c) => updateProp('grayscale', c)} />
             </div>
             <div>
-                <Label className="text-xs">Display</Label>
+                <Label className="text-xs">{t('logoCloud.display')}</Label>
                 <div className="flex gap-1 mt-1">
                     {[
-                        { key: 'logo', label: 'Logo' },
-                        { key: 'logo+label', label: 'Logo + Label' },
-                        { key: 'label-pill', label: 'Label Pills' },
+                        { key: 'logo', label: optionLabel(t, 'logo') },
+                        { key: 'logo+label', label: t('logoCloud.displayLogoLabel') },
+                        { key: 'label-pill', label: t('logoCloud.displayLabelPills') },
                     ].map((d) => (
                         <button key={d.key} onClick={() => updateProp('display', d.key)}
                             className={`rounded px-3 py-1 text-caption font-medium ${(props.display || 'logo') === d.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{d.label}</button>
@@ -4745,30 +5596,30 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Tile</Label>
+                <Label className="text-xs">{t('logoCloud.tile')}</Label>
                 <div className="flex gap-1 mt-1">
-                    {['none', 'card', 'pill'].map((t) => (
-                        <button key={t} onClick={() => updateProp('tile', t)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.tile || 'none') === t ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{t}</button>
+                    {['none', 'card', 'pill'].map((tl) => (
+                        <button key={tl} onClick={() => updateProp('tile', tl)}
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.tile || 'none') === tl ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, tl)}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Logo Height</Label>
+                <Label className="text-xs">{t('logoCloud.logoHeight')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['sm', 'md', 'lg'].map((h) => (
                         <button key={h} onClick={() => updateProp('logoHeight', h)}
-                            className={`rounded px-3 py-1 text-caption font-medium uppercase ${(props.logoHeight || 'md') === h ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{h}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium uppercase ${(props.logoHeight || 'md') === h ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, h)}</button>
                     ))}
                 </div>
             </div>
             {props.layout === 'marquee' && (
                 <div>
-                    <Label className="text-xs">Marquee Speed</Label>
+                    <Label className="text-xs">{t('logoCloud.marqueeSpeed')}</Label>
                     <div className="flex gap-1 mt-1">
                         {['slow', 'medium', 'fast'].map((sp) => (
                             <button key={sp} onClick={() => updateProp('marqueeSpeed', sp)}
-                                className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.marqueeSpeed || 'medium') === sp ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{sp}</button>
+                                className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.marqueeSpeed || 'medium') === sp ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, sp)}</button>
                         ))}
                     </div>
                 </div>
@@ -4776,33 +5627,33 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
             {props.display === 'label-pill' ? (
                 // Text ticker (no images) — fast add/edit of sliding points.
                 <div>
-                    <Label className="text-xs font-medium">Ticker items ({logos.length})</Label>
-                    <p className="mb-1 text-caption text-gray-400">One announcement per line — these scroll across the band.</p>
+                    <Label className="text-xs font-medium">{t('logoCloud.tickerItemsCount', { count: logos.length })}</Label>
+                    <p className="mb-1 text-caption text-gray-400">{t('logoCloud.tickerHint')}</p>
                     <ListField
                         value={logos.map((l: any) => l.label).filter((s: any) => s != null)}
                         onCommit={(items) => updateProp('logos', items.map((label: string) => ({ label })))}
                         separator="newline"
-                        placeholder={'e.g.\nGATE 2026 batches open\nISRO/BARC post-GATE batches\n30,000+ students trained'}
+                        placeholder={t('logoCloud.tickerPlaceholder')}
                         rows={5}
                     />
                 </div>
             ) : (
                 <div>
                     <div className="flex items-center justify-between mb-2">
-                        <Label className="text-xs font-medium">Logos ({logos.length})</Label>
-                        <Button variant="ghost" size="sm" onClick={addLogo} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                        <Label className="text-xs font-medium">{t('logoCloud.logosCount', { count: logos.length })}</Label>
+                        <Button variant="ghost" size="sm" onClick={addLogo} className="h-6 text-xs"><Plus className="size-3 me-1" /> {t('actions.add')}</Button>
                     </div>
                     <div className="space-y-2">
                         {logos.map((logo: any, i: number) => (
                             <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-xs font-medium">Logo {i + 1}</span>
+                                    <span className="text-xs font-medium">{t('logoCloud.logoN', { n: i + 1 })}</span>
                                     <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                                 </div>
-                                <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
-                                <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
-                                <Input placeholder="Label (company name, shown in labeled modes)" value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
-                                <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
+                                <ImageUploadField label={t('hero.imageField')} value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
+                                <Input placeholder={t('hero.altTextPlaceholder')} value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
+                                <Input placeholder={t('logoCloud.labelPlaceholder')} value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
+                                <Input placeholder={t('logoCloud.linkUrlPlaceholder')} value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
                             </div>
                         ))}
                     </div>
@@ -4814,6 +5665,7 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Map Embed Editor ─────────────────────────────────────────────────── */
 const MapEmbedEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4821,15 +5673,15 @@ const MapEmbedEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <div>
-                <Label className="text-xs">Title</Label>
-                <Input value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="Our Location" />
+                <Label className="text-xs">{t('header.title')}</Label>
+                <Input value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder={t('mapEmbed.titlePlaceholder')} />
             </div>
             <div>
-                <Label className="text-xs">Google Maps Embed URL</Label>
+                <Label className="text-xs">{t('mapEmbed.embedUrl')}</Label>
                 <Textarea value={props.embedUrl || ''} onChange={(e) => updateProp('embedUrl', e.target.value)} placeholder="https://www.google.com/maps/embed?pb=..." rows={3} />
             </div>
             <div>
-                <Label className="text-xs">Height</Label>
+                <Label className="text-xs">{t('spacer.height')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['300px', '400px', '500px', '600px'].map((h) => (
                         <button key={h} onClick={() => updateProp('height', h)}
@@ -4838,7 +5690,7 @@ const MapEmbedEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Border Radius</Label>
+                <Label className="text-xs">{t('mapEmbed.borderRadius')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['0', '4px', '8px', '16px', '24px'].map((r) => (
                         <button key={r} onClick={() => updateProp('borderRadius', r)}
@@ -4852,6 +5704,7 @@ const MapEmbedEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Countdown Timer Editor ───────────────────────────────────────────── */
 const CountdownTimerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4859,34 +5712,35 @@ const CountdownTimerEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <div>
-                <Label className="text-xs">Heading</Label>
-                <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} placeholder="Event Starts In" />
+                <Label className="text-xs">{t('ctaBanner.headingField')}</Label>
+                <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} placeholder={t('countdown.headingPlaceholder')} />
             </div>
             <div>
-                <Label className="text-xs">Target Date</Label>
+                <Label className="text-xs">{t('countdown.targetDate')}</Label>
                 <Input type="datetime-local" value={props.targetDate || ''} onChange={(e) => updateProp('targetDate', e.target.value)} />
             </div>
             <div>
-                <Label className="text-xs">Expired Message</Label>
-                <Input value={props.expiredMessage || ''} onChange={(e) => updateProp('expiredMessage', e.target.value)} placeholder="The event has started!" />
+                <Label className="text-xs">{t('countdown.expiredMessage')}</Label>
+                <Input value={props.expiredMessage || ''} onChange={(e) => updateProp('expiredMessage', e.target.value)} placeholder={t('countdown.expiredMessagePlaceholder')} />
             </div>
             <div>
-                <Label className="text-xs">Style</Label>
+                <Label className="text-xs">{t('stats.style')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['cards', 'minimal'].map((s) => (
                         <button key={s} onClick={() => updateProp('style', s)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#1E293B' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#1E293B' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('header.textColor')} value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
         </div>
     );
 };
 
 /* ─── Text Block Editor ────────────────────────────────────────────────── */
 const TextBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
@@ -4894,12 +5748,12 @@ const TextBlockEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <RichTextField
-                label="Content"
+                label={t('tabsAccordion.content')}
                 value={props.content || ''}
                 onChange={(html) => updateProp('content', html)}
             />
             <div>
-                <Label className="text-xs">Max Width</Label>
+                <Label className="text-xs">{t('spacer.maxWidth')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['600px', '800px', '1000px', '100%'].map((w) => (
                         <button key={w} onClick={() => updateProp('maxWidth', w)}
@@ -4908,11 +5762,11 @@ const TextBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Alignment</Label>
+                <Label className="text-xs">{t('trustChip.alignment')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['left', 'center', 'right'].map((a) => (
                         <button key={a} onClick={() => updateProp('alignment', a)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, a)}</button>
                     ))}
                 </div>
             </div>
@@ -4972,6 +5826,7 @@ const ListField = ({
  * UI at all.
  */
 const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const blocks: any[] = Array.isArray(props.blocks) ? props.blocks : [];
     const [expandedIdx, setExpandedIdx] = useState<number | null>(0);
@@ -4983,7 +5838,7 @@ const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
         setBlocks(blocks.map((b, idx) => (idx === i ? { ...b, [key]: value } : b)));
 
     const addBlock = () =>
-        setBlocks([...blocks, { title: 'New Program', tag: '', description: '', items: [], specs: [] }]);
+        setBlocks([...blocks, { title: t('detailBlocks.defaults.newProgram'), tag: '', description: '', items: [], specs: [] }]);
     const deleteBlock = (i: number) => {
         setBlocks(blocks.filter((_, idx) => idx !== i));
         if (expandedIdx === i) setExpandedIdx(null);
@@ -5033,22 +5888,21 @@ const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
-                One block per programme — a detail table plus a label/value spec strip. Built for
-                reference pages, so it carries no price or enrol button by design.
+                {t('detailBlocks.hint')}
             </div>
 
             <div>
-                <Label className="text-xs">Section heading</Label>
-                <Input className="mt-1" value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder="(optional)" />
+                <Label className="text-xs">{t('detailBlocks.sectionHeading')}</Label>
+                <Input className="mt-1" value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder={t('detailBlocks.optional')} />
             </div>
             <div>
-                <Label className="text-xs">Section subheading</Label>
-                <Textarea className="mt-1" rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="(optional)" />
+                <Label className="text-xs">{t('detailBlocks.sectionSubheading')}</Label>
+                <Textarea className="mt-1" rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder={t('detailBlocks.optional')} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
                 <div>
-                    <Label className="text-xs">Detail columns</Label>
+                    <Label className="text-xs">{t('detailBlocks.detailColumns')}</Label>
                     <div className="mt-1 flex gap-1">
                         {[1, 2, 3].map((c) => (
                             <button key={c} onClick={() => updateProp('columns', c)} className={pill((props.columns ?? 3) === c)}>{c}</button>
@@ -5056,7 +5910,7 @@ const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
                     </div>
                 </div>
                 <div>
-                    <Label className="text-xs">Spec columns</Label>
+                    <Label className="text-xs">{t('detailBlocks.specColumns')}</Label>
                     <div className="mt-1 flex gap-1">
                         {[2, 3, 4].map((c) => (
                             <button key={c} onClick={() => updateProp('specColumns', c)} className={pill((props.specColumns ?? 4) === c)}>{c}</button>
@@ -5067,48 +5921,48 @@ const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
 
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <Label className="text-xs">Blocks ({blocks.length})</Label>
-                    <Button variant="outline" size="sm" className="h-7 text-caption" onClick={addBlock}>+ Add block</Button>
+                    <Label className="text-xs">{t('detailBlocks.blocksCount', { count: blocks.length })}</Label>
+                    <Button variant="outline" size="sm" className="h-7 text-caption" onClick={addBlock}>+ {t('detailBlocks.addBlock')}</Button>
                 </div>
 
                 {blocks.map((b, i) => (
                     <div key={i} className="rounded border border-gray-200">
                         <div className="flex items-center gap-1 bg-gray-50 px-2 py-1.5">
                             <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} className="flex-1 truncate text-left text-xs font-medium">
-                                {b?.title || `Block ${i + 1}`}
+                                {b?.title || t('detailBlocks.blockN', { n: i + 1 })}
                             </button>
-                            <Button variant="ghost" size="sm" className="size-6 p-0" disabled={i === 0} onClick={() => moveBlock(i, -1)} title="Move up">↑</Button>
-                            <Button variant="ghost" size="sm" className="size-6 p-0" disabled={i === blocks.length - 1} onClick={() => moveBlock(i, 1)} title="Move down">↓</Button>
-                            <Button variant="ghost" size="sm" className="size-6 p-0 text-danger-600" onClick={() => deleteBlock(i)} title="Delete">×</Button>
+                            <Button variant="ghost" size="sm" className="size-6 p-0" disabled={i === 0} onClick={() => moveBlock(i, -1)} title={t('actions.moveUp')}>↑</Button>
+                            <Button variant="ghost" size="sm" className="size-6 p-0" disabled={i === blocks.length - 1} onClick={() => moveBlock(i, 1)} title={t('actions.moveDown')}>↓</Button>
+                            <Button variant="ghost" size="sm" className="size-6 p-0 text-danger-600" onClick={() => deleteBlock(i)} title={t('actions.delete')}>×</Button>
                         </div>
 
                         {expandedIdx === i && (
                             <div className="space-y-3 p-2">
                                 <div>
-                                    <Label className="text-xs">Title</Label>
+                                    <Label className="text-xs">{t('header.title')}</Label>
                                     <Input className="mt-1" value={b?.title || ''} onChange={(e) => updateBlock(i, 'title', e.target.value)} />
                                 </div>
                                 <div>
-                                    <Label className="text-xs">Tag / eyebrow</Label>
-                                    <Input className="mt-1" value={b?.tag || ''} onChange={(e) => updateBlock(i, 'tag', e.target.value)} placeholder="Flagship Program" />
+                                    <Label className="text-xs">{t('detailBlocks.tagEyebrow')}</Label>
+                                    <Input className="mt-1" value={b?.tag || ''} onChange={(e) => updateBlock(i, 'tag', e.target.value)} placeholder={t('detailBlocks.flagshipProgramPlaceholder')} />
                                 </div>
                                 <div>
-                                    <Label className="text-xs">Description</Label>
+                                    <Label className="text-xs">{t('mediaShowcase.description')}</Label>
                                     <Textarea className="mt-1" rows={3} value={b?.description || ''} onChange={(e) => updateBlock(i, 'description', e.target.value)} />
                                 </div>
 
                                 <div>
-                                    <Label className="text-xs">Header style</Label>
+                                    <Label className="text-xs">{t('detailBlocks.headerStyle')}</Label>
                                     <div className="mt-1 flex gap-1">
                                         {(['subtle', 'tint', 'solid'] as const).map((v) => (
-                                            <button key={v} onClick={() => updateBlock(i, 'headerVariant', v)} className={pill((b?.headerVariant || 'subtle') === v)}>{v}</button>
+                                            <button key={v} onClick={() => updateBlock(i, 'headerVariant', v)} className={pill((b?.headerVariant || 'subtle') === v)}>{optionLabel(t, v)}</button>
                                         ))}
                                     </div>
-                                    <p className="mt-1 text-caption text-gray-400">Give just one block “solid” so the flagship stands out.</p>
+                                    <p className="mt-1 text-caption text-gray-400">{t('detailBlocks.headerStyleHint')}</p>
                                 </div>
 
                                 <div>
-                                    <Label className="text-xs">Detail items — one per line, “Title — Description”</Label>
+                                    <Label className="text-xs">{t('detailBlocks.detailItemsLabel')}</Label>
                                     <Textarea
                                         className="mt-1 font-mono text-caption"
                                         rows={6}
@@ -5119,7 +5973,7 @@ const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
                                 </div>
 
                                 <div>
-                                    <Label className="text-xs">Specs — one per line, “Label: Value”</Label>
+                                    <Label className="text-xs">{t('detailBlocks.specsLabel')}</Label>
                                     <Textarea
                                         className="mt-1 font-mono text-caption"
                                         rows={4}
@@ -5130,20 +5984,20 @@ const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
                                 </div>
 
                                 <div>
-                                    <Label className="text-xs">Note strip</Label>
-                                    <Textarea className="mt-1" rows={2} value={b?.note || ''} onChange={(e) => updateBlock(i, 'note', e.target.value)} placeholder="(optional)" />
+                                    <Label className="text-xs">{t('detailBlocks.noteStrip')}</Label>
+                                    <Textarea className="mt-1" rows={2} value={b?.note || ''} onChange={(e) => updateBlock(i, 'note', e.target.value)} placeholder={t('detailBlocks.optional')} />
                                     {b?.note && (
                                         <div className="mt-1 flex gap-1">
-                                            {(['warn', 'info', 'plain'] as const).map((t) => (
-                                                <button key={t} onClick={() => updateBlock(i, 'noteTone', t)} className={pill((b?.noteTone || 'warn') === t)}>{t}</button>
+                                            {(['warn', 'info', 'plain'] as const).map((tone) => (
+                                                <button key={tone} onClick={() => updateBlock(i, 'noteTone', tone)} className={pill((b?.noteTone || 'warn') === tone)}>{optionLabel(t, tone)}</button>
                                             ))}
                                         </div>
                                     )}
                                 </div>
 
                                 <div>
-                                    <Label className="text-xs">Deep-link anchor</Label>
-                                    <Input className="mt-1" value={b?.anchor || ''} onChange={(e) => updateBlock(i, 'anchor', e.target.value)} placeholder="auto from title" />
+                                    <Label className="text-xs">{t('detailBlocks.deepLinkAnchor')}</Label>
+                                    <Input className="mt-1" value={b?.anchor || ''} onChange={(e) => updateBlock(i, 'anchor', e.target.value)} placeholder={t('detailBlocks.autoFromTitle')} />
                                 </div>
                             </div>
                         )}
@@ -5155,6 +6009,7 @@ const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const features = props.features || [];
     const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
@@ -5162,7 +6017,7 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
-    const addFeature = () => updateProp('features', [...features, { icon: '⭐', title: 'New Feature', description: 'Description here' }]);
+    const addFeature = () => updateProp('features', [...features, { icon: '⭐', title: t('featureGrid.defaults.title'), description: t('featureGrid.defaults.description') }]);
     const deleteFeature = (i: number) => { updateProp('features', features.filter((_: any, idx: number) => idx !== i)); if (expandedIdx === i) setExpandedIdx(null); };
     const updateFeature = (i: number, field: string, value: any) => {
         const updated = [...features];
@@ -5172,10 +6027,10 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder="Header text" />
-            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="Subheading" />
+            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder={t('logoCloud.headerTextPlaceholder')} />
+            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder={t('faq.subheading')} />
             <div>
-                <Label className="text-xs">Columns</Label>
+                <Label className="text-xs">{t('columnLayout.columns')}</Label>
                 <div className="flex gap-1 mt-1">
                     {[2, 3, 4].map((c) => (
                         <button key={c} onClick={() => updateProp('columns', c)}
@@ -5184,19 +6039,17 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Style</Label>
+                <Label className="text-xs">{t('stats.style')}</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
                     {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel', 'photo'].map((s) => (
                         <button key={s} onClick={() => updateProp('style', s)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s.replace('-', ' ')}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
                 {props.style === 'photo' && (
                     <div className="mt-1 space-y-1">
                         <p className="text-caption text-gray-400">
-                            Photo = the image fills the card with the text over it. Cards with no image
-                            fall back to a tinted card, so a rail can mix photos and colour blocks. Give
-                            each card a Link to get a button.
+                            {t('featureGrid.photoStyleHint')}
                         </p>
                         <label className="flex items-center gap-2 text-caption text-gray-600">
                             <input
@@ -5204,94 +6057,94 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                 checked={props.layout === 'carousel'}
                                 onChange={(e) => updateProp('layout', e.target.checked ? 'carousel' : undefined)}
                             />
-                            Swipeable row instead of a grid
+                            {t('featureGrid.swipeableRow')}
                         </label>
                     </div>
                 )}
                 {props.style === 'panel' && (
                     <p className="mt-1 text-caption text-gray-400">
-                        Panel = tinted-header division cards. Per card, set a Badge and a Header
-                        color/style below.
+                        {t('featureGrid.panelStyleHint')}
                     </p>
                 )}
             </div>
             <div>
-                <Label className="text-xs">Text Alignment</Label>
+                <Label className="text-xs">{t('featureGrid.textAlignment')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['center', 'left'].map((a) => (
                         <button key={a} onClick={() => updateProp('align', a)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.align || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.align || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, a)}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Icon Size</Label>
+                <Label className="text-xs">{t('featureGrid.iconSize')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['small', 'medium', 'large'].map((s) => (
                         <button key={s} onClick={() => updateProp('iconSize', s)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.iconSize === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.iconSize === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <div>
                 <div className="flex items-center justify-between mb-2">
-                    <Label className="text-xs font-medium">Features ({features.length})</Label>
-                    <Button variant="ghost" size="sm" onClick={addFeature} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                    <Label className="text-xs font-medium">{t('featureGrid.featuresCount', { count: features.length })}</Label>
+                    <Button variant="ghost" size="sm" onClick={addFeature} className="h-6 text-xs"><Plus className="size-3 me-1" /> {t('actions.add')}</Button>
                 </div>
                 <div className="space-y-2">
                     {features.map((f: any, i: number) => (
                         <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
                             <div className="flex items-center justify-between">
                                 <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} className="text-xs font-medium text-left flex-1 truncate">
-                                    {f.icon} {f.title || `Feature ${i + 1}`}
+                                    {f.icon} {f.title || t('featureGrid.featureN', { n: i + 1 })}
                                 </button>
                                 <Button variant="ghost" size="sm" onClick={() => deleteFeature(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                             </div>
                             {expandedIdx === i && (
                                 <div className="space-y-2">
-                                    <Input value={f.icon || ''} onChange={(e) => updateFeature(i, 'icon', e.target.value)} placeholder="Icon (emoji or text)" />
+                                    <Input value={f.icon || ''} onChange={(e) => updateFeature(i, 'icon', e.target.value)} placeholder={t('featureGrid.iconPlaceholder')} />
                                     <select
                                         className="w-full rounded border px-2 py-1.5 text-xs"
                                         value={f.iconName || ''}
                                         onChange={(e) => updateFeature(i, 'iconName', e.target.value || undefined)}
                                     >
-                                        <option value="">Icon library: none (use emoji above)</option>
+                                        <option value="">{t('featureGrid.iconLibraryNone')}</option>
+                                        {/* Icon identifiers — internal component names, not translated. */}
                                         {['GraduationCap','Rocket','Target','UsersThree','Code','Brain','Trophy','Lightbulb','ShieldCheck','ChartLineUp','Clock','Star','BookOpen','Certificate','ChatsCircle','Wrench','Sparkle','Medal','Briefcase','Globe'].map((n) => (
                                             <option key={n} value={n}>{n}</option>
                                         ))}
                                     </select>
-                                    <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder="Title" />
-                                    <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder="Description" rows={2} />
+                                    <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder={t('header.title')} />
+                                    <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder={t('mediaShowcase.description')} rows={2} />
                                     {props.style === 'panel' && (
                                         <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
-                                            <p className="text-caption font-medium text-gray-500">Panel header</p>
-                                            <Input value={f.badge || ''} onChange={(e) => updateFeature(i, 'badge', e.target.value)} placeholder="Badge (e.g. Training Division)" />
+                                            <p className="text-caption font-medium text-gray-500">{t('featureGrid.panelHeader')}</p>
+                                            <Input value={f.badge || ''} onChange={(e) => updateFeature(i, 'badge', e.target.value)} placeholder={t('featureGrid.badgePlaceholder')} />
                                             <div className="flex gap-1">
                                                 {['tint', 'solid'].map((v) => (
                                                     <button key={v} onClick={() => updateFeature(i, 'headerVariant', v)}
-                                                        className={`rounded px-3 py-1 text-caption font-medium capitalize ${(f.headerVariant || 'tint') === v && !f.headerColor ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                                                        className={`rounded px-3 py-1 text-caption font-medium capitalize ${(f.headerVariant || 'tint') === v && !f.headerColor ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, v)}</button>
                                                 ))}
                                             </div>
-                                            <ColorPickerField label="Header color (optional override)" value={f.headerColor || ''} onChange={(c) => updateFeature(i, 'headerColor', c || undefined)} />
+                                            <ColorPickerField label={t('featureGrid.headerColorOverride')} value={f.headerColor || ''} onChange={(c) => updateFeature(i, 'headerColor', c || undefined)} />
                                         </div>
                                     )}
                                     <ListField
                                         value={f.chips}
                                         onCommit={(items) => updateFeature(i, 'chips', items)}
                                         separator="comma"
-                                        placeholder="Chips (comma-separated, e.g. Beginner, Live)"
+                                        placeholder={t('featureGrid.chipsPlaceholder')}
                                     />
                                     <ListField
                                         value={f.bullets}
                                         onCommit={(items) => updateFeature(i, 'bullets', items)}
                                         separator="newline"
-                                        placeholder="Checklist bullets (one per line)"
+                                        placeholder={t('featureGrid.bulletsPlaceholder')}
                                         rows={3}
                                     />
                                     <div className="flex gap-2">
-                                        <Input className="flex-1" value={f.link?.text || ''} onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), text: e.target.value })} placeholder="Link text" />
-                                        <Input className="flex-1" value={f.link?.url || ''} onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), url: e.target.value })} placeholder="Link URL" />
+                                        <Input className="flex-1" value={f.link?.text || ''} onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), text: e.target.value })} placeholder={t('featureGrid.linkTextPlaceholder')} />
+                                        <Input className="flex-1" value={f.link?.url || ''} onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), url: e.target.value })} placeholder={t('featureGrid.linkUrlPlaceholder')} />
                                     </div>
                                 </div>
                             )}
@@ -5305,35 +6158,36 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Image Block Editor ───────────────────────────────────────────────── */
 const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
     return (
         <div className="space-y-4">
-            <ImageUploadField label="Image" value={props.src || ''} onChange={(url) => updateProp('src', url)} aiKind="image" />
-            <Input value={props.alt || ''} onChange={(e) => updateProp('alt', e.target.value)} placeholder="Alt text" />
-            <Input value={props.caption || ''} onChange={(e) => updateProp('caption', e.target.value)} placeholder="Caption (optional)" />
+            <ImageUploadField label={t('hero.imageField')} value={props.src || ''} onChange={(url) => updateProp('src', url)} aiKind="image" />
+            <Input value={props.alt || ''} onChange={(e) => updateProp('alt', e.target.value)} placeholder={t('hero.altTextPlaceholder')} />
+            <Input value={props.caption || ''} onChange={(e) => updateProp('caption', e.target.value)} placeholder={t('imageBlock.captionOptional')} />
             <LinkPicker
-                label="Link (optional)"
+                label={t('imageBlock.linkOptional')}
                 value={props.linkUrl || ''}
                 onChange={(v) => updateProp('linkUrl', v)}
                 showTarget
                 target={props.linkTarget}
-                onTargetChange={(t) => updateProp('linkTarget', t)}
-                placeholder="Link this image to a page or URL"
+                onTargetChange={(tgt) => updateProp('linkTarget', tgt)}
+                placeholder={t('imageBlock.linkPlaceholder')}
             />
             <div>
-                <Label className="text-xs">Alignment</Label>
+                <Label className="text-xs">{t('trustChip.alignment')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['left', 'center', 'right'].map((a) => (
                         <button key={a} onClick={() => updateProp('alignment', a)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, a)}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Max Width</Label>
+                <Label className="text-xs">{t('spacer.maxWidth')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['300px', '500px', '800px', '100%'].map((w) => (
                         <button key={w} onClick={() => updateProp('maxWidth', w)}
@@ -5342,20 +6196,20 @@ const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Border Radius</Label>
+                <Label className="text-xs">{t('mapEmbed.borderRadius')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['0', '4px', '8px', '16px', '9999px'].map((r) => (
                         <button key={r} onClick={() => updateProp('borderRadius', r)}
-                            className={`rounded px-2 py-1 text-caption font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? 'Full' : r}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? t('options.full') : r}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Aspect Ratio</Label>
+                <Label className="text-xs">{t('imageBlock.aspectRatio')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['auto', '16/9', '4/3', '1/1', '3/4'].map((r) => (
                         <button key={r} onClick={() => updateProp('aspectRatio', r)}
-                            className={`rounded px-2 py-1 text-caption font-medium ${props.aspectRatio === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.aspectRatio === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === 'auto' ? t('options.auto') : r}</button>
                     ))}
                 </div>
             </div>
@@ -5365,17 +6219,18 @@ const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Button Block Editor ──────────────────────────────────────────────── */
 const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
     return (
         <div className="space-y-4">
-            <Input value={props.text || ''} onChange={(e) => updateProp('text', e.target.value)} placeholder="Button text" />
+            <Input value={props.text || ''} onChange={(e) => updateProp('text', e.target.value)} placeholder={t('mediaShowcase.buttonTextPlaceholder')} />
             <div>
-                <Label className="text-xs">On click</Label>
+                <Label className="text-xs">{t('header.onClick')}</Label>
                 <div className="mt-1 flex gap-1">
-                    {([['link', 'Open a link'], ['openForm', 'Open form popup'], ['whatsapp', 'WhatsApp chat']] as const).map(([v, l]) => (
+                    {([['link', t('options.openLink')], ['openForm', t('options.openFormPopup')], ['whatsapp', t('buttonBlock.whatsappChat')]] as const).map(([v, l]) => (
                         <button key={v} onClick={() => updateProp('action', v)}
                             className={`rounded px-2.5 py-1 text-caption font-medium ${(props.action || 'link') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
                     ))}
@@ -5384,78 +6239,78 @@ const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
             {(props.action || 'link') === 'whatsapp' ? (
                 <>
                     <div>
-                        <Label className="text-xs">WhatsApp number (with country code)</Label>
+                        <Label className="text-xs">{t('global.whatsapp.numberLabel')}</Label>
                         <Input className="mt-1" value={props.whatsappPhone || ''} onChange={(e) => updateProp('whatsappPhone', e.target.value)} placeholder="919895603342" />
-                        <p className="mt-1 text-caption text-gray-400">Leave blank to use the site-wide number from Global Settings.</p>
+                        <p className="mt-1 text-caption text-gray-400">{t('buttonBlock.whatsappNumberHint')}</p>
                     </div>
                     <div>
-                        <Label className="text-xs">Prefilled message</Label>
-                        <Input className="mt-1" value={props.whatsappMessage || ''} onChange={(e) => updateProp('whatsappMessage', e.target.value)} placeholder="Hi! I'd like to know about…" />
+                        <Label className="text-xs">{t('global.whatsapp.prefilledMessage')}</Label>
+                        <Input className="mt-1" value={props.whatsappMessage || ''} onChange={(e) => updateProp('whatsappMessage', e.target.value)} placeholder={t('buttonBlock.whatsappMessagePlaceholder')} />
                     </div>
                 </>
             ) : (props.action || 'link') === 'openForm' ? (
                 <>
                     <CampaignPicker
-                        label="Form to open (campaign)"
+                        label={t('header.formToOpen')}
                         allowEmpty={false}
                         value={props.audienceId || ''}
                         onChange={(id) => updateProp('audienceId', id)}
                     />
                     <div>
-                        <Label className="text-xs">Popup title</Label>
-                        <Input className="mt-1" value={props.formTitle || ''} onChange={(e) => updateProp('formTitle', e.target.value)} placeholder="Defaults to the button text" />
+                        <Label className="text-xs">{t('buttonBlock.popupTitle')}</Label>
+                        <Input className="mt-1" value={props.formTitle || ''} onChange={(e) => updateProp('formTitle', e.target.value)} placeholder={t('buttonBlock.popupTitlePlaceholder')} />
                     </div>
                 </>
             ) : (
                 <LinkPicker
-                    label="Link Destination"
+                    label={t('buttonBlock.linkDestination')}
                     value={props.url || ''}
                     onChange={(v) => updateProp('url', v)}
                     showTarget
                     target={props.target}
-                    onTargetChange={(t) => updateProp('target', t)}
+                    onTargetChange={(tgt) => updateProp('target', tgt)}
                 />
             )}
             <div>
-                <Label className="text-xs">Variant</Label>
+                <Label className="text-xs">{t('buttonBlock.variant')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['filled', 'outline', 'ghost'].map((v) => (
                         <button key={v} onClick={() => updateProp('variant', v)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.variant === v ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.variant === v ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, v)}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Size</Label>
+                <Label className="text-xs">{t('buttonBlock.size')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['small', 'medium', 'large'].map((s) => (
                         <button key={s} onClick={() => updateProp('size', s)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.size === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.size === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Alignment</Label>
+                <Label className="text-xs">{t('trustChip.alignment')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['left', 'center', 'right'].map((a) => (
                         <button key={a} onClick={() => updateProp('alignment', a)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, a)}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('header.textColor')} value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
             <div>
-                <Label className="text-xs">Border Radius</Label>
+                <Label className="text-xs">{t('mapEmbed.borderRadius')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['4px', '8px', '12px', '9999px'].map((r) => (
                         <button key={r} onClick={() => updateProp('borderRadius', r)}
-                            className={`rounded px-2 py-1 text-caption font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? 'Pill' : r}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? t('options.pill') : r}</button>
                     ))}
                 </div>
             </div>
             <div className="flex items-center justify-between">
-                <Label className="text-xs">Full Width</Label>
+                <Label className="text-xs">{t('buttonBlock.fullWidth')}</Label>
                 <Switch checked={props.fullWidth || false} onCheckedChange={(c) => updateProp('fullWidth', c)} />
             </div>
         </div>
@@ -5464,37 +6319,39 @@ const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
 
 /* ─── Newsletter Signup Editor ─────────────────────────────────────────── */
 const NewsletterSignupEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
     return (
         <div className="space-y-4">
-            <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} placeholder="Heading" />
-            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="Subheading" />
-            <Input value={props.placeholder || ''} onChange={(e) => updateProp('placeholder', e.target.value)} placeholder="Input placeholder" />
-            <Input value={props.buttonText || ''} onChange={(e) => updateProp('buttonText', e.target.value)} placeholder="Button text" />
-            <Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} placeholder="Success message" />
+            <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} placeholder={t('ctaBanner.headingField')} />
+            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder={t('faq.subheading')} />
+            <Input value={props.placeholder || ''} onChange={(e) => updateProp('placeholder', e.target.value)} placeholder={t('newsletter.inputPlaceholder')} />
+            <Input value={props.buttonText || ''} onChange={(e) => updateProp('buttonText', e.target.value)} placeholder={t('mediaShowcase.buttonTextPlaceholder')} />
+            <Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} placeholder={t('newsletter.successMessagePlaceholder')} />
             <CampaignPicker
                 value={props.audienceId || ''}
                 onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, audienceId: id, audienceName: name } })}
             />
             <div>
-                <Label className="text-xs">Layout</Label>
+                <Label className="text-xs">{t('ctaBanner.layout')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['inline', 'stacked'].map((l) => (
                         <button key={l} onClick={() => updateProp('layout', l)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, l)}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#F8FAFC' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#F8FAFC' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
         </div>
     );
 };
 
 /* ─── Steps / Process Editor ───────────────────────────────────────────── */
 const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
+    const { t } = useTranslation('managePagesPropertyPanel');
     const { props } = component;
     const steps = props.steps || [];
     const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
@@ -5502,7 +6359,7 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
     const updateProp = (key: string, value: any) =>
         updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
 
-    const addStep = () => updateProp('steps', [...steps, { number: String(steps.length + 1), title: `Step ${steps.length + 1}`, description: 'Description here' }]);
+    const addStep = () => updateProp('steps', [...steps, { number: String(steps.length + 1), title: t('steps.stepN', { n: steps.length + 1 }), description: t('featureGrid.defaults.description') }]);
     const deleteStep = (i: number) => { updateProp('steps', steps.filter((_: any, idx: number) => idx !== i)); if (expandedIdx === i) setExpandedIdx(null); };
     const updateStep = (i: number, field: string, value: any) => {
         const updated = [...steps];
@@ -5512,24 +6369,24 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder="Header text" />
-            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="Subheading" />
+            <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder={t('logoCloud.headerTextPlaceholder')} />
+            <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder={t('faq.subheading')} />
             <div>
-                <Label className="text-xs">Layout</Label>
+                <Label className="text-xs">{t('ctaBanner.layout')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['horizontal', 'vertical'].map((l) => (
                         <button key={l} onClick={() => updateProp('layout', l)}
-                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, l)}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Variant</Label>
+                <Label className="text-xs">{t('buttonBlock.variant')}</Label>
                 <div className="flex gap-1 mt-1">
                     {[
-                        { key: 'plain', label: 'Plain' },
-                        { key: 'timeline-cards', label: 'Timeline Cards' },
-                        { key: 'alternating', label: 'Alternating' },
+                        { key: 'plain', label: optionLabel(t, 'plain') },
+                        { key: 'timeline-cards', label: t('steps.variantTimelineCards') },
+                        { key: 'alternating', label: t('steps.variantAlternating') },
                     ].map((v) => (
                         <button key={v.key} onClick={() => updateProp('variant', v.key)}
                             className={`rounded px-2 py-1 text-caption font-medium ${(props.variant || 'plain') === v.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v.label}</button>
@@ -5539,59 +6396,59 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
             {(props.variant || 'plain') !== 'plain' && (
                 <>
                     <div>
-                        <Label className="text-xs">Node Style</Label>
+                        <Label className="text-xs">{t('steps.nodeStyle')}</Label>
                         <div className="flex gap-1 mt-1">
                             {['number', 'icon', 'dot'].map((n) => (
                                 <button key={n} onClick={() => updateProp('nodeStyle', n)}
-                                    className={`rounded px-2 py-1 text-caption font-medium capitalize ${(props.nodeStyle || 'number') === n ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{n}</button>
+                                    className={`rounded px-2 py-1 text-caption font-medium capitalize ${(props.nodeStyle || 'number') === n ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, n)}</button>
                             ))}
                         </div>
                     </div>
                     <div className="flex items-center justify-between">
-                        <Label className="text-xs">Gradient Rail</Label>
+                        <Label className="text-xs">{t('steps.gradientRail')}</Label>
                         <Switch checked={props.connectorGradient || false} onCheckedChange={(c) => updateProp('connectorGradient', c)} />
                     </div>
                 </>
             )}
             <div>
-                <Label className="text-xs">Connector Style (plain variant)</Label>
+                <Label className="text-xs">{t('steps.connectorStyle')}</Label>
                 <div className="flex gap-1 mt-1">
                     {['line', 'dashed', 'dots', 'none'].map((s) => (
                         <button key={s} onClick={() => updateProp('connectorStyle', s)}
-                            className={`rounded px-2 py-1 text-caption font-medium capitalize ${props.connectorStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium capitalize ${props.connectorStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{optionLabel(t, s)}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label="Accent Color" value={props.accentColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('accentColor', c)} />
+            <ColorPickerField label={t('faq.backgroundColor')} value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label={t('steps.accentColor')} value={props.accentColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('accentColor', c)} />
             <div>
                 <div className="flex items-center justify-between mb-2">
-                    <Label className="text-xs font-medium">Steps ({steps.length})</Label>
-                    <Button variant="ghost" size="sm" onClick={addStep} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                    <Label className="text-xs font-medium">{t('steps.stepsCount', { count: steps.length })}</Label>
+                    <Button variant="ghost" size="sm" onClick={addStep} className="h-6 text-xs"><Plus className="size-3 me-1" /> {t('actions.add')}</Button>
                 </div>
                 <div className="space-y-2">
                     {steps.map((step: any, i: number) => (
                         <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
                             <div className="flex items-center justify-between">
                                 <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} className="text-xs font-medium text-left flex-1 truncate">
-                                    {step.number || i + 1}. {step.title || `Step ${i + 1}`}
+                                    {step.number || i + 1}. {step.title || t('steps.stepN', { n: i + 1 })}
                                 </button>
                                 <Button variant="ghost" size="sm" onClick={() => deleteStep(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                             </div>
                             {expandedIdx === i && (
                                 <div className="space-y-2">
-                                    <Input value={step.number || ''} onChange={(e) => updateStep(i, 'number', e.target.value)} placeholder="Step number/label" />
-                                    <Input value={step.title || ''} onChange={(e) => updateStep(i, 'title', e.target.value)} placeholder="Title" />
-                                    <Textarea value={step.description || ''} onChange={(e) => updateStep(i, 'description', e.target.value)} placeholder="Description" rows={2} />
-                                    <Input value={step.meta || ''} onChange={(e) => updateStep(i, 'meta', e.target.value)} placeholder="Meta (e.g. Weeks 1-4)" />
+                                    <Input value={step.number || ''} onChange={(e) => updateStep(i, 'number', e.target.value)} placeholder={t('steps.numberLabelPlaceholder')} />
+                                    <Input value={step.title || ''} onChange={(e) => updateStep(i, 'title', e.target.value)} placeholder={t('header.title')} />
+                                    <Textarea value={step.description || ''} onChange={(e) => updateStep(i, 'description', e.target.value)} placeholder={t('mediaShowcase.description')} rows={2} />
+                                    <Input value={step.meta || ''} onChange={(e) => updateStep(i, 'meta', e.target.value)} placeholder={t('steps.metaPlaceholder')} />
                                     <ListField
                                         value={step.chips}
                                         onCommit={(items) => updateStep(i, 'chips', items)}
                                         separator="comma"
-                                        placeholder="Chips (comma-separated)"
+                                        placeholder={t('steps.chipsPlaceholder')}
                                     />
                                     <div className="flex items-center justify-between">
-                                        <Label className="text-xs">Highlight this step</Label>
+                                        <Label className="text-xs">{t('steps.highlightThisStep')}</Label>
                                         <Switch
                                             checked={step.state === 'highlight'}
                                             onCheckedChange={(c) => updateStep(i, 'state', c ? 'highlight' : undefined)}

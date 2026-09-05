@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.plan_change.service.PlanChangeService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo;
 import vacademy.io.admin_core_service.features.user_subscription.dto.SubscriptionDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -41,6 +42,7 @@ public class SubscriptionService {
     private final WorkflowTriggerService workflowTriggerService;
     private final vacademy.io.admin_core_service.features.payments.service.PaymentService paymentService;
     private final vacademy.io.admin_core_service.features.auth_service.service.AuthService authService;
+    private final PlanChangeService planChangeService;
 
     private static final List<String> VISIBLE_STATUSES = List.of(
             UserPlanStatusEnum.ACTIVE.name(),
@@ -128,6 +130,8 @@ public class SubscriptionService {
                 ? mandate.getCurrency()
                 : (plan.getEnrollInvite() != null ? plan.getEnrollInvite().getCurrency() : null);
 
+        var planChange = planChangeSummary(plan, instituteId, packageSessionIds);
+
         return SubscriptionDTO.builder()
                 .userPlanId(plan.getId())
                 .planName(plan.getPaymentPlan() != null ? plan.getPaymentPlan().getName() : null)
@@ -146,7 +150,24 @@ public class SubscriptionService {
                 .vendorId(plan.getEnrollInvite() != null ? plan.getEnrollInvite().getVendorId() : null)
                 .canRenewManually(canRenewManually)
                 .autopayAvailable(isAutopayAvailable(plan))
+                .canChangePlan(planChange.canChangePlan())
+                .scheduledPlanChange(planChange.scheduledChange())
                 .build();
+    }
+
+    /**
+     * Plan-change state for one membership. Best-effort: a failure here must degrade to
+     * "no switching offered", never take down the whole subscriptions list — this endpoint
+     * is what the learner's membership card renders from.
+     */
+    private PlanChangeService.PlanChangeSummary planChangeSummary(UserPlan plan, String instituteId,
+            List<String> packageSessionIds) {
+        try {
+            return planChangeService.summarise(plan, instituteId, packageSessionIds);
+        } catch (Exception e) {
+            log.warn("Could not resolve plan-change eligibility for plan {}: {}", plan.getId(), e.getMessage());
+            return new PlanChangeService.PlanChangeSummary(false, null);
+        }
     }
 
     /** Whether the plan's invite has autopay configured (AUTOPAY_SETTING.ENABLED). */
@@ -182,7 +203,12 @@ public class SubscriptionService {
         if (plan.getEnrollInvite() == null) {
             throw new VacademyException("Subscription has no enrollment invite — cannot build payment");
         }
-        if (plan.getPaymentPlan() == null || plan.getPaymentPlan().getActualPrice() <= 0) {
+        // A booked downgrade takes effect at exactly this renewal, so the learner must be
+        // quoted the plan they are moving TO — billing them the old price here would take
+        // money for a plan they will not be on the moment the payment lands.
+        var pendingTarget = planChangeService.pendingTargetPlan(plan);
+        var payablePlan = pendingTarget != null ? pendingTarget : plan.getPaymentPlan();
+        if (payablePlan == null || payablePlan.getActualPrice() <= 0) {
             throw new VacademyException("Subscription has no payable plan price");
         }
         if (withAutopay && !isAutopayAvailable(plan)) {
@@ -198,10 +224,10 @@ public class SubscriptionService {
         var user = users.get(0);
 
         var request = new vacademy.io.common.payment.dto.PaymentInitiationRequestDTO();
-        request.setAmount(plan.getPaymentPlan().getActualPrice());
+        request.setAmount(payablePlan.getActualPrice());
         request.setCurrency(StringUtils.hasText(invite.getCurrency()) ? invite.getCurrency() : "INR");
         request.setDescription("Membership renewal — "
-                + (plan.getPaymentPlan().getName() != null ? plan.getPaymentPlan().getName() : "subscription"));
+                + (payablePlan.getName() != null ? payablePlan.getName() : "subscription"));
         request.setInstituteId(instituteId);
         request.setEmail(user.getEmail());
         request.setVendor(invite.getVendor());
@@ -217,6 +243,38 @@ public class SubscriptionService {
             return paymentService.handleMandatePayment(user, instituteId, invite, plan, request);
         }
         return paymentService.handleUserPlanPayment(request, instituteId, userDetails, userPlanId);
+    }
+
+    // ── Plan change (learner self-service) ──────────────────────────────────
+    //
+    // All three go through ownPlan(): the user id comes from the JWT and is checked against
+    // the plan, never taken from the request. Same rule as every other method here.
+
+    public vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeOptionsDTO getPlanChangeOptions(
+            vacademy.io.common.auth.model.CustomUserDetails userDetails, String instituteId, String userPlanId) {
+        return planChangeService.getChangeOptions(ownPlan(userDetails, userPlanId), instituteId);
+    }
+
+    public vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeResponseDTO requestPlanChange(
+            vacademy.io.common.auth.model.CustomUserDetails userDetails, String instituteId, String userPlanId,
+            vacademy.io.admin_core_service.features.plan_change.dto.PlanChangeRequestDTO request) {
+        return planChangeService.requestChange(
+                ownPlan(userDetails, userPlanId), instituteId, request, userDetails);
+    }
+
+    public void cancelScheduledPlanChange(vacademy.io.common.auth.model.CustomUserDetails userDetails,
+            String instituteId, String userPlanId) {
+        planChangeService.cancelScheduledChange(ownPlan(userDetails, userPlanId).getId());
+    }
+
+    /** Loads a plan and refuses it unless it belongs to the caller. */
+    private UserPlan ownPlan(vacademy.io.common.auth.model.CustomUserDetails userDetails, String userPlanId) {
+        UserPlan plan = userPlanRepository.findById(userPlanId)
+                .orElseThrow(() -> new VacademyException("Subscription not found: " + userPlanId));
+        if (userDetails == null || !userDetails.getUserId().equals(plan.getUserId())) {
+            throw new VacademyException("Subscription does not belong to the current user");
+        }
+        return plan;
     }
 
     private String resolveVendor(UserPlan plan) {

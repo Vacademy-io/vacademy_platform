@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
@@ -112,13 +114,13 @@ type SlaFilter =
     | 'FOLLOW_UP_DUE'
     | 'FOLLOW_UP_OVERDUE'
     | 'ANY_OVERDUE';
-const SLA_OPTIONS: { value: string; label: string }[] = [
-    { value: ALL_SLA_VALUE, label: 'All SLA states' },
-    { value: 'ANY_OVERDUE', label: 'Any overdue' },
-    { value: 'TAT_OVERDUE', label: 'Reach-out overdue' },
-    { value: 'TAT_BEFORE', label: 'Reach-out due soon' },
-    { value: 'FOLLOW_UP_DUE', label: 'Follow-up due' },
-    { value: 'FOLLOW_UP_OVERDUE', label: 'Follow-up overdue' },
+const buildSlaOptions = (t: TFunction): { value: string; label: string }[] => [
+    { value: ALL_SLA_VALUE, label: t('filters.sla.label') },
+    { value: 'ANY_OVERDUE', label: t('filters.sla.anyOverdue') },
+    { value: 'TAT_OVERDUE', label: t('filters.sla.reachOutOverdue') },
+    { value: 'TAT_BEFORE', label: t('filters.sla.reachOutDueSoon') },
+    { value: 'FOLLOW_UP_DUE', label: t('filters.sla.followUpDue') },
+    { value: 'FOLLOW_UP_OVERDUE', label: t('filters.sla.followUpOverdue') },
 ];
 const SEARCH_DEBOUNCE_MS = 300;
 const PAGE_SIZE = 20;
@@ -161,12 +163,14 @@ const CampaignUsersContent = ({
     customFieldsJson,
     campaignType,
 }: CampaignUsersTableProps) => {
+    const { t, i18n } = useTranslation('audienceManagerCampaignUsersTable');
     const isOptOut = !!campaignType?.toUpperCase().includes('OPT_OUT');
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id;
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { setSelectedStudent } = useStudentSidebar();
+    const slaOptions = useMemo(() => buildSlaOptions(t), [t]);
 
     // ── Filter state ─────────────────────────────────────────
     const [page, setPage] = useState(0);
@@ -315,7 +319,10 @@ const CampaignUsersContent = ({
 
     const campaignFieldsMap = useMemo(() => {
         const map = new Map<string, { name: string; key?: string }>();
-        map.set('opted_out_from', { name: 'Opted Out From', key: 'opted_out_from' });
+        map.set('opted_out_from', {
+            name: t('campaignFields.optedOutFrom'),
+            key: 'opted_out_from',
+        });
         if (customFields.length === 0) return map;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         customFields.forEach((cf: any) => {
@@ -330,7 +337,7 @@ const CampaignUsersContent = ({
             map.set(fieldId.toUpperCase(), { name: fieldName, key: fieldKey });
         });
         return map;
-    }, [customFields]);
+    }, [customFields, t]);
 
     // Declared here (before exportColumnOptions) so the memo can reference it
     // without a temporal dead zone error — the hook call is order-safe.
@@ -341,11 +348,11 @@ const CampaignUsersContent = ({
     // user can toggle them before the async fetch runs.
     const exportColumnOptions = useMemo<ExportColumnOption[]>(() => {
         const cols: ExportColumnOption[] = [
-            { key: 'lead_id', label: 'Lead ID' },
-            { key: 'submitted_at', label: 'Submitted At' },
-            { key: 'name', label: 'Name' },
-            { key: 'email', label: 'Email' },
-            { key: 'mobile', label: 'Mobile' },
+            { key: 'lead_id', label: t('exportColumns.leadId') },
+            { key: 'submitted_at', label: t('exportColumns.submittedAt') },
+            { key: 'name', label: t('exportColumns.name') },
+            { key: 'email', label: t('exportColumns.email') },
+            { key: 'mobile', label: t('exportColumns.mobile') },
         ];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const seenNames = new Set<string>();
@@ -375,15 +382,15 @@ const CampaignUsersContent = ({
         }
         if (showOps) {
             cols.push(
-                { key: 'lead_status', label: 'Lead Status' },
-                { key: 'counsellor', label: 'Counsellor' },
-                { key: 'activity_notes', label: 'Activity & Notes' },
-                { key: 'notes_count', label: 'Notes Count' },
-                { key: 'lead_journey', label: 'Lead Journey (disposition & notes)' }
+                { key: 'lead_status', label: t('exportColumns.leadStatus') },
+                { key: 'counsellor', label: t('exportColumns.counsellor') },
+                { key: 'activity_notes', label: t('exportColumns.activityNotes') },
+                { key: 'notes_count', label: t('exportColumns.notesCount') },
+                { key: 'lead_journey', label: t('exportColumns.leadJourney') }
             );
         }
         return cols;
-    }, [customFields, customFieldSetup, showOps]);
+    }, [customFields, customFieldSetup, showOps, t]);
 
     // ── Server query ─────────────────────────────────────────
     const leadsPayload = useMemo(() => {
@@ -632,7 +639,7 @@ const CampaignUsersContent = ({
             });
             setSelectedLeads(map);
         } catch {
-            toast.error('Failed to select all leads');
+            toast.error(t('toasts.selectAllFailed'));
         } finally {
             setSelectAllLoading(false);
         }
@@ -714,7 +721,7 @@ const CampaignUsersContent = ({
     const chips: { label: string; onRemove: () => void }[] = [];
     if (appliedSearch)
         chips.push({
-            label: `Search: ${appliedSearch}`,
+            label: t('chips.search', { query: appliedSearch }),
             onRemove: () => {
                 setSearchInput('');
                 setAppliedSearch('');
@@ -722,7 +729,10 @@ const CampaignUsersContent = ({
         });
     if (isDateFilterActive)
         chips.push({
-            label: `Date: ${appliedRange.from || '…'} → ${appliedRange.to || '…'}`,
+            label: t('chips.date', {
+                from: appliedRange.from || t('chips.datePlaceholder'),
+                to: appliedRange.to || t('chips.datePlaceholder'),
+            }),
             onRemove: () => {
                 setFromDate('');
                 setToDate('');
@@ -731,41 +741,47 @@ const CampaignUsersContent = ({
         });
     if (tierFilters.length > 0)
         chips.push({
-            label: `Tier: ${tierFilters.join(', ')}`,
+            label: t('chips.tier', { values: tierFilters.join(', ') }),
             onRemove: () => setTierFilters([]),
         });
     if (leadStatusFilters.length > 0) {
         const statusLabels = leadStatusFilters.map((v) => {
-            if (v === ALL_ACTIVE_VALUE) return 'Active';
-            if (v === ALL_CONVERTED_VALUE) return 'Converted';
+            if (v === ALL_ACTIVE_VALUE) return t('chips.statusActive');
+            if (v === ALL_CONVERTED_VALUE) return t('chips.statusConverted');
             return leadStatusCatalog.find((s) => s.status_key === v)?.label ?? v;
         });
         chips.push({
-            label: `Status: ${statusLabels.join(', ')}`,
+            label: t('chips.status', { values: statusLabels.join(', ') }),
             onRemove: () => setLeadStatusFilters([]),
         });
     }
     if (slaFilters.length > 0)
         chips.push({
-            label: `SLA: ${slaFilters.map((v) => SLA_OPTIONS.find((o) => o.value === v)?.label ?? v).join(', ')}`,
+            label: t('chips.sla', {
+                values: slaFilters
+                    .map((v) => slaOptions.find((o) => o.value === v)?.label ?? v)
+                    .join(', '),
+            }),
             onRemove: () => setSlaFilters([]),
         });
     if (counsellorFilters.length > 0) {
         const cLabels = counsellorFilters.map((id) =>
             id === UNASSIGNED_COUNSELLOR_VALUE
-                ? 'Unassigned'
-                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? 'Selected')
+                ? t('chips.counsellorUnassigned')
+                : (counsellorOptions.find((c) => c.id === id)?.full_name ??
+                  t('chips.counsellorSelected'))
         );
         chips.push({
-            label: `Counsellor: ${cLabels.join(', ')}`,
+            label: t('chips.counsellor', { values: cLabels.join(', ') }),
             onRemove: () => setCounsellorFilters([]),
         });
     }
     customFieldFiltersPayload.forEach((f) => {
         const fieldName =
-            filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
+            filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ??
+            t('chips.customFieldFallback');
         chips.push({
-            label: `${fieldName}: ${filterEntryValueLabel(f)}`,
+            label: t('chips.customField', { fieldName, value: filterEntryValueLabel(f) }),
             // Remove only this entry's backing values — one field can carry
             // several chips (values + contains + empty) at once.
             onRemove: () =>
@@ -779,16 +795,16 @@ const CampaignUsersContent = ({
     // ── CSV export ───────────────────────────────────────────
     const handleExport = async () => {
         if (!totalElements) {
-            toast.info('No leads to export');
+            toast.info(t('toasts.noLeadsToExport'));
             return;
         }
         setIsExporting(true);
         try {
-            toast.info('Starting export…');
+            toast.info(t('toasts.exportStarting'));
             const allDataPayload = { ...leadsPayload, page: 0, size: totalElements };
             const response = await fetchCampaignLeads(allDataPayload);
             if (!response.content || response.content.length === 0) {
-                toast.info('No data to export');
+                toast.info(t('toasts.noDataToExport'));
                 return;
             }
 
@@ -866,11 +882,12 @@ const CampaignUsersContent = ({
 
             // Build headers respecting column selection.
             const csvHeaders: string[] = [];
-            if (selectedExportCols.has('lead_id')) csvHeaders.push('Lead ID');
-            if (selectedExportCols.has('submitted_at')) csvHeaders.push('Submitted At');
-            if (selectedExportCols.has('name')) csvHeaders.push('Name');
-            if (selectedExportCols.has('email')) csvHeaders.push('Email');
-            if (selectedExportCols.has('mobile')) csvHeaders.push('Mobile');
+            if (selectedExportCols.has('lead_id')) csvHeaders.push(t('csv.headers.leadId'));
+            if (selectedExportCols.has('submitted_at'))
+                csvHeaders.push(t('csv.headers.submittedAt'));
+            if (selectedExportCols.has('name')) csvHeaders.push(t('csv.headers.name'));
+            if (selectedExportCols.has('email')) csvHeaders.push(t('csv.headers.email'));
+            if (selectedExportCols.has('mobile')) csvHeaders.push(t('csv.headers.mobile'));
 
             const fieldIdToHeaderNameMap: Record<string, string> = {};
             fieldIdsArray.forEach((fieldId) => {
@@ -883,12 +900,16 @@ const CampaignUsersContent = ({
                 fieldIdToHeaderNameMap[fieldId] = headerName;
                 csvHeaders.push(headerName.includes(',') ? `"${headerName}"` : headerName);
             });
-            if (showOps && selectedExportCols.has('lead_status')) csvHeaders.push('Lead Status');
-            if (showOps && selectedExportCols.has('counsellor')) csvHeaders.push('Counsellor');
-            if (showOps && selectedExportCols.has('activity_notes')) csvHeaders.push('Activity & Notes');
-            if (showOps && selectedExportCols.has('notes_count')) csvHeaders.push('Notes Count');
+            if (showOps && selectedExportCols.has('lead_status'))
+                csvHeaders.push(t('csv.headers.leadStatus'));
+            if (showOps && selectedExportCols.has('counsellor'))
+                csvHeaders.push(t('csv.headers.counsellor'));
+            if (showOps && selectedExportCols.has('activity_notes'))
+                csvHeaders.push(t('csv.headers.activityNotes'));
+            if (showOps && selectedExportCols.has('notes_count'))
+                csvHeaders.push(t('csv.headers.notesCount'));
             if (showOps && selectedExportCols.has('lead_journey'))
-                csvHeaders.push('Lead journey (disposition & notes)');
+                csvHeaders.push(t('csv.headers.leadJourney'));
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const csvRows = response.content.map((lead: any) => {
@@ -919,7 +940,7 @@ const CampaignUsersContent = ({
                     const recent = summary?.recent ?? [];
                     const notesBlock = recent
                         .map((n, idx) => {
-                            const label = n.title?.trim() || 'Note';
+                            const label = n.title?.trim() || t('csv.noteFallbackLabel');
                             const rawBody = n.description ?? '';
                             const body = (
                                 /<\/?[a-z][^>]*>/i.test(rawBody)
@@ -929,8 +950,8 @@ const CampaignUsersContent = ({
                             const date = n.created_at ? convertToLocalDateTime(n.created_at) : '';
                             return [
                                 `${idx + 1}. ${label} - ${body}`,
-                                `   updatedby - ${n.actor_name || ''}`,
-                                `   date - ${date}`,
+                                `   ${t('csv.updatedByLabel')} - ${n.actor_name || ''}`,
+                                `   ${t('csv.dateLabel')} - ${date}`,
                             ].join('\n');
                         })
                         .join('\n\n');
@@ -961,10 +982,10 @@ const CampaignUsersContent = ({
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            toast.success(`Exported ${response.content.length} leads`);
+            toast.success(t('toasts.exportSuccess', { count: response.content.length }));
         } catch (err) {
             console.error('Export failed:', err);
-            toast.error('Failed to export leads');
+            toast.error(t('toasts.exportFailed'));
         } finally {
             setIsExporting(false);
         }
@@ -979,12 +1000,15 @@ const CampaignUsersContent = ({
                         className="truncate text-2xl font-semibold leading-tight text-neutral-900"
                         title={campaignName}
                     >
-                        {campaignName ?? 'Audience List'}
+                        {campaignName ?? t('heading.fallbackTitle')}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500">
                         {isLoading
-                            ? 'Loading respondents…'
-                            : `${totalElements.toLocaleString()} ${totalElements === 1 ? 'respondent' : 'respondents'}`}
+                            ? t('heading.loadingRespondents')
+                            : t('heading.respondentsCount', {
+                                  count: totalElements,
+                                  formattedCount: totalElements.toLocaleString(i18n.language),
+                              })}
                     </p>
                 </div>
                 {!isOptOut && (
@@ -1003,7 +1027,7 @@ const CampaignUsersContent = ({
                         }
                         className={cn('w-full shrink-0 sm:w-auto', PRIMARY_BTN)}
                     >
-                        <UserPlus className="mr-2 size-4" /> Add Response
+                        <UserPlus className="me-2 size-4" /> {t('heading.addResponse')}
                     </Button>
                 )}
             </div>
@@ -1012,23 +1036,26 @@ const CampaignUsersContent = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                     <MultiSelectFilter
-                        label="All tiers"
+                        label={t('filters.tiers.label')}
                         icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
                         options={[
-                            { value: 'HOT', label: 'Hot' },
-                            { value: 'WARM', label: 'Warm' },
-                            { value: 'COLD', label: 'Cold' },
+                            { value: 'HOT', label: t('filters.tiers.hot') },
+                            { value: 'WARM', label: t('filters.tiers.warm') },
+                            { value: 'COLD', label: t('filters.tiers.cold') },
                         ]}
                         selected={tierFilters}
                         onChange={handleTierChange}
                         widthClass="w-36"
                     />
                     <MultiSelectFilter
-                        label="All leads"
+                        label={t('filters.leadStatus.label')}
                         icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
                         options={[
-                            { value: ALL_ACTIVE_VALUE, label: 'Active (not enrolled)' },
-                            { value: ALL_CONVERTED_VALUE, label: 'Enrolled / Converted' },
+                            { value: ALL_ACTIVE_VALUE, label: t('filters.leadStatus.active') },
+                            {
+                                value: ALL_CONVERTED_VALUE,
+                                label: t('filters.leadStatus.converted'),
+                            },
                             ...leadStatusCatalog.map((s) => ({
                                 value: s.status_key,
                                 label: s.label,
@@ -1040,11 +1067,11 @@ const CampaignUsersContent = ({
                     />
                     {showOps && (
                         <MultiSelectFilter
-                            label="All SLA states"
+                            label={t('filters.sla.label')}
                             icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
-                            options={SLA_OPTIONS.filter((o) => o.value !== ALL_SLA_VALUE).map(
-                                (o) => ({ value: o.value, label: o.label })
-                            )}
+                            options={slaOptions
+                                .filter((o) => o.value !== ALL_SLA_VALUE)
+                                .map((o) => ({ value: o.value, label: o.label }))}
                             selected={slaFilters}
                             onChange={setSla}
                             widthClass="w-44"
@@ -1092,13 +1119,23 @@ const CampaignUsersContent = ({
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="ANY">Call history</SelectItem>
-                            <SelectItem value="NOT_CALLED">Not called</SelectItem>
-                            <SelectItem value="CALLED">Called (any)</SelectItem>
-                            <SelectItem value="CALLED_ONCE">Called once</SelectItem>
-                            <SelectItem value="CALLED_TWICE_PLUS">Called 2+ times</SelectItem>
-                            <SelectItem value="AI_CALLED">AI called</SelectItem>
-                            <SelectItem value="MANUAL_CALLED">Manually called</SelectItem>
+                            <SelectItem value="ANY">{t('filters.callHistory.placeholder')}</SelectItem>
+                            <SelectItem value="NOT_CALLED">
+                                {t('filters.callHistory.notCalled')}
+                            </SelectItem>
+                            <SelectItem value="CALLED">{t('filters.callHistory.called')}</SelectItem>
+                            <SelectItem value="CALLED_ONCE">
+                                {t('filters.callHistory.calledOnce')}
+                            </SelectItem>
+                            <SelectItem value="CALLED_TWICE_PLUS">
+                                {t('filters.callHistory.calledTwicePlus')}
+                            </SelectItem>
+                            <SelectItem value="AI_CALLED">
+                                {t('filters.callHistory.aiCalled')}
+                            </SelectItem>
+                            <SelectItem value="MANUAL_CALLED">
+                                {t('filters.callHistory.manualCalled')}
+                            </SelectItem>
                         </SelectContent>
                     </Select>
                     <ManageListFiltersLink surface="LEADS" />
@@ -1106,7 +1143,7 @@ const CampaignUsersContent = ({
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">
                                 <Funnel className="mr-1.5 size-4" />
-                                More filters
+                                {t('filters.moreFilters')}
                                 {isDateFilterActive && (
                                     <span className="ml-1.5 size-1.5 rounded-full bg-primary-500" />
                                 )}
@@ -1115,7 +1152,9 @@ const CampaignUsersContent = ({
                         <PopoverContent align="start" className="w-72 space-y-3">
                             <div className="grid grid-cols-2 gap-2">
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs text-neutral-600">From</Label>
+                                    <Label className="text-xs text-neutral-600">
+                                        {t('filters.dateFrom')}
+                                    </Label>
                                     <Input
                                         type="date"
                                         value={fromDate}
@@ -1124,7 +1163,9 @@ const CampaignUsersContent = ({
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs text-neutral-600">To</Label>
+                                    <Label className="text-xs text-neutral-600">
+                                        {t('filters.dateTo')}
+                                    </Label>
                                     <Input
                                         type="date"
                                         value={toDate}
@@ -1134,7 +1175,7 @@ const CampaignUsersContent = ({
                                 </div>
                             </div>
                             <Button size="sm" className="w-full" onClick={handleApplyDate}>
-                                Apply dates
+                                {t('filters.applyDates')}
                             </Button>
                         </PopoverContent>
                     </Popover>
@@ -1148,7 +1189,7 @@ const CampaignUsersContent = ({
                         onClick={() => setShowSendMessage(true)}
                     >
                         <PaperPlaneTilt className="mr-1.5 size-4" />
-                        Send message
+                        {t('toolbar.sendMessage')}
                     </Button>
                     {!isOptOut && (
                         <Button
@@ -1158,7 +1199,7 @@ const CampaignUsersContent = ({
                             onClick={() => setShowBulkImport(true)}
                         >
                             <UploadSimple className="mr-1.5 size-4" />
-                            Import CSV
+                            {t('toolbar.importCsv')}
                         </Button>
                     )}
                     <ManageColumnsPopover
@@ -1180,7 +1221,7 @@ const CampaignUsersContent = ({
                         disabled={isExporting || !totalElements}
                     >
                         <DownloadSimple className="mr-1.5 size-4" />
-                        {isExporting ? 'Exporting…' : 'Export'}
+                        {isExporting ? t('toolbar.exporting') : t('toolbar.export')}
                     </Button>
                     <CallAllWithAiButton
                         audienceId={campaignId}
@@ -1204,7 +1245,7 @@ const CampaignUsersContent = ({
                                 type="button"
                                 onClick={chip.onRemove}
                                 className="text-neutral-400 hover:text-neutral-700"
-                                aria-label={`Remove ${chip.label}`}
+                                aria-label={t('chips.removeAriaLabel', { label: chip.label })}
                             >
                                 <X className="size-3" />
                             </button>
@@ -1216,7 +1257,7 @@ const CampaignUsersContent = ({
                             onClick={handleClearAllFilters}
                             className="px-1 text-xs font-medium text-primary-600 hover:underline"
                         >
-                            Clear all
+                            {t('filters.clearAll')}
                         </button>
                     )}
                 </div>
@@ -1230,22 +1271,23 @@ const CampaignUsersContent = ({
                         type="text"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
-                        placeholder="Search leads"
+                        placeholder={t('search.placeholder')}
                         className="h-10 w-full pl-8"
-                        aria-label="Search leads"
+                        aria-label={t('search.ariaLabel')}
                     />
                 </div>
                 <div className="text-sm text-neutral-500">
                     {isLoading ? (
                         <span className="flex items-center gap-1.5">
                             <CircleNotch className="size-3.5 animate-spin" />
-                            Loading results…
+                            {t('search.loadingResults')}
                         </span>
                     ) : (
-                        <>
-                            Showing {tableRows.length.toLocaleString()} of{' '}
-                            {totalElements.toLocaleString()} results
-                        </>
+                        t('search.resultsCount', {
+                            count: totalElements,
+                            shown: tableRows.length.toLocaleString(i18n.language),
+                            total: totalElements.toLocaleString(i18n.language),
+                        })
                     )}
                 </div>
             </div>
@@ -1262,7 +1304,7 @@ const CampaignUsersContent = ({
                     {selectedLeads.size > 0 && (
                         <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
                             <span className="text-body font-medium text-primary-700">
-                                {selectedLeads.size} selected
+                                {t('bulkToolbar.selectedCount', { count: selectedLeads.size })}
                             </span>
                             <div className="flex gap-2">
                                 {selectedLeads.size < totalElements && (
@@ -1273,8 +1315,8 @@ const CampaignUsersContent = ({
                                         onClick={selectAllAcrossPages}
                                     >
                                         {selectAllLoading
-                                            ? 'Selecting…'
-                                            : `Select all ${totalElements}`}
+                                            ? t('bulkToolbar.selecting')
+                                            : t('bulkToolbar.selectAll', { count: totalElements })}
                                     </MyButton>
                                 )}
                                 <MyButton
@@ -1282,17 +1324,17 @@ const CampaignUsersContent = ({
                                     scale="small"
                                     onClick={() => setSelectedLeads(new Map())}
                                 >
-                                    Clear
+                                    {t('bulkToolbar.clear')}
                                 </MyButton>
                                 <MyDropdown
                                     dropdownList={[
                                         {
-                                            label: 'Assign leads',
+                                            label: t('bulkToolbar.assignLeads'),
                                             value: 'assign',
                                             icon: <UserPlus className="size-4" />,
                                         },
                                         {
-                                            label: 'Unassign leads',
+                                            label: t('bulkToolbar.unassignLeads'),
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
@@ -1300,7 +1342,7 @@ const CampaignUsersContent = ({
                                         ...(canDeleteLeads
                                             ? [
                                                   {
-                                                      label: 'Delete leads',
+                                                      label: t('bulkToolbar.deleteLeads'),
                                                       value: 'delete',
                                                       icon: (
                                                           <Trash className="size-4 text-danger-600" />
@@ -1321,7 +1363,7 @@ const CampaignUsersContent = ({
                                     }}
                                 >
                                     <MyButton buttonType="primary" scale="small">
-                                        Bulk actions
+                                        {t('bulkToolbar.bulkActions')}
                                         <CaretDown className="size-3.5" />
                                     </MyButton>
                                 </MyDropdown>
@@ -1330,8 +1372,8 @@ const CampaignUsersContent = ({
                     )}
                     {error ? (
                         <LeadEmptyState
-                            title="Couldn't load respondents"
-                            description="Something went wrong fetching the campaign users. Try again."
+                            title={t('emptyState.errorTitle')}
+                            description={t('emptyState.errorDescription')}
                         />
                     ) : (
                         <LeadTable
@@ -1356,13 +1398,13 @@ const CampaignUsersContent = ({
                                 <LeadEmptyState
                                     title={
                                         isAnyFilterActive
-                                            ? 'No respondents match these filters'
-                                            : 'No respondents yet'
+                                            ? t('emptyState.noResultsTitle')
+                                            : t('emptyState.noDataTitle')
                                     }
                                     description={
                                         isAnyFilterActive
-                                            ? 'Try clearing the filters to see more results.'
-                                            : 'When people fill out this audience form, they will show up here.'
+                                            ? t('emptyState.noResultsDescription')
+                                            : t('emptyState.noDataDescription')
                                     }
                                     onClear={isAnyFilterActive ? handleClearAllFilters : undefined}
                                 />
@@ -1429,7 +1471,7 @@ const CampaignUsersContent = ({
                 open={showBulkImport}
                 onOpenChange={setShowBulkImport}
                 campaignId={campaignId}
-                campaignName={campaignName || 'Campaign'}
+                campaignName={campaignName || t('dialogs.campaignFallbackName')}
                 instituteId={instituteId || ''}
                 customFields={bulkImportCustomFields}
             />
@@ -1437,7 +1479,7 @@ const CampaignUsersContent = ({
                 open={showSendMessage}
                 onOpenChange={setShowSendMessage}
                 campaignId={campaignId}
-                campaignName={campaignName || 'Campaign'}
+                campaignName={campaignName || t('dialogs.campaignFallbackName')}
                 instituteId={instituteId || ''}
                 customFields={bulkImportCustomFields}
                 leadCount={totalElements}

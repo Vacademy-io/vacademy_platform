@@ -110,6 +110,14 @@ jobs:
               GOOGLE_CLOUD_PROJECT=${{ secrets.GOOGLE_CLOUD_PROJECT }} \
               INTERNAL_SERVICE_TOKEN=${{ secrets.INTERNAL_SERVICE_TOKEN }}
 
+            # Smallest.ai (Live AI Tutor voice + cloning). Set only when the GitHub
+            # secret is present: the cluster's shared `vacademy-secrets` (envFrom)
+            # also carries it, and an empty explicit env would override that with "".
+            if [ -n "${{ secrets.SMALLEST_API_KEY }}" ]; then
+              kubectl set env deployment/"$DEPLOYMENT_NAME" --namespace "$NAMESPACE" \
+                SMALLEST_API_KEY=${{ secrets.SMALLEST_API_KEY }}
+            fi
+
             # Apply resource limits from deployment YAML (helm upgrade not used in CI,
             # so patch directly to keep requests/limits in sync with the checked-in values).
             kubectl patch deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" --type=strategic \

@@ -1052,7 +1052,7 @@ export function LoginForm({
                   initial={{ y: 10, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.7 }}
-                  className="grid grid-cols-1 gap-3"
+                  className="grid grid-cols-1 gap-stack"
                 >
                   {/* Apple Guideline 4.8: on native iOS, an app offering
                       third-party social login (Google/GitHub) MUST also offer

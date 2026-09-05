@@ -186,6 +186,27 @@ class Settings:
     # win over rules), so the fix is a replacement at the synthesis boundary —
     # deterministic, testable, and invisible to transcripts/context (which keep
     # the written form). Longest-first; extend via env: "देवनागरी=Latin;…".
+    # Pronunciation fixes applied to EVERY engine at the synthesis boundary.
+    #
+    # rumik_term_map below solves one vendor's Devanagari problem and is applied only
+    # on Rumik paths. This one exists because the same class of bug is not vendor-
+    # specific: Shiksha Nation's agent runs on smallest_pro, which reads "शिक्षा नेशन"
+    # as "shiksha-NAI-shan". Rewriting the prompt to spell the name in Latin did NOT
+    # fix it — the model composes Hindi and transliterates the name back — which is the
+    # third time in this codebase that a prompt rule has lost to the model on exactly
+    # this problem ("Prompt rules failed to stop the transliteration twice").
+    #
+    # So the replacement happens where the model cannot reach it: on the text handed to
+    # the vendor. Transcripts, the LLM context and the report all keep the written form.
+    #
+    # EMPTY by default — every existing agent is unaffected until an entry is added.
+    # Format matches RUMIK_TERM_MAP: "from=to;from=to". Longest-first so a longer key
+    # wins over a prefix of itself.
+    speech_term_map: tuple = field(default_factory=lambda: tuple(sorted(
+        ((p.split("=", 1)[0].strip(), p.split("=", 1)[1].strip())
+         for p in _env("SPEECH_TERM_MAP", "").split(";") if "=" in p),
+        key=lambda kv: -len(kv[0]))))
+
     rumik_term_map: tuple = field(default_factory=lambda: tuple(sorted(
         ((p.split("=", 1)[0].strip(), p.split("=", 1)[1].strip())
          for p in _env(
@@ -588,10 +609,23 @@ class Settings:
 
     # How many times a sentence must be seen — COMPLETE, uninterrupted, confirmed
     # played to the caller, on a call with a healthy verdict — before we spend one
-    # off-call render on it. Break-even is 3 uses. 2 catches recurring names and
-    # script lines early; raise it if the ledger shows a fat twice-only tail.
+    # off-call render on it.
+    #
+    # 1, because the arithmetic favours it. Counting vendor payments for a
+    # sentence spoken N times: no cache costs N; at 2 it costs 3 (two live plus
+    # the render) and is free from the third use; at 1 it costs 2 and is free
+    # from the SECOND. So 1 wins whenever a sentence recurs at all, and loses
+    # exactly one render for each that never does.
+    #
+    # Measured on shreya-v3's first day: 54 of 73 sentences sat at one sighting,
+    # so 2 was holding back the entire backlog. Rendering all 54 speculatively
+    # costs 4,237 chars — about Rs 7 — and happens off-call, where it buys no
+    # latency penalty. The hedge was costing more than it saved.
+    #
+    # Raise it if the ledger ever shows a fat never-recurring tail; that is the
+    # signal this trade has flipped.
     tts_cache_min_seen: int = field(
-        default_factory=lambda: int(_env("TTS_CACHE_MIN_SEEN", "2")))
+        default_factory=lambda: int(_env("TTS_CACHE_MIN_SEEN", "1")))
 
     # Own budget, because _evict_tts_cache only sweeps *.mp3 — this namespace
     # would otherwise grow until the volume is full. 8 kHz s16 = 16 KB/s, so

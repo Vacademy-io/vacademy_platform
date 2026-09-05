@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Sidebar,
   SidebarContent,
@@ -19,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { sideBarStateType } from "../../../../types/layout-container-types";
 import { SidebarItem } from "./sidebar-item";
 import {
-  HamBurgerSidebarItemsData,
+  getHamBurgerSidebarItemsData,
   stripOfflineEntries,
   filterHamburgerMenuItemsWithPermissions,
   getTerminology,
@@ -108,6 +109,7 @@ export const MySidebar = ({
    *  identity block of its own and still needs this one. */
   hideBrandingHeader?: boolean;
 }) => {
+  const { t, i18n } = useTranslation("layoutCommonA");
   const navigate = useNavigate();
   const { state, isMobile, toggleSidebar } = useSidebar();
   const isAndroid = Capacitor.getPlatform() === 'android';
@@ -141,8 +143,8 @@ export const MySidebar = ({
   const [configuredTabs, setConfiguredTabs] = useState<
     StudentSidebarTabConfig[]
   >([]);
-  const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
-    HamBurgerSidebarItemsData
+  const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(() =>
+    getHamBurgerSidebarItemsData(t)
   );
   const [hideSidebar, setHideSidebar] = useState<boolean>(false);
   const [studentData, setStudentData] = useState<Student | null>(null);
@@ -227,16 +229,18 @@ export const MySidebar = ({
 
   const labelByTabId: Record<string, string> = useMemo(
     () => ({
-      dashboard: "Dashboard",
-      "learning-center": "Learning Center",
-      homework: "Homework",
-      "assessment-center": "Assessment Centre",
-      referral: "Referral",
-      attendance: "Attendance",
-      chat: "In-App Messages",
-      "my-mentors": "My Mentors",
+      dashboard: t("sidebar.tabs.dashboard"),
+      "learning-center": t("sidebar.tabs.learningCenter"),
+      homework: t("sidebar.tabs.homework"),
+      "assessment-center": t("sidebar.tabs.assessmentCentre"),
+      referral: t("sidebar.tabs.referral"),
+      attendance: t("sidebar.tabs.attendance"),
+      chat: t("sidebar.tabs.inAppMessages"),
+      "my-mentors": t("sidebar.tabs.myMentors"),
     }),
-    []
+    // t's identity is stable across a language switch in react-i18next; key
+    // off i18n.language too so this fallback map actually re-translates.
+    [t, i18n.language]
   );
 
   const transformTabsToSidebarItems = (
@@ -303,7 +307,7 @@ export const MySidebar = ({
     const dashboardIndex = tabs.findIndex((t) => t.id === "dashboard");
     const chatTab: StudentSidebarTabConfig = {
       id: "chat",
-      label: "In-App Messages",
+      label: t("sidebar.tabs.inAppMessages"),
       route: "/chat",
       order: 0,
       visible: true,
@@ -332,8 +336,8 @@ export const MySidebar = ({
         ? (mentors[0]?.display_name || mentors[0]?.name || "").trim()
         : "";
     const mentorLabel = soleMentorName
-      ? `Mentor · ${soleMentorName.split(/\s+/)[0]}`
-      : "My Mentors";
+      ? t("sidebar.mentorLabelWithName", { name: soleMentorName.split(/\s+/)[0] })
+      : t("sidebar.tabs.myMentors");
     // One chat entry per mentor (capped so a big list can't flood the rail),
     // after an "All mentors" entry for the full page with booking. When the
     // institute's chat feature is OFF the chat entries would be dead links, so
@@ -344,14 +348,16 @@ export const MySidebar = ({
       ? [
           {
             id: "my-mentors-all",
-            label: "All mentors",
+            label: t("sidebar.allMentors"),
             route: "/my-mentors",
             order: 1,
             visible: true,
           },
           ...mentors.slice(0, 6).map((m, i) => ({
             id: `my-mentor-chat-${m.user_id}`,
-            label: `Chat · ${(m.display_name || m.name || "Mentor").trim()}`,
+            label: t("sidebar.chatWithMentorName", {
+              name: (m.display_name || m.name || t("sidebar.mentorFallbackName")).trim(),
+            }),
             // Opens the full In-App Messages screen with this mentor's
             // conversation selected (resolved by /chat's ?dm= handling).
             route: `/chat?dm=${encodeURIComponent(m.user_id)}`,
@@ -428,7 +434,7 @@ export const MySidebar = ({
     if (sideBarState === sideBarStateType.HAMBURGER) {
       // Filter hamburger menu items based on permissions
       filterHamburgerMenuItemsWithPermissions(
-        HamBurgerSidebarItemsData,
+        getHamBurgerSidebarItemsData(t),
         permissions || {
           canViewProfile: false,
           canEditProfile: false,
@@ -508,7 +514,7 @@ export const MySidebar = ({
             <button
               type="button"
               onClick={toggleSidebar}
-              aria-label="Close sidebar"
+              aria-label={t("sidebar.closeSidebar")}
               className="absolute top-4 mt-6 end-4 z-10 size-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X size={18} />
@@ -540,7 +546,7 @@ export const MySidebar = ({
                     <div className="flex h-10 items-center gap-3">
                       <div className="flex aspect-square size-8 items-center justify-center rounded-md text-sidebar-primary-foreground shrink-0">
                         {subOrgLogoUrl ? (
-                          <img src={subOrgLogoUrl} alt="Logo" className="size-8 object-contain rounded-md bg-white" />
+                          <img src={subOrgLogoUrl} alt={t("sidebar.logoAlt")} className="size-8 object-contain rounded-md bg-white" />
                         ) : (
                           <div className="size-8 rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-caption font-semibold text-primary-500 dark:text-neutral-200">
                             {(subOrgName[0] || "S").toUpperCase()}
@@ -555,7 +561,7 @@ export const MySidebar = ({
                     </div>
                     {isExpanded && (
                       <div className="flex items-center gap-1.5 ps-11">
-                        <span className="text-caption text-muted-foreground whitespace-nowrap">Powered by</span>
+                        <span className="text-caption text-muted-foreground whitespace-nowrap">{t("common.poweredBy")}</span>
                         {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                           <img src={instituteLogoFileUrl} alt={instituteName} className="h-4 w-auto max-w-20 object-contain" />
                         ) : (
@@ -578,7 +584,7 @@ export const MySidebar = ({
                       {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                         <img
                           src={instituteLogoFileUrl}
-                          alt="Logo"
+                          alt={t("sidebar.logoAlt")}
                           className={
                             hasCustomLogoDims
                               ? "object-contain rounded-md bg-white"
@@ -685,7 +691,7 @@ export const MySidebar = ({
             ((state === "expanded" || isMobile) ? (
               <div className="flex flex-col gap-2 px-2">
                 <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider ps-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">
-                  Apps & Portals
+                  {t("sidebar.appsAndPortals")}
                 </span>
                 <div className="flex flex-wrap gap-1">
                   {learnerPortalUrl && (
@@ -694,7 +700,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="Web Portal"
+                      title={t("sidebar.webPortal")}
                     >
                       <Globe className="h-5 w-5" weight="duotone" />
                     </a>
@@ -705,7 +711,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="Android App"
+                      title={t("sidebar.androidApp")}
                     >
                       <GooglePlayLogo className="h-5 w-5 text-green-600" weight="fill" />
                     </a>
@@ -716,7 +722,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="iOS App"
+                      title={t("sidebar.iosApp")}
                     >
                       <AppStoreLogo className="h-5 w-5 text-sky-600" weight="fill" />
                     </a>
@@ -727,7 +733,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="Windows App"
+                      title={t("sidebar.windowsApp")}
                     >
                       <WindowsLogo className="h-5 w-5 text-blue-600" weight="fill" />
                     </a>
@@ -738,7 +744,7 @@ export const MySidebar = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary-100 [.ui-play_&]:hover:bg-primary-200 [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:shadow-play-press"
-                      title="Mac App"
+                      title={t("sidebar.macApp")}
                     >
                       <AppleLogo className="h-5 w-5 text-neutral-800 dark:text-neutral-200" weight="fill" />
                     </a>
@@ -753,7 +759,7 @@ export const MySidebar = ({
                       <SidebarMenuButton
                         size="lg"
                         className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground justify-center"
-                        tooltip="Apps & Portals"
+                        tooltip={t("sidebar.appsAndPortals")}
                       >
                         <SquaresFour weight="duotone" className="h-5 w-5" />
                       </SidebarMenuButton>
@@ -766,7 +772,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="Web Portal"
+                            title={t("sidebar.webPortal")}
                           >
                             <Globe className="h-5 w-5" weight="duotone" />
                           </a>
@@ -777,7 +783,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="Android App"
+                            title={t("sidebar.androidApp")}
                           >
                             <GooglePlayLogo className="h-5 w-5 text-green-600" weight="fill" />
                           </a>
@@ -788,7 +794,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="iOS App"
+                            title={t("sidebar.iosApp")}
                           >
                             <AppStoreLogo className="h-5 w-5 text-sky-600" weight="fill" />
                           </a>
@@ -799,7 +805,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="Windows App"
+                            title={t("sidebar.windowsApp")}
                           >
                             <WindowsLogo className="h-5 w-5 text-blue-600" weight="fill" />
                           </a>
@@ -810,7 +816,7 @@ export const MySidebar = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                            title="Mac App"
+                            title={t("sidebar.macApp")}
                           >
                             <AppleLogo className="h-5 w-5 text-neutral-800 dark:text-neutral-200" weight="fill" />
                           </a>
@@ -842,8 +848,8 @@ export const MySidebar = ({
                   <button
                     type="button"
                     onClick={() => navigate({ to: "/logout" })}
-                    aria-label="Log out"
-                    title="Log out"
+                    aria-label={t("common.logOut")}
+                    title={t("common.logOut")}
                     className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
                   >
                     <SignOut className="size-5" weight="duotone" />
@@ -854,7 +860,7 @@ export const MySidebar = ({
                   <button
                     type="button"
                     onClick={() => navigate({ to: "/user-profile" })}
-                    aria-label="Open profile"
+                    aria-label={t("sidebar.openProfile")}
                     title={learnerDisplayName}
                     className="flex size-10 items-center justify-center rounded-lg hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
                   >
@@ -868,8 +874,8 @@ export const MySidebar = ({
                   <button
                     type="button"
                     onClick={() => navigate({ to: "/logout" })}
-                    aria-label="Log out"
-                    title="Log out"
+                    aria-label={t("common.logOut")}
+                    title={t("common.logOut")}
                     className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
                   >
                     <SignOut className="size-5" weight="duotone" />

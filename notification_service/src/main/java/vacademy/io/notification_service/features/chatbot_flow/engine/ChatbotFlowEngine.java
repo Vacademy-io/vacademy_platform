@@ -12,6 +12,7 @@ import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotNodeT
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotSessionStatus;
 import vacademy.io.notification_service.features.chatbot_flow.repository.*;
 import vacademy.io.notification_service.features.chatbot_flow.service.UserLookupService;
+import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppSendFailureService;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
@@ -36,6 +37,7 @@ public class ChatbotFlowEngine {
     private final List<ChatbotNodeExecutor> executors;
     private final ObjectMapper objectMapper;
     private final UserLookupService userLookupService;
+    private final WhatsAppSendFailureService sendFailureService;
 
     /**
      * Main entry point called from CombotWebhookService.
@@ -309,6 +311,9 @@ public class ChatbotFlowEngine {
 
         if (!result.isSuccess()) {
             log.warn("Node execution failed: nodeId={}, error={}", currentNodeId, result.getErrorMessage());
+            // A send node that failed means the learner never got this message — record it so the
+            // gap is visible in the WhatsApp Inbox instead of silently disappearing.
+            logFailedOutgoingMessage(currentNode, context, result.getErrorMessage());
             // Don't complete session on failure — let user retry
             return;
         }
@@ -442,6 +447,12 @@ public class ChatbotFlowEngine {
                     }
                     // Continue advancing
                     advanceToNextNodes(session, nextNodeId, result.getSelectedBranchId(), context, depth + 1);
+                } else {
+                    // Send refused by the provider — record the undelivered message so it shows
+                    // up in the Inbox rather than leaving a hole in the conversation.
+                    log.warn("Node execution failed while advancing: nodeId={}, error={}",
+                            nextNodeId, result.getErrorMessage());
+                    logFailedOutgoingMessage(nextNode, context, result.getErrorMessage());
                 }
             }
         }
@@ -580,6 +591,14 @@ public class ChatbotFlowEngine {
                 return;
             }
 
+            // The executor already wrote a FAILED row for this attempt (provider refused the
+            // send). Logging a second, delivered-looking row would show the learner a message
+            // they never received. Read-and-clear so the next node in the chain still logs.
+            if (context.isSendFailureLogged()) {
+                context.setSendFailureLogged(false);
+                return;
+            }
+
             // Extract the actual message body that was sent
             String messageBody = node.getName();
 
@@ -592,19 +611,7 @@ public class ChatbotFlowEngine {
                 }
             } else {
                 // For SEND_* nodes: extract from config
-                Map<String, Object> config = parseJson(node.getConfig());
-                if (config != null) {
-                    if (config.containsKey("text")) {
-                        messageBody = (String) config.get("text");
-                    } else if (config.containsKey("templateName")) {
-                        messageBody = "Template: " + config.get("templateName");
-                    } else if (config.containsKey("body")) {
-                        messageBody = (String) config.get("body");
-                    } else if (config.containsKey("mediaUrl")) {
-                        messageBody = "[" + config.getOrDefault("messageType", "media") + "] "
-                                + config.getOrDefault("mediaCaption", config.get("mediaUrl"));
-                    }
-                }
+                messageBody = describeNodeMessage(node);
             }
 
             NotificationLog outLog = new NotificationLog();
@@ -623,6 +630,58 @@ public class ChatbotFlowEngine {
         } catch (Exception e) {
             log.warn("Failed to log outgoing message for node {}: {}", node.getId(), e.getMessage());
         }
+    }
+
+    /**
+     * The message text a SEND_* node is configured to deliver, for the Inbox bubble. Falls back to
+     * the node's display name when the config carries nothing recognisable.
+     */
+    private String describeNodeMessage(ChatbotFlowNode node) {
+        String messageBody = node.getName();
+        Map<String, Object> config = parseJson(node.getConfig());
+        if (config != null) {
+            if (config.containsKey("text")) {
+                messageBody = (String) config.get("text");
+            } else if (config.containsKey("templateName")) {
+                messageBody = "Template: " + config.get("templateName");
+            } else if (config.containsKey("body")) {
+                messageBody = (String) config.get("body");
+            } else if (config.containsKey("mediaUrl")) {
+                messageBody = "[" + config.getOrDefault("messageType", "media") + "] "
+                        + config.getOrDefault("mediaCaption", config.get("mediaUrl"));
+            }
+        }
+        return messageBody;
+    }
+
+    /**
+     * Record a send node whose provider call was refused. Writes a FAILED row through
+     * {@link WhatsAppSendFailureService} so the WhatsApp Inbox can show the message as not
+     * delivered — previously these attempts vanished into the application log only.
+     */
+    private void logFailedOutgoingMessage(ChatbotFlowNode node, FlowExecutionContext context,
+                                          String error) {
+        if (node == null || context == null) return;
+        String nodeType = node.getNodeType();
+        if (nodeType == null || !nodeType.startsWith("SEND_")) return;
+        // The executor may already have logged it (AI_RESPONSE path); read-and-clear the flag.
+        if (context.isSendFailureLogged()) {
+            context.setSendFailureLogged(false);
+            return;
+        }
+        sendFailureService.logFailure(context.getInstituteId(), context.getPhoneNumber(),
+                context.getBusinessChannelId(), context.getUserId(),
+                attemptedTypeOf(node), describeNodeMessage(node), "CHATBOT_FLOW", error);
+    }
+
+    /** What kind of message the node was trying to send, for the Inbox failure bubble. */
+    private String attemptedTypeOf(ChatbotFlowNode node) {
+        String nodeType = node.getNodeType();
+        if (ChatbotNodeType.SEND_TEMPLATE.name().equals(nodeType)) return "template";
+        if (ChatbotNodeType.SEND_INTERACTIVE.name().equals(nodeType)) return "interactive";
+        Map<String, Object> config = parseJson(node.getConfig());
+        Object messageType = config != null ? config.get("messageType") : null;
+        return messageType != null ? messageType.toString() : "text";
     }
 
     private ChatbotNodeExecutor findExecutor(String nodeType) {

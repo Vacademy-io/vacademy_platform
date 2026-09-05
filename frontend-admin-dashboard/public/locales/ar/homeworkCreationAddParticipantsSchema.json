@@ -1,0 +1,5 @@
+{
+    "validation": {
+        "endDateAfterStartDate": "يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء."
+    }
+}

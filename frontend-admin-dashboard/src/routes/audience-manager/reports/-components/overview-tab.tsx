@@ -10,6 +10,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import {
     CaretRight,
     ChartLineUp,
@@ -51,7 +52,13 @@ export function OverviewTab({
     counsellorUserId,
     audienceId,
 }: ReportTabProps) {
+    const { t } = useTranslation('audienceManagerOverviewTab');
     const navigate = useNavigate();
+    const tierLabels: Record<string, string> = {
+        HOT: t('tier.hot'),
+        WARM: t('tier.warm'),
+        COLD: t('tier.cold'),
+    };
 
     const summaryQuery = useQuery({
         queryKey: [
@@ -92,11 +99,14 @@ export function OverviewTab({
             {/* KPI cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
-                    label="Total Leads"
+                    label={t('kpi.totalLeads.label')}
                     value={fmtNumber(summary?.totals.total_leads)}
                     sub={
                         summary
-                            ? `${summary.totals.active_leads} active · ${summary.totals.lost_leads} lost`
+                            ? t('kpi.totalLeads.sub', {
+                                  active: summary.totals.active_leads,
+                                  lost: summary.totals.lost_leads,
+                              })
                             : undefined
                     }
                     icon={<Users size={20} weight="bold" />}
@@ -119,11 +129,14 @@ export function OverviewTab({
                     }
                 />
                 <KpiCard
-                    label="Conversion Rate"
+                    label={t('kpi.conversionRate.label')}
                     value={fmtPct(summary?.totals.conversion_rate)}
                     sub={
                         summary
-                            ? `${summary.totals.converted_leads} of ${summary.totals.total_leads} converted`
+                            ? t('kpi.conversionRate.sub', {
+                                  converted: summary.totals.converted_leads,
+                                  total: summary.totals.total_leads,
+                              })
                             : undefined
                     }
                     icon={<CheckCircle size={20} weight="bold" />}
@@ -131,11 +144,13 @@ export function OverviewTab({
                     loading={isLoading && !summary}
                 />
                 <KpiCard
-                    label="Avg Response Time"
+                    label={t('kpi.avgResponseTime.label')}
                     value={fmtMinutes(summary?.totals.avg_response_minutes)}
                     sub={
                         summary
-                            ? `${summary.totals.responded_leads ?? 0} leads responded`
+                            ? t('kpi.avgResponseTime.sub', {
+                                  count: summary.totals.responded_leads ?? 0,
+                              })
                             : undefined
                     }
                     icon={<ClockCounterClockwise size={20} weight="bold" />}
@@ -143,12 +158,12 @@ export function OverviewTab({
                     loading={isLoading && !summary}
                 />
                 <KpiCard
-                    label="TAT Met"
+                    label={t('kpi.tatMet.label')}
                     value={fmtPct(summary?.totals.tat_met_rate)}
                     sub={
                         summary?.totals.tat_met_count != null
-                            ? `${summary.totals.tat_met_count} within TAT`
-                            : 'TAT disabled in settings'
+                            ? t('kpi.tatMet.subCount', { count: summary.totals.tat_met_count })
+                            : t('kpi.tatMet.subDisabled')
                     }
                     icon={<Funnel size={20} weight="bold" />}
                     tone={
@@ -170,7 +185,7 @@ export function OverviewTab({
                     <div className="flex items-center gap-2">
                         <Funnel size={18} className="text-neutral-500" />
                         <h2 className="text-base font-semibold text-neutral-900">
-                            Status distribution
+                            {t('status.title')}
                         </h2>
                     </div>
                     {summary && summary.by_status.length > 0 ? (
@@ -194,15 +209,17 @@ export function OverviewTab({
                         <div className="flex items-center gap-2">
                             <ChartLineUp size={18} className="text-neutral-500" />
                             <h2 className="text-base font-semibold text-neutral-900">
-                                Daily trend
+                                {t('trend.title')}
                             </h2>
                         </div>
                         <div className="flex items-center gap-4 text-xs text-neutral-600">
                             <span className="flex items-center gap-1">
-                                <span className="size-2 rounded-full bg-blue-500" /> Submitted
+                                <span className="size-2 rounded-full bg-blue-500" />{' '}
+                                {t('trend.submittedLegend')}
                             </span>
                             <span className="flex items-center gap-1">
-                                <span className="size-2 rounded-full bg-green-600" /> Converted
+                                <span className="size-2 rounded-full bg-green-600" />{' '}
+                                {t('trend.convertedLegend')}
                             </span>
                         </div>
                     </div>
@@ -212,7 +229,7 @@ export function OverviewTab({
 
             {/* Source + Tier breakdowns */}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <BreakdownCard title="By Source" icon={<Megaphone size={16} />}>
+                <BreakdownCard title={t('breakdown.bySource')} icon={<Megaphone size={16} />}>
                     {summary && summary.by_source.length > 0 ? (
                         summary.by_source.map((b) => (
                             <BreakdownBar
@@ -234,12 +251,15 @@ export function OverviewTab({
                         <EmptyHint />
                     )}
                 </BreakdownCard>
-                <BreakdownCard title="By Tier" icon={<Flame size={16} />}>
+                <BreakdownCard title={t('breakdown.byTier')} icon={<Flame size={16} />}>
                     {summary && summary.by_tier.length > 0 ? (
                         summary.by_tier.map((b) => (
                             <BreakdownBar
                                 key={b.tier}
-                                label={b.tier.charAt(0) + b.tier.slice(1).toLowerCase()}
+                                label={
+                                    tierLabels[b.tier] ??
+                                    b.tier.charAt(0) + b.tier.slice(1).toLowerCase()
+                                }
                                 count={b.count}
                                 total={summary.totals.total_leads}
                                 colorClass={tierBgClass(b.tier)}
@@ -263,6 +283,7 @@ interface StatusDonutProps {
     onSelectStatus?: (statusKey: string) => void;
 }
 function StatusDonut({ data, total, onSelectStatus }: StatusDonutProps) {
+    const { t } = useTranslation('audienceManagerOverviewTab');
     const SIZE = 180;
     const THICKNESS = 26;
     const RADIUS = (SIZE - THICKNESS) / 2;
@@ -285,7 +306,7 @@ function StatusDonut({ data, total, onSelectStatus }: StatusDonutProps) {
                     viewBox={`0 0 ${SIZE} ${SIZE}`}
                     className="size-44"
                     role="img"
-                    aria-label="Status distribution donut"
+                    aria-label={t('status.donutAriaLabel')}
                 >
                     {/* Track */}
                     <circle
@@ -331,7 +352,7 @@ function StatusDonut({ data, total, onSelectStatus }: StatusDonutProps) {
                 </svg>
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                     <span className="text-2xl font-bold text-neutral-900">{fmtNumber(total)}</span>
-                    <span className="text-xs text-neutral-500">leads</span>
+                    <span className="text-xs text-neutral-500">{t('status.totalUnit')}</span>
                 </div>
             </div>
             <ul className="flex w-full flex-col gap-1">
@@ -383,10 +404,11 @@ interface TrendChartProps {
     points: Array<{ date: string; submitted: number; converted: number }>;
 }
 function TrendChart({ points }: TrendChartProps) {
+    const { t } = useTranslation('audienceManagerOverviewTab');
     if (points.length === 0) {
         return (
             <div className="flex h-40 items-center justify-center text-sm text-neutral-400">
-                No data
+                {t('trend.noData')}
             </div>
         );
     }
@@ -412,7 +434,7 @@ function TrendChart({ points }: TrendChartProps) {
                 className="h-44 w-full"
                 preserveAspectRatio="none"
                 role="img"
-                aria-label="Daily submitted and converted leads"
+                aria-label={t('trend.ariaLabel')}
             >
                 {/* gridlines */}
                 <line

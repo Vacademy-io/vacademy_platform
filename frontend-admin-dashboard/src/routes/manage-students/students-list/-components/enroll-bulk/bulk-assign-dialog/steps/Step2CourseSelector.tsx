@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -49,8 +50,8 @@ interface Props {
 function useDebounce<T>(value: T, delay: number): T {
     const [debounced, setDebounced] = useState(value);
     useEffect(() => {
-        const t = setTimeout(() => setDebounced(value), delay);
-        return () => clearTimeout(t);
+        const timeoutId = setTimeout(() => setDebounced(value), delay);
+        return () => clearTimeout(timeoutId);
     }, [value, delay]);
     return debounced;
 }
@@ -62,6 +63,7 @@ export const Step2CourseSelector = ({
     onSelectedPackageSessionsChange,
     initialPackageSessionId,
 }: Props) => {
+    const { t } = useTranslation('manageStudentsStep2CourseSelector');
     const instituteId = getCurrentInstituteId();
 
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -229,11 +231,13 @@ export const Step2CourseSelector = ({
             {selectedPackageSessions.length > 0 && (
                 <div className="flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2 text-sm text-primary-700">
                     <span className="font-semibold">{selectedPackageSessions.length}</span>{' '}
-                    {(selectedPackageSessions.length !== 1
-                        ? batchesTerm
-                        : batchTerm
-                    ).toLowerCase()}{' '}
-                    selected — {learnersTerm.toLowerCase()} will be enrolled in all selected.
+                    {t('summary.selectedBanner', {
+                        term: (selectedPackageSessions.length !== 1
+                            ? batchesTerm
+                            : batchTerm
+                        ).toLowerCase(),
+                        learners: learnersTerm.toLowerCase(),
+                    })}
                 </div>
             )}
 
@@ -247,7 +251,10 @@ export const Step2CourseSelector = ({
                     <Input
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder={`Search ${coursesTerm.toLowerCase()}, ${levelsTerm.toLowerCase()}...`}
+                        placeholder={t('search.placeholder', {
+                            coursesTerm: coursesTerm.toLowerCase(),
+                            levelsTerm: levelsTerm.toLowerCase(),
+                        })}
                         className="h-9 w-full pl-9 text-sm"
                     />
                 </div>
@@ -277,7 +284,7 @@ export const Step2CourseSelector = ({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="z-popover-above-modal max-h-60 w-48 overflow-y-auto">
                         <DropdownMenuLabel className="text-xs text-neutral-500">
-                            Filter by {levelTerm}
+                            {t('filters.filterBy', { term: levelTerm })}
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {isDropdownLoading ? (
@@ -287,7 +294,7 @@ export const Step2CourseSelector = ({
                             </div>
                         ) : levelOptions.length === 0 ? (
                             <p className="px-2 py-1 text-xs text-neutral-400">
-                                No {levelsTerm.toLowerCase()} found
+                                {t('filters.noneFound', { term: levelsTerm.toLowerCase() })}
                             </p>
                         ) : (
                             levelOptions.map((lvl) => (
@@ -333,7 +340,7 @@ export const Step2CourseSelector = ({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="z-popover-above-modal max-h-60 w-48 overflow-y-auto">
                         <DropdownMenuLabel className="text-xs text-neutral-500">
-                            Filter by {sessionTerm}
+                            {t('filters.filterBy', { term: sessionTerm })}
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {isDropdownLoading ? (
@@ -343,7 +350,7 @@ export const Step2CourseSelector = ({
                             </div>
                         ) : sessionOptions.length === 0 ? (
                             <p className="px-2 py-1 text-xs text-neutral-400">
-                                No {sessionsTerm.toLowerCase()} found
+                                {t('filters.noneFound', { term: sessionsTerm.toLowerCase() })}
                             </p>
                         ) : (
                             sessionOptions.map((ses) => (
@@ -377,7 +384,10 @@ export const Step2CourseSelector = ({
                                 key={id}
                                 className="inline-flex items-center gap-1 rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700"
                             >
-                                {levelTerm}: {lvl?.level_name ?? id}
+                                {t('filters.tagLabel', {
+                                    term: levelTerm,
+                                    value: lvl?.level_name ?? id,
+                                })}
                                 <button
                                     onClick={() =>
                                         setSelectedLevelIds((prev) =>
@@ -398,7 +408,10 @@ export const Step2CourseSelector = ({
                                 key={id}
                                 className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700"
                             >
-                                {sessionTerm}: {ses?.session_name ?? id}
+                                {t('filters.tagLabel', {
+                                    term: sessionTerm,
+                                    value: ses?.session_name ?? id,
+                                })}
                                 <button
                                     onClick={() =>
                                         setSelectedSessionIds((prev) =>
@@ -416,7 +429,7 @@ export const Step2CourseSelector = ({
                         onClick={clearFilters}
                         className="text-xs text-neutral-400 underline-offset-2 hover:text-neutral-600 hover:underline"
                     >
-                        Clear all
+                        {t('filters.clearAll')}
                     </button>
                 </div>
             )}
@@ -425,8 +438,8 @@ export const Step2CourseSelector = ({
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     <Warning size={16} weight="fill" className="shrink-0" />
                     <span>
-                        Failed to load {coursesTerm.toLowerCase()}.{' '}
-                        {error instanceof Error ? error.message : 'Please try again.'}
+                        {t('errors.failedToLoad', { term: coursesTerm.toLowerCase() })}{' '}
+                        {error instanceof Error ? error.message : t('errors.tryAgain')}
                     </span>
                 </div>
             )}
@@ -453,10 +466,10 @@ export const Step2CourseSelector = ({
                             weight="duotone"
                         />
                         <p className="text-sm font-medium text-neutral-500">
-                            No {coursesTerm.toLowerCase()} found
+                            {t('list.empty.title', { term: coursesTerm.toLowerCase() })}
                         </p>
                         <p className="mt-1 text-xs text-neutral-400">
-                            Try adjusting your search or filters.
+                            {t('list.empty.subtitle')}
                         </p>
                     </div>
                 ) : (
@@ -475,11 +488,13 @@ export const Step2CourseSelector = ({
                                     {group.packageName}
                                 </span>
                                 <span className="ml-auto text-xs text-neutral-400">
-                                    {group.batches.length}{' '}
-                                    {(group.batches.length !== 1
-                                        ? batchesTerm
-                                        : batchTerm
-                                    ).toLowerCase()}
+                                    {t('list.batchCount', {
+                                        count: group.batches.length,
+                                        term: (group.batches.length !== 1
+                                            ? batchesTerm
+                                            : batchTerm
+                                        ).toLowerCase(),
+                                    })}
                                 </span>
                             </div>
 
@@ -535,8 +550,11 @@ export const Step2CourseSelector = ({
             {totalPages > 1 && (
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100 pt-3">
                     <span className="text-xs text-neutral-400">
-                        Showing {page * PAGE_SIZE + 1}–
-                        {Math.min((page + 1) * PAGE_SIZE, totalElements)} of {totalElements}
+                        {t('pagination.showingRange', {
+                            from: page * PAGE_SIZE + 1,
+                            to: Math.min((page + 1) * PAGE_SIZE, totalElements),
+                            total: totalElements,
+                        })}
                     </span>
                     <div className="flex shrink-0 items-center gap-1">
                         <Button
@@ -549,7 +567,7 @@ export const Step2CourseSelector = ({
                             <CaretLeft size={13} />
                         </Button>
                         <span className="px-2 text-xs text-neutral-600">
-                            {page + 1} / {totalPages}
+                            {t('pagination.pageOf', { current: page + 1, total: totalPages })}
                         </span>
                         <Button
                             variant="outline"

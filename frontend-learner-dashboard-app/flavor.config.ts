@@ -73,11 +73,19 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "learner",
   },
 
-  // Shiksha Nation Android & Electron app
+  // Shiksha Nation Android & Electron app.
+  //
+  // Deliberately points at vacademy.io/shiksha-nation, NOT shikshanation.com/learner.
+  // Both are live institute_domain_routing rows for the same institute, but only
+  // the vacademy.io one has redirect=/course-collections — shikshanation.com/learner
+  // was left at the default redirect=/login, so the app opened straight to the
+  // login page instead of the course catalogue. Fix the DB row (Prod-SN-Learner)
+  // instead of this mapping if shikshanation.com/learner ever needs to be the
+  // canonical one again.
   "com.shikshanation.new.app": {
     appName: "Shiksha Nation",
-    domain: "shikshanation.com",
-    subdomain: "learner",
+    domain: "vacademy.io",
+    subdomain: "shiksha-nation",
   },
 
   //SSDC Android App
@@ -167,16 +175,16 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "student",
   },
 
-  // ZOE Edtech iOS app
+  // ZOE Online School iOS app
   "io.zoeedtech.app": {
-    appName: "ZOE Edtech",
+    appName: "ZOE Online School",
     domain: "zoeedtech.com",
     subdomain: "student",
   },
 
-  // ZOE Edtech Android app
+  // ZOE Online School Android app
   "com.zoeedtech.app": {
-    appName: "ZOE Edtech",
+    appName: "ZOE Online School",
     domain: "zoeedtech.com",
     subdomain: "student",
   },
@@ -221,5 +229,19 @@ export const flavorConfig: FlavorConfigs = {
     appName: "Brahm Varchas Shiksha",
     domain: "brahmvarchas.org",
     subdomain: "learning",
+  },
+
+  // DumBee iOS app
+  "io.dumbee.app": {
+    appName: "DumBee",
+    domain: "soullifee.com",
+    subdomain: "learner",
+  },
+
+  // DumBee Android app
+  "com.dumbee.app": {
+    appName: "DumBee",
+    domain: "soullifee.com",
+    subdomain: "learner",
   },
 };

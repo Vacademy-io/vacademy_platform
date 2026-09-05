@@ -55,7 +55,7 @@ function XpCard({ data }: { data: PlayGamificationData | null }) {
 
   if (isCleanerPlay) {
     return (
-      <div className="cp-card flex h-full flex-col gap-3 p-4">
+      <div className="cp-card flex h-full flex-col gap-stack p-4">
         <div className="flex items-center gap-3">
           <img src={iconPoints} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
           <div>
@@ -106,7 +106,7 @@ function XpCard({ data }: { data: PlayGamificationData | null }) {
 
   return (
     <Card className="h-full">
-      <CardContent className="flex h-full flex-col gap-3 p-4">
+      <CardContent className="flex h-full flex-col gap-stack p-card">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50">
             <Star weight="fill" size={20} className="text-primary-500" />
@@ -171,7 +171,7 @@ function StreakCard({ data }: { data: PlayGamificationData | null }) {
 
   if (isCleanerPlay) {
     return (
-      <div className="cp-card flex h-full flex-col gap-3 p-4">
+      <div className="cp-card flex h-full flex-col gap-stack p-4">
         <div className="flex items-center gap-3">
           <img src={iconStreak} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
           {hasStreak ? (
@@ -207,7 +207,7 @@ function StreakCard({ data }: { data: PlayGamificationData | null }) {
 
   return (
     <Card className="h-full">
-      <CardContent className="flex h-full flex-col gap-3 p-4">
+      <CardContent className="flex h-full flex-col gap-stack p-card">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning-50">
             <Fire weight="fill" size={20} className="text-warning-500" />
@@ -328,7 +328,7 @@ function BadgesCard({
 
   if (isCleanerPlay) {
     return (
-      <div className="cp-card flex h-full flex-col gap-3 p-4">
+      <div className="cp-card flex h-full flex-col gap-stack p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <img src={iconBadges} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
@@ -366,7 +366,7 @@ function BadgesCard({
 
   return (
     <Card className="h-full">
-      <CardContent className="flex h-full flex-col gap-3 p-4">
+      <CardContent className="flex h-full flex-col gap-stack p-card">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50">

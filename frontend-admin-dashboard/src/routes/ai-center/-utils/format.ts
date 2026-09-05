@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { AITaskIndividualListInterface } from '@/types/ai/generate-assessment/generate-complete-assessment';
 
 export type FileFamily = 'pdf' | 'audio' | 'image' | 'doc' | 'none';
@@ -32,13 +33,17 @@ export const classifyFile = (mime: string | undefined): FileFamily => {
     return 'doc';
 };
 
-export const sourceLabel: Record<FileFamily, string> = {
-    pdf: 'From a PDF',
-    audio: 'From audio',
-    image: 'From a photo',
-    doc: 'From a document',
-    none: 'From a topic',
-};
+// Namespace: aiCenterFormat. Called `buildXxx(t)` (rather than a fixed
+// Record) since the labels must be resolved against the caller's active
+// language — see the `buildStatusFilters`/`buildSourceFilters` precedent in
+// AITasksList.tsx / RecentWorkDialog.tsx.
+export const buildSourceLabel = (t: TFunction): Record<FileFamily, string> => ({
+    pdf: t('source.pdf'),
+    audio: t('source.audio'),
+    image: t('source.image'),
+    doc: t('source.doc'),
+    none: t('source.none'),
+});
 
 export const routeForFamily: Record<FileFamily, string> = {
     pdf: '/ai-center/ai-tools/vsmart-upload',
@@ -65,25 +70,29 @@ const titleFromResultJson = (raw: unknown): string | null => {
     return null;
 };
 
+// `fallback`, when provided by the caller, wins over the translated default
+// (callers pass their own contextual fallback, e.g. a source label or a
+// tool-specific placeholder — see RecentWorkDialog.tsx / RecentFilesPanel.tsx).
 export const taskDisplayName = (
     task: AITaskIndividualListInterface,
-    fallback = 'Untitled draft'
+    t: TFunction,
+    fallback?: string
 ): string => {
     const generatedTitle = titleFromResultJson(task.result_json);
     if (generatedTitle) return generatedTitle;
     if (task.file_detail?.file_name) return stripExtension(task.file_detail.file_name);
     if (task.task_name && !/^Task_\d/.test(task.task_name)) return task.task_name;
-    return fallback;
+    return fallback ?? t('taskDisplayName.untitledDraft');
 };
 
-export const relativeTime = (iso: string): string => {
-    const t = new Date(iso).getTime();
-    if (Number.isNaN(t)) return '';
-    const diff = Math.round((Date.now() - t) / 1000);
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
-    if (diff < 7 * 86400) return `${Math.floor(diff / 86400)} d ago`;
+export const relativeTime = (iso: string, t: TFunction): string => {
+    const time = new Date(iso).getTime();
+    if (Number.isNaN(time)) return '';
+    const diff = Math.round((Date.now() - time) / 1000);
+    if (diff < 60) return t('relativeTime.justNow');
+    if (diff < 3600) return t('relativeTime.minutesAgo', { count: Math.floor(diff / 60) });
+    if (diff < 86400) return t('relativeTime.hoursAgo', { count: Math.floor(diff / 3600) });
+    if (diff < 7 * 86400) return t('relativeTime.daysAgo', { count: Math.floor(diff / 86400) });
     return new Date(iso).toLocaleDateString();
 };
 
@@ -93,28 +102,36 @@ export const statusStyles = (status: string): string => {
     return 'bg-blue-50 text-blue-700 ring-blue-600/20';
 };
 
-export const statusLabel = (status: string): string => {
-    if (status === 'COMPLETED') return 'Ready';
-    if (status === 'FAILED') return 'Failed';
-    if (status === 'PROGRESS') return 'In progress';
+// The default branch reformats whatever raw enum value the backend sent
+// (e.g. a status this catalog doesn't know about yet) rather than translating
+// it, since there's no fixed key to look up.
+export const statusLabel = (status: string, t: TFunction): string => {
+    if (status === 'COMPLETED') return t('status.completed');
+    if (status === 'FAILED') return t('status.failed');
+    if (status === 'PROGRESS') return t('status.inProgress');
     return status.charAt(0) + status.slice(1).toLowerCase();
 };
 
-const FRIENDLY_HEADINGS: Record<string, string> = {
-    'Vsmart Upload': 'Your question papers',
-    'Vsmart Extract': 'Your extractions',
-    'Vsmart Image': 'Your extractions',
-    'Vsmart Audio': 'Your audio-based papers',
-    'Vsmart Topics': 'Your topic-based papers',
-    'Vsmart Chat': 'Your chat sessions',
-    'Vsmart Organizer': 'Your sorted sets',
-    'Vsmart Sorter': 'Your sorted sets',
-    'Vsmart Lecturer': 'Your lesson plans',
-    'Vsmart Feedback': 'Your lecture reviews',
+const FRIENDLY_HEADING_KEYS: Record<string, string> = {
+    'Vsmart Upload': 'friendlyHeading.vsmartUpload',
+    'Vsmart Extract': 'friendlyHeading.vsmartExtract',
+    'Vsmart Image': 'friendlyHeading.vsmartImage',
+    'Vsmart Audio': 'friendlyHeading.vsmartAudio',
+    'Vsmart Topics': 'friendlyHeading.vsmartTopics',
+    'Vsmart Chat': 'friendlyHeading.vsmartChat',
+    'Vsmart Organizer': 'friendlyHeading.vsmartOrganizer',
+    'Vsmart Sorter': 'friendlyHeading.vsmartSorter',
+    'Vsmart Lecturer': 'friendlyHeading.vsmartLecturer',
+    'Vsmart Feedback': 'friendlyHeading.vsmartFeedback',
 };
 
-export const friendlyHeading = (rawHeading: string): string => {
-    return FRIENDLY_HEADINGS[rawHeading] ?? rawHeading;
+// rawHeading is the (untranslated, enum-like) tool heading used elsewhere for
+// routing/equality checks — see QUESTION_HEADING_BY_TYPE below and the
+// `heading === 'Vsmart Feedback'` style checks in AITasksList.tsx. Falls back
+// to the raw value unchanged for any heading this catalog doesn't recognize.
+export const friendlyHeading = (rawHeading: string, t: TFunction): string => {
+    const key = FRIENDLY_HEADING_KEYS[rawHeading];
+    return key ? t(key) : rawHeading;
 };
 
 // input_type values that produce questions viewable via AIQuestionsPreview.

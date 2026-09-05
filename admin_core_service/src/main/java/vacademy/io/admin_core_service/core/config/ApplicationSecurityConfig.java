@@ -113,6 +113,12 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-sessions/provider/meeting/recording/complete",
             // BBB server pool management (server-to-server from community_service, no JWT)
             "/admin-core-service/bbb/pool/**",
+            // BBB custom live-class domains, read by the pool start workflow.
+            // No JWT, but NOT unauthenticated: BbbCustomDomainController itself
+            // requires the shared X-Internal-Service-Token. Note the path must not
+            // contain the word "internal" — InternalAuthFilter substring-matches the
+            // URI and would demand clientName + Signature instead.
+            "/admin-core-service/bbb/custom-domains",
             // Zoom webhook callback (no JWT — verified by per-account HMAC signature)
             "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**",
             // "Connect with Zoom" OAuth redirect (no JWT — CSRF-protected by the state record)

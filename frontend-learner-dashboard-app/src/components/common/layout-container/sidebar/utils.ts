@@ -14,7 +14,7 @@ import {
   ClipboardText,
   DownloadSimple,
 } from "@phosphor-icons/react";
-import i18next from "i18next";
+import i18next, { type TFunction } from "i18next";
 import {
   ContentTerms,
   NAMING_SETTINGS_KEY,
@@ -328,28 +328,41 @@ export const SidebarItemsData: SidebarItemsType[] = [
     ],
   },
 ];
-export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
+// A function (not a static array) so every caller re-translates on each
+// render / language change instead of freezing whatever locale was active
+// the moment this module first loaded.
+export const getHamBurgerSidebarItemsData = (t: TFunction): SidebarItemsType[] => [
   //TODO : add other options when api and ui is available
   {
     icon: UserCircle,
     id: "view-profile",
-    title: "View Profile Details",
+    title: t("sidebar.hamburgerMenu.viewProfileDetails", { ns: "layoutCommonA" }),
     to: "/user-profile",
   },
   {
     icon: Files,
     id: "my-files",
-    title: "My Files",
+    title: t("sidebar.hamburgerMenu.myFiles", { ns: "layoutCommonA" }),
     to: "/my-files",
   },
   {
     icon: DownloadSimple,
     id: "offline-downloads",
-    title: "Downloads",
+    title: t("sidebar.hamburgerMenu.downloads", { ns: "layoutCommonA" }),
     to: "/downloads",
   },
-  { icon: AddressBook, id: "my-reports", title: "My Reports", to: "/my-reports" },
-  { icon: ClipboardText, id: "onboarding", title: "Onboarding", to: "/profile/onboarding" },
+  {
+    icon: AddressBook,
+    id: "my-reports",
+    title: t("sidebar.hamburgerMenu.myReports", { ns: "layoutCommonA" }),
+    to: "/my-reports",
+  },
+  {
+    icon: ClipboardText,
+    id: "onboarding",
+    title: t("sidebar.hamburgerMenu.onboarding", { ns: "layoutCommonA" }),
+    to: "/profile/onboarding",
+  },
   // {
   //   icon: CreditCard,
   //   title: "Membership Details",
@@ -358,7 +371,7 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
   {
     icon: Password,
     id: "change-password",
-    title: "Change Password",
+    title: t("sidebar.hamburgerMenu.changePassword", { ns: "layoutCommonA" }),
     to: "/change-password",
   },
   // {
@@ -369,13 +382,13 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
   {
     icon: SignOut,
     id: "logout",
-    title: "Log Out",
+    title: t("sidebar.hamburgerMenu.logOut", { ns: "layoutCommonA" }),
     to: "/logout",
   },
   {
     icon: UserCircleMinus,
     id: "delete-account",
-    title: "Delete Account",
+    title: t("sidebar.hamburgerMenu.deleteAccount", { ns: "layoutCommonA" }),
     to: "/delete-user",
   },
 ];

@@ -42,6 +42,8 @@ export const BasicInfoFormSchema = z.object({
     durationDistribution: z.string(),
     evaluationType: z.string(),
     resultType: z.string().default('MANUAL'),
+    // Automatic AI evaluation on submit. Off by default: it spends institute credits.
+    aiEvaluationEnabled: z.boolean().default(false),
     switchSections: z.boolean(),
     raiseReattemptRequest: z.boolean(),
     raiseTimeIncreaseRequest: z.boolean(),

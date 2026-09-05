@@ -54,6 +54,7 @@ import { getUserId } from "@/constants/getUserId";
 import { useOfflineInit } from "@/hooks/offline/useOfflineInit";
 import { RevokedDeviceDialog } from "@/components/common/offline/revoked-device-dialog";
 import { useLiveTestStore } from "@/stores/live-test-store";
+import { resolveUiSkin } from "@/utils/institute-theme-roles";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -408,10 +409,16 @@ const RootComponent = () => {
     // Apply global ui-vibrant class based on override/settings and expose debug helpers
     const applyUiType = (t: StudentUIType) => {
       const root = document.documentElement;
-      root.classList.remove("ui-vibrant", "ui-play", "ui-cleaner-play");
+      root.classList.remove(
+      "ui-vibrant",
+      "ui-play",
+      "ui-cleaner-play",
+      "ui-corporate"
+    );
       if (t === "vibrant") root.classList.add("ui-vibrant");
       else if (t === "play") root.classList.add("ui-play");
       else if (t === "cleanerPlay") root.classList.add("ui-cleaner-play");
+      else if (t === "corporate") root.classList.add("ui-corporate");
     };
 
     const DEBUG_KEY = "DEBUG_UI_TYPE";
@@ -421,12 +428,19 @@ const RootComponent = () => {
         override === "vibrant" ||
         override === "default" ||
         override === "play" ||
-        override === "cleanerPlay"
+        override === "cleanerPlay" ||
+        override === "corporate"
       ) {
         applyUiType(override);
       } else {
         getStudentDisplaySettings(false)
-          .then((s) => applyUiType((s?.ui?.type as StudentUIType) || "default"))
+          // THEME_SETTING.roles.skin wins; ui.type is the pre-migration
+          // fallback (see resolveUiSkin — there is no migration job).
+          .then((s) =>
+            applyUiType(
+              resolveUiSkin((s?.ui?.type as StudentUIType) ?? null) as StudentUIType
+            )
+          )
           .catch(() => {
             /* ignore */
           });
@@ -466,7 +480,13 @@ const RootComponent = () => {
           console.warn("clearStudentUIType: failed to clear", e);
         }
         getStudentDisplaySettings(false)
-          .then((s) => applyUiType((s?.ui?.type as StudentUIType) || "default"))
+          // THEME_SETTING.roles.skin wins; ui.type is the pre-migration
+          // fallback (see resolveUiSkin — there is no migration job).
+          .then((s) =>
+            applyUiType(
+              resolveUiSkin((s?.ui?.type as StudentUIType) ?? null) as StudentUIType
+            )
+          )
           .catch(() => applyUiType("default"));
       };
     } catch (e) {

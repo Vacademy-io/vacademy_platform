@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
@@ -11,7 +12,11 @@ interface QuestionSelectorDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     questions: MyQuestion[];
-    paperId: string;
+    /**
+     * Unused by this component — nothing reads it. Optional so callers are not
+     * forced to invent a value (Step2SectionInfo was passing a hardcoded "").
+     */
+    paperId?: string;
     onConfirm: (selected: MyQuestion[]) => void;
 }
 
@@ -27,6 +32,7 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
     questions,
     onConfirm,
 }) => {
+    const { t } = useTranslation('assessmentQuestionSelectorDialog');
     const [search, setSearch] = useState('');
     const [checked, setChecked] = useState<Set<string>>(() => new Set());
     const [selectedTags, setSelectedTags] = useState<Set<string>>(() => new Set());
@@ -42,7 +48,7 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
 
     const allTags = useMemo(() => {
         const tagSet = new Set<string>();
-        questions.forEach((q) => (q.tags ?? []).forEach((t) => tagSet.add(t)));
+        questions.forEach((q) => (q.tags ?? []).forEach((tg) => tagSet.add(tg)));
         return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
     }, [questions]);
 
@@ -64,7 +70,7 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
             );
         }
         if (selectedTags.size > 0) {
-            result = result.filter((q) => (q.tags ?? []).some((t) => selectedTags.has(t)));
+            result = result.filter((q) => (q.tags ?? []).some((tg) => selectedTags.has(tg)));
         }
         return result;
     }, [questions, search, selectedTags]);
@@ -109,20 +115,22 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
 
     return (
         <MyDialog
-            heading={`Select Questions (${questions.length} total)`}
+            heading={t('dialog.heading', { count: questions.length })}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="max-w-3xl"
             footer={
                 <div className="flex w-full items-center justify-between">
-                    <span className="text-sm text-neutral-500">{selectedCount} selected</span>
+                    <span className="text-sm text-neutral-500">
+                        {t('footer.selectedCount', { count: selectedCount })}
+                    </span>
                     <div className="flex items-center gap-3">
                         <MyButton
                             buttonType="secondary"
                             scale="medium"
                             onClick={() => onOpenChange(false)}
                         >
-                            Cancel
+                            {t('actions.cancel')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
@@ -130,7 +138,7 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
                             onClick={handleConfirm}
                             disable={selectedCount === 0}
                         >
-                            Add {selectedCount} Question{selectedCount !== 1 ? 's' : ''}
+                            {t('actions.addQuestions', { count: selectedCount })}
                         </MyButton>
                     </div>
                 </div>
@@ -139,7 +147,7 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
             <div className="flex flex-col gap-3">
                 <MyInput
                     inputType="text"
-                    inputPlaceholder="Search questions..."
+                    inputPlaceholder={t('search.placeholder')}
                     input={search}
                     onChangeFunction={(e) => setSearch(e.target.value)}
                     size="medium"
@@ -147,7 +155,9 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
 
                 {allTags.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-caption text-neutral-500">Filter by tag:</span>
+                        <span className="text-caption text-neutral-500">
+                            {t('tags.filterLabel')}
+                        </span>
                         {allTags.map((tag) => {
                             const isActive = selectedTags.has(tag);
                             return (
@@ -176,11 +186,12 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
                             htmlFor="sel-all"
                             className="cursor-pointer text-sm font-medium text-neutral-700"
                         >
-                            Select All ({filtered.length})
+                            {t('list.selectAll', { count: filtered.length })}
                         </label>
                     </div>
                     <span className="text-xs text-neutral-400">
-                        {filtered.length !== questions.length && `${filtered.length} matching`}
+                        {filtered.length !== questions.length &&
+                            t('list.matchingCount', { count: filtered.length })}
                     </span>
                 </div>
 
@@ -191,7 +202,7 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
                 >
                     {filtered.length === 0 ? (
                         <div className="flex h-full items-center justify-center text-sm text-neutral-400">
-                            No questions match your search.
+                            {t('list.emptyState')}
                         </div>
                     ) : (
                         <div

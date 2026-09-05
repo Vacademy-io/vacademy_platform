@@ -147,12 +147,16 @@ android {
 		zoe {
 			dimension "client"
 			applicationId "com.zoeedtech.app"
-			// Bumped for the ZOE "Global Online School" rebrand (new launcher icon +
+			// Bumped for the ZOE "Online School" rebrand (new name, launcher icon and
 			// splash). The versionCode bump also forces @capgo/capacitor-updater to
 			// drop any stored OTA bundle and fall back to this build's builtin one.
-			versionCode 3
-			versionName "1.0.2"
-			resValue "string", "app_name", "ZOE Edtech"
+			versionCode 4
+			// MUST stay above every OTA bundle this app can be offered (highest
+			// untargeted ANDROID row 2.2.4, plus the ZOE-targeted 2.5.4). A 1.0.x
+			// versionName gets force-dragged onto a bundle cut before ZOE existed in
+			// flavor.config.ts, which loses the institute branding entirely.
+			versionName "2.5.5"
+			resValue "string", "app_name", "ZOE Online School"
 			manifestPlaceholders.DEEP_LINK_HOST = "student.zoeedtech.com"
 		}
 		learningbridge {
@@ -170,6 +174,14 @@ android {
 			versionName "1.0.2"
 			resValue "string", "app_name", "Brahm Varchas Shiksha"
 			manifestPlaceholders.DEEP_LINK_HOST = "learning.brahmvarchas.org"
+		}
+		dumbee {
+			dimension "client"
+			applicationId "com.dumbee.app"
+			versionCode 1
+			versionName "1.0.0"
+			resValue "string", "app_name", "DumBee"
+			manifestPlaceholders.DEEP_LINK_HOST = "learner.soullifee.com"
 		}
 	}
 }

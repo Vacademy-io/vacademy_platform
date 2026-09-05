@@ -11,7 +11,7 @@ import { ScheduleTestMainDropdownComponent } from './ScheduleTestDetailsDropdown
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import { resolveSubjectName } from '@/services/subject-names';
 import { getBatchNamesByIds } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
 import { ReverseProgressBar } from '@/components/ui/progress';
 
@@ -19,10 +19,13 @@ const ScheduleTestDetails = ({
     scheduleTestContent,
     selectedTab,
     handleRefetchData,
+    subjectNamesById = {},
 }: {
     scheduleTestContent: TestContent;
     selectedTab: string;
     handleRefetchData: () => void;
+    /** Names for the subject ids the institute list cannot resolve — see subject-names.ts. */
+    subjectNamesById?: Record<string, string>;
 }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const navigate = useNavigate();
@@ -139,10 +142,11 @@ const ScheduleTestDetails = ({
                     <p>Created on: {convertToLocalDateTime(scheduleTestContent.created_at)}</p>
                     <p>
                         Subject:{' '}
-                        {getSubjectNameById(
-                            instituteDetails?.subjects || [],
-                            scheduleTestContent.subject_id || ''
-                        )}
+                        {resolveSubjectName(
+                            instituteDetails?.subjects,
+                            subjectNamesById,
+                            scheduleTestContent.subject_id
+                        ) || 'N/A'}
                     </p>
                 </div>
                 <div className="flex flex-col gap-4">

@@ -19,6 +19,7 @@ import {
 } from "@phosphor-icons/react";
 import { Capacitor } from "@capacitor/core";
 import { Link, useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -39,7 +40,11 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@/styles/katex-dark.css";
-import { avatarUrl } from "@/services/chatbot-settings";
+import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
+import {
+  shouldShowAiSettingsShortcut,
+  useAiSettingsShortcutEnabled,
+} from "@/services/ai-settings-shortcut";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
@@ -48,6 +53,9 @@ import { QuickActions } from "./QuickActions";
 import { MicButton } from "./MicButton";
 import { VoiceModeSelector } from "./VoiceModeSelector";
 import { VoiceModePanel } from "./VoiceModePanel";
+
+/** The subset of session modes the call screen handles. */
+type VoiceCallMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
 import { UploadFileInS3 } from "@/services/upload_file";
 import { getPublicUrl } from "@/services/upload_file";
 import { getUserId } from "@/constants/getUserId";
@@ -63,6 +71,12 @@ const DEFAULT_WIDTH = 380;
 const DEFAULT_HEIGHT = 520;
 
 export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
+  const avatarUrl = useChatbotAvatarUrl();
+  // Hidden from learners by default. The institute can reveal it for everyone
+  // (Admin -> Settings -> AI Settings -> Student AI), and this device can
+  // reveal it just for itself from /ai-settings.
+  const shortcutEnabledLocally = useAiSettingsShortcutEnabled();
+  const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
     isOpen,
@@ -89,13 +103,22 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     streamingContent,
     isStreaming,
     isOffline,
+    reconnectStream,
     voiceMode,
+    voiceTopic,
+    suggestedVoiceTopic,
+    startVoiceCall,
     showVoiceSelector,
     setShowVoiceSelector,
     enterVoiceMode,
     exitVoiceMode,
     voiceLanguage,
   } = useChatbotContext();
+
+  const showAiSettingsShortcut = shouldShowAiSettingsShortcut(
+    chatbotSettings.show_ai_settings_shortcut,
+    shortcutEnabledLocally
+  );
 
   // Check if the docked panel should be used - checking store AND route for immediate detection
   const { isDockedMode } = useChatbotPanelStore();
@@ -408,7 +431,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 backdrop-blur-[2px] pointer-events-none">
                   <div className="flex flex-col items-center gap-2 text-primary">
                     <ImageSquare className="h-10 w-10" />
-                    <span className="text-sm font-medium">Drop image here</span>
+                    <span className="text-sm font-medium">{t("common.dropImageHere")}</span>
                   </div>
                 </div>
               )}
@@ -474,7 +497,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); startNewChat(); }}
-                    title="Start new chat"
+                    title={t("common.startNewChat")}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -483,26 +506,28 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); closeSession(); }}
-                    title="Close session"
+                    title={t("common.closeSession")}
                   >
                     <Trash className="h-4 w-4" />
                   </Button>
-                  <Link to="/ai-settings" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-                      title="AI Gear"
-                    >
-                      <Gear className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                  {showAiSettingsShortcut && (
+                    <Link to="/ai-settings" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                        title={t("common.aiGear")}
+                      >
+                        <Gear className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); toggleFullScreen(); }}
-                    title={isFullScreen ? "Exit fullscreen" : "Fullscreen"}
+                    title={isFullScreen ? t("panel.exitFullscreen") : t("panel.fullscreen")}
                   >
                     {isFullScreen ? (
                       <ArrowsIn className="h-4 w-4" />
@@ -515,7 +540,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     size="icon"
                     className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     onClick={(e) => { e.stopPropagation(); setIsOpen(false); }}
-                    title="Close panel"
+                    title={t("common.closePanel")}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -524,18 +549,18 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
               {/* Messages Area */}
               <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-                <ScrollArea className="h-full p-4">
+                <ScrollArea className="h-full p-4 [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!min-w-0">
                   <div className="flex flex-col space-y-4">
                     {isOffline && (
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs rounded-md">
                         <WifiSlash className="size-3.5 shrink-0" />
-                        <span>You're offline. Messages will be sent when you reconnect.</span>
+                        <span>{t("panel.offlineNotice")}</span>
                       </div>
                     )}
 
                     {isInitializing && messages.length === 0 && (
                       <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
-                        Initialising chat...
+                        {t("panel.initializing")}
                       </div>
                     )}
 
@@ -644,23 +669,23 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                             {msg.role === "user" ? (
                               <div>
                                 {msg.attachments?.filter((a: any) => a.type === 'image').map((att: any, i: number) => (
-                                  <img key={i} src={att.url} alt="attached" className="max-w-48 max-h-36 rounded-lg mb-1.5 border" />
+                                  <img key={i} src={att.url} alt={t("common.attachedImageAlt")} className="max-w-48 max-h-36 rounded-lg mb-1.5 border" />
                                 ))}
                                 <p className="whitespace-pre-wrap">
                                   {msg.content}
                                   {msg.status === "pending" && (
-                                    <span className="text-xs text-primary-foreground/60 ms-1" title="Queued - will send when online">&#x23F3;</span>
+                                    <span className="text-xs text-primary-foreground/60 ms-1" title={t("panel.queuedTooltip")}>&#x23F3;</span>
                                   )}
                                 </p>
                               </div>
                             ) : (
-                              <div className="max-w-none group relative">
+                              <div className="group relative min-w-0 max-w-full break-words [&_ol]:ps-5 [&_ul]:ps-5 [&_li]:my-0.5 [&_pre]:overflow-x-auto">
                                 <button
                                   className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 z-10 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={() =>
                                     handleCopyMessage(msg.content, msg.id)
                                   }
-                                  title="Copy message"
+                                  title={t("panel.copyMessage")}
                                 >
                                   {copiedMessageId === msg.id ? (
                                     <Check className="size-4 text-green-600" />
@@ -673,19 +698,19 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                   components={{
                                     h1: ({ ...props }) => (
                                       <h1
-                                        className="text-2xl font-bold mt-4 mb-3"
+                                        className="text-base font-bold mt-3 mb-1.5"
                                         {...props}
                                       />
                                     ),
                                     h2: ({ ...props }) => (
                                       <h2
-                                        className="text-xl font-bold mt-3 mb-2"
+                                        className="text-sm font-bold mt-2.5 mb-1"
                                         {...props}
                                       />
                                     ),
                                     h3: ({ ...props }) => (
                                       <h3
-                                        className="text-lg font-semibold mt-3 mb-2"
+                                        className="text-sm font-semibold mt-2 mb-1"
                                         {...props}
                                       />
                                     ),
@@ -725,7 +750,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                         >{children}</code>
                                       ) : (
                                         <code
-                                          className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
+                                          className="block max-w-full bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto whitespace-pre"
                                           {...rest}
                                         >{children}</code>
                                       );
@@ -800,7 +825,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         <div className="rounded-lg bg-muted px-4 py-3 text-sm text-foreground">
                           <div className="flex space-x-2 items-center h-4">
                             {aiStatus === "generating_quiz" ? (
-                              <span className="text-xs text-muted-foreground animate-pulse">Generating quiz...</span>
+                              <span className="text-xs text-muted-foreground animate-pulse">{t("panel.generatingQuiz")}</span>
                             ) : (
                               <>
                                 <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />
@@ -821,25 +846,22 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                     {isCreditsExhausted && (
                       <div className="w-full bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-center text-sm text-amber-800">
-                        Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.
+                        {t("common.creditsExhausted")}
                       </div>
                     )}
 
                     {hasError && !isCreditsExhausted && (
                       <div className="w-full bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-2 text-center space-y-1.5">
-                        <p className="text-sm text-destructive">Something went wrong</p>
+                        <p className="text-sm text-destructive">{t("panel.errorTitle")}</p>
                         <div className="flex gap-3 justify-center">
                           <button
-                            onClick={() => {
-                              const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-                              if (lastUserMsg) sendMessage(lastUserMsg.content);
-                            }}
+                            onClick={reconnectStream}
                             className="text-xs text-primary underline hover:text-primary/80"
                           >
-                            Retry
+                            {t("common.retry")}
                           </button>
                           <button onClick={startNewChat} className="text-xs text-muted-foreground underline hover:text-muted-foreground/80">
-                            New chat
+                            {t("common.newChat")}
                           </button>
                         </div>
                       </div>
@@ -847,7 +869,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                     {isSessionClosed && (
                       <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
-                        This chat has ended
+                        {t("panel.sessionEnded")}
                       </div>
                     )}
 
@@ -876,13 +898,13 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     {/* Voice mode chip */}
                     {chatbotSettings.enabled_modes?.some(m => m.startsWith('voice_')) && (
                       <button
-                        onClick={() => setShowVoiceSelector(true)}
+                        onClick={startVoiceCall}
                         disabled={isLoading || !sessionId}
-                        title="Start a voice conversation"
+                        title={t("common.startVoiceConversation")}
                         className="inline-flex items-center h-7 px-3 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
                       >
                         <Microphone className="h-3 w-3 me-1.5" />
-                        Voice Chat
+                        {t("common.voiceChatLabel")}
                       </button>
                     )}
                   </div>
@@ -893,7 +915,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   <div className="flex gap-2 w-full px-1 py-1.5">
                     {pendingAttachments.map((att, i) => (
                       <div key={i} className="relative size-12 rounded border overflow-hidden">
-                        <img src={att.previewUrl || att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
+                        <img src={att.previewUrl || att.url} alt={att.name || t("common.attachmentAlt")} className="size-full object-cover" />
                         {!att.url && (
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                             <SpinnerGap className="h-4 w-4 text-white animate-spin" />
@@ -968,8 +990,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                 {/* LaTeX preview — show rendered formula when user types $ */}
                 {inputValue.includes('$') && (
-                  <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
-                    <span className="text-muted-foreground text-caption block mb-0.5">Preview:</span>
+                  <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto space-y-0.5">
+                    <span className="text-muted-foreground text-caption block">{t("common.preview")}</span>
                     <ReactMarkdown
                       remarkPlugins={[remarkMath]}
                       rehypePlugins={[rehypeKatex]}
@@ -982,7 +1004,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 {/* Input Row */}
                 <div className="w-full flex items-end gap-1.5">
                   <textarea
-                    placeholder="Type message... (use $ for math)"
+                    placeholder={t("panel.inputPlaceholder")}
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -1004,7 +1026,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       showLatexHelper && "bg-primary/10 text-primary"
                     )}
                     onClick={() => setShowLatexHelper(prev => !prev)}
-                    title="Math symbols"
+                    title={t("common.mathSymbols")}
                   >
                     <Sigma className="h-4 w-4" />
                   </Button>
@@ -1014,7 +1036,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     className="h-8 w-8 shrink-0 rounded-lg"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={!sessionId || isLoading || isUploadingImage}
-                    title="Attach image (math photos auto-detected)"
+                    title={t("panel.attachImageTitle")}
                   >
                     {isUploadingImage ? (
                       <SpinnerGap className="h-4 w-4 animate-spin" />
@@ -1060,17 +1082,20 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
             enterVoiceMode(mode, language, topic);
           }}
           enabledModes={chatbotSettings.enabled_modes}
+          defaultTopic={suggestedVoiceTopic()}
+          defaultLanguage={voiceLanguage}
         />
       )}
 
       {voiceMode && sessionId && (
         <VoiceModePanel
           sessionId={sessionId}
-          mode={voiceMode as any}
+          mode={voiceMode as VoiceCallMode}
           language={voiceLanguage}
-          voice="shubh"
+          voice={chatbotSettings.voice_settings?.default_voice || "shubh"}
           onClose={exitVoiceMode}
           chatbotSettings={chatbotSettings}
+          topic={voiceTopic}
         />
       )}
     </>

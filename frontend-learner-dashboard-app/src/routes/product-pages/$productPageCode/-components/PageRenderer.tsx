@@ -1,19 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { ShoppingCart, CheckCircle, SlidersHorizontal, X, Star, CaretDown, BookOpen, Users, Lightbulb, MagnifyingGlass, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { BASE_URL } from "@/constants/urls";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { pushCourseSelectionChanged } from "@/components/common/enroll-by-invite/-utils/gtm";
 import { buildComponentStyle, getAnimationStyle } from "../-utils/component-style";
+import { BasketSummaryBar } from "./BasketSummaryBar";
 import { CourseStructureDetails } from "@/routes/$tagName/-components/CourseStructureDetails";
 import {
   getTerminology,
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import type {
   PageJson,
   PageComponent,
@@ -24,6 +26,30 @@ import type {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * A logo value is either an http(s) URL — what the page builder's image upload
+ * writes — or a file id, which is what the catalogue's own header stores. The
+ * two have always been the same field name with different meanings, so a config
+ * copied from one to the other rendered a broken image. Accept both.
+ */
+const looksLikeFileId = (value: string) =>
+  !!value && !/^(https?:)?\/\//.test(value) && !value.startsWith("data:");
+
+const useImageSrc = (value: string) => {
+  const resolved = useFileUrl(looksLikeFileId(value) ? value : "");
+  return looksLikeFileId(value) ? resolved : value;
+};
+
+/**
+ * Resolves a media file id to a URL.
+ *
+ * The PUBLIC endpoint, not the authenticated one: a product page is a buying
+ * surface for people who are not logged in, and getPublicUrl goes through
+ * authenticatedAxiosInstance — so every logo and hero image configured by file
+ * id failed for exactly the visitors the page exists to serve, and the catch
+ * below turned that into a silently missing image. The catalogue's own header
+ * has always used the public endpoint; this matches it.
+ */
 const useFileUrl = (fileId: string) => {
   const [url, setUrl] = useState("");
   useEffect(() => {
@@ -31,14 +57,22 @@ const useFileUrl = (fileId: string) => {
       setUrl("");
       return;
     }
-    getPublicUrl(fileId)
-      .then(setUrl)
-      .catch(() => setUrl(""));
+    let cancelled = false;
+    getPublicUrlWithoutLogin(fileId)
+      .then((resolved) => {
+        if (!cancelled) setUrl(resolved);
+      })
+      .catch(() => {
+        if (!cancelled) setUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [fileId]);
   return url;
 };
 
-function getDisplayParts(mapping: ProductPageMappingResponse) {
+function getDisplayParts(mapping: ProductPageMappingResponse, fallbackTitle: string) {
   if (mapping.package_name) {
     return {
       title: mapping.package_name,
@@ -48,7 +82,7 @@ function getDisplayParts(mapping: ProductPageMappingResponse) {
     };
   }
   return {
-    title: mapping.payment_plan?.name || `Course ${mapping.display_order + 1}`,
+    title: mapping.payment_plan?.name || fallbackTitle,
     subtitle: "",
   };
 }
@@ -137,10 +171,16 @@ export const HeaderBlock = ({
   primaryColor: string;
   pageName: string;
 }) => {
-  const title = (props.title as string) || pageName || "";
+  const { t } = useTranslation("productPages");
   const logoFileId = (props.logoFileId as string) || "";
   const showLogo = props.showLogo !== false;
   const logoUrl = useFileUrl(logoFileId);
+  // The logo IS the identity. Printing the page name beside it repeats the
+  // brand twice in the same bar. Keyed off whether a logo is CONFIGURED, not
+  // whether it has resolved yet, so the name does not flash in and out while
+  // the file URL loads. An explicitly authored title always wins.
+  const hasLogo = showLogo && !!logoFileId;
+  const title = (props.title as string) || (hasLogo ? "" : pageName) || "";
 
   return (
     <header
@@ -149,7 +189,7 @@ export const HeaderBlock = ({
     >
       <div className="mx-auto flex max-w-screen-2xl items-center gap-3">
         {showLogo && logoUrl && (
-          <img src={logoUrl} className="h-9 w-auto object-contain" alt="logo" />
+          <img src={logoUrl} className="h-9 w-auto object-contain" alt={t("common.logoAlt")} />
         )}
         {title && <span className="text-lg font-bold text-white">{title}</span>}
       </div>
@@ -293,6 +333,7 @@ const FilterBarBlock = ({
   activeFilters: Record<string, string>;
   onFilterChange: (key: string, value: string) => void;
 }) => {
+  const { t } = useTranslation("productPages");
   const filters = (props.filters as FilterItem[]) || [];
   if (filters.length === 0) return null;
 
@@ -301,7 +342,7 @@ const FilterBarBlock = ({
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
           <SlidersHorizontal className="size-3.5" />
-          Filter
+          {t("pageRenderer.filterBar.filterLabel")}
         </div>
         {filters.map((filter) => {
           const values = Array.from(
@@ -356,6 +397,7 @@ const FilterBarBlock = ({
 // ─── Rich Course Detail Sheet ─────────────────────────────────────────────────
 
 const HtmlViewMore: React.FC<{ html: string; lines?: number }> = ({ html, lines = 4 }) => {
+  const { t } = useTranslation("productPages");
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -370,7 +412,7 @@ const HtmlViewMore: React.FC<{ html: string; lines?: number }> = ({ html, lines 
       <div ref={ref} className={cn("text-sm leading-relaxed text-gray-600 prose prose-sm max-w-none", !expanded && clampClass)} dangerouslySetInnerHTML={{ __html: html }} />
       {(clamped || expanded) && (
         <button type="button" onClick={() => setExpanded(v => !v)} className="mt-1 text-xs font-semibold text-primary-600 hover:underline">
-          {expanded ? "View less" : "View more"}
+          {expanded ? t("pageRenderer.courseDetailSheet.viewLess") : t("pageRenderer.courseDetailSheet.viewMore")}
         </button>
       )}
     </div>
@@ -444,10 +486,15 @@ const CourseDetailSheet = ({
   currency: string; primaryColor: string; onToggle: () => void; onClose: () => void;
   instituteId: string;
 }) => {
+  const { t } = useTranslation("productPages");
   const [details, setDetails] = useState<CourseInitData | null>(null);
   const [loading, setLoading] = useState(true);
   const bannerUrl = useCourseImageUrl(mapping.course_preview_image_media_id);
-  const { title, subtitle } = getDisplayParts(mapping);
+  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const { title, subtitle } = getDisplayParts(
+    mapping,
+    t("common.courseFallbackWithIndex", { course: courseTerm, index: mapping.display_order + 1 })
+  );
   const plan = mapping.payment_plan;
   const isFree = !plan?.actual_price || plan.actual_price === 0;
 
@@ -525,9 +572,9 @@ const CourseDetailSheet = ({
           {/* Overview row */}
           <div className="flex flex-wrap gap-4 rounded-xl bg-gray-50 px-4 py-3 text-sm">
             <div>
-              <p className="text-xs text-gray-400">Price</p>
+              <p className="text-xs text-gray-400">{t("pageRenderer.courseDetailSheet.priceLabel")}</p>
               {isFree ? (
-                <p className="font-bold text-green-600">Free</p>
+                <p className="font-bold text-green-600">{t("common.free")}</p>
               ) : (
                 <div className="flex items-baseline gap-1.5">
                   <span className="font-bold" style={{ color: primaryColor }}>{currency} {plan!.actual_price.toLocaleString()}</span>
@@ -539,7 +586,7 @@ const CourseDetailSheet = ({
             </div>
             {(course?.rating ?? 0) > 0 && (
               <div>
-                <p className="text-xs text-gray-400">Rating</p>
+                <p className="text-xs text-gray-400">{t("pageRenderer.courseDetailSheet.ratingLabel")}</p>
                 <div className="flex items-center gap-1">
                   <Star className="size-3.5 fill-amber-400 text-amber-400" />
                   <span className="font-semibold">{course!.rating!.toFixed(1)}</span>
@@ -556,9 +603,9 @@ const CourseDetailSheet = ({
             )}
             {plan?.validity_in_days > 0 && (
               <div>
-                <p className="text-xs text-gray-400">Access</p>
+                <p className="text-xs text-gray-400">{t("pageRenderer.courseDetailSheet.accessLabel")}</p>
                 <p className="font-medium text-gray-700">
-                  {plan.validity_in_days === 365 ? "1 year" : plan.validity_in_days % 30 === 0 ? `${plan.validity_in_days / 30}mo` : `${plan.validity_in_days}d`}
+                  {plan.validity_in_days === 365 ? t("pageRenderer.courseDetailSheet.oneYear") : plan.validity_in_days % 30 === 0 ? `${plan.validity_in_days / 30}mo` : `${plan.validity_in_days}d`}
                 </p>
               </div>
             )}
@@ -568,22 +615,22 @@ const CourseDetailSheet = ({
           {!loading && hasHighlights && (
             <div className="space-y-2">
               {whyLearn && stripHtml(whyLearn) && (
-                <HighlightAccordion icon={<BookOpen className="size-4 text-green-600" />} title="What you'll learn">
+                <HighlightAccordion icon={<BookOpen className="size-4 text-green-600" />} title={t("pageRenderer.courseDetailSheet.whatYoullLearn")}>
                   <HtmlViewMore html={whyLearn} />
                 </HighlightAccordion>
               )}
               {aboutCourse && stripHtml(aboutCourse) && (
-                <HighlightAccordion icon={<Lightbulb className="size-4 text-blue-600" />} title="About this course">
+                <HighlightAccordion icon={<Lightbulb className="size-4 text-blue-600" />} title={t("pageRenderer.courseDetailSheet.aboutThisCourse", { course: courseTerm.toLocaleLowerCase() })}>
                   <HtmlViewMore html={aboutCourse} />
                 </HighlightAccordion>
               )}
               {whoShouldLearn && stripHtml(whoShouldLearn) && (
-                <HighlightAccordion icon={<Users className="size-4 text-purple-600" />} title="Who should join">
+                <HighlightAccordion icon={<Users className="size-4 text-purple-600" />} title={t("pageRenderer.courseDetailSheet.whoShouldJoin")}>
                   <HtmlViewMore html={whoShouldLearn} />
                 </HighlightAccordion>
               )}
               {instructors.length > 0 && (
-                <HighlightAccordion icon={<Users className="size-4 text-orange-600" />} title="Instructors">
+                <HighlightAccordion icon={<Users className="size-4 text-orange-600" />} title={getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}>
                   <div className="space-y-2">
                     {instructors.map((inst, i) => (
                       <div key={i} className="flex items-center gap-3 rounded-lg bg-white p-2.5">
@@ -625,13 +672,13 @@ const CourseDetailSheet = ({
           {selected ? (
             <button type="button" onClick={() => { if (canDeselect) { onToggle(); onClose(); } }} disabled={!canDeselect}
               className="w-full rounded-xl border border-red-300 py-3 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">
-              Remove from Cart
+              {t("pageRenderer.courseDetailSheet.removeFromCart")}
             </button>
           ) : (
             <button type="button" onClick={() => { onToggle(); onClose(); }}
               className="w-full rounded-xl py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
               style={{ backgroundColor: primaryColor }}>
-              Add to Cart
+              {t("common.addToCart")}
             </button>
           )}
         </div>
@@ -704,8 +751,13 @@ const CourseCard = ({
   tagName?: string;
   productPageCode?: string;
 }) => {
+  const { t } = useTranslation("productPages");
   const [showDetail, setShowDetail] = useState(false);
-  const { title } = getDisplayParts(mapping);
+  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const { title } = getDisplayParts(
+    mapping,
+    t("common.courseFallbackWithIndex", { course: courseTerm, index: mapping.display_order + 1 })
+  );
   const plan = mapping.payment_plan;
   const isFree = !plan?.actual_price || plan.actual_price === 0;
   const imageUrl = useCourseImageUrl(mapping.course_preview_image_media_id);
@@ -738,7 +790,7 @@ const CourseCard = ({
   const rawDescription = mapping.about_the_course_html || plan?.description || "";
   const descriptionText = rawDescription.replace(/<[^>]+>/g, "").trim();
   const desc = descriptionText && descriptionText.toLowerCase() !== title.toLowerCase() && descriptionText.length > 4
-    ? descriptionText : "No description available";
+    ? descriptionText : t("pageRenderer.courseCard.noDescriptionAvailable");
 
   return (
     <>
@@ -762,7 +814,7 @@ const CourseCard = ({
           )}
           {hasDiscount && discountPct > 0 && (
             <div className="absolute start-2.5 top-2.5 rounded-full bg-orange-500 px-2 py-0.5 text-caption font-bold text-white shadow">
-              {discountPct}% OFF
+              {t("pageRenderer.courseCard.percentOff", { percent: discountPct })}
             </div>
           )}
           {selected && (
@@ -797,7 +849,7 @@ const CourseCard = ({
             </div>
             <div className="shrink-0 text-end">
               {isFree ? (
-                <span className="text-xs font-bold text-emerald-600">Free</span>
+                <span className="text-xs font-bold text-emerald-600">{t("common.free")}</span>
               ) : (
                 <div>
                   <span className="text-xs font-bold" style={{ color: primaryColor }}>
@@ -825,7 +877,7 @@ const CourseCard = ({
               className="flex flex-1 items-center justify-center gap-1.5 border-t border-gray-100 py-2.5 text-caption font-semibold no-underline transition-all duration-150 hover:bg-gray-50"
               style={{ color: primaryColor }}
             >
-              View course
+              {t("pageRenderer.courseCard.viewCourse")}
             </Link>
           )}
           <button
@@ -840,7 +892,7 @@ const CourseCard = ({
             )}
             style={selected ? { backgroundColor: `${primaryColor}10`, color: primaryColor } : { backgroundColor: primaryColor }}
           >
-            {selected ? <><CheckCircle className="size-3" /> Added to Cart</> : <><ShoppingCart className="size-3" /> Add to Cart</>}
+            {selected ? <><CheckCircle className="size-3" /> {t("pageRenderer.courseCard.addedToCart")}</> : <><ShoppingCart className="size-3" /> {t("common.addToCart")}</>}
           </button>
         </div>
       </div>
@@ -866,6 +918,8 @@ export const CourseGridBlock = ({
   activeFilters = NO_ACTIVE_FILTERS,
   tagName,
   productPageCode,
+  lockedLevels,
+  lockedPackageSessionIds,
 }: {
   props: Record<string, unknown>;
   pageData: ProductPageData;
@@ -876,19 +930,67 @@ export const CourseGridBlock = ({
   /** Catalogue slug — enables the per-card "View course" link. */
   tagName?: string;
   productPageCode?: string;
+  /**
+   * Comma-separated level names this grid is hard-restricted to, carried over
+   * from the catalogue's Course Finder pick (?levels=). A restriction, not a
+   * default: the visitor who chose "Class 6" must not be shown every other
+   * level here, and cannot widen back out via the level facet.
+   */
+  lockedLevels?: string;
+  /**
+   * package_session_ids this grid is hard-restricted to, from the page's
+   * Course Finder pick. Narrower than lockedLevels and applied after it: a
+   * page whose classes all share one level cannot be split any other way.
+   */
+  lockedPackageSessionIds?: string[];
 }) => {
-  const columns = (props.columns as number) || 3;
+  const { t } = useTranslation("productPages");
+  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const coursesTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+  const authoredColumns = (props.columns as number) || 3;
   const sectionTitle = props.title as string | undefined;
   const sectionSubtitle = props.subtitle as string | undefined;
   // Admin-set page size wins; the constant is only the fallback.
   const perPage = Number(props.pageSize) > 0 ? Math.floor(Number(props.pageSize)) : DEFAULT_PAGE_SIZE;
   const { selectedPsOptionIds, toggleSelection, totalPrice } = useProductPageStore();
 
-  const activeMappings = useMemo(
-    () => pageData.mappings.filter((m) => m.status === "ACTIVE"),
-    [pageData.mappings],
-  );
+  const activeMappings = useMemo(() => {
+    const active = pageData.mappings.filter((m) => m.status === "ACTIVE");
+
+    // The Course Finder's pick, applied first because it is exact: ids, not
+    // names. An empty result means the chosen class lost its courses since the
+    // pick was saved — falling back to everything is the same "a restriction
+    // that matches nothing is a broken link" rule the level filter uses.
+    const byId = lockedPackageSessionIds?.length
+      ? active.filter((m) => lockedPackageSessionIds.includes(m.package_session_id))
+      : active;
+    const scoped = byId.length > 0 ? byId : active;
+
+    const allowed = (lockedLevels || "")
+      .split(",")
+      .map((l) => l.trim().toLowerCase())
+      .filter(Boolean);
+    if (allowed.length === 0) return scoped;
+    // Case-insensitive: levelGroups in catalogue JSON are hand-authored and
+    // drift from the real level names ("Cyber Ai-" vs "Cyber AI-").
+    const allowedSet = new Set(allowed);
+    const narrowed = scoped.filter((m) =>
+      allowedSet.has((m.level_name || "").trim().toLowerCase()),
+    );
+    // A restriction that matches nothing is a broken link, not an empty
+    // catalogue — fall back to the full list rather than a dead page.
+    return narrowed.length > 0 ? narrowed : scoped;
+  }, [pageData.mappings, lockedLevels, lockedPackageSessionIds]);
   const currency = pageData.currency || activeMappings[0]?.payment_plan?.currency || "";
+
+  // A Course Finder pick usually leaves one course. Rendering it into a 3-up
+  // grid puts a third-width card alone on the left, which reads as a row that
+  // failed to load rather than as the one offer for the class just chosen.
+  // Only narrowed grids are adjusted — an ordinary page keeps its authored
+  // column count whatever its course count.
+  const columns = lockedPackageSessionIds?.length
+    ? Math.min(authoredColumns, activeMappings.length || 1)
+    : authoredColumns;
 
   // ── Filter / search state ──
   const [search, setSearch] = useState("");
@@ -936,7 +1038,12 @@ export const CourseGridBlock = ({
       // typing "cbse" or "2026-27" used to return nothing.
       if (
         q &&
-        ![getDisplayParts(m).title, m.level_name, m.session_name, ...tags]
+        ![
+          getDisplayParts(m, t("common.courseFallbackWithIndex", { course: courseTerm, index: m.display_order + 1 })).title,
+          m.level_name,
+          m.session_name,
+          ...tags,
+        ]
           .filter(Boolean)
           .some((v) => (v as string).toLowerCase().includes(q))
       )
@@ -963,6 +1070,12 @@ export const CourseGridBlock = ({
   // the pager parked on a page that no longer exists (blank grid).
   const safePage = Math.min(page, Math.max(totalPages - 1, 0));
   const paginated = filtered.slice(safePage * perPage, (safePage + 1) * perPage);
+
+  // A narrowed grid holding exactly one course is the answer to "which class?",
+  // not a catalogue. Left-aligned in a 3-up grid it reads as a row that failed
+  // to load; stretched full-width its banner is cropped to a strip of foreheads.
+  // Centred at a readable width, it reads as the one offer it is.
+  const soleOffer = !!lockedPackageSessionIds?.length && activeMappings.length === 1;
 
   const colClass =
     columns >= 4 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
@@ -1003,10 +1116,10 @@ export const CourseGridBlock = ({
   const filterSidebar = (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-bold text-gray-900">Filters</span>
+        <span className="text-sm font-bold text-gray-900">{t("pageRenderer.courseGrid.filtersTitle")}</span>
         {hasActiveFilters && (
           <button type="button" onClick={clearAll} className="text-caption font-medium text-gray-400 hover:text-gray-700">
-            Clear all
+            {t("pageRenderer.courseGrid.clearAll")}
           </button>
         )}
       </div>
@@ -1036,7 +1149,7 @@ export const CourseGridBlock = ({
             <button type="button" onClick={() => setShowMoreTags((p) => !p)}
               className="mt-2 flex items-center gap-1 text-caption font-medium text-gray-400 hover:text-gray-700">
               <CaretDown className={cn("size-3 transition-transform", showMoreTags && "rotate-180")} />
-              {showMoreTags ? "Show less" : `Show ${allTags.length - 5} more`}
+              {showMoreTags ? t("pageRenderer.courseGrid.showLess") : t("pageRenderer.courseGrid.showMore", { count: allTags.length - 5 })}
             </button>
           )}
         </div>
@@ -1066,7 +1179,7 @@ export const CourseGridBlock = ({
             <button type="button" onClick={() => setShowMoreLevels((p) => !p)}
               className="mt-2 flex items-center gap-1 text-caption font-medium text-gray-400 hover:text-gray-700">
               <CaretDown className={cn("size-3 transition-transform", showMoreLevels && "rotate-180")} />
-              {showMoreLevels ? "Show less" : `Show ${allLevels.length - 4} more`}
+              {showMoreLevels ? t("pageRenderer.courseGrid.showLess") : t("pageRenderer.courseGrid.showMore", { count: allLevels.length - 4 })}
             </button>
           )}
         </div>
@@ -1074,8 +1187,8 @@ export const CourseGridBlock = ({
 
       {/* Session */}
       {showSessionFilter && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
             {getTerminology(ContentTerms.Batch, SystemTerms.Batch)} /{" "}
             {getTerminology(ContentTerms.Session, SystemTerms.Session)}
           </p>
@@ -1098,11 +1211,11 @@ export const CourseGridBlock = ({
 
       {/* Price range */}
       {showPriceFilter && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Price Range</p>
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t("pageRenderer.courseGrid.priceRangeTitle")}</p>
           <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <p className="mb-1 text-caption text-gray-400">Min</p>
+            <div className="flex-1 space-y-1">
+              <p className="text-caption text-gray-400">{t("pageRenderer.courseGrid.min")}</p>
               <input
                 type="number" min={0} value={priceMin} placeholder="0"
                 onChange={(e) => { setPriceMin(e.target.value); setPage(0); }}
@@ -1110,8 +1223,8 @@ export const CourseGridBlock = ({
               />
             </div>
             <span className="mt-4 text-xs text-gray-400">–</span>
-            <div className="flex-1">
-              <p className="mb-1 text-caption text-gray-400">Max</p>
+            <div className="flex-1 space-y-1">
+              <p className="text-caption text-gray-400">{t("pageRenderer.courseGrid.max")}</p>
               <input
                 type="number" min={0} value={priceMax} placeholder={maxPriceAll.toString()}
                 onChange={(e) => { setPriceMax(e.target.value); setPage(0); }}
@@ -1140,7 +1253,7 @@ export const CourseGridBlock = ({
           with 100+ courses; these chips are the fast path to the same state. */}
       {showTagFilter && (
         <div className="mb-5 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Popular</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">{t("pageRenderer.courseGrid.popularLabel")}</span>
           {allTags.slice(0, POPULAR_TAG_LIMIT).map((t) => {
             const on = tagSel.includes(t.key);
             return (
@@ -1162,7 +1275,7 @@ export const CourseGridBlock = ({
           })}
           {hasActiveFilters && (
             <button type="button" onClick={clearAll} className="text-xs font-medium text-gray-400 hover:text-gray-700">
-              Clear
+              {t("pageRenderer.courseGrid.clear")}
             </button>
           )}
         </div>
@@ -1191,7 +1304,7 @@ export const CourseGridBlock = ({
                     type="text"
                     value={search}
                     onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-                    placeholder="Search courses…"
+                    placeholder={t("pageRenderer.courseGrid.searchPlaceholder", { courses: coursesTerm.toLocaleLowerCase() })}
                     className="w-full rounded-xl border border-gray-200 bg-white py-2.5 ps-9 pe-3 text-sm shadow-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
                   />
                 </div>
@@ -1204,7 +1317,7 @@ export const CourseGridBlock = ({
                   className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-600 shadow-sm lg:hidden"
                 >
                   <SlidersHorizontal className="size-4" />
-                  Filters
+                  {t("pageRenderer.courseGrid.filtersTitle")}
                   {activeFilterCount > 0 && <span className="flex size-4 items-center justify-center rounded-full text-caption font-bold text-white" style={{ backgroundColor: primaryColor }}>{activeFilterCount}</span>}
                 </button>
               )}
@@ -1220,9 +1333,16 @@ export const CourseGridBlock = ({
 
           {/* Results count */}
           <p className="mb-3 text-xs text-gray-400" role="status" aria-live="polite">
-            {filtered.length} course{filtered.length !== 1 ? "s" : ""}
-            {(search || hasActiveFilters) ? " found" : " available"}
-            {totalPages > 1 && ` · page ${safePage + 1} of ${totalPages}`}
+            {(search || hasActiveFilters)
+              ? t("pageRenderer.courseGrid.resultsFound", {
+                  count: filtered.length,
+                  course: (filtered.length === 1 ? courseTerm : coursesTerm).toLocaleLowerCase(),
+                })
+              : t("pageRenderer.courseGrid.resultsAvailable", {
+                  count: filtered.length,
+                  course: (filtered.length === 1 ? courseTerm : coursesTerm).toLocaleLowerCase(),
+                })}
+            {totalPages > 1 && t("pageRenderer.courseGrid.pageSuffix", { page: safePage + 1, total: totalPages })}
           </p>
 
           {/* Grid */}
@@ -1231,11 +1351,11 @@ export const CourseGridBlock = ({
               <div className="mb-3 flex size-14 items-center justify-center rounded-full bg-gray-100">
                 <BookOpen className="size-7 text-gray-300" />
               </div>
-              <p className="text-sm font-medium text-gray-500">No courses found</p>
-              <button type="button" onClick={clearAll} className="mt-2 text-xs text-gray-400 hover:underline">Clear filters</button>
+              <p className="text-sm font-medium text-gray-500">{t("pageRenderer.courseGrid.noCoursesFound", { courses: coursesTerm.toLocaleLowerCase() })}</p>
+              <button type="button" onClick={clearAll} className="mt-2 text-xs text-gray-400 hover:underline">{t("pageRenderer.courseGrid.clearFilters")}</button>
             </div>
           ) : (
-            <div className={`grid gap-4 ${colClass}`}>
+            <div className={cn("grid gap-4", colClass, soleOffer && "mx-auto w-full max-w-xl")}>
               {paginated.map((mapping) => {
                 const selected = selectedPsOptionIds.includes(mapping.ps_invite_payment_option_id);
                 return (
@@ -1262,12 +1382,12 @@ export const CourseGridBlock = ({
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <nav className="mt-6 flex flex-wrap items-center justify-center gap-2" aria-label="Course pages">
+            <nav className="mt-6 flex flex-wrap items-center justify-center gap-2" aria-label={t("pageRenderer.courseGrid.coursePagesAriaLabel", { courses: coursesTerm.toLocaleLowerCase() })}>
               <button
                 type="button"
                 disabled={safePage === 0}
                 onClick={() => setPage(safePage - 1)}
-                aria-label="Previous page"
+                aria-label={t("pageRenderer.courseGrid.previousPageAriaLabel")}
                 className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-30"
               >
                 <CaretLeft className="size-4" />
@@ -1283,7 +1403,7 @@ export const CourseGridBlock = ({
                       key={p}
                       type="button"
                       onClick={() => setPage(p - 1)}
-                      aria-label={`Page ${p}`}
+                      aria-label={t("pageRenderer.courseGrid.pageAriaLabel", { page: p })}
                       aria-current={p === safePage + 1 ? "page" : undefined}
                       className={cn(
                         "flex size-8 items-center justify-center rounded-lg text-xs font-medium transition-colors",
@@ -1300,7 +1420,7 @@ export const CourseGridBlock = ({
                 type="button"
                 disabled={safePage >= totalPages - 1}
                 onClick={() => setPage(safePage + 1)}
-                aria-label="Next page"
+                aria-label={t("pageRenderer.courseGrid.nextPageAriaLabel")}
                 className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-30"
               >
                 <CaretRight className="size-4" />
@@ -1323,41 +1443,14 @@ const StickyCartBar = ({
   pageData: ProductPageData;
   onNext: () => void;
   primaryColor: string;
-}) => {
-  const { selectedPsOptionIds, totalPrice } = useProductPageStore();
-  const currency = pageData.currency || pageData.mappings[0]?.payment_plan?.currency || "";
-  const price = totalPrice();
-  const count = selectedPsOptionIds.length;
-  if (count === 0) return null;
-
-  return (
-    <div className="sticky bottom-0 z-30 border-t border-gray-100 bg-white/95 px-4 py-3 shadow-top-bar backdrop-blur-md">
-      <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-caption text-gray-500">
-            {count} course{count !== 1 ? "s" : ""} selected
-          </p>
-          {price > 0 ? (
-            <p className="text-xl font-bold text-gray-900">
-              {currency} {price.toLocaleString()}
-            </p>
-          ) : (
-            <p className="text-base font-bold text-emerald-600">Free enrollment</p>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onNext}
-          className="flex shrink-0 items-center gap-2 rounded-xl px-7 py-3 text-sm font-bold text-white shadow-lg transition-all duration-150 hover:opacity-90 active:scale-95"
-          style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}55` }}
-        >
-          <ShoppingCart className="size-4" />
-          Proceed to Checkout
-        </button>
-      </div>
-    </div>
-  );
-};
+}) => (
+  // Shared with the plain-catalogue bar so the two cannot quote different
+  // totals for the same basket — this one summed the card prices and ignored
+  // basket pricing entirely, quoting the undiscounted figure right up to
+  // checkout. The shared bar keeps this one's translations and institute
+  // terminology.
+  <BasketSummaryBar pageData={pageData} onNext={onNext} primaryColor={primaryColor} />
+);
 
 // ─── New catalogue-format blocks ─────────────────────────────────────────────
 
@@ -1506,8 +1599,11 @@ export const NewHeaderBlock = ({
   primaryColor: string;
   pageName: string;
 }) => {
-  const title = (props.title as string) || pageName || "";
-  const logoUrl = (props.logo as string) || "";
+  const { t } = useTranslation("productPages");
+  const logoRaw = (props.logo as string) || "";
+  const logoUrl = useImageSrc(logoRaw);
+  // See HeaderBlock: a logo already says who this is.
+  const title = (props.title as string) || (logoRaw ? "" : pageName) || "";
   const navigation = (props.navigation as Array<{ label: string; url?: string; route?: string }>) || [];
   const ctaButton = (props.ctaButton as { enabled?: boolean; text?: string; url?: string; bgColor?: string; textColor?: string }) || {};
   const bg = (props.backgroundColor as string) || primaryColor;
@@ -1520,7 +1616,7 @@ export const NewHeaderBlock = ({
       <div className="mx-auto flex max-w-screen-xl items-center gap-4">
         <div className="flex shrink-0 items-center gap-3">
           {logoUrl && (
-            <img src={logoUrl} className="h-9 w-auto object-contain" alt="logo" />
+            <img src={logoUrl} className="h-9 w-auto object-contain" alt={t("common.logoAlt")} />
           )}
           {title && <span className="text-lg font-bold" style={{ color: fg }}>{title}</span>}
         </div>
@@ -1833,6 +1929,7 @@ const StepsProcessBlock = ({
 };
 
 const VideoEmbedBlock = ({ props }: { props: Record<string, unknown> }) => {
+  const { t } = useTranslation("productPages");
   const bg = (props.backgroundColor as string) || "black";
   const rawUrl = (props.url as string) || "";
 
@@ -1859,13 +1956,13 @@ const VideoEmbedBlock = ({ props }: { props: Record<string, unknown> }) => {
               src={embedUrl}
               className="size-full"
               allowFullScreen
-              title={(props.title as string) || "Video"}
+              title={(props.title as string) || t("pageRenderer.videoEmbed.defaultTitle")}
             />
           ) : (
             <div className="flex size-full items-center justify-center bg-gray-800 text-center text-white/50">
-              <div>
-                <div className="mb-2 text-5xl">▶</div>
-                <p className="text-sm">Add a video URL in properties</p>
+              <div className="space-y-2">
+                <div className="text-5xl">▶</div>
+                <p className="text-sm">{t("pageRenderer.videoEmbed.addUrlPlaceholder")}</p>
               </div>
             </div>
           )}
@@ -1979,6 +2076,10 @@ interface PageRendererProps {
   /** Catalogue slug — enables the per-card "View course" link. */
   tagName?: string;
   productPageCode?: string;
+  /** Course Finder level restriction, forwarded to every course grid. */
+  lockedLevels?: string;
+  /** Course Finder class pick (package_session_ids), same forwarding. */
+  lockedPackageSessionIds?: string[];
   onNext: () => void;
 }
 
@@ -1997,6 +2098,8 @@ export const PageRenderer = ({
   settings,
   tagName,
   productPageCode,
+  lockedLevels,
+  lockedPackageSessionIds,
   onNext,
 }: PageRendererProps) => {
   const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
@@ -2009,7 +2112,14 @@ export const PageRenderer = ({
   const onFilterChange = (key: string, value: string) =>
     setActiveFilters((prev) => ({ ...prev, [key]: value }));
 
-  const activeMappings = pageData.mappings.filter((m) => m.status === "ACTIVE");
+  // Narrowed by the Course Finder pick as well, so a FilterBar above the grid
+  // offers the classes' own levels and sessions rather than every one on the
+  // page — chips that would filter courses the visitor cannot see.
+  const allActive = pageData.mappings.filter((m) => m.status === "ACTIVE");
+  const scopedActive = lockedPackageSessionIds?.length
+    ? allActive.filter((m) => lockedPackageSessionIds.includes(m.package_session_id))
+    : allActive;
+  const activeMappings = scopedActive.length > 0 ? scopedActive : allActive;
 
   const wrapWithStyle = (node: React.ReactNode, component: PageComponent) => {
     const baseStyle = buildComponentStyle(component.style);
@@ -2037,7 +2147,7 @@ export const PageRenderer = ({
         );
       case "CourseGrid":
         return (
-          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} />
+          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} lockedLevels={lockedLevels} lockedPackageSessionIds={lockedPackageSessionIds} />
         );
       case "TextBlock":
         return <TextBlockComp key={component.id} props={component.props} />;
@@ -2059,7 +2169,7 @@ export const PageRenderer = ({
         );
       case "productCourseGrid":
         return (
-          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} />
+          <CourseGridBlock key={component.id} props={component.props} pageData={pageData} settings={settings} primaryColor={primaryColor} activeFilters={activeFilters} tagName={tagName} productPageCode={productPageCode} lockedLevels={lockedLevels} lockedPackageSessionIds={lockedPackageSessionIds} />
         );
       case "footer":
         return <NewFooterBlock key={component.id} props={component.props} />;

@@ -3,22 +3,31 @@ import {
     BookOpen,
     ShoppingCart,
     CreditCard,
-    ChevronRight,
-    CheckCircle2,
+    CaretRight as ChevronRight,
+    CheckCircle as CheckCircle2,
     FileText,
-    Mail,
-    MessageCircle,
+    Envelope as Mail,
+    ChatCircle as MessageCircle,
     Receipt,
-    Sparkles,
-    ArrowLeftRight,
+    Sparkle as Sparkles,
+    ArrowsLeftRight as ArrowLeftRight,
     Tag,
-    ExternalLink,
-} from 'lucide-react';
-import type { ProductPageSettings } from '../-types/product-page-types';
+    Percent,
+    Plus,
+    Trash as Trash2,
+    ArrowSquareOut as ExternalLink,
+    MagicWand,
+} from '@phosphor-icons/react';
+import type { MappingRow, ProductPageSettings } from '../-types/product-page-types';
+import { BasketPricingEditor } from './BasketPricingEditor';
+import { CourseFinderEditor } from './CourseFinderEditor';
+import { OffersEditor } from './OffersEditor';
 
 interface ProductPageSettingsCardProps {
     settings: ProductPageSettings;
     onChange: (updated: ProductPageSettings) => void;
+    /** The page's courses — the source of real level / course names to pick from. */
+    courses?: MappingRow[];
 }
 
 const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
@@ -137,7 +146,11 @@ const STEPS = [
 
 // ─── Settings card ────────────────────────────────────────────────────────────
 
-export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSettingsCardProps) => {
+export const ProductPageSettingsCard = ({
+    settings,
+    onChange,
+    courses = [],
+}: ProductPageSettingsCardProps) => {
     const update = (patch: Partial<ProductPageSettings>) => onChange({ ...settings, ...patch });
     const selectedStepIndex = STEPS.findIndex((s) => s.id === settings.defaultStep);
 
@@ -214,6 +227,22 @@ export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSetti
                         })}
                     </div>
 
+                    {/* A finder lives on the catalogue step. Landing anywhere
+                        else skips the question and drops the visitor on an
+                        empty basket, so the learner app now forces the
+                        catalogue — say so rather than letting the picker
+                        silently disagree with what is selected here. */}
+                    {settings.courseFinder?.enabled && settings.defaultStep !== 'CATALOG' && (
+                        <div className="mt-3 rounded-lg border border-warning-300 bg-warning-50 px-3 py-2">
+                            <p className="text-xs text-warning-700">
+                                Course Finder is on, so learners still land on{' '}
+                                <strong>Catalog</strong> — the class question has to be asked before
+                                there is anything in the cart. Turn the Course Finder off to use
+                                this landing step.
+                            </p>
+                        </div>
+                    )}
+
                     {/* Flow label */}
                     <div className="mt-3 flex items-center gap-1 rounded-lg bg-neutral-50 px-3 py-2">
                         <span className="text-[10px] text-neutral-400">Learner flow:</span>
@@ -274,6 +303,94 @@ export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSetti
                         onChange: () => update({ coupon: { enabled: !(settings.coupon?.enabled ?? false) } }),
                     },
                     {
+                        icon: Tag,
+                        color: 'text-rose-500 bg-rose-50',
+                        label: 'Offers',
+                        description: '“₹99 off above ₹500” — no code, applied automatically',
+                        checked: settings.offers?.enabled ?? false,
+                        panel: settings.offers ? (
+                            <OffersEditor
+                                value={settings.offers}
+                                onChange={(offers) => update({ offers })}
+                            />
+                        ) : null,
+                        onChange: () =>
+                            update({
+                                offers: {
+                                    rules: settings.offers?.rules?.length
+                                        ? settings.offers.rules
+                                        : [
+                                              {
+                                                  id: 'offer-default-1',
+                                                  label: '',
+                                                  minAmount: 500,
+                                                  discountType: 'FIXED',
+                                                  discountValue: 99,
+                                              },
+                                          ],
+                                    enabled: !(settings.offers?.enabled ?? false),
+                                },
+                            }),
+                    },
+                    {
+                        icon: MagicWand,
+                        color: 'text-sky-500 bg-sky-50',
+                        label: 'Course Finder',
+                        description: 'Ask “which class?” first, then show only those courses',
+                        checked: settings.courseFinder?.enabled ?? false,
+                        panel: settings.courseFinder ? (
+                            <CourseFinderEditor
+                                value={settings.courseFinder}
+                                courses={courses ?? []}
+                                onChange={(courseFinder) => update({ courseFinder })}
+                            />
+                        ) : null,
+                        onChange: () =>
+                            update({
+                                courseFinder: {
+                                    // Buttons are kept across an off/on cycle —
+                                    // turning the screen off to preview the page
+                                    // must not throw away the grouping work.
+                                    heading: settings.courseFinder?.heading ?? '',
+                                    subheading: settings.courseFinder?.subheading ?? '',
+                                    changeLabel: settings.courseFinder?.changeLabel ?? '',
+                                    allowSkip: settings.courseFinder?.allowSkip ?? false,
+                                    skipLabel: settings.courseFinder?.skipLabel ?? '',
+                                    groups: settings.courseFinder?.groups ?? [],
+                                    enabled: !(settings.courseFinder?.enabled ?? false),
+                                },
+                            }),
+                    },
+                    {
+                        icon: Percent,
+                        color: 'text-pink-500 bg-pink-50',
+                        label: 'Basket Pricing',
+                        description: 'Price by how many courses they pick, not per course',
+                        checked: settings.basketPricing?.enabled ?? false,
+                        panel: settings.basketPricing ? (
+                            <BasketPricingEditor
+                                value={settings.basketPricing}
+                                courses={courses}
+                                onChange={(basketPricing) => update({ basketPricing })}
+                            />
+                        ) : null,
+                        onChange: () =>
+                            update({
+                                basketPricing: {
+                                    // Seeded so the panel has something real to edit
+                                    // the first time it is opened.
+                                    ladder: settings.basketPricing?.ladder ?? {
+                                        prices: [349, 599, 799],
+                                        perExtra: 150,
+                                    },
+                                    groups: settings.basketPricing?.groups ?? [],
+                                    wholeGroupPrices: settings.basketPricing?.wholeGroupPrices ?? {},
+                                    combos: settings.basketPricing?.combos ?? [],
+                                    enabled: !(settings.basketPricing?.enabled ?? false),
+                                },
+                            }),
+                    },
+                    {
                         icon: Receipt,
                         color: 'text-emerald-500 bg-emerald-50',
                         label: 'Invoice / Receipt',
@@ -281,16 +398,19 @@ export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSetti
                         checked: settings.invoice.enabled,
                         onChange: () => update({ invoice: { ...settings.invoice, enabled: !settings.invoice.enabled } }),
                     },
-                ].map(({ icon: Icon, color, label, description, checked, onChange }) => (
-                    <div key={label} className="flex items-center gap-4 px-5 py-4">
-                        <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${checked ? color : 'bg-neutral-100 text-neutral-400'}`}>
-                            <Icon className="size-4" />
+                ].map(({ icon: Icon, color, label, description, checked, onChange, panel }) => (
+                    <div key={label}>
+                        <div className="flex items-center gap-4 px-5 py-4">
+                            <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${checked ? color : 'bg-neutral-100 text-neutral-400'}`}>
+                                <Icon className="size-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-neutral-800">{label}</p>
+                                <p className="text-xs text-neutral-400">{description}</p>
+                            </div>
+                            <Toggle checked={checked} onChange={onChange} />
                         </div>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-neutral-800">{label}</p>
-                            <p className="text-xs text-neutral-400">{description}</p>
-                        </div>
-                        <Toggle checked={checked} onChange={onChange} />
+                        {checked && panel}
                     </div>
                 ))}
 

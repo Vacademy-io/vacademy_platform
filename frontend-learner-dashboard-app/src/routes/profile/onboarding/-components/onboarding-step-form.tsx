@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   CheckCircle,
   ListChecks,
@@ -44,6 +45,7 @@ export const OnboardingStepForm = ({
   stepInstance,
   onSubmitted,
 }: OnboardingStepFormProps) => {
+  const { t } = useTranslation("userProfileExtra");
   const queryClient = useQueryClient();
 
   const {
@@ -77,11 +79,16 @@ export const OnboardingStepForm = ({
     const shape: Record<string, z.ZodTypeAny> = {};
     editableFields.forEach((field) => {
       shape[field.institute_custom_field_id] = field.is_mandatory
-        ? z.string().min(1, `${field.field_name ?? "This field"} is required`)
+        ? z.string().min(
+            1,
+            t("onboardingStepForm.validation.fieldRequired", {
+              field: field.field_name ?? t("onboardingStepForm.validation.fieldRequiredDefaultField"),
+            })
+          )
         : z.string().optional();
     });
     return z.object(shape);
-  }, [editableFields]);
+  }, [editableFields, t]);
 
   type FormValues = Record<string, string>;
 
@@ -110,17 +117,19 @@ export const OnboardingStepForm = ({
     mutationFn: (values: FormValues) =>
       submitStepInstance(stepInstance.id, values),
     onSuccess: (updated) => {
-      toast.success("Step submitted", {
-        description: `${stepInstance.step_name} has been recorded.`,
+      toast.success(t("onboardingStepForm.toast.submittedTitle"), {
+        description: t("onboardingStepForm.toast.submittedDescription", {
+          stepName: stepInstance.step_name,
+        }),
       });
       queryClient.invalidateQueries({ queryKey: [ONBOARDING_INSTANCES_QUERY_KEY] });
       onSubmitted(updated);
     },
     onError: (error) => {
-      toast.error("Couldn't submit", {
+      toast.error(t("onboardingStepForm.toast.errorTitle"), {
         description: getOnboardingApiErrorMessage(
           error,
-          "Something went wrong while submitting this step. Please try again."
+          t("onboardingStepForm.toast.errorFallback")
         ),
       });
     },
@@ -146,7 +155,7 @@ export const OnboardingStepForm = ({
             {stepInstance.step_name}
           </h2>
           <p className="mt-0.5 text-sm text-neutral-500">
-            Please fill in the details below to continue.
+            {t("onboardingStepForm.subtitle")}
           </p>
         </div>
       </div>
@@ -154,15 +163,15 @@ export const OnboardingStepForm = ({
       {isLoadingFields ? (
         <div className="flex items-center gap-2 py-6 text-sm text-neutral-500">
           <SpinnerGap className="size-4 animate-spin" />
-          Loading form...
+          {t("onboardingStepForm.loadingForm")}
         </div>
       ) : isFieldsError ? (
         <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-          Couldn&apos;t load this step&apos;s form. Please try again later.
+          {t("onboardingStepForm.loadError")}
         </div>
       ) : fields.length === 0 ? (
-        <div className="py-6 text-center text-sm text-neutral-500">
-          <p className="mb-4">No fields are configured for this step.</p>
+        <div className="py-6 text-center text-sm text-neutral-500 space-y-4">
+          <p>{t("onboardingStepForm.noFieldsConfigured")}</p>
           <MyButton
             type="button"
             buttonType="primary"
@@ -174,12 +183,12 @@ export const OnboardingStepForm = ({
             {submitMutation.isPending ? (
               <>
                 <SpinnerGap className="mr-2 size-4 animate-spin" />
-                Submitting...
+                {t("onboardingStepForm.submitting")}
               </>
             ) : (
               <>
                 <CheckCircle className="mr-2 size-4" />
-                Mark as complete
+                {t("onboardingStepForm.markAsComplete")}
               </>
             )}
           </MyButton>
@@ -197,10 +206,10 @@ export const OnboardingStepForm = ({
               >
                 <span className="flex items-center gap-1.5 text-xs font-medium text-neutral-500">
                   <Lock className="size-3.5" />
-                  {field.field_name ?? "Field"}
+                  {field.field_name ?? t("onboardingStepForm.defaultFieldLabel")}
                 </span>
                 <span className="text-sm text-neutral-700">
-                  {field.value || "Not filled in"}
+                  {field.value || t("onboardingStepForm.notFilledIn")}
                 </span>
               </div>
             ))}
@@ -218,14 +227,16 @@ export const OnboardingStepForm = ({
                           htmlFor={field.institute_custom_field_id}
                           className="text-sm font-medium text-neutral-700"
                         >
-                          {field.field_name ?? "Field"}
+                          {field.field_name ?? t("onboardingStepForm.defaultFieldLabel")}
                           {field.is_mandatory && (
                             <span className="ms-0.5 text-danger-600">*</span>
                           )}
                         </Label>
                         <Input
                           id={field.institute_custom_field_id}
-                          placeholder={`Enter ${field.field_name ?? "value"}`}
+                          placeholder={t("onboardingStepForm.enterPlaceholder", {
+                            field: field.field_name ?? t("onboardingStepForm.defaultFieldPlaceholder"),
+                          })}
                           className={cn(
                             "h-10 rounded-lg border-neutral-200 bg-neutral-50/50 px-3 text-sm text-neutral-700 shadow-none",
                             "placeholder:text-neutral-400 hover:border-primary-200 focus:border-primary-500 focus:bg-white focus-visible:ring-0",
@@ -256,10 +267,10 @@ export const OnboardingStepForm = ({
               {submitMutation.isPending ? (
                 <>
                   <SpinnerGap className="mr-2 size-4 animate-spin" />
-                  Submitting...
+                  {t("onboardingStepForm.submitting")}
                 </>
               ) : (
-                "Submit"
+                t("onboardingStepForm.submit")
               )}
             </MyButton>
           </form>

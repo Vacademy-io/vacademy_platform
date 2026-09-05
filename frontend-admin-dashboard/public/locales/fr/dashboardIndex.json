@@ -1,0 +1,72 @@
+{
+    "volt": {
+        "title": "Bienvenue sur Volt",
+        "subtitle": "L'avenir des présentations interactives.",
+        "redirecting": "Redirection vers votre espace de travail..."
+    },
+    "alertsDialog": {
+        "title": "Alertes système",
+        "loading": "Chargement...",
+        "loadMore": "Charger plus",
+        "empty": "Aucune alerte trouvée"
+    },
+    "myCourses": {
+        "title": "Mes cours",
+        "viewAll": "Tout voir",
+        "description": "Accès rapide aux cours que vous avez créés et à vos soumissions",
+        "authored": "Cours créés",
+        "inReview": "En cours de révision",
+        "loadError": "Échec du chargement des données des cours"
+    },
+    "page": {
+        "title": "Tableau de bord",
+        "metaDescription": "Cette page affiche le tableau de bord de l'établissement."
+    },
+    "greeting": {
+        "morning": "Bonjour, <strong>{{name}}!</strong>",
+        "afternoon": "Bon après-midi, <strong>{{name}}!</strong>",
+        "evening": "Bonsoir, <strong>{{name}}!</strong>"
+    },
+    "subtitle": {
+        "admin": "Voici comment se porte {{instituteName}} aujourd'hui.",
+        "adminFallbackInstitute": "votre établissement",
+        "nonAdmin": "Suivez vos cours et vos apprenants en un coup d'œil."
+    },
+    "header": {
+        "roleFallback": "Admin"
+    },
+    "welcomeVideo": {
+        "text": "Bienvenue à bord ! Nous sommes ravis de vous compter parmi nous. Configurons votre tableau de bord administrateur pour rendre l'apprentissage fluide et engageant."
+    },
+    "profileCard": {
+        "title": "Complétez le profil de votre établissement",
+        "dismissAriaLabel": "Fermer la carte de complétion du profil",
+        "percentComplete": "{{percent}} % complété"
+    },
+    "namingCard": {
+        "title": "Paramètres de dénomination",
+        "description": "Personnalisez les conventions de dénomination utilisées dans tout votre établissement",
+        "button": "Paramètres de dénomination",
+        "dismissAriaLabel": "Fermer la carte des paramètres de dénomination"
+    },
+    "revenueTrends": {
+        "subOrgTitle": "Montant collecté — mon organisation"
+    },
+    "roleTypeCard": {
+        "title": "Utilisateurs par type de rôle"
+    },
+    "aiCard": {
+        "dismissAriaLabel": "Fermer la carte des fonctionnalités IA",
+        "title": "Essayez les nouvelles fonctionnalités IA !",
+        "description": "Découvrez des outils d'IA de pointe pour améliorer votre enseignement",
+        "features": {
+            "pdf": "Questions à partir d'un PDF",
+            "lectureAudio": "Questions à partir de l'audio d'un cours",
+            "sortTopicWise": "Trier les questions par thème",
+            "image": "Questions à partir d'une image",
+            "lectureFeedback": "Obtenir un retour sur le cours",
+            "planLecture": "Planifiez votre cours"
+        },
+        "manyMore": "Et bien plus encore"
+    }
+}

@@ -145,6 +145,7 @@ public class CombotWebhookService {
         });
 
         notificationLogRepository.save(statusLog);
+        reconcileOutboundDeliveryStatus(messageId, deliveryStatusFor(status), null, null);
         log.info("Saved Com.bot status event: {} → {}", messageId, notificationType);
     }
 
@@ -191,6 +192,13 @@ public class CombotWebhookService {
             });
 
             notificationLogRepository.save(st);
+            // Carry the verdict onto the row that SENT the message, not just this status row.
+            // "failed" is deliberately left to processMessageFailedFromWebhook below: it has the
+            // error code and message, and a bare FAILED stamped here would win the monotonic
+            // guard and lose them.
+            if (!"failed".equalsIgnoreCase(statusValue)) {
+                reconcileOutboundDeliveryStatus(messageId, deliveryStatusFor(statusValue), null, null);
+            }
             log.info("Stored WhatsApp status {} for message {}", statusValue, messageId);
 
             if ("failed".equalsIgnoreCase(statusValue)) {
@@ -239,7 +247,53 @@ public class CombotWebhookService {
         });
 
         notificationLogRepository.save(fail);
+        reconcileOutboundDeliveryStatus(messageId, "FAILED", errorCode, errorMessage);
         log.warn("Stored FAILED event for message {} → {}", messageId, errorMessage);
+    }
+
+    /**
+     * Stamp the provider's verdict onto the WHATSAPP_MESSAGE_OUTGOING row that sent the message.
+     * <p>
+     * The status row saved above is what the Inbox and the communication timeline read, but anything
+     * asking "what happened to THIS message" — /unified-send/delivery-status, and the send dialog
+     * that polls it — reads notification_log.delivery_status on the outbound row itself. Without
+     * this, every message whose statuses arrive on the Com.bot / Meta Cloud webhook stayed PENDING
+     * forever: the dialog could only ever say "accepted, awaiting confirmation" for a message
+     * WhatsApp had already reported delivered seconds earlier. Only the WATI/Meta unified webhook
+     * path did this reconciliation.
+     * <p>
+     * Best-effort by contract: the status row is already persisted, so a failure here loses an
+     * annotation, never an event.
+     */
+    private void reconcileOutboundDeliveryStatus(String providerMessageId, String status,
+                                                 String errorCode, String errorMessage) {
+        if (providerMessageId == null || providerMessageId.isBlank() || status == null) {
+            return;
+        }
+        try {
+            int updated = notificationLogRepository.applyDeliveryStatusByProviderMessageId(
+                    providerMessageId, status, errorCode, errorMessage, Instant.now());
+            if (updated == 0) {
+                // Normal for a status that outran its own send row, or a send path that stores no
+                // wamid — worth a debug line when tracing "why is this message still unmarked".
+                log.debug("No outbound row to mark {} for messageId={}", status, providerMessageId);
+            }
+        } catch (Exception e) {
+            log.warn("Could not stamp delivery status {} on outbound row for messageId={}: {}",
+                    status, providerMessageId, e.getMessage());
+        }
+    }
+
+    /** Webhook status word → the delivery_status vocabulary. Null for anything unrecognised. */
+    private String deliveryStatusFor(String statusValue) {
+        if (statusValue == null) return null;
+        return switch (statusValue.toLowerCase()) {
+            case "sent" -> "SENT";
+            case "delivered" -> "DELIVERED";
+            case "read" -> "READ";
+            case "failed" -> "FAILED";
+            default -> null;
+        };
     }
 
     // ========================================================================
@@ -1063,10 +1117,22 @@ public class CombotWebhookService {
         return code != null ? code.toString() : CombotConstants.ERROR_CODE_UNKNOWN;
     }
 
+    /**
+     * Meta's status errors always carry a short {@code title}, only sometimes a {@code message}, and
+     * put the specific reason under {@code error_data.details}. Reading "message" alone stored
+     * "Unknown error" for the codes that matter most — 131042 payment, 131049 marketing cap — and
+     * that string is what the send dialog and the Inbox show the admin.
+     */
     private String extractErrorMessage(Map<String, Object> errorData) {
         if (errorData == null)
             return "Unknown error";
         Object msg = errorData.get("message");
+        if (msg == null) {
+            msg = errorData.get(CombotWebhookKeys.TITLE);
+        }
+        if (msg == null && errorData.get("error_data") instanceof Map<?, ?> errorDetail) {
+            msg = errorDetail.get("details");
+        }
         return msg != null ? msg.toString() : "Unknown error";
     }
 }

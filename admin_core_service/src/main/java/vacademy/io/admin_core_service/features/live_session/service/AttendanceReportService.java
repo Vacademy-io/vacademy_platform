@@ -298,6 +298,7 @@ public class AttendanceReportService {
                     .statusType(guestDto.getStatusType())
                     .engagementData(guestDto.getEngagementData())
                     .providerTotalDurationMinutes(guestDto.getProviderTotalDurationMinutes())
+                    .providerTotalDurationSeconds(guestDto.getProviderTotalDurationSeconds())
                     .feedbackDetails(null)
                     .build();
         }

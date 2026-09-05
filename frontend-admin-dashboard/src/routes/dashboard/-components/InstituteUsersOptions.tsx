@@ -23,10 +23,16 @@ import {
 import { toast } from 'sonner';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
 import AssignSubOrgsDialog from '@/routes/manage-institute/teams/-components/assign-sub-orgs-dialog';
-export const inviteUsersSchema = z.object({
-    roleType: z.array(z.string()).min(1, 'At least one role type is required'),
-});
-type FormValues = z.infer<typeof inviteUsersSchema>;
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+
+export const buildInviteUsersSchema = (t: TFunction) =>
+    z.object({
+        roleType: z
+            .array(z.string())
+            .min(1, t('changeRoleType.validation.roleRequired')),
+    });
+type FormValues = z.infer<ReturnType<typeof buildInviteUsersSchema>>;
 
 interface ChangeRoleTypeComponentProps {
     student: UserRolesDataEntry;
@@ -41,11 +47,12 @@ const ChangeRoleTypeComponent: React.FC<ChangeRoleTypeComponentProps> = ({
     refetchData,
     availableRoles,
 }) => {
+    const { t } = useTranslation('dashboardInstituteUsersOptions');
     const roleOptions = availableRoles || RoleType;
     const instituteId = getInstituteId();
     //need to previous already assigned roles
     const form = useForm<FormValues>({
-        resolver: zodResolver(inviteUsersSchema),
+        resolver: zodResolver(buildInviteUsersSchema(t)),
         defaultValues: {
             roleType: [],
         },
@@ -68,7 +75,7 @@ const ChangeRoleTypeComponent: React.FC<ChangeRoleTypeComponentProps> = ({
         onSuccess: () => {
             onClose();
             refetchData();
-            toast.success('User roles has been changed successfully!', {
+            toast.success(t('changeRoleType.toast.success'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -94,12 +101,14 @@ const ChangeRoleTypeComponent: React.FC<ChangeRoleTypeComponentProps> = ({
 
     return (
         <DialogContent className="flex w-96 flex-col p-0">
-            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Change Roles</h1>
+            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
+                {t('changeRoleType.title')}
+            </h1>
             <FormProvider {...form}>
                 <form className="flex flex-col items-start justify-center gap-4 px-4">
                     <MultiSelectDropdown
                         form={form}
-                        label="Role Type"
+                        label={t('changeRoleType.roleTypeLabel')}
                         name="roleType"
                         options={roleOptions.map((option, index) => ({
                             value: option.name,
@@ -120,7 +129,7 @@ const ChangeRoleTypeComponent: React.FC<ChangeRoleTypeComponentProps> = ({
                             disable={!isValid}
                             onClick={form.handleSubmit(onSubmit)}
                         >
-                            Submit
+                            {t('changeRoleType.submit')}
                         </MyButton>
                     </div>
                 </form>
@@ -140,6 +149,7 @@ const DisableUserComponent: React.FC<DisableUserComponentProps> = ({
     onClose,
     refetchData,
 }) => {
+    const { t } = useTranslation('dashboardInstituteUsersOptions');
     const instituteId = getInstituteId();
     const handleDisableUserMutation = useMutation({
         mutationFn: ({
@@ -154,7 +164,7 @@ const DisableUserComponent: React.FC<DisableUserComponentProps> = ({
         onSuccess: () => {
             onClose();
             refetchData();
-            toast.success('User has been disabled successfully!', {
+            toast.success(t('disableUser.toast.success'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -173,15 +183,18 @@ const DisableUserComponent: React.FC<DisableUserComponentProps> = ({
     };
     return (
         <DialogContent className="flex flex-col p-0">
-            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Disable User</h1>
+            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
+                {t('disableUser.title')}
+            </h1>
             <div className="flex flex-col gap-2 p-4">
                 <div className="flex items-center text-danger-600">
-                    <p>Attention</p>
+                    <p>{t('disableUser.attention')}</p>
                     <WarningCircle size={18} />
                 </div>
                 <h1>
-                    Are you sure you want to disable{' '}
-                    <span className="text-primary-500">{student.full_name}</span>?
+                    {t('disableUser.confirmPrefix')}{' '}
+                    <span className="text-primary-500">{student.full_name}</span>
+                    {t('disableUser.confirmSuffix')}
                 </h1>
                 <div className="flex justify-end">
                     <MyButton
@@ -191,7 +204,7 @@ const DisableUserComponent: React.FC<DisableUserComponentProps> = ({
                         className="mt-4 font-medium"
                         onClick={handlDisableUser} // Close the dialog when clicked
                     >
-                        Yes
+                        {t('disableUser.confirmButton')}
                     </MyButton>
                 </div>
             </div>
@@ -210,6 +223,7 @@ const EnableUserComponent: React.FC<EnableUserComponentProps> = ({
     onClose,
     refetchData,
 }) => {
+    const { t } = useTranslation('dashboardInstituteUsersOptions');
     const instituteId = getInstituteId();
     const handleEnableUserMutation = useMutation({
         mutationFn: ({
@@ -224,7 +238,7 @@ const EnableUserComponent: React.FC<EnableUserComponentProps> = ({
         onSuccess: () => {
             onClose();
             refetchData();
-            toast.success('User has been enabled successfully!', {
+            toast.success(t('enableUser.toast.success'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -243,15 +257,18 @@ const EnableUserComponent: React.FC<EnableUserComponentProps> = ({
     };
     return (
         <DialogContent className="flex flex-col p-0">
-            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Disable User</h1>
+            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
+                {t('enableUser.title')}
+            </h1>
             <div className="flex flex-col gap-2 p-4">
                 <div className="flex items-center text-danger-600">
-                    <p>Attention</p>
+                    <p>{t('enableUser.attention')}</p>
                     <WarningCircle size={18} />
                 </div>
                 <h1>
-                    Are you sure you want to disable{' '}
-                    <span className="text-primary-500">{student.full_name}</span>?
+                    {t('enableUser.confirmPrefix')}{' '}
+                    <span className="text-primary-500">{student.full_name}</span>
+                    {t('enableUser.confirmSuffix')}
                 </h1>
                 <div className="flex justify-end">
                     <MyButton
@@ -261,7 +278,7 @@ const EnableUserComponent: React.FC<EnableUserComponentProps> = ({
                         className="mt-4 font-medium"
                         onClick={handlEnableUser} // Close the dialog when clicked
                     >
-                        Yes
+                        {t('enableUser.confirmButton')}
                     </MyButton>
                 </div>
             </div>
@@ -275,11 +292,16 @@ interface DeleteUserComponentProps {
     refetchData: () => void;
 }
 
+// Internal action codes for the options menu — used for dispatch/comparison
+// only, never rendered directly (the visible labels are translated separately).
+type MenuAction = 'changeRoleType' | 'disableUser' | 'enableUser' | 'assignSubOrgs' | 'deleteUser';
+
 const DeleteUserComponent: React.FC<DeleteUserComponentProps> = ({
     student,
     onClose,
     refetchData,
 }) => {
+    const { t } = useTranslation('dashboardInstituteUsersOptions');
     const instituteId = getInstituteId();
     const handleDeleteUserMutation = useMutation({
         mutationFn: ({
@@ -294,7 +316,7 @@ const DeleteUserComponent: React.FC<DeleteUserComponentProps> = ({
         onSuccess: () => {
             onClose();
             refetchData();
-            toast.success('User has been deleted successfully!', {
+            toast.success(t('deleteUser.toast.success'), {
                 className: 'success-toast',
                 duration: 2000,
             });
@@ -313,15 +335,18 @@ const DeleteUserComponent: React.FC<DeleteUserComponentProps> = ({
     };
     return (
         <DialogContent className="flex flex-col p-0">
-            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Delete User</h1>
+            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
+                {t('deleteUser.title')}
+            </h1>
             <div className="flex flex-col gap-2 p-4">
                 <div className="flex items-center text-danger-600">
-                    <p>Attention</p>
+                    <p>{t('deleteUser.attention')}</p>
                     <WarningCircle size={18} />
                 </div>
                 <h1>
-                    Are you sure you want to delete{' '}
-                    <span className="text-primary-500">{student.full_name}</span>?
+                    {t('deleteUser.confirmPrefix')}{' '}
+                    <span className="text-primary-500">{student.full_name}</span>
+                    {t('deleteUser.confirmSuffix')}
                 </h1>
                 <div className="flex justify-end">
                     <MyButton
@@ -331,7 +356,7 @@ const DeleteUserComponent: React.FC<DeleteUserComponentProps> = ({
                         className="mt-4 font-medium"
                         onClick={handlDeleteUser} // Close the dialog when clicked
                     >
-                        Yes
+                        {t('deleteUser.confirmButton')}
                     </MyButton>
                 </div>
             </div>
@@ -355,10 +380,14 @@ const InstituteUsersOptions = ({
      */
     subOrgAssign?: { label: string; currentSubOrgIds: string[] };
 }) => {
+    const { t } = useTranslation('dashboardInstituteUsersOptions');
     const [openDialog, setOpenDialog] = useState(false);
-    const [selectedOption, setSelectedOption] = useState<string | null>(null);
+    // Internal action codes used for dispatch/comparison only — never rendered.
+    // Kept separate from the translated menu labels shown below so switching
+    // locale can never break which dialog opens.
+    const [selectedOption, setSelectedOption] = useState<MenuAction | null>(null);
 
-    const handleDropdownMenuClick = (value: string) => {
+    const handleDropdownMenuClick = (value: MenuAction) => {
         setOpenDialog(true);
         setSelectedOption(value);
     };
@@ -372,33 +401,39 @@ const InstituteUsersOptions = ({
                     </p>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => handleDropdownMenuClick('Change Role Type')}>
-                        Change Role Type
+                    <DropdownMenuItem
+                        onClick={() => handleDropdownMenuClick('changeRoleType')}
+                    >
+                        {t('menu.changeRoleType')}
                     </DropdownMenuItem>
                     {user.roles.some((role) => role.status === 'ACTIVE') && (
-                        <DropdownMenuItem onClick={() => handleDropdownMenuClick('Disable user')}>
-                            Disable user
+                        <DropdownMenuItem
+                            onClick={() => handleDropdownMenuClick('disableUser')}
+                        >
+                            {t('menu.disableUser')}
                         </DropdownMenuItem>
                     )}
                     {!user.roles.some((role) => role.status === 'ACTIVE') && (
-                        <DropdownMenuItem onClick={() => handleDropdownMenuClick('Enable user')}>
-                            Enable user
+                        <DropdownMenuItem
+                            onClick={() => handleDropdownMenuClick('enableUser')}
+                        >
+                            {t('menu.enableUser')}
                         </DropdownMenuItem>
                     )}
                     {subOrgAssign && (
                         <DropdownMenuItem
-                            onClick={() => handleDropdownMenuClick('Assign sub-orgs')}
+                            onClick={() => handleDropdownMenuClick('assignSubOrgs')}
                         >
                             {subOrgAssign.label}
                         </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => handleDropdownMenuClick('Delete user')}>
-                        Delete user
+                    <DropdownMenuItem onClick={() => handleDropdownMenuClick('deleteUser')}>
+                        {t('menu.deleteUser')}
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                {selectedOption === 'Change Role Type' && (
+                {selectedOption === 'changeRoleType' && (
                     <ChangeRoleTypeComponent
                         student={user}
                         onClose={() => setOpenDialog(false)}
@@ -406,21 +441,21 @@ const InstituteUsersOptions = ({
                         availableRoles={availableRoles}
                     />
                 )}
-                {selectedOption === 'Disable user' && (
+                {selectedOption === 'disableUser' && (
                     <DisableUserComponent
                         student={user}
                         onClose={() => setOpenDialog(false)}
                         refetchData={refetchData}
                     />
                 )}
-                {selectedOption === 'Enable user' && (
+                {selectedOption === 'enableUser' && (
                     <EnableUserComponent
                         student={user}
                         onClose={() => setOpenDialog(false)}
                         refetchData={refetchData}
                     />
                 )}
-                {selectedOption === 'Assign sub-orgs' && subOrgAssign && (
+                {selectedOption === 'assignSubOrgs' && subOrgAssign && (
                     <AssignSubOrgsDialog
                         userId={user.id}
                         userName={user.full_name}
@@ -429,7 +464,7 @@ const InstituteUsersOptions = ({
                         refetchData={refetchData}
                     />
                 )}
-                {selectedOption === 'Delete user' && (
+                {selectedOption === 'deleteUser' && (
                     <DeleteUserComponent
                         student={user}
                         onClose={() => setOpenDialog(false)}

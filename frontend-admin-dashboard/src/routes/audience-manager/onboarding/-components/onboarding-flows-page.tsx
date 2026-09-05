@@ -9,6 +9,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Lock, Plus, Path, PencilSimple, TrashSimple } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { MyTable } from '@/components/design-system/table';
 import { MyDialog } from '@/components/design-system/dialog';
@@ -23,7 +25,7 @@ import {
     type OnboardingFlowDTO,
 } from '../-services/onboarding-service';
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, t }: { status: string; t: TFunction }) {
     const toneClass =
         status === 'ACTIVE'
             ? 'bg-success-50 text-success-700'
@@ -32,16 +34,21 @@ function StatusBadge({ status }: { status: string }) {
               : 'bg-warning-50 text-warning-700';
     return (
         <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-caption font-medium ${toneClass}`}>
-            {status === 'DRAFT' ? 'Draft' : status === 'ACTIVE' ? 'Active' : 'Archived'}
+            {status === 'DRAFT'
+                ? t('statusLabels.draft')
+                : status === 'ACTIVE'
+                  ? t('statusLabels.active')
+                  : t('statusLabels.archived')}
         </span>
     );
 }
 
 export function OnboardingFlowsPage() {
+    const { t } = useTranslation('audienceManagerOnboardingFlowsPage');
     const setNavHeading = useNavHeadingStore((s) => s.setNavHeading);
     useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Onboarding</h1>);
-    }, [setNavHeading]);
+        setNavHeading(<h1 className="text-lg">{t('navHeading.onboarding')}</h1>);
+    }, [setNavHeading, t]);
 
     const navigate = useNavigate();
     const { instituteDetails } = useInstituteDetailsStore();
@@ -61,12 +68,12 @@ export function OnboardingFlowsPage() {
     const { mutate: archiveFlow, isPending: isArchiving } = useMutation({
         mutationFn: (flowId: string) => archiveOnboardingFlow(flowId),
         onSuccess: () => {
-            toast.success('Onboarding flow deleted');
+            toast.success(t('toasts.deleted'));
             setDeleteTarget(null);
             queryClient.invalidateQueries({ queryKey: onboardingFlowsKey(instituteId) });
         },
         onError: () => {
-            toast.error('Could not delete the flow. Please try again.');
+            toast.error(t('toasts.deleteError'));
         },
     });
 
@@ -74,7 +81,7 @@ export function OnboardingFlowsPage() {
         () => [
             {
                 accessorKey: 'name',
-                header: 'Name',
+                header: t('columns.name'),
                 size: 280,
                 cell: ({ row }) => (
                     <button
@@ -93,7 +100,7 @@ export function OnboardingFlowsPage() {
             },
             {
                 accessorKey: 'description',
-                header: 'Description',
+                header: t('columns.description'),
                 size: 560,
                 cell: ({ row }) => (
                     <div className="truncate text-body text-neutral-600" title={row.original.description ?? ''}>
@@ -103,13 +110,13 @@ export function OnboardingFlowsPage() {
             },
             {
                 accessorKey: 'status',
-                header: 'Status',
+                header: t('columns.status'),
                 size: 140,
-                cell: ({ row }) => <StatusBadge status={row.original.status} />,
+                cell: ({ row }) => <StatusBadge status={row.original.status} t={t} />,
             },
             {
                 id: 'stepCount',
-                header: 'Steps',
+                header: t('columns.steps'),
                 size: 100,
                 cell: ({ row }) => (
                     <div className="text-body text-neutral-700">{row.original.steps?.length ?? 0}</div>
@@ -117,7 +124,7 @@ export function OnboardingFlowsPage() {
             },
             {
                 id: 'actions',
-                header: 'Actions',
+                header: t('columns.actions'),
                 size: 200,
                 cell: ({ row }) => (
                     <div className="flex items-center gap-2">
@@ -131,7 +138,7 @@ export function OnboardingFlowsPage() {
                                 })
                             }
                         >
-                            <PencilSimple size={14} /> Manage
+                            <PencilSimple size={14} /> {t('actions.manage')}
                         </MyButton>
                         <MyButton
                             buttonType="secondary"
@@ -145,13 +152,13 @@ export function OnboardingFlowsPage() {
                 ),
             },
         ],
-        [navigate]
+        [navigate, t]
     );
 
     if (settingsLoading) {
         return (
             <div className="flex min-h-64 items-center justify-center text-body text-neutral-500">
-                Loading…
+                {t('loading')}
             </div>
         );
     }
@@ -162,10 +169,10 @@ export function OnboardingFlowsPage() {
                 <div className="flex size-14 items-center justify-center rounded-full bg-neutral-100">
                     <Lock size={24} className="text-neutral-500" />
                 </div>
-                <h2 className="text-h3 font-medium text-neutral-900">Onboarding Flows is not enabled</h2>
+                <h2 className="text-h3 font-medium text-neutral-900">{t('notEnabled.title')}</h2>
                 <p className="text-subtitle text-neutral-500">
-                    An admin can turn this on under{' '}
-                    <span className="font-medium">Settings → Onboarding Settings</span>.
+                    {t('notEnabled.prefix')}{' '}
+                    <span className="font-medium">{t('notEnabled.settingsPath')}</span>.
                 </p>
             </div>
         );
@@ -180,26 +187,23 @@ export function OnboardingFlowsPage() {
         <div className="flex flex-col gap-4 p-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
-                    <h1 className="text-h1 font-medium text-neutral-900">Onboarding Flows</h1>
-                    <p className="text-subtitle text-neutral-500">
-                        Ordered checklists a lead/student goes through between agreeing to join and
-                        being fully enrolled.
-                    </p>
+                    <h1 className="text-h1 font-medium text-neutral-900">{t('page.title')}</h1>
+                    <p className="text-subtitle text-neutral-500">{t('page.subtitle')}</p>
                 </div>
                 <MyButton buttonType="primary" scale="medium" onClick={() => setCreateOpen(true)}>
-                    <Plus size={16} weight="bold" /> Create Flow
+                    <Plus size={16} weight="bold" /> {t('actions.createFlow')}
                 </MyButton>
             </div>
 
             {!instituteId ? (
                 <div className="rounded-lg border border-warning-200 bg-warning-50 p-4 text-body text-warning-700">
-                    Pick an institute to view onboarding flows.
+                    {t('states.noInstitute')}
                 </div>
             ) : flowsQuery.isError ? (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-danger-200 bg-danger-50 p-8 text-center">
-                    <p className="text-body text-danger-700">Couldn&apos;t load onboarding flows.</p>
+                    <p className="text-body text-danger-700">{t('states.loadError')}</p>
                     <MyButton buttonType="secondary" scale="small" onClick={() => flowsQuery.refetch()}>
-                        Retry
+                        {t('actions.retry')}
                     </MyButton>
                 </div>
             ) : !flowsQuery.isLoading && flows.length === 0 ? (
@@ -207,13 +211,10 @@ export function OnboardingFlowsPage() {
                     <div className="flex size-16 items-center justify-center rounded-full border border-neutral-100 bg-neutral-50">
                         <Path size={32} className="text-neutral-400" weight="duotone" />
                     </div>
-                    <h3 className="text-lg font-semibold text-neutral-900">No onboarding flows yet</h3>
-                    <p className="max-w-sm text-body text-neutral-500">
-                        Create your first flow to define the steps a lead or student completes on
-                        the way to being fully enrolled.
-                    </p>
+                    <h3 className="text-lg font-semibold text-neutral-900">{t('states.emptyTitle')}</h3>
+                    <p className="max-w-sm text-body text-neutral-500">{t('states.emptyDescription')}</p>
                     <MyButton buttonType="primary" scale="medium" onClick={() => setCreateOpen(true)}>
-                        <Plus size={16} weight="bold" /> Create Flow
+                        <Plus size={16} weight="bold" /> {t('actions.createFlow')}
                     </MyButton>
                 </div>
             ) : (
@@ -247,7 +248,7 @@ export function OnboardingFlowsPage() {
             <MyDialog
                 open={!!deleteTarget}
                 onOpenChange={(open) => !open && setDeleteTarget(null)}
-                heading="Delete Onboarding Flow"
+                heading={t('deleteDialog.heading')}
                 dialogWidth="max-w-md"
                 footer={
                     <div className="flex w-full items-center justify-end gap-2">
@@ -257,7 +258,7 @@ export function OnboardingFlowsPage() {
                             onClick={() => setDeleteTarget(null)}
                             disable={isArchiving}
                         >
-                            Cancel
+                            {t('actions.cancel')}
                         </MyButton>
                         <MyButton
                             buttonType="primary"
@@ -266,16 +267,15 @@ export function OnboardingFlowsPage() {
                             onClick={() => deleteTarget && archiveFlow(deleteTarget.id)}
                             disable={isArchiving}
                         >
-                            {isArchiving ? 'Deleting…' : 'Delete Flow'}
+                            {isArchiving ? t('actions.deleting') : t('actions.deleteFlow')}
                         </MyButton>
                     </div>
                 }
             >
                 <div className="px-6 py-6 text-body text-neutral-600">
-                    Delete <span className="font-medium text-neutral-900">{deleteTarget?.name}</span>? This
-                    archives the flow — new instances can no longer be started from it, and it&apos;s
-                    removed from this list, but any onboarding instances already in progress on it are
-                    left untouched.
+                    {t('deleteDialog.confirmPrefix')}{' '}
+                    <span className="font-medium text-neutral-900">{deleteTarget?.name}</span>
+                    {t('deleteDialog.confirmSuffix')}
                 </div>
             </MyDialog>
         </div>

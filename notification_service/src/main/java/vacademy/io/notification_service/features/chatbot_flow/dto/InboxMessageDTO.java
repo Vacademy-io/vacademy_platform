@@ -36,4 +36,10 @@ public class InboxMessageDTO {
     private String headerType;
     /** Actual media URL for an IMAGE/VIDEO/DOCUMENT header, so the UI can display the attachment. */
     private String headerMediaUrl;
+
+    /**
+     * What we tried to send on a failed non-template message: text, interactive, media, template.
+     * Present only alongside {@code deliveryStatus == FAILED}.
+     */
+    private String attemptedType;
 }

@@ -87,7 +87,7 @@ function RewardsScreen() {
 
         {/* ── Badges ── */}
         {badgeCount > 0 ? (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-stack">
             <h2 className="text-body font-semibold text-foreground">{t("rewards.badgesTitle")}</h2>
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {badges?.map((b, i) => {
@@ -128,7 +128,7 @@ function RewardsScreen() {
 
         {/* ── Certificates ── */}
         {certCount > 0 ? (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-stack">
             <h2 className="text-body font-semibold text-foreground">
               {t("rewards.certificatesTitle")}
             </h2>

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Robot } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -43,6 +45,7 @@ export function CallAllWithAiButton({
     totalElements,
     selectedLeads,
 }: CallAllWithAiButtonProps) {
+    const { t } = useTranslation('audienceManagerCallAllAiButton');
     const enabled = useAiCallButtonEnabled();
     const queryClient = useQueryClient();
     const [open, setOpen] = useState(false);
@@ -93,11 +96,11 @@ export function CallAllWithAiButton({
             // already AI-called inside the cooldown). Reporting that as success left the
             // user believing calls were going out when none were.
             if (!res.dispatched) {
-                toast.warning(res.message || 'No AI calls were placed');
+                toast.warning(res.message || t('toast.noneDispatched'));
                 setOpen(false);
                 return;
             }
-            toast.success(res.message || `Queued ${res.eligible} AI call(s)`);
+            toast.success(res.message || t('toast.queued', { count: res.eligible }));
             setOpen(false);
             // Live progress: names for the rows we know (selected scope has them all;
             // 'all' scope labels rows for leads on the loaded page, others fall back).
@@ -111,7 +114,7 @@ export function CallAllWithAiButton({
             });
             queryClient.invalidateQueries({ queryKey: ['campaignUsers', audienceId] });
         },
-        onError: (err) => toast.error(errMsg(err)),
+        onError: (err) => toast.error(errMsg(err, t)),
     });
 
     if (!enabled) return null;
@@ -121,12 +124,12 @@ export function CallAllWithAiButton({
     // The number the button will actually dial under the chosen scope. Selected rows
     // are re-checked server-side for eligibility, so this is an upper bound there.
     const callCount = effectiveScope === 'selected' ? Math.min(selectedCount, eligible || selectedCount) : eligible;
-    const previewError = preview.isError ? errMsg(preview.error) : null;
+    const previewError = preview.isError ? errMsg(preview.error, t) : null;
 
     const footer = (
         <div className="flex w-full items-center justify-end gap-2">
             <MyButton buttonType="secondary" scale="small" onClick={() => setOpen(false)}>
-                Cancel
+                {t('footer.cancel')}
             </MyButton>
             <MyButton
                 buttonType="primary"
@@ -135,10 +138,10 @@ export function CallAllWithAiButton({
                 onClick={() => start.mutate()}
             >
                 {start.isPending
-                    ? 'Starting…'
+                    ? t('footer.starting')
                     : callCount > 0
-                      ? `Call ${callCount} lead${callCount === 1 ? '' : 's'}`
-                      : 'Call leads'}
+                      ? t('footer.callLeads', { count: callCount })
+                      : t('footer.callLeadsGeneric')}
             </MyButton>
         </div>
     );
@@ -153,11 +156,11 @@ export function CallAllWithAiButton({
                 onClick={() => setOpen(true)}
             >
                 <Robot className="mr-1.5 size-4" />
-                Call all with AI
+                {t('button.label')}
             </Button>
 
             <MyDialog
-                heading="Call all leads with AI"
+                heading={t('dialog.heading')}
                 open={open}
                 onOpenChange={setOpen}
                 dialogWidth="w-full max-w-md"
@@ -165,30 +168,27 @@ export function CallAllWithAiButton({
             >
                 <div className="space-y-3 text-body">
                     {preview.isLoading && (
-                        <p className="text-neutral-500">Checking how many leads can be called…</p>
+                        <p className="text-neutral-500">{t('body.checkingEligibility')}</p>
                     )}
                     {previewError && <p className="text-danger-600">{previewError}</p>}
                     {!preview.isLoading && !previewError && (
                         <>
                             <p>
-                                <span className="font-semibold">{eligible}</span> of {totalInList} lead
-                                {totalInList === 1 ? '' : 's'} in this list can be called (they have a
-                                saved contact number).
+                                <Trans
+                                    t={t}
+                                    i18nKey="body.eligibleOfTotal"
+                                    count={totalInList}
+                                    values={{ eligible }}
+                                    components={{ bold: <span className="font-semibold" /> }}
+                                />
                             </p>
-                            <p className="text-caption text-neutral-500">
-                                The AI agent calls each one, paced in the background, and consumes
-                                calling credits. Each lead&apos;s outcome and counsellor assignment
-                                happen automatically after the call. This can&apos;t be undone once
-                                started.
-                            </p>
+                            <p className="text-caption text-neutral-500">{t('body.disclaimer')}</p>
                             {eligible === 0 && (
-                                <p className="text-warning-600">
-                                    No leads in this list have a contact number to call.
-                                </p>
+                                <p className="text-warning-600">{t('body.noneEligible')}</p>
                             )}
                             {eligible > 0 && selectedCount > 0 && (
                                 <div className="space-y-1.5">
-                                    <Label>Who to call</Label>
+                                    <Label>{t('body.scope.label')}</Label>
                                     <RadioGroup
                                         value={effectiveScope}
                                         onValueChange={(v) => setScope(v as 'selected' | 'all')}
@@ -197,14 +197,13 @@ export function CallAllWithAiButton({
                                         <div className="flex items-center gap-2">
                                             <RadioGroupItem value="selected" id="ai-scope-selected" />
                                             <Label htmlFor="ai-scope-selected" className="font-normal">
-                                                Only the {selectedCount} selected lead
-                                                {selectedCount === 1 ? '' : 's'}
+                                                {t('body.scope.selectedOption', { count: selectedCount })}
                                             </Label>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <RadioGroupItem value="all" id="ai-scope-all" />
                                             <Label htmlFor="ai-scope-all" className="font-normal">
-                                                All {eligible} eligible leads in this list
+                                                {t('body.scope.allOption', { count: eligible })}
                                             </Label>
                                         </div>
                                     </RadioGroup>
@@ -212,20 +211,25 @@ export function CallAllWithAiButton({
                             )}
                             {eligible > 0 && (
                                 <div className="space-y-1.5">
-                                    <Label>Calls at a time</Label>
+                                    <Label>{t('body.parallel.label')}</Label>
                                     <Select value={parallel} onValueChange={setParallel}>
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="1">1 — one call at a time</SelectItem>
-                                            <SelectItem value="2">2 in parallel</SelectItem>
-                                            <SelectItem value="3">3 in parallel</SelectItem>
+                                            <SelectItem value="1">
+                                                {t('body.parallel.options.one')}
+                                            </SelectItem>
+                                            <SelectItem value="2">
+                                                {t('body.parallel.options.two')}
+                                            </SelectItem>
+                                            <SelectItem value="3">
+                                                {t('body.parallel.options.three')}
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <p className="text-caption text-neutral-500">
-                                        The next call starts as soon as one ends, keeping at most
-                                        this many live at once.
+                                        {t('body.parallel.caption')}
                                     </p>
                                 </div>
                             )}
@@ -258,7 +262,7 @@ export function CallAllWithAiButton({
     );
 }
 
-function errMsg(err: unknown): string {
+function errMsg(err: unknown, t: TFunction): string {
     if (err && typeof err === 'object') {
         const e = err as {
             response?: { data?: { ex?: string; message?: string } };
@@ -268,5 +272,5 @@ function errMsg(err: unknown): string {
         if (typeof e.response?.data?.message === 'string') return e.response.data.message;
         if (typeof e.message === 'string') return e.message;
     }
-    return 'Could not start the AI call campaign';
+    return t('errors.startFailed');
 }

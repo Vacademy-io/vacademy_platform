@@ -105,6 +105,7 @@ import { Route as AssessmentExaminationAssessmentIdIndexRouteImport } from './ro
 import { Route as AssessmentExaminationAssessmentIdAssessmentPreviewRouteImport } from './routes/assessment/examination/$assessmentId/assessmentPreview'
 import { Route as AssessmentExaminationAssessmentIdLearnerLiveTestRouteImport } from './routes/assessment/examination/$assessmentId/LearnerLiveTest'
 import { Route as UnChannelUsernameCategoryIndexRouteImport } from './routes/un/$channel/$username/$category/index'
+import { Route as StudyLibraryCoursesCourseDetailsTutorIndexRouteImport } from './routes/study-library/courses/course-details/tutor/index'
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsIndexRouteImport } from './routes/study-library/courses/course-details/subjects/index'
 import { Route as ParentChildChildIdRewardsIndexRouteImport } from './routes/parent/child/$childId/rewards/index'
 import { Route as ParentChildChildIdProgressIndexRouteImport } from './routes/parent/child/$childId/progress/index'
@@ -631,6 +632,12 @@ const UnChannelUsernameCategoryIndexRoute =
     path: '/un/$channel/$username/$category/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const StudyLibraryCoursesCourseDetailsTutorIndexRoute =
+  StudyLibraryCoursesCourseDetailsTutorIndexRouteImport.update({
+    id: '/study-library/courses/course-details/tutor/',
+    path: '/study-library/courses/course-details/tutor/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const StudyLibraryCoursesCourseDetailsSubjectsIndexRoute =
   StudyLibraryCoursesCourseDetailsSubjectsIndexRouteImport.update({
     id: '/study-library/courses/course-details/subjects/',
@@ -812,6 +819,7 @@ export interface FileRoutesByFullPath {
   '/parent/child/$childId/progress': typeof ParentChildChildIdProgressIndexRoute
   '/parent/child/$childId/rewards': typeof ParentChildChildIdRewardsIndexRoute
   '/study-library/courses/course-details/subjects': typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  '/study-library/courses/course-details/tutor': typeof StudyLibraryCoursesCourseDetailsTutorIndexRoute
   '/un/$channel/$username/$category': typeof UnChannelUsernameCategoryIndexRoute
   '/admission/payment/$instituteId/$applicantId/$paymentOptionId': typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
   '/study-library/courses/course-details/subjects/modules': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute
@@ -920,6 +928,7 @@ export interface FileRoutesByTo {
   '/parent/child/$childId/progress': typeof ParentChildChildIdProgressIndexRoute
   '/parent/child/$childId/rewards': typeof ParentChildChildIdRewardsIndexRoute
   '/study-library/courses/course-details/subjects': typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  '/study-library/courses/course-details/tutor': typeof StudyLibraryCoursesCourseDetailsTutorIndexRoute
   '/un/$channel/$username/$category': typeof UnChannelUsernameCategoryIndexRoute
   '/admission/payment/$instituteId/$applicantId/$paymentOptionId': typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
   '/study-library/courses/course-details/subjects/modules': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute
@@ -1031,6 +1040,7 @@ export interface FileRoutesById {
   '/parent/child/$childId/progress/': typeof ParentChildChildIdProgressIndexRoute
   '/parent/child/$childId/rewards/': typeof ParentChildChildIdRewardsIndexRoute
   '/study-library/courses/course-details/subjects/': typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  '/study-library/courses/course-details/tutor/': typeof StudyLibraryCoursesCourseDetailsTutorIndexRoute
   '/un/$channel/$username/$category/': typeof UnChannelUsernameCategoryIndexRoute
   '/admission/payment/$instituteId/$applicantId/$paymentOptionId/': typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
   '/study-library/courses/course-details/subjects/modules/': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute
@@ -1143,6 +1153,7 @@ export interface FileRouteTypes {
     | '/parent/child/$childId/progress'
     | '/parent/child/$childId/rewards'
     | '/study-library/courses/course-details/subjects'
+    | '/study-library/courses/course-details/tutor'
     | '/un/$channel/$username/$category'
     | '/admission/payment/$instituteId/$applicantId/$paymentOptionId'
     | '/study-library/courses/course-details/subjects/modules'
@@ -1251,6 +1262,7 @@ export interface FileRouteTypes {
     | '/parent/child/$childId/progress'
     | '/parent/child/$childId/rewards'
     | '/study-library/courses/course-details/subjects'
+    | '/study-library/courses/course-details/tutor'
     | '/un/$channel/$username/$category'
     | '/admission/payment/$instituteId/$applicantId/$paymentOptionId'
     | '/study-library/courses/course-details/subjects/modules'
@@ -1361,6 +1373,7 @@ export interface FileRouteTypes {
     | '/parent/child/$childId/progress/'
     | '/parent/child/$childId/rewards/'
     | '/study-library/courses/course-details/subjects/'
+    | '/study-library/courses/course-details/tutor/'
     | '/un/$channel/$username/$category/'
     | '/admission/payment/$instituteId/$applicantId/$paymentOptionId/'
     | '/study-library/courses/course-details/subjects/modules/'
@@ -1463,6 +1476,7 @@ export interface RootRouteChildren {
   StudyLibraryLiveClassFeedbackIndexRoute: typeof StudyLibraryLiveClassFeedbackIndexRoute
   StudyLibraryLiveClassWaitingRoomIndexRoute: typeof StudyLibraryLiveClassWaitingRoomIndexRoute
   StudyLibraryCoursesCourseDetailsSubjectsIndexRoute: typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  StudyLibraryCoursesCourseDetailsTutorIndexRoute: typeof StudyLibraryCoursesCourseDetailsTutorIndexRoute
   UnChannelUsernameCategoryIndexRoute: typeof UnChannelUsernameCategoryIndexRoute
   AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute: typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
   StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute: typeof StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute
@@ -2144,6 +2158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UnChannelUsernameCategoryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/study-library/courses/course-details/tutor/': {
+      id: '/study-library/courses/course-details/tutor/'
+      path: '/study-library/courses/course-details/tutor'
+      fullPath: '/study-library/courses/course-details/tutor'
+      preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsTutorIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/study-library/courses/course-details/subjects/': {
       id: '/study-library/courses/course-details/subjects/'
       path: '/study-library/courses/course-details/subjects'
@@ -2377,6 +2398,8 @@ const rootRouteChildren: RootRouteChildren = {
     StudyLibraryLiveClassWaitingRoomIndexRoute,
   StudyLibraryCoursesCourseDetailsSubjectsIndexRoute:
     StudyLibraryCoursesCourseDetailsSubjectsIndexRoute,
+  StudyLibraryCoursesCourseDetailsTutorIndexRoute:
+    StudyLibraryCoursesCourseDetailsTutorIndexRoute,
   UnChannelUsernameCategoryIndexRoute: UnChannelUsernameCategoryIndexRoute,
   AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute:
     AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute,

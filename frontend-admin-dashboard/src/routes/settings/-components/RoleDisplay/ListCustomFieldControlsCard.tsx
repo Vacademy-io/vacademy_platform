@@ -5,6 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useCustomFieldSetup } from '@/routes/audience-manager/list/-hooks/useCustomFieldSetup';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type {
     ListCustomFieldControls,
     ListCustomFieldSurface,
@@ -29,10 +31,12 @@ interface ListCustomFieldControlsCardProps {
     hideHeading?: boolean;
 }
 
-const SURFACES: Array<{ id: ListCustomFieldSurface; label: string; pages: string }> = [
-    { id: 'LEADS', label: 'Leads', pages: 'Lead List + Recent Leads' },
-    { id: 'CONTACTS', label: 'All Contacts', pages: 'Manage Students → All Contacts' },
-    { id: 'STUDENTS', label: 'Students', pages: 'Manage Students → Student List' },
+const buildSurfaces = (
+    t: TFunction
+): Array<{ id: ListCustomFieldSurface; label: string; pages: string }> => [
+    { id: 'LEADS', label: t('surfaces.leads.label'), pages: t('surfaces.leads.pages') },
+    { id: 'CONTACTS', label: t('surfaces.contacts.label'), pages: t('surfaces.contacts.pages') },
+    { id: 'STUDENTS', label: t('surfaces.students.label'), pages: t('surfaces.students.pages') },
 ];
 
 /**
@@ -53,9 +57,11 @@ export const ListCustomFieldControlsCard = ({
     initialSurface,
     hideHeading = false,
 }: ListCustomFieldControlsCardProps) => {
+    const { t } = useTranslation('settingsListCustomFieldControlsCard');
     const instituteId = getCurrentInstituteId();
     const { data: fields, isLoading } = useCustomFieldSetup(instituteId ?? undefined);
     const [surface, setSurface] = useState<ListCustomFieldSurface>(initialSurface ?? 'LEADS');
+    const surfaces = useMemo(() => buildSurfaces(t), [t]);
 
     const sortedFields = useMemo(
         () => [...(fields ?? [])].sort((a, b) => (a.form_order ?? 0) - (b.form_order ?? 0)),
@@ -100,19 +106,14 @@ export const ListCustomFieldControlsCard = ({
         });
     };
 
-    const surfaceMeta = SURFACES.find((s) => s.id === surface);
+    const surfaceMeta = surfaces.find((s) => s.id === surface);
 
     return (
         <Card>
             {!hideHeading && (
                 <CardHeader>
-                    <CardTitle>List Filters &amp; Sorting — Custom Fields</CardTitle>
-                    <CardDescription>
-                        Choose which custom fields appear as filters on each list page (applies to
-                        everyone). Each enabled field adds a searchable multi-select to that
-                        page&apos;s filter bar; turning it off hides the filter and stops loading
-                        its values. Sortable applies where custom-field column sorting is available.
-                    </CardDescription>
+                    <CardTitle>{t('header.title')}</CardTitle>
+                    <CardDescription>{t('header.description')}</CardDescription>
                 </CardHeader>
             )}
             <CardContent>
@@ -121,7 +122,7 @@ export const ListCustomFieldControlsCard = ({
                     onValueChange={(v) => setSurface(v as ListCustomFieldSurface)}
                 >
                     <TabsList>
-                        {SURFACES.map((s) => (
+                        {surfaces.map((s) => (
                             <TabsTrigger key={s.id} value={s.id}>
                                 {s.label}
                             </TabsTrigger>
@@ -130,20 +131,18 @@ export const ListCustomFieldControlsCard = ({
                 </Tabs>
                 {surfaceMeta && (
                     <p className="mt-2 text-xs text-muted-foreground">
-                        Applies to: {surfaceMeta.pages}
+                        {t('appliesTo', { pages: surfaceMeta.pages })}
                     </p>
                 )}
                 {isLoading ? (
-                    <p className="mt-3 text-sm text-muted-foreground">Loading custom fields…</p>
+                    <p className="mt-3 text-sm text-muted-foreground">{t('loading')}</p>
                 ) : sortedFields.length === 0 ? (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                        No custom fields configured for this institute yet.
-                    </p>
+                    <p className="mt-3 text-sm text-muted-foreground">{t('emptyState')}</p>
                 ) : (
                     <div className="mt-2 flex flex-col">
                         <div className="flex items-center justify-end gap-8 border-b border-border py-2 pr-1 text-xs font-medium text-muted-foreground">
-                            <span>Filter</span>
-                            <span>Sort</span>
+                            <span>{t('columns.filter')}</span>
+                            <span>{t('columns.sort')}</span>
                         </div>
                         {sortedFields.map((field) => (
                             <div

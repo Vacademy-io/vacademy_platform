@@ -1,6 +1,8 @@
 package vacademy.io.assessment_service.features.assessment.repository;
 
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -77,4 +79,41 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
                         "LEFT JOIN FETCH reg.assessment " +
                         "WHERE p.id = :processId")
         Optional<AiEvaluationProcess> findByIdWithCompleteDetails(@Param("processId") String processId);
+
+        /**
+         * Atomically claim one batch of queued jobs for this instance (V43).
+         *
+         * The whole point is that this is a single UPDATE, not a read-then-write.
+         * Prod runs several replicas and they all poll: with a SELECT followed by a
+         * separate UPDATE, two pods routinely read the same PENDING row and both start
+         * grading it -- which for AI evaluation means grading the same attempt twice and
+         * CHARGING THE INSTITUTE TWICE. Postgres serialises the UPDATE, so exactly one
+         * pod's write lands and only it sees rows affected.
+         *
+         * A claim older than :staleBefore is treated as abandoned and may be re-claimed,
+         * so a pod that died holding jobs does not strand them.
+         *
+         * Ordered oldest-first so a backlog drains fairly rather than starving the
+         * earliest submissions.
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Transactional
+        @Query(value = "UPDATE ai_evaluation_process SET claimed_by = :claimedBy, claimed_at = :now "
+                        + "WHERE id IN ("
+                        + "    SELECT id FROM ai_evaluation_process "
+                        + "    WHERE status = 'PENDING' "
+                        + "      AND (claimed_at IS NULL OR claimed_at < :staleBefore) "
+                        + "    ORDER BY created_at "
+                        + "    LIMIT :batchSize "
+                        + "    FOR UPDATE SKIP LOCKED"
+                        + ")", nativeQuery = true)
+        int claimPendingJobs(@Param("claimedBy") String claimedBy,
+                        @Param("now") Date now,
+                        @Param("staleBefore") Date staleBefore,
+                        @Param("batchSize") int batchSize);
+
+        /** The rows this instance just claimed, to hand to the async worker. */
+        @Query("SELECT p FROM AiEvaluationProcess p WHERE p.claimedBy = :claimedBy AND p.status = 'PENDING' "
+                        + "ORDER BY p.createdAt")
+        List<AiEvaluationProcess> findClaimedPending(@Param("claimedBy") String claimedBy);
 }

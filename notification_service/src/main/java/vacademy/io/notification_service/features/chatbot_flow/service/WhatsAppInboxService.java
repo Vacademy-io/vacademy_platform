@@ -1,11 +1,14 @@
 package vacademy.io.notification_service.features.chatbot_flow.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.features.chatbot_flow.dto.InboxConversationDTO;
 import vacademy.io.notification_service.features.chatbot_flow.dto.InboxMessageDTO;
 import vacademy.io.notification_service.features.chatbot_flow.engine.provider.ChatbotMessageProvider;
+import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotEscalation;
 import vacademy.io.notification_service.features.combot.entity.ChannelToInstituteMapping;
 import vacademy.io.notification_service.features.combot.repository.ChannelToInstituteMappingRepository;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
@@ -20,15 +23,34 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class WhatsAppInboxService {
 
+    /** Conversation list filters. */
+    public static final String FILTER_UNANSWERED = "UNANSWERED";
+    public static final String FILTER_FAILED = "FAILED";
+
     private final NotificationLogRepository notificationLogRepository;
     private final ChannelToInstituteMappingRepository channelMappingRepository;
     private final WhatsAppTemplateRenderer templateRenderer;
+    private final ChatbotEscalationService escalationService;
+    private final WhatsAppSendFailureService sendFailureService;
+    private final ObjectMapper objectMapper;
     private final List<ChatbotMessageProvider> messageProviders;
 
     public List<InboxConversationDTO> getConversations(String instituteId, int offset, int limit) {
+        return getConversations(instituteId, offset, limit, null);
+    }
+
+    /**
+     * One page of the conversation list.
+     *
+     * @param filter {@code UNANSWERED} — only conversations the chatbot handed over and nobody has
+     *               answered yet; {@code FAILED} — only conversations containing a message the
+     *               provider refused to deliver; null/blank/ALL — everything.
+     */
+    public List<InboxConversationDTO> getConversations(String instituteId, int offset, int limit,
+                                                       String filter) {
         if (instituteId == null || instituteId.isBlank()) return List.of();
 
-        List<NotificationLog> logs = notificationLogRepository.findConversationsForInbox(instituteId, limit, offset);
+        List<NotificationLog> logs = loadConversationPage(instituteId, offset, limit, filter);
         if (logs.isEmpty()) return List.of();
 
         Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
@@ -45,16 +67,65 @@ public class WhatsAppInboxService {
             log.warn("Failed to fetch unread counts: {}", e.getMessage());
         }
 
-        return logs.stream().map(nl -> InboxConversationDTO.builder()
-                .phone(nl.getChannelId())
-                .senderName(nl.getSenderName())
-                .userId(nl.getUserId())
-                .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
-                .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
-                .lastMessageTime(nl.getNotificationDate())
-                .unreadCount(unreadMap.getOrDefault(nl.getChannelId(), 0L))
-                .build()
-        ).collect(Collectors.toList());
+        // Two more batched lookups (still no N+1): who is waiting on a human, and where a send
+        // was refused. Both drive badges on the conversation row so an admin sees them without
+        // opening every chat.
+        Map<String, ChatbotEscalation> pending = escalationService.findPendingByPhone(instituteId, phones);
+        Map<String, Long> failedMap = batchFailedCounts(instituteId, phones);
+
+        return logs.stream().map(nl -> {
+            ChatbotEscalation escalation = pending.get(nl.getChannelId());
+            return InboxConversationDTO.builder()
+                    .phone(nl.getChannelId())
+                    .senderName(nl.getSenderName())
+                    .userId(nl.getUserId())
+                    .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
+                    .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
+                    .lastMessageTime(nl.getNotificationDate())
+                    .unreadCount(unreadMap.getOrDefault(nl.getChannelId(), 0L))
+                    .awaitingReply(escalation != null)
+                    .escalationId(escalation != null ? escalation.getId() : null)
+                    .escalationReason(escalation != null ? escalation.getReason() : null)
+                    .escalationMessage(escalation != null ? truncate(escalation.getUserMessage(), 140) : null)
+                    .escalatedAt(escalation != null && escalation.getCreatedAt() != null
+                            ? escalation.getCreatedAt().toInstant() : null)
+                    .failedCount(failedMap.getOrDefault(nl.getChannelId(), 0L))
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    /** Applies the requested filter to the conversation page query. */
+    private List<NotificationLog> loadConversationPage(String instituteId, int offset, int limit,
+                                                        String filter) {
+        String normalized = filter == null ? "" : filter.trim().toUpperCase();
+
+        if (FILTER_UNANSWERED.equals(normalized)) {
+            // The phone list is authoritative here — it comes from the escalation table, not from
+            // notification_log — so an empty set means "nothing is waiting", not "no data".
+            List<String> waiting = new ArrayList<>(escalationService.findPendingPhones(instituteId));
+            if (waiting.isEmpty()) return List.of();
+            return notificationLogRepository.findConversationsForPhones(instituteId, waiting, limit, offset);
+        }
+
+        if (FILTER_FAILED.equals(normalized)) {
+            return notificationLogRepository.findConversationsWithFailedSends(
+                    instituteId, WhatsAppSendFailureService.FAILED_PAYLOAD_LIKE, limit, offset);
+        }
+
+        return notificationLogRepository.findConversationsForInbox(instituteId, limit, offset);
+    }
+
+    private Map<String, Long> batchFailedCounts(String instituteId, List<String> phones) {
+        Map<String, Long> failedMap = new HashMap<>();
+        try {
+            for (Object[] row : notificationLogRepository.batchCountFailedMessages(
+                    instituteId, phones, WhatsAppSendFailureService.FAILED_PAYLOAD_LIKE)) {
+                failedMap.put((String) row[0], ((Number) row[1]).longValue());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch undelivered message counts: {}", e.getMessage());
+        }
+        return failedMap;
     }
 
     public List<InboxMessageDTO> getMessages(String phone, String instituteId, String cursor, int limit) {
@@ -69,6 +140,22 @@ public class WhatsAppInboxService {
             // When we can rebuild the real template text, show it; otherwise fall back to the
             // stored body (free-text replies, incoming messages, or template no longer on file).
             String body = (rm != null && rm.body != null) ? rm.body : nl.getBody();
+
+            // Free-text / interactive / media sends the provider refused carry the same
+            // deliveryStatus + error contract on message_payload, but no templateName — so the
+            // template renderer returns null for them. Read the marker directly.
+            SendFailure failure = rm == null ? readSendFailure(nl.getMessagePayload()) : null;
+
+            // What the SEND said (rm/failure) vs. what the PROVIDER later did (delivery_status,
+            // stamped by the status webhook). The webhook wins whenever it has spoken: a send the
+            // provider accepted reads SUCCESS here forever, even when the message was rejected
+            // seconds later, so preferring the send-time value would keep showing a green bubble for
+            // a message that never arrived. Null delivery_status → nothing was reported → legacy
+            // behaviour, unchanged.
+            String sendTimeStatus = rm != null ? rm.deliveryStatus : (failure != null ? failure.status : null);
+            String sendTimeError = rm != null ? rm.error : (failure != null ? failure.error : null);
+            boolean providerReported = nl.getDeliveryStatus() != null;
+
             return InboxMessageDTO.builder()
                     .id(nl.getId())
                     .body(body)
@@ -79,12 +166,48 @@ public class WhatsAppInboxService {
                     .status(nl.getNotificationType())
                     .templateName(rm != null ? rm.templateName : null)
                     .provider(rm != null ? rm.provider : null)
-                    .deliveryStatus(rm != null ? rm.deliveryStatus : null)
-                    .error(rm != null ? rm.error : null)
+                    .deliveryStatus(providerReported ? nl.getDeliveryStatus() : sendTimeStatus)
+                    .error(providerReported ? deliveryFailureReason(nl) : sendTimeError)
                     .headerType(rm != null ? rm.headerType : null)
                     .headerMediaUrl(rm != null ? rm.headerMediaUrl : null)
+                    .attemptedType(failure != null ? failure.attemptedType : null)
                     .build();
         }).collect(Collectors.toList());
+    }
+
+    /**
+     * Reason line for a message the provider rejected after accepting it, e.g.
+     * "Business eligibility payment issue (131042)". Null for any other delivery status — a
+     * delivered or read message has nothing to explain.
+     */
+    private String deliveryFailureReason(NotificationLog nl) {
+        if (!"FAILED".equals(nl.getDeliveryStatus())) return null;
+        String reason = nl.getDeliveryErrorMessage() != null ? nl.getDeliveryErrorMessage() : "Not delivered";
+        return nl.getDeliveryErrorCode() != null ? reason + " (" + nl.getDeliveryErrorCode() + ")" : reason;
+    }
+
+    /** The FAILED marker {@code WhatsAppSendFailureService} writes on non-template sends. */
+    private record SendFailure(String status, String error, String attemptedType) {}
+
+    private SendFailure readSendFailure(String messagePayload) {
+        if (messagePayload == null || messagePayload.isBlank()) return null;
+        if (!messagePayload.contains(WhatsAppSendFailureService.FAILED_STATUS)) return null;
+        try {
+            Map<String, Object> payload = objectMapper.readValue(messagePayload,
+                    new TypeReference<Map<String, Object>>() {});
+            Object status = payload.get("deliveryStatus");
+            if (status == null || !WhatsAppSendFailureService.FAILED_STATUS.equals(status.toString())) {
+                return null;
+            }
+            Object error = payload.get("error");
+            Object attemptedType = payload.get("attemptedType");
+            return new SendFailure(status.toString(),
+                    error != null ? error.toString() : null,
+                    attemptedType != null ? attemptedType.toString() : null);
+        } catch (Exception e) {
+            log.debug("Unparseable message payload on log row: {}", e.getMessage());
+            return null;
+        }
     }
 
     public List<InboxConversationDTO> searchConversations(String instituteId, String query) {
@@ -95,18 +218,47 @@ public class WhatsAppInboxService {
 
         Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
 
-        return logs.stream().map(nl -> InboxConversationDTO.builder()
-                .phone(nl.getChannelId())
-                .senderName(nl.getSenderName())
-                .userId(nl.getUserId())
-                .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
-                .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
-                .lastMessageTime(nl.getNotificationDate())
-                .build()
-        ).collect(Collectors.toList());
+        List<String> phones = logs.stream().map(NotificationLog::getChannelId).collect(Collectors.toList());
+        Map<String, ChatbotEscalation> pending = escalationService.findPendingByPhone(instituteId, phones);
+        Map<String, Long> failedMap = batchFailedCounts(instituteId, phones);
+
+        return logs.stream().map(nl -> {
+            ChatbotEscalation escalation = pending.get(nl.getChannelId());
+            return InboxConversationDTO.builder()
+                    .phone(nl.getChannelId())
+                    .senderName(nl.getSenderName())
+                    .userId(nl.getUserId())
+                    .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
+                    .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
+                    .lastMessageTime(nl.getNotificationDate())
+                    .awaitingReply(escalation != null)
+                    .escalationId(escalation != null ? escalation.getId() : null)
+                    .escalationReason(escalation != null ? escalation.getReason() : null)
+                    .escalationMessage(escalation != null ? truncate(escalation.getUserMessage(), 140) : null)
+                    .escalatedAt(escalation != null && escalation.getCreatedAt() != null
+                            ? escalation.getCreatedAt().toInstant() : null)
+                    .failedCount(failedMap.getOrDefault(nl.getChannelId(), 0L))
+                    .build();
+        }).collect(Collectors.toList());
     }
 
     public InboxMessageDTO sendReply(String phone, String text, String instituteId) {
+        return sendReply(phone, text, instituteId, null);
+    }
+
+    /**
+     * Human reply from the WhatsApp Inbox. Two things beyond the send itself:
+     * <ul>
+     *   <li>A provider refusal is written to notification_log as FAILED before the error is
+     *       rethrown, so the attempt is visible in the thread instead of only in a toast the admin
+     *       may already have dismissed.</li>
+     *   <li>A successful reply resolves any open escalation on this conversation — the reply IS
+     *       the answer the learner was waiting for, so the "Unanswered" badge clears on its own.</li>
+     * </ul>
+     *
+     * @param repliedBy admin user id for the escalation audit trail; null falls back to INBOX_REPLY
+     */
+    public InboxMessageDTO sendReply(String phone, String text, String instituteId, String repliedBy) {
         List<ChannelToInstituteMapping> mappings = channelMappingRepository.findAllByInstituteId(instituteId);
         if (mappings.isEmpty()) {
             throw new org.springframework.web.server.ResponseStatusException(
@@ -134,7 +286,17 @@ public class WhatsAppInboxService {
                         .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                                 org.springframework.http.HttpStatus.BAD_REQUEST, "No WhatsApp provider found")));
 
-        String providerMessageId = provider.sendText(phone, text, instituteId, businessChannelId);
+        String providerMessageId;
+        try {
+            providerMessageId = provider.sendText(phone, text, instituteId, businessChannelId);
+        } catch (Exception e) {
+            // Record the undelivered reply, then let the caller surface the error.
+            sendFailureService.logFailure(instituteId, phone, businessChannelId, null,
+                    "text", text, "INBOX", e.getMessage());
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_GATEWAY,
+                    "WhatsApp rejected the message: " + e.getMessage());
+        }
 
         NotificationLog outLog = new NotificationLog();
         outLog.setNotificationType("WHATSAPP_MESSAGE_OUTGOING");
@@ -157,6 +319,9 @@ public class WhatsAppInboxService {
         } catch (Exception ignored) {}
 
         notificationLogRepository.save(outLog);
+
+        // A human has now answered — clear the "Unanswered" flag on this conversation.
+        escalationService.resolveForPhone(instituteId, phone, repliedBy);
 
         return InboxMessageDTO.builder()
                 .id(outLog.getId())
@@ -203,7 +368,14 @@ public class WhatsAppInboxService {
                         .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                                 org.springframework.http.HttpStatus.BAD_REQUEST, "No WhatsApp provider found")));
 
-        String providerMessageId = provider.sendText(phone, text, instituteId, businessChannelId);
+        String providerMessageId;
+        try {
+            providerMessageId = provider.sendText(phone, text, instituteId, businessChannelId);
+        } catch (Exception e) {
+            sendFailureService.logFailure(instituteId, phone, businessChannelId, null,
+                    "text", text, "ENGAGEMENT_ENGINE", e.getMessage());
+            throw e;
+        }
 
         NotificationLog outLog = new NotificationLog();
         outLog.setNotificationType("WHATSAPP_MESSAGE_OUTGOING");

@@ -70,7 +70,9 @@ import {
     useHasCallIntelligenceData,
 } from '@/components/shared/leads';
 import { useIsMentor } from '@/hooks/use-is-mentor';
+import { useMyEmployeeProfile } from '@/hooks/use-my-employee-profile';
 
+import type { SidebarCategory } from '@/types/layout-container/layout-container-types';
 // Sidebar sub-items under "Assessments and Tests" that deep-link into the
 // create-assessment wizard. Hidden together with the Create Assessment button.
 const ASSESSMENT_CREATE_SUB_ITEM_IDS = new Set([
@@ -154,6 +156,17 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     const onMentorshipRoute = currentRoute.startsWith('/mentorship');
     const { isMentor } = useIsMentor(mentorshipEntryVisible && onMentorshipRoute);
 
+    // ERP > My HR is the employee's OWN workspace; every screen behind it 404s
+    // for someone with no HR profile (most staff, at an institute that has not
+    // onboarded payroll). Unlike the mentorship probe this cannot wait until the
+    // user is already on the route — the entry IS the way in — so it runs
+    // whenever the institute has ERP switched on at all. That is one request per
+    // session, cached for its lifetime, and none at all for the institutes that
+    // never enable ERP.
+    const myHrEntryVisible = isTabVisible('erp-my-hr');
+    const { employeeId: myEmployeeId } = useMyEmployeeProfile(myHrEntryVisible);
+    const hasEmployeeProfile = !!myEmployeeId;
+
     // AI Intelligence (Leads > AI Intelligence) rides on Call Intelligence. The
     // entry is available when the feature is ON, or when it's off but the institute
     // has previously-analyzed data to look back on (the page then shows historical
@@ -180,7 +193,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
             return;
         }
 
-        const checkCategoryVisibility = (cat: 'CRM' | 'LMS' | 'AI') => {
+        const checkCategoryVisibility = (cat: SidebarCategory) => {
             if (!roleDisplay?.sidebarCategories) return true;
             const cfg = roleDisplay.sidebarCategories.find((c) => c.id === cat);
             return cfg ? cfg.visible !== false : true;
@@ -190,10 +203,10 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // route. Custom tabs (saved in roleDisplay.sidebar) participate too — without
         // this, an LMS custom tab pointing to a CRM route loses to the static CRM
         // entry and the wrong category gets activated.
-        const findMatchingCategories = (): Array<'CRM' | 'LMS' | 'AI'> => {
+        const findMatchingCategories = (): Array<SidebarCategory> => {
             if (isVoltSubdomain) return ['LMS'];
-            const hits: Array<'CRM' | 'LMS' | 'AI'> = [];
-            const push = (cat?: 'CRM' | 'LMS' | 'AI') => {
+            const hits: Array<SidebarCategory> = [];
+            const push = (cat?: SidebarCategory) => {
                 const c = cat || 'CRM';
                 if (!hits.includes(c)) hits.push(c);
             };
@@ -213,11 +226,11 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
             const customTabs = roleDisplay?.sidebar?.filter((t) => t.isCustom) || [];
             for (const t of customTabs) {
                 if (t.route && currentRoute.startsWith(t.route)) {
-                    push(t.category as 'CRM' | 'LMS' | 'AI' | undefined);
+                    push(t.category as SidebarCategory | undefined);
                 }
                 for (const s of t.subTabs || []) {
                     if (s.route && currentRoute.startsWith(s.route)) {
-                        push(t.category as 'CRM' | 'LMS' | 'AI' | undefined);
+                        push(t.category as SidebarCategory | undefined);
                     }
                 }
             }
@@ -229,7 +242,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // Prefer a visible match; if none of the matches are visible, prefer the
         // default visible category from sidebarCategories; otherwise fall through.
         const visibleMatch = matches.find((c) => checkCategoryVisibility(c));
-        let targetCategory: 'CRM' | 'LMS' | 'AI' | null = visibleMatch ?? null;
+        let targetCategory: SidebarCategory | null = visibleMatch ?? null;
 
         if (!targetCategory && roleDisplay?.sidebarCategories) {
             // Find a visible category to land on. Try `default && visible`, then
@@ -293,9 +306,14 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // hidden Create Assessment button.
         const needsSubItemFilter =
             !isChatEnabled || !isCrmIntelligenceAvailable || !canCreateAssessment || !isMentor;
-        const base = !needsSubItemFilter
+        // Drop My HR entirely for non-employees — it is a whole module, not a
+        // sub-item, so it is filtered from the item list rather than within one.
+        const rawBaseWithHr = hasEmployeeProfile
             ? rawBase
-            : rawBase.map((item) => ({
+            : rawBase.filter((item) => item.id !== 'erp-my-hr');
+        const base = !needsSubItemFilter
+            ? rawBaseWithHr
+            : rawBaseWithHr.map((item) => ({
                   ...item,
                   subItems: item.subItems?.filter(
                       (s) =>

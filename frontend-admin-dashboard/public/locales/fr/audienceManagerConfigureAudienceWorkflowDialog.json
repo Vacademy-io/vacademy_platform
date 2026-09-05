@@ -1,0 +1,67 @@
+{
+    "dialog": {
+        "title": "Configurer le workflow",
+        "description": "Configurez un e-mail automatique pour <bold>« {{audienceName}} »</bold>. Pour des flux plus complexes (délais, conditions, plusieurs étapes), utilisez le générateur de workflow complet."
+    },
+    "kind": {
+        "label": "Type de workflow",
+        "confirmation": {
+            "title": "Confirmation",
+            "description": "Envoyé immédiatement lorsqu'un prospect soumet le formulaire."
+        },
+        "followup": {
+            "title": "Relance",
+            "description": "Envoyé N jours après qu'un prospect soumette le formulaire."
+        }
+    },
+    "fields": {
+        "followupDays": {
+            "label": "Envoyer la relance combien de jours après la soumission ?",
+            "helper": "Le workflow s'exécute quotidiennement à 9h00 (heure de l'Inde) et envoie un e-mail aux prospects dont la date de soumission remonte exactement à ce nombre de jours. Pour envoyer sur plusieurs jours (par ex. jour 3 ET jour 7), créez des workflows distincts pour chacun."
+        },
+        "name": {
+            "label": "Nom du workflow",
+            "placeholder": "ex. E-mail de bienvenue pour les nouveaux prospects"
+        },
+        "description": {
+            "label": "Description",
+            "optional": "(facultatif)",
+            "placeholder": "Que fait ce workflow ?"
+        },
+        "template": {
+            "label": "Modèle d'e-mail",
+            "loading": "Chargement des modèles...",
+            "placeholder": "-- Sélectionner un modèle --",
+            "noneFound": "Aucun modèle d'e-mail trouvé. Créez-en un dans la section Communications d'abord.",
+            "untitledFallback": "Sans titre"
+        }
+    },
+    "nameSuggestion": {
+        "confirmation": "{{audienceName}} — e-mail de confirmation",
+        "followup_one": "{{audienceName}} — relance après {{count}} jour",
+        "followup_many": "{{audienceName}} — relance après {{count}} jours",
+        "followup_other": "{{audienceName}} — relance après {{count}} jours"
+    },
+    "actions": {
+        "cancel": "Annuler",
+        "submit": "Créer le workflow",
+        "submitting": "Création en cours..."
+    },
+    "toast": {
+        "success": "Workflow créé",
+        "errorFallback": "Échec de la création du workflow"
+    },
+    "dto": {
+        "confirmation": {
+            "descriptionFallback": "Envoyer un e-mail de confirmation lorsqu'un prospect soumet « {{audienceName}} »",
+            "triggerNodeName": "Déclencheur : formulaire d'audience soumis"
+        },
+        "followup": {
+            "descriptionFallback_one": "Envoyer un e-mail de relance aux prospects ayant soumis « {{audienceName}} » il y a exactement {{count}} jour",
+            "descriptionFallback_many": "Envoyer un e-mail de relance aux prospects ayant soumis « {{audienceName}} » il y a exactement {{count}} jours",
+            "descriptionFallback_other": "Envoyer un e-mail de relance aux prospects ayant soumis « {{audienceName}} » il y a exactement {{count}} jours",
+            "queryNodeName": "Récupérer les prospects récents"
+        },
+        "sendNodeName": "Envoyer : {{templateName}}"
+    }
+}

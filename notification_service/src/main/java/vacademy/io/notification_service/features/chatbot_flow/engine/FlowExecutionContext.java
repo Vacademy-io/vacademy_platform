@@ -30,4 +30,12 @@ public class FlowExecutionContext {
 
     /** Session-accumulated context variables */
     private Map<String, Object> sessionVariables;
+
+    /**
+     * Set by an executor that already wrote a FAILED notification_log row for the message it was
+     * sending (see {@code WhatsAppSendFailureService}). The engine reads-and-clears it so it does
+     * not also log the same message as delivered — one bubble per attempt in the Inbox.
+     */
+    @Builder.Default
+    private boolean sendFailureLogged = false;
 }

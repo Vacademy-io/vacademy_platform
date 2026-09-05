@@ -596,6 +596,27 @@ class AiVideoRepository:
         finally:
             session.close()
 
+    def record_warning(self, video_id: str, message: str) -> None:
+        """Attach a warning to a run WITHOUT changing its status.
+
+        A film that shipped 20 of 28 shots is still watchable, so marking it
+        FAILED would be wrong and marking it PARTIAL would hand the frontend a
+        status value it does not know. But COMPLETED with an empty
+        error_message is how a missing certificate reveal went unnoticed. This
+        keeps the status honest and the shortfall visible.
+        """
+        session = self._get_fresh_session()
+        try:
+            video = session.query(AiGenVideo).filter(
+                AiGenVideo.video_id == video_id
+            ).first()
+            if not video:
+                return
+            video.error_message = message
+            session.commit()
+        finally:
+            session.close()
+
     def mark_failed(
         self,
         video_id: str,

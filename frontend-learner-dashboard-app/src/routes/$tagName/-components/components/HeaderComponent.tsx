@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate, useLocation } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { HeaderProps } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -20,7 +21,10 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { StudentAuthPresentation } from "@/types/student-display-settings";
 
 export const HeaderComponent: React.FC<HeaderProps & {
-  navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
+  /** `enabled: false` hides a link the author kept but does not want live.
+   *  Absent means visible, so headers authored before the toggle existed are
+   *  unchanged. */
+  navigation?: Array<{ label: string; route: string; openInSameTab?: boolean; enabled?: boolean }>;
   authLinks?: Array<{ label: string; route: string; audienceId?: string; formTitle?: string }>;
   useAuthModal?: boolean;
   catalogueData?: CourseCatalogueData;
@@ -40,6 +44,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
   backgroundColor,
   textColor,
 }) => {
+    const { t } = useTranslation("coursePlayerB");
     const [togle, settogle] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
@@ -99,6 +104,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
         (link.label || '').toLowerCase().includes('get started')
       );
     };
+
+    // Links the author switched off in the editor never reach the bar, the
+    // mobile menu, or the "is there anything to show?" checks that gate them.
+    const visibleNavigation = navigation.filter((item) => item?.enabled !== false);
 
     // Filter out "Sign Up" auth links when signup is disabled at the institute level.
     const visibleAuthLinks = signupEnabled
@@ -264,7 +273,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
         // If this is a "Home" item, don't make it active if "Courses" exists
         if (label.toLowerCase() === 'home') {
           // Check if there's a "Courses" item in the navigation
-          const hasCoursesItem = navigation.some(item => item.label.toLowerCase() === 'courses');
+          const hasCoursesItem = visibleNavigation.some(item => item.label.toLowerCase() === 'courses');
           // Only highlight "Home" if there's no "Courses" item
           return !hasCoursesItem;
         }
@@ -459,8 +468,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     sessionStorage.setItem('searchBarOpen', 'false');
                   }
                 }}
-                className="md:hidden p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover flex-shrink-0 transition-colors duration-200"
-                aria-label="Toggle menu"
+                className="md:hidden p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover flex-shrink-0 transition-colors duration-200"
+                aria-label={t("header.toggleMenu")}
               >
                 <div className="relative w-5 h-5 flex flex-col justify-center items-center">
                   <span
@@ -486,9 +495,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 <>
                   <img
                     src={jsonLogoUrl}
-                    alt="Logo"
+                    alt={t("header.logoAlt")}
                     onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                    className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                    className={`max-h-12 md:max-h-16 w-auto object-contain rounded-catalogue-sm transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
                       }`}
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
@@ -506,7 +515,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   {instituteLogoUrl && (
                     <img
                       src={instituteLogoUrl}
-                      alt="Institute Logo"
+                      alt={t("header.instituteLogoAlt")}
                       onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
                       className={`h-10 w-10 md:h-11 md:w-11 rounded-full object-cover border border-catalogue-border ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
                         }`}
@@ -524,16 +533,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
             </div>
 
             {/* Desktop Navigation */}
-            {navigation.length > 0 && (
+            {visibleNavigation.length > 0 && (
               <nav className="hidden md:flex items-center gap-1">
-                {navigation.map((item, index) => {
+                {visibleNavigation.map((item, index) => {
                   const isActive = isActiveRoute(item.route, item.label);
                   const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                   return (
                     <button
                       key={index}
                       onClick={() => handleNavigation(item.route, item.label, openInSameTab)}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isActive
+                      className={`px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${isActive
                         ? 'text-primary-500 bg-primary-50'
                         : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                         }`}
@@ -552,7 +561,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   actually renders: a header configured with only Login /
                   Get Started (no nav) used to show no toggle at all, leaving
                   those links unreachable on a phone. */}
-              {!isCourseCatalogeTypeEnabled && (navigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
+              {!isCourseCatalogeTypeEnabled && (visibleNavigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
                 <button
                   ref={setHamburgerButtonRef}
                   onClick={() => {
@@ -564,8 +573,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       sessionStorage.setItem('searchBarOpen', 'false');
                     }
                   }}
-                  className="md:hidden p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
-                  aria-label="Toggle menu"
+                  className="md:hidden p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
+                  aria-label={t("header.toggleMenu")}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -590,8 +599,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         setIsMobileMenuOpen(false);
                       }
                     }}
-                    className="p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
-                    aria-label="Search"
+                    className="p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
+                    aria-label={t("header.search")}
                   >
                     <MagnifyingGlass className="w-5 h-5" />
                   </button>
@@ -606,8 +615,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       const currentTagName = pathSegments[0] || tagName;
                       navigate({ to: `/${currentTagName}/cart` });
                     }}
-                    className="relative p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
-                    aria-label="Shopping Cart"
+                    className="relative p-2 rounded-catalogue-sm text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
+                    aria-label={t("header.shoppingCart")}
                   >
                     <ShoppingCart className="w-5 h-5" />
                     {cartItemCount > 0 && (
@@ -624,9 +633,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
               {isCourseCatalogeTypeEnabled && !isAuthenticated && (
                 <button
                   onClick={() => navigate({ to: '/login' })}
-                  className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
+                  className="md:hidden px-3 py-1.5 rounded-catalogue-sm text-xs font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
                 >
-                  Login
+                  {t("header.login")}
                 </button>
               )}
 
@@ -640,7 +649,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     <SystemAlertsBar />
                     <div className="w-px h-6 bg-primary-200/60 dark:bg-neutral-700"></div>
                     <button
-                      className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
+                      className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-catalogue-sm border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
                       onClick={() => {
                         setSidebarOpen();
                       }}
@@ -653,7 +662,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     <button
                       key={index}
                       onClick={() => handleAuthLinkClick(link)}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
+                      className={`px-4 py-2 rounded-catalogue-sm text-sm font-medium transition-colors duration-200 ${index === 0
                         ? 'bg-primary-500 text-white hover:bg-primary-400'
                         : 'border border-primary-500 text-primary-500 hover:bg-primary-50'
                         }`}
@@ -680,9 +689,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 }`}>
                 <div className="px-4 py-4 space-y-3">
                   {/* Navigation Links */}
-                  {navigation.length > 0 && (
+                  {visibleNavigation.length > 0 && (
                     <div className="space-y-1 pb-3 border-b border-catalogue-border-subtle">
-                      {navigation.map((item, index) => {
+                      {visibleNavigation.map((item, index) => {
                         const isActive = isActiveRoute(item.route, item.label);
                         const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                         return (
@@ -692,7 +701,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               setIsMobileMenuOpen(false);
                               handleNavigation(item.route, item.label, openInSameTab);
                             }}
-                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                            className={`block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 ${isActive
                               ? 'text-primary-500 bg-primary-50'
                               : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                               }`}
@@ -711,9 +720,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       setIsMobileMenuOpen(false);
                       navigate({ to: '/login' });
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-catalogue-md text-base font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
                   >
-                    <span>Login</span>
+                    <span>{t("header.login")}</span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
@@ -727,9 +736,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         setIsMobileMenuOpen(false);
                         navigate({ to: '/dashboard' });
                       }}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-catalogue-md text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
                     >
-                      <span>Dashboard</span>
+                      <span>{t("header.dashboard")}</span>
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                       </svg>
@@ -752,13 +761,13 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         window.open('https://chat.whatsapp.com/Kvh1fsDcL1GFCBrIveQ8q8', '_blank', 'noopener,noreferrer');
                       }
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-catalogue-text-secondary bg-catalogue-bg-subtle hover:bg-catalogue-interactive-hover border border-catalogue-border transition-colors duration-200"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-catalogue-md text-base font-medium text-catalogue-text-secondary bg-catalogue-bg-subtle hover:bg-catalogue-interactive-hover border border-catalogue-border transition-colors duration-200"
                   >
                     <span className="flex items-center gap-3">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
                       </svg>
-                      Customer Services
+                      {t("header.customerServices")}
                     </span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -772,13 +781,13 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         setIsMobileMenuOpen(false);
                         window.open(catalogueData.globalSettings.communityJoinLink!, '_blank', 'noopener,noreferrer');
                       }}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-whatsapp hover:bg-whatsapp-hover transition-colors duration-200 shadow-sm"
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-catalogue-md text-base font-medium text-white bg-whatsapp hover:bg-whatsapp-hover transition-colors duration-200 shadow-sm"
                     >
                       <span className="flex items-center gap-3">
                         <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
                           <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
                         </svg>
-                        Join our community
+                        {t("header.joinCommunity")}
                       </span>
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -790,7 +799,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   {/* <div className="relative">
                   <button
                     onClick={() => setIsGenreDropdownOpen(!isGenreDropdownOpen)}
-                    className="group w-full flex items-center justify-between px-5 py-3.5 rounded-xl text-base font-medium text-catalogue-text-primary bg-catalogue-bg-subtle hover:bg-catalogue-bg-muted border border-catalogue-border hover:border-catalogue-border-strong transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
+                    className="group w-full flex items-center justify-between px-5 py-3.5 rounded-catalogue-lg text-base font-medium text-catalogue-text-primary bg-catalogue-bg-subtle hover:bg-catalogue-bg-muted border border-catalogue-border hover:border-catalogue-border-strong transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
                   >
                     <span className="flex items-center gap-2">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -815,7 +824,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       isGenreDropdownOpen ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'
                     }`}
                   >
-                    <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="bg-gradient-to-br from-gray-50 to-white rounded-catalogue-lg border border-gray-200 shadow-sm overflow-hidden">
                       {['Poetry', 'Drama', 'Fiction', 'Non-Fiction'].map((genre, index) => (
                         <button
                           key={index}
@@ -846,7 +855,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             </div>
           ) : (
             // Standard mobile menu
-            isMobileMenuOpen && (navigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
+            isMobileMenuOpen && (visibleNavigation.length > 0 || visibleAuthLinks.length > 0 || isAuthenticated) && (
               <div
                 ref={setMobileMenuRef}
                 className={`md:hidden fixed start-0 end-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-catalogue-bg-elevated ${isAndroid || isIOS ? 'mt-8' : ''}`}
@@ -854,7 +863,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
               >
                 <div className="px-4 py-3 space-y-1">
                   {/* Navigation Links */}
-                  {navigation.map((item, index) => {
+                  {visibleNavigation.map((item, index) => {
                     const isActive = isActiveRoute(item.route, item.label);
                     const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                     return (
@@ -864,7 +873,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           setIsMobileMenuOpen(false);
                           handleNavigation(item.route, item.label, openInSameTab);
                         }}
-                        className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                        className={`block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 ${isActive
                           ? 'text-primary-500 bg-primary-50'
                           : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                           }`}
@@ -878,7 +887,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       above — with no nav configured there is nothing to
                       separate, so it would read as a stray line. */}
                   {(visibleAuthLinks.length > 0 || isAuthenticated) && (
-                    <div className={`space-y-2 ${navigation.length > 0 ? 'border-t border-catalogue-border-subtle pt-3 mt-3' : ''}`}>
+                    <div className={`space-y-2 ${visibleNavigation.length > 0 ? 'border-t border-catalogue-border-subtle pt-3 mt-3' : ''}`}>
                       {isAuthenticated ? (
                         <>
                           <button
@@ -886,9 +895,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               setIsMobileMenuOpen(false);
                               navigate({ to: '/dashboard' });
                             }}
-                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 text-white bg-primary-500 hover:bg-primary-400`}
+                            className={`block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 text-white bg-primary-500 hover:bg-primary-400`}
                           >
-                            Dashboard
+                            {t("header.dashboard")}
                           </button>
                           <div className="px-4 py-1">
                             {/* In mobile maybe don't need notification bell alone, they can see from dashboard */}
@@ -922,7 +931,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                                 navigate({ to: link.route });
                               }
                             }}
-                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
+                            className={`block w-full text-start px-4 py-2.5 rounded-catalogue-sm text-base font-medium transition-colors duration-200 ${index === 0
                               ? 'bg-primary-500 text-white hover:bg-primary-400'
                               : 'text-primary-500 hover:bg-primary-50'
                               }`}

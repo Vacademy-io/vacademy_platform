@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -50,6 +51,7 @@ const saveGtmSettings = async (data: GtmSettingsData): Promise<void> => {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function GtmSettings() {
+    const { t } = useTranslation('settingsGtm');
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<GtmSettingsData>(DEFAULT_GTM_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
@@ -70,12 +72,12 @@ export default function GtmSettings() {
     const { mutate: save, isPending: saving } = useMutation({
         mutationFn: saveGtmSettings,
         onSuccess: () => {
-            toast.success('GTM settings saved');
+            toast.success(t('toasts.saveSuccess'));
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['gtm-settings'] });
         },
         onError: () => {
-            toast.error('Failed to save GTM settings');
+            toast.error(t('toasts.saveError'));
         },
     });
 
@@ -86,26 +88,25 @@ export default function GtmSettings() {
 
     const handleSave = () => {
         if (settings.enabled && !GTM_ID_PATTERN.test(settings.containerId)) {
-            toast.error('Invalid GTM Container ID. Expected format: GTM-XXXXXXX');
+            toast.error(t('errors.invalidContainerId'));
             return;
         }
         save(settings);
     };
 
     if (isLoading) {
-        return <div className="p-6 text-sm text-muted-foreground">Loading GTM settings…</div>;
+        return <div className="p-6 text-sm text-muted-foreground">{t('loading')}</div>;
     }
 
     return (
         <div className="space-y-6 p-6">
             <Card>
                 <CardHeader>
-                    <CardTitle>Google Tag Manager</CardTitle>
+                    <CardTitle>{t('card.title')}</CardTitle>
                     <CardDescription>
-                        Inject your GTM container on learner enrollment pages. This enables
-                        conversion tracking, remarketing pixels, and any tags you configure in
-                        your GTM workspace. An <code>enrollment_success</code> event is pushed
-                        to the dataLayer on successful registration.
+                        {t('card.description.part1')}
+                        <code>enrollment_success</code>
+                        {t('card.description.part2')}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -116,15 +117,15 @@ export default function GtmSettings() {
                             onCheckedChange={(v) => update({ enabled: v })}
                         />
                         <Label htmlFor="gtm-enabled" className="cursor-pointer">
-                            {settings.enabled ? 'Enabled' : 'Disabled'}
+                            {settings.enabled ? t('toggle.enabled') : t('toggle.disabled')}
                         </Label>
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label htmlFor="gtm-container-id">Container ID</Label>
+                        <Label htmlFor="gtm-container-id">{t('containerId.label')}</Label>
                         <Input
                             id="gtm-container-id"
-                            placeholder="GTM-XXXXXXX"
+                            placeholder={t('containerId.placeholder')}
                             value={settings.containerId}
                             disabled={!settings.enabled}
                             onChange={(e) =>
@@ -133,7 +134,7 @@ export default function GtmSettings() {
                             className="max-w-xs"
                         />
                         <p className="text-xs text-muted-foreground">
-                            Find your Container ID in GTM → Admin → Container Settings.
+                            {t('containerId.hint')}
                         </p>
                     </div>
                 </CardContent>
@@ -146,7 +147,7 @@ export default function GtmSettings() {
                     onClick={handleSave}
                     disable={saving || !hasChanges}
                 >
-                    {saving ? 'Saving…' : 'Save GTM Settings'}
+                    {saving ? t('footer.saving') : t('footer.save')}
                 </MyButton>
             </div>
         </div>

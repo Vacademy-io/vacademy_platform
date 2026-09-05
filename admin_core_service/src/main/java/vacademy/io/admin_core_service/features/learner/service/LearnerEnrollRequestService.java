@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSet
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
+import vacademy.io.admin_core_service.features.enroll_invite.service.InviteFormAdminNotificationService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
 import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
@@ -49,6 +50,7 @@ import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.EnrollmentConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
@@ -108,6 +110,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private SubOrgService subOrgService;
+
+    @Autowired
+    private InviteFormAdminNotificationService inviteFormAdminNotificationService;
 
     @Autowired
     private PackageSessionRepository packageSessionRepository;
@@ -372,8 +377,9 @@ public class LearnerEnrollRequestService {
                 ReenrollmentGapValidationService.GapBlockedPackageSession blocked = gapValidationResult
                         .getBlockedPackageSessions().get(0);
                 String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(blocked.getRetryDate());
-                throw new VacademyException(
-                        new String("You are already enrolled in this demo. Please complete your current trial first."));
+                throw new EnrollmentConflictException(
+                        EnrollmentConflictException.ConflictType.ALREADY_ENROLLED,
+                        "You are already enrolled in this demo. Please complete your current trial first.");
             } else {
                 // Multiple package sessions - check if at least one is allowed
                 if (gapValidationResult.getAllowedPackageSessionIds().isEmpty()) {
@@ -384,7 +390,8 @@ public class LearnerEnrollRequestService {
                             .min(java.util.Date::compareTo)
                             .orElse(new java.util.Date());
                     String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(earliestRetryDate);
-                    throw new VacademyException(
+                    throw new EnrollmentConflictException(
+                            EnrollmentConflictException.ConflictType.ALREADY_ENROLLED,
                             String.format("You can retry operation on %s", retryDateStr));
                 } else {
                     // At least one is allowed - filter out blocked ones
@@ -447,6 +454,17 @@ public class LearnerEnrollRequestService {
                 paymentOption,
                 userPlan,
                 extraData);
+
+        // Invite-form team notification for FREE invites only. The learner FE skips the
+        // /open/v1/enrollment/form-submit step when the invite is FREE, so this is the
+        // only place their submission is observed; every other payment type is notified
+        // from EnrollmentFormService, which keeps it exactly-once either way.
+        if (PaymentOptionType.FREE.name().equals(paymentOption.getType())) {
+            inviteFormAdminNotificationService.notifyAdminsOnFormFill(
+                    enrollInvite,
+                    learnerEnrollRequestDTO.getUser(),
+                    enrollDTO.getCustomFieldValues());
+        }
 
         // B2B: Post-processing for SUB_ORG invite enrollment
         // Creates ROOT_ADMIN mappings, StudentSubOrg entry, and faculty mappings

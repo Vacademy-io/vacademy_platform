@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { CaretLeft, CaretRight, Clock, ChalkboardTeacher, Star } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import {
@@ -10,6 +11,8 @@ import {
   isValidVideoUrl,
 } from "../../-utils/video-url";
 import { cn } from "@/lib/utils";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface HeroSectionProps {
   layout: "split" | "centered";
@@ -113,6 +116,7 @@ const HeroTags: React.FC<{ tags?: string[]; textAlign: "left" | "center" | "righ
 // (measured via scrollHeight vs clientHeight). Used by both the placeholder
 // and state-backed hero variants so behavior stays consistent.
 const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -139,7 +143,7 @@ const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
           onClick={() => setExpanded((v) => !v)}
           className="mt-2 text-sm font-semibold text-primary-500 hover:underline focus:outline-none"
         >
-          {expanded ? "View less" : "View more"}
+          {expanded ? t("common.viewLess") : t("common.viewMore")}
         </button>
       )}
     </div>
@@ -241,7 +245,7 @@ const HeroStatChips: React.FC<{
       {visibleChips.slice(0, 4).map((c, i) => (
         <div
           key={`${c.label}-${i}`}
-          className="rounded-xl border border-catalogue-border-subtle bg-catalogue-bg px-4 py-2.5 text-center shadow-sm"
+          className="rounded-catalogue-lg border border-catalogue-border-subtle bg-catalogue-bg px-4 py-2.5 text-center shadow-sm"
         >
           <div className="text-lg font-bold leading-tight text-catalogue-text-primary">{c.value}</div>
           <div className="text-xs text-catalogue-text-secondary">{c.label}</div>
@@ -362,6 +366,7 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
   styles = {},
   courseData,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const { roundedEdges = false, textAlign = "left" } = styles;
 
   return useMemo(() => {
@@ -374,7 +379,12 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
     const heroDescription = sanitizedCourseDescription || sanitizedLeftDescription || "";
 
     const heroImage = courseData?.previewImage || courseData?.bannerImage || right?.image || "";
-    const heroImageAlt = right?.alt || sanitizedCourseTitle || "Course preview";
+    const heroImageAlt =
+      right?.alt ||
+      sanitizedCourseTitle ||
+      t("heroSection.defaultAlt", {
+        course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+      });
     const isHeroImagePlaceholder = isPlaceholderImage(heroImage);
     const isBackgroundImagePlaceholder = isPlaceholderImage(backgroundImage);
     // Carousel images can carry the hero media even when no single image is set.
@@ -411,7 +421,7 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
         isBackgroundImagePlaceholder={isBackgroundImagePlaceholder}
       />
     );
-  }, [layout, backgroundImage, left, right, courseData, roundedEdges, textAlign, eyebrow, statChips, trust]);
+  }, [layout, backgroundImage, left, right, courseData, roundedEdges, textAlign, eyebrow, statChips, trust, t]);
 };
 
 // Placeholder component - no state management
@@ -459,7 +469,7 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg")}
       // Author-painted color must beat the token hero surface: the class's
       // opaque gradient stack would otherwise cover the inline color.
       style={{ textAlign, backgroundColor: backgroundColor || undefined, ...(backgroundColor ? { backgroundImage: 'none' } : {}) }} // design-lint-ignore: page-builder background color
@@ -485,7 +495,7 @@ const HeroSectionPlaceholder: React.FC<{
                   isHeroButtonEnabled(left?.button) && left?.button && (
                     <button
                       onClick={() => handleButtonClick(left.button!)}
-                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      className="mt-2 px-8 py-3 rounded-catalogue-md text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                       style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                     >
                       {left.button.text}
@@ -517,7 +527,7 @@ const HeroSectionPlaceholder: React.FC<{
                   isHeroButtonEnabled(left?.button) && left?.button && (
                     <button
                       onClick={() => handleButtonClick(left.button!)}
-                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      className="mt-2 px-8 py-3 rounded-catalogue-md text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                       style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                     >
                       {left.button.text}
@@ -547,6 +557,7 @@ const HeroVideo: React.FC<{ src: string; poster?: string; title?: string }> = ({
   poster,
   title,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [resolved, setResolved] = useState<string>("");
   const [resolvedPoster, setResolvedPoster] = useState<string>("");
 
@@ -580,12 +591,12 @@ const HeroVideo: React.FC<{ src: string; poster?: string; title?: string }> = ({
       : null;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-xl shadow-md">
+    <div className="relative w-full overflow-hidden rounded-catalogue-lg shadow-md">
       {embedUrl ? (
         <div className="relative w-full aspect-video">
           <iframe
             src={embedUrl}
-            title={title || "Hero video"}
+            title={title || t("heroSection.defaultVideoTitle")}
             className="absolute inset-0 h-full w-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
             allowFullScreen
@@ -616,6 +627,7 @@ const HeroVideo: React.FC<{ src: string; poster?: string; title?: string }> = ({
 const HeroCarousel: React.FC<{
   images: Array<{ src: string; alt: string }>;
 }> = ({ images }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [resolved, setResolved] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
 
@@ -661,7 +673,7 @@ const HeroCarousel: React.FC<{
       <img
         src={srcs[0]}
         alt={images[0].alt}
-        className="h-auto max-h-96 w-full rounded-xl object-contain shadow-md"
+        className="h-auto max-h-96 w-full rounded-catalogue-lg object-contain shadow-md"
         onError={(e) => {
           e.currentTarget.style.display = "none";
         }}
@@ -670,7 +682,7 @@ const HeroCarousel: React.FC<{
   }
 
   return (
-    <div className="group relative w-full overflow-hidden rounded-xl shadow-md">
+    <div className="group relative w-full overflow-hidden rounded-catalogue-lg shadow-md">
       <div
         className="flex transition-transform duration-500 ease-out"
         style={{ transform: `translateX(-${index * 100}%)` }} // design-lint-ignore: dynamic carousel offset
@@ -692,7 +704,7 @@ const HeroCarousel: React.FC<{
             key={i}
             type="button"
             onClick={() => setIndex(i)}
-            aria-label={`Go to slide ${i + 1}`}
+            aria-label={t("heroSection.goToSlide", { number: i + 1 })}
             className={cn(
               "h-2 rounded-full bg-white transition-all duration-300",
               i === index ? "w-5" : "w-2 bg-white/60 hover:bg-white/80",
@@ -707,7 +719,7 @@ const HeroCarousel: React.FC<{
         onClick={() =>
           setIndex((i) => (i - 1 + images.length) % images.length)
         }
-        aria-label="Previous slide"
+        aria-label={t("common.previousSlide")}
         className="absolute start-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100"
       >
         <CaretLeft size={16} weight="bold" />
@@ -715,7 +727,7 @@ const HeroCarousel: React.FC<{
       <button
         type="button"
         onClick={() => setIndex((i) => (i + 1) % images.length)}
-        aria-label="Next slide"
+        aria-label={t("common.nextSlide")}
         className="absolute end-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100"
       >
         <CaretRight size={16} weight="bold" />
@@ -861,7 +873,7 @@ const HeroSectionWithState: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-catalogue-lg")}
       style={{
         textAlign,
         backgroundColor: hasBgImage ? undefined : (backgroundColor || undefined), // design-lint-ignore: page-builder background color
@@ -913,7 +925,7 @@ const HeroSectionWithState: React.FC<{
                   isHeroButtonEnabled(left?.button) && left?.button && (
                     <button
                       onClick={() => handleButtonClick(left.button!)}
-                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      className="mt-2 px-8 py-3 rounded-catalogue-md text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                       style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                     >
                       {left.button.text}
@@ -956,7 +968,7 @@ const HeroSectionWithState: React.FC<{
                   isHeroButtonEnabled(left?.button) && left?.button && (
                     <button
                       onClick={() => handleButtonClick(left.button!)}
-                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      className="mt-2 px-8 py-3 rounded-catalogue-md text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                       style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                     >
                       {left.button.text}

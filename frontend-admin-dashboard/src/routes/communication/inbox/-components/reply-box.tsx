@@ -19,6 +19,7 @@ export function ReplyBox({ phone }: Props) {
     const [templateSearch, setTemplateSearch] = useState('');
     const appendMessage = useInboxStore((s) => s.appendMessage);
     const updateConversationLastMessage = useInboxStore((s) => s.updateConversationLastMessage);
+    const markConversationAnswered = useInboxStore((s) => s.markConversationAnswered);
     const instituteId = getInstituteId() || '';
 
     // Load templates when panel opens
@@ -38,14 +39,31 @@ export function ReplyBox({ phone }: Props) {
             const sent = await sendReply(phone, text.trim(), instituteId);
             appendMessage(sent);
             updateConversationLastMessage(phone, text.trim(), 'OUTGOING');
+            // The backend resolved any open hand-over as part of this send; clear the badge now
+            // rather than waiting for the next poll.
+            markConversationAnswered(phone);
             setText('');
         } catch (err) {
             console.error(err);
-            toast.error('Failed to send message. Session may have expired (24hr window).');
+            // A refused send is now recorded in the thread as "Not delivered", so point there
+            // instead of leaving the admin with only a toast.
+            const axiosErr = err as { response?: { data?: { message?: string } } };
+            toast.error(
+                axiosErr?.response?.data?.message ||
+                    'Failed to send message. Session may have expired (24hr window). It is marked as not delivered in the chat.'
+            );
         } finally {
             setSending(false);
         }
-    }, [text, phone, sending, appendMessage, updateConversationLastMessage, instituteId]);
+    }, [
+        text,
+        phone,
+        sending,
+        appendMessage,
+        updateConversationLastMessage,
+        markConversationAnswered,
+        instituteId,
+    ]);
 
     const handleSendTemplate = useCallback(async (template: WhatsAppTemplateDTO) => {
         setSending(true);

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { BASE_URL, GET_PRODUCT_PAGE_BY_CODE } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
@@ -10,6 +11,11 @@ import axios from "axios";
 import { JsonRenderer } from "../../-components/JsonRenderer";
 import { CourseCatalogueService } from "../../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
+import { resolveCourseView } from "../../-utils/course-page-routing";
+import {
+  resolveLearnerStructureVariant,
+  type LearnerCourseDetailsSettings,
+} from "../../-utils/learner-course-details-settings";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -76,6 +82,7 @@ const HtmlWithViewMore: React.FC<{
   className?: string;
   clampLines?: number;
 }> = ({ html, className, clampLines = 4 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -107,7 +114,7 @@ const HtmlWithViewMore: React.FC<{
           onClick={() => setExpanded((v) => !v)}
           className="mt-1 text-sm font-medium text-primary-500 hover:underline focus:outline-none"
         >
-          {expanded ? "View less" : "View more"}
+          {expanded ? t("common.viewLess") : t("common.viewMore")}
         </button>
       )}
     </div>
@@ -124,10 +131,10 @@ const HighlightSectionCard: React.FC<{
   title: string;
   children: React.ReactNode;
 }> = ({ icon, iconBgClass, overlayClass, title, children }) => (
-  <div className="relative bg-catalogue-bg-elevated border border-catalogue-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group">
+  <div className="relative bg-catalogue-bg-elevated border border-catalogue-border rounded-catalogue-lg shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group">
     <div
       className={cn(
-        "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl",
+        "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-catalogue-lg",
         overlayClass
       )}
     />
@@ -135,7 +142,7 @@ const HighlightSectionCard: React.FC<{
       <div className="flex items-center space-x-2 mb-3">
         <div
           className={cn(
-            "p-1.5 rounded-lg shadow-sm bg-gradient-to-br",
+            "p-1.5 rounded-catalogue-md shadow-sm bg-gradient-to-br",
             iconBgClass
           )}
         >
@@ -159,6 +166,7 @@ const CourseHighlightsAccordion: React.FC<{
   instructors: Array<{ name: string; email: string }>;
   showInstructors: boolean;
 }> = ({ whyLearn, aboutCourse, whoShouldLearn, instructors, showInstructors }) => {
+  const { t } = useTranslation("coursePlayerB");
   const [open, setOpen] = useState(true);
   const hasWhy = hasContent(whyLearn);
   const hasAbout = hasContent(aboutCourse);
@@ -168,7 +176,7 @@ const CourseHighlightsAccordion: React.FC<{
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
   return (
-    <section className="rounded-xl border border-catalogue-border bg-catalogue-bg-elevated shadow-sm overflow-hidden">
+    <section className="rounded-catalogue-lg border border-catalogue-border bg-catalogue-bg-elevated shadow-sm overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -176,11 +184,13 @@ const CourseHighlightsAccordion: React.FC<{
         className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-start hover:bg-catalogue-bg-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
       >
         <span className="flex items-center gap-2 min-w-0">
-          <div className="p-1 bg-primary-50 rounded-md">
+          <div className="p-1 bg-primary-50 rounded-catalogue-sm">
             <Info className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" weight="bold" />
           </div>
           <span className="text-sm font-semibold truncate text-catalogue-text-primary">
-            {getTerminology(ContentTerms.Course, SystemTerms.Course)} Highlights
+            {t("courseDetails.accordion.highlightsTitle", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </span>
         </span>
         <CaretDown
@@ -195,10 +205,9 @@ const CourseHighlightsAccordion: React.FC<{
         <div className="px-3 sm:px-4 pb-4 pt-3 space-y-3 border-t border-catalogue-border-subtle bg-catalogue-bg-subtle/50">
           {hasAbout && (
             <HighlightSectionCard
-              title={`About This ${getTerminology(
-                ContentTerms.Course,
-                SystemTerms.Course
-              )}`}
+              title={t("courseDetails.accordion.aboutThisCourse", {
+                course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+              })}
               icon={
                 <FileIcon
                   size={18}
@@ -206,8 +215,8 @@ const CourseHighlightsAccordion: React.FC<{
                   weight="duotone"
                 />
               }
-              iconBgClass="from-blue-100 to-blue-200"
-              overlayClass="from-blue-500/5 to-transparent"
+              iconBgClass="from-info-100 to-info-200"
+              overlayClass="from-info-500/5 to-transparent"
             >
               <HtmlWithViewMore
                 html={aboutCourse || ""}
@@ -217,7 +226,7 @@ const CourseHighlightsAccordion: React.FC<{
           )}
           {hasWhy && (
             <HighlightSectionCard
-              title="What You'll Learn"
+              title={t("courseDetails.accordion.whatYoullLearn")}
               icon={
                 <BookOpen
                   size={18}
@@ -236,7 +245,7 @@ const CourseHighlightsAccordion: React.FC<{
           )}
           {hasWho && (
             <HighlightSectionCard
-              title="Who Should Join"
+              title={t("courseDetails.accordion.whoShouldJoin")}
               icon={
                 <GraduationCap
                   size={18}
@@ -266,14 +275,14 @@ const CourseHighlightsAccordion: React.FC<{
                   weight="duotone"
                 />
               }
-              iconBgClass="from-orange-100 to-orange-200"
-              overlayClass="from-orange-500/5 to-transparent"
+              iconBgClass="from-primary-100 to-primary-200"
+              overlayClass="from-primary-500/5 to-transparent"
             >
               <div className="space-y-2">
                 {instructors.map((inst, idx) => (
                   <div
                     key={`${inst.email}-${idx}`}
-                    className="flex items-center gap-3 p-2.5 bg-catalogue-bg-subtle/80 rounded-lg hover:bg-catalogue-bg-muted/80 transition-all duration-300"
+                    className="flex items-center gap-3 p-2.5 bg-catalogue-bg-subtle/80 rounded-catalogue-md hover:bg-catalogue-bg-muted/80 transition-all duration-300"
                   >
                     <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
                       {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
@@ -284,7 +293,7 @@ const CourseHighlightsAccordion: React.FC<{
                           getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
                       </h4>
                       <p className="text-xs text-catalogue-text-secondary">
-                        {inst.email || "No email provided"}
+                        {inst.email || t("courseDetails.noEmailProvided")}
                       </p>
                     </div>
                   </div>
@@ -377,6 +386,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   available_slots,
   productPageCode,
 }) => {
+  const { t } = useTranslation("coursePlayerB");
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === "android";
@@ -411,11 +421,64 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // STUDENT_DISPLAY_SETTINGS. Fetched from the public (open) settings endpoint
   // because this catalogue page is unauthenticated.
   const [showInstructors, setShowInstructors] = useState(false);
+  /**
+   * How the institute has configured the course page for its LOGGED-IN
+   * learners (Settings -> Student Display Settings -> courseDetails). The
+   * logged-out page reads the same record so a visitor and an enrolled
+   * learner see the course laid out the same way.
+   *
+   * - `enrolledLayout: "contentOnly"` means the learner's page IS the content
+   *   card grid, so the public page shows cards too.
+   * - otherwise the opening tab decides: CONTENT_STRUCTURE is the card grid,
+   *   OUTLINE is the folder-row list.
+   * Null until the settings land, or when the request fails — the outline is
+   * the safe fallback either way.
+   */
+  const [learnerCourseDetails, setLearnerCourseDetails] =
+    useState<LearnerCourseDetailsSettings | null>(null);
 
   // Debug catalogue data changes
   useEffect(() => {
     console.log("[CourseDetailsPage] Catalogue data loaded:", !!catalogueData);
   }, [catalogueData]);
+
+  // A catalogue can give a course its own authored page instead of this shared
+  // details layout (globalSettings.coursePages). The catalogue's own cards
+  // already navigate straight there, so this only catches the ways a visitor
+  // can still land on the raw /<tag>/<courseId> URL — a bookmark, a link
+  // shared before the page existed, a back-navigation. `replace` keeps that
+  // dead URL out of history so Back does not bounce them right back here.
+  const courseView = resolveCourseView(catalogueData?.globalSettings, {
+    courseId,
+    packageSessionId,
+  });
+  const customCoursePageRoute =
+    courseView.mode === "PAGE" ? courseView.route : null;
+  // Syllabus-first: the marketing accordion (why learn / about / who should
+  // learn / instructors) is dropped and the course structure leads, for
+  // courses where the syllabus IS the pitch. Same URL, so pricing, enrolment
+  // and the site chrome are untouched. TILES is the same page with the
+  // subjects drawn as artwork cards rather than folder rows.
+  const isOutlineView =
+    courseView.mode === "OUTLINE" || courseView.mode === "TILES";
+  // The course structure follows whatever the institute set for its logged-in
+  // learners, so the page reads the same signed in or out. A per-course
+  // OUTLINE/TILES mode is an explicit override and wins over the inherited
+  // setting; DETAILS (and no configuration at all) inherits.
+  const structureVariant: "outline" | "tiles" =
+    courseView.mode === "OUTLINE"
+      ? "outline"
+      : courseView.mode === "TILES"
+        ? "tiles"
+        : resolveLearnerStructureVariant(learnerCourseDetails);
+  useEffect(() => {
+    if (!customCoursePageRoute) return;
+    navigate({
+      to: `/${tagName}/${customCoursePageRoute}`,
+      search: { enrollInviteId, packageSessionId, bannerImage, level },
+      replace: true,
+    });
+  }, [customCoursePageRoute, tagName, navigate, enrollInviteId, packageSessionId, bannerImage, level]);
 
   useEffect(() => {
     if (!instituteId) return;
@@ -428,12 +491,15 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       .then((res) => {
         if (cancelled) return;
         const cd = (
-          res.data as { courseDetails?: { showInstructors?: boolean } } | null
+          res.data as { courseDetails?: LearnerCourseDetailsSettings } | null
         )?.courseDetails;
         setShowInstructors(cd?.showInstructors ?? false);
+        setLearnerCourseDetails(cd ?? null);
       })
       .catch(() => {
-        if (!cancelled) setShowInstructors(false);
+        if (cancelled) return;
+        setShowInstructors(false);
+        setLearnerCourseDetails(null);
       });
     return () => {
       cancelled = true;
@@ -563,7 +629,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
         if (!courseResponse) {
           console.log("[CourseDetailsPage] Course not found in response");
-          setError("Course not found.");
+          setError(t("courseDetails.courseNotFoundError", {
+            course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+          }));
           return;
         }
 
@@ -602,7 +670,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           }
 
           if (!offeredByProductPage) {
-            setError("This course is not available for public viewing.");
+            setError(t("courseDetails.courseNotPublicError", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            }));
             return;
           }
         }
@@ -782,9 +852,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         };
 
         // Transform API response to CourseData interface
+        const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
         const courseData: CourseData = {
           id: course.id || courseId,
-          title: course.package_name || "Untitled Course",
+          title: course.package_name || t("courseDetails.untitledCourse", { course: courseTerm }),
           description: parseHtmlContent(course.course_html_description) || null,
           duration: courseResponse.sessions?.[0]?.level_with_details?.[0]
             ?.read_time_in_minutes
@@ -828,10 +899,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           ],
           whoShouldLearn:
             rawHtmlContent(course.who_should_learn) ||
-            "Anyone interested in learning this subject",
+            t("courseDetails.defaultWhoShouldLearn", {
+              subject: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
+            }),
           whyLearn:
             rawHtmlContent(course.why_learn) ||
-            "Gain valuable skills and knowledge",
+            t("courseDetails.defaultWhyLearn"),
           // "About this course" must show the dedicated About field (rich text),
           // falling back to the course description. Previously read the wrong field
           // (course_html_description) and stripped all formatting.
@@ -844,18 +917,22 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               (inst: any) => ({
                 name:
                   inst.full_name ||
-                  `Unknown ${getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}`,
-                email: inst.email || "No email provided",
+                  t("courseDetails.unknownTeacher", {
+                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+                  }),
+                email: inst.email || t("courseDetails.noEmailProvided"),
               }),
             ) || [
               {
                 name:
                   courseResponse.sessions?.[0]?.level_with_details?.[0]
                     ?.instructors?.[0]?.full_name ||
-                  `Unknown ${getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}`,
+                  t("courseDetails.unknownTeacher", {
+                    teacher: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+                  }),
                 email:
                   courseResponse.sessions?.[0]?.level_with_details?.[0]
-                    ?.instructors?.[0]?.email || "No email provided",
+                    ?.instructors?.[0]?.email || t("courseDetails.noEmailProvided"),
               },
             ],
           rating: course.rating || 5,
@@ -917,7 +994,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         }
       } catch (err) {
         console.error("Error fetching course details:", err);
-        setError("Failed to load course details");
+        setError(t("courseDetails.loadFailedError", {
+          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+        }));
       } finally {
         setIsLoading(false);
       }
@@ -1019,16 +1098,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-semibold text-catalogue-text-primary mb-2">
-            {error || "Course not found"}
+            {error || t("courseDetails.courseNotFoundDefault", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </h2>
           <p className="text-catalogue-text-secondary mb-4">
-            The requested course could not be loaded.
+            {t("courseDetails.courseLoadFailedDescription", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </p>
           <button
             onClick={() => navigate({ to: `/${tagName}` })}
-            className="px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-400 transition-colors"
+            className="px-4 py-2 bg-primary-500 text-white rounded-catalogue-sm hover:bg-primary-400 transition-colors"
           >
-            Back to Catalog
+            {t("courseDetails.backToCatalog")}
           </button>
         </div>
       </div>
@@ -1088,6 +1171,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   // content below stayed white.
   const isDarkMode = (catalogueData?.globalSettings as any)?.mode === "dark";
 
+  // The syllabus tree. Rendered once, but at a different point in the column
+  // depending on the view (see isOutlineView), so it is bound here rather than
+  // written out twice — courseData is guaranteed non-null past the guard above.
+  const courseStructure = (
+    <CourseStructureDetails
+      courseDepth={courseData.courseDepth}
+      courseId={courseData.courseId || courseId}
+      instituteId={instituteId}
+      packageSessionId={courseData.packageSessionId}
+      levelId={courseData.levelId}
+      variant={structureVariant}
+    />
+  );
+
   return (
     <div
       ref={themeRootRef}
@@ -1098,12 +1195,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     >
       {/* Render header and footer - add them if not in JSON */}
       {!catalogueData && (
-        <div className="container mx-auto p-8 text-center">
-          <h2 className="text-2xl font-semibold text-catalogue-text-primary mb-4">
-            Loading Course Catalogue...
+        <div className="container mx-auto p-8 text-center space-y-4">
+          <h2 className="text-2xl font-semibold text-catalogue-text-primary">
+            {t("courseDetails.loadingCatalogueTitle", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </h2>
           <p className="text-catalogue-text-secondary">
-            Please wait while we load the course information.
+            {t("courseDetails.loadingCatalogueDescription", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </p>
         </div>
       )}
@@ -1177,7 +1278,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         true && (
         <div className="pt-4 pb-24 sm:pt-6 bg-catalogue-bg-subtle w-full">
           <div className="w-full px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-section lg:gap-8">
               {/* Main Content */}
               <div className="lg:col-span-2 space-y-4">
                 {/* Tags+title are rendered by the JSON catalogue hero
@@ -1187,25 +1288,36 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 {/* Course highlights accordion — collapsed by default,
                     wraps the what-you'll-learn / about / who-should-learn /
                     instructors sections that used to stack as separate cards
-                    below the structure. */}
-                <CourseHighlightsAccordion
-                  whyLearn={courseData.whyLearn}
-                  aboutCourse={courseData.aboutCourse}
-                  whoShouldLearn={courseData.whoShouldLearn}
-                  instructors={courseData.instructors || []}
-                  showInstructors={showInstructors}
-                />
+                    below the structure. Outline view drops it: the syllabus
+                    is the pitch there, and the marketing copy pushes it below
+                    the fold. */}
+                {!isOutlineView && (
+                  <CourseHighlightsAccordion
+                    whyLearn={courseData.whyLearn}
+                    aboutCourse={courseData.aboutCourse}
+                    whoShouldLearn={courseData.whoShouldLearn}
+                    instructors={courseData.instructors || []}
+                    showInstructors={showInstructors}
+                  />
+                )}
+
+                {/* Outline view leads with the syllabus, above the mobile
+                    price card; every other view keeps it below (see the same
+                    block further down). */}
+                {isOutlineView && courseStructure}
 
                 {/* Course Overview Card - Mobile First */}
                 <div className="lg:hidden">
-                  <div className="bg-catalogue-bg-elevated border border-catalogue-border rounded-xl shadow-sm p-4 space-y-3">
+                  <div className="bg-catalogue-bg-elevated border border-catalogue-border rounded-catalogue-lg shadow-sm p-4 space-y-3">
                     {/* Header */}
                     <div className="flex items-center gap-2 pb-3 border-b border-catalogue-border-subtle">
-                      <div className="p-1.5 bg-primary-50 rounded-lg">
+                      <div className="p-1.5 bg-primary-50 rounded-catalogue-md">
                         <House size={16} className="text-primary-500" weight="duotone" />
                       </div>
                       <h2 className="text-sm font-semibold text-catalogue-text-primary">
-                        Course Overview
+                        {t("courseDetails.courseOverview", {
+                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                       </h2>
                     </div>
 
@@ -1214,10 +1326,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       {/* Price - Only show if payment is enabled */}
                       {catalogueData?.globalSettings?.payment?.enabled !==
                         false && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg border border-primary-100">
+                        <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-catalogue-md border border-primary-100">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Tag size={13} className="text-primary-400" />
-                            Price
+                            {t("courseDetails.price")}
                           </span>
                           <PriceWithMrp
                             actual={courseData.price}
@@ -1230,10 +1342,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       )}
 
                       {/* Rating */}
-                      <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                      <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                         <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                           <Star size={13} className="text-yellow-400" weight="fill" />
-                          Rating
+                          {t("courseDetails.rating")}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <div className="flex items-center gap-0.5">
@@ -1260,12 +1372,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Level (hidden when the level is a sentinel like "Default") */}
                       {displayLevelName(courseData.level) && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
                             {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                           </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm">
                             {displayLevelName(courseData.level)}
                           </span>
                         </div>
@@ -1273,12 +1385,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Duration */}
                       {courseData.duration && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Clock size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            Duration
+                            {t("courseDetails.duration")}
                           </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm">
                             {courseData.duration}
                           </span>
                         </div>
@@ -1286,7 +1398,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Instructor */}
                       {courseData.instructor && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <ChalkboardTeacher size={13} className="text-catalogue-text-muted" weight="duotone" />
                             {getTerminology(
@@ -1294,7 +1406,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                               SystemTerms.Teacher,
                             )}
                           </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md max-w-32 truncate">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm max-w-32 truncate">
                             {courseData.instructor}
                           </span>
                         </div>
@@ -1305,7 +1417,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     <div className="pt-1 space-y-2">
                       <button
                         onClick={handleEnrollClick}
-                        className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                        className="w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                         style={{
                           backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                         }}
@@ -1313,25 +1425,21 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         {catalogueData?.globalSettings?.payment?.enabled !==
                         false
                           ? courseData.price === 0
-                            ? "Enroll for Free"
-                            : "Enroll Now"
-                          : "Get Started"}
+                            ? t("courseDetails.enrollForFree")
+                            : t("courseDetails.enrollNow")
+                          : t("courseDetails.getStarted")}
                       </button>
                       <p className="text-xs text-catalogue-text-muted text-center">
-                        Click to register for this course
+                        {t("courseDetails.clickToRegister", {
+                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 {/* Course Structure */}
-                <CourseStructureDetails
-                  courseDepth={courseData.courseDepth}
-                  courseId={courseData.courseId || courseId}
-                  instituteId={instituteId}
-                  packageSessionId={courseData.packageSessionId}
-                  levelId={courseData.levelId}
-                />
+                {!isOutlineView && courseStructure}
 
                 {/* Content sections (what-you'll-learn / about /
                     who-should-learn / instructors / tags) moved into the
@@ -1343,14 +1451,16 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               <div className="lg:col-span-1">
                 <div className="sticky top-4 space-y-4">
                   {/* Course Overview Card - Hidden on mobile, shown on desktop */}
-                  <div className="hidden lg:block bg-catalogue-bg-elevated border border-catalogue-border rounded-xl shadow-sm p-4 space-y-3">
+                  <div className="hidden lg:block bg-catalogue-bg-elevated border border-catalogue-border rounded-catalogue-lg shadow-sm p-4 space-y-3">
                     {/* Header */}
                     <div className="flex items-center gap-2 pb-3 border-b border-catalogue-border-subtle">
-                      <div className="p-1.5 bg-primary-50 rounded-lg">
+                      <div className="p-1.5 bg-primary-50 rounded-catalogue-md">
                         <House size={16} className="text-primary-500" weight="duotone" />
                       </div>
                       <h2 className="text-sm font-semibold text-catalogue-text-primary">
-                        Course Overview
+                        {t("courseDetails.courseOverview", {
+                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                       </h2>
                     </div>
 
@@ -1359,10 +1469,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       {/* Price - Only show if payment is enabled */}
                       {catalogueData?.globalSettings?.payment?.enabled !==
                         false && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg border border-primary-100">
+                        <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-catalogue-md border border-primary-100">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Tag size={13} className="text-primary-400" />
-                            Price
+                            {t("courseDetails.price")}
                           </span>
                           <PriceWithMrp
                             actual={courseData.price}
@@ -1375,10 +1485,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       )}
 
                       {/* Rating */}
-                      <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                      <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                         <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                           <Star size={13} className="text-yellow-400" weight="fill" />
-                          Rating
+                          {t("courseDetails.rating")}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <div className="flex items-center gap-0.5">
@@ -1405,12 +1515,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Level (hidden when the level is a sentinel like "Default") */}
                       {displayLevelName(courseData.level) && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <GraduationCap size={13} className="text-catalogue-text-muted" weight="duotone" />
                             {getTerminology(ContentTerms.Level, SystemTerms.Level)}
                           </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm">
                             {displayLevelName(courseData.level)}
                           </span>
                         </div>
@@ -1418,12 +1528,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Duration */}
                       {courseData.duration && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <Clock size={13} className="text-catalogue-text-muted" weight="duotone" />
-                            Duration
+                            {t("courseDetails.duration")}
                           </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm">
                             {courseData.duration}
                           </span>
                         </div>
@@ -1431,7 +1541,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                       {/* Instructor */}
                       {courseData.instructor && (
-                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-lg">
+                        <div className="flex items-center justify-between py-2 px-3 bg-catalogue-bg-subtle rounded-catalogue-md">
                           <span className="text-xs font-medium text-catalogue-text-secondary flex items-center gap-1.5">
                             <ChalkboardTeacher size={13} className="text-catalogue-text-muted" weight="duotone" />
                             {getTerminology(
@@ -1439,7 +1549,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                               SystemTerms.Teacher,
                             )}
                           </span>
-                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-md max-w-32 truncate">
+                          <span className="text-xs font-semibold text-catalogue-text-primary bg-catalogue-bg-elevated border border-catalogue-border px-2 py-0.5 rounded-catalogue-sm max-w-32 truncate">
                             {courseData.instructor}
                           </span>
                         </div>
@@ -1450,15 +1560,17 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     <div className="pt-1 space-y-2">
                       <button
                         onClick={handleEnrollClick}
-                        className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                        className="w-full text-white py-3 px-4 rounded-catalogue-md text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
                         style={{
                           backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                         }}
                       >
-                        Enroll Now
+                        {t("courseDetails.enrollNow")}
                       </button>
                       <p className="text-xs text-catalogue-text-muted text-center">
-                        Click to register for this course
+                        {t("courseDetails.clickToRegister", {
+                          course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                       </p>
                     </div>
                   </div>
@@ -1491,7 +1603,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       <Dialog open={showUnavailableDialog} onOpenChange={setShowUnavailableDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="sr-only">Enrollment unavailable</DialogTitle>
+            <DialogTitle className="sr-only">{t("courseDetails.enrollmentUnavailableTitle")}</DialogTitle>
           </DialogHeader>
           <InviteUnavailableMessage
             availability={inviteAvailability}
@@ -1524,21 +1636,21 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             fields: catalogueData?.globalSettings?.leadCollection?.fields || [
               {
                 name: "name",
-                label: "Full Name",
+                label: t("courseDetails.leadFormDefaults.fullName"),
                 type: "text",
                 required: true,
                 step: 1,
               },
               {
                 name: "email",
-                label: "Email",
+                label: t("courseDetails.leadFormDefaults.email"),
                 type: "email",
                 required: true,
                 step: 2,
               },
               {
                 name: "phone",
-                label: "Phone Number",
+                label: t("courseDetails.leadFormDefaults.phone"),
                 type: "tel",
                 required: true,
                 step: 3,
@@ -1661,13 +1773,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             <div className="flex flex-col gap-1">
               <button
                 onClick={() => navigate({ to: "/login" })}
-                className="w-full px-4 py-3 text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg border transition-all duration-200"
+                className="w-full px-4 py-3 text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-catalogue-md border transition-all duration-200"
                 style={{
                   color: `hsl(var(--primary-500, var(--primary)))`,
                   borderColor: `hsl(var(--primary-500, var(--primary)))`,
                 }}
               >
-                Login
+                {t("header.login")}
               </button>
             </div>
 
@@ -1675,18 +1787,18 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             <div className="flex flex-col gap-1">
               <button
                 onClick={handleEnrollClick}
-                className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg shadow-md transition-all duration-200"
+                className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-catalogue-md shadow-md transition-all duration-200"
                 style={{
                   backgroundColor: `hsl(var(--primary-500, var(--primary)))`,
                 }}
               >
                 {catalogueData?.globalSettings?.payment?.enabled !== false
                   ? courseData.price === 0
-                    ? "Enroll for Free"
-                    : "Enroll Now"
-                  : "Get Started"}
+                    ? t("courseDetails.enrollForFree")
+                    : t("courseDetails.enrollNow")
+                  : t("courseDetails.getStarted")}
               </button>
-              <span className="text-xs text-catalogue-text-secondary text-center">For new users</span>
+              <span className="text-xs text-catalogue-text-secondary text-center">{t("courseDetails.forNewUsers")}</span>
             </div>
           </div>
         </div>

@@ -1,0 +1,52 @@
+{
+    "header": {
+        "title": "Prompt assistant",
+        "detected": "Detected: {{persona}}"
+    },
+    "creditCost_one": "{{count}} credit",
+    "creditCost_other": "{{count}} credits",
+    "brief": {
+        "label": "Describe your agent in plain words",
+        "placeholder": "e.g. We run a NEET coaching institute. The agent should call new leads, qualify their class and target year, answer fee questions, and book a counselling session.",
+        "drafting": "Drafting…",
+        "action": "Draft with AI"
+    },
+    "review": {
+        "reviewing": "Reviewing…",
+        "action": "Review prompt"
+    },
+    "details": {
+        "toggle": "Details",
+        "dimensionScore": "{{score}}/10"
+    },
+    "suggestions": {
+        "label": "Suggested improvements",
+        "applying": "Applying…",
+        "applySelected_one": "Apply {{count}} selected",
+        "applySelected_other": "Apply {{count}} selected"
+    },
+    "derived": {
+        "label": "Derived from this prompt:",
+        "useButton": "Use suggested opening line, questions & outcomes"
+    },
+    "toasts": {
+        "draftReady": "Draft ready — review the score and refine",
+        "suggestionsApplied": "Suggestions applied — prompt updated and re-scored",
+        "derivedApplied": "Opening line, questions and outcomes filled in",
+        "revisionApplied": "Revised prompt applied — remember to Save"
+    },
+    "errors": {
+        "insufficientCredits": "Not enough AI credits",
+        "genericFailure": "The AI assistant failed — retry"
+    },
+    "feedback": {
+        "toggle": "Improve from call feedback",
+        "placeholder": "e.g. It gives up too easily when someone says 'email me'. Callers asked about fees and it had no answer.",
+        "hint": "The assistant also reads this agent's recent real calls (transcripts, outcomes) to ground the revision.",
+        "revising": "Revising…",
+        "action": "Suggest revision",
+        "proposedRevision": "Proposed revision (score {{score}})",
+        "applyRevision": "Apply revision",
+        "discard": "Discard"
+    }
+}

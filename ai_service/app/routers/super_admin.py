@@ -6,7 +6,10 @@ import logging
 import math
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import json
 from typing import Optional
+
+from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -16,6 +19,13 @@ from ..db import db_dependency
 from ..core.security import get_current_user
 from ..schemas.auth import CustomUserDetails
 from ..schemas.super_admin import (
+    AiSettingEntry,
+    AiSettingsCatalog,
+    AiSettingsResponse,
+    AiSettingUpdateRequest,
+    LlmModelOption,
+    ModelOption,
+    TtsProviderOption,
     AllInstitutesCreditsResponse,
     CreditUsageLiveResponse,
     CreditWindowInstitute,
@@ -462,3 +472,226 @@ def get_credit_usage_live(
     except Exception as e:
         logger.error(f"Error getting live credit usage: {e}")
         return empty
+
+
+# ===========================================================================
+# Platform AI runtime settings
+# ===========================================================================
+#
+# Which model answers the learner chatbot, which engine speaks the voice call,
+# rollout flags. Stored in ai_platform_settings (V493), declared in
+# platform_settings_service.SETTING_SPECS, cached ~30s on every replica.
+
+def _find_setting(db: Session, key: str) -> AiSettingEntry:
+    from ..services.platform_settings_service import list_platform_settings
+
+    for entry in list_platform_settings(db):
+        if entry["key"] == key:
+            return AiSettingEntry(**entry)
+    raise HTTPException(status_code=404, detail=f"Unknown setting {key}")
+
+
+def _llm_model_catalog(db: Session) -> list:
+    """Active chat-capable models from the ai_models registry (V101)."""
+    rows = db.execute(text(
+        """
+        SELECT model_id, name, provider, tier, COALESCE(is_free, FALSE)
+        FROM ai_models
+        WHERE is_active = TRUE
+          AND category NOT IN ('embedding', 'image', 'tts', 'video')
+        ORDER BY display_order, provider, name
+        """
+    )).fetchall()
+    return [
+        LlmModelOption(model_id=r[0], name=r[1], provider=r[2], tier=r[3], is_free=bool(r[4]))
+        for r in rows
+    ]
+
+
+def _image_model_catalog(db: Session) -> list:
+    """Active image-generation models (category = 'image')."""
+    rows = db.execute(text(
+        """
+        SELECT model_id, name, provider, tier, COALESCE(is_free, FALSE)
+        FROM ai_models
+        WHERE is_active = TRUE AND category = 'image'
+        ORDER BY display_order, provider, name
+        """
+    )).fetchall()
+    return [
+        LlmModelOption(model_id=r[0], name=r[1], provider=r[2], tier=r[3] or "", is_free=bool(r[4]))
+        for r in rows
+    ]
+
+
+def _all_model_catalog(db: Session) -> list:
+    rows = db.execute(text(
+        """
+        SELECT model_id, name, provider, category, tier, COALESCE(is_free, FALSE)
+        FROM ai_models
+        WHERE is_active = TRUE
+        ORDER BY category, display_order, provider, name
+        """
+    )).fetchall()
+    return [
+        ModelOption(model_id=r[0], name=r[1], provider=r[2], category=r[3] or "general", tier=r[4], is_free=bool(r[5]))
+        for r in rows
+    ]
+
+
+@router.get(
+    "/ai-settings",
+    response_model=AiSettingsResponse,
+    summary="Platform AI runtime settings with the option catalogue",
+)
+def get_ai_settings(
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.platform_settings_service import get_cache_status, list_platform_settings
+    from ..services.voice_tts import list_tts_providers
+
+    return AiSettingsResponse(
+        settings=[AiSettingEntry(**e) for e in list_platform_settings(db)],
+        catalog=AiSettingsCatalog(
+            llm_models=_llm_model_catalog(db),
+            image_models=_image_model_catalog(db),
+            all_models=_all_model_catalog(db),
+            tts_providers=[TtsProviderOption(**p) for p in list_tts_providers()],
+        ),
+        cache=get_cache_status(),
+    )
+
+
+@router.put(
+    "/ai-settings/{key}",
+    response_model=AiSettingEntry,
+    summary="Set one platform AI setting (applies on every replica within ~30s)",
+)
+def put_ai_setting(
+    key: str,
+    body: AiSettingUpdateRequest,
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.platform_settings_service import set_platform_setting
+
+    try:
+        set_platform_setting(db, key, body.value, updated_by=current_user.user_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown setting {key}")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    logger.info("ai setting %s set by %s", key, current_user.user_id)
+    return _find_setting(db, key)
+
+
+@router.delete(
+    "/ai-settings/{key}",
+    response_model=AiSettingEntry,
+    summary="Reset one platform AI setting to its environment default",
+)
+def delete_ai_setting(
+    key: str,
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.platform_settings_service import reset_platform_setting
+
+    try:
+        reset_platform_setting(db, key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown setting {key}")
+    logger.info("ai setting %s reset by %s", key, current_user.user_id)
+    return _find_setting(db, key)
+
+
+# ===========================================================================
+# Credits & pricing: the parametric rates every tool charges
+# ===========================================================================
+#
+# `ai_tool_pricing` rows (V321+) are what ToolCostEstimator reads on every
+# charge and preflight; Python DEFAULT_TOOL_PRICING only fills gaps. Editing a
+# row here changes what institutes pay from the next request — no deploy.
+
+TOOL_LABELS = {
+    "tutor_compile_slide": "Live AI Tutor: compile one slide into a teaching plan",
+    "tutor_media_image": "Live AI Tutor: one AI image on a whiteboard",
+    "tutor_live_minute": "Live AI Tutor: one minute of a voice lesson",
+}
+
+
+class ToolPricingUpdate(BaseModel):
+    flat_base_credits: Optional[float] = None
+    per_unit_credits: Optional[float] = None
+    params: Optional[dict] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/tool-pricing", summary="Every tool's credit rate (ai_tool_pricing merged with code defaults)")
+def super_tool_pricing(
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.tool_cost_estimator import DEFAULT_TOOL_PRICING, ToolCostEstimator
+
+    db_rows = {r[0]: r for r in db.execute(text(
+        "SELECT tool_key, is_active, updated_at FROM ai_tool_pricing"
+    )).fetchall()}
+    merged = ToolCostEstimator(db).get_tool_pricing()
+    tools = []
+    for key, row in sorted(merged.items()):
+        tools.append({
+            "tool_key": key,
+            "label": TOOL_LABELS.get(key, key.replace("_", " ")),
+            "request_type": row["request_type"],
+            "flat_base_credits": float(row["flat_base_credits"]),
+            "per_unit_credits": float(row["per_unit_credits"]),
+            "unit_field": row["unit_field"],
+            "params": row.get("params") or {},
+            "source": "db" if key in db_rows else "default",
+            "is_active": bool(db_rows[key][1]) if key in db_rows else True,
+            "updated_at": db_rows[key][2].isoformat() if key in db_rows and db_rows[key][2] else None,
+            "has_default": key in DEFAULT_TOOL_PRICING,
+        })
+    return {"tools": tools}
+
+
+@router.put("/tool-pricing/{tool_key}", summary="Set a tool's credit rate (applies to the next request)")
+def super_put_tool_pricing(
+    tool_key: str,
+    body: ToolPricingUpdate,
+    db: Session = Depends(db_dependency),
+    current_user: CustomUserDetails = Depends(get_current_user),
+):
+    _require_super_admin(current_user)
+    from ..services.tool_cost_estimator import ToolCostEstimator
+
+    current = ToolCostEstimator(db).get_tool_pricing(tool_key).get(tool_key)
+    if current is None:
+        raise HTTPException(status_code=404, detail=f"Unknown tool {tool_key}")
+    flat = float(body.flat_base_credits) if body.flat_base_credits is not None else float(current["flat_base_credits"])
+    per_unit = float(body.per_unit_credits) if body.per_unit_credits is not None else float(current["per_unit_credits"])
+    if flat < 0 or per_unit < 0 or flat > 10000 or per_unit > 10000:
+        raise HTTPException(status_code=422, detail="Rates must be between 0 and 10000 credits")
+    params = body.params if body.params is not None else (current.get("params") or {})
+    is_active = body.is_active if body.is_active is not None else True
+    db.execute(text("""
+        INSERT INTO ai_tool_pricing (tool_key, request_type, flat_base_credits, per_unit_credits, unit_field, params_json, is_active, updated_at)
+        VALUES (:k, :rt, :flat, :per, :unit, CAST(:params AS JSONB), :active, now())
+        ON CONFLICT (tool_key) DO UPDATE SET
+            flat_base_credits = EXCLUDED.flat_base_credits,
+            per_unit_credits = EXCLUDED.per_unit_credits,
+            params_json = EXCLUDED.params_json,
+            is_active = EXCLUDED.is_active,
+            updated_at = now()
+    """), {"k": tool_key, "rt": current["request_type"], "flat": flat, "per": per_unit,
+           "unit": current["unit_field"], "params": json.dumps(params), "active": is_active})
+    db.commit()
+    logger.info("tool pricing %s set by %s: flat=%s per_unit=%s", tool_key, current_user.user_id, flat, per_unit)
+    tools = super_tool_pricing(db=db, current_user=current_user)["tools"]
+    return next(t for t in tools if t["tool_key"] == tool_key)

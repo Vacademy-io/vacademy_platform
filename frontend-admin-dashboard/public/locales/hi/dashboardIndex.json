@@ -1,0 +1,72 @@
+{
+    "volt": {
+        "title": "Volt में आपका स्वागत है",
+        "subtitle": "इंटरैक्टिव प्रेजेंटेशन का भविष्य।",
+        "redirecting": "आपको आपके वर्कस्पेस पर भेजा जा रहा है..."
+    },
+    "alertsDialog": {
+        "title": "सिस्टम अलर्ट",
+        "loading": "लोड हो रहा है...",
+        "loadMore": "और लोड करें",
+        "empty": "कोई अलर्ट नहीं मिला"
+    },
+    "myCourses": {
+        "title": "मेरे कोर्स",
+        "viewAll": "सभी देखें",
+        "description": "आपके द्वारा बनाए गए कोर्स और सबमिशन तक त्वरित पहुँच",
+        "authored": "बनाए गए कोर्स",
+        "inReview": "समीक्षाधीन",
+        "loadError": "कोर्स डेटा लोड करने में विफल"
+    },
+    "page": {
+        "title": "डैशबोर्ड",
+        "metaDescription": "यह पेज संस्थान का डैशबोर्ड दिखाता है।"
+    },
+    "greeting": {
+        "morning": "सुप्रभात, <strong>{{name}}!</strong>",
+        "afternoon": "नमस्कार, <strong>{{name}}!</strong>",
+        "evening": "शुभ संध्या, <strong>{{name}}!</strong>"
+    },
+    "subtitle": {
+        "admin": "आज {{instituteName}} कैसा प्रदर्शन कर रहा है, यहाँ देखें।",
+        "adminFallbackInstitute": "आपका संस्थान",
+        "nonAdmin": "अपने कोर्स और शिक्षार्थियों को एक नज़र में देखें।"
+    },
+    "header": {
+        "roleFallback": "एडमिन"
+    },
+    "welcomeVideo": {
+        "text": "आपका स्वागत है! हमें खुशी है कि आप यहाँ हैं। आइए अपना एडमिन डैशबोर्ड सेट करें और सीखने को सहज व रोचक बनाएँ।"
+    },
+    "profileCard": {
+        "title": "अपने संस्थान की प्रोफ़ाइल पूरी करें",
+        "dismissAriaLabel": "प्रोफ़ाइल पूर्णता कार्ड बंद करें",
+        "percentComplete": "{{percent}}% पूर्ण"
+    },
+    "namingCard": {
+        "title": "नामकरण सेटिंग्स",
+        "description": "अपने संस्थान में उपयोग की जाने वाली नामकरण व्यवस्थाओं को अनुकूलित करें",
+        "button": "नामकरण सेटिंग्स",
+        "dismissAriaLabel": "नामकरण सेटिंग्स कार्ड बंद करें"
+    },
+    "revenueTrends": {
+        "subOrgTitle": "एकत्रित राशि — मेरा संगठन"
+    },
+    "roleTypeCard": {
+        "title": "भूमिका प्रकार के उपयोगकर्ता"
+    },
+    "aiCard": {
+        "dismissAriaLabel": "AI सुविधाएँ कार्ड बंद करें",
+        "title": "नई AI सुविधाएँ आज़माएँ!",
+        "description": "अपनी शिक्षण शैली बेहतर बनाने के लिए अत्याधुनिक AI टूल एक्सप्लोर करें",
+        "features": {
+            "pdf": "PDF से प्रश्न",
+            "lectureAudio": "लेक्चर ऑडियो से प्रश्न",
+            "sortTopicWise": "विषयवार प्रश्न क्रमबद्ध करें",
+            "image": "इमेज से प्रश्न",
+            "lectureFeedback": "लेक्चर पर फीडबैक प्राप्त करें",
+            "planLecture": "अपना लेक्चर प्लान करें"
+        },
+        "manyMore": "और भी बहुत कुछ"
+    }
+}

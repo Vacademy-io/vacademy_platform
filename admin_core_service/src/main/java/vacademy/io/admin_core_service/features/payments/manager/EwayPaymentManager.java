@@ -339,7 +339,23 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
         return transaction;
     }
 
+    /**
+     * eWay rejects a transaction whose Customer.LastName is empty, and learners
+     * enrolling through an invite often supply only a first name. Duplicating the
+     * single token ("Jane" -> "Jane Jane") keeps the checkout going instead of
+     * failing the payment; a name that already has a surname is left untouched.
+     */
+    private String ensureLastName(String fullName) {
+        if (!StringUtils.hasText(fullName)) {
+            return fullName;
+        }
+        String trimmed = fullName.trim();
+        return trimmed.split("\\s+").length == 1 ? trimmed + " " + trimmed : trimmed;
+    }
+
     private EwayApiResponseDTO.Transaction createCardTransactionPayload(String fullName, String email, EwayRequestDTO ewayRequest, int amount, String method, String currencyCode) {
+        fullName = ensureLastName(fullName);
+
         EwayApiResponseDTO.CardDetails cardDetails = new EwayApiResponseDTO.CardDetails();
         cardDetails.Name = fullName;
         cardDetails.Number = ewayRequest.getCardNumber();
@@ -351,7 +367,7 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
         customer.CardDetails = cardDetails;
         customer.Email = email;
         customer.Country = ewayRequest.getCountryCode();
-        String[] nameParts = fullName.trim().split("\\s+", 2);
+        String[] nameParts = StringUtils.hasText(fullName) ? fullName.split("\\s+", 2) : new String[]{""};
         customer.FirstName = nameParts[0];
         customer.LastName = nameParts.length > 1 ? nameParts[1] : "";
 

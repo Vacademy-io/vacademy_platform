@@ -15,17 +15,32 @@ import vacademy.io.notification_service.features.chatbot_flow.engine.provider.Ch
 import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowNode;
 import vacademy.io.notification_service.features.chatbot_flow.entity.ChatbotFlowSession;
 import vacademy.io.notification_service.features.chatbot_flow.enums.ChatbotNodeType;
+import vacademy.io.notification_service.features.chatbot_flow.enums.EscalationReason;
+import vacademy.io.notification_service.features.chatbot_flow.service.ChatbotEscalationService;
+import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppSendFailureService;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Component
 @Slf4j
 @RequiredArgsConstructor
 public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
 
+    /**
+     * What the model emits when it cannot answer from the context it was given. Matched
+     * case-insensitively and with optional single/double brackets, because models are inconsistent
+     * about echoing a token exactly — and a missed marker means a hallucinated answer goes to a
+     * real learner.
+     */
+    private static final Pattern ESCALATION_MARKER = Pattern.compile(
+            "\\[{1,2}\\s*ESCALATE(?:_TO_HUMAN)?\\s*]{1,2}", Pattern.CASE_INSENSITIVE);
+
     private final ObjectMapper objectMapper;
     private final InternalClientUtils internalClientUtils;
     private final List<ChatbotMessageProvider> messageProviders;
+    private final ChatbotEscalationService escalationService;
+    private final WhatsAppSendFailureService sendFailureService;
 
     @Value("${admin.core.service.baseurl:http://localhost:8081}")
     private String adminCoreServiceUrl;
@@ -67,10 +82,20 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
         int currentTurns = getAiTurnCount(context.getSessionVariables());
         if (currentTurns >= maxTurns) {
             log.info("AI max turns reached: {}/{}", currentTurns, maxTurns);
-            String fallbackMessage = (String) config.getOrDefault("fallbackMessage",
+            String fallbackMessage = resolveFallbackMessage(config,
                     "Let me connect you with a human agent.");
             sendTextToUser(context, fallbackMessage);
-            return NodeExecutionResult.builder().success(true).waitForInput(false).build();
+            // The learner is mid-question and the bot has stopped answering — that IS someone
+            // waiting for a human, so flag it in the Inbox and tell the admins.
+            raiseEscalation(node, session, context, config, EscalationReason.MAX_TURNS,
+                    userText, fallbackMessage, null);
+            return NodeExecutionResult.builder()
+                    .success(true)
+                    .waitForInput(false)
+                    // Carry the message we actually sent so the Inbox thread shows it rather than
+                    // the node's display name — an admin opening an escalation needs the real text.
+                    .outputVariables(Map.of("ai_last_response", fallbackMessage))
+                    .build();
         }
 
         // Enrich user text with button/list selection context
@@ -102,6 +127,9 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                     ? ((Number) config.get("temperature")).doubleValue() : 0.7;
 
             boolean enableInteractive = Boolean.TRUE.equals(config.get("enableInteractive"));
+            // On by default: without it the model invents an answer whenever its context falls
+            // short, which is strictly worse than saying "I'll check with the team".
+            boolean escalationEnabled = !Boolean.FALSE.equals(config.get("escalateWhenUnsure"));
 
             // Inject WhatsApp context so the LLM knows its output goes directly as a message
             String whatsappContext = "\n\nIMPORTANT CONTEXT: Your response will be sent directly as a WhatsApp message to the user. "
@@ -128,6 +156,19 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                         + "- When using interactive JSON, your ENTIRE response must be ONLY the JSON object — no text before or after it. Do NOT add ```json, markdown fences, or any prefix/suffix. The \"text\" field inside the JSON is your message.\n";
             }
 
+            if (escalationEnabled) {
+                whatsappContext += "\n\nWHEN YOU DO NOT KNOW:\n"
+                        + "You may ONLY answer from the information given to you above. If the answer "
+                        + "is not in that information — the question is about this specific person's "
+                        + "records, fees, dates, results, or anything else you were not told — do NOT "
+                        + "guess, do NOT invent details, and do NOT give a generic non-answer.\n"
+                        + "Instead reply with EXACTLY this token and nothing else:\n"
+                        + "[[ESCALATE]]\n"
+                        + "A human from the team will then take over and reply. Use the token only "
+                        + "when you genuinely lack the information — questions you CAN answer from "
+                        + "the information above must be answered normally.\n";
+            }
+
             String systemPrompt = userSystemPrompt + whatsappContext;
 
             Map<String, Object> aiRequest = new LinkedHashMap<>();
@@ -149,10 +190,22 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                 Map<String, Object> responseBody = objectMapper.readValue(response.getBody(), Map.class);
                 String assistantMessage = (String) responseBody.get("assistantMessage");
 
-                // Send AI reply — parse for interactive elements if enabled
-                String displayText = assistantMessage;
-                if (assistantMessage != null && !assistantMessage.isBlank()) {
-                    displayText = parseAndSendAiResponse(context, assistantMessage, enableInteractive);
+                // "I don't have that context" → say so honestly, hand over to a human, and make
+                // the wait visible in the Inbox instead of letting the model improvise.
+                boolean escalating = escalationEnabled && hasEscalationMarker(assistantMessage);
+
+                String displayText;
+                if (escalating) {
+                    displayText = resolveEscalationMessage(config);
+                    sendTextToUser(context, displayText);
+                    raiseEscalation(node, session, context, config, EscalationReason.NO_CONTEXT,
+                            userText, displayText, null);
+                } else {
+                    // Send AI reply — parse for interactive elements if enabled
+                    displayText = assistantMessage;
+                    if (assistantMessage != null && !assistantMessage.isBlank()) {
+                        displayText = parseAndSendAiResponse(context, assistantMessage, enableInteractive);
+                    }
                 }
 
                 // Update conversation history — store clean text, not raw JSON
@@ -166,10 +219,14 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
                 outputVars.put("ai_history", updatedHistory);
                 outputVars.put("ai_turns", currentTurns + 1);
                 outputVars.put("ai_last_response", displayText);
+                outputVars.put("ai_escalated", escalating);
 
                 return NodeExecutionResult.builder()
                         .success(true)
-                        .waitForInput(true) // Stay in AI conversation mode
+                        // Stay in AI conversation mode even after escalating: the learner may well
+                        // ask something the bot CAN answer next, and the human reply arrives
+                        // independently through the Inbox.
+                        .waitForInput(true)
                         .outputVariables(outputVars)
                         .build();
             }
@@ -181,14 +238,89 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
 
         } catch (Exception e) {
             log.error("AI response failed: {}", e.getMessage(), e);
-            String fallbackMessage = (String) config.getOrDefault("fallbackMessage",
+            String fallbackMessage = resolveFallbackMessage(config,
                     "I'm having trouble understanding. Let me connect you with a human agent.");
             sendTextToUser(context, fallbackMessage);
+            // The learner asked something and got a non-answer — that is a human hand-over too.
+            raiseEscalation(node, session, context, config, EscalationReason.AI_ERROR,
+                    userText, fallbackMessage, e.getMessage());
             return NodeExecutionResult.builder()
                     .success(true)
                     .waitForInput(false) // Exit AI mode on error
+                    .outputVariables(Map.of("ai_last_response", fallbackMessage))
                     .build();
         }
+    }
+
+    /**
+     * The configured fallback text, or {@code defaultMessage}.
+     *
+     * <p>Not {@code getOrDefault}: that returns null when the key is PRESENT with a JSON null, and
+     * these values flow into {@code Map.of(...)} output variables, which rejects nulls with an NPE
+     * — from a path whose whole job is to keep a failing turn from breaking the flow.
+     */
+    private String resolveFallbackMessage(Map<String, Object> config, String defaultMessage) {
+        Object configured = config.get("fallbackMessage");
+        return (configured instanceof String s && !s.isBlank()) ? s : defaultMessage;
+    }
+
+    /** True when the model signalled that the answer is not in the context it was given. */
+    private boolean hasEscalationMarker(String assistantMessage) {
+        return assistantMessage != null && ESCALATION_MARKER.matcher(assistantMessage).find();
+    }
+
+    /** What we actually say to the learner when handing over. */
+    private String resolveEscalationMessage(Map<String, Object> config) {
+        Object configured = config.get("escalationMessage");
+        if (configured instanceof String s && !s.isBlank()) return s.trim();
+        return ChatbotEscalationService.DEFAULT_ESCALATION_MESSAGE;
+    }
+
+    /**
+     * Flag the conversation as waiting for a human (Inbox "Unanswered") and email the flow's
+     * configured admin addresses. Never throws — a hand-over that fails to record must not also
+     * break the reply the learner already received.
+     */
+    private void raiseEscalation(ChatbotFlowNode node, ChatbotFlowSession session,
+                                 FlowExecutionContext context, Map<String, Object> config,
+                                 EscalationReason reason, String userText, String botReply,
+                                 String error) {
+        if (Boolean.FALSE.equals(config.get("escalationNotify"))) {
+            // Explicit opt-out on this node: still no escalation record, per the author's choice.
+            return;
+        }
+        try {
+            escalationService.raise(ChatbotEscalationService.EscalationRequest.builder()
+                    .instituteId(context.getInstituteId())
+                    .flowId(session != null ? session.getFlowId() : null)
+                    .sessionId(session != null ? session.getId() : null)
+                    .nodeId(node != null ? node.getId() : null)
+                    .userPhone(context.getPhoneNumber())
+                    .userId(context.getUserId())
+                    .userName(resolveUserName(context))
+                    .channelType(context.getChannelType())
+                    .businessChannelId(context.getBusinessChannelId())
+                    .reason(reason)
+                    .userMessage(userText)
+                    .botReply(botReply)
+                    .errorMessage(error)
+                    .build());
+        } catch (Exception e) {
+            log.warn("Failed to raise escalation for phone={}: {}",
+                    context.getPhoneNumber(), e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String resolveUserName(FlowExecutionContext context) {
+        Map<String, Object> details = context.getUserDetails();
+        if (details == null) return null;
+        Object user = details.get("user");
+        if (!(user instanceof Map)) return null;
+        Map<String, Object> userMap = (Map<String, Object>) user;
+        Object name = userMap.get("full_name");
+        if (name == null) name = userMap.get("fullName");
+        return name != null ? name.toString() : null;
     }
 
     private int getAiTurnCount(Map<String, Object> sessionVars) {
@@ -339,14 +471,23 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
         ChatbotMessageProvider provider = messageProviders.stream()
                 .filter(p -> p.supports(ctx.getChannelType()))
                 .findFirst().orElse(null);
-        if (provider == null) return;
+        if (provider == null) {
+            logSendFailure(ctx, "interactive", fallbackText,
+                    "No provider for channel: " + ctx.getChannelType());
+            return;
+        }
         try {
             provider.sendInteractive(ctx.getPhoneNumber(), payload,
                     ctx.getInstituteId(), ctx.getBusinessChannelId());
         } catch (Exception e) {
             log.warn("sendInteractive failed, falling back to text: {}", e.getMessage());
-            provider.sendText(ctx.getPhoneNumber(), fallbackText,
-                    ctx.getInstituteId(), ctx.getBusinessChannelId());
+            try {
+                provider.sendText(ctx.getPhoneNumber(), fallbackText,
+                        ctx.getInstituteId(), ctx.getBusinessChannelId());
+            } catch (Exception textEx) {
+                // Both shapes refused — the learner got nothing, so say so in the Inbox.
+                logSendFailure(ctx, "interactive", fallbackText, textEx.getMessage());
+            }
         }
     }
 
@@ -354,10 +495,28 @@ public class AiResponseNodeExecutor implements ChatbotNodeExecutor {
         ChatbotMessageProvider provider = messageProviders.stream()
                 .filter(p -> p.supports(context.getChannelType()))
                 .findFirst().orElse(null);
-        if (provider != null) {
+        if (provider == null) {
+            logSendFailure(context, "text", text,
+                    "No provider for channel: " + context.getChannelType());
+            return;
+        }
+        try {
             provider.sendText(context.getPhoneNumber(), text,
                     context.getInstituteId(), context.getBusinessChannelId());
+        } catch (Exception e) {
+            // Swallow: the AI turn itself succeeded, and the caller's own error path would send a
+            // second (equally undeliverable) message. The failure is recorded for the Inbox.
+            log.error("Failed to send AI reply to {}: {}", context.getPhoneNumber(), e.getMessage());
+            logSendFailure(context, "text", text, e.getMessage());
         }
+    }
+
+    private void logSendFailure(FlowExecutionContext ctx, String type, String body, String error) {
+        sendFailureService.logFailure(ctx.getInstituteId(), ctx.getPhoneNumber(),
+                ctx.getBusinessChannelId(), ctx.getUserId(), type, body, "CHATBOT_FLOW", error);
+        // Tell the engine this message is already on file as failed, so it doesn't log a second,
+        // delivered-looking row for the same attempt.
+        ctx.setSendFailureLogged(true);
     }
 
     private Map<String, Object> parseConfig(String json) {

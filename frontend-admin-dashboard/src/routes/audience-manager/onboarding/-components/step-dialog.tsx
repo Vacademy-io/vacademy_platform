@@ -10,12 +10,14 @@
  * relies on the admin re-confirming it — the PUT always resends the FULL
  * field + role_access list per the backend's "replace entirely" contract.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
@@ -38,16 +40,20 @@ import {
     type OnboardingRoleAccess,
 } from '../-services/onboarding-service';
 
-const stepSchema = z.object({
-    step_name: z.string().min(1, 'Step name is required').max(150, 'Keep it under 150 characters'),
-    is_optional: z.boolean(),
-    grants_student_role: z.boolean(),
-    sends_login_credentials: z.boolean(),
-    create_student: z.boolean(),
-    skip_if_already_enrolled: z.boolean(),
-});
+const buildStepSchema = (t: TFunction) =>
+    z.object({
+        step_name: z
+            .string()
+            .min(1, t('schema.stepNameRequired'))
+            .max(150, t('schema.stepNameMaxLength')),
+        is_optional: z.boolean(),
+        grants_student_role: z.boolean(),
+        sends_login_credentials: z.boolean(),
+        create_student: z.boolean(),
+        skip_if_already_enrolled: z.boolean(),
+    });
 
-type StepForm = z.infer<typeof stepSchema>;
+type StepForm = z.infer<ReturnType<typeof buildStepSchema>>;
 
 interface StepDialogProps {
     instituteId: string;
@@ -70,8 +76,15 @@ export function StepDialog({
     nextStepOrder,
     onSaved,
 }: StepDialogProps) {
+    const { t } = useTranslation('audienceManagerStepDialog');
+    // Bound to the field-config-editor's own namespace: newFieldRowFromCatalog
+    // (imported from that module) needs its "Untitled field" fallback string,
+    // which that namespace owns, not this one.
+    const { t: tFieldConfigEditor } = useTranslation('audienceManagerStepFieldConfigEditor');
     const queryClient = useQueryClient();
     const isEditing = !!editingStep;
+
+    const stepSchema = useMemo(() => buildStepSchema(t), [t]);
 
     const form = useForm<StepForm>({
         resolver: zodResolver(stepSchema),
@@ -163,7 +176,7 @@ export function StepDialog({
                 .slice()
                 .sort((a, b) => (a.individual_order ?? 0) - (b.individual_order ?? 0))
                 .map((f) => ({
-                    ...newFieldRowFromCatalog(f),
+                    ...newFieldRowFromCatalog(f, tFieldConfigEditor),
                     is_mandatory: f.is_mandatory ?? false,
                 }))
         );
@@ -202,7 +215,7 @@ export function StepDialog({
                 : createOnboardingStep(instituteId, flowId, payload);
         },
         onSuccess: () => {
-            toast.success(isEditing ? 'Step updated' : 'Step added');
+            toast.success(isEditing ? t('toasts.stepUpdated') : t('toasts.stepAdded'));
             if (editingStep) {
                 queryClient.invalidateQueries({ queryKey: onboardingStepFieldsKey(instituteId, editingStep.id) });
             }
@@ -210,15 +223,13 @@ export function StepDialog({
             onSaved();
         },
         onError: () => {
-            toast.error('Could not save the step. Please try again.');
+            toast.error(t('toasts.saveError'));
         },
     });
 
     const onSubmit = (values: StepForm) => {
         if (hasPendingFieldSelection) {
-            toast.warning(
-                'You picked a field but haven’t clicked "Attach" yet — attach it (or clear the selection) before saving, or it will be lost.'
-            );
+            toast.warning(t('toasts.pendingFieldSelection'));
             return;
         }
         save(values);
@@ -229,7 +240,7 @@ export function StepDialog({
     const footer = (
         <div className="flex w-full items-center justify-end gap-2">
             <MyButton buttonType="secondary" scale="medium" onClick={() => onOpenChange(false)} disable={isPending}>
-                Cancel
+                {t('actions.cancel')}
             </MyButton>
             <MyButton
                 buttonType="primary"
@@ -237,7 +248,7 @@ export function StepDialog({
                 onClick={form.handleSubmit(onSubmit)}
                 disable={isPending || loadingFields}
             >
-                {isPending ? 'Saving…' : isEditing ? 'Save Step' : 'Add Step'}
+                {isPending ? t('actions.saving') : isEditing ? t('actions.saveStep') : t('actions.addStep')}
             </MyButton>
         </div>
     );
@@ -246,7 +257,7 @@ export function StepDialog({
         <MyDialog
             open={open}
             onOpenChange={onOpenChange}
-            heading={isEditing ? 'Edit Step' : 'Add Step'}
+            heading={isEditing ? t('heading.edit') : t('heading.add')}
             footer={footer}
             dialogWidth="max-w-2xl"
         >
@@ -257,11 +268,11 @@ export function StepDialog({
                         name="step_name"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Step name</FormLabel>
+                                <FormLabel>{t('fields.stepName.label')}</FormLabel>
                                 <FormControl>
                                     <MyInput
                                         inputType="text"
-                                        inputPlaceholder="e.g. Fill Enrollment Form"
+                                        inputPlaceholder={t('fields.stepName.placeholder')}
                                         input={field.value}
                                         onChangeFunction={field.onChange}
                                         required
@@ -275,7 +286,7 @@ export function StepDialog({
                     <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
                         <div className="flex items-center justify-between">
                             <Label htmlFor="step-optional" className="cursor-pointer text-body">
-                                Optional (skippable) step
+                                {t('switches.optional')}
                             </Label>
                             <Switch
                                 id="step-optional"
@@ -285,7 +296,7 @@ export function StepDialog({
                         </div>
                         <div className="flex items-center justify-between">
                             <Label htmlFor="step-grants-role" className="cursor-pointer text-body">
-                                Grant STUDENT role on completion
+                                {t('switches.grantsStudentRole')}
                             </Label>
                             <Switch
                                 id="step-grants-role"
@@ -297,7 +308,7 @@ export function StepDialog({
                         </div>
                         <div className="flex items-center justify-between">
                             <Label htmlFor="step-sends-creds" className="cursor-pointer text-body">
-                                Send login credentials on completion
+                                {t('switches.sendsLoginCredentials')}
                             </Label>
                             <Switch
                                 id="step-sends-creds"
@@ -309,7 +320,7 @@ export function StepDialog({
                         </div>
                         <div className="flex items-center justify-between">
                             <Label htmlFor="step-create-student" className="cursor-pointer text-body">
-                                Create a student from this form on completion
+                                {t('switches.createStudent')}
                             </Label>
                             <Switch
                                 id="step-create-student"
@@ -321,7 +332,7 @@ export function StepDialog({
                         </div>
                         {form.watch('create_student') && (
                             <FormItem>
-                                <FormLabel>Course(s) this step can enroll into</FormLabel>
+                                <FormLabel>{t('fields.coursePool.label')}</FormLabel>
                                 <FormControl>
                                     <MultiSelect
                                         options={poolOptions}
@@ -329,24 +340,21 @@ export function StepDialog({
                                         onChange={setPackageSessionIds}
                                         placeholder={
                                             poolOptionsQuery.isLoading
-                                                ? 'Loading courses…'
-                                                : 'Leave empty to let the admin pick any course…'
+                                                ? t('fields.coursePool.loadingPlaceholder')
+                                                : t('fields.coursePool.emptyPlaceholder')
                                         }
                                         disabled={poolOptionsQuery.isLoading}
                                     />
                                 </FormControl>
                                 <p className="text-caption text-neutral-500">
-                                    Leave empty and the completing admin picks any course at onboarding
-                                    time — the flow never needs rebuilding when a new course is added.
-                                    Select specific course(s) to restrict the choice to only those.
+                                    {t('fields.coursePool.helperText')}
                                 </p>
                             </FormItem>
                         )}
                         {form.watch('create_student') && (
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="step-skip-if-enrolled" className="cursor-pointer text-body">
-                                    Auto-complete this step if the student is already enrolled
-                                    in a course
+                                    {t('switches.skipIfAlreadyEnrolled')}
                                 </Label>
                                 <Switch
                                     id="step-skip-if-enrolled"
@@ -360,7 +368,7 @@ export function StepDialog({
                     </div>
 
                     <div className="flex flex-col gap-2">
-                        <Label className="text-body font-medium text-neutral-800">Step access (who can view/edit this step)</Label>
+                        <Label className="text-body font-medium text-neutral-800">{t('sections.stepAccess')}</Label>
                         <RoleAccessGrid value={roleAccess} onChange={setRoleAccess} />
                     </div>
 
@@ -373,9 +381,9 @@ export function StepDialog({
                     )}
 
                     <div className="flex flex-col gap-2">
-                        <Label className="text-body font-medium text-neutral-800">Form fields</Label>
+                        <Label className="text-body font-medium text-neutral-800">{t('sections.formFields')}</Label>
                         {loadingFields ? (
-                            <div className="text-caption text-neutral-500">Loading existing fields…</div>
+                            <div className="text-caption text-neutral-500">{t('sections.loadingFields')}</div>
                         ) : (
                             <StepFieldConfigEditor
                                 instituteId={instituteId}

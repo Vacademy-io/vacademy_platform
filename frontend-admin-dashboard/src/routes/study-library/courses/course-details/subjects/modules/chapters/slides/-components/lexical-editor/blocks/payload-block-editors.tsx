@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { RichTextField, RichTextHtml } from '../../yoopta-editor-customizations/RichTextField';
@@ -214,6 +214,12 @@ export function TabsBlockEditor({ payload, setPayload, readOnly }: BlockEditorPr
 // ---------- Quiz ----------
 export function QuizBlockEditor({ payload, setPayload, readOnly }: BlockEditorProps<QuizPayload>) {
     const letters = 'ABCDEFGHIJ';
+    /* Native radios sharing a `name` form ONE document-wide group, so a second
+     * quiz block on the same slide would silently uncheck the first one's DOM
+     * node (React only rewrites `checked` when the prop changes, so it never
+     * repaints the loser) — the answer looked lost even though the payload was
+     * intact. One group per block keeps them independent. */
+    const groupName = `quiz-correct-${useId()}`;
 
     const setType = (type: QuizPayload['type']) => {
         if (type === payload.type) return;
@@ -276,7 +282,7 @@ export function QuizBlockEditor({ payload, setPayload, readOnly }: BlockEditorPr
                 >
                     <input
                         type="radio"
-                        name="correct-option"
+                        name={groupName}
                         className="mt-1.5"
                         checked={opt.isCorrect}
                         disabled={readOnly}

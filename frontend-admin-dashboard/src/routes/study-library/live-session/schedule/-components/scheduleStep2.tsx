@@ -21,6 +21,7 @@ import {
     TrashSimple,
     XCircle, PencilSimple } from '@phosphor-icons/react';
 import QRCode from 'react-qr-code';
+import { useTranslation } from 'react-i18next';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { Checkbox } from '@/components/ui/checkbox';
 import { addCustomFiledSchema, addParticipantsSchema } from '../-schema/schema';
@@ -35,6 +36,11 @@ import {
 import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
 import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
+import { FieldRole, classifyFieldRole } from '@/components/common/custom-fields/field-roles';
+import {
+    isBuiltInRegistrationField,
+    withBuiltInRegistrationFields,
+} from '@/components/common/custom-fields/builtin-registration-fields';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import { FieldErrors } from 'react-hook-form';
 import { transformFormToDTOStep2 } from '../../-constants/helper';
@@ -59,7 +65,7 @@ import {
 } from '@/components/templates/TemplateSearchableSelect';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/report-api-error';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -153,6 +159,7 @@ const parseFieldOptions = (config?: string | null): { label: string; name: strin
 };
 
 export default function ScheduleStep2() {
+    const { t: tHelper } = useTranslation('homeworkCreationCreateAssessmentHelper');
     const { clearSessionId, clearStep1Data, clearBulkSessionIds, clearDeepLink } =
         useLiveSessionStore();
     const preselectedBatchIds = useLiveSessionStore((state) => state.preselectedBatchIds);
@@ -677,6 +684,44 @@ export default function ScheduleStep2() {
         );
     };
 
+    /**
+     * Required is the admin's call on every registration field, built-ins included — but a
+     * channel the form verifies with an OTP has to be collected, so that one field stays
+     * required for as long as its verification is on. Same for the email on a paid class:
+     * the invoice is billed and mailed to it.
+     */
+    const requiredLockReasonFor = (field: { label?: string; type?: string }): string | undefined => {
+        const role = classifyFieldRole({ type: field.type, label: field.label });
+        if (role === FieldRole.EMAIL) {
+            if (watch('requireEmailVerification')) {
+                return 'Email is verified with an OTP on this form, so it has to stay required.';
+            }
+            if (watch('paymentEnabled')) {
+                return 'A paid class is invoiced by email, so the email field has to stay required.';
+            }
+        }
+        if (role === FieldRole.PHONE && watch('requirePhoneVerification')) {
+            return 'The mobile number is verified with a WhatsApp OTP on this form, so it has to stay required.';
+        }
+        return undefined;
+    };
+
+    /**
+     * Turning a verification on for a channel the form no longer requires would block every
+     * learner at submit, so flip that field back to required as the toggle goes on rather than
+     * failing them later.
+     */
+    const requireIdentityField = (role: FieldRole) => {
+        (getValues('fields') ?? []).forEach((field, index) => {
+            if (
+                !field.required &&
+                classifyFieldRole({ type: field.type, label: field.label }) === role
+            ) {
+                setValue(`fields.${index}.required`, true, { shouldDirty: true });
+            }
+        });
+    };
+
     const rawPortalUrl = instituteDetails?.learner_portal_base_url;
     const learnerBaseUrl = rawPortalUrl
         ? rawPortalUrl.startsWith('http')
@@ -735,31 +780,49 @@ export default function ScheduleStep2() {
                 const instId = getInstId();
                 if (!instId) return;
                 const defaults = await fetchInstituteDefaultFields(instId);
-                if (defaults && defaults.length > 0) {
-                    const allFields = defaults.map((entry) => {
-                        const cf = entry.custom_field;
-                        const nameLC = cf.fieldName.toLowerCase();
-                        // Multi-input revamp: forward the real field type so the
-                        // form schema / learner registration renders date pickers,
-                        // file upload, checkboxes, etc. Options are parsed for
-                        // both dropdown and radio.
-                        const rawType = (cf.fieldType || 'text').toLowerCase();
-                        const resolvedType = (
-                            rawType === 'textfield' ? 'text' : rawType
-                        ) as InputType;
-                        const hasOptions = hasOptionsType(resolvedType);
-                        return {
-                            label: cf.fieldName,
-                            required: cf.isMandatory || SEEDED.includes(nameLC),
-                            isDefault: SEEDED.includes(nameLC),
-                            type: resolvedType,
-                            ...(hasOptions && parseFieldOptions(cf.config).length > 0
-                                ? { options: parseFieldOptions(cf.config) }
-                                : {}),
-                        };
+                const allFields = (defaults ?? []).map((entry) => {
+                    const cf = entry.custom_field;
+                    const nameLC = cf.fieldName.toLowerCase();
+                    // Multi-input revamp: forward the real field type so the
+                    // form schema / learner registration renders date pickers,
+                    // file upload, checkboxes, etc. Options are parsed for
+                    // both dropdown and radio.
+                    const rawType = (cf.fieldType || 'text').toLowerCase();
+                    const resolvedType = (rawType === 'textfield' ? 'text' : rawType) as InputType;
+                    const hasOptions = hasOptionsType(resolvedType);
+                    // Built-in by ROLE, not by label: an institute that calls it "Name" or
+                    // "E-mail" gets the same default-on Required as one that spells it out.
+                    const builtIn = isBuiltInRegistrationField({
+                        key: cf.fieldKey,
+                        label: cf.fieldName,
+                        type: resolvedType,
                     });
-                    form.setValue('fields', allFields);
-                }
+                    return {
+                        label: cf.fieldName,
+                        required: builtIn || !!cf.isMandatory,
+                        isDefault: builtIn || SEEDED.includes(nameLC),
+                        type: resolvedType,
+                        ...(hasOptions && parseFieldOptions(cf.config).length > 0
+                            ? { options: parseFieldOptions(cf.config) }
+                            : {}),
+                    };
+                });
+                // Every institute gets Full Name / Email / Phone Number, required to start with —
+                // an institute with no DEFAULT set (or one missing a field) would otherwise open a
+                // registration form that collects nothing.
+                form.setValue(
+                    'fields',
+                    withBuiltInRegistrationFields(
+                        allFields,
+                        (field) => ({ label: field.label, type: field.type }),
+                        (builtIn) => ({
+                            label: builtIn.label,
+                            required: true,
+                            isDefault: true,
+                            type: builtIn.type as InputType,
+                        })
+                    )
+                );
             };
             loadFields();
         } else {
@@ -1283,7 +1346,7 @@ export default function ScheduleStep2() {
         <>
             <FormProvider {...form}>
                 <form onSubmit={handleOpenPreview} className="flex flex-col gap-5">
-                    <div className="sticky top-0 z-[9] -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
+                    <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
                         <div className="flex items-center gap-3">
                             <MyButton
                                 type="button"
@@ -1312,7 +1375,7 @@ export default function ScheduleStep2() {
                             onClick={handleOpenPreview}
                         >
                             {isSubmitting ? (
-                                <Loader2 className="animate-spin text-white" />
+                                <CircleNotch className="animate-spin text-white" />
                             ) : (
                                 'Preview & create'
                             )}
@@ -1492,7 +1555,7 @@ export default function ScheduleStep2() {
                             description="Pick a session, then choose batches or individual learners to enroll."
                         >
                             <div className="flex flex-col gap-4">
-                                <div className="w-full sm:max-w-[280px]">
+                                <div className="w-full sm:max-w-72">
                                     <MyDropdown
                                         currentValue={currentSession ?? undefined}
                                         dropdownList={sessionList}
@@ -1604,7 +1667,10 @@ export default function ScheduleStep2() {
                                             <label className="flex w-fit cursor-pointer items-center gap-3">
                                                 <Switch
                                                     checked={!!field.value}
-                                                    onCheckedChange={field.onChange}
+                                                    onCheckedChange={(checked) => {
+                                                        field.onChange(checked);
+                                                        if (checked) requireIdentityField(FieldRole.EMAIL);
+                                                    }}
                                                 />
                                                 <span className="text-sm">
                                                     Verify email with an OTP before registering
@@ -1619,7 +1685,10 @@ export default function ScheduleStep2() {
                                             <label className="flex w-fit cursor-pointer items-center gap-3">
                                                 <Switch
                                                     checked={!!field.value}
-                                                    onCheckedChange={field.onChange}
+                                                    onCheckedChange={(checked) => {
+                                                        field.onChange(checked);
+                                                        if (checked) requireIdentityField(FieldRole.PHONE);
+                                                    }}
                                                 />
                                                 <span className="text-sm">
                                                     Verify mobile number with a WhatsApp OTP before
@@ -1722,7 +1791,10 @@ export default function ScheduleStep2() {
                                                     isRequired={
                                                         watch(`fields.${index}.required`) ?? false
                                                     }
-                                                    locked={field.isDefault}
+                                                    requiredLockReason={requiredLockReasonFor({
+                                                        label: watch(`fields.${index}.label`),
+                                                        type: watch(`fields.${index}.type`),
+                                                    })}
                                                     isEditing={editingFieldIndex === index}
                                                     onToggleRequired={() =>
                                                         setValue(
@@ -1743,6 +1815,16 @@ export default function ScheduleStep2() {
                                         </SortableItem>
                                     ))}
                                 </Sortable>
+
+                                {/* Required-ness rules that span fields (an identity field must
+                                    stay required, an OTP-verified channel must be collected) are
+                                    raised on the `fields` array itself, so they have no row of
+                                    their own to render in. */}
+                                {form.formState.errors.fields?.message && (
+                                    <p className="px-3 text-caption text-danger-600">
+                                        {form.formState.errors.fields.message}
+                                    </p>
+                                )}
 
                                 {/* adding customs fields and new registration form options */}
                                 <div className="flex flex-col gap-4 p-3 sm:flex-row">
@@ -1938,7 +2020,7 @@ export default function ScheduleStep2() {
                                         scale="small"
                                         buttonType="secondary"
                                         className="h-9"
-                                        onClick={() => handleDownloadQRCode('qr-code-svg')}
+                                        onClick={() => handleDownloadQRCode('qr-code-svg', tHelper)}
                                     >
                                         <DownloadSimple size={16} />
                                         <span className="ml-1 text-xs">Download</span>
@@ -2076,7 +2158,7 @@ export default function ScheduleStep2() {
                                                         }`}
                                                     />
                                                 </FormControl>
-                                                <FormLabel className="!mb-[3px] font-thin">
+                                                <FormLabel className="!mb-1 font-thin">
                                                     When Live Class is created
                                                 </FormLabel>
                                             </FormItem>
@@ -2100,7 +2182,7 @@ export default function ScheduleStep2() {
                                                             }`}
                                                         />
                                                     </FormControl>
-                                                    <FormLabel className="!mb-[3px] font-thin">
+                                                    <FormLabel className="!mb-1 font-thin">
                                                         Send Reschedule/Edit Email
                                                     </FormLabel>
                                                 </FormItem>
@@ -2123,7 +2205,7 @@ export default function ScheduleStep2() {
                                                         _id: index,
                                                     }))}
                                                     control={form.control}
-                                                    className="mt-[8px] w-56 font-thin"
+                                                    className="mt-2 w-56 font-thin"
                                                 />
                                                 <MyButton
                                                     type="button"
@@ -2162,7 +2244,7 @@ export default function ScheduleStep2() {
                                                         }`}
                                                     />
                                                 </FormControl>
-                                                <FormLabel className="!mb-[3px] font-thin">
+                                                <FormLabel className="!mb-1 font-thin">
                                                     When class goes live
                                                 </FormLabel>
                                             </FormItem>
@@ -2185,7 +2267,7 @@ export default function ScheduleStep2() {
                                                         }`}
                                                     />
                                                 </FormControl>
-                                                <FormLabel className="!mb-[3px] font-thin">
+                                                <FormLabel className="!mb-1 font-thin">
                                                     When attendance is marked (present/absent)
                                                 </FormLabel>
                                             </FormItem>
@@ -2205,7 +2287,7 @@ export default function ScheduleStep2() {
                     {fields?.map((testInputFields, idx) => {
                         return (
                             <div className="flex flex-col items-start gap-4" key={idx}>
-                                <div className="flex w-full flex-col gap-[0.4rem]">
+                                <div className="flex w-full flex-col gap-1.5">
                                     <h1 className="text-sm">
                                         {testInputFields.label}
                                         {testInputFields.required && (

@@ -12,6 +12,8 @@ import vacademy.io.notification_service.features.firebase_notifications.service.
 import vacademy.io.notification_service.features.send.dto.SendBatchSummaryDTO;
 import vacademy.io.notification_service.features.send.dto.UnifiedSendRequest;
 import vacademy.io.notification_service.features.send.dto.UnifiedSendResponse;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
+import vacademy.io.notification_service.features.send.dto.DeliveryStatusDTO;
 import vacademy.io.notification_service.features.send.entity.SendBatch;
 import vacademy.io.notification_service.features.send.repository.SendBatchRepository;
 import vacademy.io.notification_service.service.EmailService;
@@ -35,6 +37,7 @@ public class UnifiedSendService implements SendChannelRouter {
     private final NotificationTemplateRepository notificationTemplateRepository;
     private final UserAnnouncementPreferenceService userAnnouncementPreferenceService;
     private final EmailCcResolver emailCcResolver;
+    private final NotificationLogRepository notificationLogRepository;
 
     private static final int SYNC_THRESHOLD = 100;
 
@@ -263,6 +266,9 @@ public class UnifiedSendService implements SendChannelRouter {
                             .success(r.success())
                             .status(r.success() ? "SENT" : "FAILED")
                             .error(r.success() ? null : r.error())
+                            // The wamid, so the caller can follow up on what the provider actually
+                            // did with the message — "accepted" is all this response can ever mean.
+                            .messageId(r.messageId())
                             .build());
                 }
             }
@@ -648,6 +654,48 @@ public class UnifiedSendService implements SendChannelRouter {
                 .failed(batch.getFailedCount())
                 .status(batch.getStatus())
                 .build();
+    }
+
+    /**
+     * The provider's verdict on messages this caller already sent, keyed by wamid.
+     * <p>
+     * The send response deliberately cannot answer this: it returns the moment the provider accepts
+     * the message, and acceptance is not delivery — an accepted WhatsApp message is regularly
+     * rejected a second later (131042 payment issue, 131049 marketing cap, 131026 undeliverable).
+     * Every id that has no verdict yet comes back PENDING rather than being omitted, so a caller
+     * polling this can tell "still waiting" apart from "never sent".
+     */
+    public List<DeliveryStatusDTO> getDeliveryStatus(List<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, NotificationLogRepository.DeliveryStatusRow> byId = new HashMap<>();
+        for (NotificationLogRepository.DeliveryStatusRow row :
+                notificationLogRepository.findDeliveryStatusByProviderMessageIds(
+                        messageIds.toArray(new String[0]))) {
+            byId.put(row.getMessageId(), row);
+        }
+
+        List<DeliveryStatusDTO> statuses = new ArrayList<>(messageIds.size());
+        for (String messageId : messageIds) {
+            NotificationLogRepository.DeliveryStatusRow row = byId.get(messageId);
+            String status = (row != null && row.getDeliveryStatus() != null)
+                    ? row.getDeliveryStatus() : "PENDING";
+            statuses.add(DeliveryStatusDTO.builder()
+                    .messageId(messageId)
+                    .status(status)
+                    .errorCode(row != null ? row.getErrorCode() : null)
+                    .errorMessage(row != null ? row.getErrorMessage() : null)
+                    .reportedAt(row != null && row.getReportedAt() != null
+                            ? row.getReportedAt().toInstant() : null)
+                    // READ and FAILED are terminal. DELIVERED can still become READ, so a caller
+                    // that stops polling on DELIVERED simply stops early — it is never shown a
+                    // verdict that later turns out to be wrong.
+                    .settled("FAILED".equals(status) || "READ".equals(status))
+                    .build());
+        }
+        return statuses;
     }
 
     public List<SendBatchSummaryDTO> listBatches(String instituteId, int limit) {

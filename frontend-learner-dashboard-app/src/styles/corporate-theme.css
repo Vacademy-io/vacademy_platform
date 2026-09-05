@@ -1,0 +1,174 @@
+/* =====================================================================
+   Corporate Theme — restrained, dense, structural
+   =====================================================================
+   Applied via the .ui-corporate class on <html> (mutually exclusive with
+   .ui-play / .ui-cleaner-play / .ui-vibrant — see __root.tsx applyUiType).
+
+   Where it sits against the other skins:
+     default      neutral product UI
+     vibrant      pastel, friendly accents
+     play         gamified, bold, 3D press, 20px radii
+     cleanerPlay  warm felted-clay, illustrated, generous whitespace
+     corporate    restrained, dense, structural  <- this file
+
+   Intended for the B2B / professional-training institutes on the platform,
+   where the interface should read as a work tool rather than a consumer app.
+
+   Design principles, in the order they matter:
+
+   1. STRUCTURE FROM BORDERS, NOT SHADOWS. Enterprise UI reads crisp and flat.
+      Elevation is flattened almost to nothing and a slightly stronger border
+      carries the structure instead.
+   2. BRAND AS ACCENT, NOT FILL. play / cleanerPlay flood surfaces with brand
+      tint. Here surfaces stay neutral and brand is reserved for actions,
+      active state and focus, which is what makes a dense screen scannable.
+   3. CRISP CORNERS. 4px.
+   4. DENSER. More information per screen.
+   5. QUIET MOTION. Shorter durations, no bounce or scale.
+
+   ---------------------------------------------------------------------
+   HOW THIS COMPOSES WITH THE INSTITUTE AXES (data-ui-corners/density/gradient)
+
+   Everything below is a DEFAULT, not an override. institute-theme-roles.ts
+   only writes a data-ui-* attribute when the institute actually picked that
+   axis, and styles/ui-axes.css is imported AFTER this file. Both selectors
+   have specificity (0,1,1), so on a tie the later one — the axis — wins.
+
+   Net effect:
+     corporate, institute set nothing      -> 4px corners, tight spacing (here)
+     corporate, institute picked "pill"    -> 16px corners (axis wins)
+   which is the precedence we want: a skin proposes, an explicit choice decides.
+
+   Deliberately NOT using !important anywhere. play-theme.css carries 181 of
+   them and its own header records that they had to be deleted from the navbar
+   and sidebar blocks because they masked the redesigned JSX. `.ui-corporate x`
+   is specificity (0,2,0) and beats a bare utility on its own.
+   ===================================================================== */
+
+html.ui-corporate {
+  /* ---- Corners (default; the corners axis overrides) ------------------ */
+  --radius: 4px;
+
+  /* ---- Density (default; the density axis overrides) ------------------
+     Tighter than stock across the board — this is the axis of the skin that
+     users notice first. Roughly one step down from the default scale. */
+  --ui-pad-card: 0.875rem; /* vs 1rem   */
+  --ui-pad-card-lg: 1.25rem; /* vs 1.5rem */
+  --ui-pad-page: 0.875rem; /* vs 1rem   */
+  --ui-gap-stack: 0.625rem; /* vs 0.75rem */
+  --ui-gap-section: 1.25rem; /* vs 1.5rem */
+  --ui-control-h: 2.125rem; /* vs 2.25rem */
+
+  /* ---- Elevation -> hairlines ----------------------------------------
+     Not set to `none`: a shadow of exactly 0 makes cards sit flat against a
+     tinted institute background and lose their edge entirely. These keep a
+     1px definition and drop the spread. */
+  --shadow-xs: 0 0 0 1px rgb(15 23 42 / 0.04);
+  --shadow-sm: 0 1px 1px 0 rgb(15 23 42 / 0.04);
+  --shadow: 0 1px 1px 0 rgb(15 23 42 / 0.04);
+  --shadow-md: 0 1px 2px 0 rgb(15 23 42 / 0.06);
+  --shadow-lg: 0 2px 4px -1px rgb(15 23 42 / 0.08);
+  --shadow-xl: 0 4px 10px -3px rgb(15 23 42 / 0.10);
+  --shadow-2xl: 0 8px 20px -6px rgb(15 23 42 / 0.12);
+
+  /* Borders do the work shadows used to. Slightly darker than the stock
+     210 18% 84% so a flat card still reads as a distinct surface. */
+  --border: 214 16% 80%;
+  --input: 214 16% 80%;
+
+  /* ---- Surfaces stay neutral -----------------------------------------
+     Principle 2: no brand-tinted decorative fills. The gradient axis can
+     still turn these back on explicitly. */
+  --ui-gradient-from: hsl(var(--background));
+  --ui-gradient-to: hsl(var(--background));
+
+  /* ---- Motion ---------------------------------------------------------
+     Present but quick. Consumed by the duration-* utilities in index.css. */
+  --duration-fast: 90ms;
+  --duration-base: 140ms;
+  --duration-slow: 200ms;
+}
+
+@layer components {
+  /* Cards: hairline structure, no lift on hover. `.cp-card` is included
+     because the Cleaner Play card class is used on several shared widgets
+     (MyBooksWidget, MyOrdersWidget) regardless of the active skin. */
+  .ui-corporate .card,
+  .ui-corporate .Card,
+  .ui-corporate .cp-card {
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--shadow-sm);
+    transition: border-color var(--duration-base) ease;
+  }
+  .ui-corporate .card:hover,
+  .ui-corporate .Card:hover,
+  .ui-corporate .cp-card:hover {
+    border-color: hsl(var(--primary-300));
+    transform: none; /* cancels the Play/Cleaner Play lift */
+  }
+
+  /* Buttons: no press-scale, no 3D shadow. Weight carries emphasis. */
+  .ui-corporate button,
+  .ui-corporate .btn,
+  .ui-corporate .my-button {
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+  .ui-corporate button:active,
+  .ui-corporate .btn:active,
+  .ui-corporate .my-button:active {
+    transform: none;
+  }
+
+  /* Headings: tighter tracking is most of what makes type read "corporate". */
+  .ui-corporate h1,
+  .ui-corporate h2,
+  .ui-corporate h3 {
+    letter-spacing: -0.014em;
+  }
+}
+
+/* ── Icons ────────────────────────────────────────────────────────────
+   The app renders 203 Phosphor icons at weight="duotone" and 216 at
+   weight="fill". Both read as consumer-friendly; a professional surface wants
+   line icons.
+
+   Phosphor duotone emits TWO paths — a translucent fill shape at
+   opacity="0.2" followed by the solid outline (verified in
+   @phosphor-icons/react/dist/index.umd.js). Dropping the translucent layer
+   leaves the outline alone, which is exactly what weight="regular" renders.
+   So this single rule converts every duotone icon in the app to a line icon
+   under Corporate, without touching 203 call sites or changing any other skin.
+
+   Scoped to the Phosphor viewBox so it cannot affect unrelated inline SVG
+   (illustrations, charts, the boot splash) that legitimately use opacity.
+
+   KNOWN LIMIT: weight="fill" and weight="bold" bake their weight into the path
+   geometry, so CSS cannot outline them. Those 342 icons stay as-authored.
+   Converting them would mean changing the prop at each call site, and the
+   weight is often semantic (a filled star = earned, an outline star = not), so
+   it is deliberately not done wholesale here. */
+.ui-corporate svg[viewBox="0 0 256 256"] path[opacity] {
+  opacity: 0;
+}
+
+@layer utilities {
+  /* Section eyebrow — the small uppercase label above a block. Opt-in, for
+     screens that want the denser enterprise header treatment. */
+  .ui-corporate .corporate-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 11px;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+/* Vestibular safety, matching play-theme.css and cleaner-play-theme.css. */
+@media (prefers-reduced-motion: reduce) {
+  html.ui-corporate {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}

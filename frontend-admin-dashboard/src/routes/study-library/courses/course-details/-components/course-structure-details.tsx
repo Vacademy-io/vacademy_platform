@@ -4,6 +4,7 @@ import { getInstituteId } from '@/constants/helper';
 import { useRouter, useSearch } from '@tanstack/react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SubjectType, useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useStudyLibraryContext } from '@/providers/study-library/init-study-library-provider';
@@ -98,7 +99,10 @@ import { CertificatesTab } from './certificates/CertificatesTab';
 import { getIcon } from '../subjects/modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides';
 import { useContentStore } from '../subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import { TeachersList } from '../subjects/-components/teacher-list';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { convertCapitalToTitleCase } from '@/lib/utils';
@@ -127,7 +131,9 @@ import { MyDialog } from '@/components/design-system/dialog';
 import Planning from '../subjects/-components/planning';
 import Activity from '../subjects/-components/activity';
 import PulseTab from './pulse/PulseTab';
+import QuizResultsTab from './quiz-results/QuizResultsTab';
 import { PackageSettingsPanel } from './package-settings/PackageSettingsPanel';
+import { TutorModeTab } from './tutor-mode/TutorModeTab';
 import {
     CopyContentDialog,
     type CopyContentSelection,
@@ -160,6 +166,7 @@ const ChapterHeaderActions = ({
     submitFn: (() => void) | null;
     isPending: boolean;
 }) => {
+    const { t } = useTranslation('courseStructure');
     return (
         <>
             <MyButton
@@ -170,7 +177,9 @@ const ChapterHeaderActions = ({
                 disabled={isPending || !submitFn}
                 className="min-w-[120px]"
             >
-                {isPending ? 'Updating...' : 'Save Changes'}
+                {isPending
+                    ? t('chapterHeader.updating')
+                    : t('chapterHeader.saveChanges')}
             </MyButton>
         </>
     );
@@ -212,6 +221,7 @@ const ThumbnailImage = ({
     fallbackColor: string;
 }) => {
     const { getPublicUrl } = useFileUpload();
+    const { t } = useTranslation('courseStructure');
     const [imageUrl, setImageUrl] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
 
@@ -256,7 +266,7 @@ const ThumbnailImage = ({
     if (imageUrl && thumbnailId) {
         return (
             <div className="mb-2 flex aspect-[16/9] items-center justify-center overflow-hidden rounded-lg">
-                <img src={imageUrl} alt="Thumbnail" className="size-full object-cover" />
+                <img src={imageUrl} alt={t('thumbnailAlt')} className="size-full object-cover" />
             </div>
         );
     }
@@ -305,6 +315,7 @@ export const CourseStructureDetails = ({
     selectedBatchId?: string;
 }) => {
     const router = useRouter();
+    const { t } = useTranslation('courseStructure');
     const searchParams = router.state.location.search;
     // Reactive read of the content-structure drill position from the URL.
     // Drilling in pushes these params (creating history entries) and a sync
@@ -762,19 +773,17 @@ export const CourseStructureDetails = ({
     const handleCopyContentConfirm = async (selection: CopyContentSelection) => {
         setShowCopyContentDialog(false);
         if (!batchPackageSessionId) {
-            toast.error('No batch selected — pick a session/level first.');
+            toast.error(t('importContent.noBatchSelected'));
             return;
         }
         if (selection.sourcePackageSessionId === batchPackageSessionId) {
-            toast.error('Source and target batch are the same — pick a different batch.');
+            toast.error(t('importContent.sameBatch'));
             return;
         }
         // Defense-in-depth: if the dialog let REFERENCE through despite the
         // target having content, refuse on the parent side too.
         if (selection.mode === 'REFERENCE' && targetBatchHasContent) {
-            toast.error(
-                'This batch already has its own content. Linking it would mix linked and existing lessons. Choose "Make a separate copy" instead.'
-            );
+            toast.error(t('importContent.targetHasContent'));
             return;
         }
         try {
@@ -783,23 +792,37 @@ export const CourseStructureDetails = ({
                 targetPackageSessionIds: [batchPackageSessionId],
                 mode: selection.mode,
             });
-            const summary = `${result.copiedSubjects} subject(s), ${result.copiedModules} module(s), ${result.copiedChapters} chapter(s), ${result.copiedSlides} slide(s)`;
-            const modeLabel =
-                selection.mode === 'REFERENCE' ? 'linked from source' : 'copied in';
+            const summary = t('importContent.summary', {
+                subjects: result.copiedSubjects,
+                modules: result.copiedModules,
+                chapters: result.copiedChapters,
+                slides: result.copiedSlides,
+            });
+            const modeLabel = t(
+                selection.mode === 'REFERENCE'
+                    ? 'importContent.modeLinked'
+                    : 'importContent.modeCopied'
+            );
             if (
                 selection.mode === 'VALUE' &&
                 result.warnings &&
                 result.warnings.length > 0
             ) {
                 toast.warning(
-                    `Content ${modeLabel} (${summary}). ${result.warnings.length} drip-condition warning(s).`
+                    t('importContent.warningSuffix', {
+                        summary: t('importContent.successMessage', {
+                            mode: modeLabel,
+                            summary,
+                        }),
+                        count: result.warnings.length,
+                    })
                 );
             } else {
-                toast.success(`Content ${modeLabel} (${summary}).`);
+                toast.success(t('importContent.successMessage', { mode: modeLabel, summary }));
             }
         } catch (err) {
             console.error('Import content failed:', err);
-            toast.error('Failed to import content into this batch.');
+            toast.error(t('importContent.failed'));
         }
     };
     // Visibility rule for the "Import Content" button:
@@ -1087,7 +1110,7 @@ export const CourseStructureDetails = ({
             setDripConditions(updatedConditions);
         } catch (error) {
             console.error('Failed to save drip conditions:', error);
-            alert('Failed to save drip conditions. Please try again.');
+            alert(t('dripConditions.saveFailed'));
         }
     };
 
@@ -1217,7 +1240,7 @@ export const CourseStructureDetails = ({
                 onError: (error) => {
                     console.error('Failed to update subject order:', error);
                     setSubjects(previousSubjects);
-                    toast.error('Failed to reorder subjects. Changes have been reverted.');
+                    toast.error(t('dripConditions.reorderSubjectsFailed'));
                 },
             }
         );
@@ -1255,7 +1278,7 @@ export const CourseStructureDetails = ({
                 onError: (error) => {
                     console.error('Failed to update module order:', error);
                     setSubjectModulesMap(previousModulesMap);
-                    toast.error('Failed to reorder modules. Changes have been reverted.');
+                    toast.error(t('dripConditions.reorderModulesFailed'));
                 },
             }
         );
@@ -1305,7 +1328,7 @@ export const CourseStructureDetails = ({
             onError: (error) => {
                 console.error('Failed to update chapter order:', error);
                 setSubjectModulesMap(previousModulesMap);
-                toast.error('Failed to reorder chapters. Changes have been reverted.');
+                toast.error(t('dripConditions.reorderChaptersFailed'));
             },
         });
     };
@@ -1555,11 +1578,11 @@ export const CourseStructureDetails = ({
             slide: chaptersInOrder.flatMap((ch) =>
                 (chapterSlidesMap[ch.chapter.id] ?? []).map((slide) => ({
                     id: slide.id,
-                    name: slide.title || 'Untitled slide',
+                    name: slide.title || t('untitledSlide'),
                 }))
             ),
         };
-    }, [subjects, subjectModulesMap, chapterSlidesMap]);
+    }, [subjects, subjectModulesMap, chapterSlidesMap, t]);
 
     const totalExpandable = subjects.length + totalModulesCount + totalChaptersCount;
     const totalOpen = openSubjects.size + openModules.size + openChapters.size;
@@ -1712,7 +1735,9 @@ export const CourseStructureDetails = ({
                 <div className="sticky top-0 z-10 mb-3 border-b border-gray-200 bg-white px-6 py-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1">
-                            <h3 className="text-sm font-medium text-gray-700">Course Structure</h3>
+                            <h3 className="text-sm font-medium text-gray-700">
+                                {t('courseStructureHeading')}
+                            </h3>
                             <CopyContentLineageBadge packageSessionId={batchPackageSessionId} />
                         </div>
                         <div className="flex items-center gap-2">
@@ -1770,7 +1795,7 @@ export const CourseStructureDetails = ({
                                     disable={loadingDripConditions}
                                 >
                                     <CalendarBlank size={14} weight="bold" />
-                                    Schedule Unlock
+                                    {t('scheduleUnlock')}
                                 </MyButton>
                             )}
                             {!readOnly && totalExpandable > 0 && (
@@ -1782,12 +1807,12 @@ export const CourseStructureDetails = ({
                                     {isAllExpanded ? (
                                         <>
                                             <ArrowsIn size={14} weight="bold" />
-                                            Collapse All
+                                            {t('collapseAll')}
                                         </>
                                     ) : (
                                         <>
                                             <ArrowsOut size={14} weight="bold" />
-                                            Expand All
+                                            {t('expandAll')}
                                         </>
                                     )}
                                 </MyButton>
@@ -2309,7 +2334,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }
                                                                                                                                                     className="mr-2"
                                                                                                                                                 />
-                                                                                                                                                Edit
+                                                                                                                                                {t('actions.edit')}
                                                                                                                                             </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {canDeleteAllowed && (
@@ -2344,7 +2369,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }
                                                                                                                                                     className="mr-2"
                                                                                                                                                 />
-                                                                                                                                                Delete
+                                                                                                                                                {t('actions.delete')}
                                                                                                                                             </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {dripConditionsEnabled && (
@@ -2370,7 +2395,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                         }
                                                                                                                                                         className="mr-2 text-purple-600"
                                                                                                                                                     />
-                                                                                                                                                    Unlock Rule
+                                                                                                                                                    {t('actions.unlockRule')}
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {offlineAccessEnabled && (
@@ -2384,7 +2409,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }}
                                                                                                                                                 >
                                                                                                                                                     <WifiSlash size={14} className="mr-2 text-primary-500" />
-                                                                                                                                                    Offline Availability
+                                                                                                                                                    {t('actions.offlineAvailability')}
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                         </DropdownMenuContent>
@@ -2422,11 +2447,8 @@ export const CourseStructureDetails = ({
                                                                                                                                             className="text-primary-400 group-hover:text-primary-500"
                                                                                                                                         />
                                                                                                                                         <span className="font-medium">
-                                                                                                                                            Add{' '}
-                                                                                                                                            {getTerminology(
-                                                                                                                                                ContentTerms.Slides,
-                                                                                                                                                SystemTerms.Slides
-                                                                                                                                            )}
+                                                                                                                                            {t('add')}{' '}
+                                                                                                                                            {getTerminology(ContentTerms.Slides, SystemTerms.Slides)}
                                                                                                                                         </span>
                                                                                                                                     </MyButton>
                                                                                                                                 )}
@@ -2442,14 +2464,9 @@ export const CourseStructureDetails = ({
                                                                                                                                     .length ===
                                                                                                                                     0 ? (
                                                                                                                                     <div className="px-2 py-1 text-xs text-gray-400">
-                                                                                                                                        No{' '}
-                                                                                                                                        {getTerminology(
-                                                                                                                                            ContentTerms.Slides,
-                                                                                                                                            SystemTerms.Slides
-                                                                                                                                        )}{' '}
-                                                                                                                                        in
-                                                                                                                                        this
-                                                                                                                                        chapter.
+                                                                                                                                        {t('noSlidesInChapter', {
+                                                                                                                                            term: getTerminology(ContentTerms.Slides, SystemTerms.Slides),
+                                                                                                                                        })}
                                                                                                                                     </div>
                                                                                                                                 ) : (
                                                                                                                                     (
@@ -2965,7 +2982,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }
                                                                                                                                                     className="mr-2"
                                                                                                                                                 />
-                                                                                                                                                Edit
+                                                                                                                                                {t('actions.edit')}
                                                                                                                                             </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {canDeleteAllowed && (
@@ -3000,7 +3017,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }
                                                                                                                                                     className="mr-2"
                                                                                                                                                 />
-                                                                                                                                                Delete
+                                                                                                                                                {t('actions.delete')}
                                                                                                                                             </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {dripConditionsEnabled && (
@@ -3026,7 +3043,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                         }
                                                                                                                                                         className="mr-2 text-purple-600"
                                                                                                                                                     />
-                                                                                                                                                    Unlock Rule
+                                                                                                                                                    {t('actions.unlockRule')}
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {offlineAccessEnabled && (
@@ -3040,7 +3057,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }}
                                                                                                                                                 >
                                                                                                                                                     <WifiSlash size={14} className="mr-2 text-primary-500" />
-                                                                                                                                                    Offline Availability
+                                                                                                                                                    {t('actions.offlineAvailability')}
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                         </DropdownMenuContent>
@@ -3078,11 +3095,8 @@ export const CourseStructureDetails = ({
                                                                                                                                             className="text-primary-400 group-hover:text-primary-500"
                                                                                                                                         />
                                                                                                                                         <span className="font-medium">
-                                                                                                                                            Add{' '}
-                                                                                                                                            {getTerminology(
-                                                                                                                                                ContentTerms.Slides,
-                                                                                                                                                SystemTerms.Slides
-                                                                                                                                            )}
+                                                                                                                                            {t('add')}{' '}
+                                                                                                                                            {getTerminology(ContentTerms.Slides, SystemTerms.Slides)}
                                                                                                                                         </span>
                                                                                                                                     </MyButton>
                                                                                                                                 )}
@@ -3098,14 +3112,9 @@ export const CourseStructureDetails = ({
                                                                                                                                     .length ===
                                                                                                                                     0 ? (
                                                                                                                                     <div className="px-2 py-1 text-xs text-gray-400">
-                                                                                                                                        No{' '}
-                                                                                                                                        {getTerminology(
-                                                                                                                                            ContentTerms.Slides,
-                                                                                                                                            SystemTerms.Slides
-                                                                                                                                        )}{' '}
-                                                                                                                                        in
-                                                                                                                                        this
-                                                                                                                                        chapter.
+                                                                                                                                        {t('noSlidesInChapter', {
+                                                                                                                                            term: getTerminology(ContentTerms.Slides, SystemTerms.Slides),
+                                                                                                                                        })}
                                                                                                                                     </div>
                                                                                                                                 ) : (
                                                                                                                                     (
@@ -3492,7 +3501,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }
                                                                                                                                                     className="mr-2"
                                                                                                                                                 />
-                                                                                                                                                Edit
+                                                                                                                                                {t('actions.edit')}
                                                                                                                                             </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {canDeleteAllowed && (
@@ -3527,7 +3536,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }
                                                                                                                                                     className="mr-2"
                                                                                                                                                 />
-                                                                                                                                                Delete
+                                                                                                                                                {t('actions.delete')}
                                                                                                                                             </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {dripConditionsEnabled && (
@@ -3553,7 +3562,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                         }
                                                                                                                                                         className="mr-2 text-purple-600"
                                                                                                                                                     />
-                                                                                                                                                    Unlock Rule
+                                                                                                                                                    {t('actions.unlockRule')}
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                             {offlineAccessEnabled && (
@@ -3567,7 +3576,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                     }}
                                                                                                                                                 >
                                                                                                                                                     <WifiSlash size={14} className="mr-2 text-primary-500" />
-                                                                                                                                                    Offline Availability
+                                                                                                                                                    {t('actions.offlineAvailability')}
                                                                                                                                                 </DropdownMenuItem>
                                                                                                                                             )}
                                                                                                                                         </DropdownMenuContent>
@@ -3605,11 +3614,8 @@ export const CourseStructureDetails = ({
                                                                                                                                         className="text-primary-400 group-hover:text-primary-500"
                                                                                                                                     />
                                                                                                                                     <span className="font-medium">
-                                                                                                                                        Add{' '}
-                                                                                                                                        {getTerminology(
-                                                                                                                                            ContentTerms.Slides,
-                                                                                                                                            SystemTerms.Slides
-                                                                                                                                        )}
+                                                                                                                                        {t('add')}{' '}
+                                                                                                                                        {getTerminology(ContentTerms.Slides, SystemTerms.Slides)}
                                                                                                                                     </span>
                                                                                                                                 </MyButton>
                                                                                                                                 )}
@@ -3625,14 +3631,9 @@ export const CourseStructureDetails = ({
                                                                                                                                     .length ===
                                                                                                                                     0 ? (
                                                                                                                                     <div className="px-2 py-1 text-xs text-gray-400">
-                                                                                                                                        No{' '}
-                                                                                                                                        {getTerminology(
-                                                                                                                                            ContentTerms.Slides,
-                                                                                                                                            SystemTerms.Slides
-                                                                                                                                        )}{' '}
-                                                                                                                                        in
-                                                                                                                                        this
-                                                                                                                                        chapter.
+                                                                                                                                        {t('noSlidesInChapter', {
+                                                                                                                                            term: getTerminology(ContentTerms.Slides, SystemTerms.Slides),
+                                                                                                                                        })}
                                                                                                                                     </div>
                                                                                                                                 ) : (
                                                                                                                                     (
@@ -3760,11 +3761,8 @@ export const CourseStructureDetails = ({
                                                     className="text-primary-400 group-hover:text-primary-500"
                                                 />
                                                 <span className="font-medium">
-                                                    Add{' '}
-                                                    {getTerminology(
-                                                        ContentTerms.Slides,
-                                                        SystemTerms.Slides
-                                                    )}
+                                                    {t('add')}{' '}
+                                                    {getTerminology(ContentTerms.Slides, SystemTerms.Slides)}
                                                 </span>
                                             </MyButton>,
                                             ] : []),
@@ -3801,7 +3799,7 @@ export const CourseStructureDetails = ({
                                                             className="min-w-0 flex-1 truncate"
                                                             title={slide.title}
                                                         >
-                                                            {slide.title || `Slide ${sIdx + 1}`}
+                                                            {slide.title || t('numbering.slide', { number: sIdx + 1 })}
                                                         </span>
                                                     </div>
                                                 )
@@ -3830,15 +3828,20 @@ export const CourseStructureDetails = ({
                 <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
                     <div className="flex-1">
                         <h2 className="text-base font-semibold text-gray-800">
-                            Manage {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}
+                            {t('manageTeachers', {
+                                teacher: getTerminologyPlural(
+                                    RoleTerms.Teacher,
+                                    SystemTerms.Teacher
+                                ),
+                            })}
                         </h2>
                         <p className="mt-0.5 text-xs text-gray-500">
-                            View and manage{' '}
-                            {getTerminology(
-                                RoleTerms.Teacher,
-                                SystemTerms.Teacher
-                            ).toLocaleLowerCase()}
-                            s assigned to this batch.
+                            {t('viewAndManageTeachers', {
+                                teacher: getTerminologyPlural(
+                                    RoleTerms.Teacher,
+                                    SystemTerms.Teacher
+                                ).toLocaleLowerCase(),
+                            })}
                         </p>
                     </div>
                     <AddTeachers packageSessionId={batchPackageSessionId ?? ''} courseId={courseId} />
@@ -3851,13 +3854,18 @@ export const CourseStructureDetails = ({
                 <Assessments packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
+        [TabType.QUIZ_RESULTS]: (
+            <div className="rounded-md bg-white p-4 shadow-sm">
+                <QuizResultsTab packageSessionId={batchPackageSessionId ?? ''} />
+            </div>
+        ),
         [TabType.LIVE_SESSION]: batchPackageSessionId ? (
             <div className="rounded-md bg-white text-sm text-gray-600 shadow-sm">
                 <LiveSessions packageSessionId={batchPackageSessionId} />
             </div>
         ) : (
             <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
-                Select a batch to view its live sessions.
+                {t('selectBatchFor.liveSessions')}
             </div>
         ),
         [TabType.REPORTS]: batchPackageSessionId ? (
@@ -3866,7 +3874,7 @@ export const CourseStructureDetails = ({
             </div>
         ) : (
             <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
-                Select a batch to view its reports.
+                {t('selectBatchFor.reports')}
             </div>
         ),
         // courseName is intentionally omitted — the backend falls back to the
@@ -3883,7 +3891,7 @@ export const CourseStructureDetails = ({
             </div>
         ) : (
             <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
-                Select a batch to view its offline downloads.
+                {t('selectBatchFor.offlineDownloads')}
             </div>
         ),
         [TabType.CONTENT_STRUCTURE]: (
@@ -3893,14 +3901,14 @@ export const CourseStructureDetails = ({
                         <div>
                             <div className="flex items-center gap-1">
                                 <h3 className="mb-2 text-lg font-semibold text-gray-800">
-                                    Content Structure
+                                    {t('contentStructureHeading')}
                                 </h3>
                                 <CopyContentLineageBadge
                                     packageSessionId={batchPackageSessionId}
                                 />
                             </div>
                             <p className="text-sm text-gray-600">
-                                Navigate through your course content using folders
+                                {t('navigateFolders')}
                             </p>
                         </div>
                         {canCopyContent && (
@@ -3912,8 +3920,8 @@ export const CourseStructureDetails = ({
                             >
                                 <Copy size={14} weight="bold" />
                                 {copyCourseContentMutation.isPending
-                                    ? 'Importing…'
-                                    : 'Import Content'}
+                                    ? t('importContent.importing')
+                                    : t('importContent.importButton')}
                             </MyButton>
                         )}
                     </div>
@@ -3925,7 +3933,7 @@ export const CourseStructureDetails = ({
                                 onClick={() => navigateToLevel(-1)}
                                 className="text-blue-600 hover:text-blue-800"
                             >
-                                Course
+                                {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                             </button>
                             {navigationBreadcrumb.map((crumb, index) => (
                                 <div key={crumb.id} className="flex items-center space-x-2">
@@ -3988,7 +3996,7 @@ export const CourseStructureDetails = ({
                                         {roleDisplay?.coursePage?.viewContentNumbering !==
                                             false && (
                                                 <p className="text-xs text-gray-500">
-                                                    Subject {idx + 1}
+                                                    {t('numbering.subject', { number: idx + 1 })}
                                                 </p>
                                             )}
 
@@ -4013,7 +4021,7 @@ export const CourseStructureDetails = ({
                                                                 size={14}
                                                                 className="mr-2 text-blue-600"
                                                             />
-                                                            Edit
+                                                            {t('actions.edit')}
                                                         </DropdownMenuItem>
                                                         )}
                                                         {canDeleteAllowed && (
@@ -4028,7 +4036,7 @@ export const CourseStructureDetails = ({
                                                             className="text-red-600"
                                                         >
                                                             <Trash size={14} className="mr-2" />
-                                                            Delete
+                                                            {t('actions.delete')}
                                                         </DropdownMenuItem>
                                                         )}
                                                         {dripConditionsEnabled && (
@@ -4046,7 +4054,7 @@ export const CourseStructureDetails = ({
                                                                     size={14}
                                                                     className="mr-2 text-purple-600"
                                                                 />
-                                                                Unlock Rule
+                                                                {t('actions.unlockRule')}
                                                             </DropdownMenuItem>
                                                         )}
                                                         {/* Sets the rule for every chapter under
@@ -4068,7 +4076,7 @@ export const CourseStructureDetails = ({
                                                                     size={14}
                                                                     className="mr-2 text-primary-500"
                                                                 />
-                                                                Offline Availability
+                                                                {t('actions.offlineAvailability')}
                                                             </DropdownMenuItem>
                                                         )}
                                                     </DropdownMenuContent>
@@ -4142,7 +4150,7 @@ export const CourseStructureDetails = ({
                                                 {roleDisplay?.coursePage?.viewContentNumbering !==
                                                     false && (
                                                         <p className="text-xs text-gray-500">
-                                                            Module {modIdx + 1}
+                                                            {t('numbering.module', { number: modIdx + 1 })}
                                                         </p>
                                                     )}
 
@@ -4181,7 +4189,7 @@ export const CourseStructureDetails = ({
                                                                         size={14}
                                                                         className="mr-2 text-blue-600"
                                                                     />
-                                                                    Edit
+                                                                    {t('actions.edit')}
                                                                 </DropdownMenuItem>
                                                                 )}
                                                                 {canDeleteAllowed && (
@@ -4205,7 +4213,7 @@ export const CourseStructureDetails = ({
                                                                         size={14}
                                                                         className="mr-2"
                                                                     />
-                                                                    Delete
+                                                                    {t('actions.delete')}
                                                                 </DropdownMenuItem>
                                                                 )}
                                                                 {dripConditionsEnabled && (
@@ -4223,7 +4231,7 @@ export const CourseStructureDetails = ({
                                                                             size={14}
                                                                             className="mr-2 text-purple-600"
                                                                         />
-                                                                        Unlock Rule
+                                                                        {t('actions.unlockRule')}
                                                                     </DropdownMenuItem>
                                                                 )}
                                                                 {/* Same rule, one level down: covers every chapter in this
@@ -4243,7 +4251,7 @@ export const CourseStructureDetails = ({
                                                                             size={14}
                                                                             className="mr-2 text-primary-500"
                                                                         />
-                                                                        Offline Availability
+                                                                        {t('actions.offlineAvailability')}
                                                                     </DropdownMenuItem>
                                                                 )}
                                                             </DropdownMenuContent>
@@ -4319,7 +4327,7 @@ export const CourseStructureDetails = ({
                                                 {roleDisplay?.coursePage?.viewContentNumbering !==
                                                     false && (
                                                         <p className="text-xs text-gray-500">
-                                                            Module {modIdx + 1}
+                                                            {t('numbering.module', { number: modIdx + 1 })}
                                                         </p>
                                                     )}
 
@@ -4358,7 +4366,7 @@ export const CourseStructureDetails = ({
                                                                         size={14}
                                                                         className="mr-2 text-blue-600"
                                                                     />
-                                                                    Edit
+                                                                    {t('actions.edit')}
                                                                 </DropdownMenuItem>
                                                                 )}
                                                                 {canDeleteAllowed && (
@@ -4382,7 +4390,7 @@ export const CourseStructureDetails = ({
                                                                         size={14}
                                                                         className="mr-2"
                                                                     />
-                                                                    Delete
+                                                                    {t('actions.delete')}
                                                                 </DropdownMenuItem>
                                                                 )}
                                                                 {dripConditionsEnabled && (
@@ -4400,7 +4408,7 @@ export const CourseStructureDetails = ({
                                                                             size={14}
                                                                             className="mr-2 text-purple-600"
                                                                         />
-                                                                        Unlock Rule
+                                                                        {t('actions.unlockRule')}
                                                                     </DropdownMenuItem>
                                                                 )}
                                                                 {/* Same rule, one level down: covers every chapter in this
@@ -4420,7 +4428,7 @@ export const CourseStructureDetails = ({
                                                                             size={14}
                                                                             className="mr-2 text-primary-500"
                                                                         />
-                                                                        Offline Availability
+                                                                        {t('actions.offlineAvailability')}
                                                                     </DropdownMenuItem>
                                                                 )}
                                                             </DropdownMenuContent>
@@ -4501,7 +4509,7 @@ export const CourseStructureDetails = ({
                                             {roleDisplay?.coursePage?.viewContentNumbering !==
                                                 false && (
                                                     <p className="text-xs text-gray-500">
-                                                        Chapter {chIdx + 1}
+                                                        {t('numbering.chapter', { number: chIdx + 1 })}
                                                     </p>
                                                 )}
 
@@ -4544,7 +4552,7 @@ export const CourseStructureDetails = ({
                                                                     size={14}
                                                                     className="mr-2 text-blue-600"
                                                                 />
-                                                                Edit
+                                                                {t('actions.edit')}
                                                             </DropdownMenuItem>
                                                             )}
                                                             {dripConditionsEnabled && (
@@ -4562,7 +4570,7 @@ export const CourseStructureDetails = ({
                                                                         size={14}
                                                                         className="mr-2 text-purple-600"
                                                                     />
-                                                                    Unlock Rule
+                                                                    {t('actions.unlockRule')}
                                                                 </DropdownMenuItem>
                                                             )}
                                                             {offlineAccessEnabled && (
@@ -4576,7 +4584,7 @@ export const CourseStructureDetails = ({
                                                                     }}
                                                                 >
                                                                     <WifiSlash size={14} className="mr-2 text-primary-500" />
-                                                                    Offline Availability
+                                                                    {t('actions.offlineAvailability')}
                                                                 </DropdownMenuItem>
                                                             )}
                                                             {canDeleteAllowed && (
@@ -4599,7 +4607,7 @@ export const CourseStructureDetails = ({
                                                                 className="text-red-600"
                                                             >
                                                                 <Trash size={14} className="mr-2" />
-                                                                Delete
+                                                                {t('actions.delete')}
                                                             </DropdownMenuItem>
                                                             )}
                                                         </DropdownMenuContent>
@@ -4679,7 +4687,7 @@ export const CourseStructureDetails = ({
                                             {roleDisplay?.coursePage?.viewContentNumbering !==
                                                 false && (
                                                     <p className="text-xs text-gray-500">
-                                                        Chapter {chIdx + 1}
+                                                        {t('numbering.chapter', { number: chIdx + 1 })}
                                                     </p>
                                                 )}
 
@@ -4722,7 +4730,7 @@ export const CourseStructureDetails = ({
                                                                     size={14}
                                                                     className="mr-2 text-blue-600"
                                                                 />
-                                                                Edit
+                                                                {t('actions.edit')}
                                                             </DropdownMenuItem>
                                                             )}
                                                             {dripConditionsEnabled && (
@@ -4740,7 +4748,7 @@ export const CourseStructureDetails = ({
                                                                         size={14}
                                                                         className="mr-2 text-purple-600"
                                                                     />
-                                                                    Unlock Rule
+                                                                    {t('actions.unlockRule')}
                                                                 </DropdownMenuItem>
                                                             )}
                                                             {offlineAccessEnabled && (
@@ -4754,7 +4762,7 @@ export const CourseStructureDetails = ({
                                                                     }}
                                                                 >
                                                                     <WifiSlash size={14} className="mr-2 text-primary-500" />
-                                                                    Offline Availability
+                                                                    {t('actions.offlineAvailability')}
                                                                 </DropdownMenuItem>
                                                             )}
                                                             {canDeleteAllowed && (
@@ -4778,7 +4786,7 @@ export const CourseStructureDetails = ({
                                                                 className="text-red-600"
                                                             >
                                                                 <Trash size={14} className="mr-2" />
-                                                                Delete
+                                                                {t('actions.delete')}
                                                             </DropdownMenuItem>
                                                             )}
                                                         </DropdownMenuContent>
@@ -4858,7 +4866,7 @@ export const CourseStructureDetails = ({
                                                 {roleDisplay?.coursePage?.viewContentNumbering !==
                                                     false && (
                                                         <p className="text-xs text-gray-500">
-                                                            Chapter {chIdx + 1}
+                                                            {t('numbering.chapter', { number: chIdx + 1 })}
                                                         </p>
                                                     )}
 
@@ -4904,7 +4912,7 @@ export const CourseStructureDetails = ({
                                                                         size={14}
                                                                         className="mr-2 text-blue-600"
                                                                     />
-                                                                    Edit
+                                                                    {t('actions.edit')}
                                                                 </DropdownMenuItem>
                                                                 )}
                                                                 {dripConditionsEnabled && (
@@ -4923,7 +4931,7 @@ export const CourseStructureDetails = ({
                                                                             size={14}
                                                                             className="mr-2 text-purple-600"
                                                                         />
-                                                                        Unlock Rule
+                                                                        {t('actions.unlockRule')}
                                                                     </DropdownMenuItem>
                                                                 )}
                                                                 {offlineAccessEnabled && (
@@ -4937,7 +4945,7 @@ export const CourseStructureDetails = ({
                                                                         }}
                                                                     >
                                                                         <WifiSlash size={14} className="mr-2 text-primary-500" />
-                                                                        Offline Availability
+                                                                        {t('actions.offlineAvailability')}
                                                                     </DropdownMenuItem>
                                                                 )}
                                                                 {canDeleteAllowed && (
@@ -4971,7 +4979,7 @@ export const CourseStructureDetails = ({
                                                                         size={14}
                                                                         className="mr-2"
                                                                     />
-                                                                    Delete
+                                                                    {t('actions.delete')}
                                                                 </DropdownMenuItem>
                                                                 )}
                                                             </DropdownMenuContent>
@@ -5013,12 +5021,12 @@ export const CourseStructureDetails = ({
                                         className="mb-1 truncate text-sm font-medium text-gray-800"
                                         title={slide.title}
                                     >
-                                        {slide.title || `Slide ${sIdx + 1}`}
+                                        {slide.title || t('numbering.slide', { number: sIdx + 1 })}
                                     </h4>
 
                                     {/* Slide Number */}
                                     {roleDisplay?.coursePage?.viewContentNumbering !== false && (
-                                        <p className="text-xs text-gray-500">Slide {sIdx + 1}</p>
+                                        <p className="text-xs text-gray-500">{t('numbering.slide', { number: sIdx + 1 })}</p>
                                     )}
                                 </div>
                             </div>
@@ -5117,7 +5125,7 @@ export const CourseStructureDetails = ({
                                 >
                                     <Plus size={24} className="text-primary-500" />
                                     <span className="text-sm font-medium text-primary-700">
-                                        Add{' '}
+                                        {t('add')}{' '}
                                         {getTerminology(ContentTerms.Slides, SystemTerms.Slides)}
                                     </span>
                                 </div>
@@ -5146,11 +5154,16 @@ export const CourseStructureDetails = ({
                 <PackageSettingsPanel packageId={courseId} />
             </div>
         ),
+        [TabType.TUTOR_MODE]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <TutorModeTab key={courseId} packageId={courseId} />
+            </div>
+        ),
         [TabType.DISCUSSION]: batchPackageSessionId ? (
             <BatchChatPanel packageSessionId={batchPackageSessionId} />
         ) : (
             <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
-                Select a batch to view its discussion.
+                {t('selectBatchFor.discussion')}
             </div>
         ),
     };
@@ -5266,20 +5279,20 @@ export const CourseStructureDetails = ({
                 <div className="mx-4 rounded-md border border-orange-200 bg-orange-50 p-3">
                     <div className="flex items-center gap-2">
                         <div className="font-medium text-orange-600">
-                            Editing Restricted: This course is{' '}
-                            {isPublishedCourse
-                                ? 'published'
-                                : isInReviewCourse
-                                    ? 'under review'
-                                    : 'restricted'}
-                            .
+                            {t('restriction.banner', {
+                                status: isPublishedCourse
+                                    ? t('restriction.statusPublished')
+                                    : isInReviewCourse
+                                        ? t('restriction.statusUnderReview')
+                                        : t('restriction.statusRestricted'),
+                            })}
                         </div>
                         <div className="text-sm text-orange-600">
                             {isPublishedCourse
-                                ? 'Go to My Courses to create an editable copy.'
+                                ? t('restriction.publishedHint')
                                 : isInReviewCourse
-                                    ? "You cannot edit the content while it's under review."
-                                    : 'You cannot edit this content.'}
+                                    ? t('restriction.reviewHint')
+                                    : t('restriction.restrictedHint')}
                         </div>
                     </div>
                 </div>
@@ -5316,7 +5329,7 @@ export const CourseStructureDetails = ({
                                 <div className="flex flex-col items-center gap-3">
                                     <DashboardLoader size={24} />
                                     <div className="text-sm font-medium text-gray-600">
-                                        Updating course structure...
+                                        {t('updatingStructure')}
                                     </div>
                                 </div>
                             </div>
@@ -5340,7 +5353,7 @@ export const CourseStructureDetails = ({
             {/* Edit Dialogs */}
             {/* Subject Edit Dialog */}
             <MyDialog
-                heading="Edit Subject"
+                heading={t('editSubjectHeading')}
                 dialogWidth="w-[400px]"
                 open={editDialog.isOpen && editDialog.type === 'subject'}
                 onOpenChange={(open) => !open && closeEditDialog()}
@@ -5355,7 +5368,7 @@ export const CourseStructureDetails = ({
 
             {/* Module Edit Dialog */}
             <MyDialog
-                heading="Edit Module"
+                heading={t('editModuleHeading')}
                 dialogWidth="w-[400px]"
                 open={editDialog.isOpen && editDialog.type === 'module'}
                 onOpenChange={(open) => !open && closeEditDialog()}
@@ -5370,7 +5383,7 @@ export const CourseStructureDetails = ({
 
             {/* Chapter Edit Dialog */}
             <MyDialog
-                heading="Edit Chapter"
+                heading={t('editChapterHeading')}
                 dialogWidth="min-w-[800px]"
                 open={editDialog.isOpen && editDialog.type === 'chapter'}
                 onOpenChange={(open) => !open && closeEditDialog()}
@@ -5444,19 +5457,20 @@ export const CourseStructureDetails = ({
             >
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
+                        <AlertDialogTitle>{t('confirmDeletion.title')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to delete &quot;{deleteConfirmation.item?.name}
-                            &quot;? This action cannot be undone.
+                            {t('confirmDeletion.body', {
+                                name: deleteConfirmation.item?.name ?? '',
+                            })}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{t('confirmDeletion.cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={handleConfirmDelete}
                             className="bg-red-600 hover:bg-red-700"
                         >
-                            Delete
+                            {t('actions.delete')}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -5497,7 +5511,7 @@ export const CourseStructureDetails = ({
                     sourceType={offlineDialog.sourceType}
                     sourceId={offlineDialog.sourceId ?? ''}
                     packageSessionId={batchPackageSessionId}
-                    nodeName={offlineDialog.nodeName ?? 'This content'}
+                    nodeName={offlineDialog.nodeName ?? t('defaultNodeName')}
                 />
             )}
         </div>

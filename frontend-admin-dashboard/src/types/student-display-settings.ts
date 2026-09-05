@@ -45,6 +45,9 @@ export type StudentDashboardWidgetId =
     | 'coursesStat'
     | 'evaluationStat'
     | 'continueLearning'
+    // The learner's enrolled courses with per-course progress and a way back
+    // in. Distinct from coursesStat, which is only the count tile.
+    | 'enrolledCourses'
     | 'learningAnalytics'
     | 'liveClasses'
     | 'thisWeekAttendance'
@@ -77,6 +80,7 @@ export const RETIRED_WIDGET_IDS: ReadonlySet<string> = new Set([
 export const WIDGET_LABELS: Record<string, string> = {
     gettingStarted: "Getting Started checklist (“Let's get you started”)",
     continueLearning: 'Continue Learning',
+    enrolledCourses: 'Enrolled Courses (one card per enrolled course)',
     coursesStat: 'Courses (stat card)',
     liveClasses: 'Live Sessions (stat card)',
     evaluationStat: 'Assessments (stat card)',
@@ -132,7 +136,7 @@ export interface StudentSignupSettings {
 }
 
 // UI
-export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay';
+export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay' | 'corporate';
 export interface StudentUiSettings {
     type: StudentUiType;
 }

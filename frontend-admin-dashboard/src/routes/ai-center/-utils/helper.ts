@@ -1,10 +1,16 @@
+import type { TFunction } from 'i18next';
 import { AIAssessmentCompleteQuestion } from '@/types/ai/generate-assessment/generate-complete-assessment';
 import { MyQuestion } from '@/types/assessments/question-paper-form';
 import { FilePdf } from '@phosphor-icons/react';
 import { FileAudio, FileDoc } from '@phosphor-icons/react';
 
+// Namespace: aiCenterHelper. `t` is threaded through (rather than a fixed
+// Record) so the strings baked into the returned question HTML/labels are
+// resolved against the caller's active language — see the
+// `buildSourceLabel`/`taskDisplayName` precedent in -utils/format.ts.
 export const transformQuestionsToGenerateAssessmentAI = (
-    data: AIAssessmentCompleteQuestion[] | undefined
+    data: AIAssessmentCompleteQuestion[] | undefined,
+    t: TFunction
 ) => {
     return data?.map((item) => {
         const correctOptionIds =
@@ -27,8 +33,8 @@ export const transformQuestionsToGenerateAssessmentAI = (
         const baseQuestion: MyQuestion = {
             id: item.id || '',
             questionId: item.id || item.preview_id || undefined,
-            questionName: convertSVGsToBase64(item.text?.content) || '',
-            explanation: convertSVGsToBase64(item.explanation_text?.content) || '',
+            questionName: convertSVGsToBase64(item.text?.content, t) || '',
+            explanation: convertSVGsToBase64(item.explanation_text?.content, t) || '',
             questionType: item.question_type,
             questionMark: '0',
             questionPenalty: '0',
@@ -72,30 +78,30 @@ export const transformQuestionsToGenerateAssessmentAI = (
 
         if (item.question_type === 'MCQS') {
             baseQuestion.singleChoiceOptions = item.options.map((option) => ({
-                name: convertSVGsToBase64(option.text?.content) || '',
+                name: convertSVGsToBase64(option.text?.content, t) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'MCQM') {
             baseQuestion.multipleChoiceOptions = item.options.map((option) => ({
-                name: convertSVGsToBase64(option.text?.content) || '',
+                name: convertSVGsToBase64(option.text?.content, t) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'CMCQS') {
             baseQuestion.csingleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: convertSVGsToBase64(option.text?.content) || '',
+                name: convertSVGsToBase64(option.text?.content, t) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'CMCQM') {
             baseQuestion.cmultipleChoiceOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: convertSVGsToBase64(option.text?.content) || '',
+                name: convertSVGsToBase64(option.text?.content, t) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'TRUE_FALSE') {
             baseQuestion.trueFalseOptions = item.options.map((option) => ({
                 id: option.id ? option.id : '',
-                name: convertSVGsToBase64(option.text?.content) || '',
+                name: convertSVGsToBase64(option.text?.content, t) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));
         } else if (item.question_type === 'NUMERIC') {
@@ -105,7 +111,7 @@ export const transformQuestionsToGenerateAssessmentAI = (
     });
 };
 
-export function convertSVGsToBase64(htmlString: string) {
+export function convertSVGsToBase64(htmlString: string, t: TFunction) {
     if (!htmlString) return '';
 
     console.log('🔄 convertSVGsToBase64 INPUT:', htmlString.substring(0, 100) + '...');
@@ -169,7 +175,7 @@ export function convertSVGsToBase64(htmlString: string) {
         const dataUrl = `data:image/svg+xml;base64,${base64}`;
         const img = document.createElement('img');
         img.src = dataUrl;
-        img.alt = 'Converted SVG';
+        img.alt = t('svgAlt');
         svg.replaceWith(img);
     });
 
@@ -190,13 +196,13 @@ export function convertSVGsToBase64(htmlString: string) {
         if (!isPlaceholder) return;
         const alt = (img.getAttribute('alt') || '').trim();
         const promptHint = (img.getAttribute('data-img-prompt') || '').trim();
-        const caption = alt || promptHint || 'Diagram not available';
+        const caption = alt || promptHint || t('diagramNotAvailable');
         const replacement = document.createElement('span');
         replacement.className = 'ai-missing-image';
         replacement.setAttribute('data-original-alt', alt);
         replacement.setAttribute(
             'style',
-            'display:inline-flex;align-items:center;gap:6px;padding:6px 10px;margin:4px 0;border:1px dashed #d1d5db;border-radius:8px;background:#f9fafb;color:#6b7280;font-size:12px;font-style:italic;'
+            'display:inline-flex;align-items:center;gap:6px;padding:6px 10px;margin:4px 0;border:1px dashed hsl(var(--border));border-radius:8px;background:hsl(var(--muted));color:hsl(var(--muted-foreground));font-size:12px;font-style:italic;'
         );
         replacement.textContent = `\u{1F4F7} ${caption}`;
         img.replaceWith(replacement);
@@ -236,7 +242,7 @@ export function getScoreFromString(input: string): number {
     return scores[input.trim()] ?? 0;
 }
 
-export const AIFormatDate = (dateString: string): string => {
+export const AIFormatDate = (dateString: string, t: TFunction): string => {
     try {
         return new Date(dateString).toLocaleDateString(undefined, {
             year: 'numeric',
@@ -249,7 +255,7 @@ export const AIFormatDate = (dateString: string): string => {
         });
     } catch (error) {
         console.error('Error formatting date:', dateString, error);
-        return 'Invalid Date';
+        return t('invalidDate');
     }
 };
 

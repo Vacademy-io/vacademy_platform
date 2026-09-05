@@ -1,7 +1,7 @@
 import type { PaymentLogEntry } from '@/types/payment-logs';
 import { isRealCurrency, resolveEntryCurrency } from '@/utils/payment-currency';
 import { derivePaymentTypeLabel } from './exportPaymentLogsCsv';
-import { classifyEntry, isCancelledEntry } from './paymentSummary';
+import { classifyEntry, isCancelledEntry, isDueEligibleEntry } from './paymentSummary';
 
 /**
  * Dashboard analytics derived entirely client-side from the payment-logs set the Manage Payments
@@ -126,6 +126,9 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
     const collected = { amount: 0, count: 0 };
     const outstanding = { amount: 0, count: 0 };
     const failed = { amount: 0, count: 0 };
+    // Unsettled records on a dead enrolment. Kept out of `outstanding` (nobody owes this) but held
+    // here so the funnel's "Invoiced" stage still totals every record it says it counts.
+    const notDue = { amount: 0, count: 0 };
 
     const methodMix: Record<string, AmountSlice> = {};
     const gatewayBreakdown: Record<string, AmountSlice> = {};
@@ -167,6 +170,12 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
         } else if (status === 'FAILED') {
             failed.amount += amount;
             failed.count += 1;
+        } else if (!isDueEligibleEntry(entry)) {
+            // Unsettled, but hanging off a cancelled/terminated/expired enrolment — never going to
+            // be collected, so it is neither outstanding nor worth ageing. Same rule the Due card
+            // and the server's billed_plans use. Still a payment record, so it stays in the funnel.
+            notDue.amount += amount;
+            notDue.count += 1;
         } else {
             outstanding.amount += amount;
             outstanding.count += 1;
@@ -188,7 +197,9 @@ export const computePaymentAnalytics = (allEntries: PaymentLogEntry[]): PaymentA
     const funnel: FunnelStage[] = [
         {
             label: 'Invoiced',
-            amount: collected.amount + outstanding.amount + failed.amount,
+            // Every record, dead enrolments included — `count` is entries.length, so the amount has
+            // to span the same set or the stage contradicts itself.
+            amount: collected.amount + outstanding.amount + notDue.amount + failed.amount,
             count: entries.length,
             hint: 'All payment records in view',
         },

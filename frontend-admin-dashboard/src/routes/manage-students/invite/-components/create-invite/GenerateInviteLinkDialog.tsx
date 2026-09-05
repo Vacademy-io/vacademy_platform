@@ -7,12 +7,12 @@ import { Form } from '@/components/ui/form';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useFileUpload } from '@/hooks/use-file-upload';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useForm as useDiscountForm } from 'react-hook-form';
 import { zodResolver as discountZodResolver } from '@hookform/resolvers/zod';
 import {
     AddDiscountFormValues,
-    addDiscountSchema,
+    buildAddDiscountSchema,
     GenerateInviteLinkDialogProps,
     InviteLinkFormValues,
     inviteLinkSchema,
@@ -37,6 +37,8 @@ import CustomHTMLCard from './-components/CustomHTMLCard';
 import InviteAvailabilityCard from './-components/InviteAvailabilityCard';
 import PostFormFillConfigurationCard from './-components/PostFormFillConfigurationCard';
 import SubOrgSettingsCard from './-components/SubOrgSettingsCard';
+import TeamNotificationsCard from './-components/TeamNotificationsCard';
+import { MultiEmailInputHandle } from '@/routes/audience-manager/list/-components/audience-invite/components/MultiEmailInput';
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { handleEnrollInvite, handleGetEnrollSingleInviteDetails } from './-services/enroll-invite';
@@ -63,6 +65,7 @@ import createInviteLink from '../../-utils/createInviteLink';
 import { Copy } from '@phosphor-icons/react';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { useTranslation } from 'react-i18next';
 
 const GenerateInviteLinkDialog = ({
     showSummaryDialog,
@@ -75,6 +78,16 @@ const GenerateInviteLinkDialog = ({
     setDialogOpen,
     selectCourseForm,
 }: GenerateInviteLinkDialogProps) => {
+    // 'manageStudentsGenerateInviteLinkSchema' is also requested here (not just
+    // 'manageStudentsGenerateInviteLinkDialog') so react-i18next loads it for us — it backs
+    // the addDiscountForm's validation schema built below via buildAddDiscountSchema(t).
+    // 'manageStudentsGetInviteListCustomFields' backs getInviteListCustomFieldsAsync(t)'s
+    // fallback default field labels (Full Name / Email / Phone Number).
+    const { t } = useTranslation([
+        'manageStudentsGenerateInviteLinkDialog',
+        'manageStudentsGenerateInviteLinkSchema',
+        'manageStudentsGetInviteListCustomFields',
+    ]);
     const { instituteLogo } = useInstituteLogoStore();
     const { data: inviteLinkDetails } = useSuspenseQuery(
         singlePackageSessionId && inviteLinkId
@@ -166,6 +179,7 @@ const GenerateInviteLinkDialog = ({
             accessDurationDays: '',
             inviteeEmail: '',
             inviteeEmails: [],
+            teamNotificationEmails: [],
             customHtml: '',
             showRelatedCourses: false,
             selectedOptionValue: 'textfield',
@@ -202,7 +216,7 @@ const GenerateInviteLinkDialog = ({
     // plans, etc.).
     useEffect(() => {
         if (!isEditInviteLink && showSummaryDialog) {
-            getInviteListCustomFieldsAsync().then((fields) => {
+            getInviteListCustomFieldsAsync(t).then((fields) => {
                 if (fields && fields.length > 0) {
                     const currentValues = form.getValues();
                     form.reset({ ...currentValues, custom_fields: fields });
@@ -244,6 +258,9 @@ const GenerateInviteLinkDialog = ({
 
     const { uploadFile, getPublicUrl } = useFileUpload();
 
+    // Lets the submit handler commit a half-typed Team Notifications address before
+    // the payload is built (the input's blur is unreliable on a button click).
+    const teamNotificationsRef = useRef<MultiEmailInputHandle>(null);
     const coursePreviewRef = useRef<HTMLInputElement>(null);
     const courseBannerRef = useRef<HTMLInputElement>(null);
     const courseMediaRef = useRef<HTMLInputElement>(null);
@@ -290,8 +307,8 @@ const GenerateInviteLinkDialog = ({
             queryClient.invalidateQueries({ queryKey: ['inviteList'] });
             toast.success(
                 isEditInviteLink
-                    ? 'Your invite link has been updated successfully!'
-                    : 'Your invite link has been created successfully!',
+                    ? t('toast.updateSuccess')
+                    : t('toast.createSuccess'),
                 {
                     className: 'success-toast',
                     duration: 2000,
@@ -317,14 +334,14 @@ const GenerateInviteLinkDialog = ({
                 toast.error(
                     error?.response?.data?.ex ||
                     error?.response?.data?.message ||
-                    'Failed to save invite link',
+                    t('toast.saveError'),
                     {
                         className: 'error-toast',
                         duration: 3000,
                     }
                 );
             } else {
-                toast.error('An unexpected error occurred', {
+                toast.error(t('toast.unexpectedError'), {
                     className: 'error-toast',
                     duration: 2000,
                 });
@@ -340,7 +357,7 @@ const GenerateInviteLinkDialog = ({
         console.error('Form validation errors:', err);
         if (err && typeof err === 'object') {
             const fieldNames = Object.keys(err as Record<string, unknown>);
-            toast.error(`Validation failed on: ${fieldNames.join(', ')}`, {
+            toast.error(t('toast.validationFailed', { fields: fieldNames.join(', ') }), {
                 duration: 4000,
             });
         }
@@ -430,6 +447,12 @@ const GenerateInviteLinkDialog = ({
         const updatedTags = form.watch('tags').filter((tag) => tag !== tagToRemove);
         setValue('tags', updatedTags);
     };
+
+    // addDiscountSchema used to be a module-level const built once at import time from
+    // i18next.t(), so its validation messages froze on the raw key before the namespace could
+    // ever load. buildAddDiscountSchema(t) rebuilds the schema from this component's own `t`,
+    // memoized so it's cheap per render and recomputed if the active locale changes.
+    const addDiscountSchema = useMemo(() => buildAddDiscountSchema(t), [t]);
 
     const addDiscountForm = useDiscountForm<AddDiscountFormValues>({
         resolver: discountZodResolver(addDiscountSchema),
@@ -611,7 +634,7 @@ const GenerateInviteLinkDialog = ({
             ...prevOptions,
             {
                 id: String(prevOptions.length),
-                value: `option ${prevOptions.length + 1}`,
+                value: t('customField.defaultOptionLabel', { number: prevOptions.length + 1 }),
                 disabled: true,
             },
         ]);
@@ -902,6 +925,13 @@ const GenerateInviteLinkDialog = ({
                         memberCount: subOrg?.MEMBER_COUNT ?? null,
                     };
                 })(),
+                teamNotificationEmails: (
+                    safeJsonParse(inviteLinkDetails?.setting_json, {})?.setting
+                        ?.NOTIFICATION_SETTING?.TO_NOTIFY || ''
+                )
+                    .split(',')
+                    .map((email: string) => email.trim())
+                    .filter(Boolean),
                 autopaySettings: (() => {
                     const autopay = safeJsonParse(inviteLinkDetails?.setting_json, {})?.setting
                         ?.AUTOPAY_SETTING;
@@ -936,7 +966,13 @@ const GenerateInviteLinkDialog = ({
                 <DialogHeader>
                     <div className="flex items-center justify-between">
                         <DialogTitle className="font-bold">
-                            {isEditInviteLink ? `Update ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link` : `Create ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link`}
+                            {isEditInviteLink
+                                ? t('dialogTitle.update', {
+                                      term: getTerminology(OtherTerms.Invite, SystemTerms.Invite),
+                                  })
+                                : t('dialogTitle.create', {
+                                      term: getTerminology(OtherTerms.Invite, SystemTerms.Invite),
+                                  })}
                         </DialogTitle>
                         {/* Preview Invite Link Dialog */}
                         <PreviewInviteLink
@@ -968,10 +1004,10 @@ const GenerateInviteLinkDialog = ({
                                             instituteDetails?.learner_portal_base_url
                                         )
                                     );
-                                    toast.success('Invite link copied to clipboard');
+                                    toast.success(t('inviteLink.copiedToast'));
                                 }}
                                 className="shrink-0 rounded p-1 hover:bg-neutral-200"
-                                title="Copy invite link"
+                                title={t('inviteLink.copyTitle')}
                             >
                                 <Copy className="size-4" />
                             </button>
@@ -1040,6 +1076,9 @@ const GenerateInviteLinkDialog = ({
 
                             {/* Sub-organization Settings Card */}
                             <SubOrgSettingsCard form={form} />
+
+                            {/* Team members notified on every form fill */}
+                            <TeamNotificationsCard form={form} ref={teamNotificationsRef} />
                         </form>
                     </Form>
                 </div>
@@ -1051,25 +1090,32 @@ const GenerateInviteLinkDialog = ({
                         className="p-5"
                         onClick={() => setShowSummaryDialog(false)}
                     >
-                        Close
+                        {t('actions.close')}
                     </MyButton>
                     <MyButton
                         type="button"
                         scale="small"
                         buttonType="primary"
                         className="p-5"
-                        onClick={handleSubmit(onSubmit, onInvalid)}
+                        onClick={() => {
+                            teamNotificationsRef.current?.flush();
+                            handleSubmit(onSubmit, onInvalid)();
+                        }}
                         disable={!form.watch('name') || handleSubmitInviteLinkMutation.isPending}
                     >
                         {handleSubmitInviteLinkMutation.isPending ? (
                             <div className="flex items-center gap-2">
                                 <LoadingSpinner size={16} />
-                                {isEditInviteLink ? 'Updating...' : 'Creating...'}
+                                {isEditInviteLink ? t('actions.updating') : t('actions.creating')}
                             </div>
                         ) : isEditInviteLink ? (
-                            `Update ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link`
+                            t('dialogTitle.update', {
+                                term: getTerminology(OtherTerms.Invite, SystemTerms.Invite),
+                            })
                         ) : (
-                            `Create ${getTerminology(OtherTerms.Invite, SystemTerms.Invite)} Link`
+                            t('dialogTitle.create', {
+                                term: getTerminology(OtherTerms.Invite, SystemTerms.Invite),
+                            })
                         )}
                     </MyButton>
                 </div>

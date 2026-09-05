@@ -13,6 +13,7 @@ import { formatStructure } from '../../../-utils/helper';
 import { QUESTION_TYPES, NUMERIC_TYPES } from '@/constants/dummy-data';
 import { Badge } from '@/components/ui/badge';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export const NumericQuestionPaperTemplateMainView = ({
     form,
@@ -21,6 +22,7 @@ export const NumericQuestionPaperTemplateMainView = ({
     showQuestionNumber = true,
     examType,
 }: QuestionPaperTemplateFormProps) => {
+    const { t } = useTranslation('assessmentNumericTemplateQP');
     console.log('🎯 NumericQuestionPaperTemplateMainView rendered', {
         examType,
         currentQuestionIndex,
@@ -30,7 +32,7 @@ export const NumericQuestionPaperTemplateMainView = ({
     if (!form || !form.control || !form.getValues || !form.trigger || !form.watch || !form.setValue) {
         return (
             <div className="flex h-screen w-full items-center justify-center">
-                <h1>Form not properly initialized</h1>
+                <h1>{t('errors.formNotInitialized')}</h1>
             </div>
         );
     }
@@ -40,8 +42,8 @@ export const NumericQuestionPaperTemplateMainView = ({
     const numericType = watch(`questions.${currentQuestionIndex}.numericType`) || '';
     const validAnswers = watch(`questions.${currentQuestionIndex}.validAnswers`) || [0];
 
-    const answersType = getValues('answersType') || 'Answer:';
-    const explanationsType = getValues('explanationsType') || 'Explanation:';
+    const answersType = getValues('answersType') || t('defaults.answer');
+    const explanationsType = getValues('explanationsType') || t('defaults.explanation');
     const questionsType = getValues('questionsType') || '';
     const tags = getValues(`questions.${currentQuestionIndex}.tags`) || [];
     const level = getValues(`questions.${currentQuestionIndex}.level`) || '';
@@ -77,13 +79,13 @@ export const NumericQuestionPaperTemplateMainView = ({
                     <PopoverContent>
                         <div className="mb-2 flex flex-col gap-4">
                             <div className="flex w-full items-center justify-between">
-                                <h1 className="text-primary-500">Questions Settings</h1>
+                                <h1 className="text-primary-500">{t('settings.title')}</h1>
                                 <PopoverClose>
                                     <X size={16} />
                                 </PopoverClose>
                             </div>
                             <SelectField
-                                label="Numerical Type"
+                                label={t('settings.numericalType')}
                                 name={`questions.${currentQuestionIndex}.numericType`}
                                 options={NUMERIC_TYPES.map((option, index) => ({
                                     value: option,
@@ -105,7 +107,7 @@ export const NumericQuestionPaperTemplateMainView = ({
                                                 value={field.value || 0}
                                                 onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                                                 className="w-full"
-                                                placeholder="Decimal precision"
+                                                placeholder={t('settings.decimalPrecisionPlaceholder')}
                                             />
                                         </FormControl>
                                         <FormMessage />
@@ -118,7 +120,7 @@ export const NumericQuestionPaperTemplateMainView = ({
             </div>
             {getValues(`questions.${currentQuestionIndex}.parentRichTextContent`) && (
                 <div className="flex w-full flex-col !flex-nowrap items-start gap-1">
-                    <span>Comprehension Text</span>
+                    <span>{t('comprehensionText')}</span>
                     <FormField
                         control={control}
                         name={`questions.${currentQuestionIndex}.parentRichTextContent`}
@@ -141,7 +143,7 @@ export const NumericQuestionPaperTemplateMainView = ({
             <div className="flex w-full flex-col !flex-nowrap items-start gap-1">
                 <div className="flex items-center gap-2">
                     <span>
-                        Question
+                        {t('question.label')}
                         {showQuestionNumber && (
                             <>
                                 &nbsp;

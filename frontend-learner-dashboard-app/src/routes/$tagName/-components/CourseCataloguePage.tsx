@@ -1,12 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { withArabicFallback } from "@/utils/branding";
 import { Capacitor } from "@capacitor/core";
+import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
-import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
+import { useCatalogueTracking, captureUtmOnce, useCataloguePageView } from "../-utils/catalogue-tracking";
+import { CatalogueNamingProvider } from "../-utils/catalogue-naming";
+import { consumeCourseFinderRequest } from "../-utils/reopen-course-finder";
+import {
+  clearCourseFinderSelection,
+  courseFinderScope,
+  saveCourseFinderSelection,
+} from "../-utils/course-finder-bus";
 import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
@@ -38,6 +48,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   instituteThemeCode,
   pageSlug,
 }) => {
+  const { t } = useTranslation("coursePlayerA");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+  const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === 'android';
@@ -51,7 +64,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
   // first-touch UTM capture for lead attribution.
   useCatalogueTracking((catalogueData?.globalSettings as any)?.tracking);
+
+
   useEffect(() => { captureUtmOnce(); }, []);
+  // First-party page view. Fires per route, so SPA navigation between pages is
+  // counted — the GA4/Pixel hooks above only serve the institute's own tools,
+  // and most institutes never connect one.
+  useCataloguePageView(
+    catalogueData ? { instituteId, catalogueId: (catalogueData as any)?.catalogueId, pageRoute: pageSlug ?? "" } : null
+  );
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
   // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
   const [leadArmed, setLeadArmed] = useState(false);
@@ -68,6 +89,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   });
   const [hasCourseFinderOptions, setHasCourseFinderOptions] = useState(false);
   const [showCourseFinder, setShowCourseFinder] = useState(false);
+  // How the picker was opened. "Back to courses" is an ADD to an existing
+  // basket; a first-visit open is a fresh start. Only the latter may reset it.
+  const reopenedFromCheckout = useRef(false);
 
   // Preview mode: bidirectional communication with admin editor iframe
   const isPreviewMode = typeof window !== 'undefined' &&
@@ -125,7 +149,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         }
       } catch (err) {
         console.error("[CourseCataloguePage] Error fetching catalogue data:", err);
-        setError("Failed to load course catalogue");
+        setError(t("courseSubPage.loadCatalogueFailed", { course }));
       } finally {
         setIsLoading(false);
       }
@@ -219,7 +243,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const themeSettings = (catalogueData?.globalSettings as any)?.theme;
   const themePreset = themeSettings?.preset || 'default';
-  const themeRadius = themeSettings?.borderRadius || 'rounded';
+  const themeRadius = themeSettings?.borderRadius || 'rounded-catalogue-xs';
   const isDarkMode = (catalogueData?.globalSettings as any)?.mode === 'dark';
 
   useEffect(() => {
@@ -406,6 +430,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     if (!catalogueData?.globalSettings?.courseFinder?.enabled) return;
     if (!hasCourseFinderOptions) return;
     if (showIntroPage && !introCompleted) return;
+    // "Back to courses" asks for the picker explicitly - that visitor is
+    // going back to CHOOSE, which is the one time the once-ever seen flag
+    // gets in the way. The request clears itself, so a later reload of the
+    // same page behaves normally.
+    if (consumeCourseFinderRequest(tagName)) {
+      reopenedFromCheckout.current = true;
+      setShowCourseFinder(true);
+      return;
+    }
     const seenKey = `courseFinderSeen_${instituteId}_${tagName}`;
     if (localStorage.getItem(seenKey) === 'true') return;
     setShowCourseFinder(true);
@@ -429,12 +462,34 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const handleCourseFinderComplete = (selection: CourseFinderSelection) => {
     setShowCourseFinder(false);
     markCourseFinderSeen();
-    window.dispatchEvent(new CustomEvent('courseFinderApplied', { detail: selection }));
+    // Store the ANSWER alongside the seen flag. Without this the flag outlives
+    // the filter: a reload (or "View course" and back) re-mounts the grid with
+    // no selection and no second chance to be asked, so the visitor lands on
+    // every class's subjects at once. See course-finder-bus.
+    saveCourseFinderSelection(courseFinderScope(instituteId, tagName), {
+      levels: selection.levels,
+      sessions: selection.sessions,
+      tags: selection.tags,
+      labels: selection.labels,
+    });
+    // Answering the picker normally starts a fresh basket. Answering it after
+    // "Back to courses" must not: that visitor already has courses selected and
+    // came back to add more, so wiping them loses work they cannot recover.
+    const keepBasket = reopenedFromCheckout.current;
+    reopenedFromCheckout.current = false;
+    window.dispatchEvent(
+      new CustomEvent('courseFinderApplied', { detail: { ...selection, keepBasket } }),
+    );
   };
 
   const handleCourseFinderSkip = () => {
     setShowCourseFinder(false);
     markCourseFinderSeen();
+    // Skipping IS an answer — "show me everything" — so it has to erase any
+    // stored one, or a visitor who skips on a second visit gets silently
+    // re-filtered by a class they picked weeks ago.
+    clearCourseFinderSelection(courseFinderScope(instituteId, tagName));
+    reopenedFromCheckout.current = false;
   };
 
   if (isLoading) {
@@ -444,18 +499,18 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   if (error || !catalogueData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-catalogue-bg px-4">
-        <div className="catalogue-card flex max-w-md flex-col items-center gap-3 p-8 text-center">
+        <div className="catalogue-card flex max-w-md flex-col items-center gap-stack p-8 text-center">
           <h2 className="text-xl font-semibold text-catalogue-text-primary">
-            {error || "Course catalogue not found"}
+            {error || t("courseSubPage.catalogueNotFound", { course })}
           </h2>
           <p className="text-sm text-catalogue-text-secondary">
-            The requested course catalogue could not be loaded.
+            {t("courseSubPage.catalogueNotLoaded", { course })}
           </p>
           <button
             onClick={() => navigate({ to: "/courses" })}
             className="catalogue-btn catalogue-btn-primary mt-1"
           >
-            Go to Courses
+            {t("courseSubPage.goToCourses", { courses })}
           </button>
         </div>
       </div>
@@ -467,13 +522,34 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // richer institute name for link previews without overriding the tab title.
   const brandedTitle =
     (typeof document !== "undefined" && document.title) || "";
-  const seoTitle = brandedTitle || domainRouting.instituteName || "Course Catalogue";
-  const ogTitle = domainRouting.instituteName || "Course Catalogue";
-  const seoDescription = `Explore the catalogue and enroll online${
-    domainRouting.instituteName ? ` at ${domainRouting.instituteName}` : ""
-  }.`;
+  const defaultCatalogueTitle = t("courseCataloguePage.defaultTitle", { course });
+  const seoTitle = brandedTitle || domainRouting.instituteName || defaultCatalogueTitle;
+  const ogTitle = domainRouting.instituteName || defaultCatalogueTitle;
+  const seoDescription = domainRouting.instituteName
+    ? t("courseCataloguePage.seoDescriptionWithInstitute", {
+        courses,
+        institute: domainRouting.instituteName,
+      })
+    : t("courseCataloguePage.seoDescription", { courses });
+
+  /** Which page this URL resolves to. Shared by the chrome check and the
+   *  render so the two can never disagree about what is on screen. */
+  const matchesActivePage = (page: { id?: string; route?: string }) =>
+    pageSlug
+      ? page.route === pageSlug || page.route === `/${pageSlug}`
+      : page.id === "home" ||
+        page.route === "homepage" ||
+        page.route === "/" ||
+        page.route === "";
+
+  /** An imported HTML page normally pastes in its own nav and footer, so the
+   *  site's chrome would render a second set. Opt-out lives on the page. */
+  const hidesSiteChrome = !!(
+    catalogueData.pages.find(matchesActivePage) as { hideSiteChrome?: boolean } | undefined
+  )?.hideSiteChrome;
 
   return (
+    <CatalogueNamingProvider naming={catalogueData?.globalSettings?.naming}>
     <div
       ref={wrapperRef}
       className={`min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 md:pt-0${isDarkMode ? ' dark' : ''}`}
@@ -512,10 +588,13 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           {/* Keyboard users land on the header nav; this lets them jump the
               whole global chrome straight to the page content. */}
           <a href="#catalogue-main" className="catalogue-skip-link">
-            Skip to main content
+            {t("courseCataloguePage.skipToMainContent")}
           </a>
-          {/* Header from JSON globalSettings */}
-          {(catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
+          {/* Header from JSON globalSettings.
+              Suppressed when the active page asks for it: an imported HTML
+              page usually pastes in its own nav and footer, so rendering the
+              site's chrome as well gives the visitor two of each. */}
+          {!hidesSiteChrome && (catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
             <div className={(catalogueData.globalSettings as any).stickyHeader !== false ? 'sticky top-0 z-50' : ''}>
               <JsonRenderer
                 page={{
@@ -538,16 +617,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           {/* Legacy page title banner — removed in v2. Page titles are now handled by hero/textBlock components. */}
           {/* Render the matching page (home page by default, or specific slug) */}
           {catalogueData.pages
-            .filter(page => {
-              if (pageSlug) {
-                // Match custom page by route slug
-                return page.route === pageSlug || page.route === `/${pageSlug}`;
-              }
-              // Default: home / root page
-              return page.id === "home" || page.route === "homepage" || page.route === "/" || page.route === "";
-            })
+            .filter(matchesActivePage)
             .map((page) => (
-              <main id="catalogue-main" tabIndex={-1} key={page.id} className="pt-16 md:pt-20" style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
+              <main id="catalogue-main" tabIndex={-1} key={page.id} className={hidesSiteChrome ? '' : 'pt-16 md:pt-20'} style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
                 <JsonRenderer
                   page={page}
                   globalSettings={catalogueData.globalSettings}
@@ -561,7 +633,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             ))}
 
           {/* Footer from JSON globalSettings */}
-          {(catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (
+          {!hidesSiteChrome && (catalogueData.globalSettings as any).layout?.footer && (catalogueData.globalSettings as any).layout?.footer?.enabled !== false && (
             <JsonRenderer
               page={{
                 id: "footer",
@@ -645,12 +717,14 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <BackToTopButton />
       )}
     </div>
+    </CatalogueNamingProvider>
   );
 };
 
 /* ─── Back to Top Button ───────────────────────────────────────────────── */
 
 const BackToTopButton = () => {
+  const { t } = useTranslation("coursePlayerA");
   const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
@@ -665,7 +739,7 @@ const BackToTopButton = () => {
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
       className="catalogue-fab fixed bottom-6 end-6 z-50 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur active:scale-95 md:bottom-8 md:end-8"
-      aria-label="Back to top"
+      aria-label={t("courseCataloguePage.backToTop")}
     >
       <CaretUp size={20} weight="bold" aria-hidden="true" />
     </button>

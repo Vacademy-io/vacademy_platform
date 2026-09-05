@@ -66,11 +66,15 @@ public class PaymentPlanService {
         if (paymentPlanDTO.getName() != null) paymentPlan.setName(paymentPlanDTO.getName());
         if (paymentPlanDTO.getStatus() != null) paymentPlan.setStatus(paymentPlanDTO.getStatus());
         if (paymentPlanDTO.getValidityInDays() != null) paymentPlan.setValidityInDays(paymentPlanDTO.getValidityInDays());
-        paymentPlan.setActualPrice(paymentPlanDTO.getActualPrice());
-        paymentPlan.setElevatedPrice(paymentPlanDTO.getElevatedPrice());
+        // Prices are null-guarded like every other field. They used to be assigned
+        // unconditionally off primitive doubles, so an edit payload that omitted them
+        // deserialized 0.0 and wiped the price off a paid plan.
+        if (paymentPlanDTO.getActualPrice() != null) paymentPlan.setActualPrice(paymentPlanDTO.getActualPrice());
+        if (paymentPlanDTO.getElevatedPrice() != null) paymentPlan.setElevatedPrice(paymentPlanDTO.getElevatedPrice());
         if (paymentPlanDTO.getCurrency() != null) paymentPlan.setCurrency(paymentPlanDTO.getCurrency());
         if (paymentPlanDTO.getDescription() != null) paymentPlan.setDescription(paymentPlanDTO.getDescription());
         if (paymentPlanDTO.getTag() != null) paymentPlan.setTag(paymentPlanDTO.getTag());
         if (paymentPlanDTO.getFeatureJson() != null) paymentPlan.setFeatureJson(paymentPlanDTO.getFeatureJson());
+        if (paymentPlanDTO.getPlanChangeAllowed() != null) paymentPlan.setPlanChangeAllowed(paymentPlanDTO.getPlanChangeAllowed());
     }
 }

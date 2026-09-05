@@ -319,6 +319,50 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # ── Live AI tutor (V494) ──────────────────────────────────────────────
+    # One strong-model compile call per slide, charged as max(flat, actual).
+    # Reuses request_type 'content' so no ai_token_usage CHECK change is needed.
+    "tutor_compile_slide": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Charged once per generated image (one charge per media row), so it stays
+    # a flat rate rather than needing an 'images' unit.
+    "tutor_media_image": {
+        "request_type": "image",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Voice lessons: one charge per started minute (TTS + STT + the turn
+    # overhead), keyed tutor_live:{session}:{minute}. Text lessons bill per
+    # decision turn instead. Rate lives on the ai_tool_pricing row (V496).
+    "tutor_live_minute": {
+        "request_type": "conversation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("3"),
+        "unit_field": "audio_minutes",
+        "params": {"min_credits": 0},
+    },
+    # One AI-written analysis per ASSESSMENT, charged once; the stored report is
+    # re-downloadable free afterwards. assessment_service sends zero token
+    # counts so max(parametric, actual) resolves to exactly this flat number —
+    # the teacher is quoted a price and billed that price. Rate also lives on
+    # the ai_tool_pricing row (admin_core V500); this entry is the half that
+    # must never be missing, because without it estimate-tool 400s, the FE
+    # badge renders nothing and `sufficient` stays null (which reads as
+    # "allowed"), so the report generates and nobody is charged.
+    "assessment_class_ai_report": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("10"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {"min_credits": 0},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

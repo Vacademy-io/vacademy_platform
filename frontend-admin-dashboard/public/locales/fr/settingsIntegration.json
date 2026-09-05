@@ -1,0 +1,141 @@
+{
+    "page": {
+        "heading": "Intégrations de plateformes publicitaires",
+        "description": "Connectez Google Ads et Meta Lead Ads pour capturer des prospects dans vos audiences. Chaque formulaire/campagne correspond à une audience — ajoutez plusieurs connecteurs pour plusieurs audiences."
+    },
+    "activeConnectors": {
+        "title": "Connecteurs actifs",
+        "description": "Chaque ligne relie un formulaire de plateforme publicitaire à une audience.",
+        "loading": "Chargement des connecteurs...",
+        "loadError": "Impossible de charger les connecteurs. L'API d'intégration n'est peut-être pas encore déployée."
+    },
+    "addConnector": {
+        "title": "Ajouter un connecteur",
+        "metaButton": "Meta Lead Ads",
+        "googleButton": "Google Lead Forms"
+    },
+    "table": {
+        "emptyTitle": "Aucun connecteur pour l'instant",
+        "emptyDescription": "Ajoutez un connecteur Meta ou Google ci-dessous pour commencer à recevoir des prospects.",
+        "headers": {
+            "platform": "Plateforme",
+            "formCampaign": "Formulaire / Campagne",
+            "audience": "Audience",
+            "source": "Source",
+            "status": "Statut",
+            "webhook": "Webhook"
+        },
+        "statusActive": "ACTIF",
+        "statusActionNeeded": "Action requise",
+        "copyWebhookUrl": "Copier l'URL du webhook",
+        "autoLabel": "auto",
+        "syncNow": "Synchroniser les prospects maintenant (récupère les dernières 24h depuis Meta)",
+        "testConnection": "Tester la connexion",
+        "resubscribeTooltip": "Se réabonner (après avoir accordé le contrôle total)",
+        "editDefaultValues": "Modifier les valeurs par défaut",
+        "deactivateConnector": "Désactiver le connecteur"
+    },
+    "vendor": {
+        "meta": "Meta",
+        "google": "Google"
+    },
+    "health": {
+        "overall": {
+            "verified": "Vérifié",
+            "degraded": "Dégradé",
+            "actionRequired": "Action requise",
+            "broken": "En panne",
+            "unknown": "Inconnu"
+        },
+        "dialogTitle": "Test de connexion",
+        "statusLabel": "Statut :",
+        "lastLead": "dernier prospect",
+        "resubscribe": "Se réabonner",
+        "close": "Fermer"
+    },
+    "editDialog": {
+        "title": "Modifier les valeurs par défaut",
+        "description": "Paires clé/valeur ajoutées à chaque prospect provenant de ce connecteur. Chaque clé doit correspondre au nom d'un champ personnalisé de l'audience (sinon la valeur est simplement transmise telle quelle en tant que donnée brute du formulaire). Les valeurs du formulaire ont toujours priorité sur les valeurs par défaut.",
+        "keyHeader": "Clé",
+        "valueHeader": "Valeur",
+        "keyPlaceholder": "Nom du champ de l'audience",
+        "valuePlaceholder": "Valeur à appliquer",
+        "removeRow": "Supprimer la ligne",
+        "addField": "Ajouter un champ",
+        "duplicateKeys": "Clés en double détectées — seule la dernière valeur de chaque clé sera conservée.",
+        "cancel": "Annuler",
+        "saving": "Enregistrement…",
+        "save": "Enregistrer"
+    },
+    "fieldMapping": {
+        "label": "Correspondance des champs",
+        "description": "Associez chaque champ de la plateforme à un champ personnalisé de l'audience. Les champs non associés conservent leur nom d'origine.",
+        "platformField": "Champ de la plateforme",
+        "audienceField": "Champ de l'audience",
+        "skipOption": "— ignorer —"
+    },
+    "google": {
+        "keyLabel": "Clé Google",
+        "keyPlaceholder": "ex. my-leads-abc123",
+        "audienceLabel": "Audience",
+        "selectAudiencePlaceholder": "Sélectionner une audience...",
+        "saveError": "Échec de l'enregistrement du connecteur Google",
+        "saving": "Enregistrement...",
+        "save": "Enregistrer"
+    },
+    "meta": {
+        "sessionExpiredReconnect": "Votre session Meta a expiré. Veuillez reconnecter Meta.",
+        "oauthFailed": "Échec de l'authentification OAuth Meta : {{error}}",
+        "startOauthError": "Échec du démarrage de l'authentification OAuth Meta",
+        "sessionExpiredRetry": "Votre session Meta a expiré. Veuillez reconnecter Meta et réessayer.",
+        "saveError": "Échec de l'enregistrement du connecteur Meta",
+        "pageAdded": "Page « {{name}} » ajoutée",
+        "addPageError": "Impossible d'ajouter cette Page. Vérifiez l'identifiant de la Page.",
+        "sessionInvalid": "Session expirée ou invalide. Veuillez vous reconnecter.",
+        "connectButton": "Connecter un compte Meta",
+        "redirecting": "Redirection...",
+        "connectHint": "Une fois connecté, vous pouvez ajouter plusieurs formulaires — chacun lié à une audience différente.",
+        "loadingPages": "Chargement des Pages...",
+        "connectedBanner": "Meta connecté. Ajoutez une correspondance formulaire → audience ci-dessous. Vous pouvez en ajouter plusieurs.",
+        "pageLabel": "Page Facebook",
+        "selectPagePlaceholder": "Sélectionner une Page...",
+        "needsFullControl": " — contrôle total requis",
+        "noPageListedHint": "Votre Page n'apparaît pas dans la liste. Collez son identifiant (affiché dans la boîte de dialogue de connexion Facebook, ou Paramètres de la Page → À propos).",
+        "pageNotListedHint": "Page introuvable dans la liste ? Ajoutez-la par identifiant.",
+        "pageIdPlaceholder": "ex. 336149566246129",
+        "addingPage": "Ajout...",
+        "addPage": "Ajouter la Page",
+        "leadFormLabel": "Formulaire de génération de prospects",
+        "loadingForms": "Chargement des formulaires...",
+        "selectFormPlaceholder": "Sélectionner un formulaire...",
+        "pasteFormIdPlaceholder": "Collez l'identifiant de votre formulaire de prospects",
+        "selectPageFirstPlaceholder": "Sélectionnez d'abord une Page",
+        "cantAutoListForms": "Impossible de lister automatiquement les formulaires de cette Page. Collez l'identifiant du formulaire de prospects — vous le trouverez dans Meta Business Suite → Tous les outils → Formulaires instantanés (ou dans votre annonce liée au formulaire). La capture de prospects fonctionne dès que la correspondance est faite.",
+        "audienceLabel": "Audience",
+        "selectAudiencePlaceholder": "Sélectionner une audience...",
+        "sourceTypeLabel": "Type de source",
+        "facebook": "Facebook",
+        "instagram": "Instagram",
+        "stampFieldLabel": "Champ de l'audience à renseigner",
+        "noneOption": "— aucun —",
+        "valueLabel": "Valeur",
+        "valuePlaceholder": "Valeur à appliquer",
+        "stampValueHint": "Pré-rempli avec le premier terme du nom du formulaire. Appliqué à chaque prospect de ce connecteur si un champ est sélectionné ci-dessus.",
+        "saving": "Enregistrement...",
+        "save": "Enregistrer"
+    },
+    "toasts": {
+        "metaAccountConnected": "Compte Meta connecté",
+        "connectorDeactivated": "Connecteur désactivé",
+        "deactivateFailed": "Échec de la désactivation du connecteur",
+        "healthCheckFailed": "Impossible d'exécuter le test de connexion",
+        "resubscribeFailedFallback": "Échec du réabonnement",
+        "syncFailedFallback": "Échec de la synchronisation",
+        "connectorUpdated": "Connecteur mis à jour",
+        "updateFailedFallback": "Échec de la mise à jour du connecteur",
+        "noNewLeads": "Aucun nouveau prospect depuis Meta au cours des dernières 24 heures",
+        "syncedLeads_one": "{{count}} prospect synchronisé depuis Meta",
+        "syncedLeads_many": "{{count}} prospects synchronisés depuis Meta",
+        "syncedLeads_other": "{{count}} prospects synchronisés depuis Meta"
+    }
+}

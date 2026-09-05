@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface VoiceAvatarProps {
@@ -8,13 +9,6 @@ interface VoiceAvatarProps {
   state: "idle" | "listening" | "speaking" | "processing";
   audioLevel: number; // 0-1
 }
-
-const STATE_LABELS: Record<VoiceAvatarProps["state"], string> = {
-  idle: "Ready",
-  listening: "Listening...",
-  processing: "Thinking...",
-  speaking: "Speaking...",
-};
 
 const RING_SIZES = [120, 150, 180];
 
@@ -88,6 +82,14 @@ export const VoiceAvatar: React.FC<VoiceAvatarProps> = ({
   state,
   audioLevel,
 }) => {
+  const { t } = useTranslation("chatFeatureB");
+  const STATE_LABELS: Record<VoiceAvatarProps["state"], string> = {
+    idle: t("voiceAvatar.ready"),
+    listening: t("voiceAvatar.listening"),
+    processing: t("voiceAvatar.thinking"),
+    speaking: t("voiceAvatar.speaking"),
+  };
+
   // Deterministic sine-wave offsets for smooth waveform bars
   const barOffsets = useMemo(
     () => Array.from({ length: 7 }, (_, i) => 0.6 + 0.4 * Math.sin(i * 1.2)),
@@ -102,7 +104,7 @@ export const VoiceAvatar: React.FC<VoiceAvatarProps> = ({
     .slice(0, 2);
 
   return (
-    <div className="flex flex-col items-center gap-6">
+    <div className="flex flex-col items-center gap-section">
       {/* Avatar with rings */}
       <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
         {/* Concentric rings */}

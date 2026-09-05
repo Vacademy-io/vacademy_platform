@@ -1,4 +1,5 @@
 import { Star, Fire, Trophy, Lock, CheckCircle } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ export function AchievementsDialog({
   onOpenChange: (v: boolean) => void;
   data: PlayGamificationData | null;
 }) {
+  const { t } = useTranslation("dashboard");
   const badges = data?.badges ?? [];
   const unlockedCount = badges.filter((b) => b.unlocked).length;
   const totalXp = data?.totalXp ?? 0;
@@ -52,7 +54,7 @@ export function AchievementsDialog({
         <DialogHeader className="border-b border-border p-4">
           <DialogTitle className="flex items-center gap-2">
             <Trophy weight="fill" className="h-5 w-5 text-warning-500" />
-            Your achievements
+            {t("achievements.title")}
           </DialogTitle>
         </DialogHeader>
 
@@ -70,11 +72,11 @@ export function AchievementsDialog({
                       {totalXp.toLocaleString()}
                     </span>
                     <span className="text-caption font-semibold text-muted-foreground">
-                      XP
+                      {t("xp.xpUnit")}
                     </span>
                   </div>
                   <p className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
-                    Level {level}
+                    {t("xp.levelLong", { level })}
                   </p>
                 </div>
                 {streak > 0 && (
@@ -93,15 +95,15 @@ export function AchievementsDialog({
                 />
               </div>
               <p className="mt-1 text-caption text-muted-foreground">
-                {xpToNext} XP to level {level + 1}
+                {t("achievements.xpToNextLevel", { xp: xpToNext, level: level + 1 })}
               </p>
             </div>
 
             {/* How points are earned */}
             {breakdown.length > 0 && (
-              <div className="rounded-xl border border-border p-3">
-                <p className="mb-1.5 text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  How you earn points
+              <div className="rounded-xl border border-border p-3 space-y-1.5">
+                <p className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t("xp.howYouEarnPoints")}
                 </p>
                 <div className="space-y-1">
                   {breakdown.map((b) => (
@@ -121,7 +123,7 @@ export function AchievementsDialog({
             {badges.length > 0 && (
               <div className="space-y-2">
                 <p className="text-caption font-semibold text-foreground">
-                  Badges · {unlockedCount}/{badges.length} unlocked
+                  {t("achievements.badgesUnlocked", { unlocked: unlockedCount, total: badges.length })}
                 </p>
                 <div className="space-y-2">
                   {ordered.map((badge) => (

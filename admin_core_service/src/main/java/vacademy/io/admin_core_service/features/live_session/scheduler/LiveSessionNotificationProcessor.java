@@ -67,6 +67,7 @@ public class LiveSessionNotificationProcessor {
     @Autowired
     private SessionScheduleRepository scheduleRepository;
 
+
     /**
      * Look-back window for the LIVE_SESSION_END dispatch. MUST equal the
      * Quartz cadence (5 min). The repository query uses a half-open interval
@@ -984,6 +985,16 @@ public class LiveSessionNotificationProcessor {
      * Checks LiveSessionNotificationConfig for ATTENDANCE type.
      */
     public void sendAttendanceNotification(String sessionId, String userId, String status) {
+        sendAttendanceNotification(sessionId, userId, status, null);
+    }
+
+    /**
+     * @param reasonDetail plain-language explanation appended to the message, e.g.
+     *                     why a learner fell short of the minimum-attendance rule.
+     *                     Null/blank keeps the original wording.
+     */
+    public void sendAttendanceNotification(String sessionId, String userId, String status,
+                                           String reasonDetail) {
         try {
             Optional<LiveSessionNotificationConfig> configOpt = notificationConfigRepository
                     .findBySessionIdAndNotificationType(sessionId, NotificationTypeEnum.ATTENDANCE.name());
@@ -1001,6 +1012,11 @@ public class LiveSessionNotificationProcessor {
             String sessionTitle = session.getTitle() != null ? session.getTitle() : "Live Class";
             String title = "Attendance Marked: " + status;
             String body = "You have been marked as " + status + " for " + sessionTitle;
+            if (reasonDetail != null && !reasonDetail.isBlank()) {
+                // A learner told they are absent for a class they attended part of
+                // deserves the arithmetic, not just the verdict.
+                body = body + ". " + reasonDetail;
+            }
 
             if (channels.contains("PUSH_NOTIFICATION")) {
                 notificationService.sendPushViaUnified(
@@ -1026,6 +1042,9 @@ public class LiveSessionNotificationProcessor {
                     Map<String, String> placeholders = new HashMap<>();
                     placeholders.put("NAME", student.getFullName() != null ? student.getFullName() : "Student");
                     placeholders.put("SESSION_TITLE", sessionTitle);
+                    // {{ACTION}} lands in the template's 24px <h1>, so it stays a
+                    // short label. The explanation reaches the learner through the
+                    // push/system body and the daily attendance report card.
                     placeholders.put("ACTION", "Attendance: " + status);
                     placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
                     placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
@@ -1046,6 +1065,7 @@ public class LiveSessionNotificationProcessor {
             System.out.println("Error sending attendance notification for session " + sessionId + ", user " + userId + ": " + e.getMessage());
         }
     }
+
 
     private String getThemeColor(String instituteId) {
         try {

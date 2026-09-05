@@ -1,0 +1,229 @@
+{
+    "roles": {
+        "learnerPortal": "Learner Portal",
+        "adminPortal": "Admin Portal",
+        "teacherPortal": "Teacher Portal"
+    },
+    "status": {
+        "configured": "Configured",
+        "notConfigured": "Not Configured"
+    },
+    "configValue": {
+        "yes": "✓ Yes",
+        "no": "✗ No"
+    },
+    "imageUpload": {
+        "uploadFailed": "Failed to upload image",
+        "changeImage": "Change image",
+        "removeImage": "Remove image",
+        "iconPreviewAlt": "Icon preview",
+        "fileUuidPlaceholder": "or enter file UUID"
+    },
+    "pagesDomain": {
+        "cnameHint": "If this is a custom (non-vacademy.io) domain, add a CNAME at your DNS provider:",
+        "sslHint": "SSL activates automatically once Cloudflare validates it."
+    },
+    "configForm": {
+        "branding": {
+            "heading": "Branding",
+            "tabTitleLabel": "Tab Title",
+            "tabTitlePlaceholder": "My School",
+            "tabIconLabel": "Tab Icon File ID",
+            "themeLabel": "Theme / Color",
+            "themePlaceholder": "#4F46E5 or theme-name",
+            "fontFamilyLabel": "Font Family",
+            "fontFamilyPlaceholder": "Inter, Roboto, etc.",
+            "hideNameLabel": "Hide institute name",
+            "hideNameHint": "Enable if your logo already contains the institute name. Hides the name in the sidebar and login page.",
+            "stackNameLabel": "Stack name below logo",
+            "stackNameHint": "Render the institute name centered underneath the logo instead of beside it, in the sidebar header.",
+            "logoWidthLabel": "Logo width (px)",
+            "logoWidthHint": "Leave blank to use default. Set 250+ AND clear the height to make the sidebar logo span the full width, edge to edge.",
+            "logoHeightLabel": "Logo height (px)",
+            "logoHeightHint": "Leave blank to scale proportionally to the width (required for a full-width sidebar logo). Set a value to fit the logo inside a fixed box instead."
+        },
+        "auth": {
+            "heading": "Authentication",
+            "allowSignup": "Allow Sign Up",
+            "googleAuth": "Google Auth",
+            "githubAuth": "GitHub Auth",
+            "emailOtpAuth": "Email OTP Auth",
+            "phoneAuth": "Phone Auth",
+            "usernamePasswordAuth": "Username/Password Auth",
+            "convertUsernameLowercase": "Convert Username to Lowercase"
+        },
+        "phone": {
+            "heading": "Phone Input Preferences",
+            "preferredCountriesLabel": "Preferred Countries",
+            "preferredCountriesHint": "The first selected country is pre-selected in phone inputs across the learner and admin portals. The full list determines the order of the country picker. Use the ↑ / ↓ arrows on each chip to reorder.",
+            "geoModeLabel": "When a form is opened abroad",
+            "geoModePreview": "You are in {{detected}}. With these settings a phone field on this portal would start on {{resolved}}. Add ?phoneCountry=ru to any form URL to preview another country.",
+            "geoModePreviewUnknown": "Your region could not be detected from this browser, so the fallback applies: a phone field on this portal would start on {{resolved}}.",
+            "geoModes": {
+                "INSTITUTE_FIRST": {
+                    "label": "Preferred countries win",
+                    "hint": "The list above decides. The country a form is opened from is used only if you have selected no preferred countries — so a form opened in Russia starts on +7 rather than defaulting to India."
+                },
+                "GEO_FIRST": {
+                    "label": "Follow the visitor's country",
+                    "hint": "The country a form is opened from is pre-selected; your preferred countries still order the rest of the picker. Best when you take enrolments from several countries."
+                },
+                "INSTITUTE_ONLY": {
+                    "label": "Preferred countries only",
+                    "hint": "Never look at where a form is opened from. Choose this if every phone number you collect belongs to one country."
+                }
+            }
+        },
+        "routes": {
+            "heading": "Routes",
+            "redirectLabel": "Redirect URL",
+            "redirectPlaceholder": "/dashboard",
+            "afterLoginLabel": "After Login Route",
+            "afterLoginPlaceholder": "/dashboard",
+            "afterLogoutLabel": "After Logout Route",
+            "afterLogoutPlaceholder": "/login",
+            "homeClickLabel": "Home Icon Click Route",
+            "homeClickPlaceholder": "/"
+        },
+        "links": {
+            "heading": "Links",
+            "privacyPolicyLabel": "Privacy Policy URL",
+            "privacyPolicyPlaceholder": "https://myschool.com/privacy",
+            "termsLabel": "Terms & Conditions URL",
+            "termsPlaceholder": "https://myschool.com/terms",
+            "playStoreLabel": "Play Store Link",
+            "playStorePlaceholder": "https://play.google.com/...",
+            "appStoreLabel": "App Store Link",
+            "appStorePlaceholder": "https://apps.apple.com/...",
+            "windowsLabel": "Windows App Link",
+            "macLabel": "Mac App Link",
+            "genericUrlPlaceholder": "https://..."
+        }
+    },
+    "notAvailable": {
+        "strong": "Not available on this deployment.",
+        "description": "Cloudflare API credentials are not configured. Contact your platform administrator."
+    },
+    "header": {
+        "title": "White-Label Domain Setup",
+        "description": "Configure custom domains, branding, auth settings and more for each portal.",
+        "refreshStatus": "Refresh status"
+    },
+    "currentConfig": {
+        "title": "Current Configuration",
+        "primaryUrlsLabel": "Primary Portal URLs (Institute Default)",
+        "noPortalUrls": "No portal URLs set.",
+        "domainRoutingEntries": "Domain Routing Entries",
+        "totalBadge": "{{count}} total"
+    },
+    "setupCard": {
+        "titleUpdate": "Add / Update Domains",
+        "titleNew": "New Setup",
+        "descriptionPart1": "Add domain entries below. Click",
+        "settingsLabel": "⚙ Settings",
+        "descriptionPart2": "on each entry to configure branding, authentication, routes, and links.",
+        "tip": {
+            "label": "Tip:",
+            "enterPrefix": "Enter",
+            "vacademySuffix": "for Vacademy subdomains, or",
+            "customSuffix": "for custom domains. Mark one per role as ⭐ Primary."
+        },
+        "roleLabel": "Role",
+        "domainLabel": "Domain",
+        "domainPlaceholder": "learn.myschool.com",
+        "primary": "Primary",
+        "setPrimary": "Set primary",
+        "primaryTooltip": "Portal URL for this role — used in emails once the domain is active",
+        "setPrimaryTooltip": "Use this domain as the portal URL for this role",
+        "settingsToggle": "Settings",
+        "toggleSettingsTooltip": "Toggle settings",
+        "removeTooltip": "Remove",
+        "addAnotherDomain": "Add another domain",
+        "configuring": "Configuring…",
+        "updateButton": "Update White-Label Setup",
+        "applyButton": "Apply White-Label Setup",
+        "preservedHint": "Existing entries are preserved. Only listed domains are created/updated."
+    },
+    "toast": {
+        "noInstituteSelected": "No institute selected",
+        "addAtLeastOneDomain": "Add at least one domain entry",
+        "setupCompleted": "White-label setup completed! 🎉",
+        "setupFailed": "Setup failed.",
+        "portalUrlAdopted": "{{roles}} portal URL is now live and saved."
+    },
+    "setupResult": {
+        "title": "Setup Complete",
+        "pagesCustomDomains": "Pages Custom Domains",
+        "pagesHint": "These attach the host to the app so it is actually served. A DNS record alone is not enough.",
+        "dnsRecordsConfigured": "DNS Records Configured"
+    },
+    "routingEntryCard": {
+        "cloudflareStatusTooltip": "Cloudflare custom-domain status",
+        "tabPrefix": "Tab: {{value}}",
+        "themePrefix": "Theme: {{value}}",
+        "showDetailsTooltip": "Show details",
+        "cnameInstructionPrefix": "Add this DNS record at your provider for",
+        "cnameInstructionSuffix": "to activate this domain:",
+        "dnsType": "Type",
+        "dnsName": "Name",
+        "dnsValue": "Value",
+        "sslAutoActivate": "SSL activates automatically once Cloudflare validates the record.",
+        "defaultCountryTooltip": "Default selected country",
+        "preferredCountries": "Preferred Countries",
+        "fields": {
+            "domain": "Domain",
+            "subdomain": "Subdomain",
+            "tabTitle": "Tab Title",
+            "tabIcon": "Tab Icon",
+            "theme": "Theme",
+            "font": "Font",
+            "redirect": "Redirect",
+            "afterLogin": "After Login",
+            "afterLogout": "After Logout",
+            "homeClick": "Home Click",
+            "signUp": "Sign Up",
+            "googleAuth": "Google Auth",
+            "githubAuth": "GitHub Auth",
+            "emailOtp": "Email OTP",
+            "phoneAuth": "Phone Auth",
+            "userPassAuth": "User/Pass Auth",
+            "privacyPolicy": "Privacy Policy",
+            "terms": "Terms",
+            "playStore": "Play Store",
+            "appStore": "App Store",
+            "windows": "Windows",
+            "mac": "Mac",
+            "hideInstituteName": "Hide Institute Name",
+            "logoWidth": "Logo Width (px)",
+            "logoHeight": "Logo Height (px)",
+            "stackNameBelowLogo": "Stack Name Below Logo"
+        },
+        "portalUrl": "Portal URL",
+        "portalUrlTooltip": "Emails and shared links currently use this domain",
+        "primaryPending": "Primary · pending",
+        "primaryPendingTooltip": "Chosen as the portal URL — saved once this domain goes active",
+        "willBeAdoptedOnceActive": "Chosen as the portal URL. It is saved automatically once this domain goes active — until then, emails and links keep using the current portal URL."
+    },
+    "subOrg": {
+        "label": "Sub-organization",
+        "none": "Parent institute",
+        "untitled": "Untitled sub-organization",
+        "badgeTooltip": "This portal is branded for, and restricted to, this sub-organization"
+    },
+    "shortLinkDns": {
+        "title": "Short Link Domain",
+        "description": "Send this record to the customer along with the portal CNAMEs, so their short links run on their own domain instead of u.vacademy.io.",
+        "hostLabel": "Short links will be served from",
+        "dnsType": "Type",
+        "dnsName": "Name",
+        "dnsValue": "Value",
+        "dnsTtl": "TTL",
+        "dnsProxy": "Proxy",
+        "ttlAuto": "Auto",
+        "proxyOff": "DNS only — do not proxy",
+        "copy": "Copy record",
+        "copied": "DNS record copied",
+        "copyFailed": "Could not copy — select the values manually",
+        "platformNote": "The record alone does nothing: the platform team must also add this host to the ingress and register the domain for this institute. Register the domain before the record is live and short links will break instead of falling back to u.vacademy.io."
+    }
+}

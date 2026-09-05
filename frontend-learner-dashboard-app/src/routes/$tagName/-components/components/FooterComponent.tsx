@@ -170,8 +170,8 @@ export const FooterComponent: React.FC<FooterProps & {
 
             {/* Legacy Social Media Section */}
             {socialsSection && !leftSection.socials && (
-              <div className="mt-4">
-                <h4 className="text-sm font-medium mb-2 text-catalogue-text-primary">{socialsSection.title}</h4>
+              <div className="mt-4 space-y-2">
+                <h4 className="text-sm font-medium text-catalogue-text-primary">{socialsSection.title}</h4>
                 <div className="flex gap-3">
                   {socialsSection.links.map((social, linkIndex) => (
                     <a
@@ -224,8 +224,8 @@ export const FooterComponent: React.FC<FooterProps & {
 
           {/* Right Section 2 */}
           {rightSection2 && (
-            <div>
-              <h3 className="text-sm font-semibold mb-3 text-primary-500">{rightSection2.title}</h3>
+            <div className="space-y-stack">
+              <h3 className="text-sm font-semibold text-primary-500">{rightSection2.title}</h3>
               <ul className="space-y-1.5">
                 {rightSection2.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
@@ -254,8 +254,8 @@ export const FooterComponent: React.FC<FooterProps & {
 
           {/* Right Section 3 */}
           {rightSection3 && (
-            <div>
-              <h3 className="text-sm font-semibold mb-3 text-primary-500">{rightSection3.title}</h3>
+            <div className="space-y-stack">
+              <h3 className="text-sm font-semibold text-primary-500">{rightSection3.title}</h3>
               <ul className="space-y-1.5">
                 {rightSection3.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
@@ -284,8 +284,8 @@ export const FooterComponent: React.FC<FooterProps & {
 
           {/* Legacy Support - Single Right Section */}
           {rightSection && !rightSection1 && !rightSection2 && !rightSection3 && (
-            <div>
-              <h3 className="text-sm font-semibold mb-3 text-primary-500">{rightSection.title}</h3>
+            <div className="space-y-stack">
+              <h3 className="text-sm font-semibold text-primary-500">{rightSection.title}</h3>
               <ul className="space-y-1.5">
                 {rightSection.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
@@ -316,8 +316,8 @@ export const FooterComponent: React.FC<FooterProps & {
           {rightSections && rightSections.length > 0 && !rightSection1 && !rightSection2 && !rightSection3 && (
             <>
               {rightSections.map((section, sectionIndex) => (
-                <div key={sectionIndex}>
-                  <h3 className="text-sm font-semibold mb-3 text-primary-500">{section.title}</h3>
+                <div className="space-y-stack" key={sectionIndex}>
+                  <h3 className="text-sm font-semibold text-primary-500">{section.title}</h3>
                   <ul className="space-y-1.5">
                     {section.links.map((link, linkIndex) => (
                       <li key={linkIndex}>

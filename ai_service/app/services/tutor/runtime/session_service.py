@@ -318,13 +318,15 @@ def _norm_title(t: Optional[str]) -> str:
 
 
 def slide_progress(st: TutorLearnerState, slide_id: str) -> Dict[str, Any]:
-    """This slide's saved position (V497); falls back to the legacy columns
-    when the row predates them."""
+    """This slide's saved position (V497, per slide). The legacy columns
+    (current_slide_id / current_concept_id / current_phase) are NOT a
+    fallback: start_session points current_slide_id at the slide being
+    opened while phase and concept still belong to the previous slide, so a
+    fresh slide would resume at the other slide's position — a learner who
+    had just finished one slide opened the next one at "slide done"."""
     prog = (st.progress_json or {}).get(slide_id) if st.progress_json else None
     if isinstance(prog, dict) and (prog.get("concept_id") or prog.get("phase")):
         return dict(prog)
-    if st.current_slide_id == slide_id and (st.current_concept_id or st.current_phase):
-        return {"concept_id": st.current_concept_id, "topic_id": st.current_topic_id, "phase": st.current_phase}
     return {}
 
 

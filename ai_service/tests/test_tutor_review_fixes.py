@@ -369,9 +369,11 @@ def test_resume_position_reads_per_slide_progress_and_phase():
     st.progress_json["s"] = {"concept_id": "c3", "phase": sm.SLIDE_DONE, "topic_id": "t1"}
     assert resume_position(None, L, st).phase == sm.SLIDE_DONE
     assert previous_slide(st, "s")["slide_title"] == "Older slide"
-    legacy = NS(progress_json={}, current_slide_id="s", current_concept_id="c3", current_phase=None, current_topic_id=None)
-    assert slide_progress(legacy, "s")["concept_id"] == "c3"
-    assert resume_position(None, L, legacy).concept == 2
+    # The legacy columns are not a fallback: start_session points current_slide_id at the slide
+    # being opened while phase/concept still belong to the previous one (a fresh slide must start fresh).
+    legacy = NS(progress_json={}, current_slide_id="s", current_concept_id="c3", current_phase=sm.SLIDE_DONE, current_topic_id=None)
+    assert slide_progress(legacy, "s") == {}
+    assert resume_position(None, L, legacy) is None
     assert resume_position(None, L, NS(progress_json={}, current_slide_id="x", current_concept_id=None, current_phase=None, current_topic_id=None)) is None
 
 

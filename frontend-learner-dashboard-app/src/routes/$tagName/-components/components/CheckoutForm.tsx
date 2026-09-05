@@ -7,7 +7,10 @@ import { SpinnerGap, User, Envelope, Phone, CaretRight, CheckCircle } from "@pho
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { isValidPhoneValue } from "@/lib/phone-validation";
-import { getPreferredPhoneCountries } from "@/services/domain-routing";
+import {
+    phoneFieldHasInput,
+    usePreferredPhoneCountries,
+} from "@/hooks/use-preferred-phone-countries";
 import { getAccessToken, isTokenExpired } from "@/lib/auth/sessionUtility";
 import { Preferences } from "@capacitor/preferences";
 import {
@@ -83,10 +86,14 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
     // What this phone field starts on: the institute's configured preferred
     // countries, or — when it configured none, or the portal is on GEO_FIRST —
-    // the country the visitor is opening this page from. Resolved once per
-    // mount; the browser's timezone cannot change under an open dialog.
+    // the country the visitor is opening this page from.
+    //
+    // A hook rather than a one-shot read: these pages are public and routinely
+    // render before domain routing replies, which used to leave the field on the
+    // platform fallback (+91) for every visitor. It takes the institute's answer
+    // whenever it lands, and never once a number has been typed into the box.
     const { defaultCountry: defaultPhoneCountry, preferredCountries } =
-        React.useMemo(() => getPreferredPhoneCountries(), []);
+        usePreferredPhoneCountries({ freeze: phoneFieldHasInput(phone) });
     const [nameError, setNameError] = useState("");
 
     const [paymentPlanData, setPaymentPlanData] = useState<any>(null);

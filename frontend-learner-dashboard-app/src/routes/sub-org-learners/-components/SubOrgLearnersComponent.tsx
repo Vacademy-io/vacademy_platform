@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AdminMappings, StudentMapping, getMembers, addMember, terminateMembers, AddMemberRequest, getInstituteCustomFields, InstituteCustomField } from '@/services/sub-organization-learner-management';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +19,10 @@ import { isValidPhoneValue } from "@/lib/phone-validation";
 import { BulkUploadModal } from './BulkUploadModal';
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { FieldRenderType, getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
-import { getPreferredPhoneCountries } from "@/services/domain-routing";
+import {
+  phoneFieldHasInput,
+  usePreferredPhoneCountries,
+} from "@/hooks/use-preferred-phone-countries";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -38,11 +41,6 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
   const batch = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
   const batchLower = batch.toLocaleLowerCase();
   const [selectedPackageSession, setSelectedPackageSession] = useState<string>('');
-  // Default selected country + picker order from the institute's preferred countries.
-  const { defaultCountry, preferredCountries } = useMemo(
-    () => getPreferredPhoneCountries(),
-    [],
-  );
   const [members, setMembers] = useState<StudentMapping[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -65,6 +63,30 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     full_name: '',
     username: '',
     status: 'ACTIVE'
+  });
+
+  // Default selected country + picker order from the institute's preferred
+  // countries. Declared after `formData` so the freeze flag can read it.
+  //
+  // Only the fields that actually RENDER as phone inputs count. Scanning every
+  // value instead would freeze on an ordinary text field that happens to hold a
+  // digit, silently opting this form out of ever picking up the institute's
+  // preference. The phone fields are the built-in `mobile_number` plus any
+  // custom field the shared helper types as PHONE — exactly what the renderer
+  // below asks.
+  const hasTypedPhone =
+    phoneFieldHasInput(formData.mobile_number) ||
+    instituteCustomFields.some((field) => {
+      const key = field.custom_field?.fieldKey;
+      if (!key) return false;
+      const renderType = getFieldRenderType(
+        field.custom_field?.fieldName || key,
+        field.custom_field?.fieldType,
+      );
+      return renderType === FieldRenderType.PHONE && phoneFieldHasInput(formData[key]);
+    });
+  const { defaultCountry, preferredCountries } = usePreferredPhoneCountries({
+    freeze: hasTypedPhone,
   });
 
 

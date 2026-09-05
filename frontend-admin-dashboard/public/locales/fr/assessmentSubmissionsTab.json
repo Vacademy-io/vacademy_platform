@@ -49,7 +49,6 @@
         "checking": "Vérification de l’existence d’un rapport…",
         "costs_one": "Générer ce rapport consomme {{count}} crédit IA. Facturé une seule fois — tous les téléchargements suivants sont gratuits.",
         "costs_other": "Générer ce rapport consomme {{count}} crédits IA. Facturé une seule fois — tous les téléchargements suivants sont gratuits.",
-        "costsUnknown": "Générer ce rapport consomme des crédits IA. Facturé une seule fois — les téléchargements suivants sont gratuits.",
         "balance_one": "Solde : {{count}} crédit",
         "balance_other": "Solde : {{count}} crédits",
         "insufficient": "Votre établissement n’a pas assez de crédits IA pour ce rapport. Rechargez pour continuer.",
@@ -63,6 +62,11 @@
         "generating": "Génération…",
         "preparing": "Préparation…",
         "cancel": "Annuler",
-        "failed": "Impossible de générer le rapport IA. Veuillez réessayer."
+        "failed": "Impossible de générer le rapport IA. Veuillez réessayer.",
+        "generateNoPrice": "Générer le rapport",
+        "refreshNoPrice": "Actualiser le rapport",
+        "costsUnavailable": "Générer ce rapport consomme des crédits IA. Le coût exact n’a pas pu être chargé — il est facturé une fois, et les téléchargements suivants sont gratuits.",
+        "historyTitle": "Générés précédemment",
+        "historyDownload": "Télécharger"
     }
 }

@@ -48,7 +48,12 @@ public class ClassAiReportGenerationService {
     private final AiServiceCreditClient creditClient;
 
     public Optional<AssessmentClassAiAnalysis> find(String assessmentId, String instituteId) {
-        return repository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
+        return repository.findLive(assessmentId, instituteId);
+    }
+
+    /** Every generation for this assessment, newest first — what the dialog lists. */
+    public java.util.List<AssessmentClassAiAnalysis> history(String assessmentId, String instituteId) {
+        return repository.findHistory(assessmentId, instituteId);
     }
 
     /**
@@ -62,27 +67,23 @@ public class ClassAiReportGenerationService {
     public Optional<AssessmentClassAiAnalysis> claim(String assessmentId, String instituteId,
                                                      String userId, BigDecimal creditsQuoted,
                                                      boolean regenerate) {
+        if (regenerate) {
+            // Retire the current report FIRST so it drops out of the partial
+            // unique index — and survives as history rather than being
+            // overwritten by the version replacing it.
+            repository.supersedeLive(assessmentId, instituteId);
+        } else {
+            // A claim abandoned by a dead pod would otherwise block this
+            // assessment forever.
+            repository.retireStrandedClaim(assessmentId, instituteId, staleBefore());
+        }
+
         String id = UUID.randomUUID().toString();
         String key = KEY_PREFIX + id;
-
-        int claimed = regenerate
-                ? repository.reclaimForRegenerate(id, assessmentId, instituteId, key, creditsQuoted, userId)
-                : repository.claim(id, assessmentId, instituteId, key, creditsQuoted, userId);
-
+        int claimed = repository.claim(id, assessmentId, instituteId, key, creditsQuoted, userId);
         if (claimed == 0) {
-            // Someone else holds it — unless they died mid-call, in which case
-            // the assessment would be permanently unbuildable without this.
-            Optional<AssessmentClassAiAnalysis> existing =
-                    repository.findByAssessmentIdAndInstituteId(assessmentId, instituteId);
-            if (existing.isPresent() && existing.get().isGenerating() && isStaleClaim(existing.get())) {
-                log.warn("Reclaiming a class AI report stranded in GENERATING since {} for assessment {}",
-                        existing.get().getClaimedAt(), assessmentId);
-                int retaken = repository.reclaimForStrandedClaim(id, assessmentId, instituteId, key,
-                        creditsQuoted, userId, staleBefore());
-                if (retaken > 0) {
-                    return repository.findById(id);
-                }
-            }
+            // Someone else is mid-generation. Not an error — the caller tells
+            // the admin it is running and will not be charged twice.
             return Optional.empty();
         }
         return repository.findById(id);
@@ -131,12 +132,11 @@ public class ClassAiReportGenerationService {
     public void markFailed(String rowId) {
         repository.findById(rowId).ifPresent(row -> {
             row.setStatus(AssessmentClassAiAnalysis.STATUS_FAILED);
+            // Retire it too: a failed attempt must not hold the live slot and
+            // block the teacher from trying again. Nothing was charged.
+            row.setSupersededAt(new Timestamp(System.currentTimeMillis()));
             repository.save(row);
         });
-    }
-
-    private boolean isStaleClaim(AssessmentClassAiAnalysis row) {
-        return row.getClaimedAt() != null && row.getClaimedAt().before(staleBefore());
     }
 
     private Timestamp staleBefore() {

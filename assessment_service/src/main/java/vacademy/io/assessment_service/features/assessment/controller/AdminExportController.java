@@ -170,7 +170,10 @@ public class AdminExportController {
      *
      * @param generate   false to download only an existing report, never to
      *                   generate (and therefore never to spend)
-     * @param regenerate true to re-run and re-charge, discarding the stored one
+     * @param regenerate true to re-run and re-charge; the previous report is kept
+     *                   in history rather than discarded
+     * @param versionId  download one specific past version from the history —
+     *                   always free, it was paid for when it was generated
      */
     @GetMapping("pdf/ai-assessment-report")
     public ResponseEntity<byte[]> aiAssessmentReportPdf(@RequestAttribute("user") CustomUserDetails user,
@@ -179,9 +182,11 @@ public class AdminExportController {
                                                         @RequestParam(name = "generate", required = false,
                                                                 defaultValue = "true") boolean generate,
                                                         @RequestParam(name = "regenerate", required = false,
-                                                                defaultValue = "false") boolean regenerate) {
+                                                                defaultValue = "false") boolean regenerate,
+                                                        @RequestParam(name = "versionId", required = false)
+                                                        String versionId) {
         return adminExportManager.getAiAssessmentReportPdf(user, assessmentId, instituteId,
-                generate, regenerate);
+                generate, regenerate, versionId);
     }
 
     // ==================================================================

@@ -1014,9 +1014,25 @@ public class AdminExportManager {
      */
     public ResponseEntity<byte[]> getAiAssessmentReportPdf(CustomUserDetails user, String assessmentId,
                                                            String instituteId, boolean generate,
-                                                           boolean regenerate) {
+                                                           boolean regenerate, String versionId) {
         Assessment assessment = assessmentRepository.findById(assessmentId)
                 .orElseThrow(() -> new VacademyException("Assessment Not Found"));
+
+        // Downloading a specific past version from the history list. Always
+        // free — it was paid for when it was generated.
+        if (versionId != null && !versionId.isBlank()) {
+            AssessmentClassAiAnalysis version = classAiAnalysisRepository.findById(versionId)
+                    .filter(v -> assessmentId.equals(v.getAssessmentId())
+                            && instituteId.equals(v.getInstituteId()))
+                    .orElseThrow(() -> new VacademyException("That report version was not found"));
+            byte[] bytes = version.getPdfFileId() != null
+                    ? downloadStoredReport(version.getPdfFileId()) : null;
+            if (bytes == null) {
+                bytes = renderPdf(buildClassReportHtml(assessment, assessmentId, instituteId,
+                        version.getAnalysisJson()));
+            }
+            return pdfResponse(bytes, assessment.getName());
+        }
 
         // ---- already generated? serve it, free ----
         Optional<AssessmentClassAiAnalysis> existing =
@@ -1111,6 +1127,16 @@ public class AdminExportManager {
         // auto-refreshed: regenerating spends the institute's money, so it stays
         // an explicit choice.
         out.put("stale", ready && isReportStale(existing.get(), assessmentId, instituteId));
+        // Every past generation, newest first — a paid Refresh supersedes rather
+        // than destroys, so a version already shared with staff stays available.
+        out.put("history", classAiReportGenerationService.history(assessmentId, instituteId).stream()
+                .map(h -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("id", h.getId());
+                    item.put("generated_at", h.getGeneratedAt());
+                    item.put("current", h.getSupersededAt() == null);
+                    return item;
+                }).toList());
         out.put("credits_required", estimate.credits());
         out.put("current_balance", estimate.currentBalance());
         out.put("sufficient", estimate.sufficient());

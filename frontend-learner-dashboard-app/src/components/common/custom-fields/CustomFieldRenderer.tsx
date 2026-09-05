@@ -21,7 +21,10 @@ import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { getTokenFromCookie, getTokenDecodedData } from "@/lib/auth/sessionUtility";
-import { getPreferredPhoneCountries } from "@/services/domain-routing";
+import {
+  phoneFieldHasInput,
+  usePreferredPhoneCountries,
+} from "@/hooks/use-preferred-phone-countries";
 import { TokenKey } from "@/constants/auth/tokens";
 import {
   FieldRenderType,
@@ -70,6 +73,19 @@ export const CustomFieldRenderer = ({
 
   // Normalise the render type
   const normalizedType = String(type).toUpperCase() as FieldRenderType;
+
+  // Hooks cannot live inside the render switch below, so the phone country is
+  // resolved here for every field type and only read by the PHONE case. It picks
+  // up the institute's answer if domain routing replies after this form rendered,
+  // and never moves once the visitor has touched the field (see the hook's rules).
+  //
+  // The freeze check is gated on the render type so a date, URL or file field
+  // never pays for it, and — more importantly — so a non-phone value that merely
+  // contains digits cannot trip the hook's permanent freeze latch.
+  const { defaultCountry, preferredCountries } = usePreferredPhoneCountries({
+    freeze:
+      normalizedType === FieldRenderType.PHONE && phoneFieldHasInput(value),
+  });
 
   // Resolve options: prefer explicit options prop, else parse from config.
   // Only parse for types that actually use options to avoid spurious
@@ -242,7 +258,6 @@ export const CustomFieldRenderer = ({
         );
 
       case FieldRenderType.PHONE: {
-        const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
         return (
           <PhoneInput
             country={defaultCountry}

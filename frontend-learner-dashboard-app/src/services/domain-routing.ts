@@ -110,6 +110,61 @@ const canUseLocalStorage = (): boolean => {
 };
 
 /**
+ * Listeners notified whenever the institute's phone-country preferences change.
+ *
+ * {@link getPreferredPhoneCountries} is a SYNCHRONOUS read of a cache that only
+ * {@link resolveDomainRouting} fills, and on public routes — the enroll-invite
+ * form, the catalogue checkout, the audience/enquiry forms — nothing waits for
+ * that call. The root `beforeLoad` returns early for everything in
+ * `PUBLIC_ROUTES`, so the resolve is a plain async request racing the form.
+ *
+ * Measured on `student.elevateeducation.in/learner-invitation-response`: the
+ * phone field mounts at ~1.95s and domain routing answers at ~1.93s. It wins by
+ * about 30ms. Add ~2s of latency and the order flips,
+ * {@link hasResolvedPhonePreferences} reads false, geo-detection is withheld
+ * (correctly — an unread preference must not be overridden), and the field
+ * hard-falls back to `DEFAULT_PREFERRED_COUNTRIES[0]`, showing +91 to a visitor
+ * in any country. Without a subscription it never recovers, because every
+ * caller reads the cache once and memoizes.
+ *
+ * Subscribing lets a phone field pick the answer up when it finally lands. See
+ * `hooks/use-preferred-phone-countries`, which is the only intended consumer and
+ * which decides what to do with each answer (the institute's reply always wins;
+ * never applied under a visitor who is typing).
+ */
+type PhoneCountriesListener = () => void;
+
+const phoneCountriesListeners = new Set<PhoneCountriesListener>();
+
+const notifyPhoneCountriesChanged = (): void => {
+  // Copied before iterating: a listener is free to unsubscribe during the call
+  // (a React cleanup can run mid-notification), and that must not mutate the set
+  // we are walking.
+  for (const listener of [...phoneCountriesListeners]) {
+    try {
+      listener();
+    } catch (error) {
+      // One broken subscriber must not stop the others, and must never take
+      // down the domain-routing resolve it is riding on.
+      console.warn("[Domain Routing] Phone-country listener failed:", error);
+    }
+  }
+};
+
+/**
+ * Subscribes to institute phone-preference changes. Returns an unsubscribe
+ * function.
+ */
+export const subscribePhoneCountries = (
+  listener: PhoneCountriesListener,
+): (() => void) => {
+  phoneCountriesListeners.add(listener);
+  return () => {
+    phoneCountriesListeners.delete(listener);
+  };
+};
+
+/**
  * Parses a comma-separated list of country codes into a normalized lowercase array.
  * Whitespace and empty entries are stripped.
  */
@@ -129,25 +184,27 @@ export const setCachedPreferredCountries = (
   const parsed = parsePreferredCountries(raw);
   cachedPreferredCountriesMemory = parsed;
 
-  if (!canUseLocalStorage()) {
-    return;
-  }
-
-  try {
-    if (parsed.length === 0) {
-      window.localStorage.removeItem(PREFERRED_COUNTRIES_CACHE_KEY);
-    } else {
-      window.localStorage.setItem(
-        PREFERRED_COUNTRIES_CACHE_KEY,
-        JSON.stringify(parsed)
+  if (canUseLocalStorage()) {
+    try {
+      if (parsed.length === 0) {
+        window.localStorage.removeItem(PREFERRED_COUNTRIES_CACHE_KEY);
+      } else {
+        window.localStorage.setItem(
+          PREFERRED_COUNTRIES_CACHE_KEY,
+          JSON.stringify(parsed)
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "[Domain Routing] Failed to persist preferred countries cache:",
+        error
       );
     }
-  } catch (error) {
-    console.warn(
-      "[Domain Routing] Failed to persist preferred countries cache:",
-      error
-    );
   }
+
+  // Notified even when the write failed: the in-memory cache above IS the value
+  // subscribers read, so it is now current whatever localStorage did.
+  notifyPhoneCountriesChanged();
 };
 
 export const getCachedPreferredCountries = (): string[] => {
@@ -228,18 +285,20 @@ export const setCachedPhoneCountryGeoMode = (
   const mode = normalizeGeoMode(raw);
   cachedPhoneCountryGeoModeMemory = mode;
 
-  if (!canUseLocalStorage()) {
-    return;
+  if (canUseLocalStorage()) {
+    try {
+      window.localStorage.setItem(PHONE_COUNTRY_GEO_MODE_CACHE_KEY, mode);
+    } catch (error) {
+      console.warn(
+        "[Domain Routing] Failed to persist phone country geo mode:",
+        error,
+      );
+    }
   }
 
-  try {
-    window.localStorage.setItem(PHONE_COUNTRY_GEO_MODE_CACHE_KEY, mode);
-  } catch (error) {
-    console.warn(
-      "[Domain Routing] Failed to persist phone country geo mode:",
-      error,
-    );
-  }
+  // This is the call that flips `hasResolvedPhonePreferences()` to true, so it
+  // is the notification that actually unblocks a waiting phone field.
+  notifyPhoneCountriesChanged();
 };
 
 /**

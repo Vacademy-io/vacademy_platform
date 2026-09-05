@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
 from typing import Optional
 from uuid import uuid4
 
@@ -33,6 +34,43 @@ from .slide_source import MAX_SOURCE_CHARS, SlideSource, _hash, source_kind_labe
 logger = logging.getLogger(__name__)
 
 VENDOR_TRANSCRIPT = "tutor_video_transcript"
+# A Whisper job in flight for a video file: vendor_file_id = job id, file_id
+# = the video's file id. A compile that runs out of waiting time leaves the
+# job running and the next compile picks it up here instead of resubmitting.
+VENDOR_TRANSCRIPT_JOB = "tutor_video_transcript_job"
+# Observed on the render worker: Whisper "small" on CPU runs at ~0.7x realtime,
+# so an 82-minute lecture takes about two hours. A compile waits only when
+# the transcript can plausibly arrive within one sitting.
+TRANSCRIBE_REALTIME_FACTOR = 1.4
+TRANSCRIBE_MAX_WAIT_SECONDS = 30 * 60
+TRANSCRIBE_POLL_SECONDS = 15
+
+
+class TranscriptionPending(RuntimeError):
+    """The transcript is still being made; the slide can be prepared later."""
+
+    def __init__(self, job_id: str, progress: float, eta_minutes: int) -> None:
+        self.job_id, self.progress, self.eta_minutes = job_id, progress, eta_minutes
+        super().__init__(f"Transcribing this video ({int(progress)}% done, about {eta_minutes} min left). "
+                         "Prepare it again later and it will be picked up where it is.")
+
+
+def expected_transcription_seconds(video_length_ms: Optional[int]) -> Optional[int]:
+    if not video_length_ms:
+        return None
+    return int(video_length_ms / 1000 * TRANSCRIBE_REALTIME_FACTOR)
+
+
+def transcription_wait_budget(video_length_ms: Optional[int]) -> int:
+    """How long one compile waits for this video's transcript: the expected
+    time plus slack, capped; a video that will clearly take longer than the
+    cap is submitted and parked at once (a two-step prepare)."""
+    expected = expected_transcription_seconds(video_length_ms)
+    if expected is None:
+        return TRANSCRIBE_MAX_WAIT_SECONDS
+    if expected > TRANSCRIBE_MAX_WAIT_SECONDS:
+        return 0
+    return min(TRANSCRIBE_MAX_WAIT_SECONDS, expected + 10 * 60)
 VENDOR_CAPTIONS = "tutor_youtube_captions"
 VENDOR_SCRIPT = "tutor_ai_video_script"
 VENDOR_PDF = "tutor_pdf_text"
@@ -283,25 +321,98 @@ def transcription_minutes(video_length_ms: Optional[int], duration_seconds: Opti
     return int(math.ceil(secs / 60.0)) if secs > 0 else 0
 
 
+def pending_transcription_job(db: Session, file_id: str) -> Optional[str]:
+    """The Whisper job id already running for this video file, if any."""
+    row = (db.query(FileConversion)
+           .filter(FileConversion.vendor == VENDOR_TRANSCRIPT_JOB, FileConversion.file_id == file_id,
+                   FileConversion.status == "INIT")
+           .order_by(FileConversion.created_at.desc()).first())
+    return row.vendor_file_id if row is not None else None
+
+
+def _remember_job(file_id: str, job_id: str) -> None:
+    try:
+        with db_session() as db:
+            db.add(FileConversion(id=str(uuid4()), vendor_file_id=job_id, vendor=VENDOR_TRANSCRIPT_JOB, file_id=file_id,
+                                  status="INIT", file_type="transcript_job"))
+            db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("could not remember transcription job %s for %s", job_id, file_id, exc_info=True)
+
+
+def _close_job(file_id: str, status: str) -> None:
+    try:
+        with db_session() as db:
+            for row in (db.query(FileConversion).filter(FileConversion.vendor == VENDOR_TRANSCRIPT_JOB,
+                                                        FileConversion.file_id == file_id, FileConversion.status == "INIT").all()):
+                row.status = status
+            db.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str]) -> int:
     """Transcribe an uploaded video once (cached by file id) and charge the
     `transcription` tool per audio-minute. Returns the minutes billed (0 on a
-    cache hit). Raises RuntimeError when the worker cannot do it."""
-    from ..transcription_inprocess import transcribe
+    cache hit). A job that cannot finish within this compile's wait budget is
+    left running and raised as TranscriptionPending; the next compile of the
+    slide resumes polling it. Raises RuntimeError when the worker fails."""
+    import httpx as _httpx
+    from ...config import get_settings
+    from ..transcription_service import TranscriptionService
     file_id = src.media_file_id or ""
     cached = _cached(VENDOR_TRANSCRIPT, file_id)
     if cached:
         _set_text(src, cached, "transcript")
         return 0
-    url = await _file_url(file_id)
-    if not url:
-        raise RuntimeError("The video file could not be resolved for transcription")
-    result = await transcribe(url, model_size="small")
-    body = (result.text or "").strip()
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise RuntimeError("Transcription unavailable: RENDER_SERVER_URL not configured")
+    service = TranscriptionService(settings.render_server_url, settings.render_server_key)
+    with db_session() as db:
+        job_id = pending_transcription_job(db, file_id)
+    if not job_id:
+        url = await _file_url(file_id)
+        if not url:
+            raise RuntimeError("The video file could not be resolved for transcription")
+        job_id = await asyncio.to_thread(service.submit, url, None, "small", True, ["txt", "json"], None, "transcribe")
+        _remember_job(file_id, job_id)
+    budget = transcription_wait_budget(src.video_length_ms)
+    expected = expected_transcription_seconds(src.video_length_ms)
+    started = time.monotonic()
+    status: dict = {}
+    while True:
+        status = await asyncio.to_thread(service.check_status, job_id)
+        state = (status.get("status") or "").lower()
+        if state == "completed":
+            break
+        if state in ("failed", "unknown"):
+            _close_job(file_id, "FAILED")
+            raise RuntimeError(f"Transcription failed: {status.get('error') or state}")
+        waited = time.monotonic() - started
+        if waited + TRANSCRIBE_POLL_SECONDS > budget:
+            progress = float(status.get("progress") or 0.0)
+            remaining = (expected or TRANSCRIBE_MAX_WAIT_SECONDS) * max(0.0, 1.0 - progress / 100.0)
+            raise TranscriptionPending(job_id, progress, max(1, int(remaining / 60) + 1))
+        await asyncio.sleep(TRANSCRIBE_POLL_SECONDS)
+    txt_url = None
+    for key in ("output_urls", "output_urls_source"):
+        urls = status.get(key)
+        if isinstance(urls, dict) and urls.get("txt"):
+            txt_url = urls["txt"]
+            break
+    body = ""
+    if txt_url:
+        async with _httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(txt_url)
+            resp.raise_for_status()
+            body = resp.text.strip()
     if not body:
+        _close_job(file_id, "FAILED")
         raise RuntimeError("The video has no speech to transcribe")
     _store(VENDOR_TRANSCRIPT, file_id, body, file_id=file_id, file_type="transcript")
-    minutes = max(1, transcription_minutes(src.video_length_ms, result.duration_seconds))
+    _close_job(file_id, "SUCCESS")
+    minutes = max(1, transcription_minutes(src.video_length_ms, status.get("duration_seconds")))
     record_tool_billing(
         tool_key=TRANSCRIPTION_TOOL, tool_params={"audio_minutes": minutes}, request_type=RequestType.TRANSCRIPTION,
         model=TRANSCRIPTION_MODEL, institute_id=institute_id, user_id=user_id, user_role="ADMIN",

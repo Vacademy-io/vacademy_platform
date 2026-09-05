@@ -85,6 +85,7 @@ def test_estimate_compile_per_kind(monkeypatch):
     monkeypatch.setattr(compile_estimate, "ToolCostEstimator", _Est)
     monkeypatch.setattr(compile_estimate.source_text, "transcription_available", lambda: True)
     monkeypatch.setattr(compile_estimate.source_text, "transcript_cached", lambda db, fid: False)
+    monkeypatch.setattr(compile_estimate.source_text, "pending_transcription_job", lambda db, fid: None)
 
     out = compile_estimate.estimate_compile(None, institute_id="i", slide_ids=list(sources) + ["missing"], language="en",
                                             generate_images=True, transcribe_videos=True, force=False)
@@ -146,3 +147,14 @@ def test_ai_video_url_is_not_a_media_url():
     _video(_DB(), src, "x", html_video=True)
     assert src.media_url is None and src.media_file_id is None and src.ai_gen_video_id == "video-C1-CH2-SL2-16837f89"
     assert source_kind_label(src) == "ai_video"
+
+
+def test_long_recordings_are_prepared_in_two_steps():
+    from app.services.tutor.source_text import (TranscriptionPending, expected_transcription_seconds,
+                                                transcription_wait_budget, TRANSCRIBE_MAX_WAIT_SECONDS)
+    assert expected_transcription_seconds(None) is None and transcription_wait_budget(None) == TRANSCRIBE_MAX_WAIT_SECONDS
+    assert expected_transcription_seconds(10 * 60 * 1000) == 840          # 10 min of video ≈ 14 min of Whisper
+    assert transcription_wait_budget(10 * 60 * 1000) == 840 + 600         # expected + 10 min slack
+    assert transcription_wait_budget(4938958) == 0                        # the 82-min lecture: submit and park
+    p = TranscriptionPending("job", 48.5, 57)
+    assert "48% done" in str(p) and "57 min" in str(p) and p.job_id == "job"

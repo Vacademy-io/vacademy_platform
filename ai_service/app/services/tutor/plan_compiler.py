@@ -424,6 +424,10 @@ class PlanCompiler:
             try:
                 run.transcription_minutes = await source_text.transcribe_upload(
                     source, institute_id=self.institute_id, user_id=self.user_id, request_id=self.compile_run_id)
+            except source_text.TranscriptionPending as pending:
+                # Long lecture: the transcript arrives later; the next Prepare
+                # picks the job up. Not a failure of the material.
+                raise _Skip(str(pending)) from pending
             except Exception as exc:  # noqa: BLE001
                 if not (description or "").strip():
                     raise RuntimeError(f"Transcription failed ({str(exc)[:160]}); add what this video teaches instead") from exc

@@ -170,3 +170,13 @@ def test_openrouter_transcription_helpers(monkeypatch):
     assert source_text.transcription_provider() == "openrouter" and source_text.transcription_model() == "openai/whisper-large-v3-turbo"
     monkeypatch.setattr("app.services.platform_settings_service.get_platform_setting", lambda key, default=None, **k: {"tutor.transcription.provider": "render"}.get(key, default))
     assert source_text.transcription_provider() == "render"
+
+
+def test_whisper_filler_is_not_speech():
+    from app.services.tutor.source_text import looks_like_speech
+    assert not looks_like_speech("Music.  Thank you.  Thank you.  Thank you.  Thank you.  Thank you.  Thank you.  Music.  Thank you.  Thank you.", 500.7)
+    assert not looks_like_speech("", 100) and not looks_like_speech("Hello there.", 10)
+    real = ("You have built a winning product. Now the world beckons, but expanding globally is a high stakes game. "
+            "How do you conquer new markets without losing your shirt or your control? Let's start on the safest squares.")
+    assert looks_like_speech(real, 20)
+    assert not looks_like_speech(real, 60 * 30)     # 40 words in half an hour is not a lecture

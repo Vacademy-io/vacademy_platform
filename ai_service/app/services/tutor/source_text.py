@@ -321,6 +321,27 @@ async def resolve_free_text(src: SlideSource) -> None:
 
 # ── the paid source: Whisper for uploaded videos ─────────────────────────────
 
+# Whisper narrates silence and music as filler ("Thank you.", "Music.",
+# "Subscribe!"). A transcript that is mostly that is no transcript.
+_FILLER = {"thank", "you", "music", "thanks", "subscribe", "bye", "applause", "laughter", "silence", "the", "end"}
+MIN_SPEECH_WORDS_PER_MINUTE = 15
+
+
+def looks_like_speech(text: str, duration_seconds: Optional[float]) -> bool:
+    words = [w.strip(".,!?").lower() for w in (text or "").split() if w.strip(".,!?")]
+    if len(words) < 12:
+        return False
+    unique = len(set(words))
+    if unique / len(words) < 0.2 or unique <= 6:
+        return False
+    filler = sum(1 for w in words if w in _FILLER)
+    if filler / len(words) > 0.6:
+        return False
+    if duration_seconds and duration_seconds > 60 and len(words) / (duration_seconds / 60.0) < MIN_SPEECH_WORDS_PER_MINUTE:
+        return False
+    return True
+
+
 def transcription_minutes(video_length_ms: Optional[int], duration_seconds: Optional[float] = None) -> int:
     secs = float(duration_seconds) if duration_seconds else (float(video_length_ms or 0) / 1000.0)
     return int(math.ceil(secs / 60.0)) if secs > 0 else 0
@@ -375,7 +396,7 @@ async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Opt
         try:
             return await _transcribe_via_openrouter(src, institute_id=institute_id, user_id=user_id, request_id=request_id)
         except Exception as exc:  # noqa: BLE001
-            if not settings.render_server_url:
+            if not settings.render_server_url or "no clear speech" in str(exc):
                 raise
             logger.warning("OpenRouter transcription failed for %s; falling back to the render worker: %s", file_id, exc)
     if not settings.render_server_url:
@@ -419,9 +440,9 @@ async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Opt
             resp = await client.get(txt_url)
             resp.raise_for_status()
             body = resp.text.strip()
-    if not body:
+    if not body or not looks_like_speech(body, status.get("duration_seconds")):
         _close_job(file_id, "FAILED")
-        raise RuntimeError("The video has no speech to transcribe")
+        raise RuntimeError("The recording has no clear speech to transcribe; add what this video teaches instead")
     _store(VENDOR_TRANSCRIPT, file_id, body, file_id=file_id, file_type="transcript")
     _close_job(file_id, "SUCCESS")
     minutes = max(1, transcription_minutes(src.video_length_ms, status.get("duration_seconds")))
@@ -492,8 +513,10 @@ async def _transcribe_via_openrouter(src: SlideSource, *, institute_id: str, use
     model = transcription_model()
     result = await transcribe_media(url, api_key=key, model=model)
     body = (result.text or "").strip()
-    if not body:
-        raise RuntimeError("The video has no speech to transcribe")
+    if not body or not looks_like_speech(body, result.duration_seconds):
+        # Not charged to the institute: there was nothing to transcribe.
+        src.text_note = "The recording has no clear speech (music or silence): add what this video teaches"
+        raise RuntimeError("The recording has no clear speech to transcribe; add what this video teaches instead")
     _store(VENDOR_TRANSCRIPT, file_id, body, file_id=file_id, file_type="transcript")
     minutes = max(1, transcription_minutes(src.video_length_ms, result.duration_seconds))
     record_tool_billing(

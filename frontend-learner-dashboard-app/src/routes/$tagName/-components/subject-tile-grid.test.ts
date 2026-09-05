@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SubjectTileGrid, type SubjectTile } from "./SubjectTileGrid";
+import {
+  SubjectTileGrid,
+  ContentDrillCrumb,
+  type ContentTile,
+} from "./SubjectTileGrid";
 
 /**
  * The tile grid is the whole visible difference of the "tiles" course-content
@@ -11,18 +15,17 @@ import { SubjectTileGrid, type SubjectTile } from "./SubjectTileGrid";
  * and check the artwork, the fallback, and the open state actually come out.
  */
 
-const SUBJECTS: SubjectTile[] = [
-  { id: "s1", subject_name: "Level 2: English", description: "Reading & phonics" },
-  { id: "s2", subject_name: "Level 2: Math Explorer" },
+const SUBJECTS: ContentTile[] = [
+  { id: "s1", name: "Level 2: English", description: "Reading & phonics" },
+  { id: "s2", name: "Level 2: Math Explorer" },
 ];
 
 const html = (props: Partial<Parameters<typeof SubjectTileGrid>[0]> = {}) =>
   renderToStaticMarkup(
     React.createElement(SubjectTileGrid, {
-      subjects: SUBJECTS,
+      items: SUBJECTS,
       thumbs: {},
-      openSubjectId: null,
-      onToggle: vi.fn(),
+      onOpen: vi.fn(),
       ...props,
     }),
   );
@@ -53,23 +56,61 @@ describe("SubjectTileGrid", () => {
     expect(out).toContain("svg");
   });
 
-  it("marks only the open card as expanded", () => {
-    const out = html({ openSubjectId: "s2" });
-    expect((out.match(/aria-expanded="true"/g) || []).length).toBe(1);
-    expect((out.match(/aria-expanded="false"/g) || []).length).toBe(1);
-  });
-
   it("omits the description line for a subject that has none", () => {
     const out = html();
     expect(out).toContain("Reading &amp; phonics");
     // Two cards, one description — the subject without one must not leave a
     // blank line where its text would go. Match the description div itself,
     // not the muted colour, which the artwork-fallback glyph also uses.
-    const descriptions = out.match(/truncate text-sm text-catalogue-text-muted/g) || [];
+    const descriptions = out.match(/line-clamp-1 text-sm text-catalogue-text-muted/g) || [];
     expect(descriptions.length).toBe(1);
   });
 
   it("renders nothing for an empty subject list", () => {
-    expect(html({ subjects: [] })).not.toContain("<button");
+    expect(html({ items: [] })).not.toContain("<button");
+  });
+});
+
+/**
+ * The trail back up. Expanding in place gave no way to say which card a
+ * panel belonged to, so the grid now swaps for the level below and this is
+ * the only way back — if it stops rendering, a visitor is stranded one level
+ * down with no route out.
+ */
+describe("ContentDrillCrumb", () => {
+  const crumb = (
+    trail: Array<{ id: string; name: string }>,
+    onNavigate = vi.fn(),
+  ) =>
+    renderToStaticMarkup(
+      React.createElement(ContentDrillCrumb, {
+        trail,
+        rootLabel: "Subjects",
+        onNavigate,
+      }),
+    );
+
+  it("shows the way back to the top from one level down", () => {
+    const out = crumb([{ id: "s1", name: "Level 1: English" }]);
+    expect(out).toContain("Subjects");
+    expect(out).toContain("Level 1: English");
+  });
+
+  it("heads the current level and keeps its ancestors as links", () => {
+    const out = crumb([
+      { id: "s1", name: "Level 1: English" },
+      { id: "m1", name: "Know Your Content" },
+    ]);
+    // The current level is the heading; everything above it is a button.
+    expect(out).toContain("<h4");
+    expect(out.indexOf("Level 1: English")).toBeLessThan(
+      out.indexOf("Know Your Content"),
+    );
+    expect((out.match(/<button/g) || []).length).toBe(2);
+  });
+
+  it("offers exactly one way out at the shallowest level", () => {
+    const out = crumb([{ id: "s1", name: "Level 1: English" }]);
+    expect((out.match(/<button/g) || []).length).toBe(1);
   });
 });

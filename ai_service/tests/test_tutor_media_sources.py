@@ -158,3 +158,15 @@ def test_long_recordings_are_prepared_in_two_steps():
     assert transcription_wait_budget(4938958) == 0                        # the 82-min lecture: submit and park
     p = TranscriptionPending("job", 48.5, 57)
     assert "48% done" in str(p) and "57 min" in str(p) and p.job_id == "job"
+
+
+def test_openrouter_transcription_helpers(monkeypatch):
+    from app.services import openrouter_transcription as ot
+    from app.services.tutor import source_text
+    assert ot.chunk_plan(0) == 1 and ot.chunk_plan(600) == 1 and ot.chunk_plan(601) == 2 and ot.chunk_plan(4938.958) == 9
+    assert ot.join_chunk_texts([" one ", "", "two", None]) == "one two"
+    # provider / model come from platform settings with safe defaults
+    monkeypatch.setattr("app.services.platform_settings_service.get_platform_setting", lambda key, default=None, **k: {"tutor.transcription.provider": "bogus"}.get(key, default))
+    assert source_text.transcription_provider() == "openrouter" and source_text.transcription_model() == "openai/whisper-large-v3-turbo"
+    monkeypatch.setattr("app.services.platform_settings_service.get_platform_setting", lambda key, default=None, **k: {"tutor.transcription.provider": "render"}.get(key, default))
+    assert source_text.transcription_provider() == "render"

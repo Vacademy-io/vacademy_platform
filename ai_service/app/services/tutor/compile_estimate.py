@@ -86,10 +86,13 @@ def estimate_compile(
                 row["transcription"] = _credits(est, "transcription", {"audio_minutes": minutes})
                 wait = int((source_text.expected_transcription_seconds(src.video_length_ms) or 0) / 60)
                 in_flight = bool(src.media_file_id) and source_text.pending_transcription_job(db, src.media_file_id or "")
-                if in_flight:
+                fast = source_text.transcription_provider() == "openrouter"
+                if in_flight and not fast:
                     row["note"] = "Transcription already running; this prepare picks it up"
                 elif not src.video_length_ms:
                     row["note"] = "Speech-to-text, length unknown (assumed %d min)" % ASSUMED_VIDEO_MINUTES
+                elif fast:
+                    row["note"] = "Speech-to-text of the recording (a few minutes)"
                 elif source_text.transcription_wait_budget(src.video_length_ms) == 0:
                     row["note"] = f"Long recording: transcription takes about {wait} min, so it is prepared in two steps (start now, prepare again later)"
                 else:

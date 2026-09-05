@@ -80,6 +80,11 @@ VENDOR_PDF_PROBE = "tutor_pdf_probe"
 OCR_TOOL = "html_document_pdf"          # MathPix per-page surcharge (0.5/page)
 TRANSCRIPTION_TOOL = "transcription"
 TRANSCRIPTION_MODEL = "whisper-small"
+# Where speech-to-text runs: OpenRouter (Whisper large-v3-turbo, minutes for
+# a lecture) or the render worker (Whisper small on CPU, hours). Platform
+# settings tutor.transcription.provider / tutor.transcription.model.
+TRANSCRIPTION_PROVIDERS = ("openrouter", "render")
+DEFAULT_TRANSCRIPTION_PROVIDER = "openrouter"
 MAX_PDF_BYTES = 40 * 1024 * 1024
 MAX_CACHED_CHARS = 120_000
 
@@ -366,6 +371,13 @@ async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Opt
         _set_text(src, cached, "transcript")
         return 0
     settings = get_settings()
+    if transcription_provider() == "openrouter":
+        try:
+            return await _transcribe_via_openrouter(src, institute_id=institute_id, user_id=user_id, request_id=request_id)
+        except Exception as exc:  # noqa: BLE001
+            if not settings.render_server_url:
+                raise
+            logger.warning("OpenRouter transcription failed for %s; falling back to the render worker: %s", file_id, exc)
     if not settings.render_server_url:
         raise RuntimeError("Transcription unavailable: RENDER_SERVER_URL not configured")
     service = TranscriptionService(settings.render_server_url, settings.render_server_key)
@@ -422,9 +434,88 @@ async def transcribe_upload(src: SlideSource, *, institute_id: str, user_id: Opt
     return minutes
 
 
+def transcription_provider() -> str:
+    try:
+        from ...services.platform_settings_service import get_platform_setting
+        p = str(get_platform_setting("tutor.transcription.provider", default=DEFAULT_TRANSCRIPTION_PROVIDER) or "")
+        return p if p in TRANSCRIPTION_PROVIDERS else DEFAULT_TRANSCRIPTION_PROVIDER
+    except Exception:  # noqa: BLE001
+        return DEFAULT_TRANSCRIPTION_PROVIDER
+
+
+def transcription_model() -> str:
+    try:
+        from ...services.platform_settings_service import get_platform_setting
+        from ..openrouter_transcription import DEFAULT_MODEL
+        return str(get_platform_setting("tutor.transcription.model", default=DEFAULT_MODEL) or DEFAULT_MODEL)
+    except Exception:  # noqa: BLE001
+        return "openai/whisper-large-v3-turbo"
+
+
+def _openrouter_key(institute_id: str, user_id: Optional[str]) -> Optional[str]:
+    """The institute's own OpenRouter key when it has one, else the platform's."""
+    try:
+        from ..api_key_resolver import ApiKeyResolver
+        with db_session() as db:
+            key, _g, _m = ApiKeyResolver(db).resolve_keys(institute_id or "default", user_id)
+        return key or None
+    except Exception:  # noqa: BLE001
+        logger.warning("OpenRouter key resolution failed", exc_info=True)
+        return None
+
+
 def transcription_available() -> bool:
     from ...config import get_settings
     try:
-        return bool(get_settings().render_server_url)
+        s = get_settings()
+        if transcription_provider() == "openrouter":
+            import os
+            return bool(os.environ.get("OPENROUTER_API_KEY")) or bool(s.render_server_url)
+        return bool(s.render_server_url)
     except Exception:  # noqa: BLE001
         return False
+
+
+async def _transcribe_via_openrouter(src: SlideSource, *, institute_id: str, user_id: Optional[str], request_id: Optional[str]) -> int:
+    """Whisper large-v3-turbo on OpenRouter: minutes, not hours. Charges the
+    `transcription` tool per audio-minute and records the provider's cost."""
+    from ..openrouter_transcription import transcribe_media
+    from ..token_usage_service import TokenUsageService
+    from ...models.ai_token_usage import ApiProvider
+    file_id = src.media_file_id or ""
+    key = _openrouter_key(institute_id, user_id)
+    if not key:
+        raise RuntimeError("No OpenRouter key available for transcription")
+    url = await _file_url(file_id)
+    if not url:
+        raise RuntimeError("The video file could not be resolved for transcription")
+    model = transcription_model()
+    result = await transcribe_media(url, api_key=key, model=model)
+    body = (result.text or "").strip()
+    if not body:
+        raise RuntimeError("The video has no speech to transcribe")
+    _store(VENDOR_TRANSCRIPT, file_id, body, file_id=file_id, file_type="transcript")
+    minutes = max(1, transcription_minutes(src.video_length_ms, result.duration_seconds))
+    record_tool_billing(
+        tool_key=TRANSCRIPTION_TOOL, tool_params={"audio_minutes": minutes}, request_type=RequestType.TRANSCRIPTION,
+        model=f"openrouter:{model}", institute_id=institute_id, user_id=user_id, user_role="ADMIN",
+        request_id=request_id, idempotency_key=f"tutor_transcribe:{file_id}",
+    )
+    # The provider's actual spend, for the AI usage / cost pages.
+    try:
+        with db_session() as db:
+            TokenUsageService(db).record_usage(
+                api_provider=ApiProvider.OPENAI, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                request_type=RequestType.TRANSCRIPTION, institute_id=institute_id, user_id=user_id,
+                model=f"openrouter:{model}", request_id=request_id, total_price=float(result.cost_usd or 0.0),
+                character_count=int(result.duration_seconds or 0),
+                metadata={"surface": "tutor", "kind": "transcription", "seconds": round(result.duration_seconds, 1),
+                          "cost_usd": result.cost_usd, "chunks": result.chunks, "language": result.language,
+                          "file_id": file_id, "generation_ids": [g for g in result.generation_ids if g][:20]},
+            )
+            db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("transcription usage not recorded for %s", file_id, exc_info=True)
+    logger.info("Transcribed %s via OpenRouter: %.0f s in %d chunk(s), $%.4f", file_id, result.duration_seconds, result.chunks, result.cost_usd)
+    _set_text(src, body, "transcript")
+    return minutes

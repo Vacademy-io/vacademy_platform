@@ -210,6 +210,23 @@ SETTING_SPECS: Dict[str, SettingSpec] = {
             options=("smallest", "sarvam", "google", "edge"),
         ),
         SettingSpec(
+            key="tutor.transcription.provider",
+            group="tutor",
+            label="Tutor transcription provider",
+            description="Speech-to-text for uploaded lecture videos in Tutor Mode. openrouter = Whisper large-v3-turbo via OpenRouter (an 82-minute lecture in a few minutes; the render worker is the fallback). render = Whisper small on the render worker's CPU (hours for a lecture).",
+            type="enum",
+            default=lambda: "openrouter",
+            options=("openrouter", "render"),
+        ),
+        SettingSpec(
+            key="tutor.transcription.model",
+            group="tutor",
+            label="Tutor transcription model",
+            description="OpenRouter transcription model id used when the provider is openrouter.",
+            type="string",
+            default=lambda: "openai/whisper-large-v3-turbo",
+        ),
+        SettingSpec(
             key="tutor.voice.voice",
             group="tutor",
             label="Tutor voice",

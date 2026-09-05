@@ -120,6 +120,9 @@ public class InvoiceService {
     @Autowired
     private PaymentLogRepository paymentLogRepository;
 
+    /** Unique key on (institute_id, invoice_number) from V432 — the only retryable integrity failure. */
+    private static final String INVOICE_NUMBER_UNIQUE_CONSTRAINT = "uq_invoice_institute_number";
+
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
 
@@ -1739,6 +1742,14 @@ public class InvoiceService {
                         paymentLogs, instituteId);
                 return new RenderedInvoice(invoice, pdfBytes);
             } catch (DataIntegrityViolationException e) {
+                if (!isInvoiceNumberCollision(e)) {
+                    // Not a number clash, so a fresh number cannot help. The usual culprit is
+                    // invoice_payment_log_mapping_payment_log_id_fkey — the caller's payment log is
+                    // still pending in its uncommitted transaction and REQUIRES_NEW cannot see it
+                    // (see generateInvoiceAfterCommit). Retrying that burns another PDF render and
+                    // S3 upload per attempt and then fails identically, so surface it immediately.
+                    throw e;
+                }
                 if (attempt >= maxAttempts - 1) {
                     throw e;
                 }
@@ -1753,6 +1764,25 @@ public class InvoiceService {
                 applyAllocation(invoiceData, retryAllocation);
             }
         }
+    }
+
+    /**
+     * True only when the violation is the invoice-number unique key ({@code uq_invoice_institute_number},
+     * added in V432) — the one failure a new number actually fixes. Postgres names the offending
+     * constraint in the message, which Hibernate/Spring wrap several layers deep, so walk the cause
+     * chain rather than inspecting only the outermost exception.
+     */
+    private boolean isInvoiceNumberCollision(DataIntegrityViolationException e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String message = t.getMessage();
+            if (message != null && message.contains(INVOICE_NUMBER_UNIQUE_CONSTRAINT)) {
+                return true;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return false;
     }
 
     /** Copy a freshly-allocated number + its sequence position onto the in-flight invoice data. */

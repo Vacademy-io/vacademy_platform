@@ -46,6 +46,8 @@ export interface TutorStartResponse {
   slide_id: string;
   slide_title?: string;
   language: "en" | "hi";
+  /** Languages the learner may switch to during the lesson. */
+  languages?: Array<"en" | "hi">;
   resumed: boolean;
   teacher_name: string;
   teacher_avatar_file_id?: string | null;

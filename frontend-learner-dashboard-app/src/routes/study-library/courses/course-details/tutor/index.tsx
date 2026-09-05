@@ -92,6 +92,7 @@ function TutorPage() {
   const [speakOn, setSpeakOn] = useState(true);
   const [micOn, setMicOn] = useState(false);
   const [pace, setPace] = useState<TutorPace>("normal");
+  const [language, setLanguage] = useState<"en" | "hi">("en");
   // Narration sync: the sentence being spoken and the elements written for it.
   const [sentence, setSentence] = useState<number | null>(null);
   const [focusIds, setFocusIds] = useState<string[]>([]);
@@ -310,6 +311,7 @@ function TutorPage() {
       setDisconnected(null);
       setPhase("idle");
       if (typeof ev.pace === "string") setPace(ev.pace as TutorPace);
+      if (ev.language === "en" || ev.language === "hi") setLanguage(ev.language);
       if (Array.isArray(ev.topics)) setTopics(ev.topics as TutorTopicItem[]);
       if (typeof ev.slide_title === "string") setSlideTitle(ev.slide_title);
     },
@@ -320,6 +322,7 @@ function TutorPage() {
     },
     onState: (ev) => {
       setState(ev);
+      if (ev.language === "en" || ev.language === "hi") setLanguage(ev.language);
       if (ev.phase === "await_answer" || ev.phase === "remediate" || ev.phase === "revisit" || ev.phase === "predict") applyPhase("question");
       else if (ev.phase === "media_task") applyPhase("media");
       else if (ev.phase === "slide_done") applyPhase("done");
@@ -766,6 +769,14 @@ function TutorPage() {
             onPace={(p) => {
               setPace(p);
               socket.sendConfig({ pace: p });
+            }}
+            language={language}
+            languages={boot?.languages ?? ["en"]}
+            onLanguage={(l) => {
+              if (l === language) return;
+              setLanguage(l);
+              socket.sendConfig({ language: l });
+              showNotice(l === "hi" ? "The teacher will continue in Hindi from the next line." : "The teacher will continue in English from the next line.");
             }}
             stats={stats}
             awaiting={awaiting}

@@ -19,6 +19,8 @@ export interface LessonStats {
   best: number;
 }
 
+const LANGUAGE_LABEL: Record<"en" | "hi", string> = { en: "English", hi: "हिंदी" };
+
 const PACES: Array<{ id: TutorPace; label: string }> = [
   { id: "slower", label: "Slower" },
   { id: "slow", label: "Slow" },
@@ -53,6 +55,10 @@ interface TeacherPanelProps {
   /** The teacher's speaking pace, chosen by the learner. */
   pace?: TutorPace;
   onPace?: (pace: TutorPace) => void;
+  /** The lesson language and the ones the course allows switching to. */
+  language?: "en" | "hi";
+  languages?: Array<"en" | "hi">;
+  onLanguage?: (language: "en" | "hi") => void;
   /** Checks asked / answered right in this slide, and the streak. */
   stats?: LessonStats;
   awaiting: "continue" | "answer" | "done" | null;
@@ -90,7 +96,7 @@ const PHASE_LABEL: Record<TutorPhase, string> = {
 export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
-  notice, disabled, compact, pace, onPace, stats,
+  notice, disabled, compact, pace, onPace, stats, language, languages, onLanguage,
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
@@ -139,6 +145,22 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               <Fire className="size-3.5" weight="fill" /> {stats.streak} in a row
             </span>
           )}
+        </div>
+      )}
+      {onLanguage && (languages?.length ?? 0) > 1 && (
+        <div className="mt-2 flex items-center gap-1" role="group" aria-label="Lesson language">
+          <span className="me-1 text-xs uppercase tracking-wide text-neutral-500">Language</span>
+          {(languages ?? []).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => onLanguage(l)}
+              aria-pressed={language === l}
+              className={`rounded-full px-2.5 py-0.5 text-xs ${language === l ? "bg-primary-500 text-white" : "border border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}
+            >
+              {LANGUAGE_LABEL[l]}
+            </button>
+          ))}
         </div>
       )}
       {voiceMode && onPace && (

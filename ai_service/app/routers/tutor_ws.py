@@ -236,6 +236,8 @@ def start_session(
         "slide_id": lesson.slide_id,
         "slide_title": lesson.slide_title,
         "language": boot["language"],
+        # Languages the learner may switch to during the lesson (course setting).
+        "languages": [x for x in (settings.languages or ["en"]) if x in ("en", "hi")] or ["en"],
         "resumed": boot["resumed"],
         "teacher_name": settings.teacher_name,
         "teacher_avatar_file_id": settings.teacher_avatar_file_id,

@@ -24,7 +24,13 @@ logger = logging.getLogger(__name__)
 # sampling parameters in thinking mode.
 _REASONING_MODE: Dict[str, str] = {}
 _REASONING_ON_MIN_TOKENS = 3000
-_REASONING_MODES = ("on", "on-no-temp")
+# Thinking tokens count against max_tokens. A compile that asked for 12k output
+# tokens got 3 x 12k of "length"-truncated replies from glm-5.3-flash (2026-09-05)
+# because the model spent the budget thinking. Reasoning-on variants therefore
+# get an allowance on top of the caller's cap, and try a low effort first.
+_REASONING_ALLOWANCE_MIN = 2000
+_REASONING_ALLOWANCE_MAX = 12000
+_REASONING_MODES = ("on-low", "on", "on-no-temp")
 
 # A model whose every variant failed is skipped for a while: the fallback
 # answers directly instead of every turn paying for three rejected attempts.
@@ -70,8 +76,10 @@ def reasoning_mode_for(model: str) -> Optional[str]:
 
 def apply_reasoning_mode(payload: Dict[str, Any], mode: str) -> Dict[str, Any]:
     p = dict(payload)
-    p["reasoning"] = {"enabled": True}
-    p["max_tokens"] = max(int(p.get("max_tokens") or 0), _REASONING_ON_MIN_TOKENS)
+    p["reasoning"] = {"enabled": True, "effort": "low"} if mode == "on-low" else {"enabled": True}
+    requested = int(p.get("max_tokens") or 0)
+    allowance = min(max(requested, _REASONING_ALLOWANCE_MIN), _REASONING_ALLOWANCE_MAX)
+    p["max_tokens"] = max(requested, _REASONING_ON_MIN_TOKENS) + allowance
     if mode == "on-no-temp":
         p.pop("temperature", None)
     return p
@@ -113,10 +121,12 @@ def is_model_broken(model: str) -> bool:
 
 
 def _mode_note(mode: str) -> str:
-    return (
-        "this endpoint requires reasoning; running with reasoning on"
-        + (" and without a temperature parameter" if mode == "on-no-temp" else "")
-    )
+    detail = {
+        "on-low": " at low effort",
+        "on": "",
+        "on-no-temp": " and without a temperature parameter",
+    }.get(mode, "")
+    return f"this endpoint requires reasoning; running with reasoning on{detail} (output cap raised to leave room for thinking)"
 
 
 def ensure_user_turn(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

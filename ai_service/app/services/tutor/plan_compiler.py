@@ -512,7 +512,12 @@ class PlanCompiler:
         for model in candidates:
             with db_session() as db:
                 keys = ApiKeyResolver(db).resolve_keys(self.institute_id, self.user_id, request_model=model)
-            client = ChatLLMClient(_FixedKeys(keys))
+            # Reasoning off, like the chatbot: the validator + repair loop carries
+            # quality here, and on a reasoning-mandatory model (glm-5.3-flash) the
+            # client then bounds the thinking and raises the cap to make room for it.
+            # Without this flag the model thought freely inside COMPILE_MAX_TOKENS and
+            # every attempt came back "length"-truncated (3 x 12k tokens, 2026-09-05).
+            client = ChatLLMClient(_FixedKeys(keys), disable_reasoning=True)
             try:
                 resp = await client.chat_completion(
                     messages, temperature=0.2, max_tokens=COMPILE_MAX_TOKENS,
@@ -530,6 +535,13 @@ class PlanCompiler:
             for k in run.usage:
                 run.usage[k] += int(usage.get(k) or 0)
             run.model_used = resp.get("model") or model or run.model_used
+            if resp.get("finish_reason") == "length":
+                details = usage.get("completion_tokens_details") or {}
+                logger.warning(
+                    "Tutor compile: model %s hit the output cap — completion_tokens=%s reasoning_tokens=%s "
+                    "visible_chars=%d", run.model_used, usage.get("completion_tokens"),
+                    details.get("reasoning_tokens"), len(resp.get("content") or ""),
+                )
             return resp.get("content") or "", resp.get("finish_reason")
         raise last_exc or RuntimeError("no model answered")
 

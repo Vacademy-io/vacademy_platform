@@ -526,8 +526,9 @@ def _openrouter_one_token(model_id: str, mode: str, api_key: str, timeout_second
     """
     One-token completion in the chatbot's request shape; None if it worked,
     else the provider's error (with OpenRouter's upstream text unwrapped).
-    mode: "disabled" (reasoning off), "on" (explicitly on, as the owner's
-    working curl), "on-no-temp" (on, and no temperature parameter).
+    mode: "disabled" (reasoning off), "on-low" (on at low effort), "on"
+    (explicitly on, as the owner's working curl), "on-no-temp" (on, and no
+    temperature parameter) — the same ladder the runtime client walks.
     """
     import httpx
     from .chat_llm_client import openrouter_error_text
@@ -541,8 +542,8 @@ def _openrouter_one_token(model_id: str, mode: str, api_key: str, timeout_second
     if mode == "disabled":
         payload["reasoning"] = {"enabled": False}
     else:
-        payload["reasoning"] = {"enabled": True}
-        payload["max_tokens"] = 64
+        payload["reasoning"] = {"enabled": True, "effort": "low"} if mode == "on-low" else {"enabled": True}
+        payload["max_tokens"] = 256  # room for thinking before the one visible token
         if mode == "on-no-temp":
             payload.pop("temperature", None)
     try:
@@ -594,7 +595,7 @@ def probe_model_live(model_id: str, timeout_seconds: float = 25.0) -> Optional[s
     if not api_key:
         return None  # nothing to test against; don't block the save
     disable = bool(get_platform_setting("chatbot.llm.disable_reasoning", default=settings.llm_disable_reasoning))
-    modes = (["disabled"] if disable else []) + ["on", "on-no-temp"]
+    modes = (["disabled"] if disable else []) + ["on-low", "on", "on-no-temp"]
     last_error: Optional[str] = None
     for mode in modes:
         err = _openrouter_one_token(model_id, mode, api_key, timeout_seconds)

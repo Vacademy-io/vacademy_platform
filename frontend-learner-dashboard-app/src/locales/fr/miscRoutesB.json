@@ -91,6 +91,18 @@
         "usage": "Utilisation des jetons"
       }
     },
+    "chatbot": {
+      "title": "Chatbot",
+      "description": "Contrôlez ce que le chatbot IA affiche dans son en-tête",
+      "shortcut": {
+        "label": "Afficher le raccourci des paramètres IA dans le chatbot",
+        "hint": "Ajoute l'icône d'engrenage à l'en-tête du chatbot sur cet appareil. Masqué par défaut ; votre établissement peut aussi l'activer pour tout le monde depuis les paramètres d'administration.",
+        "toast": {
+          "enabled": "Le raccourci des paramètres IA est maintenant visible dans le chatbot",
+          "disabled": "Le raccourci des paramètres IA est maintenant masqué dans le chatbot"
+        }
+      }
+    },
     "apiKeys": {
       "title": "Gestion des clés API",
       "description": "Gérez vos clés API OpenRouter et Gemini pour des interactions IA personnalisées",

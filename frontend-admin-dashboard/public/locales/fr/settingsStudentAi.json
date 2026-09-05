@@ -143,6 +143,14 @@
             "description": "Faire rebondir le bouton pendant l'affichage du message pour attirer l'attention"
         }
     },
+    "header": {
+        "label": "En-tête du chatbot",
+        "helpText": "Ce que la fenêtre de discussion affiche dans sa barre de titre",
+        "aiSettingsShortcut": {
+            "label": "Raccourci des paramètres IA",
+            "description": "Afficher l'engrenage qui ouvre la page des paramètres IA de l'apprenant (ses propres clés API et sa consommation de jetons). Désactivé par défaut — les apprenants ne le voient pas."
+        }
+    },
     "actions": {
         "saving": "Enregistrement...",
         "save": "Enregistrer les paramètres"

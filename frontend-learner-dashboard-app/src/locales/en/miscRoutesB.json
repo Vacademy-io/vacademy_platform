@@ -91,6 +91,18 @@
         "usage": "Token Usage"
       }
     },
+    "chatbot": {
+      "title": "Chatbot",
+      "description": "Control what the AI chatbot shows in its header",
+      "shortcut": {
+        "label": "Show AI settings shortcut in chatbot",
+        "hint": "Adds the gear icon to the chatbot header on this device. Hidden by default; your institute can also turn it on for everyone from admin settings.",
+        "toast": {
+          "enabled": "AI settings shortcut is now visible in the chatbot",
+          "disabled": "AI settings shortcut is now hidden from the chatbot"
+        }
+      }
+    },
     "apiKeys": {
       "title": "API Key Management",
       "description": "Manage your OpenRouter and Gemini API keys for personalized AI interactions",

@@ -209,5 +209,21 @@
         "none": "Parent institute",
         "untitled": "Untitled sub-organization",
         "badgeTooltip": "This portal is branded for, and restricted to, this sub-organization"
+    },
+    "shortLinkDns": {
+        "title": "Short Link Domain",
+        "description": "Send this record to the customer along with the portal CNAMEs, so their short links run on their own domain instead of u.vacademy.io.",
+        "hostLabel": "Short links will be served from",
+        "dnsType": "Type",
+        "dnsName": "Name",
+        "dnsValue": "Value",
+        "dnsTtl": "TTL",
+        "dnsProxy": "Proxy",
+        "ttlAuto": "Auto",
+        "proxyOff": "DNS only — do not proxy",
+        "copy": "Copy record",
+        "copied": "DNS record copied",
+        "copyFailed": "Could not copy — select the values manually",
+        "platformNote": "The record alone does nothing: the platform team must also add this host to the ingress and register the domain for this institute. Register the domain before the record is live and short links will break instead of falling back to u.vacademy.io."
     }
 }

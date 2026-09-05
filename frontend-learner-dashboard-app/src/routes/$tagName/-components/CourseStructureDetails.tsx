@@ -26,7 +26,7 @@ import { getTerminology, getTerminologyPlural } from "@/components/common/layout
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getAuthoredChapterDescription } from "@/constants/chapter-description";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { SubjectTileGrid } from "./SubjectTileGrid";
+import { SubjectTileGrid, ContentDrillCrumb } from "./SubjectTileGrid";
 
 interface SubjectType {
   id: string;
@@ -53,6 +53,9 @@ interface Module {
   module_order: number;
   description: string;
   chapters: Chapter[];
+  /** Media id for the module artwork, same as subjects. The raw API object is
+   *  passed straight through, so this is present at runtime. */
+  thumbnail_id?: string | null;
 }
 
 interface ModuleWithChapters {
@@ -124,6 +127,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   const modulesTerm = getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules);
   const slidesTerm = getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides);
   const subjectTerm = getTerminology(ContentTerms.Subjects, SystemTerms.Subjects);
+  const subjectsTerm = getTerminologyPlural(ContentTerms.Subjects, SystemTerms.Subjects);
   const [isLoading, setIsLoading] = useState(true);
   const [studyLibraryData, setStudyLibraryData] = useState<SubjectType[]>([]);
   const [subjectModulesMap, setSubjectModulesMap] = useState<SubjectModulesMap>(
@@ -141,6 +145,9 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   // the panel sits under the grid, so two open subjects would push the second
   // one's content far from the card that opened it.
   const [openTileSubject, setOpenTileSubject] = useState<string | null>(null);
+  // The module drilled into within the open subject, if any. Together these
+  // two say which level the grid is showing: none, a subject, or a module.
+  const [openTileModule, setOpenTileModule] = useState<string | null>(null);
 
   // Helper function to check if a name is "default"
   const isDefaultName = (name: string | undefined | null): boolean => {
@@ -479,15 +486,22 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     let cancelled = false;
     (async () => {
       const resolved: Record<string, string> = {};
+      // Subjects and the modules under them share one map keyed by id, so the
+      // nested grid needs no second lookup and no second round of requests.
+      const targets: Array<{ id: string; fileId?: string | null }> =
+        studyLibraryData.map((s) => ({ id: s.id, fileId: s.thumbnail_id }));
+      for (const m of Object.values(subjectModulesMap).flat()) {
+        const id = m.module?.id;
+        if (id) targets.push({ id, fileId: m.module?.thumbnail_id });
+      }
       await Promise.all(
-        studyLibraryData.map(async (subject) => {
-          const fileId = subject.thumbnail_id;
-          if (!fileId || subjectThumbs[subject.id]) return;
+        targets.map(async ({ id, fileId }) => {
+          if (!fileId || subjectThumbs[id]) return;
           try {
             const url = await getPublicUrlWithoutLogin(fileId);
-            if (url) resolved[subject.id] = url;
+            if (url) resolved[id] = url;
           } catch {
-            /* no artwork — the card falls back to its initial */
+            /* no artwork — the card falls back to a glyph */
           }
         }),
       );
@@ -501,7 +515,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     // subjectThumbs is deliberately not a dep: it is what this effect writes,
     // and including it would re-run the whole prefetch on every resolved image.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [variant, studyLibraryData]);
+  }, [variant, studyLibraryData, subjectModulesMap]);
 
   // Toggle functions with lazy loading (like /courses route)
   const toggleSubject = (subjectId: string) => {
@@ -703,6 +717,33 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     );
 
     if (filteredModules.length === 0) return null;
+
+    // Tiles carry down to modules. Chapters below stay as rows: they carry
+    // slide counts and run long, so a third grid would cost more scrolling
+    // than the pictures are worth.
+    if (variant === "tiles") {
+      const openModule = filteredModules.find(
+        (m) => m.module?.id === openTileModule,
+      );
+      if (openModule) return renderChapters(openModule);
+      return (
+        <SubjectTileGrid
+          dense
+          items={filteredModules.map((m) => ({
+            id: m.module.id,
+            name:
+              m.module?.module_name ||
+              t("courseStructureDetails.unnamedModule", { module: moduleTerm }),
+            description: m.module?.description,
+          }))}
+          thumbs={subjectThumbs}
+          onOpen={(moduleId) => {
+            setOpenTileModule(moduleId);
+            toggleOpenState(moduleId, setOpenModules);
+          }}
+        />
+      );
+    }
 
     return (
       <div className="space-y-2">
@@ -1124,31 +1165,63 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     );
     if (subjects.length === 0) return null;
 
-    const openSubject = subjects.find((s) => s.id === openTileSubject) ?? null;
+    const subject = subjects.find((s) => s.id === openTileSubject) ?? null;
 
-    return (
-      <div className="space-y-4">
+    // Top level: just the subject cards, nothing expanded.
+    if (!subject) {
+      return (
         <SubjectTileGrid
-          subjects={subjects}
+          items={subjects.map((s) => ({
+            id: s.id,
+            name: s.subject_name,
+            description: s.description,
+          }))}
           thumbs={subjectThumbs}
-          openSubjectId={openTileSubject}
-          onToggle={(subjectId) => {
-            const next = openTileSubject === subjectId ? null : subjectId;
-            setOpenTileSubject(next);
-            // The outline renderer reads openSubjects to decide what to draw,
-            // so the drill-down panel needs this subject open too.
-            if (next) toggleOpenState(next, setOpenSubjects);
+          onOpen={(subjectId) => {
+            setOpenTileSubject(subjectId);
+            setOpenTileModule(null);
+            // The outline renderer reads openSubjects to decide what to draw.
+            toggleOpenState(subjectId, setOpenSubjects);
           }}
         />
+      );
+    }
 
-        {openSubject && (
-          <div className="rounded-catalogue-lg border border-catalogue-border bg-catalogue-bg-subtle p-3">
-            <h4 className="mb-3 font-medium text-catalogue-text-primary">
-              {openSubject.subject_name}
-            </h4>
-            {renderModules(openSubject.id)}
-          </div>
-        )}
+    // Drilled in: the grid is replaced by the level below, headed by a trail
+    // back up. One level on screen at a time, so there is never a panel whose
+    // owner has to be guessed at.
+    const openModule = (subjectModulesMap[subject.id] || []).find(
+      (m) => m.module?.id === openTileModule,
+    );
+    const trail = [
+      { id: subject.id, name: subject.subject_name },
+      ...(openModule?.module
+        ? [
+            {
+              id: openModule.module.id,
+              name:
+                openModule.module.module_name ||
+                t("courseStructureDetails.unnamedModule", { module: moduleTerm }),
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <div>
+        <ContentDrillCrumb
+          trail={trail}
+          rootLabel={subjectsTerm}
+          onNavigate={(id) => {
+            if (id === null) {
+              setOpenTileSubject(null);
+              setOpenTileModule(null);
+            } else if (id === subject.id) {
+              setOpenTileModule(null);
+            }
+          }}
+        />
+        {renderModules(subject.id)}
       </div>
     );
   };

@@ -1,49 +1,60 @@
 import React from "react";
-import { CaretDown, CaretRight, FolderOpen } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, FolderOpen } from "@phosphor-icons/react";
 
-export interface SubjectTile {
+export interface ContentTile {
   id: string;
-  subject_name: string;
+  /** Subject, module or chapter name — whatever level this grid is drawing. */
+  name: string;
   description?: string;
 }
 
+/** @deprecated kept so existing imports keep working; use ContentTile. */
+export type SubjectTile = ContentTile;
+
 interface SubjectTileGridProps {
-  subjects: SubjectTile[];
-  /** subject id → resolved artwork URL. A subject with no entry shows a glyph. */
+  items: ContentTile[];
+  /** item id → resolved artwork URL. An item with no entry shows a glyph. */
   thumbs: Record<string, string>;
-  openSubjectId: string | null;
-  onToggle: (subjectId: string) => void;
+  onOpen: (id: string) => void;
+  /** Tighter cards for a nested level. */
+  dense?: boolean;
 }
 
 /**
- * Subjects as artwork cards — the top level of the "tiles" course-structure
- * variant on the public course page.
+ * A level of the course structure, as artwork cards.
  *
- * Purely presentational, and split out of CourseStructureDetails for that
- * reason: that component's subjects arrive from a fetch in an effect, so the
- * grid could not otherwise be rendered in a test. Card shape follows the admin
- * dashboard and the enrolled learner's Content Structure, which is what
- * authors design their subject artwork against.
+ * Card shape follows the admin dashboard and the enrolled learner's Content
+ * Structure, which is what authors design their artwork against. Purely
+ * presentational, and split out of CourseStructureDetails so it can be
+ * rendered in a test — that component's data arrives from a fetch in an effect.
+ *
+ * Opening a card does NOT expand it in place. An earlier cut did, and on a
+ * three-column grid the full-width panel that appeared did not visibly belong
+ * to any one card. The caller swaps this grid for the level below instead
+ * (see ContentDrillCrumb), so at any moment the screen shows exactly one
+ * level and a trail back up.
  */
 export const SubjectTileGrid: React.FC<SubjectTileGridProps> = ({
-  subjects,
+  items,
   thumbs,
-  openSubjectId,
-  onToggle,
+  onOpen,
+  dense = false,
 }) => (
-  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-    {subjects.map((subject) => {
-      const isOpen = openSubjectId === subject.id;
-      const thumb = thumbs[subject.id];
+  <div
+    className={
+      dense
+        ? "grid grid-cols-2 gap-3 sm:grid-cols-3"
+        : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+    }
+  >
+    {items.map((item) => {
+      const thumb = thumbs[item.id];
       return (
         <button
-          key={subject.id}
+          key={item.id}
           type="button"
-          aria-expanded={isOpen}
-          onClick={() => onToggle(subject.id)}
-          className={`group overflow-hidden rounded-catalogue-lg border bg-catalogue-bg-elevated text-start transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
-            isOpen ? "border-primary-500 shadow-md" : "border-catalogue-border"
-          }`}
+          onClick={() => onOpen(item.id)}
+          className="group flex flex-col overflow-hidden rounded-catalogue-lg border border-catalogue-border bg-catalogue-bg-elevated text-start transition-shadow hover:border-primary-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         >
           <div className="aspect-video w-full overflow-hidden bg-catalogue-bg-subtle">
             {thumb ? (
@@ -64,25 +75,73 @@ export const SubjectTileGrid: React.FC<SubjectTileGridProps> = ({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2 p-3">
+          <div className={`flex flex-1 items-start gap-2 ${dense ? "p-2" : "p-3"}`}>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-medium text-catalogue-text-primary">
-                {subject.subject_name}
+              {/* Two lines rather than one: these titles are long enough that
+                  truncating loses the part that distinguishes them
+                  ("Level 1: Active explorer pro…"). */}
+              <div
+                className={`line-clamp-2 font-medium text-catalogue-text-primary ${dense ? "text-sm" : ""}`}
+              >
+                {item.name}
               </div>
-              {subject.description?.trim() ? (
-                <div className="truncate text-sm text-catalogue-text-muted">
-                  {subject.description}
+              {item.description?.trim() ? (
+                <div className="line-clamp-1 text-sm text-catalogue-text-muted">
+                  {item.description}
                 </div>
               ) : null}
             </div>
-            {isOpen ? (
-              <CaretDown size={16} className="shrink-0" />
-            ) : (
-              <CaretRight size={16} className="shrink-0" />
-            )}
+            <CaretRight
+              size={16}
+              className="mt-0.5 shrink-0 text-catalogue-text-muted transition-colors group-hover:text-primary-500"
+            />
           </div>
         </button>
       );
     })}
   </div>
 );
+
+/**
+ * The trail back up out of a drilled-into level.
+ *
+ * Every step is clickable, and the current level is the heading — so the
+ * visitor can always see where they are and get back in one click, which the
+ * expand-in-place version could not tell them.
+ */
+export const ContentDrillCrumb: React.FC<{
+  /** Ancestors, outermost first. The last entry is the level being shown. */
+  trail: Array<{ id: string; name: string }>;
+  rootLabel: string;
+  onNavigate: (id: string | null) => void;
+}> = ({ trail, rootLabel, onNavigate }) => {
+  const current = trail[trail.length - 1];
+  const ancestors = trail.slice(0, -1);
+  return (
+    <div className="mb-3 space-y-1">
+      <nav className="flex flex-wrap items-center gap-1 text-sm text-catalogue-text-muted">
+        <button
+          type="button"
+          onClick={() => onNavigate(null)}
+          className="inline-flex items-center gap-1 rounded-catalogue-sm px-1 py-0.5 hover:text-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        >
+          <CaretLeft size={14} />
+          {rootLabel}
+        </button>
+        {ancestors.map((step) => (
+          <React.Fragment key={step.id}>
+            <span aria-hidden="true">/</span>
+            <button
+              type="button"
+              onClick={() => onNavigate(step.id)}
+              className="rounded-catalogue-sm px-1 py-0.5 hover:text-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            >
+              {step.name}
+            </button>
+          </React.Fragment>
+        ))}
+      </nav>
+      <h4 className="font-medium text-catalogue-text-primary">{current?.name}</h4>
+    </div>
+  );
+};

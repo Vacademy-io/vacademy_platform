@@ -485,7 +485,10 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             if concept is None:
                 concept = lesson.concept_at(pointer)
                 check = concept.check if concept else None
-            hint = ((check or {}).get("hint") or "").strip() or (concept.hint if concept else None)
+            if revisit and revisit.get("current"):
+                hint = ((check or {}).get("hint") or "").strip() or None     # fresh checks are written in the session language
+            else:
+                hint = concept.hint_for(lang, lesson.language) if concept else None
             if pointer.phase == sm.PREDICT:
                 hint = None
             await _say(prompts.tpl("nudge_hint", lang, hint=hint) if hint else prompts.tpl("nudge_open", lang),
@@ -644,7 +647,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     board = []
                     await _send({"type": "board", "clear": True, "ops": [], "topic_id": step.topic.id if step.topic else None})
                 await _emit_state(step.pointer.phase, step.concept)
-                q = (step.concept.predict or "").strip() if step.concept else ""
+                q = (step.concept.predict_text(lang, lesson.language) or "") if step.concept else ""
+                if not q:
+                    # No guess question in this language: straight to the teaching.
+                    await _apply_step(sm.after_predict(lesson, step.pointer))
+                    return
                 await _send({"type": "check", "concept_id": step.concept.id if step.concept else None, "check_type": "predict",
                              "prompt": q, "options": [], "remediation": 0, "predict": True})
                 await _say(prompts.tpl("predict_intro", lang, question=q), meta={"kind": "predict_ask", "concept_id": step.concept.id if step.concept else None}, beat=True)
@@ -687,17 +694,18 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _emit_state(step.pointer.phase)
                 c = step.concept
                 chk = (c.check or {}) if c else {}
+                prompt_text = (c.check_prompt(lang, lesson.language) if c else None) or chk.get("prompt") or ""
                 await _send({"type": "check", "concept_id": c.id if c else None, "check_type": chk.get("type"),
-                             "prompt": chk.get("prompt"), "options": chk.get("options") or [],
+                             "prompt": prompt_text, "options": chk.get("options") or [],
                              "remediation": step.pointer.remediations})
-                await _say(prompts.tpl("ask", lang, prompt=chk.get("prompt") or ""), meta={"concept_id": c.id if c else None, "kind": "ask"}, beat=True)
+                await _say(prompts.tpl("ask", lang, prompt=prompt_text), meta={"concept_id": c.id if c else None, "kind": "ask"}, beat=True)
                 await _await("answer")
             elif step.kind == "topic_summary":
                 await _emit_state(step.pointer.phase)
                 if step.board_ops:
                     board = board + list(step.board_ops)
                     await _send({"type": "board", "clear": False, "ops": step.board_ops, "topic_id": step.topic.id if step.topic else None})
-                recap = (step.topic.summary_say or "").strip() if step.topic else ""
+                recap = (step.topic.recap(lang, lesson.language) or "") if step.topic else ""
                 await _say(recap or prompts.tpl("topic_summary", lang, topic=step.topic.title if step.topic else ""),
                            meta={"kind": "topic_summary"})
                 cands = _revisit_candidates("topic")
@@ -858,7 +866,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 if concept is None or intent in ("skip", "resume", "done") or (intent is None and short_ok):
                     await _apply_step(sm.after_predict(lesson, pointer)); return
                 if intent == "repeat":
-                    await _say(prompts.tpl("predict_intro", lang, question=concept.predict or ""), meta={"kind": "predict_ask"}, beat=True)
+                    await _say(prompts.tpl("predict_intro", lang, question=concept.predict_text(lang, lesson.language) or ""), meta={"kind": "predict_ask"}, beat=True)
                     await _await("answer"); return
                 if intent == "doubt" or force_doubt:
                     await _answer_doubt(text_, concept, spoken=spoken, what_next="answer"); return

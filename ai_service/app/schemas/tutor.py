@@ -201,6 +201,9 @@ class Check(BaseModel):
     # Pre-written nudge the teacher gives when the learner stalls or asks
     # for help (never the answer itself).
     hint: Optional[str] = None
+    # Spoken lines in the other course language, like say_i18n.
+    prompt_i18n: Dict[str, str] = Field(default_factory=dict)
+    hint_i18n: Dict[str, str] = Field(default_factory=dict)
     # Quiz slides only: the source question and its option ids in the same
     # order as `options`, so a tutor answer can be written back as a quiz
     # activity log (learner_tracking) when the slide is done.
@@ -221,6 +224,7 @@ class ConceptDraft(BaseModel):
     # Predict-then-reveal: a one-line guess question the teacher asks BEFORE
     # this concept's board appears (first concept of a topic), graded lightly.
     predict: Optional[str] = None
+    predict_i18n: Dict[str, str] = Field(default_factory=dict)
 
 
 class TopicDraft(BaseModel):
@@ -231,6 +235,7 @@ class TopicDraft(BaseModel):
     summary_ops: List[BoardOp] = Field(default_factory=list)
     # The spoken recap that closes the topic (1-3 sentences).
     summary_say: Optional[str] = None
+    summary_say_i18n: Dict[str, str] = Field(default_factory=dict)
 
 
 class KeyTerm(BaseModel):

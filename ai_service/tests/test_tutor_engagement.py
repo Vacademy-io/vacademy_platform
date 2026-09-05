@@ -36,7 +36,8 @@ def test_auto_layout_draws_every_part_with_ids_and_passes_the_gate():
 
 def _plan(quick=True, with_engagement=True):
     def check(kind, prompt, i):
-        c = {"type": kind, "prompt": prompt, "expected": "x", "hint": "think about the body part first", "pass_threshold": 0.7}
+        c = {"type": kind, "prompt": prompt, "expected": "x", "hint": "think about the body part first", "pass_threshold": 0.7,
+             "prompt_i18n": {"hi": "ऐसा क्यों है?"}, "hint_i18n": {"hi": "पहले body part के बारे में सोचिए"}}
         if kind == "mcq":
             c["options"] = ["a", "b", "c"]
         return c
@@ -53,10 +54,12 @@ def _plan(quick=True, with_engagement=True):
                        "check": check("mcq" if (quick and c == 1) else "open", "Why is that?", c) if c > 0 else {"type": "none"}}
             if t > 0 and c == 0 and with_engagement:
                 concept["predict"] = "What do you think happens next?"
+                concept["predict_i18n"] = {"hi": "आपको क्या लगता है आगे क्या होगा?"}
             concepts.append(concept)
         topic = {"id": f"t{t + 1}", "title": f"Topic {t}", "concepts": concepts,
                  "summary_ops": [{"op": "bullet", "id": f"t{t + 1}-recap", "items": ["one", "two", "three"]}] if with_engagement else [],
-                 "summary_say": "That is the topic in short." if with_engagement else None}
+                 "summary_say": "That is the topic in short." if with_engagement else None,
+                 "summary_say_i18n": {"hi": "संक्षेप में यही topic है।"} if with_engagement else {}}
         topics.append(topic)
     return TeachingPlanDraft.model_validate({"language": "en", "objectives": ["o"], "topics": topics})
 
@@ -132,3 +135,26 @@ def test_sentence_segments_and_pace_steps():
     assert _step_pace("normal", -1) == "slow" and _step_pace("slow", -1) == "slower" and _step_pace("slower", -1) == "slower"
     assert _step_pace("normal", 1) == "fast" and _step_pace("fast", 1) == "fast"
     assert PACE_MULTIPLIER["slower"] < PACE_MULTIPLIER["slow"] < PACE_MULTIPLIER["normal"] < PACE_MULTIPLIER["fast"]
+
+
+def test_spoken_lines_follow_the_session_language():
+    from app.services.tutor.plan_validator import is_hinglish
+    assert is_hinglish("physical assessment physiotherapy plan की नींव है।")
+    assert not is_hinglish("Physical assessment gives the foundation: subjective history plus objective examination.")
+    L = sm.from_plan_view({
+        "plan_id": "p", "slide_id": "s", "version": 1, "language": "en", "objectives": [],
+        "topics": [{"id": "t1", "title": "A", "order": 1, "summary_ops": [], "summary_say": "Recap.", "summary_say_i18n": {"hi": "सार।"}, "concepts": [
+            {"id": "a", "title": "a", "order": 1, "concept_tags": [], "board_ops": [], "say": "s", "say_i18n": {"hi": "स"}, "teach_notes": None,
+             "check": {"type": "open", "prompt": "Why?", "prompt_i18n": {"hi": "क्यों?"}, "hint": "think", "hint_i18n": {}},
+             "predict": "Guess?", "predict_i18n": {"hi": "अंदाज़ा?"}}]}],
+    })
+    c = L.topics[0].concepts[0]
+    assert c.check_prompt("en", "en") == "Why?" and c.check_prompt("hi", "en") == "क्यों?"
+    assert c.hint_for("en", "en") == "think" and c.hint_for("hi", "en") is None          # no Hindi hint: nothing rather than English
+    assert c.predict_text("hi", "en") == "अंदाज़ा?" and L.topics[0].recap("hi", "en") == "सार।" and L.topics[0].recap("en", "en") == "Recap."
+    # the soft rules ask for the missing Hindi hint and reject an English "Hindi" line
+    plan = _plan()
+    plan.topics[0].summary_say_i18n = {"hi": "This is English pretending."}
+    plan.topics[0].concepts[1].check.hint_i18n = {}
+    text = " ".join(soft_errors(plan))
+    assert "summary_say_i18n['hi'] is not Hindi" in text and "check.hint_i18n['hi'] is missing" in text

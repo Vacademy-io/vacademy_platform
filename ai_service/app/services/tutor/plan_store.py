@@ -215,7 +215,9 @@ def store_draft(
     # predict question), keyed by the draft's own ids.
     extras = {
         "summary_say": [(t.summary_say or "").strip() or None for t in draft.topics],
+        "summary_say_i18n": [dict(t.summary_say_i18n or {}) for t in draft.topics],
         "predict": [[(c.predict or "").strip() or None for c in t.concepts] for t in draft.topics],
+        "predict_i18n": [[dict(c.predict_i18n or {}) for c in t.concepts] for t in draft.topics],
     }
     plan.raw_plan_json = {"draft": raw, "compile_inputs": compile_inputs or {}, "extras": extras}
     plan.model = model
@@ -281,7 +283,13 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
     # written in draft order and read back by topic_order / concept_order).
     extras = ((plan.raw_plan_json or {}).get("extras") or {}) if isinstance(plan.raw_plan_json, dict) else {}
     recaps = extras.get("summary_say") if isinstance(extras.get("summary_say"), list) else []
+    recaps_i18n = extras.get("summary_say_i18n") if isinstance(extras.get("summary_say_i18n"), list) else []
     predicts = extras.get("predict") if isinstance(extras.get("predict"), list) else []
+    predicts_i18n = extras.get("predict_i18n") if isinstance(extras.get("predict_i18n"), list) else []
+
+    def _cell(rows: list, ti: int, ci: int):
+        row = rows[ti] if ti < len(rows) and isinstance(rows[ti], list) else []
+        return row[ci] if ci < len(row) else None
     return {
         "plan_id": plan.id,
         "slide_id": plan.slide_id,
@@ -303,6 +311,7 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
                 "estimated_seconds": t.estimated_seconds, "summary_html": t.summary_html,
                 "summary_ops": list(t.summary_ops_json or []),
                 "summary_say": recaps[ti] if ti < len(recaps) else None,
+                "summary_say_i18n": recaps_i18n[ti] if ti < len(recaps_i18n) and isinstance(recaps_i18n[ti], dict) else {},
                 "concepts": [
                     {
                         "id": c.id, "order": c.concept_order, "title": c.title,
@@ -311,8 +320,8 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
                         "board_html": c.board_html,
                         "say": c.say, "say_i18n": dict(c.say_i18n_json or {}),
                         "teach_notes": c.teach_notes, "check": c.check_json,
-                        "predict": (predicts[ti][ci] if ti < len(predicts) and isinstance(predicts[ti], list)
-                                    and ci < len(predicts[ti]) else None),
+                        "predict": _cell(predicts, ti, ci),
+                        "predict_i18n": _cell(predicts_i18n, ti, ci) or {},
                     }
                     for ci, c in enumerate(by_topic.get(t.id, []))
                 ],

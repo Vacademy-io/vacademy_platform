@@ -191,9 +191,13 @@ function TutorPage() {
   const chunksRef = useRef<Uint8Array[]>([]);
   // Each queued segment carries the sentence(s) it speaks, shown as it starts;
   // a `gap` entry is a beat of silence (before a question).
-  const queueRef = useRef<Array<{ buf: ArrayBuffer | null; text: string; sentence?: number; gap?: number }>>([]);
+  const queueRef = useRef<Array<{ buf: ArrayBuffer | null; text: string; sentence?: number; gap?: number; turn?: number; endTurn?: number }>>([]);
   const segmentTextRef = useRef("");
   const segmentSentenceRef = useRef(0);
+  // Teacher turns overlap (the next ai_text arrives while the last audio is
+  // still playing): every bubble, segment and completion carries its turn.
+  const turnSeqRef = useRef(0);
+  const turnTextRef = useRef<Map<number, string>>(new Map());
   const teacherTextRef = useRef("");
   const drainingRef = useRef(false);
   // The server's phase for AFTER the current narration; applied when the
@@ -224,23 +228,31 @@ function TutorPage() {
     },
     [voiceMode, speakOn],
   );
-  /** Append spoken text to the teacher's current bubble (voice mode). */
-  const revealTeacherText = useCallback((text: string) => {
+  /** Append spoken text to the bubble of its turn (voice mode). */
+  const revealTeacherText = useCallback((text: string, turn?: number) => {
     if (!text) return;
     setTranscript((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== "teacher") return [...prev, { role: "teacher", text }];
-      const merged = last.text ? `${last.text} ${text}` : text;
-      return [...prev.slice(0, -1), { ...last, text: merged }];
+      let i = prev.length - 1;
+      if (typeof turn === "number") {
+        while (i >= 0 && !(prev[i]!.role === "teacher" && prev[i]!.turn === turn)) i -= 1;
+      }
+      const at = i >= 0 && prev[i]!.role === "teacher" ? i : -1;
+      if (at < 0) return [...prev, { role: "teacher", text, turn }];
+      const line = prev[at]!;
+      const merged = line.text ? `${line.text} ${text}` : text;
+      return [...prev.slice(0, at), { ...line, text: merged }, ...prev.slice(at + 1)];
     });
   }, []);
-  const completeTeacherText = useCallback(() => {
-    const full = teacherTextRef.current;
+  /** The turn's audio is over: its bubble shows the whole line (drops any segment that failed to play). */
+  const completeTeacherText = useCallback((turn?: number) => {
+    const id = typeof turn === "number" ? turn : turnSeqRef.current;
+    const full = turnTextRef.current.get(id) ?? teacherTextRef.current;
     if (!full) return;
     setTranscript((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== "teacher" || last.text === full) return prev;
-      return [...prev.slice(0, -1), { ...last, text: full }];
+      let i = prev.length - 1;
+      while (i >= 0 && !(prev[i]!.role === "teacher" && (prev[i]!.turn === id || prev[i]!.turn === undefined))) i -= 1;
+      if (i < 0 || prev[i]!.text === full) return prev;
+      return [...prev.slice(0, i), { ...prev[i]!, text: full }, ...prev.slice(i + 1)];
     });
   }, []);
   const drain = useCallback(async () => {
@@ -254,8 +266,12 @@ function TutorPage() {
           await new Promise((r) => setTimeout(r, seg.gap));
           continue;
         }
+        if (typeof seg.endTurn === "number") {
+          completeTeacherText(seg.endTurn);
+          continue;
+        }
         setPhase("speaking");
-        revealTeacherText(seg.text);
+        revealTeacherText(seg.text, seg.turn);
         // The board writes the elements of this sentence as it is spoken.
         if (syncedRef.current && typeof seg.sentence === "number") revealSynced(seg.sentence);
         if (!seg.buf) continue;
@@ -352,7 +368,10 @@ function TutorPage() {
     onAiText: (text, meta) => {
       turnEndedRef.current = false;
       teacherTextRef.current = text;
-      const line: TranscriptLine = { role: "teacher", text: voiceMode && speakOn ? "" : text, kind: meta.kind, score: meta.score ?? null, cleared: meta.cleared };
+      const turn = ++turnSeqRef.current;
+      turnTextRef.current.set(turn, text);
+      if (turnTextRef.current.size > 20) turnTextRef.current.delete(turnTextRef.current.keys().next().value as number);
+      const line: TranscriptLine = { role: "teacher", text: voiceMode && speakOn ? "" : text, kind: meta.kind, score: meta.score ?? null, cleared: meta.cleared, turn };
       // The bubble fills sentence by sentence as the audio plays (voice mode).
       setTranscript((prev) => [...prev, line]);
       if (!(voiceMode && speakOn)) setPhase("idle");
@@ -386,11 +405,11 @@ function TutorPage() {
       segmentTextRef.current = "";
       const sentenceIdx = segmentSentenceRef.current;
       if (seg) {
-        queueRef.current.push({ buf: seg, text, sentence: sentenceIdx });
+        queueRef.current.push({ buf: seg, text, sentence: sentenceIdx, turn: turnSeqRef.current });
         void drain();
       } else {
         // No audio for this sentence (engine hiccup): still show the words.
-        revealTeacherText(text);
+        revealTeacherText(text, turnSeqRef.current);
         if (syncedRef.current) revealSynced(sentenceIdx);
       }
     },
@@ -399,8 +418,10 @@ function TutorPage() {
       settleBoard();
       turnEndedRef.current = true;
       const seg = takeSegment();
-      if (seg) queueRef.current.push({ buf: seg, text: segmentTextRef.current, sentence: segmentSentenceRef.current });
+      if (seg) queueRef.current.push({ buf: seg, text: segmentTextRef.current, sentence: segmentSentenceRef.current, turn: turnSeqRef.current });
       segmentTextRef.current = "";
+      // The bubble completes when ITS audio is over, in queue order.
+      if (voiceMode && speakOn) queueRef.current.push({ buf: null, text: "", endTurn: turnSeqRef.current });
       if (drainingRef.current || queueRef.current.length) {
         void drain();
       } else {

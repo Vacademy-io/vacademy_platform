@@ -10,6 +10,8 @@ export interface TranscriptLine {
   kind?: string;
   score?: number | null;
   cleared?: boolean;
+  /** The teacher turn this line belongs to (voice mode). */
+  turn?: number;
 }
 
 export interface LessonStats {

@@ -44,6 +44,32 @@ class Concept:
     check: Optional[Dict[str, Any]]
     # A one-line guess question asked before the board (first concept of a topic).
     predict: Optional[str] = None
+    predict_i18n: Dict[str, str] = field(default_factory=dict)
+
+    def _spoken(self, base: Optional[str], i18n: Dict[str, str], lang: str, course_lang: str) -> Optional[str]:
+        """A spoken line in the session language: the compiled translation
+        when the learner switched language, else the course-language line.
+        None when the translation is missing — callers fall back to a canned
+        line rather than speaking the wrong language."""
+        if lang and lang != course_lang:
+            return (i18n or {}).get(lang) or None
+        return (base or "").strip() or None
+
+    def predict_text(self, lang: str, course_lang: str = "en") -> Optional[str]:
+        return self._spoken(self.predict, self.predict_i18n, lang, course_lang)
+
+    def check_prompt(self, lang: str, course_lang: str = "en") -> Optional[str]:
+        chk = self.check or {}
+        return self._spoken(chk.get("prompt"), chk.get("prompt_i18n") or {}, lang, course_lang) or (chk.get("prompt") or None)
+
+    def hint_for(self, lang: str, course_lang: str = "en") -> Optional[str]:
+        chk = self.check or {}
+        h = self._spoken(chk.get("hint"), chk.get("hint_i18n") or {}, lang, course_lang)
+        if h:
+            return h
+        if lang == course_lang:
+            return self.hint
+        return None
 
     @property
     def hint(self) -> Optional[str]:
@@ -79,6 +105,12 @@ class Topic:
     estimated_seconds: Optional[int] = None
     # The spoken recap that closes the topic (compiled); None = canned line.
     summary_say: Optional[str] = None
+    summary_say_i18n: Dict[str, str] = field(default_factory=dict)
+
+    def recap(self, lang: str, course_lang: str = "en") -> Optional[str]:
+        if lang and lang != course_lang:
+            return (self.summary_say_i18n or {}).get(lang) or None
+        return (self.summary_say or "").strip() or None
 
 
 @dataclass
@@ -152,12 +184,14 @@ def from_plan_view(view: Dict[str, Any]) -> LessonPlan:
                 board_ops=list(c.get("board_ops") or []), say=c.get("say") or "",
                 say_i18n=dict(c.get("say_i18n") or {}), teach_notes=c.get("teach_notes"),
                 check=c.get("check"), predict=(c.get("predict") or None),
+                predict_i18n=dict(c.get("predict_i18n") or {}),
             )
             for c in t.get("concepts", [])
         ]
         topics.append(Topic(id=t["id"], title=t["title"], order=t["order"], concepts=concepts,
                             summary_ops=list(t.get("summary_ops") or []), estimated_seconds=t.get("estimated_seconds"),
-                            summary_say=(t.get("summary_say") or None)))
+                            summary_say=(t.get("summary_say") or None),
+                            summary_say_i18n=dict(t.get("summary_say_i18n") or {})))
     return LessonPlan(
         plan_id=view["plan_id"], slide_id=view["slide_id"], version=int(view.get("version") or 1),
         language=view.get("language") or "en", objectives=list(view.get("objectives") or []), topics=topics,

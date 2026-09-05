@@ -42,6 +42,18 @@ MAX_OPEN_QUESTION_WORDS = 30
 MAX_PREDICT_WORDS = 25
 RECAP_MIN_ITEMS, RECAP_MAX_ITEMS = 3, 5
 QUICK_CHECK_TYPES = ("mcq", "numeric")
+_DEVANAGARI = re.compile(r"[\u0900-\u097F]")
+_LATIN = re.compile(r"[A-Za-z]")
+# Hindi narration must actually be Hindi (Hinglish keeps English technical
+# terms, so a sentence can be mostly Latin letters): at least this share of
+# Devanagari code points among all letters.
+MIN_DEVANAGARI_SHARE = 0.15
+
+
+def is_hinglish(text: str) -> bool:
+    dev = len(_DEVANAGARI.findall(text or ""))
+    total = dev + len(_LATIN.findall(text or ""))
+    return total == 0 or dev / total >= MIN_DEVANAGARI_SHARE
 
 MAX_WORDS_PER_CONCEPT = DEFAULT_LIMITS.words_per_concept
 MAX_HEADINGS_PER_CONCEPT = DEFAULT_LIMITS.headings_per_concept
@@ -178,10 +190,28 @@ def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS) -> 
         return errors
     total_checks = 0
     quick_checks = 0
+    other = "hi" if (plan.language or "en") == "en" else "en"
+
+    def _needs(loc: str, what: str, text: str, i18n: Dict[str, str]) -> None:
+        if not (text or "").strip():
+            return
+        alt = (i18n or {}).get(other, "")
+        if not alt.strip():
+            errors.append(f"{loc}: {what}_i18n['{other}'] is missing (every spoken line is compiled in both languages)")
+        elif other == "hi" and not is_hinglish(alt):
+            errors.append(f"{loc}: {what}_i18n['hi'] is not Hindi — write it as Hinglish in Devanagari with English technical terms")
+
     for ti, topic in enumerate(plan.topics):
         tloc = f"topics[{ti}]('{topic.title[:30]}')"
+        _needs(tloc, "summary_say", topic.summary_say or "", topic.summary_say_i18n)
         for ci, concept in enumerate(topic.concepts):
             cloc = f"{tloc}.concepts[{ci}]('{concept.title[:30]}')"
+            if other == "hi" and (concept.say_i18n or {}).get("hi") and not is_hinglish(concept.say_i18n["hi"]):
+                errors.append(f"{cloc}: say_i18n['hi'] is not Hindi — write it as Hinglish in Devanagari with English technical terms")
+            _needs(cloc, "predict", concept.predict or "", concept.predict_i18n)
+            if concept.check.type != "none":
+                _needs(cloc, "check.prompt", concept.check.prompt or "", concept.check.prompt_i18n)
+                _needs(cloc, "check.hint", concept.check.hint or "", concept.check.hint_i18n)
             ops = ops_to_dicts(concept.board_ops)
             for op in iter_element_ops(ops):
                 if op.get("op") == "svg":

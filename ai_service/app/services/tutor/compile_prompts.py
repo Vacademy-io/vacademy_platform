@@ -58,6 +58,7 @@ def plan_schema_text(lang: str) -> str:
           "concept_tags": ["subject.concept"],
           "prerequisites": [],
           "predict": "ONLY on the first concept of topics 2, 3, …: one short question the learner guesses at BEFORE this board appears (<= 25 words)",
+          "predict_i18n": {{"{other}": "the same question in {LANG_NAMES[other]}"}},
           "board_ops": [ ...ops... ],
           "say": "2 to 4 spoken sentences in {LANG_NAMES[lang]}",
           "say_i18n": {{"{other}": "the same narration in {LANG_NAMES[other]}"}},
@@ -70,12 +71,15 @@ def plan_schema_text(lang: str) -> str:
             "rubric": "what earns full / half credit",
             "misconceptions": [{{"pattern": "what a confused learner says", "hint": "the nudge that fixes it"}}],
             "hint": "a nudge the teacher gives when the learner is stuck (never the answer itself)",
+            "prompt_i18n": {{"{other}": "the question in {LANG_NAMES[other]}"}},
+            "hint_i18n": {{"{other}": "the hint in {LANG_NAMES[other]}"}},
             "pass_threshold": 0.7
           }}
         }}
       ],
       "summary_ops": [ {{"op":"bullet","id":"t1-recap","items":["3 to 5 one-line takeaways of this topic"]}} ],
-      "summary_say": "1-3 spoken sentences that recap the topic in {LANG_NAMES[lang]}"
+      "summary_say": "1-3 spoken sentences that recap the topic in {LANG_NAMES[lang]}",
+      "summary_say_i18n": {{"{other}": "the same recap in {LANG_NAMES[other]}"}}
     }}
   ]
 }}"""
@@ -106,7 +110,11 @@ def rules_text(images_enabled: bool = True) -> str:
    {IMAGES_ON_RULE if images_enabled else IMAGES_OFF_RULE}
 5. `say` is what the teacher SAYS out loud: warm, second person, 2-4 sentences, refers to the board
    ("look at the arrow on the left"). Use {{student_name}} where the teacher would say the learner's name.
-   Provide the same narration in the other language under say_i18n. SPOKEN RHYTHM: one idea per sentence,
+   Provide the same narration in the other language under say_i18n — and likewise every other SPOKEN line
+   (check prompt, hint, predict, summary_say) under its *_i18n. A learner may switch language mid-lesson.
+   HINDI means Hinglish as an Indian teacher speaks it: Hindi sentences in Devanagari with the technical
+   terms in English letters ("physical assessment physiotherapy plan की नींव है") — never an English
+   sentence, never a pure-Sanskrit translation of a technical term. SPOKEN RHYTHM: one idea per sentence,
    under 18 words each; never read a list aloud (say "three things matter here" and name them in prose);
    put a question in its own final sentence.
 6. Ids: topics "t1","t2"...; concepts "t1c1","t1c2"...; elements "t1c1-b1" etc. All unique across the plan.

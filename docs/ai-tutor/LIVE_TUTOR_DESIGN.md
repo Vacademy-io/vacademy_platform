@@ -970,7 +970,13 @@ at slide end; a 60-second nudge with the hint on a silent question before the id
 notes (one callout per remediation/doubt turn stays on the board; the right answer is written
 when the teacher moves on); spoken rhythm rules, segments ≤200 chars, a beat before questions,
 definitions slightly slower; predict-then-reveal turns (`run_predict`, never graded); and a
-learner pace picker (slower / slow / medium / fast) persisted per learner.
+learner pace picker (slower / slow / medium / fast) persisted per learner. Learners can switch the
+lesson language (English / हिंदी) from the panel; every SPOKEN line is compiled in both languages
+(`say_i18n`, `summary_say_i18n`, `predict_i18n`, `check.prompt_i18n`, `check.hint_i18n`) and a
+Hinglish check (`plan_validator.is_hinglish`, ≥15% Devanagari among letters) rejects English
+passed off as Hindi; a line whose translation is missing falls back to a canned line in the
+session language, never to the other language. Board text and MCQ options stay in the course
+language. Teacher bubbles are tracked per turn so overlapping turns never merge.
 
 Still open (tracked, not silent):
 

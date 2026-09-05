@@ -91,6 +91,14 @@ public class AssessmentClassAiAnalysis {
     @Column(name = "generated_at")
     private Timestamp generatedAt;
 
+    /**
+     * Set when a paid Refresh replaces this report. Non-null rows are history:
+     * still downloadable, but no longer the live one — and deliberately outside
+     * the partial unique index, so they cannot block a new claim.
+     */
+    @Column(name = "superseded_at")
+    private Timestamp supersededAt;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

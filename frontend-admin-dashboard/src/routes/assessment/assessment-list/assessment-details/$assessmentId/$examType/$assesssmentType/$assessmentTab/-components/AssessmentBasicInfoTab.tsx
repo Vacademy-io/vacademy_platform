@@ -20,7 +20,11 @@ import {
 import { Route } from '..';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { convertToLocalDateTime } from '@/constants/helper';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    resolveSubjectName,
+    unresolvedSubjectIds,
+    useSubjectNamesByIds,
+} from '@/services/subject-names';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { useTranslation } from 'react-i18next';
@@ -110,12 +114,19 @@ export const AssessmentBasicInfoTab = () => {
             type: examType,
         })
     );
+    // Before the early return: the institute list only holds one subject per distinct
+    // name and drops subjects whose course was deleted, so most stored ids need the
+    // direct lookup to render as anything but "N/A".
+    const savedSubjectId = assessmentDetails[0]?.saved_data?.subject_selection;
+    const subjectNamesById = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [savedSubjectId])
+    );
     if (isLoading) return <DashboardLoader />;
 
     const saved = assessmentDetails[0]?.saved_data;
     const subjectLabel = getTerminology(ContentTerms.Subjects, SystemTerms.Subjects);
     const subjectName =
-        getSubjectNameById(instituteDetails?.subjects || [], saved?.subject_selection ?? '') ||
+        resolveSubjectName(instituteDetails?.subjects, subjectNamesById, savedSubjectId) ||
         t('basicInfo.notAvailable');
     const instructionsHtml = saved?.instructions?.content || '';
     const previewDuration = saved?.assessment_preview ?? 0;

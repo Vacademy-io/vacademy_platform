@@ -1,6 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Coins, Sparkle, WarningCircle } from '@phosphor-icons/react';
+import {
+    ClockCounterClockwise,
+    Coins,
+    DownloadSimple,
+    Sparkle,
+    WarningCircle,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { DialogContent } from '@/components/ui/dialog';
@@ -9,6 +15,13 @@ import {
     GET_AI_ASSESSMENT_REPORT_STATUS_URL,
     GET_EXPORT_PDF_URL_AI_ASSESSMENT_REPORT,
 } from '@/constants/urls';
+
+interface ReportVersion {
+    id: string;
+    generated_at: string | null;
+    /** The live report. Older entries were superseded by a paid refresh. */
+    current: boolean;
+}
 
 interface ReportStatus {
     available: boolean;
@@ -19,6 +32,8 @@ interface ReportStatus {
     current_balance: number | null;
     /** null means the balance is unknown — treat as allowed, never as blocked. */
     sufficient: boolean | null;
+    /** Every generation so far, newest first. Each is downloadable for free. */
+    history?: ReportVersion[];
 }
 
 /**
@@ -98,9 +113,16 @@ export const AiAssessmentReportDialog = ({
     // Only a definite "no" blocks. A null balance means unknown — a credit
     // service blip must not stop a teacher.
     const blocked = status?.sufficient === false;
+    // Only past versions — the live one already has its own download button, and
+    // repeating it here would read as two different reports.
+    const pastVersions = (status?.history ?? []).filter((h) => !h.current);
 
     const download = useMutation({
-        mutationFn: async (opts: { generate: boolean; regenerate: boolean }) => {
+        mutationFn: async (opts: {
+            generate: boolean;
+            regenerate: boolean;
+            versionId?: string;
+        }) => {
             const res = await authenticatedAxiosInstance({
                 method: 'GET',
                 responseType: 'blob',
@@ -112,12 +134,19 @@ export const AiAssessmentReportDialog = ({
             if (!blob) throw new Error('empty response');
             return blob;
         },
-        onSuccess: (blob) => {
+        onSuccess: (blob, variables) => {
             const safeName = (assessmentName || 'assessment').replace(/[^\w.-]+/g, '_');
+            const version = variables.versionId
+                ? `_${
+                      (status?.history ?? [])
+                          .find((h) => h.id === variables.versionId)
+                          ?.generated_at?.slice(0, 10) ?? 'previous'
+                  }`
+                : '';
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `AI_Report_${safeName}.pdf`);
+            link.setAttribute('download', `AI_Report_${safeName}${version}.pdf`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -127,7 +156,9 @@ export const AiAssessmentReportDialog = ({
             void queryClient.invalidateQueries({
                 queryKey: ['AI_ASSESSMENT_REPORT_STATUS', assessmentId, instituteId],
             });
-            onClose();
+            // Stay open when pulling an older version: teachers comparing two
+            // rounds of a test want more than one file.
+            if (!variables.versionId) onClose();
         },
         onError: async (error: unknown) => {
             toast.error((await readErrorMessage(error)) || t('aiReport.failed'));
@@ -178,7 +209,7 @@ export const AiAssessmentReportDialog = ({
                             <p>
                                 {credits != null
                                     ? t('aiReport.costs', { count: credits })
-                                    : t('aiReport.costsUnknown')}
+                                    : t('aiReport.costsUnavailable')}
                             </p>
                         </div>
                         {balance != null && (
@@ -186,6 +217,42 @@ export const AiAssessmentReportDialog = ({
                                 {t('aiReport.balance', { count: balance })}
                             </p>
                         )}
+                    </div>
+                )}
+
+                {pastVersions.length > 0 && (
+                    <div className="rounded-md border border-neutral-200">
+                        <p className="flex items-center gap-2 border-b border-neutral-200 px-3 py-2 text-caption font-medium text-neutral-600">
+                            <ClockCounterClockwise size={15} className="shrink-0" />
+                            {t('aiReport.historyTitle')}
+                        </p>
+                        <ul className="max-h-40 divide-y divide-neutral-100 overflow-y-auto">
+                            {pastVersions.map((version) => (
+                                <li
+                                    key={version.id}
+                                    className="flex items-center justify-between gap-2 px-3 py-2"
+                                >
+                                    <span className="text-caption text-neutral-500">
+                                        {fmtDateTime(version.generated_at) ?? ''}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        className="flex items-center gap-1 text-caption text-primary-500 hover:underline disabled:opacity-50"
+                                        onClick={() =>
+                                            download.mutate({
+                                                generate: false,
+                                                regenerate: false,
+                                                versionId: version.id,
+                                            })
+                                        }
+                                    >
+                                        <DownloadSimple size={14} />
+                                        {t('aiReport.historyDownload')}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 )}
 
@@ -227,9 +294,16 @@ export const AiAssessmentReportDialog = ({
                         >
                             {busy
                                 ? t('aiReport.generating')
-                                : alreadyGenerated
-                                  ? t('aiReport.refresh', { count: credits ?? 0 })
-                                  : t('aiReport.generate', { count: credits ?? 0 })}
+                                : credits == null
+                                  ? // Price unknown (status call failed, or pricing
+                                    // not deployed). Show no number rather than a
+                                    // "0 credits" that reads as free.
+                                    alreadyGenerated
+                                      ? t('aiReport.refreshNoPrice')
+                                      : t('aiReport.generateNoPrice')
+                                  : alreadyGenerated
+                                    ? t('aiReport.refresh', { count: credits })
+                                    : t('aiReport.generate', { count: credits })}
                         </MyButton>
                     )}
                 </div>

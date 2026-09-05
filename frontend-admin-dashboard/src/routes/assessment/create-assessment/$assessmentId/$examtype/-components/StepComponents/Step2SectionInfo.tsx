@@ -1,4 +1,5 @@
 import { AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { resolveSubjectName } from '@/services/subject-names';
 import React, { MutableRefObject, useEffect, useState, useRef } from 'react';
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
 import {
@@ -56,7 +57,6 @@ import sectionDetailsSchema from '../../-utils/section-details-schema';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { Route } from '../..';
 import { useQuestionsForSection } from '../../-hooks/getQuestionsDataForSection';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
 import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basic-info';
 import { calculateAveragePenalty } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
 import Step2GenerateQuestionsFromAI from './-components/Step2GenerateQuestionsFromAI';
@@ -277,13 +277,17 @@ export const Step2SectionInfo = ({
 
     // Get subject name from Step 1 context (Zustand store or saved assessment details)
     const basicInfoStore = useBasicInfoStore();
-    const defaultSubject =
+    // Step 1 stores the subject *id*; the question-paper form below is keyed by name, so
+    // resolve it here. Unresolvable ids (a subject whose course was deleted, or the "N/A"
+    // sentinel older saves wrote) yield '', which leaves the paper's own subject picker
+    // visible instead of pinning it to a bogus value.
+    const defaultSubject = resolveSubjectName(
+        instituteDetails?.subjects,
+        {},
         basicInfoStore.testCreation?.subject ||
-        getSubjectNameById(
-            instituteDetails?.subjects || [],
-            assessmentDetails?.[0]?.saved_data?.subject_selection ?? ''
-        ) ||
-        '';
+            assessmentDetails?.[0]?.saved_data?.subject_selection ||
+            ''
+    );
 
     const adaptiveMarking = useQuestionsForSection(
         assessmentId,

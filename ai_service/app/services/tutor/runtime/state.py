@@ -19,6 +19,9 @@ REMEDIATE = "remediate"         # hint given, waiting for a second try
 MEDIA_TASK = "media_task"       # learner is watching / reading
 TOPIC_SUMMARY = "topic_summary"
 SLIDE_DONE = "slide_done"
+# Predict-then-reveal: the teacher asked for a guess before this concept's
+# board appears; any answer (or a skip) moves on to the teaching.
+PREDICT = "predict"
 # A weak concept is being re-asked at a topic summary or slide end (design
 # §6.6). Never persisted: a session that ends mid-revisit resumes on the
 # summary, and the revisit runs again because the concept is still weak.
@@ -39,6 +42,18 @@ class Concept:
     say_i18n: Dict[str, str]
     teach_notes: Optional[str]
     check: Optional[Dict[str, Any]]
+    # A one-line guess question asked before the board (first concept of a topic).
+    predict: Optional[str] = None
+
+    @property
+    def hint(self) -> Optional[str]:
+        h = ((self.check or {}).get("hint") or "").strip()
+        if h:
+            return h
+        for m in (self.check or {}).get("misconceptions") or []:
+            if isinstance(m, dict) and (m.get("hint") or "").strip():
+                return str(m["hint"]).strip()
+        return None
 
     @property
     def has_check(self) -> bool:
@@ -62,6 +77,8 @@ class Topic:
     concepts: List[Concept]
     summary_ops: List[Dict[str, Any]]
     estimated_seconds: Optional[int] = None
+    # The spoken recap that closes the topic (compiled); None = canned line.
+    summary_say: Optional[str] = None
 
 
 @dataclass
@@ -108,6 +125,8 @@ class Pointer:
     concept: int = 0
     phase: str = TEACH
     remediations: int = 0
+    # The predict question of the current concept was answered (or skipped).
+    predicted: bool = False
     # Concepts completed in this slide (for progress and weak flags).
     done: int = 0
     weak: List[str] = field(default_factory=list)
@@ -132,12 +151,13 @@ def from_plan_view(view: Dict[str, Any]) -> LessonPlan:
                 id=c["id"], title=c["title"], order=c["order"], tags=list(c.get("concept_tags") or []),
                 board_ops=list(c.get("board_ops") or []), say=c.get("say") or "",
                 say_i18n=dict(c.get("say_i18n") or {}), teach_notes=c.get("teach_notes"),
-                check=c.get("check"),
+                check=c.get("check"), predict=(c.get("predict") or None),
             )
             for c in t.get("concepts", [])
         ]
         topics.append(Topic(id=t["id"], title=t["title"], order=t["order"], concepts=concepts,
-                            summary_ops=list(t.get("summary_ops") or []), estimated_seconds=t.get("estimated_seconds")))
+                            summary_ops=list(t.get("summary_ops") or []), estimated_seconds=t.get("estimated_seconds"),
+                            summary_say=(t.get("summary_say") or None)))
     return LessonPlan(
         plan_id=view["plan_id"], slide_id=view["slide_id"], version=int(view.get("version") or 1),
         language=view.get("language") or "en", objectives=list(view.get("objectives") or []), topics=topics,
@@ -194,9 +214,18 @@ def enter(plan: LessonPlan, p: Pointer) -> Step:
         return Step(pointer=replace(p, phase=TOPIC_SUMMARY), kind="topic_summary", topic=topic,
                     board_ops=list(topic.summary_ops))
     concept = topic.concepts[p.concept]
+    if concept.predict and not p.predicted and not concept.is_media_task:
+        # Ask for a guess first; the board is drawn after the answer.
+        return Step(pointer=replace(p, phase=PREDICT, remediations=0), kind="predict", concept=concept, topic=topic,
+                    clear_board=(p.concept == 0))
     phase = MEDIA_TASK if concept.is_media_task else TEACH
     return Step(pointer=replace(p, phase=phase, remediations=0), kind="media_task" if concept.is_media_task else "teach",
-                concept=concept, topic=topic, clear_board=(p.concept == 0), board_ops=list(concept.board_ops))
+                concept=concept, topic=topic, clear_board=(p.concept == 0 and not p.predicted), board_ops=list(concept.board_ops))
+
+
+def after_predict(plan: LessonPlan, p: Pointer) -> Step:
+    """The guess was made (or skipped): teach the concept, board and all."""
+    return enter(plan, replace(p, predicted=True))
 
 
 def after_teach(plan: LessonPlan, p: Pointer) -> Step:
@@ -219,7 +248,7 @@ def advance(plan: LessonPlan, p: Pointer, *, mark_done: bool = True, weak: bool 
             q.skipped.append(concept.id)
     topic = plan.topic_at(p)
     if topic is not None and p.concept + 1 < len(topic.concepts):
-        return enter(plan, replace(q, concept=p.concept + 1, remediations=0))
+        return enter(plan, replace(q, concept=p.concept + 1, remediations=0, predicted=False))
     # end of topic → summary (then the socket calls next_topic)
     return Step(pointer=replace(q, concept=len(topic.concepts) if topic else 0, phase=TOPIC_SUMMARY),
                 kind="topic_summary", topic=topic, board_ops=list(topic.summary_ops) if topic else [])
@@ -227,7 +256,7 @@ def advance(plan: LessonPlan, p: Pointer, *, mark_done: bool = True, weak: bool 
 
 def next_topic(plan: LessonPlan, p: Pointer) -> Step:
     if p.topic + 1 < len(plan.topics):
-        return enter(plan, replace(p, topic=p.topic + 1, concept=0, remediations=0))
+        return enter(plan, replace(p, topic=p.topic + 1, concept=0, remediations=0, predicted=False))
     return Step(pointer=replace(p, phase=SLIDE_DONE), kind="slide_done")
 
 
@@ -244,7 +273,7 @@ def repeat(plan: LessonPlan, p: Pointer) -> Step:
     concept = plan.concept_at(p)
     if concept is None:
         return enter(plan, p)
-    return Step(pointer=replace(p, phase=MEDIA_TASK if concept.is_media_task else TEACH), kind="teach",
+    return Step(pointer=replace(p, phase=MEDIA_TASK if concept.is_media_task else TEACH, predicted=True), kind="teach",
                 concept=concept, topic=plan.topic_at(p), board_ops=list(concept.board_ops))
 
 

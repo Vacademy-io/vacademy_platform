@@ -16,7 +16,7 @@ import html
 import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from ...schemas.tutor import ELEMENT_OPS, LIVE_ONLY_OPS, VISUAL_OPS
+from ...schemas.tutor import COLUMN_CHILD_OPS, ELEMENT_OPS, LIVE_ONLY_OPS, VISUAL_OPS
 
 # ── SVG sanitizer ────────────────────────────────────────────────────────────
 
@@ -120,7 +120,20 @@ def op_words(op: Dict[str, Any]) -> int:
         return sum(word_count(c) for row in op.get("rows", []) for c in row)
     if kind == "heading":
         return word_count(op.get("text", ""))
+    if kind == "columns":
+        return sum(op_words(child) for col in (op.get("columns") or []) for child in (col or []) if isinstance(child, dict))
     return 0
+
+
+def iter_element_ops(ops: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
+    """Every element op including the ones nested in columns."""
+    for op in ops:
+        yield op
+        if op.get("op") == "columns":
+            for col in op.get("columns") or []:
+                for child in col or []:
+                    if isinstance(child, dict):
+                        yield child
 
 
 # ── Structural validation (ids, targets) ─────────────────────────────────────
@@ -161,6 +174,20 @@ def validate_ops(ops: Sequence[Dict[str, Any]], known_ids: Optional[set] = None,
             # Parts whose id is not in the svg are pruned by clean_ops, not
             # reported: a diagram that loses a pointer is still a diagram, and
             # bouncing the whole plan over it cost three model calls per slide.
+        if kind == "columns":
+            cols = op.get("columns") or []
+            if not (2 <= len(cols) <= 3):
+                errors.append(f"{loc}: columns needs 2 or 3 columns")
+            for ci, col in enumerate(cols):
+                if not isinstance(col, list) or not col:
+                    errors.append(f"{loc}: column {ci + 1} is empty")
+                    continue
+                bad = [c.get("op") for c in col if not isinstance(c, dict) or c.get("op") not in COLUMN_CHILD_OPS]
+                if bad:
+                    errors.append(f"{loc}: column {ci + 1} may only hold heading/text/bullet/formula/table/callout, not {bad}")
+                sub_errors, ids = validate_ops([c for c in col if isinstance(c, dict) and c.get("op") in COLUMN_CHILD_OPS],
+                                               ids, where=f"{loc}.col{ci + 1}.", require_media_urls=require_media_urls)
+                errors.extend(sub_errors)
         if kind in ("image", "video") and op.get("url") and not safe_url(op.get("url")):
             errors.append(f"{loc}: {kind} url must be https")
         if kind == "media_task":
@@ -230,6 +257,13 @@ def _render_op(op: Dict[str, Any]) -> str:
     if kind == "arrow":
         return (f'<span class="tb-arrow"{attrs} data-from="{esc(op.get("from"))}" data-to="{esc(op.get("to"))}">'
                 f'{esc(op.get("text") or "")}</span>')
+    if kind == "columns":
+        cols = [c for c in (op.get("columns") or []) if isinstance(c, list)]
+        inner = "".join(
+            '<div class="tb-col">' + "".join(_render_op(child) for child in col if isinstance(child, dict)) + "</div>"
+            for col in cols
+        )
+        return f'<div class="tb-columns tb-columns-{len(cols)}"{attrs}>{inner}</div>'
     # highlight / unhighlight / reveal / clear leave no mark on the board
     return ""
 
@@ -254,7 +288,7 @@ def clean_ops(ops: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 continue
             op["svg"] = cleaned
             present = svg_ids(cleaned) | svg_ids(op.get("svg", ""))
-            op["parts"] = [p for p in (op.get("parts") or []) if p.get("id") in present]
+            op["parts"] = [p for p in (op.get("parts") or []) if isinstance(p, dict) and p.get("id") in present]
         elif kind in ("image", "video"):
             url = safe_url(op.get("url"))
             if op.get("url") and not url:
@@ -263,6 +297,10 @@ def clean_ops(ops: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
         elif kind == "media_task":
             op["url"] = safe_url(op.get("url"))
             if not (op["url"] or op.get("file_id")):
+                continue
+        elif kind == "columns":
+            op["columns"] = [clean_ops([c for c in (col or []) if isinstance(c, dict)]) for col in (op.get("columns") or [])]
+            if not any(op["columns"]):
                 continue
         out.append(op)
     return out

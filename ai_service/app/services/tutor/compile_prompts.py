@@ -34,7 +34,11 @@ OPS_REFERENCE = """BOARD OPERATIONS (the only ops you may use; every element op 
 - {"op":"annotate","id":"...","target":"<existing element id>","text":"...","position":"right|below|above|left"}
 - {"op":"arrow","id":"...","from":"<element id>","to":"<element id>","text":"..."}
 - {"op":"media_task","id":"...","kind":"video|pdf","description":"..."}   ONLY in a media-task lesson (the system fills the url)
-Optional on any op: "anim":"write|fade|pop", "say_index": <0-based sentence of `say` this op appears with>.
+- {"op":"columns","id":"...","columns":[[ ...ops... ],[ ...ops... ]]}      2-3 columns side by side for a comparison
+      (each column: a heading/text/bullet/callout/table/formula; nested ops need their own ids; no svg/image inside)
+REQUIRED on every element op: "say_index": the 0-based sentence of `say` during which it appears. The board writes
+itself while the teacher speaks: sentence 0 shows the say_index-0 elements, sentence 1 the next, and so on. A
+diagram part's "step" is likewise the sentence index it appears at. Optional: "anim":"write|fade|pop".
 Never use highlight/unhighlight/reveal/clear: those are live-session ops."""
 
 
@@ -53,6 +57,7 @@ def plan_schema_text(lang: str) -> str:
           "id": "t1c1", "title": "...",
           "concept_tags": ["subject.concept"],
           "prerequisites": [],
+          "predict": "ONLY on the first concept of topics 2, 3, …: one short question the learner guesses at BEFORE this board appears (<= 25 words)",
           "board_ops": [ ...ops... ],
           "say": "2 to 4 spoken sentences in {LANG_NAMES[lang]}",
           "say_i18n": {{"{other}": "the same narration in {LANG_NAMES[other]}"}},
@@ -64,11 +69,13 @@ def plan_schema_text(lang: str) -> str:
             "expected": "the answer",
             "rubric": "what earns full / half credit",
             "misconceptions": [{{"pattern": "what a confused learner says", "hint": "the nudge that fixes it"}}],
+            "hint": "a nudge the teacher gives when the learner is stuck (never the answer itself)",
             "pass_threshold": 0.7
           }}
         }}
       ],
-      "summary_ops": [ ...1-3 ops that close the topic... ]
+      "summary_ops": [ {{"op":"bullet","id":"t1-recap","items":["3 to 5 one-line takeaways of this topic"]}} ],
+      "summary_say": "1-3 spoken sentences that recap the topic in {LANG_NAMES[lang]}"
     }}
   ]
 }}"""
@@ -99,10 +106,22 @@ def rules_text(images_enabled: bool = True) -> str:
    {IMAGES_ON_RULE if images_enabled else IMAGES_OFF_RULE}
 5. `say` is what the teacher SAYS out loud: warm, second person, 2-4 sentences, refers to the board
    ("look at the arrow on the left"). Use {{student_name}} where the teacher would say the learner's name.
-   Provide the same narration in the other language under say_i18n.
+   Provide the same narration in the other language under say_i18n. SPOKEN RHYTHM: one idea per sentence,
+   under 18 words each; never read a list aloud (say "three things matter here" and name them in prose);
+   put a question in its own final sentence.
 6. Ids: topics "t1","t2"...; concepts "t1c1","t1c2"...; elements "t1c1-b1" etc. All unique across the plan.
 7. concept_tags are stable, lowercase, dotted ("cell.nucleus"); the same idea gets the same tag everywhere.
-8. Write teach_notes for a human/AI teacher: the analogy to use, the order to reveal things, common traps."""
+8. Write teach_notes for a human/AI teacher: the analogy to use, the order to reveal things, common traps.
+9. ENGAGEMENT (checked): every topic closes with a recap — summary_ops holds ONE bullet op of 3-5 one-line
+   takeaways and summary_say is the 1-3 sentence spoken recap; every topic contains one callout of kind
+   "example" (a worked or real-life example); the first concept of every topic after the first carries a
+   `predict` question (a guess the learner makes before the board appears, e.g. "What do you think happens
+   to control when you export?").
+10. CHECK MIX (checked): at least a third of all checks are QUICK — "mcq" with exactly 3 options (one right,
+   two plausible) or "numeric"; open questions ask ONE thing in under 30 words and are for reasoning, not
+   recall; every check carries a `hint` (a nudge, never the answer).
+11. Set "say_index" on every element op and "step" on diagram parts so the board writes itself in sync with
+   the narration (rule in the ops reference)."""
 
 
 def system_prompt(teacher_name: str, lang: str, images_enabled: bool = True) -> str:
@@ -281,3 +300,16 @@ def describe_reply(text: str) -> str:
     head = t.strip()[:160].replace("\n", " ")
     tail = t.strip()[-40:].replace("\n", " ")
     return f"len={len(t)} starts={head!r} ends={tail!r}"
+
+
+def soft_repair_prompt(errors: List[str], previous_json: str) -> str:
+    """Quality asks (recap, examples, check mix, hints, diagram geometry):
+    one round, and the plan is kept even if the model cannot satisfy all."""
+    listed = "\n".join(f"- {e}" for e in errors[:40])
+    return (
+        "Your plan is valid but misses some of the engagement and diagram rules. Improve it: fix every point "
+        "below, keep every topic and concept, keep what already works, and return the complete corrected JSON "
+        "object, nothing else. For a diagram problem, redraw that svg on viewBox='0 0 640 360' with filled "
+        "rounded boxes, 16-22px labels inside or under their shapes, and nothing crossing.\n"
+        f"{listed}\n\nPREVIOUS JSON:\n{previous_json[:60000]}"
+    )

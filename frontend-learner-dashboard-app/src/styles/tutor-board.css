@@ -5,9 +5,28 @@
         linear-gradient(theme('colors.neutral.100') 1px, transparent 1px),
         linear-gradient(90deg, theme('colors.neutral.100') 1px, transparent 1px);
     background-size: 24px 24px;
-    font-family: 'Segoe Print', 'Bradley Hand', 'Comic Neue', 'Trebuchet MS', ui-rounded, system-ui, sans-serif;
+    font-family: 'Kalam', 'Segoe Print', 'Bradley Hand', 'Comic Neue', 'Trebuchet MS', ui-rounded, system-ui, sans-serif;
     line-height: 1.5;
 }
+/* The element the teacher is talking about right now. */
+.tutor-board-preview .tb-focus { outline: 3px solid theme('colors.warning.300'); outline-offset: 3px; border-radius: 6px; transition: outline-color 0.4s ease; }
+/* Side-by-side columns (compare and contrast). */
+.tutor-board-preview .tb-columns { @apply my-2 grid gap-3; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tutor-board-preview .tb-columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tutor-board-preview .tb-col { @apply min-w-0 rounded-lg border border-neutral-200 bg-white/60 px-3 py-2; }
+.tutor-board-preview .tb-col > .tb-heading { @apply mb-2 border-b-2 text-base; }
+@media (max-width: 640px) { .tutor-board-preview .tb-columns, .tutor-board-preview .tb-columns-3 { grid-template-columns: 1fr; } }
+/* Annotations sit where the plan puts them: a flex row for left/right. */
+.tutor-board-preview .tb-row { @apply my-1.5 flex flex-wrap items-start gap-2; }
+.tutor-board-preview .tb-row > * { @apply my-0; }
+.tutor-board-preview .tb-row > .tb-annotation { @apply shrink-0 self-center; max-width: 45%; }
+.tutor-board-preview .tb-row > :not(.tb-annotation) { @apply min-w-0 flex-1; }
+/* Arrows drawn between their targets (overlay), the pill keeps the label. */
+.tutor-board-preview .tb-arrow-layer { @apply pointer-events-none absolute inset-x-0 top-0; }
+.tutor-board-preview .tb-arrow-layer line { stroke: theme('colors.neutral.500'); stroke-width: 2; }
+.tutor-board-preview .tb-arrow-layer path { fill: theme('colors.neutral.500'); }
+/* A note the teacher wrote during the lesson. */
+.tutor-board-preview .tb-callout.tb-note { @apply border-warning-500 bg-warning-50; }
 .tutor-board-preview .tb-op { opacity: 0; transform: translateY(6px); }
 .tutor-board-preview .tb-op.tb-enter { opacity: 1; transform: none; transition: opacity 0.5s ease, transform 0.5s ease; }
 .tutor-board-preview .tb-anim-write.tb-enter { animation: tb-write 0.9s ease-out; }

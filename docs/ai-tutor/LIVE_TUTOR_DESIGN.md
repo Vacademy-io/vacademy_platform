@@ -955,6 +955,23 @@ Follow-ups shipped 2026-09-04 (owner QA round 1 and the next-batch request):
   portal: Credits & pricing card editing `ai_tool_pricing` (tutor compile / image / live minute
   first), plus `tutor.live.preflight_minutes` and `tutor.live.max_minutes` as number settings.
 
+Engagement build (2026-09-05, from the student-side review): the board writes itself with the
+voice — every element op carries `say_index` and the socket sends sentence-level `segment_text`
+frames with an index, so the learner app reveals elements and diagram steps as their sentence
+plays and pulses the element being explained; a diagram quality gate (`svg_check.py`: viewBox,
+label coordinates, font floor, overlaps, fills) with one repair round and an auto-layout
+fallback built from the parts; soft engagement rules (`plan_validator.soft_errors`, one repair
+round, never a failed plan): a recap bullet board + spoken `summary_say` per topic, an example
+callout per topic, a `predict` question before the first concept of later topics, a third of
+checks quick (mcq with 3 options / numeric), a `hint` per check, one-idea open questions; a
+`columns` op, arrows drawn as lines, annotation positions honoured, Kalam loaded for the
+handwriting face; verdict chips, "n of m so far" and a streak on the learner panel, a scorecard
+at slide end; a 60-second nudge with the hint on a silent question before the idle exit; live
+notes (one callout per remediation/doubt turn stays on the board; the right answer is written
+when the teacher moves on); spoken rhythm rules, segments ≤200 chars, a beat before questions,
+definitions slightly slower; predict-then-reveal turns (`run_predict`, never graded); and a
+learner pace picker (slower / slow / medium / fast) persisted per learner.
+
 Still open (tracked, not silent):
 
 - **Video and PDF slides now compile from their own words** (`services/tutor/source_text.py`):

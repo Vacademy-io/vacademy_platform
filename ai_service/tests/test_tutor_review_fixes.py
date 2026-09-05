@@ -468,7 +468,9 @@ def test_no_image_plan_gets_one_image_repair_round_then_is_accepted(monkeypatch)
     monkeypatch.setattr(compiler, "_resolve_media", no_media)
     src = SlideSource(slide_id="s", title="T", source_type="DOCUMENT", source_id="d", kind="document", text="body")
     draft, _raw = asyncio.run(compiler._build_draft(src, None, pc._Run()))
-    assert draft is not None and len(calls) == 2 and calls[1].startswith("Your plan is valid but has NO image")
+    # initial, the image round, then the one quality round (engagement rules)
+    assert draft is not None and len(calls) == 3 and calls[1].startswith("Your plan is valid but has NO image")
+    assert calls[2].startswith("Your plan is valid but misses")
 
 
 def test_smallest_speed_calibration_is_monotonic_and_hits_the_measured_points():

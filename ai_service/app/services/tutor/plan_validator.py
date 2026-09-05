@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Set
 
 from ...schemas.tutor import TeachingPlanDraft, VISUAL_OPS
-from .board_ops import op_words, ops_to_dicts, validate_ops
+from .board_ops import iter_element_ops, op_words, ops_to_dicts, validate_ops
+from .svg_check import check_svg_geometry
 
 
 @dataclass(frozen=True)
@@ -26,13 +27,21 @@ class Limits:
     # Whiteboards teach with pictures: every board must carry at least one
     # svg / image / video (media tasks count). Off for quizzes.
     require_visual_per_topic: bool = True
+    # Engagement rules (soft: one repair round, never a failed plan): a recap
+    # board + spoken recap per topic, an example per topic, a mix of quick
+    # checks, a hint per check, short open questions. Off for quizzes.
+    engagement_rules: bool = True
 
 
 DEFAULT_LIMITS = Limits()
 # Quiz boards show the question and its options verbatim; a six-option MCQ is
 # not a wall of text, it is the question. One topic per question keeps each
 # board to one question anyway.
-QUIZ_LIMITS = Limits(words_per_concept=160, board_words_per_topic=400, require_visual_per_topic=False)
+QUIZ_LIMITS = Limits(words_per_concept=160, board_words_per_topic=400, require_visual_per_topic=False, engagement_rules=False)
+MAX_OPEN_QUESTION_WORDS = 30
+MAX_PREDICT_WORDS = 25
+RECAP_MIN_ITEMS, RECAP_MAX_ITEMS = 3, 5
+QUICK_CHECK_TYPES = ("mcq", "numeric")
 
 MAX_WORDS_PER_CONCEPT = DEFAULT_LIMITS.words_per_concept
 MAX_HEADINGS_PER_CONCEPT = DEFAULT_LIMITS.headings_per_concept
@@ -102,7 +111,8 @@ def validate_plan(
             errors.extend(op_errors)
             # Element ids must be unique across the whole plan too, so a live
             # highlight can never be ambiguous.
-            for op in ops:
+            elems = list(iter_element_ops(ops))
+            for op in elems:
                 oid = op.get("id")
                 if oid and oid in seen_ids:
                     errors.append(f"{cloc}: element id '{oid}' reuses an earlier topic/concept/element id")
@@ -113,15 +123,15 @@ def validate_plan(
             topic_words += words
             if words > limits.words_per_concept:
                 errors.append(f"{cloc}: board adds {words} words; keep a concept under {limits.words_per_concept}")
-            headings = sum(1 for op in ops if op.get("op") == "heading")
+            headings = sum(1 for op in elems if op.get("op") == "heading")
             if headings > limits.headings_per_concept:
                 errors.append(f"{cloc}: {headings} headings; at most {limits.headings_per_concept} per concept")
-            visuals = sum(1 for op in ops if op.get("op") in VISUAL_OPS)
+            visuals = sum(1 for op in elems if op.get("op") in VISUAL_OPS)
             if visuals > limits.visuals_per_concept:
                 errors.append(f"{cloc}: {visuals} visuals; at most {limits.visuals_per_concept} per concept")
             if any(op.get("op") == "clear" for op in ops):
                 errors.append(f"{cloc}: 'clear' belongs to topic boundaries, not concepts")
-            for op in ops:
+            for op in elems:
                 if op.get("op") in VISUAL_OPS and len((op.get("description") or "").strip()) < MIN_DESCRIPTION_CHARS:
                     errors.append(f"{cloc}: {op.get('op')} '{op.get('id')}' needs a real description")
 
@@ -145,7 +155,7 @@ def validate_plan(
                     errors.append(f"{cloc}: pass_threshold must be between 0.3 and 1.0")
 
         if limits.require_visual_per_topic and not any(
-            op.get("op") in VISUAL_OPS for c in topic.concepts for op in ops_to_dicts(c.board_ops)
+            op.get("op") in VISUAL_OPS for c in topic.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))
         ):
             errors.append(f"{tloc}: this board has no visual — add an svg diagram (or an image) to one of its concepts")
         if topic_words > limits.board_words_per_topic:
@@ -154,4 +164,59 @@ def validate_plan(
                                    require_media_urls=require_media_urls)
         errors.extend(s_errors)
 
+    return errors
+
+
+# ── soft rules: engagement and diagram quality ──────────────────────────────
+# These come back to the model once; a plan that still breaks them is kept
+# (with broken diagrams replaced by an auto-layout), so quality asks never
+# turn into a failed compile.
+
+def soft_errors(plan: TeachingPlanDraft, *, limits: Limits = DEFAULT_LIMITS) -> List[str]:
+    errors: List[str] = []
+    if not plan.topics:
+        return errors
+    total_checks = 0
+    quick_checks = 0
+    for ti, topic in enumerate(plan.topics):
+        tloc = f"topics[{ti}]('{topic.title[:30]}')"
+        for ci, concept in enumerate(topic.concepts):
+            cloc = f"{tloc}.concepts[{ci}]('{concept.title[:30]}')"
+            ops = ops_to_dicts(concept.board_ops)
+            for op in iter_element_ops(ops):
+                if op.get("op") == "svg":
+                    for e in check_svg_geometry(op.get("svg", ""), op.get("parts") or []):
+                        errors.append(f"{cloc}: svg '{op.get('id')}': {e}")
+            chk = concept.check
+            if chk.type != "none":
+                total_checks += 1
+                if chk.type in QUICK_CHECK_TYPES:
+                    quick_checks += 1
+                if chk.type == "mcq" and len(chk.options) < 3:
+                    errors.append(f"{cloc}: mcq needs 3 options (one right, two plausible)")
+                if not (chk.hint or "").strip() or len((chk.hint or "").split()) < 3:
+                    errors.append(f"{cloc}: check needs a `hint` (a nudge toward the answer, not the answer)")
+                prompt = chk.prompt or ""
+                if chk.type == "open" and (len(prompt.split()) > MAX_OPEN_QUESTION_WORDS or prompt.count("?") > 1):
+                    errors.append(f"{cloc}: open question asks more than one thing or is over {MAX_OPEN_QUESTION_WORDS} words; ask ONE thing")
+            if concept.predict:
+                p = concept.predict.strip()
+                if len(p.split()) > MAX_PREDICT_WORDS or not p.endswith("?"):
+                    errors.append(f"{cloc}: predict must be one short question (<= {MAX_PREDICT_WORDS} words, ending with ?)")
+            elif limits.engagement_rules and ti > 0 and ci == 0:
+                errors.append(f"{cloc}: the first concept of every topic after the first needs a `predict` question the learner guesses at before the board appears")
+        if not limits.engagement_rules:
+            continue
+        s_ops = ops_to_dicts(topic.summary_ops)
+        recap = [op for op in s_ops if op.get("op") == "bullet" and RECAP_MIN_ITEMS <= len(op.get("items") or []) <= RECAP_MAX_ITEMS]
+        if not recap:
+            errors.append(f"{tloc}: summary_ops needs a recap bullet op with {RECAP_MIN_ITEMS}-{RECAP_MAX_ITEMS} items (what the topic taught)")
+        n = sentence_count(topic.summary_say or "")
+        if n < 1 or n > 3:
+            errors.append(f"{tloc}: summary_say must be 1-3 spoken sentences recapping the topic")
+        if not any(op.get("op") == "callout" and op.get("kind") == "example"
+                   for c in topic.concepts for op in iter_element_ops(ops_to_dicts(c.board_ops))):
+            errors.append(f"{tloc}: the topic needs one callout of kind 'example' (a worked or real-life example)")
+    if limits.engagement_rules and total_checks >= 3 and quick_checks * 3 < total_checks:
+        errors.append(f"plan: only {quick_checks} of {total_checks} checks are quick (mcq with 3 options or numeric); make at least a third quick — open questions are for reasoning, not every concept")
     return errors

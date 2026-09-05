@@ -78,14 +78,96 @@ export function renderOp(op: BoardOp): string {
       return `<table${attrs.replace('class="', 'class="tb-table ')}><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
     }
     case "callout":
-      return `<aside${attrs.replace('class="', `class="tb-callout tb-callout-${esc(op.kind || "tip")} `)}>${esc(op.text)}</aside>`;
+      return `<aside${attrs.replace('class="', `class="tb-callout tb-callout-${esc(op.kind || "tip")} ${op.note ? "tb-note " : ""}`)}>${esc(op.text)}</aside>`;
     case "annotate":
       return `<span${attrs.replace('class="', `class="tb-annotation tb-annotation-${esc(op.position || "right")} `)} data-target="${esc(op.target)}">${esc(op.text)}</span>`;
     case "arrow":
       return `<span${attrs.replace('class="', 'class="tb-arrow ')} data-from="${esc(op.from)}" data-to="${esc(op.to)}">${esc(op.text ?? "")}</span>`;
+    case "columns": {
+      const cols = (op.columns as unknown[][]) || [];
+      const inner = cols
+        .map((col) => `<div class="tb-col">${(col || []).map((c) => renderOp(c as BoardOp)).join("")}</div>`)
+        .join("");
+      return `<div${attrs.replace('class="', `class="tb-columns tb-columns-${cols.length} `)}>${inner}</div>`;
+    }
     default:
       return "";
   }
+}
+
+/**
+ * Draw every arrow op as a real line between its two targets, in an overlay
+ * that scrolls with the board. Cheap enough to redo after every insert.
+ */
+export function drawArrows(root: HTMLElement): void {
+  let layer = root.querySelector<SVGSVGElement>(":scope > svg.tb-arrow-layer");
+  const arrows = Array.from(root.querySelectorAll<HTMLElement>(".tb-arrow[data-from][data-to]"));
+  if (!arrows.length) {
+    layer?.remove();
+    return;
+  }
+  if (!layer) {
+    layer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    layer.classList.add("tb-arrow-layer");
+    layer.innerHTML = `<defs><marker id="tb-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker></defs>`;
+    root.insertBefore(layer, root.firstChild);
+  }
+  const rootRect = root.getBoundingClientRect();
+  const height = root.scrollHeight;
+  layer.setAttribute("width", String(root.clientWidth));
+  layer.setAttribute("height", String(height));
+  layer.style.height = `${height}px`;
+  layer.querySelectorAll("line").forEach((l) => l.remove());
+  for (const a of arrows) {
+    const from = root.querySelector<HTMLElement>(`[data-op-id="${CSS.escape(a.dataset.from || "")}"]`);
+    const to = root.querySelector<HTMLElement>(`[data-op-id="${CSS.escape(a.dataset.to || "")}"]`);
+    if (!from || !to || from === to) continue;
+    const fr = from.getBoundingClientRect();
+    const tr = to.getBoundingClientRect();
+    const x1 = fr.left - rootRect.left + fr.width / 2;
+    const y1 = fr.bottom - rootRect.top + root.scrollTop;
+    const x2 = tr.left - rootRect.left + tr.width / 2;
+    const y2 = tr.top - rootRect.top + root.scrollTop;
+    if (Math.abs(y2 - y1) < 6 && Math.abs(x2 - x1) < 6) continue;
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", String(x1));
+    line.setAttribute("y1", String(y1));
+    line.setAttribute("x2", String(x2));
+    line.setAttribute("y2", String(y2 > y1 ? y2 - 2 : y2));
+    line.setAttribute("marker-end", "url(#tb-arrowhead)");
+    layer.appendChild(line);
+  }
+}
+
+/** Dock an annotation where the plan asked for it: above, below, left or right of its target. */
+export function placeAnnotation(el: HTMLElement, target: HTMLElement | null, position: string): void {
+  if (!target) return;
+  const wrapped = target.parentElement?.classList.contains("tb-row") ? target.parentElement : null;
+  if (position === "above") {
+    (wrapped ?? target).insertAdjacentElement("beforebegin", el);
+    return;
+  }
+  // Moving a mounted player reloads it: keep media targets where they are.
+  if ((position === "left" || position === "right") && !target.querySelector("iframe, video")) {
+    let row = target.parentElement;
+    if (!row || !row.classList.contains("tb-row")) {
+      row = document.createElement("div");
+      row.className = "tb-row";
+      target.insertAdjacentElement("beforebegin", row);
+      row.appendChild(target);
+    }
+    if (position === "left") row.insertBefore(el, row.firstChild);
+    else row.appendChild(el);
+    return;
+  }
+  target.insertAdjacentElement("afterend", el);
+}
+
+/** Show the diagram parts whose step is at or before `sentence` (narration-synced reveal). */
+export function revealStepsUpTo(root: ParentNode, sentence: number): void {
+  root.querySelectorAll<SVGElement>(".tb-step:not(.tb-step-on)").forEach((el) => {
+    if (Number(el.dataset.step) <= sentence) el.classList.add("tb-step-on");
+  });
 }
 
 /** Ops that change the board's DOM (as opposed to highlight/clear). */
@@ -106,7 +188,7 @@ const STEP_MS = 1100;
  * stagger, and parts the compiler marked with a `step` stay hidden until
  * their turn, appearing one by one while the teacher speaks.
  */
-export function animateDiagram(figure: HTMLElement, parts: Array<{ id?: unknown; step?: unknown }>): void {
+export function animateDiagram(figure: HTMLElement, parts: Array<{ id?: unknown; step?: unknown }>, synced = false): void {
   const svg = figure.querySelector("svg");
   if (!svg) return;
   const stepped = new Map<string, number>();
@@ -131,6 +213,9 @@ export function animateDiagram(figure: HTMLElement, parts: Array<{ id?: unknown;
     shape.style.animationDelay = `${Math.min(i, 24) * 70}ms`;
     i += 1;
   });
+  // Synced boards reveal steps as the narration reaches them (revealStepsUpTo);
+  // text-mode boards fall back to a fixed cadence.
+  if (synced) return;
   for (let step = 1; step <= maxStep; step++) {
     window.setTimeout(() => {
       svg.querySelectorAll<SVGElement>(`.tb-step[data-step="${step}"]`).forEach((el) => el.classList.add("tb-step-on"));

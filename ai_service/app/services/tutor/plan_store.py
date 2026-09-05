@@ -211,7 +211,13 @@ def store_draft(
 
     plan.objectives_json = list(draft.objectives)
     plan.key_terms_json = [kt.model_dump() for kt in draft.key_terms]
-    plan.raw_plan_json = {"draft": raw, "compile_inputs": compile_inputs or {}}
+    # Fields the topic/concept tables have no column for (spoken recap,
+    # predict question), keyed by the draft's own ids.
+    extras = {
+        "summary_say": [(t.summary_say or "").strip() or None for t in draft.topics],
+        "predict": [[(c.predict or "").strip() or None for c in t.concepts] for t in draft.topics],
+    }
+    plan.raw_plan_json = {"draft": raw, "compile_inputs": compile_inputs or {}, "extras": extras}
     plan.model = model
     # plan.language is the REQUESTED language (set at start_plan); the model's
     # echo of it is not trusted (it may be missing, "Hindi", or anything).
@@ -271,6 +277,11 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
     for c in concepts:
         by_topic.setdefault(c.topic_id, []).append(c)
     media = db.query(TeachingMedia).filter(TeachingMedia.plan_id == plan.id).all()
+    # Recap lines and predict questions are stored by position (rows are
+    # written in draft order and read back by topic_order / concept_order).
+    extras = ((plan.raw_plan_json or {}).get("extras") or {}) if isinstance(plan.raw_plan_json, dict) else {}
+    recaps = extras.get("summary_say") if isinstance(extras.get("summary_say"), list) else []
+    predicts = extras.get("predict") if isinstance(extras.get("predict"), list) else []
     return {
         "plan_id": plan.id,
         "slide_id": plan.slide_id,
@@ -290,6 +301,8 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
             {
                 "id": t.id, "order": t.topic_order, "title": t.title,
                 "estimated_seconds": t.estimated_seconds, "summary_html": t.summary_html,
+                "summary_ops": list(t.summary_ops_json or []),
+                "summary_say": recaps[ti] if ti < len(recaps) else None,
                 "concepts": [
                     {
                         "id": c.id, "order": c.concept_order, "title": c.title,
@@ -298,11 +311,13 @@ def plan_view(db: Session, plan: TeachingPlan) -> Dict[str, Any]:
                         "board_html": c.board_html,
                         "say": c.say, "say_i18n": dict(c.say_i18n_json or {}),
                         "teach_notes": c.teach_notes, "check": c.check_json,
+                        "predict": (predicts[ti][ci] if ti < len(predicts) and isinstance(predicts[ti], list)
+                                    and ci < len(predicts[ti]) else None),
                     }
-                    for c in by_topic.get(t.id, [])
+                    for ci, c in enumerate(by_topic.get(t.id, []))
                 ],
             }
-            for t in topics
+            for ti, t in enumerate(topics)
         ],
         "media": [
             {"id": m.id, "concept_id": m.concept_id, "kind": m.kind, "source": m.source,

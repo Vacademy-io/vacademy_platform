@@ -4,13 +4,13 @@ import { LayoutContainer } from "@/components/common/layout-container/layout-con
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
-import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorStateEvent } from "@/hooks/useTutorSocket";
+import { useTutorSocket, type TutorBoardOp, type TutorCheckEvent, type TutorPace, type TutorStateEvent } from "@/hooks/useTutorSocket";
 import { Whiteboard } from "@/components/tutor/Whiteboard";
 import { TutorSidebar, type TutorTopicItem } from "@/components/tutor/TutorSidebar";
 import { TeacherAvatar } from "@/components/tutor/TeacherAvatar";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ListBullets } from "@phosphor-icons/react";
-import { TeacherPanel, type TranscriptLine, type TutorPhase } from "@/components/tutor/TeacherPanel";
+import { TeacherPanel, type LessonStats, type TranscriptLine, type TutorPhase } from "@/components/tutor/TeacherPanel";
 import {
   endTutorSession,
   getTutorChapterSlides,
@@ -91,6 +91,11 @@ function TutorPage() {
   const [chapterSlides, setChapterSlides] = useState<TutorChapterSlide[]>([]);
   const [speakOn, setSpeakOn] = useState(true);
   const [micOn, setMicOn] = useState(false);
+  const [pace, setPace] = useState<TutorPace>("normal");
+  // Narration sync: the sentence being spoken and the elements written for it.
+  const [sentence, setSentence] = useState<number | null>(null);
+  const [focusIds, setFocusIds] = useState<string[]>([]);
+  const [stats, setStats] = useState<LessonStats>({ asked: 0, correct: 0, streak: 0, best: 0 });
   // Phones: the outline lives in a bottom sheet instead of a left rail.
   const [outlineOpen, setOutlineOpen] = useState(false);
   const currentSlideRef = useRef<string | null>(null);
@@ -121,13 +126,43 @@ function TutorPage() {
   }, []);
   const flushReveal = useCallback(() => {
     stopReveal();
-    const rest = revealQueueRef.current;
+    const rest = [...revealQueueRef.current, ...syncQueueRef.current];
     revealQueueRef.current = [];
+    syncQueueRef.current = [];
     if (rest.length) setBoardOps((prev) => [...prev, ...rest]);
+    setFocusIds([]);
   }, [stopReveal]);
+  // Narration-synced reveal: elements carry the sentence (`say_index`) they
+  // belong to and appear as that sentence starts playing.
+  const syncQueueRef = useRef<TutorBoardOp[]>([]);
+  const syncedRef = useRef(false);
+  // The server's audio_end arrives when the last chunk is SENT, not played:
+  // the board's tail is flushed when playback really ends.
+  const flushPendingRef = useRef(false);
+  // Questions asked in this slide (a Repeat or a reconnect re-sends the check).
+  const askedRef = useRef<Set<string>>(new Set());
+  const revealSynced = useCallback((upTo: number) => {
+    const now: TutorBoardOp[] = [];
+    const rest: TutorBoardOp[] = [];
+    for (const op of syncQueueRef.current) {
+      if ((typeof op.say_index === "number" ? op.say_index : 0) <= upTo) now.push(op);
+      else rest.push(op);
+    }
+    syncQueueRef.current = rest;
+    if (now.length) setBoardOps((prev) => [...prev, ...now]);
+    setFocusIds(now.map((o) => String(o.id ?? "")).filter(Boolean));
+    setSentence(upTo);
+  }, []);
   const queueReveal = useCallback(
     (ops: TutorBoardOp[]) => {
       if (!ops.length) return;
+      const synced = voiceMode && speakOn && ops.some((o) => typeof o.say_index === "number");
+      syncedRef.current = synced;
+      if (synced) {
+        syncQueueRef.current.push(...ops);
+        revealSynced(0);
+        return;
+      }
       // The first element lands with the narration; the rest write in one by one.
       const [first, ...rest] = ops;
       setBoardOps((prev) => [...prev, first as TutorBoardOp]);
@@ -140,7 +175,7 @@ function TutorPage() {
         }, REVEAL_MS);
       }
     },
-    [stopReveal],
+    [stopReveal, voiceMode, speakOn, revealSynced],
   );
   useEffect(() => () => stopReveal(), [stopReveal]);
 
@@ -153,9 +188,11 @@ function TutorPage() {
   // ── audio out ──
   const audioPlayer = useAudioPlayer();
   const chunksRef = useRef<Uint8Array[]>([]);
-  // Each queued segment carries the sentence(s) it speaks, shown as it starts.
-  const queueRef = useRef<Array<{ buf: ArrayBuffer; text: string }>>([]);
+  // Each queued segment carries the sentence(s) it speaks, shown as it starts;
+  // a `gap` entry is a beat of silence (before a question).
+  const queueRef = useRef<Array<{ buf: ArrayBuffer | null; text: string; sentence?: number; gap?: number }>>([]);
   const segmentTextRef = useRef("");
+  const segmentSentenceRef = useRef(0);
   const teacherTextRef = useRef("");
   const drainingRef = useRef(false);
   // The server's phase for AFTER the current narration; applied when the
@@ -212,8 +249,15 @@ function TutorPage() {
       while (queueRef.current.length) {
         const seg = queueRef.current.shift();
         if (!seg) continue;
+        if (seg.gap) {
+          await new Promise((r) => setTimeout(r, seg.gap));
+          continue;
+        }
         setPhase("speaking");
         revealTeacherText(seg.text);
+        // The board writes the elements of this sentence as it is spoken.
+        if (syncedRef.current && typeof seg.sentence === "number") revealSynced(seg.sentence);
+        if (!seg.buf) continue;
         try {
           await audioPlayer.playAudio(seg.buf);
         } catch {
@@ -227,23 +271,45 @@ function TutorPage() {
         pendingPhaseRef.current = null;
         setPhase((p) => (p === "speaking" ? (next ?? "idle") : next ?? p));
         completeTeacherText();
+        if (flushPendingRef.current) {
+          flushPendingRef.current = false;
+          flushReveal();
+          setRevealKey((k) => k + 1);
+        }
       }
     }
-  }, [audioPlayer, revealTeacherText, completeTeacherText]);
+  }, [audioPlayer, revealTeacherText, completeTeacherText, revealSynced, flushReveal]);
+  /** Everything the teacher has not "written" yet lands now (voice mode: once the audio has played). */
+  const settleBoard = useCallback(() => {
+    if (voiceMode && speakOn) {
+      if (drainingRef.current || queueRef.current.length) {
+        flushPendingRef.current = true;
+        return;
+      }
+      flushReveal();
+      setRevealKey((k) => k + 1);
+    }
+    // Text mode: the 900 ms cadence and the diagram's own step timers finish by themselves.
+  }, [voiceMode, speakOn, flushReveal]);
   const stopAudio = useCallback(() => {
     turnEndedRef.current = false;
     pendingPhaseRef.current = null;
+    flushPendingRef.current = false;
     queueRef.current = [];
     chunksRef.current = [];
     audioPlayer.stop();
     completeTeacherText();
-  }, [audioPlayer, completeTeacherText]);
+    // A barge-in: whatever the narration had not written yet lands now.
+    flushReveal();
+    setRevealKey((k) => k + 1);
+  }, [audioPlayer, completeTeacherText, flushReveal]);
 
   // ── socket ──
   const socket = useTutorSocket({
     onReady: (ev) => {
       setDisconnected(null);
       setPhase("idle");
+      if (typeof ev.pace === "string") setPace(ev.pace as TutorPace);
       if (Array.isArray(ev.topics)) setTopics(ev.topics as TutorTopicItem[]);
       if (typeof ev.slide_title === "string") setSlideTitle(ev.slide_title);
     },
@@ -254,7 +320,7 @@ function TutorPage() {
     },
     onState: (ev) => {
       setState(ev);
-      if (ev.phase === "await_answer" || ev.phase === "remediate" || ev.phase === "revisit") applyPhase("question");
+      if (ev.phase === "await_answer" || ev.phase === "remediate" || ev.phase === "revisit" || ev.phase === "predict") applyPhase("question");
       else if (ev.phase === "media_task") applyPhase("media");
       else if (ev.phase === "slide_done") applyPhase("done");
     },
@@ -268,6 +334,10 @@ function TutorPage() {
       if (clear) {
         stopReveal();
         revealQueueRef.current = [];
+        syncQueueRef.current = [];
+        syncedRef.current = false;
+        setSentence(null);
+        setFocusIds([]);
         boardCounter.current += 1;
         setBoardKey(`b${boardCounter.current}`);
         setBoardOps([]);
@@ -276,20 +346,30 @@ function TutorPage() {
       if (replay) setBoardOps((prev) => [...prev, ...ops]);
       else queueReveal(ops);
     },
-    onAiText: (text) => {
+    onAiText: (text, meta) => {
       turnEndedRef.current = false;
       teacherTextRef.current = text;
-      if (voiceMode && speakOn) {
-        // The bubble fills sentence by sentence as the audio plays.
-        setTranscript((prev) => [...prev, { role: "teacher", text: "" }]);
-      } else {
-        setTranscript((prev) => [...prev, { role: "teacher", text }]);
-        setPhase("idle");
+      const line: TranscriptLine = { role: "teacher", text: voiceMode && speakOn ? "" : text, kind: meta.kind, score: meta.score ?? null, cleared: meta.cleared };
+      // The bubble fills sentence by sentence as the audio plays (voice mode).
+      setTranscript((prev) => [...prev, line]);
+      if (!(voiceMode && speakOn)) setPhase("idle");
+      // Scoreboard: a verdict on a check, a cleared revisit, a miss.
+      const k = meta.kind;
+      const score = typeof meta.score === "number" ? meta.score : null;
+      if (k === "evaluate" || (k === "revisit_verdict" && meta.cleared)) {
+        setStats((s) => ({ ...s, correct: s.correct + 1, streak: s.streak + 1, best: Math.max(s.best, s.streak + 1) }));
+      } else if ((k === "remediate" || k === "revisit_verdict") && (score ?? 0) < 0.7) {
+        setStats((s) => ({ ...s, streak: 0 }));
       }
     },
-    onSegmentText: (text) => {
+    onSegmentText: (text, index, count) => {
       segmentTextRef.current = text;
+      segmentSentenceRef.current = index + Math.max(1, count) - 1;
     },
+    onBeat: (ms) => {
+      if (voiceMode && speakOn) queueRef.current.push({ buf: null, text: "", gap: ms });
+    },
+    onPace: (p) => setPace(p),
     onAudioChunk: (b64) => {
       if (!speakOn) return;
       const bin = atob(b64);
@@ -301,21 +381,22 @@ function TutorPage() {
       const seg = takeSegment();
       const text = segmentTextRef.current;
       segmentTextRef.current = "";
+      const sentenceIdx = segmentSentenceRef.current;
       if (seg) {
-        queueRef.current.push({ buf: seg, text });
+        queueRef.current.push({ buf: seg, text, sentence: sentenceIdx });
         void drain();
       } else {
         // No audio for this sentence (engine hiccup): still show the words.
         revealTeacherText(text);
+        if (syncedRef.current) revealSynced(sentenceIdx);
       }
     },
     onAudioEnd: () => {
-      // Whatever the teacher has not "written" yet lands before the next step.
-      flushReveal();
-      setRevealKey((k) => k + 1);
+      // Whatever the teacher has not "written" yet lands once the audio has played.
+      settleBoard();
       turnEndedRef.current = true;
       const seg = takeSegment();
-      if (seg) queueRef.current.push({ buf: seg, text: segmentTextRef.current });
+      if (seg) queueRef.current.push({ buf: seg, text: segmentTextRef.current, sentence: segmentSentenceRef.current });
       segmentTextRef.current = "";
       if (drainingRef.current || queueRef.current.length) {
         void drain();
@@ -327,10 +408,17 @@ function TutorPage() {
       }
     },
     onCheck: (ev) => {
-      flushReveal();
+      settleBoard();
       setCheck(ev);
       setAwaiting("answer");
       applyPhase("question");
+      // Revisits re-ask a concept; predictions are guesses; a Repeat or a
+      // reconnect re-sends the same check: none counts as a new question.
+      const key = ev.concept_id || "";
+      if (!ev.predict && !ev.revisit && !ev.remediation && key && !askedRef.current.has(key)) {
+        askedRef.current.add(key);
+        setStats((s) => ({ ...s, asked: s.asked + 1 }));
+      }
     },
     onAwait: (what) => {
       setAwaiting(what);
@@ -508,6 +596,8 @@ function TutorPage() {
 
   const reconnect = () => {
     stopAudio();
+    syncedRef.current = false;
+    setSentence(null);
     setTranscript([]);
     setCheck(null);
     setAwaiting(null);
@@ -528,6 +618,11 @@ function TutorPage() {
     stopAudio();
     stopReveal();
     revealQueueRef.current = [];
+    syncQueueRef.current = [];
+    syncedRef.current = false;
+    setSentence(null);
+    askedRef.current = new Set();
+    setStats({ asked: 0, correct: 0, streak: 0, best: 0 });
     currentSlideRef.current = slideId;
     setTranscript([]);
     setCheck(null);
@@ -629,11 +724,24 @@ function TutorPage() {
             </div>
           )}
           <div className="min-h-0 flex-1">
-            <Whiteboard ops={boardOps} liveOps={liveOps} boardKey={boardKey} teacherName={boot?.teacher_name} revealKey={revealKey} />
+            <Whiteboard
+              ops={boardOps}
+              liveOps={liveOps}
+              boardKey={boardKey}
+              teacherName={boot?.teacher_name}
+              revealKey={revealKey}
+              sentence={syncedRef.current ? sentence : null}
+              focusIds={focusIds}
+            />
           </div>
           {lessonOver && !disconnected && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
-              <span>Slide complete.</span>
+              <span>
+                Slide complete.
+                {stats.asked > 0 ? ` You got ${stats.correct} of ${stats.asked} right` : ""}
+                {stats.best >= 3 ? ` · best streak ${stats.best}` : ""}
+                {stats.asked > 0 ? "." : ""}
+              </span>
               {nextTeachable ? (
                 <button type="button" onClick={() => goToSlide(nextTeachable.slide_id)} className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
                   Next: {nextTeachable.title || "next slide"}
@@ -653,7 +761,13 @@ function TutorPage() {
             teacherAvatarFileId={boot?.teacher_avatar_file_id}
             phase={phase}
             transcript={transcript}
-            check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type, revisit: !!check.revisit } : null}
+            check={check ? { prompt: check.prompt, options: check.options, check_type: check.check_type, revisit: !!check.revisit, predict: !!check.predict } : null}
+            pace={pace}
+            onPace={(p) => {
+              setPace(p);
+              socket.sendConfig({ pace: p });
+            }}
+            stats={stats}
             awaiting={awaiting}
             voiceMode={voiceMode}
             micOn={micOn}

@@ -6,7 +6,7 @@
         linear-gradient(theme('colors.neutral.100') 1px, transparent 1px),
         linear-gradient(90deg, theme('colors.neutral.100') 1px, transparent 1px);
     background-size: 24px 24px;
-    font-family: 'Segoe Print', 'Bradley Hand', 'Comic Neue', 'Trebuchet MS', ui-rounded, system-ui, sans-serif;
+    font-family: 'Kalam', 'Segoe Print', 'Bradley Hand', 'Comic Neue', 'Trebuchet MS', ui-rounded, system-ui, sans-serif;
     line-height: 1.45;
 }
 .tutor-board-preview .tb-heading {
@@ -102,3 +102,9 @@
 @keyframes tb-draw { 0% { stroke-dashoffset: 1; fill-opacity: 0; } 60% { fill-opacity: 0; } 100% { stroke-dashoffset: 0; fill-opacity: 1; } }
 .tutor-board-preview .tb-svg .tb-step { opacity: 0; transform: translateY(6px); transition: opacity 0.5s ease, transform 0.5s ease; }
 .tutor-board-preview .tb-svg .tb-step.tb-step-on { opacity: 1; transform: none; }
+
+/* Side-by-side columns (compare and contrast) and notes the teacher wrote live. */
+.tutor-board-preview .tb-columns { @apply my-2 grid gap-3; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tutor-board-preview .tb-columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tutor-board-preview .tb-col { @apply min-w-0 rounded-lg border border-neutral-200 bg-white/60 px-3 py-2; }
+.tutor-board-preview .tb-col > .tb-heading { @apply mb-2 border-b-2 text-base; }

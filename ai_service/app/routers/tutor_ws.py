@@ -20,6 +20,7 @@ import base64
 import hashlib
 import json
 import logging
+import re
 import time
 from collections import OrderedDict, deque
 from dataclasses import replace as dc_replace
@@ -39,7 +40,7 @@ from ..services.sarvam_service import SarvamService, SarvamSTTError
 from ..services.tutor.roles import is_staff, normalize_roles
 from ..services.tutor.runtime import session_service as svc
 from ..services.tutor.runtime import state as sm
-from ..services.tutor.runtime.decision import run_turn
+from ..services.tutor.runtime.decision import run_predict, run_turn
 from ..services.tutor.runtime.intents import detect_intent
 from ..services.tutor.runtime import prompts
 from ..services.tutor.runtime.revisit import fresh_check
@@ -50,7 +51,33 @@ from ..services.voice_tts import (
     SARVAM_DEFAULT_FEMALE, SMALLEST_DEFAULT_VOICE, default_voice_for, sarvam_speaker, smallest_available,
     synthesize_speech,
 )
-from .voice_agent import MIN_SPEECH_WAV_BYTES, TTS_CHUNK_SIZE, _split_for_speech, _transcode_to_wav
+from .voice_agent import MIN_SPEECH_WAV_BYTES, TTS_CHUNK_SIZE, _SENTENCE_END, _transcode_to_wav
+
+
+def _tutor_segments(text_: str, max_chars: Optional[int] = None) -> List[Tuple[str, int, int]]:
+    """(segment, first sentence index, sentence count): sentences packed up to
+    `max_chars`, never cut mid-sentence, so the board can follow the words."""
+    max_chars = max_chars or TUTOR_SEGMENT_MAX_CHARS
+    sentences = [x.strip() for x in _SENTENCE_END.split((text_ or "").strip()) if x and x.strip()]
+    out: List[Tuple[str, int, int]] = []
+    buf, start, count = "", 0, 0
+    for i, sent in enumerate(sentences):
+        if buf and len(buf) + 1 + len(sent) > max_chars:
+            out.append((buf, start, count))
+            buf, start, count = sent, i, 1
+        else:
+            buf = f"{buf} {sent}".strip()
+            count += 1
+            if count == 1:
+                start = i
+    if buf:
+        out.append((buf, start, count))
+    return out
+
+
+def _step_pace(pace: str, delta: int) -> str:
+    i = PACE_ORDER.index(pace) if pace in PACE_ORDER else PACE_ORDER.index("normal")
+    return PACE_ORDER[max(0, min(len(PACE_ORDER) - 1, i + delta))]
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tutor", tags=["tutor-runtime"])
@@ -65,7 +92,18 @@ MEDIA_IDLE_SECONDS = 30 * 60
 MAX_TURNS_PER_MINUTE = 20
 MAX_TURNS_PER_SESSION = 400
 LANG_TO_STT = {"en": "en-IN", "hi": "hi-IN"}
-PACE_MULTIPLIER = {"slow": 0.85, "normal": 1.0, "fast": 1.2}
+# The learner's own pace: fast / normal (medium) / slow / slower.
+PACE_MULTIPLIER = {"slower": 0.7, "slow": 0.85, "normal": 1.0, "fast": 1.2}
+PACE_ORDER = ["slower", "slow", "normal", "fast"]
+# Spoken rhythm: a sentence per segment where possible, never a sentence
+# split; a beat before every question; definitions a touch slower.
+TUTOR_SEGMENT_MAX_CHARS = 200
+QUESTION_BEAT_MS = 450
+DEFINITION_PACE = 0.92
+_DEFINITION_RE = re.compile(r"\b(means|is called|is defined|definition|refers to|in other words)\b", re.IGNORECASE)
+# Silence recovery: a nudge (hint) after this long on an open question; the
+# idle exit then counts from the nudge.
+NUDGE_SECONDS = 60
 SERVER_TTS_PROVIDERS = ("smallest", "sarvam", "google", "edge")
 # Voice lessons are metered per started minute (design §4.8, tool
 # tutor_live_minute); the first minute is charged at open, the next every 60 s.
@@ -306,8 +344,19 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         # Course / institute voice speed; the learner's slower / faster sits on top.
         base_pace = float(getattr(settings, "voice_pace", 1.0) or 1.0)
 
-        def _effective_pace() -> float:
-            return round(max(0.5, min(2.0, base_pace * PACE_MULTIPLIER.get(pace, 1.0))), 2)
+        def _effective_pace(segment: str = "") -> float:
+            slow = DEFINITION_PACE if segment and _DEFINITION_RE.search(segment) else 1.0
+            return round(max(0.5, min(2.0, base_pace * PACE_MULTIPLIER.get(pace, 1.0) * slow)), 2)
+        # Silence recovery state: when the current question was asked and
+        # whether the learner has already been nudged on it.
+        awaiting_answer_since: Optional[float] = None
+        nudged = False
+
+        async def _await(what: str) -> None:
+            nonlocal awaiting_answer_since, nudged
+            awaiting_answer_since = time.time() if what == "answer" else None
+            nudged = False
+            await _send({"type": "await", "what": what})
         board: List[Dict[str, Any]] = []          # cumulative ops of the current topic
         transcript: List[Dict[str, str]] = []
         speak_enabled = mode == "voice"
@@ -352,17 +401,19 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 voice = (tts_voice or SMALLEST_DEFAULT_VOICE).strip()
             else:
                 voice = tts_voice or default_voice_for(tts_provider, _lang_stt())
-            for segment in _split_for_speech(text_):
-                # The sentence(s) this audio segment speaks: the client shows
-                # them as the segment starts playing, not the whole reply upfront.
-                await _send({"type": "segment_text", "text": segment})
-                key = _cache_key(tts_provider, voice, _lang_stt(), str(_effective_pace()), segment)
+            for segment, first_idx, n_sent in _tutor_segments(text_):
+                # The sentence(s) this audio segment speaks, with their index
+                # in the narration: the client reveals the board elements
+                # marked for those sentences as the segment starts playing.
+                await _send({"type": "segment_text", "text": segment, "index": first_idx, "count": n_sent})
+                seg_pace = _effective_pace(segment)
+                key = _cache_key(tts_provider, voice, _lang_stt(), str(seg_pace), segment)
                 audio = _cache_get(key)
                 provider_used = tts_provider
                 if audio is None:
                     audio, _mime, provider_used = await synthesize_speech(
                         text=segment, language=_lang_stt(), voice=voice, provider=tts_provider,
-                        pace=_effective_pace(),
+                        pace=seg_pace,
                     )
                     if audio:
                         _cache_put(key, audio)
@@ -379,13 +430,65 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     await _send({"type": "audio_chunk", "data": base64.b64encode(audio[i:i + TTS_CHUNK_SIZE]).decode("ascii")})
                 await _send({"type": "audio_segment_end"})
 
-        async def _say(text_: str, *, reason: str = "complete", meta: Optional[dict] = None) -> None:
+        async def _say(text_: str, *, reason: str = "complete", meta: Optional[dict] = None, beat: bool = False) -> None:
             text_ = _personalize(text_)
             transcript.append({"role": "teacher", "text": text_})
             svc.append_transcript(chat_session_id, "assistant", text_, meta)
-            await _send({"type": "ai_text", "text": text_})
+            await _send({"type": "ai_text", "text": text_, "meta": meta or {}})
+            if beat and speak_enabled:
+                # A breath before a question, so it lands as a question.
+                await _send({"type": "beat", "ms": QUESTION_BEAT_MS})
             await _speak(text_)
             await _send({"type": "audio_end", "reason": reason})
+
+        async def _apply_decision_ops(decision: Dict[str, Any], concept: Optional[sm.Concept]) -> None:
+            """Highlights are transient; a note the teacher writes while
+            remediating stays on the board for the rest of the topic."""
+            nonlocal board
+            if pointer.phase == sm.PREDICT:
+                return   # the concept's board is not drawn yet
+            ops = decision.get("board_ops") or []
+            notes = [o for o in ops if o.get("note")]
+            live = [o for o in ops if not o.get("note")]
+            if notes:
+                board = board + notes
+                t = lesson.topic_at(pointer)
+                await _send({"type": "board", "clear": False, "ops": notes, "topic_id": t.id if t else None,
+                             "concept_id": concept.id if concept else None})
+            if live:
+                await _send({"type": "board", "clear": False, "ops": live, "live": True})
+
+        async def _keep_answer_on_board(concept: sm.Concept, decision: Dict[str, Any]) -> None:
+            """Moving on after a wrong answer: the right answer stays written."""
+            nonlocal board
+            if any(o.get("note") for o in decision.get("board_ops") or []):
+                return
+            expected = ((concept.check or {}).get("expected") or "").strip()
+            if not expected:
+                return
+            note = {"op": "callout", "id": f"live-answer-{concept.id[:8]}", "kind": "definition",
+                    "text": prompts.tpl("answer_note", lang, expected=expected[:160]), "note": True}
+            board = board + [note]
+            t = lesson.topic_at(pointer)
+            await _send({"type": "board", "clear": False, "ops": [note], "topic_id": t.id if t else None, "concept_id": concept.id})
+
+        async def _nudge() -> None:
+            """A minute of silence on a question: a hint, not a timeout."""
+            open_question = bool(revisit and revisit.get("current")) or (
+                pending is None and pointer.phase in (sm.AWAIT_ANSWER, sm.REMEDIATE, sm.PREDICT))
+            if not open_question:
+                return
+            concept = (revisit or {}).get("current") if revisit else None
+            check = (revisit or {}).get("check") if revisit else None
+            if concept is None:
+                concept = lesson.concept_at(pointer)
+                check = concept.check if concept else None
+            hint = ((check or {}).get("hint") or "").strip() or (concept.hint if concept else None)
+            if pointer.phase == sm.PREDICT:
+                hint = None
+            await _say(prompts.tpl("nudge_hint", lang, hint=hint) if hint else prompts.tpl("nudge_open", lang),
+                       meta={"kind": "nudge"})
+            await _send({"type": "await", "what": "answer"})
 
         async def _emit_state(phase: str, concept: Optional[sm.Concept] = None) -> None:
             c = concept or lesson.concept_at(pointer)
@@ -396,6 +499,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                          "language": lang, "remediations": pointer.remediations})
 
         async def _send_slide_done() -> None:
+            nonlocal awaiting_answer_since
+            awaiting_answer_since = None
             frame: Dict[str, Any] = {"type": "slide_done", "slide_id": lesson.slide_id, "weak_concepts": list(pointer.weak),
                                      "skipped_concepts": list(pointer.skipped), "done": pointer.done, "total": lesson.total_concepts}
             qr = svc.quiz_results(lesson, attempt_log)
@@ -431,7 +536,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 if stage == "slide":
                     await _send_slide_done()
                 else:
-                    await _send({"type": "await", "what": "continue"})
+                    await _await("continue")
                 return
             concept = revisit["queue"][0]
             att = attempt_log.get(concept.id) or {}
@@ -450,8 +555,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             await _send({"type": "check", "concept_id": concept.id, "check_type": check.get("type"), "prompt": check.get("prompt"),
                          "options": check.get("options") or [], "remediation": 0, "revisit": True})
             await _say(prompts.tpl("revisit_ask", lang, concept=concept.title, prompt=check.get("prompt") or ""),
-                       meta={"concept_id": concept.id, "kind": "revisit_ask"})
-            await _send({"type": "await", "what": "answer"})
+                       meta={"concept_id": concept.id, "kind": "revisit_ask"}, beat=True)
+            await _await("answer")
 
         async def _handle_revisit_answer(text_: str, *, spoken: bool, kind: str) -> None:
             """One attempt at the fresh question: right clears the concept,
@@ -471,12 +576,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             # (`pointer` above is the summary pointer; its concept/remediations are not this concept's.)
             svc.bump_telemetry(tutor_session_id, turns=1, llm_prompt_tokens=usage.get("prompt_tokens", 0),
                                llm_completion_tokens=usage.get("completion_tokens", 0), fallbacks=1 if decision.get("fallback") else 0)
-            if decision["board_ops"]:
-                await _send({"type": "board", "clear": False, "ops": decision["board_ops"], "live": True})
+            await _apply_decision_ops(decision, concept)
             if kind == "doubt" or decision["action"] in ("answer_doubt", "wait"):
                 # A question or small talk instead of an answer: reply and keep the question open.
                 await _say(decision["say"], meta={"kind": decision["action"] if kind != "doubt" else "answer_doubt"})
-                await _send({"type": "await", "what": "answer"})
+                await _await("answer")
                 return
             assessment = decision.get("assessment") or {}
             score = assessment.get("score")
@@ -500,6 +604,8 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             say = decision["say"]
             if not ok and (decision.get("fallback") or say.rstrip().endswith("?")):
                 say = prompts.tpl("fallback_move_on", lang, expected=(check.get("expected") or "")[:160])
+            if not ok:
+                await _keep_answer_on_board(dc_replace(concept, check=check), decision)
             revisit["current"], revisit["check"] = None, None
             await _say(say, meta={"kind": "revisit_verdict", "score": score, "concept_id": concept.id, "cleared": ok})
             await _ask_next_revisit()
@@ -529,12 +635,29 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             # must never leave memory one concept ahead of the database.
             pointer = step.pointer
             _save()
+            if step.kind == "predict":
+                # A guess before the board: the question is spoken, the board
+                # waits for the answer (or a skip).
+                if step.clear_board:
+                    board = []
+                    await _send({"type": "board", "clear": True, "ops": [], "topic_id": step.topic.id if step.topic else None})
+                await _emit_state(step.pointer.phase, step.concept)
+                q = (step.concept.predict or "").strip() if step.concept else ""
+                await _send({"type": "check", "concept_id": step.concept.id if step.concept else None, "check_type": "predict",
+                             "prompt": q, "options": [], "remediation": 0, "predict": True})
+                await _say(prompts.tpl("predict_intro", lang, question=q), meta={"kind": "predict_ask", "concept_id": step.concept.id if step.concept else None}, beat=True)
+                await _await("answer")
+                return
             if step.kind in ("teach", "media_task"):
                 if step.clear_board:
                     board = []
                     await _send({"type": "board", "clear": True, "ops": [], "topic_id": step.topic.id if step.topic else None})
-                board = board + list(step.board_ops)
                 await _emit_state(step.pointer.phase)
+                # The greeting is spoken on its own, BEFORE the board frame:
+                # the board's reveal follows the narration's sentence numbers.
+                if greeting and step.kind == "teach":
+                    await _say(greeting, meta={"kind": "greet"})
+                board = board + list(step.board_ops)
                 await _send({"type": "board", "clear": False, "ops": step.board_ops, "topic_id": step.topic.id if step.topic else None,
                              "concept_id": step.concept.id if step.concept else None})
                 svc.bump_telemetry(tutor_session_id, concepts_taught=1)
@@ -544,20 +667,20 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 # next slide), drop the narration's, never hers.
                 if greeting:
                     narration = prompts.strip_leading_greeting(narration)
-                text_ = (greeting + " " if greeting else "") + narration
+                text_ = narration
                 if step.kind == "media_task":
                     kind = next((op.get("kind") for op in step.board_ops if op.get("op") == "media_task"), "video")
                     text_ = (greeting + " " if greeting else "") + prompts.tpl("media_task_video" if kind == "video" else "media_task_pdf", lang)
                 await _say(text_, meta={"concept_id": step.concept.id if step.concept else None, "kind": step.kind})
                 if step.kind == "media_task":
-                    await _send({"type": "await", "what": "done"})
+                    await _await("done")
                 elif step.concept and step.concept.has_check:
                     # Explain, then ask — in one breath, like a teacher would.
                     await _apply_step(sm.after_teach(lesson, pointer))
                 else:
                     # Nothing to ask. A voice client continues by itself once
                     # the audio has played; a text client shows Continue.
-                    await _send({"type": "await", "what": "continue"})
+                    await _await("continue")
             elif step.kind == "ask":
                 await _emit_state(step.pointer.phase)
                 c = step.concept
@@ -565,19 +688,21 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _send({"type": "check", "concept_id": c.id if c else None, "check_type": chk.get("type"),
                              "prompt": chk.get("prompt"), "options": chk.get("options") or [],
                              "remediation": step.pointer.remediations})
-                await _say(prompts.tpl("ask", lang, prompt=chk.get("prompt") or ""), meta={"concept_id": c.id if c else None, "kind": "ask"})
-                await _send({"type": "await", "what": "answer"})
+                await _say(prompts.tpl("ask", lang, prompt=chk.get("prompt") or ""), meta={"concept_id": c.id if c else None, "kind": "ask"}, beat=True)
+                await _await("answer")
             elif step.kind == "topic_summary":
                 await _emit_state(step.pointer.phase)
                 if step.board_ops:
                     board = board + list(step.board_ops)
                     await _send({"type": "board", "clear": False, "ops": step.board_ops, "topic_id": step.topic.id if step.topic else None})
-                await _say(prompts.tpl("topic_summary", lang, topic=step.topic.title if step.topic else ""), meta={"kind": "topic_summary"})
+                recap = (step.topic.summary_say or "").strip() if step.topic else ""
+                await _say(recap or prompts.tpl("topic_summary", lang, topic=step.topic.title if step.topic else ""),
+                           meta={"kind": "topic_summary"})
                 cands = _revisit_candidates("topic")
                 if cands:
                     await _begin_revisit("topic", cands)
                 else:
-                    await _send({"type": "await", "what": "continue"})
+                    await _await("continue")
             elif step.kind == "slide_done":
                 await _emit_state(step.pointer.phase)
                 cands = _revisit_candidates("slide")
@@ -622,9 +747,9 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 greet = prompts.tpl("next_slide", lang, slide=_slide_name())
             opened_once = True
             step = sm.enter(lesson, pointer)
-            if step.kind in ("topic_summary", "slide_done"):
-                # Resuming on a summary / a finished slide: say the greeting,
-                # then the summary line (which carries its own await).
+            if step.kind in ("topic_summary", "slide_done", "predict"):
+                # Resuming on a summary / a finished slide, or opening on a
+                # guess: say the greeting first, then the step's own line.
                 await _say(greet, meta={"kind": "greet"})
             await _apply_step(step, greeting=greet if step.kind in ("teach", "media_task") else None)
 
@@ -651,13 +776,12 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             )
             svc.bump_telemetry(tutor_session_id, turns=1, llm_prompt_tokens=usage.get("prompt_tokens", 0),
                                llm_completion_tokens=usage.get("completion_tokens", 0), fallbacks=1 if decision.get("fallback") else 0)
-            if decision["board_ops"]:
-                await _send({"type": "board", "clear": False, "ops": decision["board_ops"], "live": True})
+            await _apply_decision_ops(decision, concept)
             await _say(decision["say"], meta={"kind": "answer_doubt"})
             if what_next == "slide_done":
                 await _send_slide_done()
             else:
-                await _send({"type": "await", "what": what_next})
+                await _await(what_next)
 
         async def _handle_doubt(text_: str) -> None:
             await _handle_learner_text(text_, spoken=False, force_doubt=True)
@@ -700,7 +824,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     chk = revisit["check"] or {}
                     await _say(prompts.tpl("revisit_ask", lang, concept=current.title, prompt=chk.get("prompt") or ""),
                                meta={"concept_id": current.id, "kind": "revisit_ask"})
-                    await _send({"type": "await", "what": "answer"}); return
+                    await _await("answer"); return
                 if intent == "skip":
                     svc.record_attempt(tutor_session_id=tutor_session_id, user_id=user_id, package_session_id=package_session_id,
                                        concept_id=current.id, tags=current.tags, attempt_no=sm.MAX_REMEDIATIONS + 1, answer=text_,
@@ -713,17 +837,37 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     chk = revisit["check"] or {}
                     await _say(prompts.tpl("revisit_ask", lang, concept=current.title, prompt=chk.get("prompt") or ""),
                                meta={"concept_id": current.id, "kind": "revisit_ask"})
-                    await _send({"type": "await", "what": "answer"}); return
+                    await _await("answer"); return
                 if intent in ("slower", "faster"):
-                    pace = "slow" if intent == "slower" else "fast"
+                    pace = _step_pace(pace, -1 if intent == "slower" else 1)
                     _save()
+                    await _send({"type": "pace", "pace": pace})
                     await _say(prompts.tpl(intent, lang), meta={"kind": intent})
-                    await _send({"type": "await", "what": "answer"}); return
+                    await _await("answer"); return
                 if intent == "pause":
                     await _say(prompts.tpl("pause", lang), meta={"kind": "pause"})
-                    await _send({"type": "await", "what": "answer"}); return
+                    await _await("answer"); return
                 await _handle_revisit_answer(text_, spoken=spoken, kind="doubt" if (intent == "doubt" or force_doubt) else "answer")
                 return
+
+            # Predict-then-reveal: any guess (or a skip) leads into the teaching.
+            if pointer.phase == sm.PREDICT:
+                concept = lesson.concept_at(pointer)
+                if concept is None or intent in ("skip", "resume", "done") or (intent is None and short_ok):
+                    await _apply_step(sm.after_predict(lesson, pointer)); return
+                if intent == "repeat":
+                    await _say(prompts.tpl("predict_intro", lang, question=concept.predict or ""), meta={"kind": "predict_ask"}, beat=True)
+                    await _await("answer"); return
+                if intent == "doubt" or force_doubt:
+                    await _answer_doubt(text_, concept, spoken=spoken, what_next="answer"); return
+                if intent not in ("slower", "faster", "pause"):
+                    say, usage = await run_predict(institute_id=institute_id, user_id=user_id, model=live_model, teacher=teacher,
+                                                   lang=lang, learner_name=display_name or None, concept=concept, answer=text_,
+                                                   tutor_session_id=tutor_session_id)
+                    svc.bump_telemetry(tutor_session_id, turns=1, llm_prompt_tokens=usage.get("prompt_tokens", 0),
+                                       llm_completion_tokens=usage.get("completion_tokens", 0))
+                    await _say(say, meta={"kind": "predict", "concept_id": concept.id})
+                    await _apply_step(sm.after_predict(lesson, pointer)); return
 
             if intent == "repeat":
                 await _apply_step(sm.repeat(lesson, pointer)); return
@@ -737,15 +881,16 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 await _say(prompts.tpl("skipped", lang), meta={"kind": "skip"})
                 await _apply_step(sm.skip(lesson, pointer)); return
             if intent in ("slower", "faster"):
-                pace = "slow" if intent == "slower" else "fast"
+                pace = _step_pace(pace, -1 if intent == "slower" else 1)
                 _save()
+                await _send({"type": "pace", "pace": pace})
                 await _say(prompts.tpl(intent, lang), meta={"kind": intent})
-                await _send({"type": "await", "what": "continue" if phase in (sm.TEACH, sm.TOPIC_SUMMARY) else "answer"}); return
+                await _await("continue" if phase in (sm.TEACH, sm.TOPIC_SUMMARY) else "answer"); return
             if intent == "done" and phase == sm.MEDIA_TASK:
                 await _apply_step(sm.after_teach(lesson, pointer)); return
             if intent == "pause":
                 await _say(prompts.tpl("pause", lang), meta={"kind": "pause"})
-                await _send({"type": "await", "what": "answer" if phase in (sm.AWAIT_ANSWER, sm.REMEDIATE) else "continue"}); return
+                await _await("answer" if phase in (sm.AWAIT_ANSWER, sm.REMEDIATE, sm.PREDICT) else "continue"); return
             if intent == "resume" or (intent is None and phase in (sm.TEACH, sm.TOPIC_SUMMARY, sm.SLIDE_DONE) and short_ok):
                 await _handle_continue(); return
 
@@ -780,8 +925,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             )
             svc.bump_telemetry(tutor_session_id, turns=1, llm_prompt_tokens=usage.get("prompt_tokens", 0),
                                llm_completion_tokens=usage.get("completion_tokens", 0), fallbacks=1 if decision.get("fallback") else 0)
-            if decision["board_ops"]:
-                await _send({"type": "board", "clear": False, "ops": decision["board_ops"], "live": True})
+            await _apply_decision_ops(decision, concept)
             if kind == "answer":
                 score = (decision.get("assessment") or {}).get("score")
                 action = decision["action"]
@@ -811,7 +955,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                         _save()
                         await _say(decision["say"], meta={"kind": "remediate", "score": score})
                         await _emit_state(pointer.phase)
-                        await _send({"type": "await", "what": "answer"})
+                        await _await("answer")
                     else:
                         # The prompt told the model this was the last attempt
                         # (no re-ask); if it re-asked anyway, close the loop
@@ -819,13 +963,14 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                         say = decision["say"]
                         if decision.get("fallback") or say.rstrip().endswith("?"):
                             say = prompts.tpl("fallback_move_on", lang, expected=((concept.check or {}).get("expected") or "")[:160])
+                        await _keep_answer_on_board(concept, decision)
                         await _commit_then_say(step, concept, say, {"kind": "remediate", "score": score})
                 else:  # answer_doubt / wait: respond and re-open the check
                     await _say(decision["say"], meta={"kind": decision["action"]})
-                    await _send({"type": "await", "what": "answer"})
+                    await _await("answer")
             else:
                 await _say(decision["say"], meta={"kind": "answer_doubt"})
-                await _send({"type": "await", "what": "answer" if phase in (sm.AWAIT_ANSWER, sm.REMEDIATE) else "continue"})
+                await _await("answer" if phase in (sm.AWAIT_ANSWER, sm.REMEDIATE) else "continue")
 
         async def _handle_continue() -> None:
             nonlocal pointer, pending
@@ -838,17 +983,19 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                 # Continue during a revisit: re-open the question, or ask the
                 # next one if the last was interrupted while being prepared.
                 if revisit.get("current") is not None:
-                    await _send({"type": "await", "what": "answer"})
+                    await _await("answer")
                 else:
                     await _ask_next_revisit()
                 return
             phase = pointer.phase
-            if phase in (sm.TEACH, sm.MEDIA_TASK):
+            if phase == sm.PREDICT:
+                await _apply_step(sm.after_predict(lesson, pointer))
+            elif phase in (sm.TEACH, sm.MEDIA_TASK):
                 await _apply_step(sm.after_teach(lesson, pointer))
             elif phase == sm.TOPIC_SUMMARY:
                 await _apply_step(sm.next_topic(lesson, pointer))
             elif phase in (sm.AWAIT_ANSWER, sm.REMEDIATE):
-                await _send({"type": "await", "what": "answer"})
+                await _await("answer")
             elif phase == sm.SLIDE_DONE:
                 await _send_slide_done()
 
@@ -909,7 +1056,7 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
                     "progress": pointer.progress(lesson)}
 
         # ── 3. ready + opening ──
-        await _send({"type": "ready", "tutor_session_id": tutor_session_id, "mode": mode, "language": lang,
+        await _send({"type": "ready", "tutor_session_id": tutor_session_id, "mode": mode, "language": lang, "pace": pace,
                      "teacher_name": teacher, "teacher_avatar_file_id": settings.teacher_avatar_file_id,
                      "learner_name": display_name, "slide_id": lesson.slide_id,
                      "slide_title": lesson.slide_title,
@@ -922,9 +1069,25 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
         # ── 4. loop ──
         while True:
             idle_limit = MEDIA_IDLE_SECONDS if pointer.phase == sm.MEDIA_TASK else IDLE_SECONDS
+            busy = current_task is not None and not current_task.done()
+            timeout = float(idle_limit + 60)
+            if awaiting_answer_since and not nudged and not busy:
+                timeout = min(timeout, max(3.0, NUDGE_SECONDS - (time.time() - awaiting_answer_since)))
+            elif busy:
+                # A turn is running; look again soon so a question it asks
+                # gets its nudge on time.
+                timeout = 5.0
             try:
-                raw = await asyncio.wait_for(websocket.receive_text(), timeout=idle_limit + 60)
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=timeout)
             except asyncio.TimeoutError:
+                busy = current_task is not None and not current_task.done()
+                if awaiting_answer_since and not nudged and not busy and time.time() - awaiting_answer_since >= NUDGE_SECONDS - 1:
+                    nudged = True
+                    last_activity = time.time()
+                    _spawn(_nudge())
+                    continue
+                if time.time() - last_activity < idle_limit:
+                    continue
                 await _send({"type": "ended", "reason": "idle"})
                 break
             now = time.time()
@@ -950,6 +1113,11 @@ async def tutor_socket(websocket: WebSocket, tutor_session_id: str) -> None:
             if t == "auth":
                 continue
             elif t == "config":
+                new_pace = msg.get("pace")
+                if isinstance(new_pace, str) and new_pace in PACE_MULTIPLIER and new_pace != pace:
+                    pace = new_pace
+                    _save()
+                    await _send({"type": "pace", "pace": pace})
                 new_lang = msg.get("language")
                 if new_lang in ("en", "hi") and new_lang != lang:
                     lang = new_lang

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 
 from ....db import db_session
 from ....models.ai_token_usage import RequestType
@@ -18,8 +19,12 @@ from .state import Concept, LessonPlan, Pointer
 logger = logging.getLogger(__name__)
 
 ACTIONS = {"advance", "remediate", "answer_doubt", "wait"}
-LIVE_OPS = {"highlight", "annotate", "unhighlight"}
+LIVE_OPS = {"highlight", "annotate", "unhighlight", "callout"}
+# Actions in which the teacher may leave one note on the board.
+NOTE_ACTIONS = {"remediate", "answer_doubt"}
+NOTE_MAX_WORDS = 30
 TURN_MAX_TOKENS = 700
+PREDICT_MAX_TOKENS = 160
 
 
 class Decision(Dict[str, Any]):
@@ -37,13 +42,23 @@ def _board_ids(board_ops: List[Dict[str, Any]]) -> set:
     return ids
 
 
-def _sanitize_ops(ops: Any, board_ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _sanitize_ops(ops: Any, board_ops: List[Dict[str, Any]], *, action: str = "") -> List[Dict[str, Any]]:
     ids = _board_ids(board_ops)
     out: List[Dict[str, Any]] = []
     if not isinstance(ops, list):
         return out
-    for i, op in enumerate(ops[:4]):
+    note_done = False
+    for i, op in enumerate(ops[:5]):
         if not isinstance(op, dict) or op.get("op") not in LIVE_OPS:
+            continue
+        if op["op"] == "callout":
+            # One note per turn, only while remediating or answering a doubt.
+            words = str(op.get("text") or "").split()
+            if note_done or action not in NOTE_ACTIONS or not words:
+                continue
+            note_done = True
+            out.append({"op": "callout", "id": f"live-note-{uuid4().hex[:8]}", "kind": op.get("kind") if op.get("kind") in ("example", "tip", "definition", "warning") else "example",
+                        "text": " ".join(words[:NOTE_MAX_WORDS]), "note": True})
             continue
         if op.get("target") not in ids:
             continue
@@ -79,7 +94,7 @@ def parse_decision(raw: str, *, board_ops: List[Dict[str, Any]], pass_threshold:
     return Decision(
         action=action,
         say=say[:700],
-        board_ops=_sanitize_ops(data.get("board_ops"), board_ops),
+        board_ops=_sanitize_ops(data.get("board_ops"), board_ops, action=action),
         assessment={"score": score, "misconception": (str(assessment.get("misconception"))[:120] if assessment.get("misconception") else None),
                     "evidence": (str(assessment.get("evidence"))[:300] if assessment.get("evidence") else None)},
         learner_state_delta={"note": (str(delta.get("note"))[:200] if delta.get("note") else None)},
@@ -191,3 +206,39 @@ def _turn_user_prompt(*, lesson: LessonPlan, pointer: Pointer, concept: Concept,
             final_attempt=final_attempt, source_block=source_block, revisit=revisit,
         )
     return user
+
+
+async def run_predict(
+    *, institute_id: str, user_id: str, model: Optional[str], teacher: str, lang: str, learner_name: Optional[str],
+    concept: Concept, answer: str, tutor_session_id: str,
+) -> Tuple[str, Dict[str, int]]:
+    """React to a pre-teaching guess in a sentence or two (never graded).
+    Falls back to a canned line when the model is unavailable."""
+    usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    messages = [
+        {"role": "system", "content": f"You are {teacher}, a warm one-to-one teacher. JSON only."},
+        {"role": "user", "content": prompts.predict_prompt(learner_name=learner_name, question=concept.predict or "",
+                                                           concept_title=concept.title, concept_say=concept.narration(lang),
+                                                           answer=answer, lang=lang)},
+    ]
+    try:
+        with db_session() as db:
+            keys = ApiKeyResolver(db).resolve_keys(institute_id, user_id, request_model=model)
+        client = ChatLLMClient(_FixedKeys(keys), platform_model_key="chatbot.text.model")
+        resp = await client.chat_completion(messages, temperature=0.5, max_tokens=PREDICT_MAX_TOKENS,
+                                            institute_id=institute_id, user_id=user_id, model=model)
+        u = resp.get("usage") or {}
+        usage = {"prompt_tokens": int(u.get("prompt_tokens") or 0), "completion_tokens": int(u.get("completion_tokens") or 0)}
+        record_llm_billing(
+            request_type=RequestType.CONVERSATION, model=resp.get("model") or model or "default",
+            prompt_tokens=usage["prompt_tokens"], completion_tokens=usage["completion_tokens"],
+            total_tokens=usage["prompt_tokens"] + usage["completion_tokens"], institute_id=institute_id, user_id=user_id,
+            request_id=tutor_session_id, metadata={"surface": "tutor", "kind": "predict"},
+        )
+        data = extract_json(resp.get("content") or "")
+        say = str((data or {}).get("say") or "").strip() if isinstance(data, dict) else ""
+        if say:
+            return say[:400], usage
+    except Exception:  # noqa: BLE001
+        logger.warning("Predict turn failed for session %s", tutor_session_id, exc_info=True)
+    return prompts.tpl("predict_ack", lang), usage

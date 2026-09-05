@@ -1,11 +1,46 @@
 import { useEffect, useRef, useState } from "react";
-import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop } from "@phosphor-icons/react";
+import { Microphone, PaperPlaneRight, SkipForward, ArrowCounterClockwise, Question, SpeakerHigh, SpeakerSlash, Stop, CheckCircle, Circle, XCircle, Fire } from "@phosphor-icons/react";
 import { TeacherAvatar } from "./TeacherAvatar";
+import type { TutorPace } from "@/hooks/useTutorSocket";
 
 export interface TranscriptLine {
   role: "teacher" | "learner";
   text: string;
+  /** What the teacher line is (evaluate, remediate, revisit_verdict, nudge…). */
+  kind?: string;
+  score?: number | null;
+  cleared?: boolean;
 }
+
+export interface LessonStats {
+  asked: number;
+  correct: number;
+  streak: number;
+  best: number;
+}
+
+const PACES: Array<{ id: TutorPace; label: string }> = [
+  { id: "slower", label: "Slower" },
+  { id: "slow", label: "Slow" },
+  { id: "normal", label: "Medium" },
+  { id: "fast", label: "Fast" },
+];
+
+/** A correct / partly / not-yet chip on a verdict line. */
+const Verdict: React.FC<{ line: TranscriptLine }> = ({ line }) => {
+  const k = line.kind;
+  if (k !== "evaluate" && k !== "remediate" && k !== "revisit_verdict") return null;
+  const score = typeof line.score === "number" ? line.score : null;
+  const ok = k === "evaluate" || (k === "revisit_verdict" && line.cleared);
+  const partly = !ok && score !== null && score >= 0.3;
+  const cls = ok ? "bg-success-50 text-success-700 border-success-200" : partly ? "bg-warning-50 text-warning-700 border-warning-200" : "bg-neutral-100 text-neutral-600 border-neutral-200";
+  const Icon = ok ? CheckCircle : partly ? Circle : XCircle;
+  return (
+    <span className={`mb-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${cls}`}>
+      <Icon className="size-3.5" weight="fill" /> {ok ? "Correct" : partly ? "Partly" : "Not yet"}
+    </span>
+  );
+};
 
 export type TutorPhase = "connecting" | "speaking" | "listening" | "thinking" | "idle" | "question" | "media" | "done";
 
@@ -14,7 +49,12 @@ interface TeacherPanelProps {
   teacherAvatarFileId?: string | null;
   phase: TutorPhase;
   transcript: TranscriptLine[];
-  check: { prompt: string | null; options: string[]; check_type: string | null; revisit?: boolean } | null;
+  check: { prompt: string | null; options: string[]; check_type: string | null; revisit?: boolean; predict?: boolean } | null;
+  /** The teacher's speaking pace, chosen by the learner. */
+  pace?: TutorPace;
+  onPace?: (pace: TutorPace) => void;
+  /** Checks asked / answered right in this slide, and the streak. */
+  stats?: LessonStats;
   awaiting: "continue" | "answer" | "done" | null;
   voiceMode: boolean;
   micOn: boolean;
@@ -50,7 +90,7 @@ const PHASE_LABEL: Record<TutorPhase, string> = {
 export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   teacherName, teacherAvatarFileId, phase, transcript, check, awaiting, voiceMode, micOn, speakOn,
   onSendText, onAsk, onContinue, onControl, onToggleMic, onToggleSpeak, onInterrupt, onEnd,
-  notice, disabled, compact,
+  notice, disabled, compact, pace, onPace, stats,
 }) => {
   const [text, setText] = useState("");
   const [askMode, setAskMode] = useState(false);
@@ -89,6 +129,35 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
         )}
       </div>
 
+      {stats && stats.asked > 0 && (
+        <div className="mt-2 flex items-center gap-2 text-xs text-neutral-600">
+          <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-800">
+            {stats.correct} of {stats.asked} so far
+          </span>
+          {stats.streak >= 2 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning-50 px-2 py-0.5 font-medium text-warning-700">
+              <Fire className="size-3.5" weight="fill" /> {stats.streak} in a row
+            </span>
+          )}
+        </div>
+      )}
+      {voiceMode && onPace && (
+        <div className="mt-2 flex items-center gap-1" role="group" aria-label="Teacher's pace">
+          <span className="me-1 text-xs uppercase tracking-wide text-neutral-500">Pace</span>
+          {PACES.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onPace(p.id)}
+              aria-pressed={pace === p.id}
+              className={`rounded-full px-2.5 py-0.5 text-xs ${pace === p.id ? "bg-primary-500 text-white" : "border border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {notice && (
         <p role="status" className="mt-2 rounded-lg border border-warning-200 bg-warning-50 px-3 py-1.5 text-xs text-warning-700">
           {notice}
@@ -98,14 +167,17 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
       <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto py-3">
         {transcript.map((m, i) => (
           <div key={i} className={`flex ${m.role === "learner" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-md rounded-2xl px-3 py-2 text-sm ${m.role === "learner" ? "bg-primary-500 text-white" : "bg-neutral-100 text-neutral-800"}`}>
+            <div className={`max-w-md rounded-2xl px-3 py-2 text-sm ${m.role === "learner" ? "bg-primary-500 text-white" : m.kind === "nudge" ? "border border-warning-200 bg-warning-50 text-neutral-800" : "bg-neutral-100 text-neutral-800"}`}>
+              {m.role === "teacher" && (m.kind === "evaluate" || m.kind === "remediate" || m.kind === "revisit_verdict") && (
+                <div><Verdict line={m} /></div>
+              )}
               {m.text}
             </div>
           </div>
         ))}
         {check && awaiting === "answer" && (
           <div className="rounded-xl border border-primary-200 bg-primary-50 p-3">
-            <p className="text-xs font-semibold uppercase text-primary-500">{check.revisit ? "Quick revisit · one try" : "Question"}</p>
+            <p className="text-xs font-semibold uppercase text-primary-500">{check.predict ? "Your guess" : check.revisit ? "Quick revisit · one try" : "Question"}</p>
             <p className="mt-1 text-sm text-neutral-900">{check.prompt}</p>
             {check.options.length > 0 && (
               <div className="mt-2 flex flex-col gap-1">
@@ -164,7 +236,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
             onKeyDown={(e) => {
               if (e.key === "Enter") submit();
             }}
-            placeholder={askMode ? "Ask your doubt…" : awaiting === "answer" ? "Type your answer…" : "Say something or ask…"}
+            placeholder={askMode ? "Ask your doubt…" : awaiting === "answer" ? (check?.predict ? "Take a guess…" : "Type your answer…") : "Say something or ask…"}
             className="min-w-0 flex-1 rounded-full border border-neutral-200 px-4 py-2 text-sm outline-none focus:border-primary-400"
           />
           <button type="button" onClick={submit} className="rounded-full bg-primary-500 p-2 text-white" title="Send">

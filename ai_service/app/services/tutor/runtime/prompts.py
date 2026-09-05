@@ -78,6 +78,15 @@ T = {
     "revisit_done_slide": {"en": "That's the revisit done. Well done for sticking with it.",
                            "hi": "दोहराव पूरा हुआ। लगे रहने के लिए शाबाश।"},
     "revisit_skipped": {"en": "Okay, we'll leave that one for another day.", "hi": "ठीक है, इसे किसी और दिन के लिए छोड़ते हैं।"},
+    # Silence recovery (a minute on an open question)
+    "nudge_hint": {"en": "Take your time. Here's a hint: {hint}", "hi": "आराम से सोचिए। एक संकेत: {hint}"},
+    "nudge_open": {"en": "Take your time. If you'd like, say 'skip' and we'll come back to this later.",
+                   "hi": "आराम से सोचिए। चाहें तो 'skip' कहिए, हम इस पर बाद में लौटेंगे।"},
+    # Predict-then-reveal
+    "predict_intro": {"en": "Before I show you, a quick guess: {question}", "hi": "दिखाने से पहले, एक अंदाज़ा लगाइए: {question}"},
+    "predict_ack": {"en": "Good guess. Let's see.", "hi": "अच्छा अंदाज़ा। चलिए देखते हैं।"},
+    # The right answer stays on the board when the teacher moves on.
+    "answer_note": {"en": "Answer: {expected}", "hi": "उत्तर: {expected}"},
 }
 
 
@@ -133,7 +142,7 @@ DECISION_SCHEMA = """Return ONE JSON object and nothing else:
 {
   "action": "advance" | "remediate" | "answer_doubt" | "wait",
   "say": "what you say next, 1-4 spoken sentences, in the session language, addressing the learner directly",
-  "board_ops": [ {"op":"highlight","target":"<element id on the board>","style":"pulse"} | {"op":"annotate","id":"s-1","target":"<element id>","text":"<=8 words","position":"right"} ],
+  "board_ops": [ {"op":"highlight","target":"<element id on the board>","style":"pulse"} | {"op":"annotate","id":"s-1","target":"<element id>","text":"<=8 words","position":"right"} | {"op":"callout","id":"note-1","kind":"example","text":"<=30 words: a worked example or the key line, ONLY with action remediate or answer_doubt"} ],
   "assessment": {"score": 0.0-1.0, "misconception": "<short label or null>", "evidence": "<what in the answer shows it>"},
   "learner_state_delta": {"note": "<one line about this learner, or null>"}
 }
@@ -141,7 +150,10 @@ Rules: "advance" only when score >= the pass threshold. "remediate" = the answer
 concrete hint anchored on the board and re-asks in fewer words (never reveal the full answer on the first remediation).
 "answer_doubt" = the learner asked something instead of answering: answer briefly from the concept material, then
 invite them to answer the check. "wait" = the learner said something that is neither (small talk): respond in one
-sentence and re-ask. Only highlight/annotate ops, only targets that exist on the board. No markdown."""
+sentence and re-ask. Ops: highlight/annotate on targets that exist on the board, plus at most ONE callout note when you
+remediate or answer a doubt (a worked example or the one line to remember — it stays on the board). ECHOES: an answer
+that repeats the teacher's own hint or words nearly verbatim is NOT understanding: score it at most 0.6 and, the first
+time, use action "wait" to ask for it in their own words or for the reason why. No markdown."""
 
 
 def system_prompt(teacher: str, lang: str, strictness: str) -> str:
@@ -321,3 +333,21 @@ def summary_prompt(*, teacher: str, learner_name: Optional[str], lang: str, dige
         SUMMARY_SCHEMA,
     ]
     return "\n\n".join(p for p in lines if p)
+
+
+# ── predict-then-reveal turn ─────────────────────────────────────────────────
+
+PREDICT_SCHEMA = """Return ONE JSON object and nothing else:
+{"say": "1-2 spoken sentences reacting to the guess (warm; if it is close say what was right; if not, do not reveal the answer — say what to watch for), in the session language", "close": true|false}"""
+
+
+def predict_prompt(*, learner_name: Optional[str], question: str, concept_title: str, concept_say: str,
+                   answer: str, lang: str) -> str:
+    return "\n\n".join([
+        f"LEARNER: {learner_name or 'the learner'}",
+        f"You asked them to GUESS before teaching '{concept_title}': {question}",
+        f"WHAT YOU ARE ABOUT TO TEACH (do not reveal it yet): {concept_say}",
+        f"THEIR GUESS ({LANG_NAMES.get(lang, lang)}): {answer.strip()}",
+        "React in 1-2 sentences and hand over to the explanation. Any guess is fine; never grade it. JSON only.",
+        PREDICT_SCHEMA,
+    ])

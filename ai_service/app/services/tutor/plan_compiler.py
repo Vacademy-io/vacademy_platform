@@ -20,14 +20,15 @@ from pydantic import ValidationError
 from ...db import db_session
 from ...models.ai_token_usage import RequestType
 from ...models.teaching_plan import TeachingPlan
-from ...schemas.tutor import CompileKbGrounding, MediaTaskOp, TeachingPlanDraft
+from ...schemas.tutor import CompileKbGrounding, MediaTaskOp, SvgPart, TeachingPlanDraft
 from ..ai_billing import record_llm_billing, record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from ..platform_settings_service import get_platform_setting
 from . import compile_prompts as prompts
 from . import plan_store
-from .plan_validator import DEFAULT_LIMITS, QUIZ_LIMITS, validate_plan
+from .plan_validator import DEFAULT_LIMITS, QUIZ_LIMITS, soft_errors, validate_plan
+from .svg_check import auto_layout_svg, structural_svg_errors
 from .quiz_compiler import compile_quiz
 from .slide_source import SlideSource, load_slide_source, slide_belongs_to_institute
 from . import source_text
@@ -77,6 +78,27 @@ def _description_unchanged(plan: TeachingPlan) -> bool:
         # Compiled before the description was recorded: trust the body hash.
         return True
     return (inputs.get("source_description") or "").strip() == (plan.source_description or "").strip()
+
+
+def _replace_broken_diagrams(draft: TeachingPlanDraft) -> int:
+    """A diagram that still fails the geometry gate after the quality round
+    is replaced by a clean auto-layout of its parts. Returns how many."""
+    replaced = 0
+    for topic in draft.topics:
+        for concept in topic.concepts:
+            for op in concept.board_ops:
+                if getattr(op, "op", None) != "svg":
+                    continue
+                parts = [p.model_dump() for p in (op.parts or [])]
+                if not structural_svg_errors(op.svg):
+                    continue
+                svg, used = auto_layout_svg(concept.title, parts or [{"id": op.id + "-p1", "label": concept.title[:28]}])
+                op.svg = svg
+                op.parts = [SvgPart(**u) for u in used]
+                replaced += 1
+    if replaced:
+        logger.info("Tutor compile: %d diagram(s) replaced by auto-layout", replaced)
+    return replaced
 
 
 def _count_image_ops(draft: TeachingPlanDraft) -> int:
@@ -439,10 +461,13 @@ class PlanCompiler:
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
         last_json = ""
+        draft_json = ""
         draft: Optional[TeachingPlanDraft] = None
         errors: List[str] = []
         asked_for_images = False
-        for attempt in range(MAX_REPAIRS + 1):
+        asked_for_quality = False
+        hard_repairs = 0
+        for attempt in range(MAX_REPAIRS + 3):
             content, finish_reason = await self._chat(messages, run)
             data = None if finish_reason == "length" else prompts.extract_json(content)
             if finish_reason == "length":
@@ -468,29 +493,46 @@ class PlanCompiler:
                                            require_media_urls=False)
                     if not errors:
                         draft = candidate
+                        draft_json = last_json
                         # Images are on but the model drew none: one extra
                         # round asking for pictures where they belong. Not a
                         # failure if it still declines (abstract material).
                         if (self.generate_images and source.kind == "document" and not asked_for_images
-                                and attempt < MAX_REPAIRS and _count_image_ops(candidate) == 0):
+                                and _count_image_ops(candidate) == 0):
                             asked_for_images = True
                             logger.info("Tutor compile: no image ops with images on for slide %s; asking once", source.slide_id)
                             messages.append({"role": "assistant", "content": last_json[:60000]})
                             messages.append({"role": "user", "content": prompts.image_repair_prompt(last_json)})
                             continue
+                        # Engagement and diagram quality: one round, never a
+                        # failure — a plan that still misses them is kept.
+                        soft = soft_errors(candidate, limits=DEFAULT_LIMITS)
+                        if soft and not asked_for_quality:
+                            asked_for_quality = True
+                            logger.info("Tutor compile: %d quality ask(s) for slide %s: %s", len(soft), source.slide_id, "; ".join(soft[:3])[:400])
+                            messages.append({"role": "assistant", "content": last_json[:60000]})
+                            messages.append({"role": "user", "content": prompts.soft_repair_prompt(soft, last_json)})
+                            continue
                         break
                 except ValidationError as ve:
                     errors = _pydantic_errors(ve)
+            # A quality round that came back invalid: keep the last valid plan.
+            if draft is not None and asked_for_quality:
+                logger.info("Tutor compile: quality round for slide %s was invalid; keeping the previous plan", source.slide_id)
+                break
             # Which rules bounce plans is what tunes the prompt; keep it visible.
             logger.info("Tutor compile attempt %d for slide %s: %d validation error(s): %s",
                         attempt + 1, source.slide_id, len(errors), "; ".join(errors[:4])[:600])
-            if attempt < MAX_REPAIRS:
-                messages.append({"role": "assistant", "content": last_json[:60000] or (content or "")[:60000]})
-                messages.append({"role": "user", "content": prompts.repair_prompt(errors, last_json)})
+            if hard_repairs >= MAX_REPAIRS:
+                break
+            hard_repairs += 1
+            messages.append({"role": "assistant", "content": last_json[:60000] or (content or "")[:60000]})
+            messages.append({"role": "user", "content": prompts.repair_prompt(errors, last_json)})
         if draft is None:
             raise RuntimeError("plan failed validation after repairs: " + "; ".join(errors[:6]))
 
-        raw = json.loads(last_json) if last_json else None
+        raw = json.loads(draft_json) if draft_json else None
+        _replace_broken_diagrams(draft)
         await self._resolve_media(draft, source, run)
         # An image the system could not fill (images off, per-slide cap, a
         # generation error) is dropped, not fatal: the board keeps its text

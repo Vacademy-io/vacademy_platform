@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Info, CalendarBlank, Gear, Eye, ArrowsLeftRight, Sparkle } from '@phosphor-icons/react';
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import { zodResolver } from '@hookform/resolvers/zod';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useFilterDataForAssesment } from '../../../../../assessment-list/-utils.ts/useFiltersData';
@@ -22,10 +22,6 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { getStepKey, getTimeLimitString, syncStep1DataWithStore } from '../../-utils/helper';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import {
-    getIdBySubjectName,
-    getSubjectNameById,
-} from '@/routes/assessment/question-papers/-utils/helper';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basic-info';
 import { toast } from 'sonner';
@@ -36,6 +32,7 @@ import { useParams } from '@tanstack/react-router';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { convertCapitalToTitleCase } from '@/lib/utils';
+import { unresolvedSubjectIds, useSubjectNamesByIds } from '@/services/subject-names';
 import { useTranslation } from 'react-i18next';
 
 export function convertDateFormat(dateStr: string) {
@@ -621,6 +618,34 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     const { handleSubmit, control, watch } = form;
 
     // Watch form fields
+    const selectedSubjectId = watch('testCreation.subject');
+    // The dropdown comes from a list admin_core deduplicates by subject name, so a
+    // perfectly valid saved subject id is often absent from it — its name lost the dedup,
+    // or its course was deleted. Radix renders a value with no matching item as the empty
+    // placeholder, which is what made an already-chosen subject look unset on reopening
+    // the wizard. Resolve the name and keep the saved id as an option of its own.
+    const missingSubjectNames = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [selectedSubjectId])
+    );
+    const subjectOptions = useMemo(() => {
+        const options = SubjectFilterData.map((option, index) => ({
+            value: option.id,
+            label: convertCapitalToTitleCase(option.name),
+            _id: index,
+        }));
+        if (selectedSubjectId && !options.some((option) => option.value === selectedSubjectId)) {
+            const savedName = missingSubjectNames[selectedSubjectId];
+            if (savedName) {
+                options.push({
+                    value: selectedSubjectId,
+                    label: convertCapitalToTitleCase(savedName),
+                    _id: options.length,
+                });
+            }
+        }
+        return options;
+    }, [SubjectFilterData, selectedSubjectId, missingSubjectNames]);
+
     const assessmentName = watch('testCreation.assessmentName');
     const liveDateRangeStartDate = watch('testCreation.liveDateRange.startDate');
     const liveDateRangeEndDate = watch('testCreation.liveDateRange.endDate');
@@ -678,14 +703,17 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
     });
 
     const onSubmit = (data: z.infer<typeof BasicInfoFormSchema>) => {
+        // The field already holds the subject *id*. It used to hold the name and be
+        // converted here, which meant an unselected subject was posted as the literal
+        // string "N/A" (448 assessments in production carry that as their subject_id),
+        // and a selected one resolved through a name-deduplicated lookup whose winner
+        // Postgres is free to change — after which the saved id no longer matched
+        // anything and the subject read "N/A" again.
         const modifiedData = {
             ...data,
             testCreation: {
                 ...data.testCreation,
-                subject: getIdBySubjectName(
-                    instituteDetails?.subjects || [],
-                    data.testCreation.subject
-                ),
+                subject: data.testCreation.subject === 'N/A' ? '' : data.testCreation.subject,
             },
         };
         handleSubmitStep1Form.mutate({
@@ -753,10 +781,13 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
 
         return {
             assessmentName: savedData?.name || '',
-            subject: getSubjectNameById(
-                            instituteDetails?.subjects || [],
-                savedData?.subject_selection || ''
-                        ) || '',
+            // Raw id: the select is keyed by id, so no name round-trip is needed.
+            // A stored "N/A" is an older save with no real subject — treat it as empty
+            // rather than feeding the sentinel back into the next update.
+            subject:
+                savedData?.subject_selection && savedData.subject_selection !== 'N/A'
+                    ? savedData.subject_selection
+                    : '',
             assessmentInstructions: savedData?.instructions?.content || '',
                     liveDateRange: {
                 startDate: convertDateFormat(savedData?.boundation_start_date || '') || '',
@@ -882,11 +913,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                     )}
                                     name="testCreation.subject"
                                     labelStyle="font-thin"
-                                    options={SubjectFilterData.map((option, index) => ({
-                                        value: option.name,
-                                        label: convertCapitalToTitleCase(option.name),
-                                        _id: index,
-                                    }))}
+                                    options={subjectOptions}
                                     control={form.control}
                                     className="!w-full font-thin"
                                 />

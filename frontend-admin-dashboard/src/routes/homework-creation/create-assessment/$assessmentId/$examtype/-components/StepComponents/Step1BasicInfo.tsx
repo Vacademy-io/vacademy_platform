@@ -2,9 +2,10 @@ import { MyButton } from '@/components/design-system/button';
 import { Separator } from '@/components/ui/separator';
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import { zodResolver } from '@hookform/resolvers/zod';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useFilterDataForAssesment } from '../../../../../assessment-list/-utils.ts/useFiltersData';
+import { unresolvedSubjectIds, useSubjectNamesByIds } from '@/services/subject-names';
 import { FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
 import { MyInput } from '@/components/design-system/input';
 import SelectField from '@/components/design-system/select-field';
@@ -20,10 +21,6 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { getStepKey, getTimeLimitString, syncStep1DataWithStore } from '../../-utils/helper';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import {
-    getIdBySubjectName,
-    getSubjectNameById,
-} from '@/routes/assessment/question-papers/-utils/helper';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basic-info';
 import { toast } from 'sonner';
@@ -152,6 +149,30 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
 
     const { handleSubmit, control, watch } = form;
 
+    // The dropdown comes from a list admin_core deduplicates by subject name, so a
+    // perfectly valid saved subject id is often absent from it — its name lost the dedup,
+    // or its course was deleted. Radix renders a value with no matching item as the empty
+    // placeholder, which is what made an already-chosen subject look unset on reopening
+    // the wizard. Resolve the name and keep the saved id as an option of its own.
+    const selectedSubjectId = watch('testCreation.subject');
+    const missingSubjectNames = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [selectedSubjectId])
+    );
+    const subjectOptions = useMemo(() => {
+        const options = SubjectFilterData.map((option, index) => ({
+            value: option.id,
+            label: option.name,
+            _id: index,
+        }));
+        if (selectedSubjectId && !options.some((option) => option.value === selectedSubjectId)) {
+            const savedName = missingSubjectNames[selectedSubjectId];
+            if (savedName) {
+                options.push({ value: selectedSubjectId, label: savedName, _id: options.length });
+            }
+        }
+        return options;
+    }, [SubjectFilterData, selectedSubjectId, missingSubjectNames]);
+
     // Watch form fields
     const assessmentName = watch('testCreation.assessmentName');
     const liveDateRangeStartDate = watch('testCreation.liveDateRange.startDate');
@@ -214,10 +235,11 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             ...data,
             testCreation: {
                 ...data.testCreation,
-                subject: getIdBySubjectName(
-                    instituteDetails?.subjects || [],
-                    data.testCreation.subject
-                ),
+                // The field holds the subject *id*. It used to hold the name and be
+                // converted here, which posted the literal string "N/A" whenever nothing
+                // was selected and, when something was, resolved through a
+                // name-deduplicated lookup whose winner Postgres may change at any time.
+                subject: data.testCreation.subject === 'N/A' ? '' : data.testCreation.subject,
             },
         };
         handleSubmitStep1Form.mutate({
@@ -255,10 +277,10 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                 testCreation: {
                     assessmentName: assessmentDetails[currentStep]?.saved_data?.name || '',
                     subject:
-                        getSubjectNameById(
-                            instituteDetails?.subjects || [],
-                            assessmentDetails[currentStep]?.saved_data?.subject_selection || ''
-                        ) || '',
+                        assessmentDetails[currentStep]?.saved_data?.subject_selection &&
+                        assessmentDetails[currentStep]?.saved_data?.subject_selection !== 'N/A'
+                            ? assessmentDetails[currentStep]?.saved_data?.subject_selection
+                            : '',
                     assessmentInstructions:
                         assessmentDetails[currentStep]?.saved_data?.instructions.content || '',
                     liveDateRange: {
@@ -357,11 +379,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                 label={getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
                                 name="testCreation.subject"
                                 labelStyle="font-thin"
-                                options={SubjectFilterData.map((option, index) => ({
-                                    value: option.name,
-                                    label: option.name,
-                                    _id: index,
-                                }))}
+                                options={subjectOptions}
                                 control={form.control}
                                 className="mt-2 w-56 font-thin"
                                 required={

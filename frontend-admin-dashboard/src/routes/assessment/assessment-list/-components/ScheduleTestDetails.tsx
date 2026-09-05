@@ -6,7 +6,7 @@ import { DotIcon, DotIconOffline } from '@/svgs';
 import { CheckCircle, Copy, DownloadSimple, LockSimple, PauseCircle } from '@phosphor-icons/react';
 import QRCode from 'react-qr-code';
 import { convertToLocalDateTime } from '@/constants/helper';
-import { getSubjectNameById } from '../../question-papers/-utils/helper';
+import { resolveSubjectName } from '@/services/subject-names';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -28,10 +28,13 @@ const ScheduleTestDetails = ({
     scheduleTestContent,
     selectedTab,
     handleRefetchData,
+    subjectNamesById = {},
 }: {
     scheduleTestContent: TestContent;
     selectedTab: string;
     handleRefetchData: () => void;
+    /** Names for the subject ids the institute list cannot resolve — see subject-names.ts. */
+    subjectNamesById?: Record<string, string>;
 }) => {
     const { t } = useTranslation('assessmentScheduleTestDetails');
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -166,10 +169,12 @@ const ScheduleTestDetails = ({
                     <p>
                         {t('info.subject', {
                             label: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
-                            name: getSubjectNameById(
-                                instituteDetails?.subjects || [],
-                                scheduleTestContent.subject_id || ''
-                            ),
+                            name:
+                                resolveSubjectName(
+                                    instituteDetails?.subjects,
+                                    subjectNamesById,
+                                    scheduleTestContent.subject_id
+                                ) || 'N/A',
                         })}
                     </p>
                 </div>

@@ -11,7 +11,11 @@ import { Route } from '..';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { convertToLocalDateTime, getInstituteId } from '@/constants/helper';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    resolveSubjectName,
+    unresolvedSubjectIds,
+    useSubjectNamesByIds,
+} from '@/services/subject-names';
 import { AssessmentOverviewDataInterface } from '@/types/assessment-overview';
 import AssessmentStudentLeaderboard from './AssessmentStudentLeaderboard';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -91,12 +95,18 @@ export function QuestionsPieChart() {
         handleGetOverviewData({ assessmentId, instituteId })
     );
 
+    // Before the early return. The institute list keeps one subject per distinct name and
+    // drops subjects whose course was deleted, so most stored ids need the direct lookup.
+    const overviewSubjectId = data.assessment_overview_dto?.subject_id;
+    const subjectNamesById = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [overviewSubjectId])
+    );
     if (isLoading) return <DashboardLoader />;
 
     const overview = data.assessment_overview_dto;
     const subjectLabel = getTerminology(ContentTerms.Subjects, SystemTerms.Subjects);
     const subjectName =
-        getSubjectNameById(instituteDetails?.subjects || [], overview.subject_id || '') ||
+        resolveSubjectName(instituteDetails?.subjects, subjectNamesById, overviewSubjectId) ||
         t('info.subjectFallback');
     const pendingCount =
         overview.total_participants - (overview.total_ongoing + overview.total_attempted);

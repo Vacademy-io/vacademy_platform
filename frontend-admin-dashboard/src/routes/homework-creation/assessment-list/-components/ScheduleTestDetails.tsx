@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { getBatchNamesByIds } from '../assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import { resolveSubjectName } from '@/services/subject-names';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { useTranslation } from 'react-i18next';
@@ -27,10 +27,13 @@ const ScheduleTestDetails = ({
     scheduleTestContent,
     selectedTab,
     handleRefetchData,
+    subjectNamesById = {},
 }: {
     scheduleTestContent: TestContent;
     selectedTab: string;
     handleRefetchData: () => void;
+    /** Names for the subject ids the institute list cannot resolve — see subject-names.ts. */
+    subjectNamesById?: Record<string, string>;
 }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const navigate = useNavigate();
@@ -144,10 +147,11 @@ const ScheduleTestDetails = ({
                     <p>Created on: {convertToLocalDateTime(scheduleTestContent.created_at)}</p>
                     <p>
                         {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:{' '}
-                        {getSubjectNameById(
-                            instituteDetails?.subjects || [],
-                            scheduleTestContent.subject_id || ''
-                        )}
+                        {resolveSubjectName(
+                            instituteDetails?.subjects,
+                            subjectNamesById,
+                            scheduleTestContent.subject_id
+                        ) || 'N/A'}
                     </p>
                 </div>
                 <div className="flex flex-col gap-4">

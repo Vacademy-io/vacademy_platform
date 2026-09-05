@@ -12,7 +12,11 @@ import { Route } from '..';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { convertToLocalDateTime, getInstituteId } from '@/constants/helper';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    resolveSubjectName,
+    unresolvedSubjectIds,
+    useSubjectNamesByIds,
+} from '@/services/subject-names';
 import { AssessmentOverviewDataInterface } from '@/types/assessment-overview';
 import AssessmentStudentLeaderboard from './AssessmentStudentLeaderboard';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -81,6 +85,12 @@ export function QuestionsPieChart() {
         handleGetOverviewData({ assessmentId, instituteId })
     );
 
+    // Before the early return. The institute list keeps one subject per distinct name and
+    // drops subjects whose course was deleted, so most stored ids need the direct lookup.
+    const overviewSubjectId = data.assessment_overview_dto?.subject_id;
+    const subjectNamesById = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [overviewSubjectId])
+    );
     if (isLoading) return <DashboardLoader />;
     return (
         <div className="mt-8 flex w-full gap-16">
@@ -123,9 +133,10 @@ export function QuestionsPieChart() {
                                 {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:{' '}
                             </span>
                             <span>
-                                {getSubjectNameById(
-                                    instituteDetails?.subjects || [],
-                                    data.assessment_overview_dto.subject_id || ''
+                                {resolveSubjectName(
+                                    instituteDetails?.subjects,
+                                    subjectNamesById,
+                                    overviewSubjectId
                                 )}
                             </span>
                         </p>

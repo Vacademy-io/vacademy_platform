@@ -6,7 +6,11 @@ import { CheckCircle } from '@phosphor-icons/react';
 import { Route } from '..';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { convertToLocalDateTime } from '@/constants/helper';
-import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
+import {
+    resolveSubjectName,
+    unresolvedSubjectIds,
+    useSubjectNamesByIds,
+} from '@/services/subject-names';
 import { useTranslation } from 'react-i18next';
 
 export const AssessmentBasicInfoTab = () => {
@@ -20,6 +24,12 @@ export const AssessmentBasicInfoTab = () => {
             type: examType,
         })
     );
+    // Before the early return. The institute list keeps one subject per distinct name and
+    // drops subjects whose course was deleted, so most stored ids need the direct lookup.
+    const savedSubjectId = assessmentDetails[0]?.saved_data?.subject_selection;
+    const subjectNamesById = useSubjectNamesByIds(
+        unresolvedSubjectIds(instituteDetails?.subjects, [savedSubjectId])
+    );
     if (isLoading) return <DashboardLoader />;
     return (
         <>
@@ -32,9 +42,10 @@ export const AssessmentBasicInfoTab = () => {
                     <h1 className="text-sm font-semibold">
                         {t('fields.subject.label')}{' '}
                         <span className="font-thin">
-                            {getSubjectNameById(
-                                instituteDetails?.subjects || [],
-                                assessmentDetails[0]?.saved_data?.subject_selection ?? ''
+                            {resolveSubjectName(
+                                instituteDetails?.subjects,
+                                subjectNamesById,
+                                savedSubjectId
                             )}
                         </span>
                     </h1>

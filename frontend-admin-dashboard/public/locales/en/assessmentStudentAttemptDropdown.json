@@ -42,6 +42,23 @@
             "title": "Revaluate Entire Assessment",
             "confirmMessagePrefix": "Are you sure you want to revaluate for",
             "confirmMessageSuffix": "for the entire assessment?"
+        },
+        "aiReport": {
+            "title": "Download AI Report",
+            "intro": "A teacher-facing diagnostic report for",
+            "bulletWeakness": "Weakness broken down by section, topic and question, weakest first",
+            "bulletCharts": "Charts for the attempt split, section comparison, topic accuracy and cognitive levels",
+            "bulletActions": "Misconceptions with remediation, and a prioritised action plan",
+            "checking": "Checking whether the analysis is ready…",
+            "usesCredits": "The analysis for this attempt has not been generated yet. Downloading it will use your institute’s AI credits. Later downloads of the same attempt are free.",
+            "alreadyGenerated": "The analysis for this attempt is ready — downloading it will not use any AI credits.",
+            "unsupported": "This attempt cannot be analysed, so no AI report is available for it.",
+            "balance_one": "Balance: {{count}} credit",
+            "balance_other": "Balance: {{count}} credits",
+            "generateAndDownload": "Generate & Download",
+            "download": "Download",
+            "generating": "Generating…",
+            "downloaded": "AI report downloaded."
         }
     },
     "dropdown": {
@@ -61,7 +78,8 @@
         "loadingEvaluatedCopy": "Loading Evaluated Copy...",
         "generatingReport": "Generating Report...",
         "downloadReport": "Download Report",
-        "releaseResult": "Release Result"
+        "releaseResult": "Release Result",
+        "downloadAiReport": "Download AI Report"
     },
     "toasts": {
         "reattemptProvided": "Reattempt has been provided to {{name}}.",
@@ -76,6 +94,7 @@
         "noSubmissionFile": "No submission file found for this attempt.",
         "popupBlocked": "Please allow pop-ups to view the submission.",
         "submissionLoadError": "Failed to load submission. Please try again.",
-        "reportGenerateError": "Failed to generate the report. Please try again."
+        "reportGenerateError": "Failed to generate the report. Please try again.",
+        "aiReportError": "Could not download the AI report. Please try again."
     }
 }

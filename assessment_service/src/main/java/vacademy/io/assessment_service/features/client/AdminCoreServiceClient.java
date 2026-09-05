@@ -79,6 +79,121 @@ public class AdminCoreServiceClient {
     }
 
     /**
+     * Every learner's stored AI analysis for one assessment, in one call.
+     *
+     * <p>This is what makes a CLASS-level AI report free: the per-learner
+     * analyses have already been generated and paid for, so the class view is
+     * arithmetic over them rather than a fresh model call.
+     *
+     * <p>Never throws — an unreachable admin_core costs the AI half of the
+     * report, not the report.
+     */
+    public List<String> getProcessedAIReportsForAssessment(String assessmentId) {
+        try {
+            String route = "/admin-core-service/llm-analytics/internal/processed-logs/by-source?sourceId="
+                    + assessmentId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "GET", adminCoreServiceBaseUrl, route, null);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> body = objectMapper.readValue(response.getBody(), Map.class);
+                Object analyses = body.get("analyses");
+                if (analyses instanceof List<?> rows) {
+                    List<String> out = new ArrayList<>(rows.size());
+                    for (Object row : rows) {
+                        if (row instanceof Map<?, ?> map) {
+                            Object json = map.get("processed_json");
+                            if (json != null) out.add(json.toString());
+                        }
+                    }
+                    return out;
+                }
+            }
+            log.warn("Bulk AI analyses returned {} for assessment {}", response.getStatusCode(), assessmentId);
+        } catch (Exception e) {
+            log.warn("Failed to fetch AI analyses for assessment {}: {}", assessmentId, e.getMessage());
+        }
+        return List.of();
+    }
+
+    /**
+     * Outcome of an on-demand AI report generation request.
+     *
+     * @param status       admin_core's activity_log status - {@code processed},
+     *                     {@code skipped_no_credits}, {@code failed},
+     *                     {@code not_found} or {@code error}
+     * @param processedJson the report JSON; non-null only when {@code status} is
+     *                     {@code processed}
+     */
+    public record AiReportGenerationResult(String status, String processedJson) {
+
+        public static final String STATUS_PROCESSED = "processed";
+        public static final String STATUS_NO_CREDITS = "skipped_no_credits";
+        public static final String STATUS_NOT_FOUND = "not_found";
+        /**
+         * The model call outran our HTTP read timeout. admin_core keeps working and
+         * stores the result, so this means "come back shortly", not "it failed" —
+         * and crucially not "retry now", which would risk a second charge.
+         */
+        public static final String STATUS_GENERATING = "generating";
+
+        public boolean isProcessed() {
+            return STATUS_PROCESSED.equalsIgnoreCase(status) && processedJson != null && !processedJson.isBlank();
+        }
+
+        public boolean isOutOfCredits() {
+            return STATUS_NO_CREDITS.equalsIgnoreCase(status);
+        }
+
+        public boolean isNotFound() {
+            return STATUS_NOT_FOUND.equalsIgnoreCase(status);
+        }
+    }
+
+    /**
+     * Generates the AI report for {@code userId} + {@code assessmentId} right now
+     * instead of waiting for admin_core's hourly scheduler, and returns the result.
+     * <p>
+     * This is the call that <b>spends the institute's AI credits</b>, so it must only
+     * be made on an explicit user action. It is a no-op cost-wise when the report has
+     * already been generated: admin_core returns the stored row without calling the
+     * model again.
+     * <p>
+     * Never throws - a transport failure degrades to {@code status="error"} so the
+     * caller can decide what to tell the admin.
+     */
+    public AiReportGenerationResult generateAiReportOnDemand(String userId, String assessmentId) {
+        try {
+            String route = "/admin-core-service/llm-analytics/internal/process-on-demand?userId="
+                    + userId + "&sourceId=" + assessmentId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, "POST", adminCoreServiceBaseUrl, route, null);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> body = objectMapper.readValue(response.getBody(), Map.class);
+                Object status = body.get("status");
+                Object processedJson = body.get("processed_json");
+                return new AiReportGenerationResult(
+                        status != null ? status.toString() : "error",
+                        processedJson != null ? processedJson.toString() : null);
+            }
+            log.warn("On-demand AI report generation returned {} for user {} assessment {}",
+                    response.getStatusCode(), userId, assessmentId);
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            // Read timeout: admin_core is still running the model call and will
+            // persist the result. Reported as "generating" so the caller waits
+            // instead of firing a second, separately-charged request.
+            log.warn("On-demand AI report generation timed out for user {} assessment {}: {}",
+                    userId, assessmentId, e.getMessage());
+            return new AiReportGenerationResult(AiReportGenerationResult.STATUS_GENERATING, null);
+        } catch (Exception e) {
+            log.warn("Failed to generate AI report on demand for user {} assessment {}: {}",
+                    userId, assessmentId, e.getMessage());
+        }
+        return new AiReportGenerationResult("error", null);
+    }
+
+    /**
      * Report branding for an institute, read from {@code ASSESSMENT_SETTING.reportBranding}.
      * <p>
      * Two things matter here beyond the plain fetch:

@@ -62,6 +62,7 @@ import { BulkActions } from './bulk-actions/bulk-actions';
 import { AssessmentSubmissionsStudentTable } from './AssessmentSubmissionsStudentTable';
 import { SubmissionsSummaryStrip } from './SubmissionsSummaryStrip';
 import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDialog';
+import { AiAssessmentReportButton } from './AiAssessmentReportButton';
 import { AssessmentExportCsvDialog } from './AssessmentExportCsvDialog';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
@@ -1474,6 +1475,10 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             assessmentId={assessmentId}
                             instituteId={instituteId}
                             selectedFilter={selectedFilter}
+                        />
+                        <AiAssessmentReportButton
+                            assessmentId={assessmentId}
+                            instituteId={instituteId}
                         />
                         {isOfflineEntryEnabled && (
                             <MyButton

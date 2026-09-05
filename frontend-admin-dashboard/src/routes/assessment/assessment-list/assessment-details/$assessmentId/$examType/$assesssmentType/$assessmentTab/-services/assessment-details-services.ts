@@ -14,6 +14,8 @@ import {
     GET_EXPORT_PDF_URL_RANK_MARK,
     GET_EXPORT_PDF_URL_RESPONDENT_LIST,
     GET_EXPORT_PDF_URL_STUDENT_REPORT,
+    GET_EXPORT_PDF_URL_AI_STUDENT_REPORT,
+    GET_AI_STUDENT_REPORT_STATUS_URL,
     GET_EXPORT_PDF_URL_SUBMISSIONS_LIST,
     GET_INDIVIDUAL_STUDENT_DETAILS_URL,
     GET_LEADERBOARD_URL,
@@ -228,6 +230,65 @@ export const handleGetStudentReportExportPDF = async (
             assessmentId,
             attemptId,
             instituteId,
+        },
+    });
+    return response?.data;
+};
+
+export type AiStudentReportStatus = 'AVAILABLE' | 'NOT_GENERATED' | 'UNSUPPORTED';
+
+export interface AiStudentReportStatusResponse {
+    status: AiStudentReportStatus;
+    available: boolean;
+    requires_generation: boolean;
+    message?: string;
+}
+
+/**
+ * Whether the AI diagnostic report for this attempt already exists. Free and
+ * read-only — asked before offering the download so the teacher is told
+ * up-front whether it will cost AI credits.
+ */
+export const getAiStudentReportStatus = async (
+    assessmentId: string,
+    instituteId: string | undefined,
+    attemptId: string
+): Promise<AiStudentReportStatusResponse> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_AI_STUDENT_REPORT_STATUS_URL,
+        params: {
+            assessmentId,
+            attemptId,
+            instituteId,
+        },
+    });
+    return response?.data;
+};
+
+/**
+ * The teacher's AI diagnostic PDF. Generates the analysis on the first download
+ * for an attempt, which is the call that spends AI credits; later downloads of
+ * the same attempt reuse the stored analysis and cost nothing.
+ */
+export const handleGetAiStudentReportExportPDF = async (
+    assessmentId: string,
+    instituteId: string | undefined,
+    attemptId: string,
+    generate = true
+) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        responseType: 'blob',
+        headers: {
+            Accept: 'application/pdf',
+        },
+        url: GET_EXPORT_PDF_URL_AI_STUDENT_REPORT,
+        params: {
+            assessmentId,
+            attemptId,
+            instituteId,
+            generate,
         },
     });
     return response?.data;

@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentUserFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
+import vacademy.io.assessment_service.features.assessment.dto.export.AiStudentReportStatusDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.ResultExportColumnsDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.zip.*;
 import vacademy.io.assessment_service.features.assessment.manager.AdminExportManager;
@@ -106,6 +107,54 @@ public class AdminExportController {
                                                    @RequestParam("attemptId") String attemptId,
                                                    @RequestParam("instituteId") String instituteId) {
         return adminExportManager.getStudentReportPdf(user, assessmentId, attemptId, instituteId);
+    }
+
+    /**
+     * Is the AI diagnostic report for this attempt ready, or would downloading
+     * it spend AI credits? Free and read-only — the submissions menu calls it
+     * before showing the download so the teacher knows which they are getting.
+     */
+    @GetMapping("/ai-student-report/status")
+    public ResponseEntity<AiStudentReportStatusDto> aiStudentReportStatus(@RequestAttribute("user") CustomUserDetails user,
+                                                                          @RequestParam("assessmentId") String assessmentId,
+                                                                          @RequestParam("attemptId") String attemptId,
+                                                                          @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(adminExportManager.getAiStudentReportStatus(user, assessmentId, attemptId, instituteId));
+    }
+
+    /**
+     * The teacher's AI diagnostic PDF for one attempt: weakness by section,
+     * topic and question, misconceptions, and a prioritised action plan.
+     *
+     * <p>Generates the analysis if it does not exist yet, which is what
+     * <b>spends the institute's AI credits</b> — pass {@code generate=false} to
+     * download only an analysis that already exists. Subsequent downloads of the
+     * same attempt reuse the stored analysis and cost nothing.
+     */
+    @GetMapping("pdf/ai-student-report")
+    public ResponseEntity<byte[]> aiStudentReportPdf(@RequestAttribute("user") CustomUserDetails user,
+                                                     @RequestParam("assessmentId") String assessmentId,
+                                                     @RequestParam("attemptId") String attemptId,
+                                                     @RequestParam("instituteId") String instituteId,
+                                                     @RequestParam(name = "generate", required = false, defaultValue = "true")
+                                                     boolean generate) {
+        return adminExportManager.getAiStudentReportPdf(user, assessmentId, attemptId, instituteId, generate);
+    }
+
+    /**
+     * The ONE AI diagnostic report for a whole assessment — class-wide weakness
+     * by section, topic and question, shared misconceptions, and the full
+     * participant roster.
+     *
+     * <p>Spends NO AI credits: the class view aggregates the per-learner
+     * analyses already generated for this assessment. If none exist yet the
+     * document still renders from assessment data and says so in its footer.
+     */
+    @GetMapping("pdf/ai-assessment-report")
+    public ResponseEntity<byte[]> aiAssessmentReportPdf(@RequestAttribute("user") CustomUserDetails user,
+                                                        @RequestParam("assessmentId") String assessmentId,
+                                                        @RequestParam("instituteId") String instituteId) {
+        return adminExportManager.getAiAssessmentReportPdf(user, assessmentId, instituteId);
     }
 
     // ==================================================================

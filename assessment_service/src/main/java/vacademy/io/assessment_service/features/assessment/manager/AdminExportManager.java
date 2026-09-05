@@ -25,6 +25,7 @@ import vacademy.io.assessment_service.features.assessment.dto.export.Participant
 import vacademy.io.assessment_service.features.assessment.dto.export.RespondentExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.ResultExportColumnsDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.ResultExportRowDto;
+import vacademy.io.assessment_service.features.assessment.dto.export.AiStudentReportStatusDto;
 import vacademy.io.assessment_service.features.assessment.dto.batch_pending.EnrolledLearnerDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.zip.*;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
@@ -32,6 +33,7 @@ import vacademy.io.assessment_service.features.assessment.entity.AssessmentCusto
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentReportExportItem;
 import vacademy.io.assessment_service.features.assessment.entity.AssessmentReportExportJob;
 import vacademy.io.assessment_service.features.assessment.entity.Section;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.ReportExportJobStatus;
@@ -46,13 +48,20 @@ import vacademy.io.assessment_service.features.assessment.repository.AssessmentU
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
+import vacademy.io.assessment_service.features.assessment.service.StudentReportAnalyticsService;
+import vacademy.io.assessment_service.features.assessment.service.ClassAiInsightsAggregator;
+import vacademy.io.assessment_service.features.assessment.service.ClassAiReportHtmlBuilder;
+import vacademy.io.assessment_service.features.assessment.service.TeacherAiReportHtmlBuilder;
 import vacademy.io.assessment_service.features.assessment.service.export.ReportExportJobFactory;
 import vacademy.io.assessment_service.features.assessment.service.export.ReportExportProperties;
 import vacademy.io.assessment_service.features.assessment.service.export.ReportZipAssemblyService;
 import vacademy.io.assessment_service.features.assessment.service.export.ReportZipExportService;
 import vacademy.io.assessment_service.features.client.AdminCoreServiceClient;
 import vacademy.io.assessment_service.features.learner_assessment.dto.ReportClassContext;
+import vacademy.io.assessment_service.features.learner_assessment.dto.context.SectionAggregateSnapshot;
+import vacademy.io.assessment_service.features.learner_assessment.dto.QuestionClassStatsDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto;
+import vacademy.io.assessment_service.features.learner_assessment.repository.QuestionWiseMarksRepository;
 import vacademy.io.assessment_service.features.learner_assessment.service.LearnerReportService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.utils.DataToCsvConverter;
@@ -145,6 +154,21 @@ public class AdminExportManager {
 
     @Autowired
     FileService fileService;
+
+    @Autowired
+    StudentReportAnalyticsService studentReportAnalyticsService;
+
+    @Autowired
+    TeacherAiReportHtmlBuilder teacherAiReportHtmlBuilder;
+
+    @Autowired
+    QuestionWiseMarksRepository questionWiseMarksRepository;
+
+    @Autowired
+    ClassAiReportHtmlBuilder classAiReportHtmlBuilder;
+
+    @Autowired
+    ClassAiInsightsAggregator classAiInsightsAggregator;
 
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
@@ -819,6 +843,414 @@ public class AdminExportManager {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=studentReport.pdf")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfBytes);
+    }
+
+    // ==================================================================
+    // AI diagnostic report (teacher copy)
+    // ==================================================================
+
+    /**
+     * Whether the AI report for one attempt is ready, needs generating (i.e.
+     * costs AI credits), or can never exist for this attempt.
+     *
+     * <p>Read-only and free — the admin menu calls it before offering the
+     * download so the teacher is told which of the three they are looking at.
+     */
+    public AiStudentReportStatusDto getAiStudentReportStatus(CustomUserDetails user, String assessmentId,
+                                                             String attemptId, String instituteId) {
+        String studentUserId = resolveAttemptUserId(attemptId);
+        if (studentUserId == null) {
+            return AiStudentReportStatusDto.builder()
+                    .status(AiStudentReportStatusDto.STATUS_UNSUPPORTED)
+                    .available(false)
+                    .requiresGeneration(false)
+                    .message("This attempt is not linked to a learner, so it cannot be analysed.")
+                    .build();
+        }
+
+        String processedJson = adminCoreServiceClient.getProcessedAIReport(studentUserId, assessmentId);
+        if (processedJson != null && !processedJson.isBlank()) {
+            return AiStudentReportStatusDto.builder()
+                    .status(AiStudentReportStatusDto.STATUS_AVAILABLE)
+                    .available(true)
+                    .requiresGeneration(false)
+                    .message("AI analysis is ready.")
+                    .build();
+        }
+        return AiStudentReportStatusDto.builder()
+                .status(AiStudentReportStatusDto.STATUS_NOT_GENERATED)
+                .available(false)
+                .requiresGeneration(true)
+                .message("The AI analysis for this attempt has not been generated yet. "
+                        + "Downloading it will use your institute's AI credits.")
+                .build();
+    }
+
+    /**
+     * The teacher's AI diagnostic PDF for one attempt.
+     *
+     * <p>Insights are produced once per learner + assessment by admin_core and
+     * cached there, so the credit cost lands on the first download only — every
+     * later download of the same attempt re-renders the stored analysis for
+     * free. When {@code generateIfMissing} is false the call never triggers an
+     * LLM run and fails instead, which is what a bulk/automated caller wants.
+     *
+     * <p>admin_core keys insights on (user, assessment) and hands back the
+     * newest row, so on a re-attempted assessment this renders the analysis of
+     * the learner's most recent submission even if an older {@code attemptId}
+     * is passed. The marks, sections and question table always come from the
+     * attempt asked for.
+     */
+    public ResponseEntity<byte[]> getAiStudentReportPdf(CustomUserDetails user, String assessmentId,
+                                                        String attemptId, String instituteId,
+                                                        boolean generateIfMissing) {
+        Assessment assessment = assessmentRepository.findById(assessmentId)
+                .orElseThrow(() -> new VacademyException("Assessment Not Found"));
+
+        StudentAttempt attempt = studentAttemptRepository.findById(attemptId)
+                .orElseThrow(() -> new VacademyException("Attempt Not Found"));
+        AssessmentUserRegistration registration = attempt.getRegistration();
+        String studentUserId = registration != null ? registration.getUserId() : null;
+        if (studentUserId == null) {
+            throw new VacademyException("This attempt is not linked to a learner, so it cannot be analysed.");
+        }
+
+        String processedJson = adminCoreServiceClient.getProcessedAIReport(studentUserId, assessmentId);
+        if ((processedJson == null || processedJson.isBlank()) && generateIfMissing) {
+            processedJson = generateAiInsights(studentUserId, assessmentId);
+        }
+        if (processedJson == null || processedJson.isBlank()) {
+            throw new VacademyException("AI analysis is not available for this attempt yet.");
+        }
+
+        StudentReportOverallDetailDto detail =
+                assessmentParticipantsManager.createStudentReportDetailResponse(assessmentId, attemptId, instituteId);
+
+        // Class comparison is best-effort: a report without rank/percentile is
+        // still a usable diagnostic, an exception here would give the teacher
+        // nothing at all.
+        StudentComparisonDto comparison = null;
+        try {
+            comparison = learnerReportService.buildComparisonData(studentUserId, assessmentId, attemptId, instituteId);
+        } catch (Exception e) {
+            log.warn("AI report: could not build comparison data for attempt {}: {}", attemptId, e.getMessage());
+        }
+
+        ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
+
+        StudentReportAnalyticsService.StudentReportAnalytics analytics = null;
+        try {
+            Double totalMarks = comparison != null && comparison.getTotalMarks() != null
+                    ? comparison.getTotalMarks() : ctx.getTotalMarks();
+            analytics = studentReportAnalyticsService.compute(assessmentId, instituteId, attemptId,
+                    ctx.getFullLeaderboard(), detail, totalMarks,
+                    !"MANUAL".equalsIgnoreCase(assessment.getEvaluationType()));
+        } catch (Exception e) {
+            log.warn("AI report: could not compute class analytics for attempt {}: {}", attemptId, e.getMessage());
+        }
+
+        String html = teacherAiReportHtmlBuilder.build(TeacherAiReportHtmlBuilder.Input.builder()
+                .assessmentName(ctx.getAssessmentName() != null ? ctx.getAssessmentName() : assessment.getName())
+                .processedJson(processedJson)
+                .reportDetail(detail)
+                .comparison(comparison)
+                .analytics(analytics)
+                .branding(ctx.getBranding())
+                .studentName(resolveStudentName(registration, ctx, attemptId))
+                .registrationUsername(registration != null ? registration.getUsername() : null)
+                .userEmail(registration != null ? registration.getUserEmail() : null)
+                .evaluationType(assessment.getEvaluationType())
+                .examDate(assessment.getBoundStartTime())
+                .assessmentDurationMinutes(assessment.getDuration())
+                .attemptId(attemptId)
+                .insightsGeneratedAt(new Date())
+                .classCorrectPercentByQuestion(classCorrectPercentByQuestion(assessmentId, instituteId))
+                .build());
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        HtmlConverter.convertToPdf(html, out, new ConverterProperties());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=ai-student-report.pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(out.toByteArray());
+    }
+
+    /**
+     * The ONE AI diagnostic report for a whole assessment.
+     *
+     * <p>Costs no AI credits. The class view is arithmetic over the per-learner
+     * analyses admin_core has already generated and been paid for — 249 exist
+     * for a single real assessment — rather than a fresh model call per
+     * download. That is also what lets this be a plain synchronous download
+     * instead of a job with a queue and a cache.
+     *
+     * <p>Degrades in one direction only: if no learner analyses exist yet, the
+     * document still renders from assessment data (scores, sections, questions,
+     * roster) and says so in its footer, rather than failing.
+     */
+    public ResponseEntity<byte[]> getAiAssessmentReportPdf(CustomUserDetails user, String assessmentId,
+                                                           String instituteId) {
+        Assessment assessment = assessmentRepository.findById(assessmentId)
+                .orElseThrow(() -> new VacademyException("Assessment Not Found"));
+
+        ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
+        List<LeaderBoardDto> leaderboard = ctx.getFullLeaderboard() != null
+                ? ctx.getFullLeaderboard() : List.of();
+
+        ClassAiInsightsAggregator.ClassInsights insights = classAiInsightsAggregator.aggregate(
+                adminCoreServiceClient.getProcessedAIReportsForAssessment(assessmentId));
+
+        Double totalMarks = ctx.getTotalMarks();
+        ClassAiReportHtmlBuilder.Input input = ClassAiReportHtmlBuilder.Input.builder()
+                .assessmentName(ctx.getAssessmentName() != null ? ctx.getAssessmentName() : assessment.getName())
+                .examDate(assessment.getBoundStartTime())
+                .generatedAt(new Date())
+                .branding(ctx.getBranding())
+                .overview(buildClassOverview(ctx, leaderboard, totalMarks, assessment))
+                .distribution(buildScoreBands(leaderboard, totalMarks))
+                .sections(buildSectionRows(assessmentId, instituteId, ctx))
+                .topics(buildTopicRows(insights))
+                .blooms(insights.getBlooms())
+                .misconceptions(buildMisconceptions(insights))
+                .roster(buildRoster(leaderboard, totalMarks))
+                .topicSource(ClassAiReportHtmlBuilder.TopicSource.AI)
+                // Narrative and the written action plan need a model; everything
+                // above is counting. The builder omits those blocks when absent.
+                .aiUnavailable(insights.isEmpty())
+                .build();
+
+        byte[] pdf = renderPdf(classAiReportHtmlBuilder.build(input));
+        String safeName = (ctx.getAssessmentName() != null ? ctx.getAssessmentName() : "assessment")
+                .replaceAll("[^A-Za-z0-9._-]+", "_");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=AI_Report_" + safeName + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
+
+    private byte[] renderPdf(String html) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        HtmlConverter.convertToPdf(html, out, new ConverterProperties());
+        return out.toByteArray();
+    }
+
+    private ClassAiReportHtmlBuilder.ClassOverview buildClassOverview(ReportClassContext ctx,
+                                                                      List<LeaderBoardDto> leaderboard,
+                                                                      Double totalMarks,
+                                                                      Assessment assessment) {
+        List<Double> marks = leaderboard.stream()
+                .map(LeaderBoardDto::getAchievedMarks)
+                .filter(Objects::nonNull)
+                .sorted()
+                .toList();
+        Double median = marks.isEmpty() ? null : marks.get(marks.size() / 2);
+        Double average = marks.isEmpty() ? null
+                : Math.round(marks.stream().mapToDouble(Double::doubleValue).average().orElse(0) * 10.0) / 10.0;
+
+        Long participants = ctx.getOverview() != null ? ctx.getOverview().getTotalParticipants() : null;
+        Double avgDuration = ctx.getOverview() != null ? ctx.getOverview().getAverageDuration() : null;
+
+        return ClassAiReportHtmlBuilder.ClassOverview.builder()
+                .totalRegistered(participants != null ? participants.intValue() : leaderboard.size())
+                .attempted(leaderboard.size())
+                .notAttempted(participants != null ? Math.max(0, participants.intValue() - leaderboard.size()) : 0)
+                .totalMarks(totalMarks)
+                .averageMarks(average)
+                .medianMarks(median)
+                .highestMarks(ctx.getHighestMarks())
+                .lowestMarks(ctx.getLowestMarks())
+                .averageAccuracy(ctx.getClassAccuracy())
+                .averageDurationSeconds(avgDuration != null ? Math.round(avgDuration) : null)
+                .durationMinutes(assessment.getDuration())
+                .build();
+    }
+
+    /** Five equal mark bands — enough shape to read the distribution, few enough to label. */
+    private List<ClassAiReportHtmlBuilder.ScoreBand> buildScoreBands(List<LeaderBoardDto> leaderboard,
+                                                                     Double totalMarks) {
+        if (leaderboard.isEmpty() || totalMarks == null || totalMarks <= 0) {
+            return List.of();
+        }
+        int bands = 5;
+        int[] counts = new int[bands];
+        for (LeaderBoardDto row : leaderboard) {
+            double m = row.getAchievedMarks() != null ? row.getAchievedMarks() : 0;
+            int idx = (int) Math.min(bands - 1, Math.max(0, (m / totalMarks) * bands));
+            counts[idx]++;
+        }
+        List<ClassAiReportHtmlBuilder.ScoreBand> out = new ArrayList<>();
+        for (int i = 0; i < bands; i++) {
+            long lo = Math.round(totalMarks * i / bands);
+            long hi = Math.round(totalMarks * (i + 1) / bands);
+            out.add(ClassAiReportHtmlBuilder.ScoreBand.builder()
+                    .label(lo + "-" + hi).studentCount(counts[i]).build());
+        }
+        return out;
+    }
+
+    private List<ClassAiReportHtmlBuilder.SectionRow> buildSectionRows(String assessmentId,
+                                                                       String instituteId,
+                                                                       ReportClassContext ctx) {
+        List<ClassAiReportHtmlBuilder.SectionRow> out = new ArrayList<>();
+        if (ctx.getSections() == null) return out;
+        Map<String, SectionAggregateSnapshot> agg = ctx.getSectionAggregation() != null
+                ? ctx.getSectionAggregation() : Map.of();
+        for (var section : ctx.getSections()) {
+            SectionAggregateSnapshot a = agg.get(section.id());
+            Double sectionTotal = section.totalMarks();
+            Double avg = a != null ? a.avgMarks() : null;
+            out.add(ClassAiReportHtmlBuilder.SectionRow.builder()
+                    .name(section.name())
+                    .totalMarks(sectionTotal)
+                    .averageMarks(avg)
+                    .highestMarks(a != null ? a.maxMarks() : null)
+                    .averageAccuracy(sectionTotal != null && sectionTotal > 0 && avg != null
+                            ? Math.round(avg / sectionTotal * 1000.0) / 10.0 : null)
+                    .build());
+        }
+        return out;
+    }
+
+    private List<ClassAiReportHtmlBuilder.TopicRow> buildTopicRows(
+            ClassAiInsightsAggregator.ClassInsights insights) {
+        List<ClassAiReportHtmlBuilder.TopicRow> out = new ArrayList<>();
+        for (var t : insights.getTopics()) {
+            double acc = t.getClassAccuracy();
+            out.add(ClassAiReportHtmlBuilder.TopicRow.builder()
+                    .topic(t.getTopic())
+                    .questionCount(t.getQuestionCount())
+                    .classAccuracy(acc)
+                    .weakStudentCount(t.getWeakLearners())
+                    .totalStudents(t.getLearnersCovering())
+                    .masteryLabel(acc < 40 ? "Beginner" : acc < 70 ? "Developing"
+                            : acc < 85 ? "Proficient" : "Expert")
+                    .build());
+        }
+        return out;
+    }
+
+    private List<ClassAiReportHtmlBuilder.Misconception> buildMisconceptions(
+            ClassAiInsightsAggregator.ClassInsights insights) {
+        List<ClassAiReportHtmlBuilder.Misconception> out = new ArrayList<>();
+        for (var m : insights.getMisconceptions()) {
+            out.add(ClassAiReportHtmlBuilder.Misconception.builder()
+                    .questionSummary(m.getQuestionSummary())
+                    .affectedStudents(m.getAffectedLearners())
+                    .wrongAnswer(m.getWrongAnswer())
+                    .correctAnswer(m.getCorrectAnswer())
+                    .misconception(m.getMisconception())
+                    .remediation(m.getRemediation())
+                    .build());
+        }
+        return out;
+    }
+
+    private List<ClassAiReportHtmlBuilder.StudentRow> buildRoster(List<LeaderBoardDto> leaderboard,
+                                                                  Double totalMarks) {
+        List<ClassAiReportHtmlBuilder.StudentRow> out = new ArrayList<>();
+        for (LeaderBoardDto row : leaderboard) {
+            Double marks = row.getAchievedMarks();
+            out.add(ClassAiReportHtmlBuilder.StudentRow.builder()
+                    .name(row.getStudentName())
+                    .marks(marks)
+                    .percentage(marks != null && totalMarks != null && totalMarks > 0
+                            ? Math.round(marks / totalMarks * 1000.0) / 10.0 : null)
+                    .rank(row.getRank())
+                    .attempted(true)
+                    .weakSections(List.of())
+                    .weakTopics(List.of())
+                    .build());
+        }
+        return out;
+    }
+
+    /**
+     * Runs admin_core's on-demand analysis and translates its outcome into
+     * something a teacher can act on. Every failure mode gets its own message:
+     * "out of credits" is a billing action, "still generating" is a wait, and
+     * "no submission data" is neither.
+     */
+    private String generateAiInsights(String studentUserId, String assessmentId) {
+        AdminCoreServiceClient.AiReportGenerationResult result =
+                adminCoreServiceClient.generateAiReportOnDemand(studentUserId, assessmentId);
+
+        if (result.isProcessed()) {
+            return result.processedJson();
+        }
+        if (result.isOutOfCredits()) {
+            throw new VacademyException("Your institute has run out of AI credits, so this report could not be "
+                    + "generated. Top up AI credits and try again.");
+        }
+        if (result.isNotFound()) {
+            throw new VacademyException("No analysable submission was captured for this attempt, so an AI report "
+                    + "cannot be generated for it.");
+        }
+        if (AdminCoreServiceClient.AiReportGenerationResult.STATUS_GENERATING.equalsIgnoreCase(result.status())) {
+            throw new VacademyException("The AI analysis is still being generated. Try the download again in a "
+                    + "minute — it will not be charged twice.");
+        }
+        throw new VacademyException("The AI analysis could not be generated for this attempt. Please try again.");
+    }
+
+    /**
+     * How much of the cohort got each question right, as a percentage.
+     *
+     * <p>One aggregate query over {@code question_wise_marks} — the same one the
+     * v2 report's easy-miss analysis runs, but kept whole here: the teacher
+     * report classifies every question row, not only the ones that cross a
+     * threshold. Best-effort; an empty map simply drops the column.
+     */
+    private Map<String, Double> classCorrectPercentByQuestion(String assessmentId, String instituteId) {
+        Map<String, Double> out = new HashMap<>();
+        try {
+            List<QuestionClassStatsDto> stats =
+                    questionWiseMarksRepository.findQuestionClassStatsForAssessment(assessmentId, instituteId);
+            if (stats == null) {
+                return out;
+            }
+            for (QuestionClassStatsDto stat : stats) {
+                if (stat == null || stat.getQuestionId() == null) continue;
+                long total = stat.getTotalCount() != null ? stat.getTotalCount() : 0L;
+                if (total <= 0) continue;
+                long correct = stat.getCorrectCount() != null ? stat.getCorrectCount() : 0L;
+                out.put(stat.getQuestionId(), Math.round(correct * 1000.0 / total) / 10.0);
+            }
+        } catch (Exception e) {
+            log.warn("AI report: could not load per-question class stats for assessment {}: {}",
+                    assessmentId, e.getMessage());
+        }
+        return out;
+    }
+
+    /** Registration name first; the cohort leaderboard is the only other place a display name exists. */
+    private String resolveStudentName(AssessmentUserRegistration registration, ReportClassContext ctx, String attemptId) {
+        if (registration != null && registration.getParticipantName() != null
+                && !registration.getParticipantName().isBlank()) {
+            return registration.getParticipantName();
+        }
+        if (ctx == null || ctx.getFullLeaderboard() == null || attemptId == null) {
+            return null;
+        }
+        return ctx.getFullLeaderboard().stream()
+                .filter(row -> row != null && attemptId.equals(row.getAttemptId()))
+                .map(LeaderBoardDto::getStudentName)
+                .filter(name -> name != null && !name.isBlank())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String resolveAttemptUserId(String attemptId) {
+        try {
+            return studentAttemptRepository.findById(attemptId)
+                    .map(StudentAttempt::getRegistration)
+                    .map(AssessmentUserRegistration::getUserId)
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Could not resolve the learner for attempt {}: {}", attemptId, e.getMessage());
+            return null;
+        }
     }
 
     // ==================================================================

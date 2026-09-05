@@ -209,5 +209,21 @@
         "none": "Établissement parent",
         "untitled": "Sous-organisation sans nom",
         "badgeTooltip": "Ce portail est aux couleurs de cette sous-organisation et lui est réservé"
+    },
+    "shortLinkDns": {
+        "title": "Domaine des liens courts",
+        "description": "Envoyez cet enregistrement au client en même temps que les CNAME des portails, afin que ses liens courts utilisent son propre domaine plutôt que u.vacademy.io.",
+        "hostLabel": "Les liens courts seront servis depuis",
+        "dnsType": "Type",
+        "dnsName": "Nom",
+        "dnsValue": "Valeur",
+        "dnsTtl": "TTL",
+        "dnsProxy": "Proxy",
+        "ttlAuto": "Auto",
+        "proxyOff": "DNS uniquement — ne pas proxifier",
+        "copy": "Copier l'enregistrement",
+        "copied": "Enregistrement DNS copié",
+        "copyFailed": "Copie impossible — sélectionnez les valeurs manuellement",
+        "platformNote": "L'enregistrement seul ne suffit pas : l'équipe plateforme doit aussi ajouter cet hôte à l'ingress et enregistrer le domaine pour cet établissement. Si le domaine est enregistré avant que l'enregistrement DNS ne soit actif, les liens courts cesseront de fonctionner au lieu de revenir à u.vacademy.io."
     }
 }

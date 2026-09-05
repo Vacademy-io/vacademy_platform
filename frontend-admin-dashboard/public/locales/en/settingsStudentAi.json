@@ -143,6 +143,14 @@
             "description": "Bounce the button while the message shows, to catch attention"
         }
     },
+    "header": {
+        "label": "Chatbot Header",
+        "helpText": "What the chat window shows in its title bar",
+        "aiSettingsShortcut": {
+            "label": "AI settings shortcut",
+            "description": "Show the gear that opens the learner's AI settings page (own API keys and token spend). Off by default — students do not see it."
+        }
+    },
     "actions": {
         "saving": "Saving...",
         "save": "Save Settings"

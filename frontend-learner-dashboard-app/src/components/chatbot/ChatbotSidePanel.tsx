@@ -38,6 +38,10 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@/styles/katex-dark.css";
 import { useChatbotAvatarUrl } from "@/services/chatbot-settings";
+import {
+  shouldShowAiSettingsShortcut,
+  useAiSettingsShortcutEnabled,
+} from "@/services/ai-settings-shortcut";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
@@ -56,6 +60,10 @@ type VoiceCallMode = "voice_interview" | "voice_doubt" | "voice_oral_test";
 
 export const ChatbotSidePanel: React.FC = () => {
   const avatarUrl = useChatbotAvatarUrl();
+  // Hidden from learners by default. The institute can reveal it for everyone
+  // (Admin -> Settings -> AI Settings -> Student AI), and this device can
+  // reveal it just for itself from /ai-settings.
+  const shortcutEnabledLocally = useAiSettingsShortcutEnabled();
   const { t } = useTranslation("chatFeatureB");
   const location = useLocation();
   const {
@@ -93,6 +101,11 @@ export const ChatbotSidePanel: React.FC = () => {
     exitVoiceMode,
     voiceLanguage,
   } = useChatbotContext();
+
+  const showAiSettingsShortcut = shouldShowAiSettingsShortcut(
+    chatbotSettings.show_ai_settings_shortcut,
+    shortcutEnabledLocally
+  );
 
   const {
     panelWidth,
@@ -310,16 +323,18 @@ export const ChatbotSidePanel: React.FC = () => {
           >
             <Trash className="h-3.5 w-3.5" />
           </Button>
-          <Link to="/ai-settings">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
-              title={t("common.aiGear")}
-            >
-              <Gear className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
+          {showAiSettingsShortcut && (
+            <Link to="/ai-settings">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                title={t("common.aiGear")}
+              >
+                <Gear className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          )}
           <Button
             variant="ghost"
             size="icon"

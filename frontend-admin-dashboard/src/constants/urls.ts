@@ -536,8 +536,12 @@ export const GET_EXPORT_PDF_URL_STUDENT_REPORT = `${BASE_URL}/assessment-service
 // AI diagnostic report (teacher copy). The PDF endpoint generates the analysis
 // when it does not exist yet, which spends the institute's AI credits — the
 // status endpoint says which of the two a download would be, and is free.
-// ONE AI diagnostic report for a whole assessment. Spends NO AI credits: the
-// class view aggregates the per-learner analyses already generated for it.
+// ONE AI diagnostic report for a whole assessment. The FIRST generation makes a
+// real model call and spends AI credits; the result is stored and every later
+// download re-serves it free. regenerate=true is a deliberate paid refresh.
+// Free, read-only: does a report already exist, is it stale, and what would a
+// new one cost. Asked before offering Generate so the price is shown up front.
+export const GET_AI_ASSESSMENT_REPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/ai-assessment-report/status`;
 export const GET_EXPORT_PDF_URL_AI_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/ai-assessment-report`;
 export const GET_EXPORT_PDF_URL_AI_STUDENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/ai-student-report`;
 export const GET_AI_STUDENT_REPORT_STATUS_URL = `${BASE_URL}/assessment-service/assessment/export/ai-student-report/status`;
@@ -606,6 +610,7 @@ export const UPDATE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/update-
 export const ADD_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/add-subject`;
 export const DELETE_SUBJECT = `${BASE_URL}/admin-core-service/subject/v1/delete-subject`;
 export const UPDATE_SUBJECT_ORDER = `${BASE_URL}/admin-core-service/subject/v1/update-subject-order`;
+export const GET_SUBJECTS_BY_IDS = `${BASE_URL}/admin-core-service/subject/v1/subjects-by-ids`;
 
 export const ADD_MODULE = `${BASE_URL}/admin-core-service/subject/v1/add-module`;
 export const DELETE_MODULE = `${BASE_URL}/admin-core-service/subject/v1/delete-module`;

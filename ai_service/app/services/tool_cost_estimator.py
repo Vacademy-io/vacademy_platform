@@ -348,6 +348,21 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "audio_minutes",
         "params": {"min_credits": 0},
     },
+    # One AI-written analysis per ASSESSMENT, charged once; the stored report is
+    # re-downloadable free afterwards. assessment_service sends zero token
+    # counts so max(parametric, actual) resolves to exactly this flat number —
+    # the teacher is quoted a price and billed that price. Rate also lives on
+    # the ai_tool_pricing row (admin_core V500); this entry is the half that
+    # must never be missing, because without it estimate-tool 400s, the FE
+    # badge renders nothing and `sufficient` stays null (which reads as
+    # "allowed"), so the report generates and nobody is charged.
+    "assessment_class_ai_report": {
+        "request_type": "assessment",
+        "flat_base_credits": Decimal("10"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {"min_credits": 0},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

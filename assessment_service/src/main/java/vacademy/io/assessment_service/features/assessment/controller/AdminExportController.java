@@ -12,6 +12,8 @@ import vacademy.io.assessment_service.features.assessment.dto.export.zip.*;
 import vacademy.io.assessment_service.features.assessment.manager.AdminExportManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/assessment-service/assessment/export")
 public class AdminExportController {
@@ -142,19 +144,44 @@ public class AdminExportController {
     }
 
     /**
-     * The ONE AI diagnostic report for a whole assessment — class-wide weakness
-     * by section, topic and question, shared misconceptions, and the full
-     * participant roster.
+     * Whether a class AI report already exists for this assessment, when it was
+     * made, whether the results have changed since, and what a new one costs.
      *
-     * <p>Spends NO AI credits: the class view aggregates the per-learner
-     * analyses already generated for this assessment. If none exist yet the
-     * document still renders from assessment data and says so in its footer.
+     * <p>Free and read-only — the dialog calls it before offering Generate so
+     * the teacher sees the price and their balance first.
+     */
+    @GetMapping("/ai-assessment-report/status")
+    public ResponseEntity<Map<String, Object>> aiAssessmentReportStatus(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("assessmentId") String assessmentId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(
+                adminExportManager.getAiAssessmentReportStatus(user, assessmentId, instituteId));
+    }
+
+    /**
+     * The ONE AI diagnostic report for a whole assessment — class-wide weakness
+     * by section, topic and question, shared misconceptions, a written analysis
+     * and a prioritised action plan.
+     *
+     * <p><b>Charged once.</b> The first generation makes a real model call and
+     * deducts the institute's AI credits; every later download re-serves the
+     * stored report free. {@code regenerate=true} is a deliberate paid refresh.
+     *
+     * @param generate   false to download only an existing report, never to
+     *                   generate (and therefore never to spend)
+     * @param regenerate true to re-run and re-charge, discarding the stored one
      */
     @GetMapping("pdf/ai-assessment-report")
     public ResponseEntity<byte[]> aiAssessmentReportPdf(@RequestAttribute("user") CustomUserDetails user,
                                                         @RequestParam("assessmentId") String assessmentId,
-                                                        @RequestParam("instituteId") String instituteId) {
-        return adminExportManager.getAiAssessmentReportPdf(user, assessmentId, instituteId);
+                                                        @RequestParam("instituteId") String instituteId,
+                                                        @RequestParam(name = "generate", required = false,
+                                                                defaultValue = "true") boolean generate,
+                                                        @RequestParam(name = "regenerate", required = false,
+                                                                defaultValue = "false") boolean regenerate) {
+        return adminExportManager.getAiAssessmentReportPdf(user, assessmentId, instituteId,
+                generate, regenerate);
     }
 
     // ==================================================================

@@ -990,7 +990,13 @@ Still open (tracked, not silent):
   editor (`video.description`) now counts as details. `POST /tutor/v1/compile/estimate`
   prices a compile before it runs (compile + transcription minutes + image cap, from the
   estimator so portal overrides apply) and the admin confirms in a dialog; the 402 gate uses
-  the same numbers. Scanned PDFs are read with MathPix OCR (`html_document_pdf`, per page,
+  the same numbers. Uploaded lectures are transcribed through OpenRouter's audio endpoint
+  (`openai/whisper-large-v3-turbo`, `services/openrouter_transcription.py`: ffmpeg extracts
+  10-minute mono mp3 chunks, four in flight, joined in order; platform settings
+  `tutor.transcription.provider` / `.model`; institute BYOK key else platform key; the render
+  worker's resumable Whisper job is the fallback) — minutes for an 82-minute lecture; the
+  institute pays the `transcription` tool per minute and the provider's USD cost is recorded
+  in ai_token_usage. Scanned PDFs are read with MathPix OCR (`html_document_pdf`, per page,
   once per file) when the OCR switch is on. AI videos have no video file (an HTML animation),
   so they are taught from the script on the board like a document, without a media task.
   Verified 2026-09-04: YouTube refuses caption requests from the Hetzner nodes

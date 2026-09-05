@@ -49,7 +49,13 @@ import vacademy.io.assessment_service.features.assessment.repository.SectionRepo
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
 import vacademy.io.assessment_service.features.assessment.service.StudentReportAnalyticsService;
+import vacademy.io.assessment_service.features.assessment.client.AiServiceCreditClient;
+import vacademy.io.assessment_service.features.assessment.entity.AssessmentClassAiAnalysis;
+import vacademy.io.assessment_service.features.assessment.repository.AssessmentClassAiAnalysisRepository;
 import vacademy.io.assessment_service.features.assessment.service.ClassAiInsightsAggregator;
+import vacademy.io.assessment_service.features.assessment.service.ClassAiNarrativeService;
+import vacademy.io.assessment_service.features.assessment.service.ClassAiReportGenerationService;
+import vacademy.io.assessment_service.features.assessment.service.ReportPdfUploadService;
 import vacademy.io.assessment_service.features.assessment.service.ClassAiReportHtmlBuilder;
 import vacademy.io.assessment_service.features.assessment.service.TeacherAiReportHtmlBuilder;
 import vacademy.io.assessment_service.features.assessment.service.export.ReportExportJobFactory;
@@ -73,6 +79,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.Optional;
 import java.util.TimeZone;
 
 @Component
@@ -169,6 +176,21 @@ public class AdminExportManager {
 
     @Autowired
     ClassAiInsightsAggregator classAiInsightsAggregator;
+
+    @Autowired
+    ClassAiNarrativeService classAiNarrativeService;
+
+    @Autowired
+    AiServiceCreditClient aiServiceCreditClient;
+
+    @Autowired
+    AssessmentClassAiAnalysisRepository classAiAnalysisRepository;
+
+    @Autowired
+    ReportPdfUploadService reportPdfUploadService;
+
+    @Autowired
+    ClassAiReportGenerationService classAiReportGenerationService;
 
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
@@ -979,30 +1001,255 @@ public class AdminExportManager {
     /**
      * The ONE AI diagnostic report for a whole assessment.
      *
-     * <p>Costs no AI credits. The class view is arithmetic over the per-learner
-     * analyses admin_core has already generated and been paid for — 249 exist
-     * for a single real assessment — rather than a fresh model call per
-     * download. That is also what lets this be a plain synchronous download
-     * instead of a job with a queue and a cache.
+     * <p><b>Charged once, then free.</b> The first generation makes a real model
+     * call and deducts the institute's AI credits; the result is stored and every
+     * later download re-serves it for nothing. A deliberate {@code regenerate}
+     * charges again — that is the point of an explicit Refresh.
      *
-     * <p>Degrades in one direction only: if no learner analyses exist yet, the
-     * document still renders from assessment data (scores, sections, questions,
-     * roster) and says so in its footer, rather than failing.
+     * <p>The order below is load-bearing and must not be rearranged:
+     * <b>claim (own transaction) -> model -> persist -> charge</b>. Claiming
+     * first is what stops two admins clicking together from making two
+     * real-money model calls; charging last is what stops a billing blip from
+     * destroying a report the institute can already read.
      */
     public ResponseEntity<byte[]> getAiAssessmentReportPdf(CustomUserDetails user, String assessmentId,
-                                                           String instituteId) {
+                                                           String instituteId, boolean generate,
+                                                           boolean regenerate) {
         Assessment assessment = assessmentRepository.findById(assessmentId)
                 .orElseThrow(() -> new VacademyException("Assessment Not Found"));
 
+        // ---- already generated? serve it, free ----
+        Optional<AssessmentClassAiAnalysis> existing =
+                classAiReportGenerationService.find(assessmentId, instituteId);
+        if (!regenerate && existing.isPresent() && existing.get().isReady()
+                && existing.get().getPdfFileId() != null) {
+            byte[] stored = downloadStoredReport(existing.get().getPdfFileId());
+            if (stored != null) {
+                return pdfResponse(stored, assessment.getName());
+            }
+            // The stored file is gone (media expiry, a bad key). analysis_json is
+            // the source of truth, so re-render rather than re-charging.
+            log.warn("Stored class AI report unreadable for {} — re-rendering from analysis_json", assessmentId);
+            byte[] rebuilt = renderPdf(buildClassReportHtml(assessment, assessmentId, instituteId,
+                    existing.get().getAnalysisJson()));
+            return pdfResponse(rebuilt, assessment.getName());
+        }
+
+        if (existing.isPresent() && existing.get().isGenerating()) {
+            throw new VacademyException("This report is already being generated. "
+                    + "Try again in a moment — it will not be charged twice.");
+        }
+        if (!generate) {
+            throw new VacademyException("No AI report has been generated for this assessment yet.");
+        }
+
+        // ---- quote, and refuse only on a definite shortfall ----
+        AiServiceCreditClient.CreditEstimate estimate = aiServiceCreditClient.estimate(instituteId);
+        if (Boolean.FALSE.equals(estimate.sufficient())) {
+            throw new VacademyException("Your institute does not have enough AI credits for this report. "
+                    + "Top up AI credits and try again.");
+        }
+
+        // ---- claim: exactly one caller proceeds ----
+        Optional<AssessmentClassAiAnalysis> claimed = classAiReportGenerationService.claim(
+                assessmentId, instituteId, user != null ? user.getUserId() : null,
+                estimate.credits(), regenerate);
+        if (claimed.isEmpty()) {
+            throw new VacademyException("This report is already being generated. "
+                    + "Try again in a moment — it will not be charged twice.");
+        }
+        AssessmentClassAiAnalysis row = claimed.get();
+
+        try {
+            // ---- the one paid call ----
+            ClassAiNarrativeService.Narrative narrative = classAiNarrativeService.generate(
+                    buildClassFacts(assessmentId, instituteId), assessment.getName());
+
+            byte[] pdf = renderPdf(buildClassReportHtml(assessment, assessmentId, instituteId,
+                    narrative.json()));
+
+            String fileId = null;
+            try {
+                fileId = reportPdfUploadService.upload(pdf, "AI_Report_" + assessmentId + ".pdf",
+                        "ASSESSMENT_CLASS_AI_REPORT", assessmentId);
+            } catch (Exception e) {
+                // Storage is a convenience; analysis_json is the source of truth
+                // and the PDF is re-renderable from it.
+                log.warn("Could not store the class AI report PDF for {}: {}", assessmentId, e.getMessage());
+            }
+
+            // ---- persist BEFORE charging; this one must rethrow ----
+            classAiReportGenerationService.persistReady(row, narrative.json(), fileId,
+                    computeContentFingerprint(assessmentId, instituteId), narrative.model());
+
+            // ---- charge LAST, never rethrows ----
+            classAiReportGenerationService.charge(row);
+
+            return pdfResponse(pdf, assessment.getName());
+        } catch (Exception e) {
+            // Release the claim so the teacher can retry. Nothing was charged.
+            classAiReportGenerationService.markFailed(row.getId());
+            if (e instanceof VacademyException ve) throw ve;
+            log.error("Class AI report generation failed for {}", assessmentId, e);
+            throw new VacademyException("The AI report could not be generated. Please try again.");
+        }
+    }
+
+    /** Whether a report exists, when it was made, and what a new one would cost. */
+    public Map<String, Object> getAiAssessmentReportStatus(CustomUserDetails user, String assessmentId,
+                                                           String instituteId) {
+        Optional<AssessmentClassAiAnalysis> existing =
+                classAiReportGenerationService.find(assessmentId, instituteId);
+        AiServiceCreditClient.CreditEstimate estimate = aiServiceCreditClient.estimate(instituteId);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        boolean ready = existing.isPresent() && existing.get().isReady();
+        out.put("available", ready);
+        out.put("generating", existing.isPresent() && existing.get().isGenerating());
+        out.put("generated_at", ready ? existing.get().getGeneratedAt() : null);
+        // Stale = results changed after this was generated. Surfaced, never
+        // auto-refreshed: regenerating spends the institute's money, so it stays
+        // an explicit choice.
+        out.put("stale", ready && isReportStale(existing.get(), assessmentId, instituteId));
+        out.put("credits_required", estimate.credits());
+        out.put("current_balance", estimate.currentBalance());
+        out.put("sufficient", estimate.sufficient());
+        return out;
+    }
+
+    /**
+     * Detects "the results changed since this report was made".
+     *
+     * <p>Hashes a VALUE, not a timestamp: {@code student_attempt.updated_at} and
+     * {@code question_wise_marks.updated_at} are both write-blocked with no
+     * trigger, so a re-evaluation moves no timestamp at all and any time-based
+     * check would never fire.
+     */
+    private boolean isReportStale(AssessmentClassAiAnalysis row, String assessmentId, String instituteId) {
+        String now = computeContentFingerprint(assessmentId, instituteId);
+        return now != null && row.getContentFingerprint() != null
+                && !now.equals(row.getContentFingerprint());
+    }
+
+    private String computeContentFingerprint(String assessmentId, String instituteId) {
+        try {
+            List<LeaderBoardDto> rows = learnerReportService.loadClassContext(assessmentId, instituteId)
+                    .getFullLeaderboard();
+            if (rows == null) return null;
+            // Sorted per-attempt marks, rounded. A bare SUM is float-fragile and
+            // misses two learners' marks swapping without changing the total.
+            String basis = rows.stream()
+                    .filter(Objects::nonNull)
+                    .map(r -> r.getAttemptId() + ":"
+                            + (r.getAchievedMarks() == null ? "" : Math.round(r.getAchievedMarks() * 100.0)))
+                    .sorted()
+                    .collect(java.util.stream.Collectors.joining(","));
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(basis.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) hex.append(String.format("%02x", b));
+            return hex.toString();
+        } catch (Exception e) {
+            log.warn("Could not fingerprint assessment {} for staleness: {}", assessmentId, e.getMessage());
+            return null;
+        }
+    }
+
+    private byte[] downloadStoredReport(String fileId) {
+        try {
+            return fileService.getFileFromFileId(fileId);
+        } catch (Exception e) {
+            log.warn("Could not read stored class AI report {}: {}", fileId, e.getMessage());
+            return null;
+        }
+    }
+
+    private ResponseEntity<byte[]> pdfResponse(byte[] pdf, String assessmentName) {
+        String safeName = (assessmentName != null ? assessmentName : "assessment")
+                .replaceAll("[^A-Za-z0-9._-]+", "_");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=AI_Report_" + safeName + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
+
+    /** The compact facts blob the model reasons over — never raw learner data. */
+    private Map<String, Object> buildClassFacts(String assessmentId, String instituteId) {
         ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
         List<LeaderBoardDto> leaderboard = ctx.getFullLeaderboard() != null
                 ? ctx.getFullLeaderboard() : List.of();
-
         ClassAiInsightsAggregator.ClassInsights insights = classAiInsightsAggregator.aggregate(
                 adminCoreServiceClient.getProcessedAIReportsForAssessment(assessmentId));
-
         Double totalMarks = ctx.getTotalMarks();
-        ClassAiReportHtmlBuilder.Input input = ClassAiReportHtmlBuilder.Input.builder()
+
+        Map<String, Object> facts = new LinkedHashMap<>();
+        facts.put("total_marks", totalMarks);
+        facts.put("learners_attempted", leaderboard.size());
+        facts.put("class_average", ctx.getOverview() != null ? ctx.getOverview().getAverageMarks() : null);
+        facts.put("highest", ctx.getHighestMarks());
+        facts.put("lowest", ctx.getLowestMarks());
+        facts.put("score_bands", buildScoreBands(leaderboard, totalMarks).stream()
+                .map(b -> Map.of("range", b.getLabel(), "learners", b.getStudentCount())).toList());
+        facts.put("sections", buildSectionRows(assessmentId, instituteId, ctx).stream()
+                .map(sec -> Map.of("name", nvlStr(sec.getName()),
+                        "out_of", nvlNum(sec.getTotalMarks()),
+                        "class_average", nvlNum(sec.getAverageMarks()),
+                        "accuracy_percent", nvlNum(sec.getAverageAccuracy()))).toList());
+        facts.put("topics", insights.getTopics().stream()
+                .map(t -> Map.of("topic", t.getTopic(),
+                        "class_accuracy_percent", t.getClassAccuracy(),
+                        "learners_weak", t.getWeakLearners(),
+                        "learners_covered", t.getLearnersCovering())).toList());
+        facts.put("blooms", insights.getBlooms().entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey,
+                        e -> Map.of("correct", e.getValue()[0], "asked", e.getValue()[1]))));
+        facts.put("shared_misconceptions", insights.getMisconceptions().stream()
+                .map(m -> Map.of("question", nvlStr(m.getQuestionSummary()),
+                        "learners_affected", m.getAffectedLearners(),
+                        "wrong_answer", nvlStr(m.getWrongAnswer()),
+                        "correct_answer", nvlStr(m.getCorrectAnswer()),
+                        "why", nvlStr(m.getMisconception()))).toList());
+        facts.put("learner_analyses_available", insights.getAnalysedLearners());
+        return facts;
+    }
+
+    /** Builds the report HTML around a generated (or previously stored) narrative. */
+    private String buildClassReportHtml(Assessment assessment, String assessmentId, String instituteId,
+                                        String narrativeJson) {
+        ReportClassContext ctx = learnerReportService.loadClassContext(assessmentId, instituteId);
+        List<LeaderBoardDto> leaderboard = ctx.getFullLeaderboard() != null
+                ? ctx.getFullLeaderboard() : List.of();
+        ClassAiInsightsAggregator.ClassInsights insights = classAiInsightsAggregator.aggregate(
+                adminCoreServiceClient.getProcessedAIReportsForAssessment(assessmentId));
+        Double totalMarks = ctx.getTotalMarks();
+
+        String narrative = null;
+        String areas = null;
+        String bloomsReading = null;
+        List<ClassAiReportHtmlBuilder.ActionStep> plan = new ArrayList<>();
+        try {
+            if (narrativeJson != null && !narrativeJson.isBlank()) {
+                com.fasterxml.jackson.databind.JsonNode n = new ObjectMapper().readTree(narrativeJson);
+                narrative = n.path("performance_analysis").asText(null);
+                areas = n.path("areas_of_improvement").asText(null);
+                bloomsReading = n.path("blooms_reading").asText(null);
+                for (com.fasterxml.jackson.databind.JsonNode step : n.path("action_plan")) {
+                    plan.add(ClassAiReportHtmlBuilder.ActionStep.builder()
+                            .priority(step.path("priority").asInt(0))
+                            .topic(step.path("topic").asText(""))
+                            .suggestion(step.path("suggestion").asText(""))
+                            .estimatedTime(step.path("estimated_time").asText(""))
+                            .affectedStudents(step.has("affected_students")
+                                    ? step.path("affected_students").asInt() : null)
+                            .build());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read the stored narrative for {}: {}", assessmentId, e.getMessage());
+        }
+
+        return classAiReportHtmlBuilder.build(ClassAiReportHtmlBuilder.Input.builder()
                 .assessmentName(ctx.getAssessmentName() != null ? ctx.getAssessmentName() : assessment.getName())
                 .examDate(assessment.getBoundStartTime())
                 .generatedAt(new Date())
@@ -1014,20 +1261,21 @@ public class AdminExportManager {
                 .blooms(insights.getBlooms())
                 .misconceptions(buildMisconceptions(insights))
                 .roster(buildRoster(leaderboard, totalMarks))
+                .actionPlan(plan)
+                .narrative(narrative)
+                .areasOfImprovement(areas)
+                .bloomsReading(bloomsReading)
                 .topicSource(ClassAiReportHtmlBuilder.TopicSource.AI)
-                // Narrative and the written action plan need a model; everything
-                // above is counting. The builder omits those blocks when absent.
-                .aiUnavailable(insights.isEmpty())
-                .build();
+                .aiUnavailable(narrative == null || narrative.isBlank())
+                .build());
+    }
 
-        byte[] pdf = renderPdf(classAiReportHtmlBuilder.build(input));
-        String safeName = (ctx.getAssessmentName() != null ? ctx.getAssessmentName() : "assessment")
-                .replaceAll("[^A-Za-z0-9._-]+", "_");
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=AI_Report_" + safeName + ".pdf")
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(pdf);
+    private static String nvlStr(String v) {
+        return v == null ? "" : v;
+    }
+
+    private static Object nvlNum(Double v) {
+        return v == null ? 0 : v;
     }
 
     private byte[] renderPdf(String html) {

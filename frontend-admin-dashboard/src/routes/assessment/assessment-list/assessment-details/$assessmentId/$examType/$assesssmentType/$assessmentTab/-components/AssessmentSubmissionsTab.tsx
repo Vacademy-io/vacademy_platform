@@ -62,7 +62,7 @@ import { BulkActions } from './bulk-actions/bulk-actions';
 import { AssessmentSubmissionsStudentTable } from './AssessmentSubmissionsStudentTable';
 import { SubmissionsSummaryStrip } from './SubmissionsSummaryStrip';
 import { AssessmentReportZipExportDialog } from './AssessmentReportZipExportDialog';
-import { AiAssessmentReportButton } from './AiAssessmentReportButton';
+import { AiAssessmentReportDialog } from './AiAssessmentReportDialog';
 import { AssessmentExportCsvDialog } from './AssessmentExportCsvDialog';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
@@ -252,6 +252,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     // Bulk-actions entry point for the report ZIP export (dialog opens without
     // its own trigger, scoped to the checked rows).
     const [bulkReportZipOpen, setBulkReportZipOpen] = useState(false);
+    const [aiReportOpen, setAiReportOpen] = useState(false);
     const currentPageSelection = rowSelections[page] || {};
     const totalSelectedCount = Object.values(rowSelections).reduce(
         (count, pageSelection) => count + Object.keys(pageSelection).length,
@@ -261,6 +262,19 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const [attemptedCount, setAttemptedCount] = useState(0);
     const [ongoingCount, setOngoingCount] = useState(0);
     const [pendingCount, setPendingCount] = useState(0);
+
+    // Which registration source the visible list is built from. `selectedFilter` is NOT a
+    // reliable answer: the tab/sub-tab handlers override `registration_source` inline on
+    // the request only, so simply switching to External leaves the state on its
+    // internal/batch default. The tab badges used to read it from there, which is why a
+    // PUBLIC assessment whose participants all registered through the open link (i.e. the
+    // External tab) counted BATCH_PREVIEW_REGISTRATION rows and every badge showed (0).
+    const registrationSource =
+        selectedParticipantsTab === 'external'
+            ? 'OPEN_REGISTRATION'
+            : batchSelectionTab === 'individual'
+              ? 'ADMIN_PRE_REGISTRATION'
+              : 'BATCH_PREVIEW_REGISTRATION';
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     // Bumped to force the summary strip to refetch its aggregate stats.
     const [summaryRefreshKey, setSummaryRefreshKey] = useState(0);
@@ -894,12 +908,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     // Resolve the registration_source / attempt_type for the currently-active
     // sub-tab so a sort refetch keeps the same slice of participants in view.
-    const getCurrentRegistrationSource = () => {
-        if (selectedParticipantsTab === 'external') return 'OPEN_REGISTRATION';
-        return batchSelectionTab === 'batch'
-            ? 'BATCH_PREVIEW_REGISTRATION'
-            : 'ADMIN_PRE_REGISTRATION';
-    };
+    const getCurrentRegistrationSource = () => registrationSource;
 
     const getCurrentAttemptType = () =>
         selectedTab === 'Attempted' ? 'ENDED' : selectedTab === 'Pending' ? 'PENDING' : 'LIVE';
@@ -1065,51 +1074,67 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            const fetchAllParticipants = async () => {
+            const fetchInitialParticipants = async () => {
                 setIsParticipantsLoading(true);
-
                 try {
-                    // Only the Attempted slice is rendered on first paint; the other two
-                    // exist purely to fill their tab badges. So they ask for ONE row and
-                    // read total_elements — the badge was reading content.length, which
-                    // capped every count at the page size (a batch with 27 learners who
-                    // never attempted showed "10"), and fetching 10 unread rows twice per
-                    // mount was wasted work on both services.
-                    const COUNT_ONLY_PAGE_SIZE = 1;
-                    // A badge is not worth the page. These two share a Promise.all with
-                    // the Attempted fetch, so an unhandled rejection in either used to
-                    // take down the whole submissions table — and the Pending count now
-                    // depends on a cross-service call to admin_core, which is exactly the
-                    // kind of thing that can fail on its own. Swallow per call and let the
-                    // badge read 0.
-                    const countOnly = (attemptType: string) =>
-                        getAdminParticipants(assessmentId, instituteId, 0, COUNT_ONLY_PAGE_SIZE, {
-                            ...selectedFilter,
-                            attempt_type: [attemptType],
-                        }).catch(() => null);
-
-                    const [attemptedData, ongoingData, pendingData] = await Promise.all([
-                        getAdminParticipants(assessmentId, instituteId, page, 10, selectedFilter),
-                        countOnly('LIVE'),
-                        // 'PENDING' — the backend compares against the enum name, so the
-                        // old 'Pending' never matched and this call always came back empty.
-                        countOnly('PENDING'),
-                    ]);
+                    const attemptedData = await getAdminParticipants(
+                        assessmentId,
+                        instituteId,
+                        page,
+                        pageSize,
+                        selectedFilter
+                    );
                     setParticipantsData(attemptedData);
-                    setAttemptedCount(attemptedData.total_elements ?? attemptedData.content.length);
-                    setOngoingCount(ongoingData?.total_elements ?? 0);
-                    setPendingCount(pendingData?.total_elements ?? 0);
                 } catch (error) {
                     console.log(error);
                 } finally {
                     setIsParticipantsLoading(false);
                 }
             };
-            fetchAllParticipants();
+            fetchInitialParticipants();
         }, 300); // Adjust the debounce time as needed
 
         return () => clearTimeout(timer); // Cleanup the timeout on component unmount
     }, []);
+
+    // The three tab badges. Deliberately separate from the table fetch above and keyed on
+    // the registration source, because switching participant tabs re-fetches the table
+    // through the mutation but never touched these — so the badges kept showing whatever
+    // the internal/batch list had on mount (zeroes, for an open-registration assessment).
+    useEffect(() => {
+        let cancelled = false;
+        const timer = setTimeout(() => {
+            // One row each: only total_elements is read. (Reading content.length instead
+            // used to cap every count at the page size.)
+            const COUNT_ONLY_PAGE_SIZE = 1;
+            // A badge is not worth the page: swallow per call and let it read 0 rather
+            // than letting one failing count take the whole tab down.
+            const countOnly = (attemptType: string) =>
+                getAdminParticipants(assessmentId, instituteId, 0, COUNT_ONLY_PAGE_SIZE, {
+                    ...selectedFilter,
+                    registration_source: registrationSource,
+                    attempt_type: [attemptType],
+                }).catch(() => null);
+
+            Promise.all([
+                countOnly('ENDED'),
+                countOnly('LIVE'),
+                // 'PENDING' — the backend compares against the enum name, so the old
+                // 'Pending' never matched and this call always came back empty.
+                countOnly('PENDING'),
+            ]).then(([attemptedData, ongoingData, pendingData]) => {
+                if (cancelled) return;
+                setAttemptedCount(attemptedData?.total_elements ?? 0);
+                setOngoingCount(ongoingData?.total_elements ?? 0);
+                setPendingCount(pendingData?.total_elements ?? 0);
+            });
+        }, 300);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [assessmentId, instituteId, registrationSource, selectedFilter]);
 
     useEffect(() => {
         if (participantsData?.content) {
@@ -1476,10 +1501,28 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             instituteId={instituteId}
                             selectedFilter={selectedFilter}
                         />
-                        <AiAssessmentReportButton
-                            assessmentId={assessmentId}
-                            instituteId={instituteId}
-                        />
+                        <MyButton
+                            type="button"
+                            scale="small"
+                            buttonType="secondary"
+                            className="font-medium"
+                            onClick={() => setAiReportOpen(true)}
+                        >
+                            <Sparkle size={15} weight="fill" />
+                            {t('aiReport.download')}
+                        </MyButton>
+                        <Dialog open={aiReportOpen} onOpenChange={setAiReportOpen}>
+                            {aiReportOpen && (
+                                <AiAssessmentReportDialog
+                                    assessmentId={assessmentId}
+                                    instituteId={instituteId}
+                                    assessmentName={
+                                        assessmentDetailsData?.[0]?.saved_data?.name
+                                    }
+                                    onClose={() => setAiReportOpen(false)}
+                                />
+                            )}
+                        </Dialog>
                         {isOfflineEntryEnabled && (
                             <MyButton
                                 type="button"

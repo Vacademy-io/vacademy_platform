@@ -38,5 +38,10 @@
         "revaluate": {
             "title": "Réévaluer le résultat"
         }
+    },
+    "aiReport": {
+        "download": "Télécharger le rapport IA",
+        "preparing": "Préparation…",
+        "failed": "Impossible de générer le rapport IA. Veuillez réessayer."
     }
 }

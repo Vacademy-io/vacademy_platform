@@ -48,5 +48,10 @@
     },
     "search": {
         "placeholder": "Search students..."
+    },
+    "aiReport": {
+        "download": "Download AI Report",
+        "preparing": "Preparing…",
+        "failed": "Could not build the AI report. Please try again."
     }
 }

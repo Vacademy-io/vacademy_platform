@@ -137,7 +137,6 @@
         "leadRestored_one": "{{count}} lead restored",
         "leadRestored_other": "{{count}} leads restored",
         "restoreFailed": "Failed to restore. Please try again.",
-        "selectAllFailed": "Failed to select all leads",
-        "selectAllTruncated": "Selected the first {{selected}} of {{total}} leads. Narrow the filter to act on the rest."
+        "selectAllFailed": "Failed to select all leads"
     }
 }

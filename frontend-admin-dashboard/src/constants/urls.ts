@@ -192,13 +192,6 @@ export const COURSE_CERTIFICATE_RESEND = `${COURSE_CERTIFICATE_BASE}/resend`;
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
-/**
- * Ids-only projection of GET_CAMPAIGN_USERS, for "select all across pages".
- * Same LeadFilterDTO body, same RBAC scoping — send the body the list query sent —
- * but returns only { response_id, user_id, name }, skipping the per-row enrichment
- * that made select-all time out on large lists.
- */
-export const GET_LEAD_IDS = `${BASE_URL}/admin-core-service/v1/audience/leads/ids`;
 
 // Telephony — provider-agnostic click-to-call + recording surface.
 // Connect:   POST   /v1/telephony/calls/connect  -> { callLogId, eventsStreamUrl, ... }

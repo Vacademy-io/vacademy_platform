@@ -68,8 +68,7 @@ import {
 import { useCampaignUsers } from '../../-hooks/useCampaignUsers';
 import { useCustomFieldSetup } from '../../-hooks/useCustomFieldSetup';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
-import { fetchCampaignLeads, buildCampaignLeadsFilterBody } from '../../-services/get-campaign-users';
-import { fetchLeadIds } from '../../-services/get-lead-ids';
+import { fetchCampaignLeads } from '../../-services/get-campaign-users';
 import { CampaignUserTable } from './campaign-users-columns';
 import { convertToLocalDateTime } from '@/constants/helper';
 import { cn, parseHtmlToString } from '@/lib/utils';
@@ -586,29 +585,17 @@ const CampaignUsersContent = ({
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
     const [bulkMigrateOpen, setBulkMigrateOpen] = useState(false);
-    // Gates both delete and move-to-another-list, mirroring those endpoints' ADMIN checks.
     const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
     const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
 
     // Selection works in every view (previously Unassigned-only, which made
-    // reassign/remove unreachable).
-    //
-    // Cleared whenever the FILTER changes, not just the counsellor one. Selection is invisible
-    // once the rows leave the view, so narrowing the filter after a select-all used to leave
-    // thousands of now-unlisted ids armed — and the next bulk action silently applied to all of
-    // them. Keyed off the same whitelist the request is built from, so a new filter can't be
-    // forgotten here. Paging is excluded by that builder: selection survives paging.
-    // Compared by VALUE — the payload object is rebuilt on every render, so depending on its
-    // identity would clear the selection continuously.
-    const leadsFilterKey = useMemo(
-        () => JSON.stringify(buildCampaignLeadsFilterBody(leadsPayload)),
-        [leadsPayload]
-    );
+    // reassign/remove unreachable); drop it on filter change so stale ids
+    // can't leak into an assign.
     useEffect(() => {
         setSelectedLeads(new Map());
-    }, [leadsFilterKey]);
+    }, [counsellorFilters]);
 
     const toggleLeadRow = (responseId: string, vm: LeadCardVM) =>
         setSelectedLeads((prev) => {
@@ -635,50 +622,29 @@ const CampaignUsersContent = ({
         handleStatusUpdated();
     };
 
-    // Select every lead matching the current filter (across all pages), not just the rows on
-    // screen. Goes through the ids-only endpoint: the previous version refetched the whole
-    // table through the normal list query with `size: totalElements`, which ran every matching
-    // row through the per-row enrichment (an auth_service round-trip carrying every user id,
-    // plus four IN-list queries) just to keep three fields. That timed out once a list grew,
-    // and looked intermittent because the cost scaled with the row count.
+    // Select every lead matching the current filter (across all pages), not just
+    // the rows on screen — fetches all ids in one call (same pattern as export).
     const [selectAllLoading, setSelectAllLoading] = useState(false);
     const selectAllAcrossPages = async () => {
         if (!totalElements) return;
         try {
             setSelectAllLoading(true);
-            // The SAME filter body the list query posts, so the selected set cannot drift
-            // from the visible one.
-            const res = await fetchLeadIds(buildCampaignLeadsFilterBody(leadsPayload));
+            const res = await fetchCampaignLeads({ ...leadsPayload, page: 0, size: totalElements });
             const map = new Map<string, { userId: string; responseId: string; name: string }>();
-            res.content.forEach((lead) => {
+            (res.content ?? []).forEach((lead) => {
+                const uid = lead.user?.id || lead.user_id;
                 // Keyed by response id to match the per-row selection — a person with several
                 // responses is several selected rows, not one.
-                if (!lead.user_id || !lead.response_id) return;
+                if (!uid || !lead.response_id) return;
                 map.set(lead.response_id, {
-                    userId: lead.user_id,
+                    userId: uid,
                     responseId: lead.response_id,
-                    name: lead.name || lead.user_id,
+                    name: lead.user?.full_name || lead.parent_name || uid,
                 });
             });
             setSelectedLeads(map);
-            if (res.truncated) {
-                toast.warning(
-                    t('toasts.selectAllTruncated', {
-                        selected: map.size,
-                        total: res.total,
-                        defaultValue: `Selected the first ${map.size} of ${res.total} leads. Narrow the filter to act on the rest.`,
-                    })
-                );
-            }
-        } catch (err) {
-            // Surface what actually failed. This was a bare `catch` with a generic toast, which
-            // is why the reported symptom was an unexplained "failed".
-            const message =
-                (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-                (err as Error)?.message;
-            toast.error(
-                message ? `${t('toasts.selectAllFailed')}: ${message}` : t('toasts.selectAllFailed')
-            );
+        } catch {
+            toast.error(t('toasts.selectAllFailed'));
         } finally {
             setSelectAllLoading(false);
         }
@@ -1382,14 +1348,12 @@ const CampaignUsersContent = ({
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
-                                        // Move and delete are admin-only, matching those endpoints'
-                                        // own checks.
+                                        // Move and delete are admin-only, matching those
+                                        // endpoints' own checks.
                                         ...(canDeleteLeads
                                             ? [
                                                   {
-                                                      label: t('bulkToolbar.moveLeads', {
-                                                          defaultValue: 'Move to another list',
-                                                      }),
+                                                      label: t('bulkToolbar.moveLeads'),
                                                       value: 'migrate',
                                                       icon: (
                                                           <ArrowsLeftRight className="size-4" />

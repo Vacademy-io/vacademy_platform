@@ -2743,55 +2743,11 @@ public class AudienceService {
                 || (mobile != null && mobile.toLowerCase().contains(qLower));
     }
 
-    /**
-     * Hard ceiling on a single leads page. The list UI pages at 20; nothing legitimate asks for
-     * more than this. Uncapped, one client could request the entire table in a single page —
-     * which is exactly what the "select all" button used to do, fanning the whole result set
-     * out through {@link #mapResponsesToLeadDetails}'s cross-service call and IN-lists until it
-     * timed out. Select-all now goes through {@link #getLeadIds} instead.
-     *
-     * <p>This cap is also what bounds those IN-lists: {@code mapResponsesToLeadDetails} is only
-     * ever reached from here, so no enrichment query can exceed this many bind parameters.</p>
-     */
-    private static final int MAX_LEADS_PAGE_SIZE = 500;
-
-    /**
-     * Ceiling on one select-all. Beyond this the response reports {@code truncated} so the UI can
-     * say "the first N are selected" rather than silently acting on a partial set.
-     */
-    public static final int MAX_SELECT_ALL_LEADS = 20000;
-
     @Transactional(readOnly = true)
     public Page<LeadDetailDTO> getLeads(LeadFilterDTO filterDTO, CustomUserDetails user) {
-        int requestedSize = filterDTO.getSize() != null ? filterDTO.getSize() : 50;
         Pageable pageable = PageRequest.of(
                 filterDTO.getPage() != null ? filterDTO.getPage() : 0,
-                Math.min(Math.max(requestedSize, 1), MAX_LEADS_PAGE_SIZE));
-        FilteredLeads filtered = resolveFilteredLeads(filterDTO, user, pageable);
-        return mapResponsesToLeadDetails(filtered.page(), filtered.instituteId());
-    }
-
-    /**
-     * The filtered, RBAC-scoped leads plus the institute they resolved against (which the
-     * caller may not have sent — it can be derived from the audience).
-     */
-    private record FilteredLeads(Page<AudienceResponse> page, String instituteId) {
-        static FilteredLeads empty(Pageable pageable) {
-            return new FilteredLeads(Page.empty(pageable), null);
-        }
-    }
-
-    /**
-     * Resolve which leads a caller may see under a filter — every access rule for the leads
-     * list lives here: sub-org scoping, counsellor-hierarchy RBAC, AUDIENCE_LIST grants,
-     * assigned-only narrowing, conversion/soft-delete defaults and custom-field resolution.
-     *
-     * <p>Extracted from {@link #getLeads} so {@link #getLeadIds} runs through the <em>identical</em>
-     * scoping. Duplicating any of it would be a privilege-escalation bug: a scoped counsellor
-     * could select-all their way past the subtree they are allowed to see.</p>
-     */
-    private FilteredLeads resolveFilteredLeads(LeadFilterDTO filterDTO, CustomUserDetails user,
-            Pageable pageable) {
+                filterDTO.getSize() != null ? filterDTO.getSize() : 50);
 
         // Convert list filters to comma-separated strings for native query
         String overallStatusStr = filterDTO.getOverallStatuses() != null && !filterDTO.getOverallStatuses().isEmpty()
@@ -2964,14 +2920,14 @@ public class AudienceService {
             List<String> allowed = access.getAllowedAudienceIds();
             if (allowed == null || allowed.isEmpty()) {
                 // Admin granted no lists → user sees nothing (intentional lock-out).
-                return FilteredLeads.empty(pageable);
+                return Page.empty(pageable);
             }
             allowedAudienceIdsCsv = String.join(",", allowed);
             String requestedAudienceId = filterDTO.getAudienceId();
             if (requestedAudienceId != null && !requestedAudienceId.isBlank()
                     && !allowed.contains(requestedAudienceId)) {
                 // Punching through to a campaign they weren't granted.
-                return FilteredLeads.empty(pageable);
+                return Page.empty(pageable);
             }
         }
 
@@ -3035,7 +2991,7 @@ public class AudienceService {
         vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
                 cfResolution = resolveCustomFieldFilters(filterDTO.getCustomFieldFilters());
         if (cfResolution.shortCircuitsToEmpty()) {
-            return FilteredLeads.empty(pageable);
+            return Page.empty(pageable);
         }
         String customFieldMatchedIdsCsv = cfResolution.matchedIdsCsv();
         String customFieldExcludedIdsCsv = cfResolution.excludedIdsCsv();
@@ -3073,7 +3029,7 @@ public class AudienceService {
                     filterDTO.getSortDirection(),
                     filterDTO.getSortCustomFieldId(),
                     pageable);
-            return new FilteredLeads(all, filterDTO.getInstituteId());
+            return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
 
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
@@ -3117,49 +3073,7 @@ public class AudienceService {
             campaignInstituteId = audienceRepository.findById(filterDTO.getAudienceId())
                     .map(Audience::getInstituteId).orElse(null);
         }
-        return new FilteredLeads(responses, campaignInstituteId);
-    }
-
-    /**
-     * Ids-only projection of the leads list, for "select all across pages".
-     *
-     * <p>Runs the same filters and the same RBAC scoping as {@link #getLeads} (both delegate to
-     * {@link #resolveFilteredLeads}), so the selected set can never differ from the visible one,
-     * but deliberately skips {@link #mapResponsesToLeadDetails}. That enrichment exists to paint
-     * a table row — it costs one auth_service round-trip plus four more IN-list queries per page,
-     * none of which a selection needs. Select-all previously went through it for the entire
-     * filtered table at once, which is why it failed at scale and why the failure looked
-     * intermittent: it depended on the row count.</p>
-     *
-     * <p>{@code name} therefore comes off {@code audience_response.parent_name} rather than
-     * auth_service. It is a display label for the bulk-action dialogs; the authoritative name is
-     * still whatever the row view shows. Leads created through the simple submit flow keep their
-     * name only on the auth user, so this can be blank — the UI falls back to the user id, as it
-     * already does elsewhere.</p>
-     */
-    @Transactional(readOnly = true)
-    public LeadIdsResponseDTO getLeadIds(LeadFilterDTO filterDTO, CustomUserDetails user) {
-        Pageable pageable = PageRequest.of(0, MAX_SELECT_ALL_LEADS);
-        FilteredLeads filtered = resolveFilteredLeads(filterDTO, user, pageable);
-        Page<AudienceResponse> page = filtered.page();
-
-        List<LeadIdsResponseDTO.LeadIdItem> items = page.getContent().stream()
-                .map(r -> LeadIdsResponseDTO.LeadIdItem.builder()
-                        .responseId(r.getId())
-                        .userId(r.getUserId() != null ? r.getUserId() : r.getStudentUserId())
-                        .name(r.getParentName())
-                        .build())
-                // A row with no resolvable user cannot take part in a bulk action (assign works
-                // per person), and the table skips it too — drop it here so the count the UI
-                // shows matches what a bulk action would actually touch.
-                .filter(i -> StringUtils.hasText(i.getUserId()))
-                .collect(Collectors.toList());
-
-        return LeadIdsResponseDTO.builder()
-                .content(items)
-                .total(page.getTotalElements())
-                .truncated(page.getTotalElements() > MAX_SELECT_ALL_LEADS)
-                .build();
+        return mapResponsesToLeadDetails(responses, campaignInstituteId);
     }
 
     /**

@@ -111,37 +111,6 @@ export interface CampaignLeadsRequest {
     sort_direction?: string;
 }
 
-/**
- * The request body for the campaign leads list, as a whitelist of the filter fields the
- * backend understands.
- *
- * Exported so "select all across pages" can post the EXACT same filter to the ids endpoint.
- * When the two were built separately they could disagree — and did — leaving select-all
- * selecting a different set than the one on screen.
- *
- * Paging is deliberately excluded: the list adds it, the ids endpoint has none.
- */
-export const buildCampaignLeadsFilterBody = (
-    payload: CampaignLeadsRequest
-): Record<string, unknown> => ({
-    audience_id: payload.audience_id,
-    source_type: payload.source_type,
-    source_id: payload.source_id,
-    submitted_from_local: payload.submitted_from_local,
-    submitted_to_local: payload.submitted_to_local,
-    search_query: payload.search_query,
-    lead_tier: payload.lead_tier,
-    lead_status_id: payload.lead_status_id,
-    custom_field_filters: payload.custom_field_filters,
-    conversion_status_filter: payload.conversion_status_filter,
-    call_history_filter: payload.call_history_filter,
-    sla_filter: payload.sla_filter,
-    assigned_counselor_id: payload.assigned_counselor_id,
-    is_unassigned: payload.is_unassigned,
-    sort_by: payload.sort_by,
-    sort_direction: payload.sort_direction,
-});
-
 export const fetchCampaignLeads = async (
     payload: CampaignLeadsRequest
 ): Promise<CampaignLeadsResponse> => {
@@ -154,7 +123,22 @@ export const fetchCampaignLeads = async (
                 Authorization: `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
-                ...buildCampaignLeadsFilterBody(payload),
+                audience_id: payload.audience_id,
+                source_type: payload.source_type,
+                source_id: payload.source_id,
+                submitted_from_local: payload.submitted_from_local,
+                submitted_to_local: payload.submitted_to_local,
+                search_query: payload.search_query,
+                lead_tier: payload.lead_tier,
+                lead_status_id: payload.lead_status_id,
+                custom_field_filters: payload.custom_field_filters,
+                conversion_status_filter: payload.conversion_status_filter,
+                call_history_filter: payload.call_history_filter,
+                sla_filter: payload.sla_filter,
+                assigned_counselor_id: payload.assigned_counselor_id,
+                is_unassigned: payload.is_unassigned,
+                sort_by: payload.sort_by,
+                sort_direction: payload.sort_direction,
                 page: payload.page,
                 size: payload.size,
             }),

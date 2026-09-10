@@ -32,7 +32,6 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchRecentLeads, type RecentLeadDetail } from '../../list/-services/get-recent-leads';
-import { fetchLeadIds } from '../../list/-services/get-lead-ids';
 import { handleFetchCampaignsList } from '../../list/-services/get-campaigns-list';
 import { useCustomFieldSetup } from '../../list/-hooks/useCustomFieldSetup';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
@@ -516,62 +515,6 @@ const RecentLeadsContent = () => {
         [audienceFilters]
     );
 
-    // Every filter the leads request carries, minus paging. ONE source of truth, shared by the
-    // paginated list query and "select all across pages". These used to be two hand-written
-    // copies, and they had already drifted — the select-all copy omitted sort_by/sort_direction,
-    // so it could select a different set than the one on screen. Anything added here now
-    // reaches both by construction.
-    const leadsFilterBody = useMemo(
-        () => ({
-            institute_id: instituteId ?? '',
-            ...audienceParams,
-            submitted_from_local: startOfDayIso(appliedRange.from),
-            submitted_to_local: endOfDayIso(appliedRange.to),
-            search_query: appliedSearch || undefined,
-            lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
-            lead_status_id: leadStatusId,
-            conversion_status_filter: conversionFilter,
-            audience_status_filter: audienceStatusFilter,
-            sla_filter: slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
-            assigned_counselor_id:
-                nonUnassignedCounsellorIds.length > 0
-                    ? nonUnassignedCounsellorIds.join(',')
-                    : undefined,
-            is_unassigned: onlyUnassigned ? true : undefined,
-            source_type: sourceFilter || undefined,
-            call_history_filter: callHistoryFilter || undefined,
-            call_count_value: callCountParam,
-            custom_field_filters: customFieldFiltersPayload.length
-                ? customFieldFiltersPayload
-                : undefined,
-            sort_by: sortBy,
-            sort_direction: sortDirection,
-        }),
-        [
-            instituteId,
-            audienceParams,
-            appliedRange.from,
-            appliedRange.to,
-            appliedSearch,
-            tierFilters,
-            leadStatusId,
-            conversionFilter,
-            audienceStatusFilter,
-            slaFilters,
-            nonUnassignedCounsellorIds,
-            onlyUnassigned,
-            sourceFilter,
-            callHistoryFilter,
-            callCountParam,
-            customFieldFiltersPayload,
-            sortBy,
-            sortDirection,
-        ]
-    );
-
-    /** Value-stable identity for the filter above — see the selection-clearing effect. */
-    const leadsFilterKey = useMemo(() => JSON.stringify(leadsFilterBody), [leadsFilterBody]);
-
     const { data, isLoading, error } = useQuery({
         queryKey: [
             'recent-leads',
@@ -598,7 +541,30 @@ const RecentLeadsContent = () => {
         ],
         queryFn: () =>
             fetchRecentLeads({
-                ...leadsFilterBody,
+                institute_id: instituteId ?? '',
+                ...audienceParams,
+                submitted_from_local: startOfDayIso(appliedRange.from),
+                submitted_to_local: endOfDayIso(appliedRange.to),
+                search_query: appliedSearch || undefined,
+                lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
+                lead_status_id: leadStatusId,
+                conversion_status_filter: conversionFilter,
+                audience_status_filter: audienceStatusFilter,
+                sla_filter:
+                    slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
+                assigned_counselor_id:
+                    nonUnassignedCounsellorIds.length > 0
+                        ? nonUnassignedCounsellorIds.join(',')
+                        : undefined,
+                is_unassigned: onlyUnassigned ? true : undefined,
+                source_type: sourceFilter || undefined,
+                call_history_filter: callHistoryFilter || undefined,
+                call_count_value: callCountParam,
+                custom_field_filters: customFieldFiltersPayload.length
+                    ? customFieldFiltersPayload
+                    : undefined,
+                sort_by: sortBy,
+                sort_direction: sortDirection,
                 page,
                 size: pageSize,
             }),
@@ -702,20 +668,11 @@ const RecentLeadsContent = () => {
 
     // Selection works in EVERY view (assign, reassign AND bulk-remove need
     // assigned leads too — it was previously Unassigned-only, which made the
-    // dialog's Remove mode unreachable).
-    //
-    // Cleared whenever the FILTER changes, not just the counsellor one. Selection is invisible
-    // once the rows leave the view, so narrowing the filter after a select-all used to leave
-    // thousands of now-unlisted ids armed — and the next bulk action silently applied to all of
-    // them. Keyed off the shared filter body so a new filter can't be forgotten here.
-    // Paging is deliberately NOT part of the key: selection is meant to survive paging.
-    //
-    // Compared by VALUE, not identity: several inputs to leadsFilterBody (nonUnassignedCounsellorIds,
-    // the filter arrays) are rebuilt on every render, so depending on the object itself would
-    // clear the selection continuously and no row could ever stay checked.
+    // dialog's Remove mode unreachable). Drop it when the counsellor filter
+    // changes so stale ids can't leak into an assign.
     useEffect(() => {
         setSelectedLeads(new Map());
-    }, [leadsFilterKey]);
+    }, [counsellorFilters]);
 
     const toggleLeadRow = (responseId: string, vm: LeadCardVM) =>
         setSelectedLeads((prev) => {
@@ -742,49 +699,54 @@ const RecentLeadsContent = () => {
         handleStatusUpdated();
     };
 
-    // Select every lead matching the current filter (across all pages). Goes through the
-    // ids-only endpoint: the previous version refetched the whole table through the normal list
-    // query with `size: totalElements`, which ran every matching row through the per-row
-    // enrichment (an auth_service round-trip carrying every user id, plus four IN-list queries)
-    // just to keep three fields. That timed out once a list grew, and looked intermittent
-    // because the cost scaled with the row count.
+    // Select every lead matching the current filter (across all pages) — fetches
+    // all matching ids in one call, mirroring the paginated query's params.
     const [selectAllLoading, setSelectAllLoading] = useState(false);
     const selectAllAcrossPages = async () => {
         if (!totalElements) return;
         try {
             setSelectAllLoading(true);
-            // The SAME filter body the list query posts — see leadsFilterBody.
-            const res = await fetchLeadIds(leadsFilterBody);
+            const res = await fetchRecentLeads({
+                institute_id: instituteId ?? '',
+                ...audienceParams,
+                submitted_from_local: startOfDayIso(appliedRange.from),
+                submitted_to_local: endOfDayIso(appliedRange.to),
+                search_query: appliedSearch || undefined,
+                lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
+                lead_status_id: leadStatusId,
+                conversion_status_filter: conversionFilter,
+                audience_status_filter: audienceStatusFilter,
+                sla_filter:
+                    slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
+                assigned_counselor_id:
+                    nonUnassignedCounsellorIds.length > 0
+                        ? nonUnassignedCounsellorIds.join(',')
+                        : undefined,
+                is_unassigned: onlyUnassigned ? true : undefined,
+                source_type: sourceFilter || undefined,
+                call_history_filter: callHistoryFilter || undefined,
+                call_count_value: callCountParam,
+                custom_field_filters: customFieldFiltersPayload.length
+                    ? customFieldFiltersPayload
+                    : undefined,
+                page: 0,
+                size: totalElements,
+            });
             const map = new Map<string, { userId: string; responseId: string; name: string }>();
-            res.content.forEach((lead) => {
+            (res.content ?? []).forEach((lead) => {
+                const uid = lead.user?.id || lead.user_id;
                 // Keyed by response id to match the per-row selection — a person with several
                 // responses is several selected rows, not one.
-                if (!lead.user_id || !lead.response_id) return;
+                if (!uid || !lead.response_id) return;
                 map.set(lead.response_id, {
-                    userId: lead.user_id,
+                    userId: uid,
                     responseId: lead.response_id,
-                    name: lead.name || lead.user_id,
+                    name: lead.user?.full_name || lead.parent_name || uid,
                 });
             });
             setSelectedLeads(map);
-            if (res.truncated) {
-                toast.warning(
-                    t('toasts.selectAllTruncated', {
-                        selected: map.size,
-                        total: res.total,
-                        defaultValue: `Selected the first ${map.size} of ${res.total} leads. Narrow the filter to act on the rest.`,
-                    })
-                );
-            }
-        } catch (err) {
-            // Surface what actually failed. This was a bare `catch` with a generic toast, which
-            // is why the reported symptom was an unexplained "failed".
-            const message =
-                (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-                (err as Error)?.message;
-            toast.error(
-                message ? `${t('toasts.selectAllFailed')}: ${message}` : t('toasts.selectAllFailed')
-            );
+        } catch {
+            toast.error(t('toasts.selectAllFailed'));
         } finally {
             setSelectAllLoading(false);
         }
@@ -1603,9 +1565,7 @@ const RecentLeadsContent = () => {
                                         ...(canDeleteLeads && !showDeleted
                                             ? [
                                                   {
-                                                      label: t('bulk.moveLeads', {
-                                                          defaultValue: 'Move to another list',
-                                                      }),
+                                                      label: t('bulk.moveLeads'),
                                                       value: 'migrate',
                                                       icon: <ArrowsLeftRight className="size-4" />,
                                                   },
@@ -1613,12 +1573,12 @@ const RecentLeadsContent = () => {
                                             : []),
                                     ]}
                                     onSelect={(value) => {
-                                        if (value === 'delete') {
-                                            setBulkDeleteOpen(true);
-                                            return;
-                                        }
                                         if (value === 'migrate') {
                                             setBulkMigrateOpen(true);
+                                            return;
+                                        }
+                                        if (value === 'delete') {
+                                            setBulkDeleteOpen(true);
                                             return;
                                         }
                                         if (value === 'restore') {

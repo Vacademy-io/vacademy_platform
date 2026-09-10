@@ -542,6 +542,17 @@ class Settings:
     report_require_conversation: bool = field(
         default_factory=lambda: _env("REPORT_REQUIRE_CONVERSATION", "true").lower() == "true")
 
+    # Stricter sibling of the above: refuse a substantive disposition when the caller
+    # DID speak but said nothing beyond a greeting or a bare "yes"/"haan". A one-word
+    # "Hello." satisfied report_require_conversation, reached the classifier, and came
+    # back as a Demo_Booked with an invented name, member count and meeting time
+    # (institute 3716991c, 2026-09-09 — 13 such calls got a decisive label).
+    # Negations are exempt, so a bare "no" still classifies and still stops the retry.
+    # Separate kill-switch: this gate is newer and strictly stricter than the
+    # caller-turn test, so it can be reverted without disabling that one.
+    report_require_substance: bool = field(
+        default_factory=lambda: _env("REPORT_REQUIRE_SUBSTANCE", "true").lower() == "true")
+
     # Hard per-call ceiling when the agent config doesn't set maxCallMinutes —
     # bounds telephony + STT/LLM/TTS spend on a runaway conversation.
     max_call_minutes_default: float = 10.0

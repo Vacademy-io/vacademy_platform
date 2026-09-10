@@ -1,5 +1,3 @@
-import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { MyTable } from '@/components/design-system/table';
 import { Badge } from '@/components/ui/badge';
 import type {
@@ -39,7 +37,7 @@ const getFirstPolicy = (detail: MembershipDetail): PolicyDetails | null => {
 };
 
 // Auto-Renewal Badge Component
-const AutoRenewalBadge = ({ policy, t }: { policy: PolicyDetails | null; t: TFunction }) => {
+const AutoRenewalBadge = ({ policy }: { policy: PolicyDetails | null }) => {
     if (!policy?.on_expiry_policy) return null;
 
     const isEnabled = policy.on_expiry_policy.enable_auto_renewal;
@@ -55,7 +53,7 @@ const AutoRenewalBadge = ({ policy, t }: { policy: PolicyDetails | null; t: TFun
                                 className="flex items-center gap-1 border-green-200 bg-green-50 text-green-700"
                             >
                                 <RefreshCw className="size-3" />
-                                {t('autoRenewal')}
+                                Auto-Renewal
                             </Badge>
                         ) : (
                             <Badge
@@ -63,19 +61,15 @@ const AutoRenewalBadge = ({ policy, t }: { policy: PolicyDetails | null; t: TFun
                                 className="flex items-center gap-1 border-gray-200 bg-gray-50 text-gray-500"
                             >
                                 <Ban className="size-3" />
-                                {t('noAutoRenewal')}
+                                No Auto-Renewal
                             </Badge>
                         )}
                     </div>
                 </TooltipTrigger>
                 <TooltipContent>
                     {isEnabled
-                        ? t('paymentAttemptOn', {
-                              date: policy.on_expiry_policy.next_payment_attempt_date
-                                  ? format(new Date(policy.on_expiry_policy.next_payment_attempt_date), 'MMM dd, yyyy')
-                                  : t('scheduledDate'),
-                          })
-                        : t('autoRenewalDisabled')}
+                        ? `Payment will be attempted on ${policy.on_expiry_policy.next_payment_attempt_date ? format(new Date(policy.on_expiry_policy.next_payment_attempt_date), 'MMM dd, yyyy') : 'scheduled date'}`
+                        : 'Auto-renewal is disabled for this membership'}
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>
@@ -83,7 +77,7 @@ const AutoRenewalBadge = ({ policy, t }: { policy: PolicyDetails | null; t: TFun
 };
 
 // Expiry Details Component
-const ExpiryDetails = ({ policy, t }: { policy: PolicyDetails | null; t: TFunction }) => {
+const ExpiryDetails = ({ policy }: { policy: PolicyDetails | null }) => {
     if (!policy?.on_expiry_policy) return <span className="text-gray-400">—</span>;
 
     const { waiting_period_in_days, final_expiry_date } = policy.on_expiry_policy;
@@ -101,7 +95,7 @@ const ExpiryDetails = ({ policy, t }: { policy: PolicyDetails | null; t: TFuncti
             {waiting_period_in_days > 0 && (
                 <div className="flex items-center gap-1.5 text-xs text-gray-500">
                     <Clock className="size-3" />
-                    <span>{t('gracePeriod', { count: waiting_period_in_days })}</span>
+                    <span>{waiting_period_in_days} day grace period</span>
                 </div>
             )}
         </div>
@@ -109,7 +103,7 @@ const ExpiryDetails = ({ policy, t }: { policy: PolicyDetails | null; t: TFuncti
 };
 
 // Re-enrollment Info Component
-const ReenrollmentInfo = ({ policy, t }: { policy: PolicyDetails | null; t: TFunction }) => {
+const ReenrollmentInfo = ({ policy }: { policy: PolicyDetails | null }) => {
     if (!policy?.reenrollment_policy) return <span className="text-gray-400">—</span>;
 
     const {
@@ -121,7 +115,7 @@ const ReenrollmentInfo = ({ policy, t }: { policy: PolicyDetails | null; t: TFun
     if (!allow_reenrollment_after_expiry) {
         return (
             <Badge variant="outline" className="border-red-200 bg-red-50 text-red-600">
-                {t('notAllowed')}
+                Not Allowed
             </Badge>
         );
     }
@@ -137,14 +131,14 @@ const ReenrollmentInfo = ({ policy, t }: { policy: PolicyDetails | null; t: TFun
                                 {format(new Date(next_eligible_enrollment_date), 'MMM dd, yyyy')}
                             </span>
                         ) : (
-                            <span className="text-sm text-green-600">{t('availableNow')}</span>
+                            <span className="text-sm text-green-600">Available Now</span>
                         )}
                     </div>
                 </TooltipTrigger>
                 <TooltipContent>
                     {reenrollment_gap_in_days > 0
-                        ? t('reenrollmentGap', { count: reenrollment_gap_in_days })
-                        : t('reenrollImmediately')}
+                        ? `${reenrollment_gap_in_days} day gap required before re-enrollment`
+                        : 'Can re-enroll immediately after expiry'}
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>
@@ -158,24 +152,15 @@ export function MembershipExpiryTable({
     currentPage,
     onPageChange,
 }: Props) {
-    const { t } = useTranslation('membershipExpiryMembershipExpiryTable');
-
-    const statusLabels: Record<MembershipStatus, string> = {
-        ENDED: t('status.ended'),
-        ABOUT_TO_END: t('status.aboutToEnd'),
-        LIFETIME: t('status.lifetime'),
-        ACTIVE: t('status.active'),
-    };
-
     const columns = useMemo<any>(
         () => [
             columnHelper.accessor((row) => row.user_details?.full_name, {
                 id: 'full_name',
-                header: t('columns.user'),
+                header: 'User',
                 cell: (info) => (
                     <div>
                         <div className="font-medium text-gray-900">
-                            {info.getValue() ?? t('unknownUser')}
+                            {info.getValue() ?? 'Unknown User'}
                         </div>
                         <div className="text-xs text-gray-500">
                             {info.row.original.user_details?.email}
@@ -188,12 +173,12 @@ export function MembershipExpiryTable({
             }),
             columnHelper.accessor((row) => row.user_plan?.payment_plan_dto?.name, {
                 id: 'plan_name',
-                header: t('columns.plan'),
+                header: 'Plan',
                 cell: (info) => {
                     const policy = getFirstPolicy(info.row.original);
                     return (
                         <div>
-                            <div className="font-medium">{info.getValue() ?? t('unknownPlan')}</div>
+                            <div className="font-medium">{info.getValue() ?? 'Unknown Plan'}</div>
                             {policy?.package_session_name && (
                                 <div className="text-xs text-gray-500">
                                     {policy.package_session_name}
@@ -214,7 +199,7 @@ export function MembershipExpiryTable({
                 },
             }),
             columnHelper.accessor('membership_status', {
-                header: t('columns.status'),
+                header: 'Status',
                 cell: (info) => {
                     const status = info.getValue() as MembershipStatus;
                     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
@@ -223,43 +208,43 @@ export function MembershipExpiryTable({
                     if (status === 'LIFETIME') variant = 'outline';
                     if (status === 'ACTIVE') variant = 'default';
 
-                    return <Badge variant={variant}>{statusLabels[status]}</Badge>;
+                    return <Badge variant={variant}>{status.replace('_', ' ')}</Badge>;
                 },
             }),
             columnHelper.display({
                 id: 'auto_renewal',
-                header: t('columns.autoRenewal'),
+                header: 'Auto-Renewal',
                 cell: (info) => {
                     const policy = getFirstPolicy(info.row.original);
-                    return <AutoRenewalBadge policy={policy} t={t} />;
+                    return <AutoRenewalBadge policy={policy} />;
                 },
             }),
             columnHelper.accessor((row) => row.user_plan?.end_date, {
                 id: 'end_date',
-                header: t('columns.planEndDate'),
+                header: 'Plan End Date',
                 cell: (info) => {
                     const date = info.getValue();
-                    return date ? format(new Date(date), 'MMM dd, yyyy') : t('notApplicable');
+                    return date ? format(new Date(date), 'MMM dd, yyyy') : 'N/A';
                 },
             }),
             columnHelper.display({
                 id: 'final_expiry',
-                header: t('columns.finalExpiry'),
+                header: 'Final Expiry',
                 cell: (info) => {
                     const policy = getFirstPolicy(info.row.original);
-                    return <ExpiryDetails policy={policy} t={t} />;
+                    return <ExpiryDetails policy={policy} />;
                 },
             }),
             columnHelper.display({
                 id: 'reenrollment',
-                header: t('columns.reenrollment'),
+                header: 'Re-enrollment',
                 cell: (info) => {
                     const policy = getFirstPolicy(info.row.original);
-                    return <ReenrollmentInfo policy={policy} t={t} />;
+                    return <ReenrollmentInfo policy={policy} />;
                 },
             }),
         ],
-        [t]
+        []
     );
 
     const tableData = useMemo(() => {
@@ -275,7 +260,7 @@ export function MembershipExpiryTable({
     }, [data]);
 
     if (error) {
-        return <div className="p-4 text-center text-red-500">{t('errorLoadingData')}</div>;
+        return <div className="p-4 text-center text-red-500">Error loading data</div>;
     }
 
     return (

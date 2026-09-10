@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,7 +31,6 @@ export function MembershipExpiryFilters({
     onQuickFilterSelect,
     onClearFilters,
 }: MembershipExpiryFiltersProps) {
-    const { t } = useTranslation('membershipExpiryMembershipExpiryFilters');
     const [showFilters, setShowFilters] = useState(false);
 
     // Simplified package session ID logic
@@ -97,9 +95,9 @@ export function MembershipExpiryFilters({
                     className={cn('gap-2', hasActiveFilters && 'border-primary-500 bg-primary-50')}
                 >
                     <Funnel size={16} weight={hasActiveFilters ? 'fill' : 'regular'} />
-                    {t('filters')}
+                    Filters
                     {hasActiveFilters && (
-                        <span className="ms-1 flex size-5 items-center justify-center rounded-full bg-primary-500 text-xs text-white">
+                        <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-primary-500 text-xs text-white">
                             {(startDate ? 1 : 0) +
                                 (endDate ? 1 : 0) +
                                 (packageSessionFilter.packageSessionIds?.length || (packageSessionFilter.packageId ? 1 : 0))}
@@ -108,14 +106,14 @@ export function MembershipExpiryFilters({
                 </Button>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">{t('quick')}</span>
+                    <span className="text-sm text-gray-500">Quick:</span>
                     <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleQuickFilter('1h')}
                         className="h-8"
                     >
-                        {t('last1Hour')}
+                        Last 1 Hour
                     </Button>
                     <Button
                         variant="ghost"
@@ -123,7 +121,7 @@ export function MembershipExpiryFilters({
                         onClick={() => handleQuickFilter('today')}
                         className="h-8"
                     >
-                        {t('today')}
+                        Today
                     </Button>
                     <Button
                         variant="ghost"
@@ -131,7 +129,7 @@ export function MembershipExpiryFilters({
                         onClick={() => handleQuickFilter('7d')}
                         className="h-8"
                     >
-                        {t('last7Days')}
+                        Last 7 Days
                     </Button>
                     <Button
                         variant="ghost"
@@ -139,7 +137,7 @@ export function MembershipExpiryFilters({
                         onClick={() => handleQuickFilter('30d')}
                         className="h-8"
                     >
-                        {t('last30Days')}
+                        Last 30 Days
                     </Button>
                     <Button
                         variant="ghost"
@@ -147,7 +145,7 @@ export function MembershipExpiryFilters({
                         onClick={() => handleQuickFilter('all')}
                         className="h-8"
                     >
-                        {t('allTime')}
+                        All Time
                     </Button>
                 </div>
 
@@ -156,10 +154,10 @@ export function MembershipExpiryFilters({
                         variant="ghost"
                         size="sm"
                         onClick={onClearFilters}
-                        className="ms-auto gap-2 text-red-600 hover:text-red-700"
+                        className="ml-auto gap-2 text-red-600 hover:text-red-700"
                     >
                         <X size={16} />
-                        {t('clearAll')}
+                        Clear All
                     </Button>
                 )}
             </div>
@@ -170,7 +168,7 @@ export function MembershipExpiryFilters({
                     {/* Package Session Filter Section */}
                     <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
                         <Label className="mb-2 block text-sm font-semibold text-blue-900">
-                            {t('filterByCourseSession')}
+                            Filter by Course/Session
                         </Label>
 
                         <PackageSelector
@@ -189,8 +187,8 @@ export function MembershipExpiryFilters({
                         {/* Start Date */}
                         <div className="space-y-2">
                             <Label className="text-sm font-medium text-gray-700">
-                                <Calendar size={14} className="me-1 inline" />
-                                {t('startDate')}
+                                <Calendar size={14} className="mr-1 inline" />
+                                Start Date
                             </Label>
                             <Input
                                 type="datetime-local"
@@ -209,8 +207,8 @@ export function MembershipExpiryFilters({
                         {/* End Date */}
                         <div className="space-y-2">
                             <Label className="text-sm font-medium text-gray-700">
-                                <Calendar size={14} className="me-1 inline" />
-                                {t('endDate')}
+                                <Calendar size={14} className="mr-1 inline" />
+                                End Date
                             </Label>
                             <Input
                                 type="datetime-local"

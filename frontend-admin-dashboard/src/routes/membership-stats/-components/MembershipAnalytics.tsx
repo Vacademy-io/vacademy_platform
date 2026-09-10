@@ -1,5 +1,3 @@
-import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Legend } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
@@ -12,16 +10,16 @@ interface MembershipAnalyticsProps {
     onCardClick?: (range: { start: Date; end: Date }) => void;
 }
 
-const buildChartConfig = (t: TFunction) => ({
+const chartConfig = {
     newUsers: {
-        label: t('newUsers'),
+        label: "New Users",
         color: "#6366f1",
     },
     retainers: {
-        label: t('retainers'),
+        label: "Retainers",
         color: "#f59e0b",
     },
-});
+};
 
 interface StatBreakdown {
     total: number;
@@ -29,21 +27,21 @@ interface StatBreakdown {
     retainers: number;
 }
 
-function StatsCardContent({ stats, t }: { stats: StatBreakdown; t: TFunction }) {
+function StatsCardContent({ stats }: { stats: StatBreakdown }) {
     return (
         <div>
             <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="mb-2 text-xs text-gray-500">{t('totalUsers', { count: stats.total })}</p>
+            <p className="mb-2 text-xs text-gray-500">Total users</p>
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
                     <UserPlus size={14} className="text-indigo-500" />
                     <span className="text-sm font-semibold text-indigo-600">{stats.newUsers}</span>
-                    <span className="text-xs text-gray-500">{t('new')}</span>
+                    <span className="text-xs text-gray-500">New</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                     <ArrowsClockwise size={14} className="text-amber-500" />
                     <span className="text-sm font-semibold text-amber-600">{stats.retainers}</span>
-                    <span className="text-xs text-gray-500">{t('retainer')}</span>
+                    <span className="text-xs text-gray-500">Retainer</span>
                 </div>
             </div>
         </div>
@@ -51,8 +49,6 @@ function StatsCardContent({ stats, t }: { stats: StatBreakdown; t: TFunction }) 
 }
 
 export function MembershipAnalytics({ packageSessionIds, onCardClick }: MembershipAnalyticsProps) {
-    const { t } = useTranslation('membershipStatsMembershipAnalytics');
-    const chartConfig = buildChartConfig(t);
     const { stats, graphData, dateRanges, isLoading } = useMembershipAnalytics(packageSessionIds);
 
     if (isLoading) {
@@ -73,12 +69,12 @@ export function MembershipAnalytics({ packageSessionIds, onCardClick }: Membersh
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-gray-500">
-                            {t('last24Hours')}
+                            Last 24 Hours
                         </CardTitle>
                         <Clock className="h-4 w-4 text-gray-400" />
                     </CardHeader>
                     <CardContent>
-                        <StatsCardContent stats={stats.last24Hours} t={t} />
+                        <StatsCardContent stats={stats.last24Hours} />
                     </CardContent>
                 </Card>
                 <Card
@@ -87,12 +83,12 @@ export function MembershipAnalytics({ packageSessionIds, onCardClick }: Membersh
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-gray-500">
-                            {t('last7Days')}
+                            Last 7 Days
                         </CardTitle>
                         <Calendar className="h-4 w-4 text-gray-400" />
                     </CardHeader>
                     <CardContent>
-                        <StatsCardContent stats={stats.last7Days} t={t} />
+                        <StatsCardContent stats={stats.last7Days} />
                     </CardContent>
                 </Card>
                 <Card
@@ -101,12 +97,12 @@ export function MembershipAnalytics({ packageSessionIds, onCardClick }: Membersh
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-gray-500">
-                            {t('last30Days')}
+                            Last 30 Days
                         </CardTitle>
                         <Users className="h-4 w-4 text-gray-400" />
                     </CardHeader>
                     <CardContent>
-                        <StatsCardContent stats={stats.last30Days} t={t} />
+                        <StatsCardContent stats={stats.last30Days} />
                     </CardContent>
                 </Card>
             </div>
@@ -114,8 +110,8 @@ export function MembershipAnalytics({ packageSessionIds, onCardClick }: Membersh
             {/* Weekly Stats Chart — Stacked Bar */}
             <Card className="shadow-sm">
                 <CardHeader className="pb-2">
-                    <CardTitle className="text-base font-semibold">{t('weeklyUserTrends')}</CardTitle>
-                    <p className="text-xs text-gray-500">{t('userRegistrationsLast7Days')}</p>
+                    <CardTitle className="text-base font-semibold">Weekly User Trends</CardTitle>
+                    <p className="text-xs text-gray-500">User registrations over the last 7 days</p>
                 </CardHeader>
                 <CardContent>
                     <div className="h-[220px] w-full">
@@ -140,7 +136,7 @@ export function MembershipAnalytics({ packageSessionIds, onCardClick }: Membersh
                                 />
                                 <Bar
                                     dataKey="newUsers"
-                                    name={t('newUsers')}
+                                    name="New Users"
                                     stackId="a"
                                     fill="#6366f1"
                                     radius={[0, 0, 0, 0]}
@@ -148,7 +144,7 @@ export function MembershipAnalytics({ packageSessionIds, onCardClick }: Membersh
                                 />
                                 <Bar
                                     dataKey="retainers"
-                                    name={t('retainers')}
+                                    name="Retainers"
                                     stackId="a"
                                     fill="#f59e0b"
                                     radius={[4, 4, 0, 0]}

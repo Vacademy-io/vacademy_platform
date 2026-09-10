@@ -1,8 +1,6 @@
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { Helmet } from 'react-helmet';
-import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import {
     getSelectedSubOrgId,
     isCallerSubOrgAdmin,
@@ -28,7 +26,7 @@ interface SubOrgItem {
     name: string;
 }
 
-function normaliseSubOrg(org: any, t: TFunction): SubOrgItem | null {
+function normaliseSubOrg(org: any): SubOrgItem | null {
     const id =
         org?.sub_org_id || org?.suborgId || org?.subOrgId || org?.suborg_id || org?.id;
     const name =
@@ -38,7 +36,7 @@ function normaliseSubOrg(org: any, t: TFunction): SubOrgItem | null {
         id,
         name:
             name ||
-            t('untitledTerm', { term: getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg) }),
+            `Untitled ${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}`,
     };
 }
 
@@ -57,7 +55,6 @@ function normaliseSubOrg(org: any, t: TFunction): SubOrgItem | null {
  *     accessible sub-org.
  */
 function ManageSubOrgTeams() {
-    const { t } = useTranslation('manageSuborgTeamsIndexLazy');
     const instituteId = getCurrentInstituteId();
     // Institutes rename this concept via Settings → Naming (Channel Partner,
     // Branch, Franchise, VLE …); user-facing labels must follow that.
@@ -73,8 +70,8 @@ function ManageSubOrgTeams() {
         const list = Array.isArray(rawSubOrgs)
             ? rawSubOrgs
             : (rawSubOrgs as any)?.content || [];
-        return list.map((org) => normaliseSubOrg(org, t)).filter(Boolean) as SubOrgItem[];
-    }, [rawSubOrgs, t]);
+        return list.map(normaliseSubOrg).filter(Boolean) as SubOrgItem[];
+    }, [rawSubOrgs]);
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -131,7 +128,9 @@ function ManageSubOrgTeams() {
                             {selectedSubOrg?.name || subOrgTerm}
                         </h1>
                         <p className="mt-1 text-sm text-neutral-500">
-                            {t('pageDescription', { term: subOrgTerm.toLowerCase() })}
+                            Your {subOrgTerm.toLowerCase()}&apos;s payments, learners and team. The
+                            ledger is read-only — the parent institute admin manages installments
+                            and discounts.
                         </p>
                     </div>
                     {selectedSubOrg && <SubOrgStatCards subOrgId={selectedSubOrg.id} />}
@@ -143,12 +142,12 @@ function ManageSubOrgTeams() {
                 {subOrgs.length > 1 && (
                     <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
                         <span className="text-xs font-medium text-neutral-600">
-                            {t('switchTerm', { term: subOrgTerm.toLowerCase() })}
+                            Switch {subOrgTerm.toLowerCase()}
                         </span>
                         <MyDropdown
                             dropdownList={dropdownList}
                             currentValue={selectedSubOrg?.name || ''}
-                            placeholder={t('selectTermPlaceholder', { term: subOrgTerm.toLowerCase() })}
+                            placeholder={`Select ${subOrgTerm.toLowerCase()}`}
                             handleChange={(value: string) => setSelectedId(value)}
                             className="min-w-56"
                         />
@@ -160,10 +159,11 @@ function ManageSubOrgTeams() {
                 ) : !selectedSubOrg ? (
                     <div className="rounded-lg border border-warning-200 bg-warning-50 p-6 text-warning-800">
                         <p className="font-medium">
-                            {t('noAccessTitle', { term: subOrgTerm.toLowerCase() })}
+                            No {subOrgTerm.toLowerCase()} access.
                         </p>
                         <p className="text-caption">
-                            {t('noAccessBody', { term: subOrgTerm.toLowerCase() })}
+                            Ask your institute admin to grant you {subOrgTerm.toLowerCase()} admin
+                            access.
                         </p>
                     </div>
                 ) : (

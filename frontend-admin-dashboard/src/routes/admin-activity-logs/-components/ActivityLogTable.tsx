@@ -1,6 +1,3 @@
-import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import {
     Table,
     TableBody,
@@ -55,60 +52,59 @@ const ACTION_VARIANT: Record<string, 'default' | 'destructive' | 'secondary' | '
     REMOVE_MEMBER: 'destructive',
 };
 
-/** entity_type → translated label. Built per-render from the table's own `t`. */
-const buildResourceLabels = (t: TFunction): Record<string, string> => ({
-    AUDIENCE: t('resourceLabels.AUDIENCE'),
-    LEAD: t('resourceLabels.LEAD'),
-    LEAD_STATUS: t('resourceLabels.LEAD_STATUS'),
-    LEAD_FOLLOWUP: t('resourceLabels.LEAD_FOLLOWUP'),
-    LEAD_SLA_CONFIG: t('resourceLabels.LEAD_SLA_CONFIG'),
-    LEAD_CONNECTOR: t('resourceLabels.LEAD_CONNECTOR'),
-    ENQUIRY: t('resourceLabels.ENQUIRY'),
-    COUNSELLOR: t('resourceLabels.COUNSELLOR'),
-    COUNSELLOR_POOL: t('resourceLabels.COUNSELLOR_POOL'),
-    COUNSELLOR_TARGET: t('resourceLabels.COUNSELLOR_TARGET'),
-    COUNSELLOR_WORKBENCH_CONFIG: t('resourceLabels.COUNSELLOR_WORKBENCH_CONFIG'),
-    TAG: t('resourceLabels.TAG'),
-    TELEPHONY_CONFIG: t('resourceLabels.TELEPHONY_CONFIG'),
-    TELEPHONY_NUMBER: t('resourceLabels.TELEPHONY_NUMBER'),
-    ENGAGEMENT_ENGINE: t('resourceLabels.ENGAGEMENT_ENGINE'),
-    AUTOMATION: t('resourceLabels.AUTOMATION'),
-    COURSE: t('resourceLabels.COURSE'),
-    LIVE_SESSION: t('resourceLabels.LIVE_SESSION'),
-    LEARNER: t('resourceLabels.LEARNER'),
-    GUARDIAN_LINK: t('resourceLabels.GUARDIAN_LINK'),
-    INSTITUTE_SETTING: t('resourceLabels.INSTITUTE_SETTING'),
-});
+const RESOURCE_LABELS: Record<string, string> = {
+    AUDIENCE: 'Audience list',
+    LEAD: 'Lead',
+    LEAD_STATUS: 'Lead status',
+    LEAD_FOLLOWUP: 'Follow-up',
+    LEAD_SLA_CONFIG: 'Lead SLA',
+    LEAD_CONNECTOR: 'Lead connector',
+    ENQUIRY: 'Enquiry',
+    COUNSELLOR: 'Counsellor',
+    COUNSELLOR_POOL: 'Counsellor pool',
+    COUNSELLOR_TARGET: 'Counsellor target',
+    COUNSELLOR_WORKBENCH_CONFIG: 'Workbench settings',
+    TAG: 'Tag',
+    TELEPHONY_CONFIG: 'Calling settings',
+    TELEPHONY_NUMBER: 'Calling number',
+    ENGAGEMENT_ENGINE: 'Engagement engine',
+    AUTOMATION: 'Automation',
+    COURSE: 'Course',
+    LIVE_SESSION: 'Live session',
+    LEARNER: 'Learner',
+    GUARDIAN_LINK: 'Guardian link',
+    INSTITUTE_SETTING: 'Settings',
+};
 
-const resourceLabel = (entityType: string, resourceLabels: Record<string, string>): string =>
-    resourceLabels[entityType] ??
+const resourceLabel = (entityType: string): string =>
+    RESOURCE_LABELS[entityType] ??
     entityType
         .toLowerCase()
         .replace(/_/g, ' ')
         .replace(/^./, (c) => c.toUpperCase());
 
-const formatAbsoluteTime = (iso: string | null | undefined, locale: string) => {
+const formatAbsoluteTime = (iso: string | null | undefined) => {
     if (!iso) return '—';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleString(locale);
+    return d.toLocaleString();
 };
 
-const formatRelativeTime = (iso: string | null | undefined, t: TFunction, locale: string) => {
+const formatRelativeTime = (iso: string | null | undefined) => {
     if (!iso) return '—';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '—';
     const diff = Date.now() - d.getTime();
     const sec = Math.floor(diff / 1000);
-    if (sec < 5) return t('timeAgo.justNow');
-    if (sec < 60) return t('timeAgo.secondsAgo', { count: sec });
+    if (sec < 5) return 'just now';
+    if (sec < 60) return `${sec}s ago`;
     const min = Math.floor(sec / 60);
-    if (min < 60) return t('timeAgo.minutesAgo', { count: min });
+    if (min < 60) return `${min}m ago`;
     const hr = Math.floor(min / 60);
-    if (hr < 24) return t('timeAgo.hoursAgo', { count: hr });
+    if (hr < 24) return `${hr}h ago`;
     const days = Math.floor(hr / 24);
-    if (days < 30) return t('timeAgo.daysAgo', { count: days });
-    return d.toLocaleDateString(locale);
+    if (days < 30) return `${days}d ago`;
+    return d.toLocaleDateString();
 };
 
 // Patterns marking which parts of a description are names worth bolding.
@@ -231,8 +227,8 @@ const renderActivitySentence = (row: AdminActivityLog): React.ReactNode => {
     );
 };
 
-const getActorLabel = (row: AdminActivityLog, t: TFunction): string =>
-    row.actor_name || row.actor_email || row.actor_id || t('unknownUser');
+const getActorLabel = (row: AdminActivityLog): string =>
+    row.actor_name || row.actor_email || row.actor_id || 'Unknown user';
 
 const initialsOf = (label: string): string =>
     label
@@ -258,19 +254,16 @@ export function ActivityLogTable({
     hasActiveFilters,
     onClearFilters,
 }: Props) {
-    const { t, i18n } = useTranslation('adminActivityLogsActivityLogTable');
-    const resourceLabels = useMemo(() => buildResourceLabels(t), [t]);
-
     if (isError) {
         return (
             <Card className="flex items-start gap-2 border-danger-200 bg-danger-50 p-4">
                 <WarningCircle className="mt-0.5 size-5 shrink-0 text-danger-600" />
                 <div>
                     <p className="text-body font-medium text-danger-600">
-                        {t('loadFailed.title')}
+                        Failed to load activity logs
                     </p>
                     <p className="text-caption text-neutral-600">
-                        {t('loadFailed.description')}
+                        The request did not complete. Use Refresh to try again.
                     </p>
                 </div>
             </Card>
@@ -297,26 +290,28 @@ export function ActivityLogTable({
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-neutral-50 hover:bg-neutral-50">
-                                <TableHead className="w-32 whitespace-nowrap ps-4 text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                                    {t('columns.when')}
+                                <TableHead className="w-32 whitespace-nowrap pl-4 text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                                    When
                                 </TableHead>
                                 <TableHead className="text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                                    {t('columns.activity')}
+                                    Activity
                                 </TableHead>
                                 <TableHead className="whitespace-nowrap text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                                    {t('columns.resource')}
+                                    Resource
                                 </TableHead>
                                 <TableHead className="whitespace-nowrap text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                                    {t('columns.action')}
+                                    Action
                                 </TableHead>
-                                <TableHead className="whitespace-nowrap pe-4 text-end text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                                <TableHead className="whitespace-nowrap pr-4 text-right text-caption font-semibold uppercase tracking-wide text-neutral-500">
                                     <Tooltip>
                                         <TooltipTrigger className="inline-flex items-center gap-1">
-                                            {t('columns.latency')}
+                                            Latency
                                             <Info className="size-3.5 text-neutral-400" />
                                         </TooltipTrigger>
                                         <TooltipContent side="top" className="max-w-xs">
-                                            {t('latencyTooltip')}
+                                            API call wall-time on the server. Includes business
+                                            logic + DB writes; excludes the audit-row write itself
+                                            (~1–3 ms).
                                         </TooltipContent>
                                     </Tooltip>
                                 </TableHead>
@@ -337,7 +332,6 @@ export function ActivityLogTable({
                                         <EmptyState
                                             hasActiveFilters={hasActiveFilters}
                                             onClearFilters={onClearFilters}
-                                            t={t}
                                         />
                                     </TableCell>
                                 </TableRow>
@@ -347,10 +341,9 @@ export function ActivityLogTable({
                                         key={row.id}
                                         tabIndex={0}
                                         role="button"
-                                        aria-label={t('rowAriaLabel', {
-                                            actor: getActorLabel(row, t),
-                                            description: row.description ?? row.action,
-                                        })}
+                                        aria-label={`Open details for ${getActorLabel(row)} — ${
+                                            row.description ?? row.action
+                                        }`}
                                         onClick={() => onRowClick(row)}
                                         onKeyDown={(event) => {
                                             if (event.key === 'Enter' || event.key === ' ') {
@@ -360,20 +353,13 @@ export function ActivityLogTable({
                                         }}
                                         className="cursor-pointer transition-colors hover:bg-neutral-50 focus:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
                                     >
-                                        <TableCell className="whitespace-nowrap ps-4 align-top">
+                                        <TableCell className="whitespace-nowrap pl-4 align-top">
                                             <Tooltip>
                                                 <TooltipTrigger className="text-caption text-neutral-600">
-                                                    {formatRelativeTime(
-                                                        row.created_at,
-                                                        t,
-                                                        i18n.language
-                                                    )}
+                                                    {formatRelativeTime(row.created_at)}
                                                 </TooltipTrigger>
                                                 <TooltipContent side="top">
-                                                    {formatAbsoluteTime(
-                                                        row.created_at,
-                                                        i18n.language
-                                                    )}
+                                                    {formatAbsoluteTime(row.created_at)}
                                                 </TooltipContent>
                                             </Tooltip>
                                         </TableCell>
@@ -383,7 +369,7 @@ export function ActivityLogTable({
                                                     className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-50 text-caption font-semibold text-primary-500"
                                                     aria-hidden="true"
                                                 >
-                                                    {initialsOf(getActorLabel(row, t))}
+                                                    {initialsOf(getActorLabel(row))}
                                                 </span>
                                                 <div className="min-w-0 text-body text-neutral-600">
                                                     <span className="inline-flex items-center gap-1.5">
@@ -394,14 +380,12 @@ export function ActivityLogTable({
                                                             )}
                                                             title={
                                                                 row.response_status != null
-                                                                    ? t('httpStatus', {
-                                                                          status: row.response_status,
-                                                                      })
+                                                                    ? `HTTP ${row.response_status}`
                                                                     : ''
                                                             }
                                                         />
                                                         <span className="font-semibold text-neutral-700">
-                                                            {getActorLabel(row, t)}
+                                                            {getActorLabel(row)}
                                                         </span>
                                                     </span>{' '}
                                                     {renderActivitySentence(row)}
@@ -417,7 +401,7 @@ export function ActivityLogTable({
                                         </TableCell>
                                         <TableCell className="whitespace-nowrap align-top">
                                             <span className="inline-block rounded-md bg-neutral-100 px-2 py-0.5 text-caption text-neutral-600">
-                                                {resourceLabel(row.entity_type, resourceLabels)}
+                                                {resourceLabel(row.entity_type)}
                                             </span>
                                         </TableCell>
                                         <TableCell className="whitespace-nowrap align-top">
@@ -427,9 +411,9 @@ export function ActivityLogTable({
                                                 {row.action.replace(/_/g, ' ')}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="whitespace-nowrap pe-4 text-end align-top text-caption tabular-nums text-neutral-600">
+                                        <TableCell className="whitespace-nowrap pr-4 text-right align-top text-caption tabular-nums text-neutral-600">
                                             {row.response_time_ms != null
-                                                ? t('ms', { count: row.response_time_ms })
+                                                ? `${row.response_time_ms} ms`
                                                 : '—'}
                                         </TableCell>
                                     </TableRow>
@@ -465,22 +449,22 @@ export function ActivityLogTable({
 function EmptyState({
     hasActiveFilters,
     onClearFilters,
-    t,
 }: {
     hasActiveFilters: boolean;
     onClearFilters: () => void;
-    t: TFunction;
 }) {
     return (
         <div className="flex flex-col items-center justify-center gap-2 text-center">
             <span className="inline-flex size-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-400">
                 <MagnifyingGlass className="size-5" />
             </span>
-            <p className="text-body font-medium text-neutral-700">{t('emptyState.noEntries')}</p>
+            <p className="text-body font-medium text-neutral-700">No audit entries</p>
             {hasActiveFilters ? (
                 <>
                     <p className="max-w-md text-caption text-neutral-500">
-                        {t('emptyState.filteredDescription')}
+                        Nothing matches the current filters. A resource shows up here only after
+                        someone performs that action — try clearing the filters or widening the date
+                        range.
                     </p>
                     <MyButton
                         buttonType="secondary"
@@ -488,12 +472,12 @@ function EmptyState({
                         className="mt-1 sm:!min-w-0"
                         onClick={onClearFilters}
                     >
-                        {t('emptyState.clearFilters')}
+                        Clear filters
                     </MyButton>
                 </>
             ) : (
                 <p className="text-caption text-neutral-500">
-                    {t('emptyState.genuineDescription')}
+                    Admin actions across the institute will appear here as they happen.
                 </p>
             )}
         </div>

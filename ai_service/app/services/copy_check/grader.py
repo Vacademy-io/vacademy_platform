@@ -22,8 +22,18 @@ from .prompt_builder import GRADING_SYSTEM, build_grading_prompt
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "google/gemini-2.5-flash-lite"
-ESCALATION_MODEL = "google/gemini-2.5-flash"
+# z-ai/glm-5.3-flash: $0.075/M in, $0.25/M out — cheaper than the
+# gemini-2.5-flash-lite ($0.10/$0.40) it replaces, and it reads handwriting,
+# which is what this pipeline actually needs (see vision_transcript.py).
+# NOTE: this endpoint REFUSES `reasoning: {enabled: false}` and, given no
+# reasoning key at all, spends the entire max_tokens budget thinking and
+# returns empty content. chat_llm_client seeds it as "on-low" for that reason —
+# do not remove that seed without re-testing a real copy end to end.
+DEFAULT_MODEL = "z-ai/glm-5.3-flash"
+# GLM 5.3 Flash only, on instruction. A low-confidence question is re-asked of
+# the same model at a lower temperature rather than escalated to another family:
+# the pipeline must not silently spend a different provider's tokens on a copy.
+ESCALATION_MODEL = "z-ai/glm-5.3-flash"
 ESCALATION_CONF_THRESHOLD = 0.60
 MAX_ESCALATIONS_PER_COPY = 2
 # Budget tuned for typical 8-question copies. Each grading call re-sends the
@@ -55,6 +65,28 @@ def _parse_json_or_retry_payload(content: str) -> dict[str, Any]:
         if start != -1 and end > start:
             return json.loads(cleaned[start : end + 1])
         raise
+
+
+def _breakdown_contradicts_total(payload: dict[str, Any]) -> bool:
+    """True when the per-criterion trace cannot be reconciled with the mark.
+
+    The model occasionally emits every `criteria_breakdown[].marks` as 0 while
+    the same objects' `reason` text says "Full marks — ..." and `marks_awarded`
+    is non-zero. validator.validate_and_cap cannot repair that: its rescale is
+    `marks_awarded / bsum`, so a zero sum is guarded out and the all-zero
+    breakdown passes straight through. The teacher then sees "6/10" above four
+    criteria that each read 0 — the audit trail contradicting the mark it is
+    supposed to justify. Cheaper to notice and re-ask than to ship.
+    """
+    breakdown = payload.get("criteria_breakdown") or []
+    if not breakdown:
+        return False
+    try:
+        awarded = float(payload.get("marks_awarded") or 0)
+        bsum = sum(float(it.get("marks") or 0) for it in breakdown)
+    except (TypeError, ValueError):
+        return True
+    return awarded > 0 and bsum <= 0
 
 
 class CopyCheckGrader:
@@ -185,29 +217,68 @@ class CopyCheckGrader:
 
         content = response.get("content") or ""
         try:
-            return _parse_json_or_retry_payload(content)
+            parsed = _parse_json_or_retry_payload(content)
         except Exception:
-            logger.warning("LLM returned unparseable JSON; re-prompting once")
-            retry_messages = messages + [
-                {"role": "assistant", "content": content},
-                {
-                    "role": "user",
-                    "content": "Your previous reply was not valid JSON. Return ONLY the JSON object, no prose, no code fences.",
-                },
-            ]
-            retry = await self.llm.chat_completion(
-                messages=retry_messages,
-                temperature=0.0,
-                max_tokens=8000,
-                institute_id=self.institute_id,
-                user_id=self.user_id,
-                # Must pin the same model: this retry's output IS the grade that
-                # gets returned. Omitting model= silently downgraded the actual
-                # grade to ChatLLMClient's free default even when the teacher
-                # explicitly picked a premium model.
-                model=model,
+            parsed = None
+        if parsed is not None:
+            if not _breakdown_contradicts_total(parsed):
+                return parsed
+            logger.warning(
+                "Q%s: criteria_breakdown sums to 0 against %s marks awarded; re-asking once",
+                question.get("question_id"), parsed.get("marks_awarded"),
             )
-            return _parse_json_or_retry_payload(retry.get("content") or "")
+            try:
+                fix = await self.llm.chat_completion(
+                    messages=messages + [
+                        {"role": "assistant", "content": content},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Your criteria_breakdown gives every criterion 0 marks, but you "
+                                f"awarded {parsed.get('marks_awarded')}. Those cannot both be true. "
+                                "Re-send the SAME verdict with each criteria_breakdown[].marks set to "
+                                "the marks that criterion actually earned, so they sum to "
+                                "marks_awarded. Change nothing else. Return ONLY the JSON object."
+                            ),
+                        },
+                    ],
+                    temperature=0.0,
+                    max_tokens=8000,
+                    institute_id=self.institute_id,
+                    user_id=self.user_id,
+                    model=model,
+                )
+                self.add_usage(fix.get("usage"))
+                repaired = _parse_json_or_retry_payload(fix.get("content") or "")
+                if not _breakdown_contradicts_total(repaired):
+                    return repaired
+            except Exception as e:
+                logger.warning(f"breakdown repair failed, keeping original verdict: {e}")
+            # Keep the verdict either way: the headline mark and the written
+            # reasons are still useful, and validator will surface what it can.
+            return parsed
+
+        logger.warning("LLM returned unparseable JSON; re-prompting once")
+        retry_messages = messages + [
+            {"role": "assistant", "content": content},
+            {
+                "role": "user",
+                "content": "Your previous reply was not valid JSON. Return ONLY the JSON object, no prose, no code fences.",
+            },
+        ]
+        retry = await self.llm.chat_completion(
+            messages=retry_messages,
+            temperature=0.0,
+            max_tokens=8000,
+            institute_id=self.institute_id,
+            user_id=self.user_id,
+            # Must pin the same model: this retry's output IS the grade that
+            # gets returned. Omitting model= silently downgraded the actual
+            # grade to ChatLLMClient's free default even when the teacher
+            # explicitly picked a premium model.
+            model=model,
+        )
+        return _parse_json_or_retry_payload(retry.get("content") or "")
 
 
 async def call_llm_for_criteria(

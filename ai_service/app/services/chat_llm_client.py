@@ -22,7 +22,22 @@ logger = logging.getLogger(__name__)
 # explicitly enabled — exactly the shape the owner's working curl used —
 # and "on-no-temp" additionally drops `temperature`, for endpoints that reject
 # sampling parameters in thinking mode.
-_REASONING_MODE: Dict[str, str] = {}
+# Models whose endpoint REFUSES `reasoning: {enabled: false}` and, worse, spend
+# the whole `max_tokens` budget thinking when no reasoning shape is sent at all.
+# Seeding them here (rather than waiting for the portal probe) matters because
+# the probe only runs for clients with reasoning suppression ON, while
+# copy-check grading runs with it OFF — so nothing ever told the client which
+# shape to use and every call came back with empty content. Measured on
+# z-ai/glm-5.3-flash reading one answer-sheet page (2026-09-09):
+#   no reasoning key -> 2,996 reasoning tokens, 0 content, finish_reason=length
+#   "on-low"         ->     5 reasoning tokens, 935 chars of correct transcript
+# A learned mode from a live failure still overwrites these.
+_REASONING_MODE: Dict[str, str] = {
+    "z-ai/glm-5.3-flash": "on-low",
+    "z-ai/glm-5.3-flash:batch": "on-low",
+    "z-ai/glm-5.3": "on-low",
+    "z-ai/glm-4.6v": "on-low",
+}
 _REASONING_ON_MIN_TOKENS = 3000
 # Thinking tokens count against max_tokens. A compile that asked for 12k output
 # tokens got 3 x 12k of "length"-truncated replies from glm-5.3-flash (2026-09-05)

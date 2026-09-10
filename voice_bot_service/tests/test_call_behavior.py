@@ -500,7 +500,8 @@ async def test_report_carries_generated_at_for_late_delivery(monkeypatch):
 def test_run_bot_setup_and_teardown_structure():
     src = inspect.getsource(b.run_bot)
     # Vertex SA OAuth must not block the event loop (other live calls glitch).
-    assert "await asyncio.to_thread(build_llm)" in src
+    # Still off the event loop; now carries the per-agent provider override.
+    assert "await asyncio.to_thread(build_llm, _llm_provider)" in src
     # Greet task is tracked; watchdog + greet cancels are AWAITED.
     assert "_bg_tasks.append(asyncio.create_task(_greet_when_ready()))" in src
     tail = src[src.index("watchdog_task = asyncio.create_task"):]
@@ -3060,3 +3061,37 @@ async def test_classifier_is_always_offered_an_insufficient_option(monkeypatch):
         assert label in prompt, label
     # And the anti-fabrication instructions the audit turned on.
     assert "did not actually say" in prompt
+
+
+# ── Sarvam LLM POC (2026-09-10): per-agent routing, never a global flip ────────
+
+
+def test_sarvam_llm_agents_parses_a_comma_list(monkeypatch):
+    from app.config import Settings, get_settings as _gs
+    monkeypatch.setenv("SARVAM_LLM_AGENTS", " b6337c6e-1, , 0e26a0c9-2 ")
+    _gs.cache_clear()
+    try:
+        assert Settings().sarvam_llm_agents == ("b6337c6e-1", "0e26a0c9-2")
+        monkeypatch.setenv("SARVAM_LLM_AGENTS", "")
+        assert Settings().sarvam_llm_agents == ()
+    finally:
+        _gs.cache_clear()
+
+
+def test_build_llm_honours_a_per_call_provider_override():
+    import inspect
+    sig = inspect.signature(pv.build_llm)
+    assert "provider" in sig.parameters
+    src = inspect.getsource(pv.build_llm)
+    # Every branch must key on the override, or a listed agent silently stays
+    # on the default provider.
+    assert 'if s.llm_provider ==' not in src
+    assert 'prov = (provider or s.llm_provider' in src
+
+
+def test_run_bot_routes_only_listed_agents_to_sarvam():
+    import inspect
+    src = inspect.getsource(b.run_bot)
+    assert '_agent_id in settings.sarvam_llm_agents' in src
+    assert 'to_thread(build_llm, _llm_provider)' in src
+    assert 'diag.llm_vendor' in src

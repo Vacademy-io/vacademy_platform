@@ -247,6 +247,10 @@ class CallDiagnostics:
     # a bare 0 would read as a free call, which is a lie we would then bill on.
     tts_vendor: str = ""
     tts_vendor_credits: Optional[float] = None
+    # "provider/model" the call's replies came from (bot.run_bot). Exists so a
+    # per-agent LLM POC (config.sarvam_llm_agents) is visible in the report and
+    # a latency comparison can be made per vendor instead of by memory.
+    llm_vendor: str = ""
     tts_meter_frames: int = 0
     tts_audio_secs: float = 0.0
     tts_chars: int = 0
@@ -793,6 +797,7 @@ def to_payload(d: CallDiagnostics) -> Dict[str, Any]:
             "faultLevels": v["faults"],
             "headline": v["headline"],
             "headlineText": _HEADLINE_TEXT.get(v["headline"]) if v["headline"] else None,
+            "llm": {"vendor": d.llm_vendor or None},
             "tts": {
                 "letterlessSkipped": d.tts_letterless_skipped,
                 "wedges": d.tts_wedges,

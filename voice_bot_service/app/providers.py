@@ -171,9 +171,12 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     )
 
 
-def build_llm():
+def build_llm(provider: str | None = None):
+    """`provider` overrides LLM_PROVIDER for one call (per-agent POC routing —
+    see Settings.sarvam_llm_agents). None = the configured default."""
     s = get_settings()
-    if s.llm_provider == "vertex":
+    prov = (provider or s.llm_provider or "").strip().lower()
+    if prov == "vertex":
         # Gemini on Vertex AI, served from vertex_location (asia-south1 = Mumbai):
         # in-country inference → low TTFT with no cross-ocean RTT. Auth = service
         # account JSON.
@@ -213,7 +216,7 @@ def build_llm():
                 thinking=GoogleLLMService.ThinkingConfig(
                     thinking_budget=s.vertex_thinking_budget)),
         )
-    if s.llm_provider == "google":
+    if prov == "google":
         # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop).
         # reasoning_effort 'none' via extra_body: 3.1 thinks by default.
         return OpenAILLMService(
@@ -225,7 +228,7 @@ def build_llm():
                 extra={"extra_body": {"reasoning_effort": "none"}},
             ),
         )
-    if s.llm_provider == "openrouter":
+    if prov == "openrouter":
         from pipecat.services.openrouter.llm import OpenRouterLLMService
 
         return OpenRouterLLMService(

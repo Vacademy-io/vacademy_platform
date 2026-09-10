@@ -2780,7 +2780,20 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     mode=_agent_stt_mode(agent))
     # to_thread: Vertex constructors do a SYNCHRONOUS service-account OAuth
     # round-trip; keep it off the loop so concurrent calls' audio never glitches.
-    llm = await asyncio.to_thread(build_llm)
+    # Per-agent LLM routing for the Sarvam POC (config.sarvam_llm_agents): only
+    # the listed agents leave the configured provider, so a test never moves
+    # every institute's calls at once. Recorded on the report as llm.vendor.
+    _agent_id = str(agent.get("id") or "")
+    _llm_provider = ("sarvam" if _agent_id and _agent_id in settings.sarvam_llm_agents
+                     else None)
+    llm = await asyncio.to_thread(build_llm, _llm_provider)
+    diag.llm_vendor = "%s/%s" % (
+        _llm_provider or settings.llm_provider,
+        settings.sarvam_llm_model if _llm_provider == "sarvam"
+        else (settings.vertex_model if settings.llm_provider == "vertex"
+              else getattr(llm, "model_name", "") or ""))
+    logger.info("llm: %s corr=%s%s", diag.llm_vendor, corr,
+                " (per-agent POC override)" if _llm_provider else "")
     tts = build_tts(settings.sample_rate, voice=_agent_voice(agent),
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),

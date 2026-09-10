@@ -105,6 +105,16 @@ class Settings:
     sarvam_stt_mode: str = field(default_factory=lambda: _env("SARVAM_STT_MODE", "transcribe"))
     sarvam_stt_language: str = field(default_factory=lambda: _env("SARVAM_STT_LANGUAGE", "hi-IN"))
     sarvam_llm_model: str = field(default_factory=lambda: _env("SARVAM_LLM_MODEL", "sarvam-105b"))
+    # POC (2026-09-10): route ONLY these agent ids to the Sarvam LLM while every
+    # other agent stays on LLM_PROVIDER. Measured from the box with the real
+    # 25K-char yoga prompt: sarvam-105b TTFT 0.34s med vs gemini-2.5-flash 0.43s,
+    # at ₹29.28/₹73.2 per 1M in/out (cached input ₹10.98) vs Gemini's ~3x dearer
+    # output. Comma-separated; empty = off. Sarvam's open-source models
+    # (deepseekv4-flash, gemma4, glm5.2) sit on /v2 which is beta-gated — the
+    # account needs Sarvam support to enable it before they can be tried.
+    sarvam_llm_agents: tuple = field(
+        default_factory=lambda: tuple(
+            a.strip() for a in _env("SARVAM_LLM_AGENTS").split(",") if a.strip()))
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")
     )

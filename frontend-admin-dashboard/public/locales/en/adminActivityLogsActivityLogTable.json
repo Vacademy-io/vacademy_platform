@@ -1,0 +1,58 @@
+{
+    "resourceLabels": {
+        "AUDIENCE": "Audience list",
+        "LEAD": "Lead",
+        "LEAD_STATUS": "Lead status",
+        "LEAD_FOLLOWUP": "Follow-up",
+        "LEAD_SLA_CONFIG": "Lead SLA",
+        "LEAD_CONNECTOR": "Lead connector",
+        "ENQUIRY": "Enquiry",
+        "COUNSELLOR": "Counsellor",
+        "COUNSELLOR_POOL": "Counsellor pool",
+        "COUNSELLOR_TARGET": "Counsellor target",
+        "COUNSELLOR_WORKBENCH_CONFIG": "Workbench settings",
+        "TAG": "Tag",
+        "TELEPHONY_CONFIG": "Calling settings",
+        "TELEPHONY_NUMBER": "Calling number",
+        "ENGAGEMENT_ENGINE": "Engagement engine",
+        "AUTOMATION": "Automation",
+        "COURSE": "Course",
+        "LIVE_SESSION": "Live session",
+        "LEARNER": "Learner",
+        "GUARDIAN_LINK": "Guardian link",
+        "INSTITUTE_SETTING": "Settings"
+    },
+    "timeAgo": {
+        "justNow": "just now",
+        "secondsAgo_one": "{{count}}s ago",
+        "secondsAgo_other": "{{count}}s ago",
+        "minutesAgo_one": "{{count}}m ago",
+        "minutesAgo_other": "{{count}}m ago",
+        "hoursAgo_one": "{{count}}h ago",
+        "hoursAgo_other": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago",
+        "daysAgo_other": "{{count}}d ago"
+    },
+    "unknownUser": "Unknown user",
+    "loadFailed": {
+        "title": "Failed to load activity logs",
+        "description": "The request did not complete. Use Refresh to try again."
+    },
+    "columns": {
+        "when": "When",
+        "activity": "Activity",
+        "resource": "Resource",
+        "action": "Action",
+        "latency": "Latency"
+    },
+    "latencyTooltip": "API call wall-time on the server. Includes business logic + DB writes; excludes the audit-row write itself (~1–3 ms).",
+    "rowAriaLabel": "Open details for {{actor}} — {{description}}",
+    "httpStatus": "HTTP {{status}}",
+    "ms": "{{count}} ms",
+    "emptyState": {
+        "noEntries": "No audit entries",
+        "filteredDescription": "Nothing matches the current filters. A resource shows up here only after someone performs that action — try clearing the filters or widening the date range.",
+        "clearFilters": "Clear filters",
+        "genuineDescription": "Admin actions across the institute will appear here as they happen."
+    }
+}

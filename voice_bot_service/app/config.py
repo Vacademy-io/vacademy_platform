@@ -409,6 +409,18 @@ class Settings:
     llm_bridge_after_secs: float = field(
         default_factory=lambda: float(_env("LLM_BRIDGE_AFTER_SECS", "2.0"))
     )
+    # ── Room tone ─────────────────────────────────────────────────────────
+    # A low-level office ambience loop mixed under EVERY call's outbound audio
+    # (assets/office_ambience_8k_mono.wav, 8 kHz mono PCM, ~88 s seamless loop,
+    # −32 dBFS RMS). Pure digital silence between turns reads as a machine;
+    # room tone reads as a person on a line. Mixed inside the output transport
+    # (pipecat SoundfileMixer), so STT/LLM/TTS are untouched. AMBIENCE_VOLUME
+    # is the mixer gain: 0.15 on the −32 dBFS file ≈ −48 dBFS RMS — well under
+    # the voice. While the bot speaks it is ducked to 0.6x (app/ambience.py).
+    ambience_enabled: bool = field(
+        default_factory=lambda: _env("AMBIENCE_ENABLED", "true").lower() == "true")
+    ambience_volume: float = field(
+        default_factory=lambda: float(_env("AMBIENCE_VOLUME", "0.15")))
     filler_phrases: tuple = field(
         default_factory=lambda: tuple(
             p.strip() for p in _env("FILLER_PHRASES", "Hmm…").split(",") if p.strip()

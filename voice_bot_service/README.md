@@ -38,6 +38,23 @@ ngrok http --region in 8090      # PUBLIC_HOST=<ngrok host>
 Then set `VOICE_BOT_BASE_URL=https://<ngrok host>` on admin_core and place an AI
 call (`POST /v1/telephony/ai-call/connect` with `"provider":"VACADEMY_AI"`).
 
+## Room tone (office ambience)
+
+Every call has a low-level office ambience loop mixed under the outbound audio
+so silence between turns never sounds like a dead digital line. The asset is
+`assets/office_ambience_8k_mono.wav` (8 kHz, mono, 16-bit PCM, ~88 s seamless
+loop, −32 dBFS RMS) — it must stay 8 kHz mono because pipecat's mixer does not
+resample. It is mixed inside the output transport (`app/ambience.py`, pipecat
+`SoundfileMixer`), so STT/LLM/TTS are untouched.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `AMBIENCE_ENABLED` | `true` | `false` removes the mixer entirely — no code change needed |
+| `AMBIENCE_VOLUME` | `0.15` | mixer gain on the file (0.15 × −32 dBFS ≈ −48 dBFS); ducked to 0.6× while the bot speaks |
+
+If STT ever transcribes the ambience via handset echo, lower `AMBIENCE_VOLUME`
+rather than adding filtering.
+
 ## Ops checklist
 
 - Deploy in **ap-south-1** (Plivo India media anchoring), public **WSS** ingress.

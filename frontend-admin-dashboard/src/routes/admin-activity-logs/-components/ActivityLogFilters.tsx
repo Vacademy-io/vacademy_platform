@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,177 +41,253 @@ interface Props {
 // to stay complete: a resource missing here is a resource nobody can filter by,
 // and it was for a long time — AuditableAnnotationContractTest (admin_core_service)
 // now fails the build when a new entityType or action lands without an entry.
-const RESOURCE_GROUPS: { group: string; options: MultiSelectOption[] }[] = [
-    {
-        group: 'CRM',
-        options: [
-            { value: 'AUDIENCE', label: 'Audience list' },
-            { value: 'LEAD', label: 'Lead' },
-            { value: 'LEAD_STATUS', label: 'Lead status' },
-            { value: 'LEAD_FOLLOWUP', label: 'Follow-up' },
-            { value: 'LEAD_SLA_CONFIG', label: 'Lead SLA settings' },
-            { value: 'LEAD_CONNECTOR', label: 'Lead connector' },
-            { value: 'ENQUIRY', label: 'Enquiry' },
-            { value: 'COUNSELLOR', label: 'Counsellor' },
-            { value: 'COUNSELLOR_POOL', label: 'Counsellor pool' },
-            { value: 'COUNSELLOR_TARGET', label: 'Counsellor target' },
-            { value: 'COUNSELLOR_WORKBENCH_CONFIG', label: 'Workbench settings' },
-            { value: 'TAG', label: 'Tag' },
-            { value: 'TELEPHONY_CONFIG', label: 'Calling settings' },
-            { value: 'TELEPHONY_NUMBER', label: 'Calling number' },
-            { value: 'ENGAGEMENT_ENGINE', label: 'Engagement engine' },
-            { value: 'AUTOMATION', label: 'Automation' },
-        ],
-    },
-    {
-        group: 'Learning',
-        options: [
-            { value: 'COURSE', label: 'Course' },
-            { value: 'LIVE_SESSION', label: 'Live session' },
-            { value: 'LEARNER', label: 'Learner' },
-            { value: 'GUARDIAN_LINK', label: 'Guardian link' },
-            { value: 'INSTITUTE_SETTING', label: 'Settings' },
-        ],
-    },
-    {
-        group: 'Mentorship & meetings',
-        options: [
-            { value: 'MENTOR', label: 'Mentor' },
-            { value: 'MENTOR_ASSIGNMENT', label: 'Mentor assignment' },
-            { value: 'MENTOR_REQUEST', label: 'Mentor request' },
-            { value: 'MENTOR_SESSION', label: 'Mentor session' },
-            { value: 'BOOKING_PAGE', label: 'Booking page' },
-            { value: 'BOOKING_INSTANCE', label: 'Booking' },
-        ],
-    },
-    {
-        group: 'People & payroll',
-        options: [
-            { value: 'HR_EMPLOYEE', label: 'Employee' },
-            { value: 'HR_EMPLOYEE_BANK', label: 'Employee bank details' },
-            { value: 'HR_EMPLOYEE_DOCUMENT', label: 'Employee document' },
-            { value: 'HR_DEPARTMENT', label: 'Department' },
-            { value: 'HR_DESIGNATION', label: 'Designation' },
-            { value: 'HR_TEACHING', label: 'Teaching activity' },
-            { value: 'HR_ATTENDANCE', label: 'Attendance' },
-            { value: 'HR_ATTENDANCE_CONFIG', label: 'Attendance settings' },
-            { value: 'HR_ATTENDANCE_REGULARIZATION', label: 'Attendance regularization' },
-            { value: 'HR_SHIFT', label: 'Shift' },
-            { value: 'HR_HOLIDAY', label: 'Holiday' },
-            { value: 'HR_LEAVE', label: 'Leave' },
-            { value: 'HR_LEAVE_BALANCE', label: 'Leave balance' },
-            { value: 'HR_PAYROLL_RUN', label: 'Payroll run' },
-            { value: 'HR_PAYROLL_ENTRY', label: 'Payroll entry' },
-            { value: 'HR_PAYROLL_ADJUSTMENT', label: 'Payroll adjustment' },
-            { value: 'HR_PAYROLL_FNF', label: 'Full and final settlement' },
-            { value: 'HR_PAYSLIP', label: 'Payslip' },
-            { value: 'HR_SALARY_COMPONENT', label: 'Salary component' },
-            { value: 'HR_SALARY_STRUCTURE', label: 'Salary structure' },
-            { value: 'HR_SALARY_TEMPLATE', label: 'Salary template' },
-            { value: 'HR_LOAN', label: 'Loan' },
-            { value: 'HR_REIMBURSEMENT', label: 'Reimbursement' },
-            { value: 'HR_INCENTIVE', label: 'Incentive' },
-            { value: 'HR_BONUS', label: 'Bonus' },
-            { value: 'HR_BANK_EXPORT', label: 'Bank export' },
-            { value: 'HR_TAX_CONFIG', label: 'Tax settings' },
-            { value: 'HR_TAX_DECLARATION', label: 'Tax declaration' },
-            { value: 'HR_TDS_CHALLAN', label: 'TDS challan' },
-            { value: 'HR_FORM16', label: 'Form 16' },
-            { value: 'HR_FORM24Q', label: 'Form 24Q' },
-            { value: 'HR_PF_ECR', label: 'PF ECR' },
-            { value: 'HR_ESI_RETURN', label: 'ESI return' },
-            { value: 'HR_PT_RETURN', label: 'PT return' },
-            { value: 'HR_WPS', label: 'WPS file' },
-            { value: 'HR_EOSB_PROVISION', label: 'End-of-service provision' },
-        ],
-    },
-    {
-        group: 'Finance',
-        options: [
-            { value: 'ERP_JOURNAL', label: 'Journal entry' },
-            { value: 'ERP_FINANCE_PNL', label: 'Profit and loss' },
-        ],
-    },
-];
+function buildResourceGroups(t: TFunction): { group: string; options: MultiSelectOption[] }[] {
+    return [
+        {
+            group: t('resourceGroups.crm.group'),
+            options: [
+                { value: 'AUDIENCE', label: t('resourceGroups.crm.AUDIENCE') },
+                { value: 'LEAD', label: t('resourceGroups.crm.LEAD') },
+                { value: 'LEAD_STATUS', label: t('resourceGroups.crm.LEAD_STATUS') },
+                { value: 'LEAD_FOLLOWUP', label: t('resourceGroups.crm.LEAD_FOLLOWUP') },
+                { value: 'LEAD_SLA_CONFIG', label: t('resourceGroups.crm.LEAD_SLA_CONFIG') },
+                { value: 'LEAD_CONNECTOR', label: t('resourceGroups.crm.LEAD_CONNECTOR') },
+                { value: 'ENQUIRY', label: t('resourceGroups.crm.ENQUIRY') },
+                { value: 'COUNSELLOR', label: t('resourceGroups.crm.COUNSELLOR') },
+                { value: 'COUNSELLOR_POOL', label: t('resourceGroups.crm.COUNSELLOR_POOL') },
+                { value: 'COUNSELLOR_TARGET', label: t('resourceGroups.crm.COUNSELLOR_TARGET') },
+                {
+                    value: 'COUNSELLOR_WORKBENCH_CONFIG',
+                    label: t('resourceGroups.crm.COUNSELLOR_WORKBENCH_CONFIG'),
+                },
+                { value: 'TAG', label: t('resourceGroups.crm.TAG') },
+                { value: 'TELEPHONY_CONFIG', label: t('resourceGroups.crm.TELEPHONY_CONFIG') },
+                { value: 'TELEPHONY_NUMBER', label: t('resourceGroups.crm.TELEPHONY_NUMBER') },
+                {
+                    value: 'ENGAGEMENT_ENGINE',
+                    label: t('resourceGroups.crm.ENGAGEMENT_ENGINE'),
+                },
+                { value: 'AUTOMATION', label: t('resourceGroups.crm.AUTOMATION') },
+            ],
+        },
+        {
+            group: t('resourceGroups.learning.group'),
+            options: [
+                { value: 'COURSE', label: t('resourceGroups.learning.COURSE') },
+                { value: 'LIVE_SESSION', label: t('resourceGroups.learning.LIVE_SESSION') },
+                { value: 'LEARNER', label: t('resourceGroups.learning.LEARNER') },
+                { value: 'GUARDIAN_LINK', label: t('resourceGroups.learning.GUARDIAN_LINK') },
+                {
+                    value: 'INSTITUTE_SETTING',
+                    label: t('resourceGroups.learning.INSTITUTE_SETTING'),
+                },
+            ],
+        },
+        {
+            group: t('resourceGroups.mentorship.group'),
+            options: [
+                { value: 'MENTOR', label: t('resourceGroups.mentorship.MENTOR') },
+                {
+                    value: 'MENTOR_ASSIGNMENT',
+                    label: t('resourceGroups.mentorship.MENTOR_ASSIGNMENT'),
+                },
+                {
+                    value: 'MENTOR_REQUEST',
+                    label: t('resourceGroups.mentorship.MENTOR_REQUEST'),
+                },
+                {
+                    value: 'MENTOR_SESSION',
+                    label: t('resourceGroups.mentorship.MENTOR_SESSION'),
+                },
+                { value: 'BOOKING_PAGE', label: t('resourceGroups.mentorship.BOOKING_PAGE') },
+                {
+                    value: 'BOOKING_INSTANCE',
+                    label: t('resourceGroups.mentorship.BOOKING_INSTANCE'),
+                },
+            ],
+        },
+        {
+            group: t('resourceGroups.people.group'),
+            options: [
+                { value: 'HR_EMPLOYEE', label: t('resourceGroups.people.HR_EMPLOYEE') },
+                {
+                    value: 'HR_EMPLOYEE_BANK',
+                    label: t('resourceGroups.people.HR_EMPLOYEE_BANK'),
+                },
+                {
+                    value: 'HR_EMPLOYEE_DOCUMENT',
+                    label: t('resourceGroups.people.HR_EMPLOYEE_DOCUMENT'),
+                },
+                { value: 'HR_DEPARTMENT', label: t('resourceGroups.people.HR_DEPARTMENT') },
+                { value: 'HR_DESIGNATION', label: t('resourceGroups.people.HR_DESIGNATION') },
+                { value: 'HR_TEACHING', label: t('resourceGroups.people.HR_TEACHING') },
+                { value: 'HR_ATTENDANCE', label: t('resourceGroups.people.HR_ATTENDANCE') },
+                {
+                    value: 'HR_ATTENDANCE_CONFIG',
+                    label: t('resourceGroups.people.HR_ATTENDANCE_CONFIG'),
+                },
+                {
+                    value: 'HR_ATTENDANCE_REGULARIZATION',
+                    label: t('resourceGroups.people.HR_ATTENDANCE_REGULARIZATION'),
+                },
+                { value: 'HR_SHIFT', label: t('resourceGroups.people.HR_SHIFT') },
+                { value: 'HR_HOLIDAY', label: t('resourceGroups.people.HR_HOLIDAY') },
+                { value: 'HR_LEAVE', label: t('resourceGroups.people.HR_LEAVE') },
+                {
+                    value: 'HR_LEAVE_BALANCE',
+                    label: t('resourceGroups.people.HR_LEAVE_BALANCE'),
+                },
+                { value: 'HR_PAYROLL_RUN', label: t('resourceGroups.people.HR_PAYROLL_RUN') },
+                {
+                    value: 'HR_PAYROLL_ENTRY',
+                    label: t('resourceGroups.people.HR_PAYROLL_ENTRY'),
+                },
+                {
+                    value: 'HR_PAYROLL_ADJUSTMENT',
+                    label: t('resourceGroups.people.HR_PAYROLL_ADJUSTMENT'),
+                },
+                {
+                    value: 'HR_PAYROLL_FNF',
+                    label: t('resourceGroups.people.HR_PAYROLL_FNF'),
+                },
+                { value: 'HR_PAYSLIP', label: t('resourceGroups.people.HR_PAYSLIP') },
+                {
+                    value: 'HR_SALARY_COMPONENT',
+                    label: t('resourceGroups.people.HR_SALARY_COMPONENT'),
+                },
+                {
+                    value: 'HR_SALARY_STRUCTURE',
+                    label: t('resourceGroups.people.HR_SALARY_STRUCTURE'),
+                },
+                {
+                    value: 'HR_SALARY_TEMPLATE',
+                    label: t('resourceGroups.people.HR_SALARY_TEMPLATE'),
+                },
+                { value: 'HR_LOAN', label: t('resourceGroups.people.HR_LOAN') },
+                {
+                    value: 'HR_REIMBURSEMENT',
+                    label: t('resourceGroups.people.HR_REIMBURSEMENT'),
+                },
+                { value: 'HR_INCENTIVE', label: t('resourceGroups.people.HR_INCENTIVE') },
+                { value: 'HR_BONUS', label: t('resourceGroups.people.HR_BONUS') },
+                {
+                    value: 'HR_BANK_EXPORT',
+                    label: t('resourceGroups.people.HR_BANK_EXPORT'),
+                },
+                {
+                    value: 'HR_TAX_CONFIG',
+                    label: t('resourceGroups.people.HR_TAX_CONFIG'),
+                },
+                {
+                    value: 'HR_TAX_DECLARATION',
+                    label: t('resourceGroups.people.HR_TAX_DECLARATION'),
+                },
+                {
+                    value: 'HR_TDS_CHALLAN',
+                    label: t('resourceGroups.people.HR_TDS_CHALLAN'),
+                },
+                { value: 'HR_FORM16', label: t('resourceGroups.people.HR_FORM16') },
+                { value: 'HR_FORM24Q', label: t('resourceGroups.people.HR_FORM24Q') },
+                { value: 'HR_PF_ECR', label: t('resourceGroups.people.HR_PF_ECR') },
+                {
+                    value: 'HR_ESI_RETURN',
+                    label: t('resourceGroups.people.HR_ESI_RETURN'),
+                },
+                {
+                    value: 'HR_PT_RETURN',
+                    label: t('resourceGroups.people.HR_PT_RETURN'),
+                },
+                { value: 'HR_WPS', label: t('resourceGroups.people.HR_WPS') },
+                {
+                    value: 'HR_EOSB_PROVISION',
+                    label: t('resourceGroups.people.HR_EOSB_PROVISION'),
+                },
+            ],
+        },
+        {
+            group: t('resourceGroups.finance.group'),
+            options: [
+                { value: 'ERP_JOURNAL', label: t('resourceGroups.finance.ERP_JOURNAL') },
+                {
+                    value: 'ERP_FINANCE_PNL',
+                    label: t('resourceGroups.finance.ERP_FINANCE_PNL'),
+                },
+            ],
+        },
+    ];
+}
 
-const RESOURCE_OPTIONS: MultiSelectOption[] = RESOURCE_GROUPS.flatMap((section) =>
-    section.options.map((option) => ({ ...option, sublabel: section.group }))
-);
-
-const RESOURCE_LABELS: Record<string, string> = Object.fromEntries(
-    RESOURCE_OPTIONS.map((option) => [option.value, option.label])
-);
-
-const ACTIVITY_OPTIONS: MultiSelectOption[] = [
-    { value: 'CREATE', label: 'Created' },
-    { value: 'UPDATE', label: 'Updated' },
-    { value: 'DELETE', label: 'Deleted' },
-    { value: 'RESTORE', label: 'Restored' },
-    { value: 'BULK_CREATE', label: 'Bulk created' },
-    { value: 'BULK_UPDATE', label: 'Bulk updated' },
-    { value: 'IMPORT', label: 'Imported' },
-    { value: 'EXPORT', label: 'Exported' },
-    { value: 'DOWNLOAD', label: 'Downloaded' },
-    { value: 'PURGE', label: 'Purged' },
-    { value: 'ASSIGN', label: 'Assigned' },
-    { value: 'UNASSIGN', label: 'Unassigned' },
-    { value: 'REASSIGN', label: 'Reassigned' },
-    { value: 'BULK_ROUND_ROBIN', label: 'Round-robin assigned' },
-    { value: 'STATUS_CHANGE', label: 'Status changed' },
-    { value: 'TIER_CHANGE', label: 'Tier changed' },
-    { value: 'SCORE_CHANGE', label: 'Score changed' },
-    { value: 'CONVERT', label: 'Marked converted' },
-    { value: 'SEND_MESSAGE', label: 'Message sent' },
-    { value: 'EMAIL', label: 'Emailed' },
-    { value: 'CLOSE', label: 'Closed' },
-    { value: 'RESCHEDULE', label: 'Rescheduled' },
-    { value: 'ESCALATE', label: 'Escalated' },
-    { value: 'TAG_USERS', label: 'Tagged contacts' },
-    { value: 'UNTAG_USERS', label: 'Untagged contacts' },
-    { value: 'TRIGGER', label: 'Triggered' },
-    { value: 'ADD_MEMBER', label: 'Member added' },
-    { value: 'REMOVE_MEMBER', label: 'Member removed' },
-    { value: 'MEMBER_STATUS_CHANGE', label: 'Member status changed' },
-    { value: 'AUTONOMY_CHANGE', label: 'Autonomy changed' },
-    { value: 'RESUBSCRIBE', label: 'Re-subscribed' },
-    { value: 'RECALCULATE_SCORES', label: 'Scores recalculated' },
-    { value: 'ATTACH', label: 'Attached' },
-    { value: 'ENROLL', label: 'Enrolled' },
-    { value: 'CANCEL', label: 'Cancelled' },
-    { value: 'TERMINATE', label: 'Terminated' },
-    { value: 'MAKE_INACTIVE', label: 'Deactivated' },
-    { value: 'MAKE_ACTIVE', label: 'Reactivated' },
-    { value: 'UPDATE_BATCH', label: 'Moved to another batch' },
-    { value: 'ADD_EXPIRY', label: 'Expiry changed' },
-    { value: 'UPDATE_STATUS', label: 'Learner status changed' },
-    { value: 'ACCESS_CHANGE', label: 'Access changed' },
-    { value: 'SHARE_CREDENTIALS', label: 'Credentials shared' },
-    { value: 'EXPORT_CREDENTIALS', label: 'Credentials exported' },
-    { value: 'DEACTIVATE', label: 'Deactivated (record)' },
-    { value: 'PROVISION_BOOKING_PAGE', label: 'Booking page provisioned' },
-    { value: 'APPROVE', label: 'Approved' },
-    { value: 'REJECT', label: 'Rejected' },
-    { value: 'DECLINE', label: 'Declined' },
-    { value: 'VERIFY', label: 'Verified' },
-    { value: 'HOLD', label: 'Put on hold' },
-    { value: 'RELEASE', label: 'Released' },
-    { value: 'PROCESS', label: 'Processed' },
-    { value: 'PREPARE', label: 'Prepared' },
-    { value: 'GENERATE', label: 'Generated' },
-    { value: 'MATERIALIZE', label: 'Materialized' },
-    { value: 'PAY_MATERIALIZE', label: 'Paid and materialized' },
-    { value: 'MARK_PAID', label: 'Marked paid' },
-    { value: 'ADJUST', label: 'Adjusted' },
-    { value: 'ACCRUE', label: 'Accrued' },
-    { value: 'BULK_MARK', label: 'Bulk marked' },
-    { value: 'ATTENDANCE_SYNC', label: 'Attendance synced' },
-    { value: 'CREATE_FROM_STAFF', label: 'Created from staff' },
-    { value: 'YEAR_END', label: 'Year-end run' },
-];
-
-const ACTIVITY_LABELS: Record<string, string> = Object.fromEntries(
-    ACTIVITY_OPTIONS.map((option) => [option.value, option.label])
-);
+function buildActivityOptions(t: TFunction): MultiSelectOption[] {
+    return [
+        { value: 'CREATE', label: t('activityOptions.CREATE') },
+        { value: 'UPDATE', label: t('activityOptions.UPDATE') },
+        { value: 'DELETE', label: t('activityOptions.DELETE') },
+        { value: 'RESTORE', label: t('activityOptions.RESTORE') },
+        { value: 'BULK_CREATE', label: t('activityOptions.BULK_CREATE') },
+        { value: 'BULK_UPDATE', label: t('activityOptions.BULK_UPDATE') },
+        { value: 'IMPORT', label: t('activityOptions.IMPORT') },
+        { value: 'EXPORT', label: t('activityOptions.EXPORT') },
+        { value: 'DOWNLOAD', label: t('activityOptions.DOWNLOAD') },
+        { value: 'PURGE', label: t('activityOptions.PURGE') },
+        { value: 'ASSIGN', label: t('activityOptions.ASSIGN') },
+        { value: 'UNASSIGN', label: t('activityOptions.UNASSIGN') },
+        { value: 'REASSIGN', label: t('activityOptions.REASSIGN') },
+        { value: 'BULK_ROUND_ROBIN', label: t('activityOptions.BULK_ROUND_ROBIN') },
+        { value: 'STATUS_CHANGE', label: t('activityOptions.STATUS_CHANGE') },
+        { value: 'TIER_CHANGE', label: t('activityOptions.TIER_CHANGE') },
+        { value: 'SCORE_CHANGE', label: t('activityOptions.SCORE_CHANGE') },
+        { value: 'CONVERT', label: t('activityOptions.CONVERT') },
+        { value: 'SEND_MESSAGE', label: t('activityOptions.SEND_MESSAGE') },
+        { value: 'EMAIL', label: t('activityOptions.EMAIL') },
+        { value: 'CLOSE', label: t('activityOptions.CLOSE') },
+        { value: 'RESCHEDULE', label: t('activityOptions.RESCHEDULE') },
+        { value: 'ESCALATE', label: t('activityOptions.ESCALATE') },
+        { value: 'TAG_USERS', label: t('activityOptions.TAG_USERS') },
+        { value: 'UNTAG_USERS', label: t('activityOptions.UNTAG_USERS') },
+        { value: 'TRIGGER', label: t('activityOptions.TRIGGER') },
+        { value: 'ADD_MEMBER', label: t('activityOptions.ADD_MEMBER') },
+        { value: 'REMOVE_MEMBER', label: t('activityOptions.REMOVE_MEMBER') },
+        { value: 'MEMBER_STATUS_CHANGE', label: t('activityOptions.MEMBER_STATUS_CHANGE') },
+        { value: 'AUTONOMY_CHANGE', label: t('activityOptions.AUTONOMY_CHANGE') },
+        { value: 'RESUBSCRIBE', label: t('activityOptions.RESUBSCRIBE') },
+        { value: 'RECALCULATE_SCORES', label: t('activityOptions.RECALCULATE_SCORES') },
+        { value: 'ATTACH', label: t('activityOptions.ATTACH') },
+        { value: 'ENROLL', label: t('activityOptions.ENROLL') },
+        { value: 'CANCEL', label: t('activityOptions.CANCEL') },
+        { value: 'TERMINATE', label: t('activityOptions.TERMINATE') },
+        { value: 'MAKE_INACTIVE', label: t('activityOptions.MAKE_INACTIVE') },
+        { value: 'MAKE_ACTIVE', label: t('activityOptions.MAKE_ACTIVE') },
+        { value: 'UPDATE_BATCH', label: t('activityOptions.UPDATE_BATCH') },
+        { value: 'ADD_EXPIRY', label: t('activityOptions.ADD_EXPIRY') },
+        { value: 'UPDATE_STATUS', label: t('activityOptions.UPDATE_STATUS') },
+        { value: 'ACCESS_CHANGE', label: t('activityOptions.ACCESS_CHANGE') },
+        { value: 'SHARE_CREDENTIALS', label: t('activityOptions.SHARE_CREDENTIALS') },
+        { value: 'EXPORT_CREDENTIALS', label: t('activityOptions.EXPORT_CREDENTIALS') },
+        { value: 'DEACTIVATE', label: t('activityOptions.DEACTIVATE') },
+        {
+            value: 'PROVISION_BOOKING_PAGE',
+            label: t('activityOptions.PROVISION_BOOKING_PAGE'),
+        },
+        { value: 'APPROVE', label: t('activityOptions.APPROVE') },
+        { value: 'REJECT', label: t('activityOptions.REJECT') },
+        { value: 'DECLINE', label: t('activityOptions.DECLINE') },
+        { value: 'VERIFY', label: t('activityOptions.VERIFY') },
+        { value: 'HOLD', label: t('activityOptions.HOLD') },
+        { value: 'RELEASE', label: t('activityOptions.RELEASE') },
+        { value: 'PROCESS', label: t('activityOptions.PROCESS') },
+        { value: 'PREPARE', label: t('activityOptions.PREPARE') },
+        { value: 'GENERATE', label: t('activityOptions.GENERATE') },
+        { value: 'MATERIALIZE', label: t('activityOptions.MATERIALIZE') },
+        { value: 'PAY_MATERIALIZE', label: t('activityOptions.PAY_MATERIALIZE') },
+        { value: 'MARK_PAID', label: t('activityOptions.MARK_PAID') },
+        { value: 'ADJUST', label: t('activityOptions.ADJUST') },
+        { value: 'ACCRUE', label: t('activityOptions.ACCRUE') },
+        { value: 'BULK_MARK', label: t('activityOptions.BULK_MARK') },
+        { value: 'ATTENDANCE_SYNC', label: t('activityOptions.ATTENDANCE_SYNC') },
+        { value: 'CREATE_FROM_STAFF', label: t('activityOptions.CREATE_FROM_STAFF') },
+        { value: 'YEAR_END', label: t('activityOptions.YEAR_END') },
+    ];
+}
 
 /**
  * Local, not UTC. The table prints timestamps in the reader's own timezone, so
@@ -247,11 +325,15 @@ const daysAgoRange = (days: number): { startDate: number; endDate: number } => {
     return { startDate: start.getTime(), endDate: end.getTime() };
 };
 
-const DATE_PRESETS: { label: string; range: () => { startDate: number; endDate: number } }[] = [
-    { label: 'Today', range: () => daysAgoRange(1) },
-    { label: 'Last 7 days', range: () => daysAgoRange(7) },
-    { label: 'Last 30 days', range: () => daysAgoRange(30) },
-];
+function buildDatePresets(
+    t: TFunction
+): { label: string; range: () => { startDate: number; endDate: number } }[] {
+    return [
+        { label: t('datePresets.today'), range: () => daysAgoRange(1) },
+        { label: t('datePresets.last7Days'), range: () => daysAgoRange(7) },
+        { label: t('datePresets.last30Days'), range: () => daysAgoRange(30) },
+    ];
+}
 
 /** Drops one value from a multi-select, collapsing an emptied list to undefined
  *  so the query param disappears instead of being sent empty. */
@@ -268,8 +350,30 @@ const countActiveFilters = (value: AdminActivityLogFilters): number =>
     (value.endDate ? 1 : 0);
 
 export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetching }: Props) {
+    const { t } = useTranslation('adminActivityLogsActivityLogFilters');
     const activeCount = countActiveFilters(value);
     const actorsQuery = useActivityLogActors();
+
+    const resourceGroups = useMemo(() => buildResourceGroups(t), [t]);
+    const resourceOptions: MultiSelectOption[] = useMemo(
+        () =>
+            resourceGroups.flatMap((section) =>
+                section.options.map((option) => ({ ...option, sublabel: section.group }))
+            ),
+        [resourceGroups]
+    );
+    const resourceLabels: Record<string, string> = useMemo(
+        () => Object.fromEntries(resourceOptions.map((option) => [option.value, option.label])),
+        [resourceOptions]
+    );
+
+    const activityOptions: MultiSelectOption[] = useMemo(() => buildActivityOptions(t), [t]);
+    const activityLabels: Record<string, string> = useMemo(
+        () => Object.fromEntries(activityOptions.map((option) => [option.value, option.label])),
+        [activityOptions]
+    );
+
+    const datePresets = useMemo(() => buildDatePresets(t), [t]);
 
     const actorOptions: MultiSelectOption[] = useMemo(() => {
         const known = (actorsQuery.data ?? []).map((actor) => ({
@@ -283,9 +387,9 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
         const knownIds = new Set(known.map((option) => option.value));
         const orphans = (value.actorIds ?? [])
             .filter((id) => !knownIds.has(id))
-            .map((id) => ({ value: id, label: id, sublabel: 'No longer on the team' }));
+            .map((id) => ({ value: id, label: id, sublabel: t('noLongerOnTeam') }));
         return [...known, ...orphans];
-    }, [actorsQuery.data, value.actorIds]);
+    }, [actorsQuery.data, value.actorIds, t]);
 
     const actorLabels = useMemo(
         () => Object.fromEntries(actorOptions.map((option) => [option.value, option.label])),
@@ -294,7 +398,7 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
 
     // Presets compare against the exact range they would produce, so the pill
     // lights up only while the filter still matches it.
-    const activePreset = DATE_PRESETS.find((preset) => {
+    const activePreset = datePresets.find((preset) => {
         if (!value.startDate || !value.endDate) return false;
         const range = preset.range();
         return range.startDate === value.startDate && range.endDate === value.endDate;
@@ -312,9 +416,9 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
                 startDate: value.startDate,
                 endDate: value.endDate,
             });
-            toast.success('Activity logs CSV downloaded');
+            toast.success(t('toasts.exportSuccess'));
         } catch (e) {
-            toast.error('Failed to export activity logs');
+            toast.error(t('toasts.exportError'));
             // eslint-disable-next-line no-console
             console.error('Activity logs CSV export failed', e);
         }
@@ -326,10 +430,10 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                         <FunnelSimple className="size-4" />
-                        Filters
+                        {t('filters')}
                         {activeCount > 0 && (
-                            <Badge variant="secondary" className="ml-1">
-                                {activeCount} active
+                            <Badge variant="secondary" className="ms-1">
+                                {t('activeCount', { count: activeCount })}
                             </Badge>
                         )}
                     </div>
@@ -341,7 +445,7 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
                                 className="sm:!min-w-0"
                                 onClick={onClear}
                             >
-                                <X className="mr-1 size-4" /> Clear
+                                <X className="me-1 size-4" /> {t('clear')}
                             </MyButton>
                         )}
                         <MyButton
@@ -352,64 +456,64 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
                             disable={isFetching}
                         >
                             <ArrowsClockwise
-                                className={cn('mr-1 size-4', isFetching && 'animate-spin')}
+                                className={cn('me-1 size-4', isFetching && 'animate-spin')}
                             />
-                            Refresh
+                            {t('refresh')}
                         </MyButton>
                         <MyButton
                             buttonType="secondary"
                             scale="medium"
                             className="sm:!min-w-0"
                             onAsyncClick={handleExport}
-                            loadingText="Exporting…"
-                            title="Download a CSV of all rows matching the current filters (max 50,000)"
+                            loadingText={t('exporting')}
+                            title={t('exportCsvTitle')}
                         >
-                            <DownloadSimple className="mr-1 size-4" />
-                            Export CSV
+                            <DownloadSimple className="me-1 size-4" />
+                            {t('exportCsv')}
                         </MyButton>
                     </div>
                 </div>
 
                 <div className="flex flex-wrap items-end gap-2">
                     <MultiSelectFilter
-                        label="Any resource"
+                        label={t('anyResource')}
                         icon={<Stack className="size-4 text-neutral-500" />}
-                        options={RESOURCE_OPTIONS}
+                        options={resourceOptions}
                         selected={value.entityTypes ?? []}
                         onChange={(values) =>
                             onChange({ entityTypes: values.length ? values : undefined })
                         }
-                        placeholder="Search resources…"
+                        placeholder={t('searchResources')}
                         widthClass="w-48"
                         showSelectedLabel
                     />
                     <MultiSelectFilter
-                        label="Any activity"
+                        label={t('anyActivity')}
                         icon={<Lightning className="size-4 text-neutral-500" />}
-                        options={ACTIVITY_OPTIONS}
+                        options={activityOptions}
                         selected={value.actions ?? []}
                         onChange={(values) =>
                             onChange({ actions: values.length ? values : undefined })
                         }
-                        placeholder="Search activities…"
+                        placeholder={t('searchActivities')}
                         widthClass="w-48"
                         showSelectedLabel
                     />
                     <MultiSelectFilter
-                        label={actorsQuery.isLoading ? 'Loading team…' : 'Anyone on the team'}
+                        label={actorsQuery.isLoading ? t('loadingTeam') : t('anyoneOnTeam')}
                         icon={<UserCircle className="size-4 text-neutral-500" />}
                         options={actorOptions}
                         selected={value.actorIds ?? []}
                         onChange={(values) =>
                             onChange({ actorIds: values.length ? values : undefined })
                         }
-                        placeholder="Search by name or email…"
+                        placeholder={t('searchByNameOrEmail')}
                         widthClass="w-56"
                         showSelectedLabel
                     />
 
                     <div className="flex items-center gap-1 rounded-md border border-gray-200 p-0.5">
-                        {DATE_PRESETS.map((preset) => {
+                        {datePresets.map((preset) => {
                             const isActive = activePreset?.label === preset.label;
                             return (
                                 <button
@@ -437,7 +541,7 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
                     </div>
 
                     <div className="flex items-end gap-2">
-                        <Field label="From">
+                        <Field label={t('from')}>
                             <Input
                                 type="date"
                                 className="h-10 w-40"
@@ -447,7 +551,7 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
                                 }
                             />
                         </Field>
-                        <Field label="To">
+                        <Field label={t('to')}>
                             <Input
                                 type="date"
                                 className="h-10 w-40"
@@ -470,29 +574,32 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
                         {(value.entityTypes ?? []).map((type) => (
                             <FilterChip
                                 key={`resource-${type}`}
-                                label={RESOURCE_LABELS[type] ?? type}
+                                label={resourceLabels[type] ?? type}
                                 onRemove={() =>
                                     onChange({ entityTypes: without(value.entityTypes, type) })
                                 }
+                                t={t}
                             />
                         ))}
                         {(value.actions ?? []).map((action) => (
                             <FilterChip
                                 key={`action-${action}`}
-                                label={ACTIVITY_LABELS[action] ?? action}
+                                label={activityLabels[action] ?? action}
                                 onRemove={() =>
                                     onChange({ actions: without(value.actions, action) })
                                 }
+                                t={t}
                             />
                         ))}
                         {(value.startDate || value.endDate) && (
                             <FilterChip
-                                label={`${toDateInput(value.startDate) || 'Any'} → ${
-                                    toDateInput(value.endDate) || 'Now'
+                                label={`${toDateInput(value.startDate) || t('dateRangeAny')} → ${
+                                    toDateInput(value.endDate) || t('dateRangeNow')
                                 }`}
                                 onRemove={() =>
                                     onChange({ startDate: undefined, endDate: undefined })
                                 }
+                                t={t}
                             />
                         )}
                     </div>
@@ -507,14 +614,22 @@ export function ActivityLogFilters({ value, onChange, onClear, onRefresh, isFetc
  * because the canonical Chips takes only a static trailing icon, and this chip
  * needs that icon to be the remove control.
  */
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+function FilterChip({
+    label,
+    onRemove,
+    t,
+}: {
+    label: string;
+    onRemove: () => void;
+    t: TFunction;
+}) {
     return (
-        <ChipsWrapper className="max-w-xs rounded-full pr-1 text-caption">
+        <ChipsWrapper className="max-w-xs rounded-full pe-1 text-caption">
             <span className="truncate">{label}</span>
             <button
                 type="button"
                 onClick={onRemove}
-                aria-label={`Remove filter ${label}`}
+                aria-label={t('removeFilter', { label })}
                 className="rounded-full p-0.5 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
             >
                 <X className="size-3" />

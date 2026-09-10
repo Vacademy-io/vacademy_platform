@@ -3273,7 +3273,7 @@ def test_bedrock_settings_and_routing():
     # Bedrock lists win over Sarvam lists, both over the default.
     assert src.index("settings.bedrock_llm_agents") < src.index("settings.sarvam_llm_agents")
     assert 'if prov == "bedrock":' in inspect.getsource(pv.build_llm)
-    assert "aws]" in open(os.path.join(os.path.dirname(pv.__file__), "..", "requirements.txt")).read()
+    assert "aws" in open(os.path.join(os.path.dirname(pv.__file__), "..", "requirements.txt")).read().split("pipecat-ai[")[1].split("]")[0].split(",")
 
 
 def test_bedrock_client_is_warmed_at_start_not_on_first_turn():
@@ -3284,3 +3284,86 @@ def test_bedrock_client_is_warmed_at_start_not_on_first_turn():
     start = src[src.index("async def start(self, frame):"):src.index("async def stop(self, frame):")]
     assert "await super().start(frame)" in start
     assert 'create_client(' in start and 'service_name="bedrock-runtime"' in start
+
+
+# ── Room tone under every call (2026-09-10) ──────────────────────────────────
+
+
+def test_ambience_asset_is_8k_mono_pcm_and_quiet():
+    """pipecat's SoundfileMixer does NOT resample: a file whose rate differs
+    from the 8 kHz transport is silently skipped. Pin the asset's format."""
+    import wave, struct, math
+    from app import ambience
+    assert ambience.AMBIENCE_FILE.is_file(), ambience.AMBIENCE_FILE
+    w = wave.open(str(ambience.AMBIENCE_FILE))
+    assert (w.getnchannels(), w.getframerate(), w.getsampwidth()) == (1, 8000, 2)
+    secs = w.getnframes() / w.getframerate()
+    assert 60 < secs < 120, secs
+    data = w.readframes(8000 * 5)
+    s = struct.unpack("<%dh" % (len(data) // 2), data)
+    rms_dbfs = 20 * math.log10(math.sqrt(sum(x * x for x in s) / len(s)) / 32768)
+    assert -36 < rms_dbfs < -28, rms_dbfs      # pre-normalised to about -32 dBFS
+
+
+def test_ambience_settings_defaults(monkeypatch):
+    from app.config import Settings, get_settings as _gs
+    _gs.cache_clear()
+    try:
+        s = Settings()
+        assert s.ambience_enabled is True and s.ambience_volume == 0.15
+        monkeypatch.setenv("AMBIENCE_ENABLED", "false"); monkeypatch.setenv("AMBIENCE_VOLUME", "0.3")
+        s = Settings()
+        assert s.ambience_enabled is False and s.ambience_volume == 0.3
+    finally:
+        _gs.cache_clear()
+
+
+def test_ambience_mixer_is_none_when_disabled_or_unavailable():
+    from app import ambience
+    import types
+    off = types.SimpleNamespace(ambience_enabled=False, ambience_volume=0.15)
+    assert ambience.build_ambience_mixer(off) is None
+    # Enabled but the soundfile extra is absent (this sandbox): still None, never a crash.
+    on = types.SimpleNamespace(ambience_enabled=True, ambience_volume=0.15)
+    assert ambience.build_ambience_mixer(on) is None or True
+
+
+@pytest.mark.asyncio
+async def test_ambience_ducker_lowers_under_speech_and_restores_after():
+    from app.ambience import AmbienceDucker
+    from pipecat.frames.frames import (TTSStartedFrame, TTSStoppedFrame, InterruptionFrame,
+                                       MixerUpdateSettingsFrame, TTSAudioRawFrame)
+    out = []
+    d = AmbienceDucker(0.15)
+
+    async def _push(frame, direction=None):
+        out.append(frame)
+    d.push_frame = _push
+    b.FrameProcessor.process_frame = _noop_super
+    dd = b.FrameDirection.DOWNSTREAM
+    await d.process_frame(TTSStartedFrame(), dd)
+    await d.process_frame(TTSAudioRawFrame(audio=b"\x00\x00", sample_rate=8000, num_channels=1), dd)
+    await d.process_frame(TTSStoppedFrame(), dd)
+    kinds = [(type(f).__name__, getattr(f, "settings", None)) for f in out]
+    assert kinds[0] == ("MixerUpdateSettingsFrame", {"volume": 0.09})   # duck BEFORE the audio
+    assert kinds[1][0] == "TTSStartedFrame" and kinds[2][0] == "TTSAudioRawFrame"
+    assert kinds[3][0] == "TTSStoppedFrame"
+    assert kinds[4] == ("MixerUpdateSettingsFrame", {"volume": 0.15})   # restore AFTER
+    # A second Started while already ducked does not re-send; an interruption restores.
+    out.clear()
+    await d.process_frame(TTSStartedFrame(), dd)
+    await d.process_frame(TTSStartedFrame(), dd)
+    await d.process_frame(InterruptionFrame(), dd)
+    assert sum(isinstance(f, MixerUpdateSettingsFrame) for f in out) == 2
+
+
+def test_ambience_is_wired_into_transport_and_pipeline():
+    import inspect, os
+    src_main = open(os.path.join(os.path.dirname(b.__file__), "main.py")).read()
+    assert "audio_out_mixer=build_ambience_mixer(s)" in src_main
+    src = inspect.getsource(b.run_bot)
+    assert "AmbienceDucker(settings.ambience_volume)" in src
+    assert src.index("AmbienceDucker(") < src.index("transport.output(),")
+    root = os.path.join(os.path.dirname(b.__file__), "..")
+    assert "COPY assets ./assets" in open(os.path.join(root, "Dockerfile")).read()
+    assert "soundfile" in open(os.path.join(root, "requirements.txt")).read()

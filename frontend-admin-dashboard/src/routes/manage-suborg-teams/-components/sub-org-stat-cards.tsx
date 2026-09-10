@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, Users, UsersThree, Wallet } from '@phosphor-icons/react';
 import {
     getScopedInvites,
@@ -47,6 +48,7 @@ export function SubOrgStatCards({
      */
     full?: boolean;
 }) {
+    const { t } = useTranslation('manageSuborgTeamsSubOrgStatCards');
     const instituteId = getCurrentInstituteId();
     // Outstanding is the sub-org admin's own dues to the parent institute; a role
     // without finance access sees the other three figures and no money at all.
@@ -97,7 +99,7 @@ export function SubOrgStatCards({
     const configuredPlan = configuredOption?.payment_plans?.[0];
     const configuredPriceLabel =
         configuredOption?.type === 'FREE'
-            ? 'Free'
+            ? t('free')
             : configuredPlan
               ? `${getCurrencySymbol(configuredPlan.currency || '')}${formatPlanPrice(
                     configuredPlan.actual_price
@@ -110,21 +112,21 @@ export function SubOrgStatCards({
     // prints the payment type as the backend sends it. A configured option already carries
     // a human name, so it is printed as-is: "Starter Plan plan" reads like a typo.
     const planLabel = admin?.payment_type
-        ? `${admin.payment_type} plan`
+        ? t('planLabel', { plan: admin.payment_type })
         : configuredOption?.name ||
-          (orgInvite?.payment_type ? `${orgInvite.payment_type} plan` : null);
+          (orgInvite?.payment_type ? t('planLabel', { plan: orgInvite.payment_type }) : null);
     // The price is the CONFIGURED option's, i.e. what a future admin will pay. Printing it
     // next to a redeemed admin's own plan ("CPO plan · ₹5,000") states a number that has
     // nothing to do with what they owe, so it only rides along while the seat is empty.
-    const planCaption = [planLabel || 'Plan status', !admin?.payment_type && configuredPriceLabel]
+    const planCaption = [planLabel || t('planStatus'), !admin?.payment_type && configuredPriceLabel]
         .filter(Boolean)
         .join(' · ');
 
     const statusValue = admin?.user_plan_status
         ? humanizeStatus(admin.user_plan_status)
         : planLabel
-          ? 'Awaiting admin'
-          : 'No plan';
+          ? t('awaitingAdmin')
+          : t('noPlan');
 
     const seatValue =
         seat?.total != null ? `${seat.used ?? 0}/${seat.total}` : String(seat?.used ?? 0);
@@ -143,20 +145,20 @@ export function SubOrgStatCards({
             />
             <StatCard
                 tone="warning"
-                label="Total Learners"
+                label={t('totalLearners')}
                 value={show(String(finance?.totals?.learner_count ?? 0))}
                 icon={<UsersThree className="size-5" />}
             />
             <StatCard
                 tone="info"
-                label="Total Seats"
+                label={t('totalSeats')}
                 value={show(seatValue)}
                 icon={<Users className="size-5" />}
             />
             {canViewFinance && (
                 <StatCard
                     tone="primary"
-                    label="Admin Outstanding"
+                    label={t('adminOutstanding')}
                     value={show(fmtMoney(admin?.outstanding_amount))}
                     icon={<Wallet className="size-5" />}
                 />

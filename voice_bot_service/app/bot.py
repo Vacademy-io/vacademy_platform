@@ -84,6 +84,7 @@ from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
                         LLM_BRIDGE,
                         HEARING_FAILED, ARM_STOP, DUCK_RESUME)
 from .config import get_settings
+from .ambience import AmbienceDucker
 from . import diagnostics as diag_mod
 from .providers import (build_llm, build_stt, build_tts, engine_of,
                         normalize_for_rumik, rumik_term_map_version)
@@ -3164,6 +3165,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         *([ttscache.make_turn_watcher_processor(tts_watcher)]
           if tts_watcher is not None else []),
         duck,
+        # Room-tone ducking (0.6x while the bot speaks). Control frames only;
+        # remove this one line to run the ambience at a fixed level.
+        *([AmbienceDucker(settings.ambience_volume)] if settings.ambience_enabled else []),
         transport.output(),
         played_transcript,
         aggregators.assistant(),

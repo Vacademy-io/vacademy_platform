@@ -3095,3 +3095,21 @@ def test_run_bot_routes_only_listed_agents_to_sarvam():
     assert '_agent_id in settings.sarvam_llm_agents' in src
     assert 'to_thread(build_llm, _llm_provider)' in src
     assert 'diag.llm_vendor' in src
+
+
+# ── Sarvam LLM POC eval (2026-09-10): "day after" was confirmed as "Friday the
+#    12th" (a Saturday) and "evening" became "six PM" — the prompt named only
+#    today and tomorrow, so the model had to count, and invented the rest ──────
+
+
+def test_now_line_lists_the_coming_week_as_a_lookup():
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    line = b._now_line({"agent": {"timezone": "Asia/Kolkata"}})
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    for i, label in ((0, "today"), (1, "tomorrow"), (2, "day after tomorrow")):
+        d = now + timedelta(days=i)
+        assert f"{d.strftime('%A %-d %B')} ({label})" in line, line
+    # A full week is listed, so "next Monday"/"this weekend" are lookups too.
+    assert (now + timedelta(days=6)).strftime("%A %-d %B") in line
+    assert "Never state a clock time the caller did not say" in line

@@ -2032,12 +2032,26 @@ def _now_line(context: Dict[str, Any]) -> str:
         now = datetime.now(ZoneInfo(tzname))
     # e.g. "Wednesday, 22 July 2026, 3:45 PM"
     stamp = now.strftime("%A, %-d %B %Y, %-I:%M %p")
+    # The week as a LOOKUP, not an arithmetic exercise. Sarvam LLM POC eval
+    # (2026-09-10, today = Thursday 10 Sept): asked for "day after", sarvam-105b
+    # confirmed "Friday the 12th" (the 12th was a Saturday) — the prompt only
+    # named today and tomorrow, so it had to count. It also invented "six PM"
+    # for a caller who only said "evening", 2 runs of 3. Gemini got the
+    # weekday right 3/3 but that was the model doing arithmetic we can do here.
+    labels = ("today", "tomorrow", "day after tomorrow")
+    week = []
+    for i in range(7):
+        d = now + timedelta(days=i)
+        tag = f" ({labels[i]})" if i < len(labels) else ""
+        week.append(d.strftime("%A %-d %B") + tag)
     return (
         f"RIGHT NOW it is {stamp} ({tzname}). Use this as the current date and time. "
+        "The next seven days are: " + "; ".join(week) + ". "
         "When the caller mentions a relative day — 'today', 'tomorrow', 'day after tomorrow', "
-        "'this weekend', 'next Monday' — work out the ACTUAL calendar date from this, and when "
-        "you confirm a time say the concrete day and date (e.g. 'tomorrow, Thursday the 23rd, at 3 PM'). "
-        "Never guess the day of week or the date."
+        "'this weekend', 'next Monday' — READ the day and date from that list; never count "
+        "it out yourself. When you confirm, say the concrete day and date ('Saturday the 12th'). "
+        "Never state a clock time the caller did not say: 'evening' or 'morning' is not a "
+        "time — ask what time suits them."
     )
 
 

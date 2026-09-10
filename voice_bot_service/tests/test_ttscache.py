@@ -1161,3 +1161,19 @@ async def test_the_guard_still_applies_if_contexts_are_NOT_per_sentence(
     kinds = [type(f).__name__ async for f in tts.run_tts(line, "ctx-10")
              if f is not None]
     assert "TTSAudioRawFrame" not in kinds, "ordering beats hit rate, always"
+
+
+# ── call f225f71e (2026-09-10): a 187,810 ms drone cached under "Got it." ─────
+
+def test_plausible_duration_rejects_drones_and_keeps_real_speech():
+    from app.ttscache import plausible_duration
+    assert not plausible_duration("Got it.", 187_810)
+    assert not plausible_duration("Perfect.", 50_600)
+    # Real renders from the live cache (text length -> duration) all pass.
+    assert plausible_duration("Got it.", 960)
+    assert plausible_duration("जी?", 1_200)
+    assert plausible_duration("नमस्ते जी, ये call record की जाएगी। मैं श्रेया बोल रही हूँ शिक्षा नेशन से।", 12_200)
+    assert plausible_duration("x" * 70, 18_400)          # slow, long Hindi line
+    # 4 s floor: a short line may take up to 4 s (pauses, slow voice).
+    assert plausible_duration("Okay.", 3_900)
+    assert not plausible_duration("Okay.", 4_100 * 2)

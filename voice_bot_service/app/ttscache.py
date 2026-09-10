@@ -275,6 +275,22 @@ def cache_key(*, engine: str, model: str, voice: str, pace, temperature,
 # ── the store ───────────────────────────────────────────────────────────────
 
 @dataclass
+def plausible_duration(text: str, duration_ms: int, chars_per_sec: float = 12.0,
+                       slack: float = 5.0, floor_ms: int = 4000) -> bool:
+    """Could `text` really take `duration_ms` to say?
+
+    Call f225f71e (2026-09-10): the cache served a 187,810 ms blob for
+    "Got it." — a ~200 Hz vendor drone (the Smallest language-tag bug of the
+    day before) stored as speech — and the caller heard three minutes of hum
+    until they hung up; "Perfect." had a 50.6 s twin. A render longer than
+    FIVE times what its text could take at a slow 12 chars/s (with a 4 s floor
+    so normal short lines never trip it) is not speech, whatever the vendor
+    says. Checked when storing AND when serving, so an already-poisoned cache
+    heals itself on the next lookup."""
+    expected_ms = max(1000.0, len(text or "") / chars_per_sec * 1000.0)
+    return duration_ms <= max(floor_ms, slack * expected_ms)
+
+
 class Entry:
     """One rendered blob, as held in the RAM index."""
     key: str
@@ -437,6 +453,15 @@ class SpeechCache:
         if entry.text != text:
             logger.warning("tts-cache: text mismatch for key {}… — treating as miss", key[:12])
             return None
+        if not plausible_duration(entry.text, entry.duration_ms):
+            logger.warning("tts-cache: {}ms blob for {!r} cannot be speech — discarding, "
+                           "treating as miss", entry.duration_ms, entry.text[:40])
+            self._index.pop(key, None)
+            try:
+                asyncio.get_running_loop().run_in_executor(None, self._discard_sync, key)
+            except Exception:
+                logger.debug("tts-cache: discard of implausible blob failed", exc_info=True)
+            return None
         return entry
 
     async def read(self, entry: Entry) -> Optional[bytes]:
@@ -524,6 +549,13 @@ class SpeechCache:
                 # real call.
                 logger.warning("tts-cache: refusing {}ms render for {!r}",
                                duration_ms, cand.text[:40])
+                return False
+            if not plausible_duration(cand.text, duration_ms):
+                # The other direction: a render far LONGER than its text could
+                # take is vendor garbage (a drone, a stuck stream), and caching
+                # it replays the failure on every future call.
+                logger.warning("tts-cache: refusing {}ms render for {!r} — longer than "
+                               "the text could possibly take", duration_ms, cand.text[:40])
                 return False
 
             os.makedirs(self.root, exist_ok=True)

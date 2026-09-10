@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { INIT_INSTITUTE, AUDIENCE_CAMPAIGNS_LIST, CREATE_MESSAGE_TEMPLATE, MESSAGE_TEMPLATE_EXISTS } from '@/constants/urls';
 import { getMessageTemplates } from '@/services/message-template-service';
+import { getTemplatesByTypeQuery, type TemplateItem } from '@/services/workflow-service';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 import { getTemplatesForTrigger, type UseCaseTemplate, type WizardQuestion } from './use-case-templates';
 import { buildSampleTemplates } from './sample-email-templates';
@@ -109,23 +110,30 @@ function useEmailTemplateOptions(t: TFunction) {
     });
 }
 
-function useWhatsappTemplateOptions(t: TFunction) {
-    return useQuery({
-        queryKey: ['wizard-whatsapp-templates'],
-        queryFn: async () => {
-            const result = await getMessageTemplates('WHATSAPP', 0, 100);
-            const seen = new Set<string>();
-            const options: Array<{ value: string; label: string }> = [];
-            for (const tmpl of (result.templates ?? []) as Array<{ name?: string; id?: string }>) {
-                const value = tmpl.name ?? tmpl.id ?? '';
-                if (!value || seen.has(value)) continue;
-                seen.add(value);
-                options.push({ value, label: tmpl.name ?? t('untitled') });
-            }
-            return options;
-        },
-        staleTime: 5 * 60 * 1000,
-    });
+/**
+ * Approved WhatsApp templates for this institute.
+ *
+ * WhatsApp templates live in notification-service (`whatsapp-templates/list`,
+ * synced from Meta) — NOT in admin-core's `template` table that the paginated
+ * message-template endpoint reads, which has no WHATSAPP rows and so returned
+ * an always-empty list here. Reuse the same query the node-config panel uses so
+ * the wizard and the visual builder offer the same names off one cache entry.
+ */
+function useWhatsappTemplateOptions(instituteId: string, t: TFunction) {
+    const { data, isLoading } = useQuery(getTemplatesByTypeQuery(instituteId, 'WHATSAPP'));
+    const options = useMemo(() => {
+        const seen = new Set<string>();
+        const list: Array<{ value: string; label: string }> = [];
+        for (const tmpl of (data ?? []) as TemplateItem[]) {
+            // SEND_WHATSAPP sends by template NAME, so that is the answer value.
+            const value = tmpl.name ?? tmpl.id ?? '';
+            if (!value || seen.has(value)) continue;
+            seen.add(value);
+            list.push({ value, label: tmpl.name ?? t('untitled') });
+        }
+        return list;
+    }, [data, t]);
+    return { data: options, isLoading };
 }
 
 // ─── Question renderer ───
@@ -150,7 +158,7 @@ function QuestionField({
     const { data: packageOptions = [], isLoading: packageLoading } = usePackageOptions(instituteId, t);
     const { data: audienceOptions = [], isLoading: audienceLoading } = useAudienceOptions(instituteId, t);
     const { data: templateOptions = [], isLoading: templateLoading } = useEmailTemplateOptions(t);
-    const { data: waTemplateOptions = [], isLoading: waTemplateLoading } = useWhatsappTemplateOptions(t);
+    const { data: waTemplateOptions = [], isLoading: waTemplateLoading } = useWhatsappTemplateOptions(instituteId, t);
     const [creatingSample, setCreatingSample] = useState(false);
     const queryClient = useQueryClient();
 
@@ -688,10 +696,20 @@ export function UseCaseWizardStep({
                 <h4 className="text-xs font-semibold text-primary-600 uppercase tracking-wide mb-2">{t('wizard.whatWillBeCreated')}</h4>
                 <div className="flex flex-wrap items-center gap-1.5 text-sm text-primary-700">
                     {(() => {
-                        // Generate a preview by running the generator with placeholder answers
-                        const previewAnswers: Record<string, string | number> = {};
+                        // Run the generator against what the user has actually
+                        // answered, falling back to defaults/placeholders only
+                        // for questions still untouched. Building this purely
+                        // from defaults made the preview permanently show the
+                        // default channel's nodes (SEND_EMAIL) even after the
+                        // user picked WhatsApp.
+                        const previewAnswers: Record<string, string | number | string[]> = {};
                         selectedTemplate.questions.forEach((q) => {
-                            if (q.defaultValue !== undefined) previewAnswers[q.id] = q.defaultValue;
+                            const given = answers[q.id];
+                            const hasGiven = Array.isArray(given)
+                                ? given.length > 0
+                                : given !== undefined && given !== '';
+                            if (hasGiven) previewAnswers[q.id] = given!;
+                            else if (q.defaultValue !== undefined) previewAnswers[q.id] = q.defaultValue;
                             else if (q.type === 'text') previewAnswers[q.id] = 'admin@example.com';
                             else if (q.type === 'number') previewAnswers[q.id] = 1;
                             else previewAnswers[q.id] = 'preview';

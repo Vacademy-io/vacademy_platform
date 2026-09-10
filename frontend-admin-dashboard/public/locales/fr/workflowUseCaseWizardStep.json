@@ -30,7 +30,7 @@
         "creating": "Création...",
         "useSample": "Utiliser l'exemple : « {{name}} »",
         "useSampleHint": "Modèle prédéfini avec les bonnes variables — ajouté à votre bibliothèque de modèles",
-        "noWhatsappTemplates": "Aucun modèle WhatsApp trouvé. Créez-en un d'abord dans Paramètres → Modèles (type WHATSAPP)."
+        "noWhatsappTemplates": "Aucun modèle WhatsApp approuvé trouvé. Ils sont synchronisés depuis Meta — ouvrez Communication → Modèles WhatsApp et lancez la synchronisation, ou faites d'abord approuver le modèle dans Meta."
     },
     "jsonPayload": {
         "invalidObject": "Le contenu doit être un objet JSON (pas un tableau ni une valeur primitive).",

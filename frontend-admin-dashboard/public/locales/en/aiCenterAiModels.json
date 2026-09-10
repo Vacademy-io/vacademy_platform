@@ -1,5 +1,9 @@
 {
     "models": {
+        "glm53Flash": {
+            "name": "GLM 5.3 Flash",
+            "description": "Z.ai — recommended, reads handwriting"
+        },
         "claudeOpus45": {
             "name": "Claude Opus 4.5",
             "description": "Anthropic"

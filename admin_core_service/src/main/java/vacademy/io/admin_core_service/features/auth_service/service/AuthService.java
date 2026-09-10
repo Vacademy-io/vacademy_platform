@@ -58,21 +58,55 @@ public class AuthService {
         }
     }
 
+    /**
+     * Max user ids per call to auth_service. The request was previously unchunked, so a caller
+     * holding thousands of ids sent them all in one POST — which outlives the internal HTTP
+     * timeout long before it returns. Every caller here passes a batch derived from a page of
+     * rows, so the ceiling is only reached by genuinely large ones.
+     */
+    private static final int USER_LOOKUP_BATCH_SIZE = 500;
+
+    /**
+     * Resolve user records for a set of ids, in batches.
+     *
+     * <p>Chunked because several callers derive the id list from a result set whose size they do
+     * not control (leads lists, bulk actions, reporting). Results are concatenated in batch
+     * order; callers all index by id, so ordering carries no meaning.</p>
+     */
     public List<UserDTO> getUsersFromAuthServiceByUserIds(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return List.of();
         }
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
-                    clientName,
-                    HttpMethod.POST.name(),
-                    authServerBaseUrl,
-                    AuthServiceRoutes.GET_USERS_FROM_AUTH_SERVICE,
-                    userIds);
+        // De-duplicate first: a repeated id costs a slot in the batch and returns the same record.
+        List<String> distinctIds = userIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (distinctIds.isEmpty()) {
+            return List.of();
+        }
 
-            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
-            });
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<UserDTO> all = new java.util.ArrayList<>(distinctIds.size());
+        try {
+            for (int start = 0; start < distinctIds.size(); start += USER_LOOKUP_BATCH_SIZE) {
+                List<String> batch = distinctIds.subList(
+                        start, Math.min(start + USER_LOOKUP_BATCH_SIZE, distinctIds.size()));
+                ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                        clientName,
+                        HttpMethod.POST.name(),
+                        authServerBaseUrl,
+                        AuthServiceRoutes.GET_USERS_FROM_AUTH_SERVICE,
+                        batch);
+
+                List<UserDTO> users = objectMapper.readValue(
+                        response.getBody(), new TypeReference<List<UserDTO>>() {
+                        });
+                if (users != null) {
+                    all.addAll(users);
+                }
+            }
+            return all;
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

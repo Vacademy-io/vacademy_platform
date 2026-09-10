@@ -221,6 +221,25 @@ public class AudienceController {
         return ResponseEntity.ok(leads);
     }
 
+    /**
+     * Ids-only projection of {@link #getLeads}, for the list's "select all across pages" button.
+     *
+     * <p>Takes the identical {@code LeadFilterDTO} and runs the identical RBAC scoping, so the
+     * selected set always matches the visible one — send the same body the list query sent.
+     * Returns only {@code response_id} / {@code user_id} / {@code name}, skipping the per-row
+     * enrichment (one auth_service round-trip plus four IN-list queries per page) that select-all
+     * used to pay for the whole table at once.</p>
+     *
+     * <p>Not paginated: it answers "every lead matching this filter", capped at
+     * {@code AudienceService.MAX_SELECT_ALL_LEADS} with {@code truncated} set when the cap bites.</p>
+     */
+    @PostMapping("/leads/ids")
+    public ResponseEntity<LeadIdsResponseDTO> getLeadIds(
+            @RequestBody LeadFilterDTO filterDTO,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(audienceService.getLeadIds(filterDTO, user));
+    }
+
     @GetMapping("/lead/{responseId}")
     public ResponseEntity<LeadDetailDTO> getLeadById(@PathVariable String responseId) {
         LeadDetailDTO lead = audienceService.getLeadById(responseId);
@@ -270,6 +289,24 @@ public class AudienceController {
             @RequestAttribute("user") CustomUserDetails user) {
         int deleted = audienceService.deleteLeads(request, user);
         return ResponseEntity.ok(Map.of("deleted", deleted));
+    }
+
+    /**
+     * Move leads from one lead list to another. ADMIN only.
+     *
+     * <p>Body-based for the same reasons as {@link #deleteLeads} — an id LIST, a {@code scope},
+     * and the {@code institute_id} the ADMIN check runs against — plus the target list and how the
+     * move should treat that list's automation.</p>
+     *
+     * <p>Partial success: the response reports how many moved and which were skipped, with a
+     * reason each. Merging two lists collides by definition, so refusing the whole batch over one
+     * collision would make the operation unusable.</p>
+     */
+    @PostMapping("/leads/migrate")
+    public ResponseEntity<MigrateLeadsResponseDTO> migrateLeads(
+            @RequestBody MigrateLeadsRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(audienceService.migrateLeads(request, user));
     }
 
     /** Restore soft-deleted leads — the inverse of {@link #deleteLeads}. ADMIN only. */

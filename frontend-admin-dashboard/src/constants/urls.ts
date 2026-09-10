@@ -192,6 +192,13 @@ export const COURSE_CERTIFICATE_RESEND = `${COURSE_CERTIFICATE_BASE}/resend`;
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
+/**
+ * Ids-only projection of GET_CAMPAIGN_USERS, for "select all across pages".
+ * Same LeadFilterDTO body, same RBAC scoping — send the body the list query sent —
+ * but returns only { response_id, user_id, name }, skipping the per-row enrichment
+ * that made select-all time out on large lists.
+ */
+export const GET_LEAD_IDS = `${BASE_URL}/admin-core-service/v1/audience/leads/ids`;
 
 // Telephony — provider-agnostic click-to-call + recording surface.
 // Connect:   POST   /v1/telephony/calls/connect  -> { callLogId, eventsStreamUrl, ... }
@@ -347,6 +354,11 @@ export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/repo
 export const DELETE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/delete`;
 /** Restore soft-deleted leads (ADMIN only). Same body shape as DELETE_AUDIENCE_LEADS. */
 export const RESTORE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/restore`;
+/**
+ * Move leads to another lead list (ADMIN only). Partial success — the response reports how many
+ * moved and which were skipped, with a reason each.
+ */
+export const MIGRATE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/migrate`;
 export const UPDATE_LEAD_PROFILE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
 

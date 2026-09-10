@@ -97,7 +97,8 @@
         "assignLeads": "Assign leads",
         "unassignLeads": "Unassign leads",
         "restoreLeads": "Restore leads",
-        "deleteLeads": "Delete leads"
+        "deleteLeads": "Delete leads",
+        "moveLeads": "Move to another list"
     },
     "emptyState": {
         "errorTitle": "Couldn't load leads",
@@ -136,6 +137,7 @@
         "leadRestored_one": "{{count}} lead restored",
         "leadRestored_other": "{{count}} leads restored",
         "restoreFailed": "Failed to restore. Please try again.",
-        "selectAllFailed": "Failed to select all leads"
+        "selectAllFailed": "Failed to select all leads",
+        "selectAllTruncated": "Selected the first {{selected}} of {{total}} leads. Narrow the filter to act on the rest."
     }
 }

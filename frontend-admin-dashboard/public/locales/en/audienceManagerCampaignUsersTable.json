@@ -80,7 +80,8 @@
         "assignLeads": "Assign leads",
         "unassignLeads": "Unassign leads",
         "deleteLeads": "Delete leads",
-        "sendMessage": "Send message"
+        "sendMessage": "Send message",
+        "moveLeads": "Move to another list"
     },
     "emptyState": {
         "errorTitle": "Couldn't load respondents",
@@ -121,6 +122,7 @@
     },
     "toasts": {
         "selectAllFailed": "Failed to select all leads",
+        "selectAllTruncated": "Selected the first {{selected}} of {{total}} leads. Narrow the filter to act on the rest.",
         "noLeadsToExport": "No leads to export",
         "exportStarting": "Starting export…",
         "noDataToExport": "No data to export",

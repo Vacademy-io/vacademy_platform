@@ -67,6 +67,21 @@ const MODES: { key: Mode; label: string; icon: React.ReactNode; hint: string }[]
 ];
 
 /**
+ * How many rows the assignment preview renders.
+ *
+ * The preview lists one row per lead, each with its own counsellor <Select>. That is fine for a
+ * page of leads and not fine for a select-all: at tens of thousands of rows the dialog builds
+ * that much DOM up front and hangs the tab before anything can be submitted. The preview sits in
+ * a ~5-row scroll box, so nothing beyond the first screenful is being read anyway.
+ *
+ * Capping the RENDER only — the mutation still builds assignments from the full `leads` array,
+ * so what gets applied is unchanged. MANUAL is the exception and is disabled past this many
+ * leads: it needs a per-row pick, and the submit guard rejects any lead without a target, so a
+ * capped MANUAL list could never be completed.
+ */
+const PREVIEW_ROW_LIMIT = 200;
+
+/**
  * Bulk-assign the selected leads to counsellor(s), mirroring the counsellor
  * re-assign flow: ROUND_ROBIN (across chosen counsellors), SINGLE (all to one),
  * or MANUAL (per-lead). The proposed per-lead mapping is always shown and
@@ -115,6 +130,18 @@ export function BulkAssignCounsellorDialog({
         () => counsellorOptions.filter((c) => rrChecked.has(c.id)),
         [counsellorOptions, rrChecked]
     );
+
+    // See PREVIEW_ROW_LIMIT: the preview renders at most this many rows, and MANUAL — which
+    // needs a pick on every row — is unavailable past it.
+    const manualUnavailable = leads.length > PREVIEW_ROW_LIMIT;
+    const previewLeads = useMemo(() => leads.slice(0, PREVIEW_ROW_LIMIT), [leads]);
+    const hiddenPreviewCount = leads.length - previewLeads.length;
+
+    // A selection that grows past the cap while MANUAL is active would strand the dialog in a
+    // mode it can no longer complete.
+    useEffect(() => {
+        if (manualUnavailable && mode === 'MANUAL') setMode('ROUND_ROBIN');
+    }, [manualUnavailable, mode]);
 
     // Base target for a lead at position `index` before manual overrides.
     const baseTarget = (index: number): string => {
@@ -240,22 +267,34 @@ export function BulkAssignCounsellorDialog({
             <div className="flex flex-col gap-4">
                 {/* Mode picker */}
                 <div className="grid grid-cols-4 gap-2">
-                    {MODES.map((m) => (
-                        <button
-                            key={m.key}
-                            type="button"
-                            onClick={() => setMode(m.key)}
-                            className={cn(
-                                'flex flex-col items-center gap-1 rounded-lg border p-3 text-center transition-colors',
-                                mode === m.key
-                                    ? 'border-primary-400 bg-primary-50 text-primary-700'
-                                    : 'border-neutral-200 text-neutral-600 hover:border-neutral-300'
-                            )}
-                        >
-                            {m.icon}
-                            <span className="text-body font-medium">{m.label}</span>
-                        </button>
-                    ))}
+                    {MODES.map((m) => {
+                        // Per-lead picking can't be completed beyond the preview cap — see
+                        // PREVIEW_ROW_LIMIT.
+                        const disabled = m.key === 'MANUAL' && manualUnavailable;
+                        return (
+                            <button
+                                key={m.key}
+                                type="button"
+                                disabled={disabled}
+                                title={
+                                    disabled
+                                        ? `Manual picking is unavailable for more than ${PREVIEW_ROW_LIMIT} leads. Use round-robin or a single counsellor.`
+                                        : undefined
+                                }
+                                onClick={() => setMode(m.key)}
+                                className={cn(
+                                    'flex flex-col items-center gap-1 rounded-lg border p-3 text-center transition-colors',
+                                    disabled && 'cursor-not-allowed opacity-40',
+                                    mode === m.key
+                                        ? 'border-primary-400 bg-primary-50 text-primary-700'
+                                        : 'border-neutral-200 text-neutral-600 hover:border-neutral-300'
+                                )}
+                            >
+                                {m.icon}
+                                <span className="text-body font-medium">{m.label}</span>
+                            </button>
+                        );
+                    })}
                 </div>
                 <p className="text-caption text-neutral-500">
                     {MODES.find((m) => m.key === mode)?.hint}
@@ -373,7 +412,7 @@ export function BulkAssignCounsellorDialog({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-neutral-100">
-                                {leads.map((lead, index) => {
+                                {previewLeads.map((lead, index) => {
                                     const value = targetFor(lead, index);
                                     return (
                                         <tr key={lead.userId}>
@@ -402,6 +441,12 @@ export function BulkAssignCounsellorDialog({
                                 })}
                             </tbody>
                         </table>
+                        {hiddenPreviewCount > 0 && (
+                            <div className="border-t border-neutral-200 bg-neutral-50 px-3 py-2 text-caption text-neutral-500">
+                                + {hiddenPreviewCount} more not shown. All {leads.length} selected
+                                lead(s) will be assigned.
+                            </div>
+                        )}
                     </div>
                 </div>
                 )}

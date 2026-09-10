@@ -158,9 +158,19 @@ export const resolveLocalizedTerm = (
 };
 
 // When true, getTerminology/getTerminologyPlural bypass localStorage and
-// always return the system default. Used by withSystemDefaults() so callers
-// can compute what a label WOULD be without any user customization.
+// always return the system default, and sidebar labels resolve in English.
+// Used by withSystemDefaults() so callers can compute what a label WOULD be
+// without any user customization — i.e. exactly the value Display Settings
+// seeded, which predates i18n and is therefore always English.
 let useSystemDefaultsFlag = false;
+
+// English is always loaded (it is the fallbackLng), so forcing it here never
+// yields a raw key even when another language is active.
+const sidebarT = (key: string, options?: Record<string, unknown>): string =>
+    i18next.t(key, {
+        ...(options ?? {}),
+        ...(useSystemDefaultsFlag ? { lng: DEFAULT_LOCALE } : {}),
+    }) as string;
 
 export const withSystemDefaults = <T>(fn: () => T): T => {
     const prev = useSystemDefaultsFlag;
@@ -245,14 +255,14 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     // CRM with ERP
     {
         icon: House,
-        title: i18next.t('sidebar:dashboard'),
+        title: sidebarT('sidebar:dashboard'),
         id: 'dashboard',
         to: '/dashboard',
         category: 'CRM',
     },
     {
         icon: UsersFour,
-        title: i18next.t('sidebar:manageInstitute'),
+        title: sidebarT('sidebar:manageInstitute'),
         id: 'manage-institute',
         category: 'CRM',
         subItems: [
@@ -267,12 +277,12 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'sessions',
             },
             {
-                subItem: i18next.t('sidebar:teams'),
+                subItem: sidebarT('sidebar:teams'),
                 subItemLink: '/manage-institute/teams',
                 subItemId: 'teams',
             },
             {
-                subItem: i18next.t('sidebar:subOrgTeams', { term: getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg) }),
+                subItem: sidebarT('sidebar:subOrgTeams', { term: getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg) }),
                 subItemLink: '/manage-suborg-teams',
                 subItemId: 'suborg-teams',
             },
@@ -280,17 +290,17 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 // Institute-admin surface — sub-orgs list + drilldown to a sub-org's
                 // analytics deep page. Sibling to "Sub-Org Teams" (which is the
                 // sub-org-admin's narrow view). Both default off; institutes opt in.
-                subItem: i18next.t('sidebar:manageInstituteSubOrgs', { term: getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg) }),
+                subItem: sidebarT('sidebar:manageInstituteSubOrgs', { term: getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg) }),
                 subItemLink: '/manage-custom-teams',
                 subItemId: 'manage-institute-suborgs',
             },
             {
-                subItem: i18next.t('sidebar:inventoryManagement', { term: getTerminology(OtherTerms.Inventory, SystemTerms.Inventory) }),
+                subItem: sidebarT('sidebar:inventoryManagement', { term: getTerminology(OtherTerms.Inventory, SystemTerms.Inventory) }),
                 subItemLink: '/manage-inventory',
                 subItemId: 'inventory-management',
             },
             {
-                subItem: i18next.t('sidebar:managePackages', { term: getTerminologyPlural(ContentTerms.Package, SystemTerms.Package) }),
+                subItem: sidebarT('sidebar:managePackages', { term: getTerminologyPlural(ContentTerms.Package, SystemTerms.Package) }),
                 subItemLink: '/admin-package-management',
                 subItemId: 'manage-packages',
                 adminOnly: true,
@@ -299,32 +309,32 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: AddressBook,
-        title: i18next.t('sidebar:manageContacts'),
+        title: sidebarT('sidebar:manageContacts'),
         id: 'manage-contacts',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:allContacts'),
+                subItem: sidebarT('sidebar:allContacts'),
                 subItemLink: '/manage-contacts',
                 subItemId: 'all-contacts',
             },
             {
-                subItem: i18next.t('sidebar:linkedCourseContacts', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+                subItem: sidebarT('sidebar:linkedCourseContacts', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
                 subItemLink: '/manage-students/students-list',
                 subItemId: 'linked-contacts',
             },
             {
-                subItem: i18next.t('sidebar:userTags'),
+                subItem: sidebarT('sidebar:userTags'),
                 subItemLink: '/user-tags/institute',
                 subItemId: 'user-tags-main',
             },
             {
-                subItem: i18next.t('sidebar:linkTag'),
+                subItem: sidebarT('sidebar:linkTag'),
                 subItemLink: '/user-tags/link',
                 subItemId: 'link-tag',
             },
             {
-                subItem: i18next.t('sidebar:inviteUsers', { term: getTerminology(OtherTerms.Invite, SystemTerms.Invite) }),
+                subItem: sidebarT('sidebar:inviteUsers', { term: getTerminology(OtherTerms.Invite, SystemTerms.Invite) }),
                 subItemLink: '/manage-students/invite',
                 subItemId: 'invite',
             },
@@ -332,27 +342,27 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: AddressBook, // Can reuse AddressBook icon or import a new one like Users
-        title: i18next.t('sidebar:admissions'),
+        title: sidebarT('sidebar:admissions'),
         id: 'admissions',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:dashboard'),
+                subItem: sidebarT('sidebar:dashboard'),
                 subItemLink: '/admissions/dashboard',
                 subItemId: 'dashboard',
             },
             {
-                subItem: i18next.t('sidebar:admissionList'),
+                subItem: sidebarT('sidebar:admissionList'),
                 subItemLink: '/admissions/admission-list',
                 subItemId: 'admission-list',
             },
             {
-                subItem: i18next.t('sidebar:enquiries'),
+                subItem: sidebarT('sidebar:enquiries'),
                 subItemLink: '/admissions/enquiries',
                 subItemId: 'enquiry',
             },
             {
-                subItem: i18next.t('sidebar:application'),
+                subItem: sidebarT('sidebar:application'),
                 subItemLink: '/admissions/application',
                 subItemId: 'application',
             },
@@ -360,32 +370,32 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: CreditCard,
-        title: i18next.t('sidebar:feeManagement'),
+        title: sidebarT('sidebar:feeManagement'),
         id: 'fee-management',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:createFeePlan'),
+                subItem: sidebarT('sidebar:createFeePlan'),
                 subItemLink: '/financial-management/fee-plans',
                 subItemId: 'create-fee-plan',
             },
             {
-                subItem: i18next.t('sidebar:manageFinances'),
+                subItem: sidebarT('sidebar:manageFinances'),
                 subItemLink: '/financial-management/manage-finances',
                 subItemId: 'manage-finances',
             },
             {
-                subItem: i18next.t('sidebar:collectionDashboard'),
+                subItem: sidebarT('sidebar:collectionDashboard'),
                 subItemLink: '/financial-management/collection-dashboard',
                 subItemId: 'collection-dashboard',
             },
             {
-                subItem: i18next.t('sidebar:payInstallments'),
+                subItem: sidebarT('sidebar:payInstallments'),
                 subItemLink: '/financial-management/pay-installments',
                 subItemId: 'pay-installments',
             },
             {
-                subItem: i18next.t('sidebar:adjustmentApprovals'),
+                subItem: sidebarT('sidebar:adjustmentApprovals'),
                 subItemLink: '/financial-management/adjustment-approvals',
                 subItemId: 'adjustment-approvals',
             },
@@ -393,27 +403,27 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: CreditCard,
-        title: i18next.t('sidebar:membership'),
+        title: sidebarT('sidebar:membership'),
         id: 'membership-management',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:managePayments'),
+                subItem: sidebarT('sidebar:managePayments'),
                 subItemLink: '/manage-payments',
                 subItemId: 'manage-payments-sub',
             },
             {
-                subItem: i18next.t('sidebar:paymentDashboard'),
+                subItem: sidebarT('sidebar:paymentDashboard'),
                 subItemLink: '/payment-dashboard',
                 subItemId: 'payment-dashboard-sub',
             },
             {
-                subItem: i18next.t('sidebar:manageExpiry'),
+                subItem: sidebarT('sidebar:manageExpiry'),
                 subItemLink: '/membership-expiry',
                 subItemId: 'membership-expiry-sub',
             },
             {
-                subItem: i18next.t('sidebar:inviteStats', { term: getTerminology(OtherTerms.Invite, SystemTerms.Invite) }),
+                subItem: sidebarT('sidebar:inviteStats', { term: getTerminology(OtherTerms.Invite, SystemTerms.Invite) }),
                 subItemLink: '/membership-stats',
                 subItemId: 'membership-stats-sub',
             },
@@ -421,53 +431,53 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: Megaphone,
-        title: i18next.t('sidebar:communications'),
+        title: sidebarT('sidebar:communications'),
         id: 'communications',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:inAppMessages'),
+                subItem: sidebarT('sidebar:inAppMessages'),
                 subItemLink: '/chat',
                 subItemId: 'chat',
             },
             {
-                subItem: i18next.t('sidebar:notificationHub'),
+                subItem: sidebarT('sidebar:notificationHub'),
                 subItemLink: '/communication/notification-hub',
                 subItemId: 'notification-hub',
             },
             {
-                subItem: i18next.t('sidebar:whatsappInbox'),
+                subItem: sidebarT('sidebar:whatsappInbox'),
                 subItemLink: '/communication/inbox',
                 subItemId: 'whatsapp-inbox',
             },
             {
-                subItem: i18next.t('sidebar:whatsappTemplates'),
+                subItem: sidebarT('sidebar:whatsappTemplates'),
                 subItemLink: '/communication/whatsapp-templates',
                 subItemId: 'whatsapp-templates',
             },
             {
-                subItem: i18next.t('sidebar:createAnnouncement'),
+                subItem: sidebarT('sidebar:createAnnouncement'),
                 subItemLink: '/announcement/create',
                 subItemId: 'announcement-create',
             },
             {
-                subItem: i18next.t('sidebar:emailCampaigning'),
+                subItem: sidebarT('sidebar:emailCampaigning'),
                 subItemLink: '/announcement/email-campaigning',
                 subItemId: 'announcement-email-campaigning',
             },
             {
-                subItem: i18next.t('sidebar:announcementHistory'),
+                subItem: sidebarT('sidebar:announcementHistory'),
                 subItemLink: '/announcement/history',
                 subItemId: 'announcement-history',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:scheduleAnnouncement'),
+                subItem: sidebarT('sidebar:scheduleAnnouncement'),
                 subItemLink: '/announcement/schedule',
                 subItemId: 'announcement-schedule',
             },
             {
-                subItem: i18next.t('sidebar:announcementApproval'),
+                subItem: sidebarT('sidebar:announcementApproval'),
                 subItemLink: '/announcement/approval',
                 subItemId: 'announcement-approval',
             },
@@ -475,27 +485,27 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: Robot,
-        title: i18next.t('sidebar:automations'),
+        title: sidebarT('sidebar:automations'),
         id: 'automations',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:workflows'),
+                subItem: sidebarT('sidebar:workflows'),
                 subItemLink: '/workflow/list',
                 subItemId: 'workflow-list',
             },
             {
-                subItem: i18next.t('sidebar:chatbotFlows'),
+                subItem: sidebarT('sidebar:chatbotFlows'),
                 subItemLink: '/automation/chatbot-flows',
                 subItemId: 'chatbot-flows',
             },
             {
-                subItem: i18next.t('sidebar:websiteBuilder'),
+                subItem: sidebarT('sidebar:websiteBuilder'),
                 subItemLink: '/manage-pages',
                 subItemId: 'website-builder',
             },
             {
-                subItem: i18next.t('sidebar:productPages'),
+                subItem: sidebarT('sidebar:productPages'),
                 subItemLink: '/manage-pages/product-pages',
                 subItemId: 'product-pages',
             },
@@ -503,57 +513,57 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: UserList,
-        title: i18next.t('sidebar:leads'),
+        title: sidebarT('sidebar:leads'),
         id: 'leads',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:leadList'),
+                subItem: sidebarT('sidebar:leadList'),
                 subItemLink: '/audience-manager/list',
                 subItemId: 'lead-list-leads',
             },
             {
-                subItem: i18next.t('sidebar:recentLeads'),
+                subItem: sidebarT('sidebar:recentLeads'),
                 subItemLink: '/audience-manager/recent-leads',
                 subItemId: 'recent-leads',
             },
             {
-                subItem: i18next.t('sidebar:leadBoard'),
+                subItem: sidebarT('sidebar:leadBoard'),
                 subItemLink: '/audience-manager/lead-board',
                 subItemId: 'lead-board',
             },
             {
-                subItem: i18next.t('sidebar:followUps'),
+                subItem: sidebarT('sidebar:followUps'),
                 subItemLink: '/audience-manager/follow-ups',
                 subItemId: 'follow-ups',
             },
             {
-                subItem: i18next.t('sidebar:callLog'),
+                subItem: sidebarT('sidebar:callLog'),
                 subItemLink: '/audience-manager/call-log',
                 subItemId: 'call-log',
             },
             {
-                subItem: i18next.t('sidebar:onboarding'),
+                subItem: sidebarT('sidebar:onboarding'),
                 subItemLink: '/audience-manager/onboarding',
                 subItemId: 'onboarding',
             },
             {
-                subItem: i18next.t('sidebar:aiIntelligence'),
+                subItem: sidebarT('sidebar:aiIntelligence'),
                 subItemLink: '/audience-manager/ai-intelligence',
                 subItemId: 'ai-intelligence',
             },
             {
-                subItem: i18next.t('sidebar:counsellors'),
+                subItem: sidebarT('sidebar:counsellors'),
                 subItemLink: '/counsellors',
                 subItemId: 'counsellors',
             },
             {
-                subItem: i18next.t('sidebar:salesDashboard'),
+                subItem: sidebarT('sidebar:salesDashboard'),
                 subItemLink: '/sales-dashboard',
                 subItemId: 'sales-dashboard',
             },
             {
-                subItem: i18next.t('sidebar:reports'),
+                subItem: sidebarT('sidebar:reports'),
                 subItemLink: '/audience-manager/reports',
                 subItemId: 'lead-reports',
             },
@@ -564,32 +574,32 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         // and the two settings screens that configure them (deep-linked into the
         // Settings tab shell so there's one source of truth for those forms).
         icon: PhoneCall,
-        title: i18next.t('sidebar:calling'),
+        title: sidebarT('sidebar:calling'),
         id: 'calling',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:callLog'),
+                subItem: sidebarT('sidebar:callLog'),
                 subItemLink: '/audience-manager/call-log',
                 subItemId: 'calling-call-log',
             },
             {
-                subItem: i18next.t('sidebar:callQueue'),
+                subItem: sidebarT('sidebar:callQueue'),
                 subItemLink: '/calling/call-queue',
                 subItemId: 'calling-call-queue',
             },
             {
-                subItem: i18next.t('sidebar:aiAgents'),
+                subItem: sidebarT('sidebar:aiAgents'),
                 subItemLink: '/calling/ai-agents',
                 subItemId: 'calling-ai-agents',
             },
             {
-                subItem: i18next.t('sidebar:callingSettings'),
+                subItem: sidebarT('sidebar:callingSettings'),
                 subItemLink: '/settings?selectedTab=telephony',
                 subItemId: 'calling-settings',
             },
             {
-                subItem: i18next.t('sidebar:aiCallingSettings'),
+                subItem: sidebarT('sidebar:aiCallingSettings'),
                 subItemLink: '/settings?selectedTab=aiCalling',
                 subItemId: 'calling-ai-settings',
             },
@@ -597,17 +607,17 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: CalendarCheck,
-        title: i18next.t('sidebar:meetings'),
+        title: sidebarT('sidebar:meetings'),
         id: 'meetings',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:mySchedule'),
+                subItem: sidebarT('sidebar:mySchedule'),
                 subItemLink: '/meetings/my-schedule',
                 subItemId: 'meetings-my-schedule',
             },
             {
-                subItem: i18next.t('sidebar:teamMeetings'),
+                subItem: sidebarT('sidebar:teamMeetings'),
                 subItemLink: '/meetings/team',
                 subItemId: 'meetings-team',
             },
@@ -615,36 +625,36 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: UsersFour,
-        title: i18next.t('sidebar:mentorship'),
+        title: sidebarT('sidebar:mentorship'),
         id: 'mentorship',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:overview'),
+                subItem: sidebarT('sidebar:overview'),
                 subItemLink: '/mentorship/dashboard',
                 subItemId: 'mentorship-dashboard',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:mentors'),
+                subItem: sidebarT('sidebar:mentors'),
                 subItemLink: '/mentorship/mentors',
                 subItemId: 'mentorship-mentors',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:sessions'),
+                subItem: sidebarT('sidebar:sessions'),
                 subItemLink: '/mentorship/sessions',
                 subItemId: 'mentorship-sessions',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:requests'),
+                subItem: sidebarT('sidebar:requests'),
                 subItemLink: '/mentorship/requests',
                 subItemId: 'mentorship-requests',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:myMentorship'),
+                subItem: sidebarT('sidebar:myMentorship'),
                 subItemLink: '/mentorship/my-mentorship',
                 subItemId: 'mentorship-my-mentorship',
             },
@@ -652,18 +662,18 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: Lightning,
-        title: i18next.t('sidebar:engagementEngines'),
+        title: sidebarT('sidebar:engagementEngines'),
         id: 'engagement-engines',
         category: 'CRM',
         subItems: [
             {
-                subItem: i18next.t('sidebar:engines'),
+                subItem: sidebarT('sidebar:engines'),
                 subItemLink: '/engagement-engines',
                 subItemId: 'engagement-engines-list',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:taskInbox'),
+                subItem: sidebarT('sidebar:taskInbox'),
                 subItemLink: '/engagement-engines/inbox',
                 subItemId: 'engagement-task-inbox',
                 adminOnly: true,
@@ -676,32 +686,32 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     // mentorship-my-mentorship.
     {
         icon: UserCircle,
-        title: i18next.t('sidebar:myHr'),
+        title: sidebarT('sidebar:myHr'),
         id: 'erp-my-hr',
         category: 'ERP',
         subItems: [
             {
-                subItem: i18next.t('sidebar:overview'),
+                subItem: sidebarT('sidebar:overview'),
                 subItemLink: '/erp/my-hr',
                 subItemId: 'erp-my-hr-overview',
             },
             {
-                subItem: i18next.t('sidebar:myLeave'),
+                subItem: sidebarT('sidebar:myLeave'),
                 subItemLink: '/erp/my-hr/leave',
                 subItemId: 'erp-my-hr-leave',
             },
             {
-                subItem: i18next.t('sidebar:myPayslips'),
+                subItem: sidebarT('sidebar:myPayslips'),
                 subItemLink: '/erp/my-hr/payslips',
                 subItemId: 'erp-my-hr-payslips',
             },
             {
-                subItem: i18next.t('sidebar:myTax'),
+                subItem: sidebarT('sidebar:myTax'),
                 subItemLink: '/erp/my-hr/tax',
                 subItemId: 'erp-my-hr-tax',
             },
             {
-                subItem: i18next.t('sidebar:myClaims'),
+                subItem: sidebarT('sidebar:myClaims'),
                 subItemLink: '/erp/my-hr/claims',
                 subItemId: 'erp-my-hr-claims',
             },
@@ -714,24 +724,24 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     // turns it on in Settings → Display Settings.
     {
         icon: IdentificationBadge,
-        title: i18next.t('sidebar:people'),
+        title: sidebarT('sidebar:people'),
         id: 'erp-people',
         category: 'ERP',
         subItems: [
             {
-                subItem: i18next.t('sidebar:employees'),
+                subItem: sidebarT('sidebar:employees'),
                 subItemLink: '/erp/people',
                 subItemId: 'erp-people-employees',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:departmentsAndDesignations'),
+                subItem: sidebarT('sidebar:departmentsAndDesignations'),
                 subItemLink: '/erp/people/org',
                 subItemId: 'erp-people-org',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:staffCoverage'),
+                subItem: sidebarT('sidebar:staffCoverage'),
                 subItemLink: '/erp/people/staff-bridge',
                 subItemId: 'erp-people-staff-bridge',
                 adminOnly: true,
@@ -740,24 +750,24 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: AirplaneTakeoff,
-        title: i18next.t('sidebar:leave'),
+        title: sidebarT('sidebar:leave'),
         id: 'erp-leave',
         category: 'ERP',
         subItems: [
             {
-                subItem: i18next.t('sidebar:requests'),
+                subItem: sidebarT('sidebar:requests'),
                 subItemLink: '/erp/leave',
                 subItemId: 'erp-leave-requests',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:balances'),
+                subItem: sidebarT('sidebar:balances'),
                 subItemLink: '/erp/leave/balances',
                 subItemId: 'erp-leave-balances',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:typesAndPolicies'),
+                subItem: sidebarT('sidebar:typesAndPolicies'),
                 subItemLink: '/erp/leave/setup',
                 subItemId: 'erp-leave-setup',
                 adminOnly: true,
@@ -766,24 +776,24 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: CalendarCheck,
-        title: i18next.t('sidebar:attendance'),
+        title: sidebarT('sidebar:attendance'),
         id: 'erp-attendance',
         category: 'ERP',
         subItems: [
             {
-                subItem: i18next.t('sidebar:dailyBoard'),
+                subItem: sidebarT('sidebar:dailyBoard'),
                 subItemLink: '/erp/attendance',
                 subItemId: 'erp-attendance-daily',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:regularizations'),
+                subItem: sidebarT('sidebar:regularizations'),
                 subItemLink: '/erp/attendance/regularizations',
                 subItemId: 'erp-attendance-regularizations',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:shiftsAndHolidays'),
+                subItem: sidebarT('sidebar:shiftsAndHolidays'),
                 subItemLink: '/erp/attendance/setup',
                 subItemId: 'erp-attendance-setup',
                 adminOnly: true,
@@ -792,24 +802,24 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: Money,
-        title: i18next.t('sidebar:payroll'),
+        title: sidebarT('sidebar:payroll'),
         id: 'erp-payroll',
         category: 'ERP',
         subItems: [
             {
-                subItem: i18next.t('sidebar:runs'),
+                subItem: sidebarT('sidebar:runs'),
                 subItemLink: '/erp/payroll',
                 subItemId: 'erp-payroll-runs',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:variablePay'),
+                subItem: sidebarT('sidebar:variablePay'),
                 subItemLink: '/erp/payroll/adjustments',
                 subItemId: 'erp-payroll-adjustments',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:salarySetup'),
+                subItem: sidebarT('sidebar:salarySetup'),
                 subItemLink: '/erp/payroll/salary-setup',
                 subItemId: 'erp-payroll-salary-setup',
                 adminOnly: true,
@@ -818,24 +828,24 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: SealCheck,
-        title: i18next.t('sidebar:compliance'),
+        title: sidebarT('sidebar:compliance'),
         id: 'erp-compliance',
         category: 'ERP',
         subItems: [
             {
-                subItem: i18next.t('sidebar:filings'),
+                subItem: sidebarT('sidebar:filings'),
                 subItemLink: '/erp/compliance',
                 subItemId: 'erp-compliance-filings',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:challans'),
+                subItem: sidebarT('sidebar:challans'),
                 subItemLink: '/erp/compliance/challans',
                 subItemId: 'erp-compliance-challans',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:provisions'),
+                subItem: sidebarT('sidebar:provisions'),
                 subItemLink: '/erp/compliance/provisions',
                 subItemId: 'erp-compliance-provisions',
                 adminOnly: true,
@@ -844,18 +854,18 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: ChartLineUp,
-        title: i18next.t('sidebar:finance'),
+        title: sidebarT('sidebar:finance'),
         id: 'erp-finance',
         category: 'ERP',
         subItems: [
             {
-                subItem: i18next.t('sidebar:journal'),
+                subItem: sidebarT('sidebar:journal'),
                 subItemLink: '/erp/finance/journal',
                 subItemId: 'erp-finance-journal',
                 adminOnly: true,
             },
             {
-                subItem: i18next.t('sidebar:pAndLSnapshot'),
+                subItem: sidebarT('sidebar:pAndLSnapshot'),
                 subItemLink: '/erp/finance/pnl',
                 subItemId: 'erp-finance-pnl',
                 adminOnly: true,
@@ -865,14 +875,14 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     {
         icon: GearSix,
         id: 'settings',
-        title: i18next.t('sidebar:settings'),
+        title: sidebarT('sidebar:settings'),
         to: '/settings',
         category: 'CRM',
     },
     {
         icon: Notebook,
         id: 'admin-activity-logs',
-        title: i18next.t('sidebar:adminActivityLogs'),
+        title: sidebarT('sidebar:adminActivityLogs'),
         to: '/admin-activity-logs',
         category: 'CRM',
     },
@@ -887,17 +897,17 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: PlusCircle,
-        title: i18next.t('sidebar:courseCreation', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+        title: sidebarT('sidebar:courseCreation', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
         id: 'course-creation',
         category: 'LMS',
         subItems: [
             {
-                subItem: i18next.t('sidebar:createNewCourseFromScratch', { term: getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase() }),
+                subItem: sidebarT('sidebar:createNewCourseFromScratch', { term: getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase() }),
                 subItemLink: '/study-library/courses?action=create',
                 subItemId: 'create-course-scratch',
             },
             {
-                subItem: i18next.t('sidebar:createCourseFromAi', { term: getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase() }),
+                subItem: sidebarT('sidebar:createCourseFromAi', { term: getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase() }),
                 subItemLink: '/study-library/ai-copilot',
                 subItemId: 'create-course-ai',
             },
@@ -905,7 +915,7 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
             ...(isBulkContentUploadEnabled()
                 ? [
                       {
-                          subItem: i18next.t('sidebar:bulkContentUpload'),
+                          subItem: sidebarT('sidebar:bulkContentUpload'),
                           subItemLink: '/study-library/bulk-content-uploading',
                           subItemId: 'bulk-content-uploading',
                       },
@@ -920,27 +930,27 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'LMS',
         subItems: [
             {
-                subItem: i18next.t('sidebar:scheduledLiveSessions', { term: getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
+                subItem: sidebarT('sidebar:scheduledLiveSessions', { term: getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
                 subItemLink: '/study-library/live-session',
                 subItemId: 'scheduled-sessions',
             },
             {
-                subItem: i18next.t('sidebar:createNew'),
+                subItem: sidebarT('sidebar:createNew'),
                 subItemLink: '/study-library/live-session/schedule/step1',
                 subItemId: 'create-live-session',
             },
             {
-                subItem: i18next.t('sidebar:bulkSchedule'),
+                subItem: sidebarT('sidebar:bulkSchedule'),
                 subItemLink: '/study-library/live-session/schedule/bulk',
                 subItemId: 'bulk-schedule-live-session',
             },
             {
-                subItem: i18next.t('sidebar:liveSessionAttendance', { term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
+                subItem: sidebarT('sidebar:liveSessionAttendance', { term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
                 subItemLink: '/study-library/attendance-tracker',
                 subItemId: 'session-attendance',
             },
             {
-                subItem: i18next.t('sidebar:liveSessionFeedback', { term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
+                subItem: sidebarT('sidebar:liveSessionFeedback', { term: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession) }),
                 subItemLink: '/study-library/live-session/feedback',
                 subItemId: 'live-session-feedback',
             },
@@ -948,22 +958,22 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: CalendarCheck,
-        title: i18next.t('sidebar:coursePlanningAndLogbook', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+        title: sidebarT('sidebar:coursePlanningAndLogbook', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
         id: 'course-planning-logging',
         category: 'LMS',
         subItems: [
             {
-                subItem: i18next.t('sidebar:curriculumTimelinePlanner'),
+                subItem: sidebarT('sidebar:curriculumTimelinePlanner'),
                 subItemLink: '/planning/planning',
                 subItemId: 'curriculum-planner',
             },
             {
-                subItem: i18next.t('sidebar:aiLecturePlanning'),
+                subItem: sidebarT('sidebar:aiLecturePlanning'),
                 subItemLink: '/ai-center/ai-tools/vsmart-lecture',
                 subItemId: 'ai-lecture-planning',
             },
             {
-                subItem: i18next.t('sidebar:logCourseProgress', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+                subItem: sidebarT('sidebar:logCourseProgress', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
                 subItemLink: '/planning/activity-logs',
                 subItemId: 'log-course-progress',
             },
@@ -971,31 +981,31 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: Pulse,
-        title: i18next.t('sidebar:institutePulse'),
+        title: sidebarT('sidebar:institutePulse'),
         id: 'institute-pulse',
         to: '/institute-pulse',
         category: 'LMS',
     },
     {
         icon: ChartBar,
-        title: i18next.t('sidebar:learningReports'),
+        title: sidebarT('sidebar:learningReports'),
         id: 'learning-reports',
         to: '/study-library/reports',
         category: 'LMS',
     },
     {
         icon: Lightning,
-        title: i18next.t('sidebar:learningEngagement'),
+        title: sidebarT('sidebar:learningEngagement'),
         id: 'learning-engagement',
         category: 'LMS',
         subItems: [
             {
-                subItem: i18next.t('sidebar:interactiveClass'), // Volt
+                subItem: sidebarT('sidebar:interactiveClass'), // Volt
                 subItemLink: '/study-library/volt',
                 subItemId: 'interactive-class-volt',
             },
             {
-                subItem: i18next.t('sidebar:createEngagingContent'),
+                subItem: sidebarT('sidebar:createEngagingContent'),
                 subItemLink: '/video-api-studio',
                 subItemId: 'create-engaging-content',
             },
@@ -1003,51 +1013,51 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: Question,
-        title: i18next.t('sidebar:doubtManagement'),
+        title: sidebarT('sidebar:doubtManagement'),
         id: 'doubt-management',
         to: '/study-library/doubt-management',
         category: 'LMS',
     },
     {
         icon: ChatCircleDots,
-        title: i18next.t('sidebar:studentAi'),
+        title: sidebarT('sidebar:studentAi'),
         id: 'student-ai',
         to: '/study-library/student-ai',
         category: 'LMS',
     },
     {
         icon: PencilCircle, // Assuming pencilCircle variable name mismatch fix to come
-        title: i18next.t('sidebar:assessmentsAndTests'),
+        title: sidebarT('sidebar:assessmentsAndTests'),
         id: 'assessments-tests',
         category: 'LMS',
         subItems: [
             {
-                subItem: i18next.t('sidebar:scheduledTests'),
+                subItem: sidebarT('sidebar:scheduledTests'),
                 subItemLink: '/assessment/assessment-list?selectedTab=liveTests',
                 subItemId: 'scheduled-tests',
             },
             {
-                subItem: i18next.t('sidebar:createDeadlineBasedTests'),
+                subItem: sidebarT('sidebar:createDeadlineBasedTests'),
                 subItemLink: '/assessment/create-assessment/defaultId/EXAM?currentStep=0',
                 subItemId: 'create-deadline-test',
             },
             {
-                subItem: i18next.t('sidebar:createAnytimeAttemptTest'),
+                subItem: sidebarT('sidebar:createAnytimeAttemptTest'),
                 subItemLink: '/assessment/create-assessment/defaultId/MOCK?currentStep=0',
                 subItemId: 'create-anytime-test',
             },
             {
-                subItem: i18next.t('sidebar:createSurvey'),
+                subItem: sidebarT('sidebar:createSurvey'),
                 subItemLink: '/assessment/create-assessment/defaultId/SURVEY?currentStep=0',
                 subItemId: 'create-survey',
             },
             {
-                subItem: i18next.t('sidebar:testEvaluations'),
+                subItem: sidebarT('sidebar:testEvaluations'),
                 subItemLink: '/evaluation/evaluations',
                 subItemId: 'test-evaluations',
             },
             {
-                subItem: i18next.t('sidebar:scannedAnswerSheetEvaluation'),
+                subItem: sidebarT('sidebar:scannedAnswerSheetEvaluation'),
                 subItemLink: '/evaluation/evaluation-tool',
                 subItemId: 'scanned-evaluation',
             },
@@ -1055,7 +1065,7 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: Files,
-        title: i18next.t('sidebar:questionsBanksAndPapers'),
+        title: sidebarT('sidebar:questionsBanksAndPapers'),
         id: 'question-banks',
         to: '/assessment/question-papers',
         category: 'LMS',
@@ -1064,42 +1074,42 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     // AI Tools
     {
         icon: Sparkle,
-        title: i18next.t('sidebar:aiTools'),
+        title: sidebarT('sidebar:aiTools'),
         id: 'ai-tools-tab',
         category: 'AI',
         to: '/ai-center/ai-tools',
     },
     {
         icon: Books,
-        title: i18next.t('sidebar:knowledgeBase'),
+        title: sidebarT('sidebar:knowledgeBase'),
         id: 'knowledge-base-tab',
         category: 'AI',
         to: '/knowledge-base',
     },
     {
         icon: Robot, // Or User icon if available
-        title: i18next.t('sidebar:instructorCopilot'),
+        title: sidebarT('sidebar:instructorCopilot'),
         id: 'instructor-copilot-tab',
         category: 'AI',
         to: '/instructor-copilot',
     },
     {
         icon: Robot,
-        title: i18next.t('sidebar:aiCourseCreator', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
+        title: sidebarT('sidebar:aiCourseCreator', { term: getTerminology(ContentTerms.Course, SystemTerms.Course) }),
         id: 'ai-copilot-tab',
         category: 'AI',
         to: '/study-library/ai-copilot',
     },
     {
         icon: FilmStrip,
-        title: i18next.t('sidebar:vimotionContentStudio'),
+        title: sidebarT('sidebar:vimotionContentStudio'),
         id: 'content-ai-studio',
         category: 'AI',
         to: '/video-api-studio/console',
     },
     {
         icon: Code,
-        title: i18next.t('sidebar:contentAiApi'),
+        title: sidebarT('sidebar:contentAiApi'),
         id: 'content-ai-api',
         category: 'AI',
         to: '/video-api-studio',

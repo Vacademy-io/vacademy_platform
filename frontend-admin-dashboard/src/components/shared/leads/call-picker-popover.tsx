@@ -104,7 +104,6 @@ export function CallPickerPopover({
     }, [open]);
 
     const handleConfirm = () => {
-        if (callerBlockedReason) return;
         // Pooled providers require a picked number; no-pool providers dial from
         // the counsellor's extension, so an empty preferredNumberId is correct.
         if (usesNumberPool && !selectedId) return;
@@ -161,11 +160,11 @@ export function CallPickerPopover({
                         !availabilityQuery.isLoading &&
                         !optionsQuery.isError &&
                         callerBlockedReason && (
-                            <div className="px-3 py-2.5">
-                                <p className="text-sm font-medium text-neutral-900">
-                                    You cannot place calls yet
+                            <div className="mx-2 mb-1 rounded-md bg-warning-50 px-3 py-2">
+                                <p className="text-xs font-medium text-warning-700">
+                                    This call may not connect
                                 </p>
-                                <p className="mt-1 text-xs text-neutral-500">
+                                <p className="mt-0.5 text-xs text-warning-600">
                                     {callerBlockedReason}
                                 </p>
                             </div>
@@ -173,7 +172,6 @@ export function CallPickerPopover({
                     {!optionsQuery.isLoading &&
                         !availabilityQuery.isLoading &&
                         !optionsQuery.isError &&
-                        !callerBlockedReason &&
                         !usesNumberPool && (
                             <div className="px-3 py-2.5">
                                 <p className="text-sm font-medium text-neutral-900">
@@ -190,7 +188,6 @@ export function CallPickerPopover({
                     {usesNumberPool &&
                         !optionsQuery.isLoading &&
                         !optionsQuery.isError &&
-                        !callerBlockedReason &&
                         numbers.length === 0 && (
                             <p className="px-3 py-2 text-xs text-neutral-500">
                                 No calling numbers configured. Ask an admin to set one up under
@@ -198,7 +195,6 @@ export function CallPickerPopover({
                             </p>
                         )}
                     {usesNumberPool &&
-                        !callerBlockedReason &&
                         numbers.map((n) => {
                         const isRecommended = n.id === recommendedId;
                         const isSelected = n.id === selectedId;
@@ -259,7 +255,6 @@ export function CallPickerPopover({
                             optionsQuery.isLoading ||
                             availabilityQuery.isLoading ||
                             optionsQuery.isError ||
-                            !!callerBlockedReason ||
                             (usesNumberPool && (!selectedId || numbers.length === 0))
                         }
                         className="h-8"

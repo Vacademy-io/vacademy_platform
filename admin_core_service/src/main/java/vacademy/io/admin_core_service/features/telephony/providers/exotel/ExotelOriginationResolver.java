@@ -53,7 +53,13 @@ public class ExotelOriginationResolver implements OutboundOriginationResolver {
 
     @Override
     public Optional<String> callerBlockedReason(String instituteId, String callerUserId) {
-        return userMobileResolver.findVerifiedMobile(callerUserId).isPresent()
+        // Strict lookup, so an auth_service failure THROWS here and
+        // computeAvailability's catch degrades to "ready". findVerifiedMobile
+        // collapses an outage into an empty Optional, indistinguishable from
+        // "this person genuinely has no mobile" — using it would have disabled
+        // the Call button for every working counsellor during a blip, and told
+        // them to go add a mobile number they already have.
+        return userMobileResolver.findVerifiedMobileStrict(callerUserId).isPresent()
                 ? Optional.empty()
                 : Optional.of(NO_VERIFIED_MOBILE);
     }

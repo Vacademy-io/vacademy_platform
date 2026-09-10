@@ -39,14 +39,23 @@ public class AirtelOriginationResolver implements OutboundOriginationResolver {
     @Override
     public Optional<String> callerBlockedReason(String instituteId, String callerUserId) {
         if (callerUserId == null || callerUserId.isBlank()) return Optional.of(NO_ENDPOINT);
-        return endpointRepo
+        // Written as plain branches on purpose. The first version chained
+        // .map(e -> ready ? null : REASON) — and Optional.map treats a null
+        // mapper result as EMPTY, so the ready case collapsed into the same
+        // empty Optional as "no endpoint row at all" and then took the
+        // .orElse(NO_ENDPOINT) branch. Net effect: the only people reported as
+        // blocked were the ones who actually had a working extension, which
+        // disabled the Call button for every correctly-configured Airtel
+        // counsellor and admin. Nothing here is worth an Optional chain.
+        TelephonyCounsellorEndpoint ep = endpointRepo
                 .findByCounsellorUserIdAndProviderType(callerUserId, ProviderType.AIRTEL)
                 .filter(e -> Boolean.TRUE.equals(e.getEnabled()))
-                .map(e -> (e.getExtension() == null || e.getExtension().isBlank())
-                        ? NO_EXTENSION
-                        : null)
-                .map(Optional::ofNullable)
-                .orElse(Optional.of(NO_ENDPOINT));
+                .orElse(null);
+        if (ep == null) return Optional.of(NO_ENDPOINT);
+        if (ep.getExtension() == null || ep.getExtension().isBlank()) {
+            return Optional.of(NO_EXTENSION);
+        }
+        return Optional.empty();
     }
 
     @Override
